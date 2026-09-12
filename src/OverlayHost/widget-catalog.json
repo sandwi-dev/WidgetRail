@@ -12,7 +12,10 @@
       "workerExecutable": "runtime/Settings/SettingsWidget.Worker.exe",
       "styleFile": "runtime/Settings/styles/default.wrss",
       "memoryLimitMb": 48,
-      "residencyPolicy": { "schemaVersion": 1, "mode": "suspend-when-hidden" },
+      "residencyPolicy": {
+        "schemaVersion": 1,
+        "mode": "suspend-when-hidden"
+      },
       "workerArguments": [
         "--bundled-widget-root",
         ".."
@@ -36,6 +39,14 @@
       "instanceId": "games-apps.default",
       "packageRoot": "runtime/GamesApps",
       "icon": "play",
+      "quickActions": []
+    },
+    {
+      "id": "task-switcher",
+      "packageId": "widgetrail.firstparty.task-switcher",
+      "instanceId": "task-switcher.default",
+      "packageRoot": "runtime/TaskSwitcher",
+      "icon": "fullscreen",
       "quickActions": []
     },
     {

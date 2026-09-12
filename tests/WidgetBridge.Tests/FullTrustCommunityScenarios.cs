@@ -174,7 +174,7 @@ internal static class FullTrustCommunityScenarios
             installedRoot,
             Path.Combine(hostOutput, "runtime", "WidgetWorkerHost", "WidgetWorkerHost.exe"));
         Check(load.InstalledCatalogValid && load.Warnings.Count == 0,
-            "The packaged Spotify application failed ordinary catalog admission.");
+            "The packaged Spotify application failed ordinary catalog admission: " + string.Join("; ", load.Warnings));
         var configured = load.Catalog.GetConfigured(installed.Id);
         var betaConfigured = load.Catalog.GetConfigured(beta.Id);
         AssertFullTrust(configured, "SpotifyApplication.exe");
@@ -387,7 +387,7 @@ internal static class FullTrustCommunityScenarios
         var expectedDirectories = new[]
         {
             "AudioMixer", "Bridge", "EmbeddedMediaSample", "GamesApps", "MediaSessions",
-            "NetworkControls", "Settings", "WidgetWorkerHost",
+            "NetworkControls", "Settings", "TaskSwitcher", "WidgetWorkerHost",
         };
         var actualDirectories = Directory.EnumerateDirectories(runtimeRoot)
             .Select(Path.GetFileName)

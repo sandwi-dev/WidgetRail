@@ -3,7 +3,7 @@ using System.Text;
 
 namespace WidgetRail.PlatformBroker;
 
-internal sealed class AppLibraryCapabilityDomain : IDisposable
+internal sealed partial class AppLibraryCapabilityDomain : IDisposable
 {
     private const int MaximumRetainedLaunchIds = 256;
     private const int MaximumTraversalPages = 160;
@@ -38,6 +38,9 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
         JsonElement payload,
         CancellationToken cancellationToken) => operation switch
         {
+            PlatformCapabilities.TaskWindowsList or PlatformCapabilities.TaskWindowsSwitch or
+                PlatformCapabilities.TaskWindowsClose =>
+                await TaskWindowsAsync(operation, payload, cancellationToken).ConfigureAwait(false),
             PlatformCapabilities.AppLibraryList => BrokerJson.ToElement(
                 await QueryAsync(payload, cancellationToken).ConfigureAwait(false)),
             PlatformCapabilities.AppLibraryResolveSaved => BrokerJson.ToElement(

@@ -2,7 +2,8 @@ namespace WidgetRail.WindowsAppLibraryProvider;
 
 internal sealed record RunningWindowInfo(
     nint Handle, nint Root, nint Owner, uint ProcessId, string ClassName,
-    bool Visible = true, bool Cloaked = false, long ExtendedStyle = 0);
+    bool Visible = true, bool Cloaked = false, long ExtendedStyle = 0,
+    string Title = "", bool IsMinimized = false);
 
 internal interface IRunningWindowNative
 {
@@ -60,7 +61,7 @@ internal static class WindowsRunningWindowPolicy
             result = native.Process(window.ProcessId, packagedOnly: false);
         }
 
-        return native.Read(handle) == window ? result : null;
+        return native.Read(handle) == window && result is not null ? result with { Window = window } : null;
     }
 
     private static bool Eligible(RunningWindowInfo? window, nint shell, uint currentProcessId) =>

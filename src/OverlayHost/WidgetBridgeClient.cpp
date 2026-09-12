@@ -5087,6 +5087,15 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             monotonicTimestampMicroseconds, phase, requestedValue, origin,
             runtimeGeneration, pinnedLayoutId, pinnedLayoutSelected,
             expectedActionId, expectedSelectOptionActionId);
+        // Only the actual foreground overlay can delegate this right. The bridge
+        // remains trusted; individual window actions still require broker grants.
+        DWORD foregroundProcess = 0;
+        (void)GetWindowThreadProcessId(GetForegroundWindow(), &foregroundProcess);
+        DWORD exitCode = 0;
+        if (foregroundProcess == GetCurrentProcessId() && process_ && processId_ != 0 &&
+            GetExitCodeProcess(process_, &exitCode) && exitCode == STILL_ACTIVE) {
+            (void)AllowSetForegroundWindow(processId_);
+        }
         if (!WriteFrame(winrt::to_string(envelope.Stringify()))) {
             lastControllerInputResultCode_ = L"transport-write-failed";
             return std::nullopt;
@@ -5189,6 +5198,15 @@ std::optional<bool> WidgetBridgeClient::SendAction(
         envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
             static_cast<double>(requestId)));
         envelope.Insert(L"payload", payload);
+        // Only the actual foreground overlay can delegate this right. The bridge
+        // remains trusted; individual window actions still require broker grants.
+        DWORD foregroundProcess = 0;
+        (void)GetWindowThreadProcessId(GetForegroundWindow(), &foregroundProcess);
+        DWORD exitCode = 0;
+        if (foregroundProcess == GetCurrentProcessId() && process_ && processId_ != 0 &&
+            GetExitCodeProcess(process_, &exitCode) && exitCode == STILL_ACTIVE) {
+            (void)AllowSetForegroundWindow(processId_);
+        }
         if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
 
         while (const auto frame = ReadFrame()) {

@@ -11,7 +11,10 @@ internal sealed record WindowsRunningAppObservation(
     string RegistrationIdentity,
     string InstanceEvidence,
     string DisplayName = "",
-    WindowsExecutableAuthority? PortableAuthority = null);
+    WindowsExecutableAuthority? PortableAuthority = null)
+{
+    internal RunningWindowInfo? Window { get; init; }
+}
 
 internal interface IWindowsRunningAppObserver
 {
@@ -73,7 +76,7 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
         return observations;
     }
 
-    private static WindowsRunningAppObservation? InspectWindow(IntPtr window) =>
+    internal static WindowsRunningAppObservation? InspectWindow(IntPtr window) =>
         WindowsRunningWindowPolicy.Inspect(window, new NativeWindowMetadata(),
             (uint)Environment.ProcessId);
 
@@ -188,6 +191,20 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     [return: MarshalAs(UnmanagedType.Bool)]
     private delegate bool EnumWindowsCallback(IntPtr window, IntPtr parameter);
 
+    private static string ReadTitle(nint window)
+    {
+        var buffer = new char[241];
+        var length = GetWindowTextW(window, buffer, buffer.Length);
+        return length <= 0 ? string.Empty : string.Join(' ',
+            new string(buffer, 0, length).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [DllImport("user32.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextW(nint window, [Out] char[] text, int count);
+    [DllImport("user32.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsIconic(nint window);
+
     private sealed class NativeWindowMetadata : IRunningWindowNative
     {
         public nint ShellWindow => GetShellWindow();
@@ -212,7 +229,7 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
                 ? GetWindowLongPtrW(window, -20).ToInt64() : GetWindowLongW(window, -20);
             if (style == 0 && Marshal.GetLastPInvokeError() != 0) return null;
             return new(window, root, GetWindow(window, GwOwner), processId, name,
-                IsWindowVisible(window), cloaked, style);
+                IsWindowVisible(window), cloaked, style, ReadTitle(window), IsIconic(window));
         }
 
         public nint LastActivePopup(nint window) => GetLastActivePopup(window);

@@ -4,6 +4,7 @@ using WidgetRail.WindowsAppLibraryProvider;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Task window control preserves distinct windows and revalidates identity", TaskWindowScenarios.Run),
     ("Running icons are lazy unregistered and observation scoped", PortableRegistrationScenarios.RunningArtworkDoesNotRegisterAndRetires),
     ("Production composition automatically admits installed Epic and GOG sources",
         AutomaticInstalledSources),

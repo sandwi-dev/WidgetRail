@@ -2017,6 +2017,7 @@ $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
 $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
 $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
 $gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
+$taskSwitcherOutput = Join-Path $outputDirectory 'runtime\TaskSwitcher'
 $mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
 $embeddedMediaSampleOutput = Join-Path $outputDirectory 'runtime\EmbeddedMediaSample'
 
@@ -2178,6 +2179,10 @@ Publish-BundledWidgetPackage `
 Publish-BundledWidgetPackage `
     (Join-Path $projectDirectory '..\FirstPartyWidgets\GamesAppsWidget') `
     $gamesAppsOutput 'GamesAppsWidget' 'Games & Apps'
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\FirstPartyWidgets\TaskSwitcherWidget') `
+    $taskSwitcherOutput 'TaskSwitcherWidget' 'Task Switcher'
+
 Publish-BundledWidgetPackage `
     (Join-Path $projectDirectory '..\FirstPartyWidgets\MediaSessionsWidget') `
     $mediaSessionsOutput 'MediaSessionsWidget' 'Now Playing'

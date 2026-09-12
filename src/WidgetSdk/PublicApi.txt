@@ -137,6 +137,8 @@ ctor WidgetRail.WidgetSdk.WidgetScenarioOperationBarrier<TRequest,TResponse>()
 ctor WidgetRail.WidgetSdk.WidgetScenarioResult(int version, string scenario, WidgetRail.WidgetProtocol.ViewSnapshot snapshot, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetScenarioDiagnostic> diagnostics)
 ctor WidgetRail.WidgetSdk.WidgetScenarioRunResult(string CaseId, bool Passed, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetScenarioStepResult> Steps, WidgetRail.WidgetProtocol.ViewSnapshot? FinalSnapshot)
 ctor WidgetRail.WidgetSdk.WidgetScenarioStepResult(string StepId, bool Passed, string Code, string? Message)
+ctor WidgetRail.WidgetSdk.WidgetTaskWindow(string WindowId, string ApplicationName, string Title, bool IsMinimized)
+ctor WidgetRail.WidgetSdk.WidgetTaskWindowRequest(string WindowId)
 ctor WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder()
 ctor WidgetRail.WidgetSdk.WidgetTestPrivateState(string? initialJson = null, long initialRevision = 0)
 ctor WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs(System.Exception exception)
@@ -1418,6 +1420,19 @@ method WidgetRail.WidgetSdk.WidgetScenarioStepResult.Deconstruct(out string Step
 method WidgetRail.WidgetSdk.WidgetScenarioStepResult.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetScenarioStepResult.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetScenarioStepResult.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetTaskSwitcherService.CloseAsync(string windowId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetTaskSwitcherService.GetWindowsAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetTaskWindow>>
+method WidgetRail.WidgetSdk.WidgetTaskSwitcherService.SwitchAsync(string windowId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetTaskWindow.<Clone>$() -> WidgetRail.WidgetSdk.WidgetTaskWindow
+method WidgetRail.WidgetSdk.WidgetTaskWindow.Deconstruct(out string WindowId, out string ApplicationName, out string Title, out bool IsMinimized) -> void
+method WidgetRail.WidgetSdk.WidgetTaskWindow.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetTaskWindow.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetTaskWindow.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetTaskWindowRequest.<Clone>$() -> WidgetRail.WidgetSdk.WidgetTaskWindowRequest
+method WidgetRail.WidgetSdk.WidgetTaskWindowRequest.Deconstruct(out string WindowId) -> void
+method WidgetRail.WidgetSdk.WidgetTaskWindowRequest.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetTaskWindowRequest.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetTaskWindowRequest.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder.Build() -> WidgetRail.WidgetSdk.WidgetHostServices
 method WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder.WithEventStream<TPayload>(WidgetRail.WidgetSdk.WidgetCapabilityEvent<TPayload?> platformEvent, System.Func<System.Threading.CancellationToken,System.Collections.Generic.IAsyncEnumerable<TPayload?>> streamFactory) -> WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder
 method WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder.WithEvents<TPayload>(WidgetRail.WidgetSdk.WidgetCapabilityEvent<TPayload?> platformEvent, System.Collections.Generic.IEnumerable<TPayload?> events) -> WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder
@@ -1846,6 +1861,10 @@ method static WidgetRail.WidgetSdk.WidgetScenarioRunResult.op_Equality(WidgetRai
 method static WidgetRail.WidgetSdk.WidgetScenarioRunResult.op_Inequality(WidgetRail.WidgetSdk.WidgetScenarioRunResult? left, WidgetRail.WidgetSdk.WidgetScenarioRunResult? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetScenarioStepResult.op_Equality(WidgetRail.WidgetSdk.WidgetScenarioStepResult? left, WidgetRail.WidgetSdk.WidgetScenarioStepResult? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetScenarioStepResult.op_Inequality(WidgetRail.WidgetSdk.WidgetScenarioStepResult? left, WidgetRail.WidgetSdk.WidgetScenarioStepResult? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetTaskWindow.op_Equality(WidgetRail.WidgetSdk.WidgetTaskWindow? left, WidgetRail.WidgetSdk.WidgetTaskWindow? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetTaskWindow.op_Inequality(WidgetRail.WidgetSdk.WidgetTaskWindow? left, WidgetRail.WidgetSdk.WidgetTaskWindow? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetTaskWindowRequest.op_Equality(WidgetRail.WidgetSdk.WidgetTaskWindowRequest? left, WidgetRail.WidgetSdk.WidgetTaskWindowRequest? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetTaskWindowRequest.op_Inequality(WidgetRail.WidgetSdk.WidgetTaskWindowRequest? left, WidgetRail.WidgetSdk.WidgetTaskWindowRequest? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetTestHost.Attach<TWidget>(TWidget widget, WidgetRail.WidgetSdk.WidgetHostServices services) -> TWidget where TWidget : WidgetRail.WidgetSdk.Widget
 method static WidgetRail.WidgetSdk.WidgetTestHost.CreatePinnedLayoutHost(WidgetRail.WidgetSdk.Widget widget, string widgetInstanceId, long initialSequence = 1) -> WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost
 method static WidgetRail.WidgetSdk.WidgetTestHost.DestroyAsync(WidgetRail.WidgetSdk.Widget widget, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
@@ -2047,6 +2066,8 @@ method virtual WidgetRail.WidgetSdk.WidgetScenarioDiagnostic.Equals(WidgetRail.W
 method virtual WidgetRail.WidgetSdk.WidgetScenarioResult.Equals(WidgetRail.WidgetSdk.WidgetScenarioResult? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetScenarioRunResult.Equals(WidgetRail.WidgetSdk.WidgetScenarioRunResult? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetScenarioStepResult.Equals(WidgetRail.WidgetSdk.WidgetScenarioStepResult? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetTaskWindow.Equals(WidgetRail.WidgetSdk.WidgetTaskWindow? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetTaskWindowRequest.Equals(WidgetRail.WidgetSdk.WidgetTaskWindowRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetTimedMutation.Dispose() -> void
 method virtual WidgetRail.WidgetSdk.WidgetView.Equals(WidgetRail.WidgetSdk.WidgetView? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetWifiRadio.Equals(WidgetRail.WidgetSdk.WidgetWifiRadio? other) -> bool
@@ -2318,6 +2339,7 @@ property WidgetRail.WidgetSdk.WidgetResourceError? WidgetRail.WidgetSdk.WidgetPa
 property WidgetRail.WidgetSdk.WidgetResourceError? WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Error { get; set; }
 property WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue> WidgetRail.WidgetSdk.WidgetResource<TValue>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetResourceStatus WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Status { get; set; }
+property WidgetRail.WidgetSdk.WidgetTaskSwitcherService WidgetRail.WidgetSdk.WidgetHostServices.TaskSwitcher { get; }
 property WidgetRail.WidgetSdk.WidgetWifiRadio WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Radio { get; set; }
 property WidgetRail.WidgetSdk.WidgetWifiRadioState WidgetRail.WidgetSdk.WidgetWifiRadio.State { get; set; }
 property WidgetRail.WidgetSdk.WidgetWifiScanState WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks.ScanState { get; set; }
@@ -2408,6 +2430,7 @@ property bool WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.HasValue { get
 property bool WidgetRail.WidgetSdk.WidgetSavedNetworkProfile.IsConnected { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetScenarioRunResult.Passed { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetScenarioStepResult.Passed { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetTaskWindow.IsMinimized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetTimedMutation.IsScheduled { get; }
 property bool WidgetRail.WidgetSdk.WidgetWifiRadio.CanControl { get; set; }
 property bool? WidgetRail.WidgetSdk.ActionSurfaceElement.IsBusy { get; set; }
@@ -2555,6 +2578,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetMediaSession>> WidgetRail.WidgetSdk.WidgetMediaCapabilities.GetSessions { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetRecentActivity>> WidgetRail.WidgetSdk.WidgetRecentActivityCapabilities.GetRecent { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetSavedNetworkProfile>> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetSavedProfiles { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetTaskWindow>> WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.List { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioInput> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetInput { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioOutput> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetOutput { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioSpatial> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetSpatial { get; }
@@ -2568,6 +2592,8 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetPrivateSecretSlotRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.Delete { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetPrivateSecretSlotRequest,WidgetRail.WidgetSdk.WidgetPrivateSecretExists> WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.Exists { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetPrivateSecretSlotRequest,WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata> WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.Metadata { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetTaskWindowRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.Close { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetTaskWindowRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.Switch { get; }
 property static WidgetRail.WidgetSdk.WidgetCommandError WidgetRail.WidgetSdk.WidgetCommandError.Unexpected { get; }
 property static WidgetRail.WidgetSdk.WidgetResourceError WidgetRail.WidgetSdk.WidgetResourceError.InvalidPage { get; }
 property static WidgetRail.WidgetSdk.WidgetResourceError WidgetRail.WidgetSdk.WidgetResourceError.Unexpected { get; }
@@ -2707,6 +2733,10 @@ property string WidgetRail.WidgetSdk.WidgetScenarioResult.Scenario { get; }
 property string WidgetRail.WidgetSdk.WidgetScenarioRunResult.CaseId { get; set; }
 property string WidgetRail.WidgetSdk.WidgetScenarioStepResult.Code { get; set; }
 property string WidgetRail.WidgetSdk.WidgetScenarioStepResult.StepId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetTaskWindow.ApplicationName { get; set; }
+property string WidgetRail.WidgetSdk.WidgetTaskWindow.Title { get; set; }
+property string WidgetRail.WidgetSdk.WidgetTaskWindow.WindowId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetTaskWindowRequest.WindowId { get; set; }
 property string? WidgetRail.WidgetSdk.ActionSheetItem.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusPersistenceId { get; set; }
 property string? WidgetRail.WidgetSdk.ButtonElement.AccessibilityLabel { get; set; }
@@ -3004,6 +3034,9 @@ type sealed class WidgetRail.WidgetSdk.WidgetScenarioOperationInvocation<TReques
 type sealed class WidgetRail.WidgetSdk.WidgetScenarioResult : System.IEquatable<WidgetRail.WidgetSdk.WidgetScenarioResult>
 type sealed class WidgetRail.WidgetSdk.WidgetScenarioRunResult : System.IEquatable<WidgetRail.WidgetSdk.WidgetScenarioRunResult>
 type sealed class WidgetRail.WidgetSdk.WidgetScenarioStepResult : System.IEquatable<WidgetRail.WidgetSdk.WidgetScenarioStepResult>
+type sealed class WidgetRail.WidgetSdk.WidgetTaskSwitcherService
+type sealed class WidgetRail.WidgetSdk.WidgetTaskWindow : System.IEquatable<WidgetRail.WidgetSdk.WidgetTaskWindow>
+type sealed class WidgetRail.WidgetSdk.WidgetTaskWindowRequest : System.IEquatable<WidgetRail.WidgetSdk.WidgetTaskWindowRequest>
 type sealed class WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder
 type sealed class WidgetRail.WidgetSdk.WidgetTestPrivateState
 type sealed class WidgetRail.WidgetSdk.WidgetTimedMutation : System.IDisposable
@@ -3024,6 +3057,7 @@ type static class WidgetRail.WidgetSdk.WidgetMediaCapabilities
 type static class WidgetRail.WidgetSdk.WidgetNetworkCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities
 type static class WidgetRail.WidgetSdk.WidgetRecentActivityCapabilities
+type static class WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities
 type static class WidgetRail.WidgetSdk.WidgetTestHost
 type static class WidgetRail.WidgetSdk.WidgetTicker
 type struct WidgetRail.WidgetSdk.NavigationShellContentEntry

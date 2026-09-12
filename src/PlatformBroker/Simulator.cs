@@ -23,6 +23,19 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     private readonly Dictionary<string, (string? JsonBase64, long Revision)> _privateState =
         new(StringComparer.Ordinal);
 
+    public IReadOnlyList<TaskWindowSummary> TaskWindows { get; set; } = [];
+    public Func<string, CancellationToken, Task>? TaskWindowSwitch { get; set; }
+    public Func<string, CancellationToken, Task>? TaskWindowClose { get; set; }
+    public Task<IReadOnlyList<TaskWindowSummary>> GetTaskWindowsAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(TaskWindows);
+    }
+    public Task SwitchTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>
+        TaskWindowSwitch?.Invoke(windowId, cancellationToken) ?? Task.CompletedTask;
+    public Task CloseTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>
+        TaskWindowClose?.Invoke(windowId, cancellationToken) ?? Task.CompletedTask;
+
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
     public NetworkStatusSummary NetworkStatus { get; set; } =

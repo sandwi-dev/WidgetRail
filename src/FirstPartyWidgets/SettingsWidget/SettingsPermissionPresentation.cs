@@ -428,6 +428,9 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.NetworkBluetoothManageV1 => "Open Bluetooth device settings",
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
         PlatformCapabilities.AppLibraryReadV1 => "See your app library",
+        PlatformCapabilities.TaskWindowsReadV1 => "See open windows and their titles",
+        PlatformCapabilities.TaskWindowsSwitchV1 => "Switch to open windows",
+        PlatformCapabilities.TaskWindowsCloseV1 => "Close open windows",
         PlatformCapabilities.AppRunningReadV1 => "See visible running apps",
         PlatformCapabilities.AppRunningRegisterV1 => "Remember running apps",
         PlatformCapabilities.AppLibraryLaunchV1 => "Launch app library items",
@@ -506,6 +509,12 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AppLibraryReadV1 =>
             "See a bounded app library of current installed applications and this package's explicitly remembered apps, using conservative kinds and opaque IDs. " +
             "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",
+        PlatformCapabilities.TaskWindowsReadV1 =>
+            "See open application windows and their titles. Window handles and process IDs stay private to the host.",
+        PlatformCapabilities.TaskWindowsSwitchV1 =>
+            "Bring an existing application window to the foreground after you choose it.",
+        PlatformCapabilities.TaskWindowsCloseV1 =>
+            "Ask an application window to close normally. The app can ask you to save work or refuse to close.",
         PlatformCapabilities.AppRunningReadV1 =>
             "On request, see bounded visible applications that match the current catalog or can be explicitly remembered. " +
             "Widgets receive only names, kinds, sources, and opaque saved IDs—never process or window identity.",

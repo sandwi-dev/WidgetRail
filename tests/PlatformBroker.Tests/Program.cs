@@ -5,6 +5,8 @@ using WidgetRail.PlatformBroker;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Task windows are permission gated and tokens stay broker scoped", TaskWindowBroker),
+
     ("Admitted launches retain completion across background but revoke and destroy cancel", AdmittedLaunchLifecycle),
     ("Capability vocabulary is closed and versioned", CapabilityVocabularyIsClosed),
     ("Composite backend keeps provider event domains separated", CompositeProviderDomainsAreSeparated),
@@ -84,6 +86,7 @@ var tests = runningRegistrationOnly
 var failures = 0;
 foreach (var (name, run) in tests)
 {
+
     try
     {
         await run();
@@ -157,6 +160,50 @@ static Task CapabilityDomainAuthorityIsSingular()
     Assert.Equal(BrokerCapabilityDomain.PrivateState,
         BrokerCapabilityDomains.Resolve(PlatformCapabilities.PrivateStateV1));
     return Task.CompletedTask;
+}
+
+static async Task TaskWindowBroker()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var consent = new ConsentStore(temp.Path);
+    var capabilities = new[] { PlatformCapabilities.TaskWindowsReadV1,
+        PlatformCapabilities.TaskWindowsSwitchV1, PlatformCapabilities.TaskWindowsCloseV1 };
+    foreach (var cap in capabilities)
+        await consent.SetDecisionAsync(identity, cap, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend
+    { TaskWindows = [new("native-target", "Editor", "Document", false)] };
+    string? switched = null;
+    string? closed = null;
+    backend.TaskWindowSwitch = (id, token) => { switched = id; return Task.CompletedTask; };
+    backend.TaskWindowClose = (id, token) => { closed = id; return Task.CompletedTask; };
+    await using var broker = new PlatformCapabilityBroker(identity, capabilities, consent, backend);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    long sequence = 0;
+    Task<JsonElement> Send(PlatformCapabilityBroker target, string cap, string op, object payload) =>
+        target.ExecuteAsync(new(BrokerJson.ProtocolVersion, ++sequence, identity, cap, op,
+            JsonSerializer.SerializeToElement(payload, BrokerJson.StrictOptions)));
+    var list = (await Send(broker, capabilities[0], PlatformCapabilities.TaskWindowsList, new {}))
+        .Deserialize<TaskWindowSummary[]>(BrokerJson.StrictOptions)!;
+    Assert.True(list[0].WindowId.StartsWith("window-", StringComparison.Ordinal));
+    Assert.True(list[0].WindowId != "native-target");
+    await Send(broker, capabilities[1], PlatformCapabilities.TaskWindowsSwitch, new TaskWindowRequest(list[0].WindowId));
+    Assert.Equal("native-target", switched);
+    await using var other = new PlatformCapabilityBroker(identity, capabilities, consent, backend);
+    other.SetLifecycle(BrokerLifecycleState.Interactive);
+    await Assert.ThrowsAsync<BrokerException>(() =>
+        Send(other, capabilities[2], PlatformCapabilities.TaskWindowsClose, new TaskWindowRequest(list[0].WindowId)));
+    Assert.True(closed is null);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    await Assert.ThrowsAsync<BrokerException>(() =>
+        Send(broker, capabilities[2], PlatformCapabilities.TaskWindowsClose, new TaskWindowRequest(list[0].WindowId)));
+    Assert.True(closed is null);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    backend.TaskWindows = [];
+    await Send(broker, capabilities[0], PlatformCapabilities.TaskWindowsList, new {});
+    await Assert.ThrowsAsync<BrokerException>(() =>
+        Send(broker, capabilities[2], PlatformCapabilities.TaskWindowsClose, new TaskWindowRequest(list[0].WindowId)));
+    Assert.True(closed is null);
 }
 
 static async Task CapabilityDomainPoliciesAreBounded()
@@ -363,7 +410,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(31, PlatformCapabilities.All.Count);
+    Assert.Equal(34, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -405,11 +452,14 @@ static Task CapabilityVocabularyIsClosed()
             capability.Id != PlatformCapabilities.MediaSessionsControlV1)
         .All(capability => !capability.AllowsDashboardGesture));
     Assert.True(PlatformCapabilities.All
-        .Where(capability => capability.Id != PlatformCapabilities.AppLibraryLaunchV1)
+        .Where(capability => capability.Id != PlatformCapabilities.AppLibraryLaunchV1 &&
+            capability.Id != PlatformCapabilities.TaskWindowsSwitchV1)
         .All(capability => capability.InFlightContinuationOperations is null ||
             capability.InFlightContinuationOperations.Count == 0));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.AppLibraryLaunchV1)
         .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.AppLibraryLaunch, PlatformCapabilities.AppLibraryLaunchObserved]));
+    Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.TaskWindowsSwitchV1)
+        .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.TaskWindowsSwitch]));
     var defaultControl = new BrokerCapabilityDefinition(
         "test.future.control.v1",
         1,

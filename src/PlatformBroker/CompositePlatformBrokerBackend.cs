@@ -42,6 +42,13 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         _media.EventPublished += ForwardMediaEvent;
     }
 
+    public Task<IReadOnlyList<TaskWindowSummary>> GetTaskWindowsAsync(CancellationToken cancellationToken) =>
+        _appLibrary.GetTaskWindowsAsync(cancellationToken);
+    public Task SwitchTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>
+        _appLibrary.SwitchTaskWindowAsync(windowId, cancellationToken);
+    public Task CloseTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>
+        _appLibrary.CloseTaskWindowAsync(windowId, cancellationToken);
+
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
     public Task<IReadOnlyList<AudioSessionSummary>> GetAudioSessionsAsync(

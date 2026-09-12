@@ -277,7 +277,7 @@ internal static class RunningAppScenarios
         }
     }
 
-    private sealed class Source(int count, bool hasArtwork = false) : IGameLibrarySource
+    internal sealed class Source(int count, bool hasArtwork = false) : IGameLibrarySource
     {
         private int _disposeCalls;
         internal string? RejectIdentity { get; set; }
@@ -321,7 +321,7 @@ internal static class RunningAppScenarios
         }
     }
 
-    private sealed class ImmediateSta : IShellStaExecutor
+    internal sealed class ImmediateSta : IShellStaExecutor
     {
         internal static ImmediateSta Instance { get; } = new();
         public Task<T> RunAsync<T>(Func<CancellationToken, T> operation,

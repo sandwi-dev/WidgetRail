@@ -24,7 +24,9 @@ internal static class BrokerCapabilityDomains
         if (capabilityId.StartsWith("system.network.", StringComparison.Ordinal) ||
             capabilityId == PlatformCapabilities.RecentActivityReadV1)
             return BrokerCapabilityDomain.Network;
-        if (capabilityId is PlatformCapabilities.AppLibraryReadV1 or
+        if (capabilityId is PlatformCapabilities.TaskWindowsReadV1 or
+            PlatformCapabilities.TaskWindowsSwitchV1 or PlatformCapabilities.TaskWindowsCloseV1 or
+            PlatformCapabilities.AppLibraryReadV1 or
             PlatformCapabilities.AppRunningReadV1 or
             PlatformCapabilities.AppRunningRegisterV1 or
             PlatformCapabilities.AppLibraryLaunchV1)

@@ -1,0 +1,47 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.firstparty.task-switcher",
+  "publisher": "widgetrail.firstparty",
+  "name": "Task Switcher",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/TaskSwitcherWidget.dll",
+    "type": "WidgetRail.FirstPartyWidgets.TaskSwitcher.TaskSwitcherWidget"
+  },
+  "presentation": {
+    "icon": "fullscreen",
+    "packageIcon": {
+      "assetId": "tasks.mark",
+      "colorMode": "themeTint"
+    }
+  },
+  "iconAssets": {
+    "tasks.mark": {
+      "path": "assets/icons/task-switcher.svg"
+    }
+  },
+  "permissions": [
+    "system.apps.windows.read.v1"
+  ],
+  "optionalPermissions": [
+    "system.apps.windows.switch.v1",
+    "system.apps.windows.close.v1"
+  ],
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "unload-after-idle",
+    "idleSeconds": 120
+  },
+  "resourceRequest": {
+    "memoryMb": 48,
+    "updateHz": 2
+  },
+  "architectures": [
+    "x64"
+  ]
+}

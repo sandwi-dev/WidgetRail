@@ -11,7 +11,7 @@ namespace WidgetRail.WindowsAppLibraryProvider;
 /// Launch resolves a provider-owned opaque ID and exactly revalidates its
 /// trusted registration before invoking the corresponding Windows launcher.
 /// </summary>
-public sealed class WindowsAppLibraryProvider :
+public sealed partial class WindowsAppLibraryProvider :
     IAppLibraryPlatformBrokerBackend,
     IAsyncDisposable
 {

@@ -254,6 +254,7 @@ public sealed class WidgetHostServices
         Network = new WidgetNetworkService(capabilityClient);
         RecentActivity = new WidgetRecentActivityService(capabilityClient);
         AppLibrary = new WidgetAppLibraryService(capabilityClient);
+        TaskSwitcher = new WidgetTaskSwitcherService(capabilityClient);
         Media = new WidgetMediaService(capabilityClient);
         Loopback = new WidgetLoopbackHttpService(capabilityClient);
         PrivateSecrets = new WidgetPrivateSecretService(capabilityClient);
@@ -265,6 +266,7 @@ public sealed class WidgetHostServices
     public WidgetNetworkService Network { get; }
     public WidgetRecentActivityService RecentActivity { get; }
     public WidgetAppLibraryService AppLibrary { get; }
+    public WidgetTaskSwitcherService TaskSwitcher { get; }
     public WidgetMediaService Media { get; }
     public WidgetLoopbackHttpService Loopback { get; }
     public WidgetPrivateSecretService PrivateSecrets { get; }
