@@ -37,7 +37,8 @@ std::optional<TrayLayout> ComputeTrayStatusLayout(
     if (!std::isfinite(capacity) || capacity < 250.0F)
         return ComputeTrayLayout(width, height, widgetCount, selectedSlot, band, widthBasis);
     const float statusWidth = capacity >= 680.0F ? 188.0F : 100.0F;
-    const float reserve = statusWidth + 14.0F;
+    const float statusGap = capacity >= 680.0F ? 32.0F : 14.0F;
+    const float reserve = statusWidth + statusGap;
     auto layout = ComputeTrayLayout(capacity - reserve * 2, height,
         widgetCount, selectedSlot, band, TrayWidthBasis::ExactCapacity);
     if (!layout) return layout;
@@ -47,7 +48,7 @@ std::optional<TrayLayout> ComputeTrayStatusLayout(
     if (layout->previousOverflow) layout->previousOverflow->bounds.x += offset;
     if (layout->nextOverflow) layout->nextOverflow->bounds.x += offset;
     layout->statusBounds = declarative::Rect{
-        layout->stripBounds.x + layout->stripBounds.width + 14.0F,
+        layout->stripBounds.x + layout->stripBounds.width + statusGap,
         layout->stripBounds.y, statusWidth, layout->stripBounds.height};
     layout->stripBounds.width += reserve;
     return layout;
