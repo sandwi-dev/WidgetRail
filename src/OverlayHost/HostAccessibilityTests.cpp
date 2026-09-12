@@ -405,6 +405,19 @@ int main() {
               L"music.root", presentedRoot, L"sheet.action"),
           "presentation-only root wrappers preserve accessible host Back authority");
 
+    auto clockLayout = widgetrail::shell::ComputeTrayStatusLayout(1000, 200, 1, 0);
+    Check(clockLayout && clockLayout->statusBounds, "status geometry is available to accessibility");
+    clockLayout->statusDescription = L"10:42 AM. Internet access. Bluetooth on";
+    const auto clockTree = widgetrail::accessibility::BuildTrayTree(
+        {{L"one", L"One"}}, *clockLayout, 0, 1);
+    const auto clock = std::find_if(clockTree.nodes.begin(), clockTree.nodes.end(),
+        [](const auto& node) { return node.id == L"host.tray.status"; });
+    Check(clock != clockTree.nodes.end() && clock->name == clockLayout->statusDescription &&
+        !clock->keyboardFocusable && !clock->focused && clock->hostAction == widgetrail::accessibility::HostAction::None,
+        "clock and connectivity are readable without becoming an action or focus target");
+    Check(widgetrail::accessibility::ComputeTraySemanticRevision({}, nullptr, L"10:42") !=
+        widgetrail::accessibility::ComputeTraySemanticRevision({}, nullptr, L"10:43"),
+        "clock updates invalidate the accessible description");
     std::cout << "HostAccessibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

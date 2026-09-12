@@ -103,6 +103,7 @@ struct RetainedTrayState final {
     unsigned int height{};
     std::uint64_t appearanceRevision{};
     std::vector<RetainedTrayItem> items;
+    std::wstring statusKey;
 
     friend bool operator==(
         const RetainedTrayState&,

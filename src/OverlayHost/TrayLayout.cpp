@@ -29,6 +29,30 @@ float ComputeTrayCapacityWidth(const float monitorUsableWidth) noexcept {
             kMinimumOverflowCapacity));
 }
 
+std::optional<TrayLayout> ComputeTrayStatusLayout(
+    float width, float height, std::size_t widgetCount, std::size_t selectedSlot,
+    std::optional<TrayBand> band, TrayWidthBasis widthBasis) {
+    const float capacity = widthBasis == TrayWidthBasis::ExactCapacity
+        ? width : ComputeTrayCapacityWidth(width);
+    if (!std::isfinite(capacity) || capacity < 250.0F)
+        return ComputeTrayLayout(width, height, widgetCount, selectedSlot, band, widthBasis);
+    const float statusWidth = capacity >= 680.0F ? 188.0F : 100.0F;
+    const float reserve = statusWidth + 14.0F;
+    auto layout = ComputeTrayLayout(capacity - reserve * 2, height,
+        widgetCount, selectedSlot, band, TrayWidthBasis::ExactCapacity);
+    if (!layout) return layout;
+    const float offset = (width - capacity) * .5F + reserve;
+    layout->stripBounds.x += offset;
+    for (auto& tile : layout->tiles) tile.bounds.x += offset;
+    if (layout->previousOverflow) layout->previousOverflow->bounds.x += offset;
+    if (layout->nextOverflow) layout->nextOverflow->bounds.x += offset;
+    layout->statusBounds = declarative::Rect{
+        layout->stripBounds.x + layout->stripBounds.width + 14.0F,
+        layout->stripBounds.y, statusWidth, layout->stripBounds.height};
+    layout->stripBounds.width += reserve;
+    return layout;
+}
+
 std::optional<TrayLayout> ComputeTrayLayout(
     const float width,
     const float height,

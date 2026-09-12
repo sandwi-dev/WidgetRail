@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace widgetrail::shell {
@@ -42,6 +43,8 @@ struct TrayLayout final {
     std::vector<TrayTileLayout> tiles;
     std::optional<TrayOverflowLayout> previousOverflow;
     std::optional<TrayOverflowLayout> nextOverflow;
+    std::optional<declarative::Rect> statusBounds;
+    std::wstring statusDescription;
     std::size_t totalCount{};
 };
 
@@ -58,6 +61,13 @@ struct TrayLayout final {
 /// Resolves the tray's bounded capacity from the active monitor's usable width.
 /// Exact-capacity child surfaces must not apply this policy a second time.
 [[nodiscard]] float ComputeTrayCapacityWidth(float monitorUsableWidth) noexcept;
+
+/// Reserves a passive trailing status area without moving the selected tile
+/// away from the screen center. Narrow surfaces retain a compact clock.
+[[nodiscard]] std::optional<TrayLayout> ComputeTrayStatusLayout(
+    float width, float height, std::size_t widgetCount, std::size_t selectedSlot,
+    std::optional<TrayBand> band = std::nullopt,
+    TrayWidthBasis widthBasis = TrayWidthBasis::MonitorUsableWidth);
 
 [[nodiscard]] const TrayTileLayout* HitTestTray(
     const TrayLayout& layout, float x, float y) noexcept;

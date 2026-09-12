@@ -654,6 +654,12 @@ void CheckRetainedTrayInvalidation() {
           "content-only publication retains tray pixels");
 
     auto focused = initial;
+    auto clockChanged = initial;
+    clockChanged.statusKey = L"10:42 AM. Internet access";
+    Check(widgetrail::shell::RequiresTrayRepaint(&initial, clockChanged),
+        "time or connection changes invalidate only retained tray state");
+    Check(!widgetrail::shell::RequiresTrayRepaint(&clockChanged, clockChanged),
+        "unchanged status polling retains tray pixels");
     focused.items[0].focused = true;
     Check(widgetrail::shell::RequiresTrayRepaint(&initial, focused),
           "tray focus adds the selected-tile outline without changing selection");

@@ -2007,6 +2007,7 @@ $hostArguments = $hostCompileArguments + @(
     (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
     (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
     (Join-Path $projectDirectory 'TrayLayout.cpp'),
+    (Join-Path $projectDirectory 'TrayStatus.cpp'),
     (Join-Path $projectDirectory 'HostAccessibility.cpp'),
     (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
     "/Fo:$hostObjectDirectory\",
@@ -2273,6 +2274,18 @@ if ($TrayRefreshHostTestsOnly) {
 }
 
 if (-not $SkipTests) {
+    $trayStatusTestObjects = Join-Path $outputDirectory 'obj\tray-status-tests'
+    New-Item -ItemType Directory -Force -Path $trayStatusTestObjects | Out-Null
+    $trayStatusArguments = $common + @(
+        (Join-Path $projectDirectory 'TrayStatusTests.cpp'),
+        (Join-Path $projectDirectory 'TrayStatus.cpp'),
+        "/Fo:$trayStatusTestObjects\", "/Fe:$outputDirectory\TrayStatusTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('user32.lib', 'd2d1.lib', 'dwrite.lib', 'windowsapp.lib', 'ole32.lib')
+    & $cl $trayStatusArguments
+    if ($LASTEXITCODE -ne 0) { throw 'Tray status tests failed to build.' }
+    & (Join-Path $outputDirectory 'TrayStatusTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Tray status tests failed.' }
     $scrollEvidenceProbeTestArguments = $common + @(
         (Join-Path $projectDirectory 'ScrollEvidenceProbeTests.cpp'),
         (Join-Path $projectDirectory 'ScrollEvidenceProbe.cpp'),

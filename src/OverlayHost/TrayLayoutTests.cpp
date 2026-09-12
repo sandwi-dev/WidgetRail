@@ -309,6 +309,25 @@ int main() {
           !widgetrail::shell::ComputeTrayLayout(800, 600, 0, 0),
           "empty or invalid surfaces publish no tray geometry");
 
+    for (float width : {250.0F, 420.0F, 680.0F, 1100.0F, 2800.0F}) {
+        for (std::size_t count : {1U, 2U, 11U, 40U}) {
+            for (std::size_t selected = 0; selected < count; ++selected) {
+                const auto status = widgetrail::shell::ComputeTrayStatusLayout(
+                    width, 160, count, selected, widgetrail::shell::TrayBand{40,140},
+                    widgetrail::shell::TrayWidthBasis::ExactCapacity);
+                Check(status && status->statusBounds, "status has reserved bounds");
+                CheckCenteredSelection(*status, width, selected, "status does not move the centered selection");
+                const auto& bounds = *status->statusBounds;
+                Check(bounds.x >= 0 && bounds.x + bounds.width <= width + .01F,
+                    "clock remains within the tray surface");
+                Check(!widgetrail::shell::HitTestTray(*status, bounds.x + 1, bounds.y + 1) &&
+                    !widgetrail::shell::HitTestTrayOverflow(*status, bounds.x + 1, bounds.y + 1),
+                    "status never steals tray pointer actions");
+                for (const auto& tile : status->tiles)
+                    Check(tile.bounds.x + tile.bounds.width <= bounds.x, "status cannot overlap an icon");
+            }
+        }
+    }
     std::cout << "TrayLayoutTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

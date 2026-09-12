@@ -1,4 +1,5 @@
 #include "OverlayState.h"
+#include "TrayStatus.h"
 #include "../OverlayPlatformInterop/OverlayPlatformInterop.h"
 #include "AccessibilityProvider.h"
 #include "AccessibilityProjection.h"
@@ -2367,6 +2368,7 @@ private:
                 return 0;
             }
             if (wParam == kControllerSettingsTimer) {
+                RefreshTrayStatus();
                 RefreshControllerSettings();
                 RefreshWindowPreviewPermissions();
                 const auto action = bridge_.TakeApplicationControl();
@@ -6251,6 +6253,48 @@ private:
                          current->themeId + L"@" + current->themeVersion);
     }
 
+    void RefreshTrayStatus() {
+        if (state_.surface() == widgetrail::Surface::Hidden) return;
+        const auto next = trayStatusMonitor_.Read(true);
+        if (next != trayStatus_) { trayStatus_ = next; trayStatusPaintPending_ = true; }
+        if (!trayStatusPaintPending_ || graphicsDrawDepth_ || compositionPlacementInProgress_ ||
+            OverlayFullscreenMediaRequested()) return;
+        if (!compositionSurface_.available()) {
+            InvalidateRect(window_, nullptr, FALSE);
+            trayStatusPaintPending_ = false;
+            return;
+        }
+        if (!compositionChromeSession_) return;
+        const auto layout = CurrentCompositionTrayLayout();
+        if (!layout) return;
+        const auto session = *compositionChromeSession_;
+        const auto nextState = CurrentTrayPaintState(*layout, session.trayWidth,
+            session.trayHeight, session.pixelsPerDip);
+        if (!nextState) return;
+        if (!widgetrail::shell::RequiresTrayRepaint(
+                retainedTrayPaintState_ ? &*retainedTrayPaintState_ : nullptr, *nextState)) {
+            trayStatusPaintPending_ = false;
+            return;
+        }
+        CompositionFrameSet frames;
+        if (!RenderCompositionLayer(session.trayWidth, session.trayHeight, session.dpi,
+                widgetrail::OverlayCompositionSurface::Layer::Tray,
+                CompositionPaintLayer::Tray, {session.trayWidth, session.trayHeight},
+                nullptr, frames, &*layout)) {
+            DisableCompositionFallback(L"tray status draw failed");
+            return;
+        }
+        std::vector<widgetrail::OverlayCompositionSurface::Frame*> pointers;
+        for (auto& frame : frames.frames) pointers.push_back(&frame);
+        widgetrail::OverlayCompositionSurface::CommitTiming timing;
+        if (FAILED(compositionSurface_.CommitFrames(pointers, false, timing, nullptr))) {
+            DisableCompositionFallback(L"tray status commit failed");
+            return;
+        }
+        retainedTrayPaintState_ = nextState;
+        trayStatusPaintPending_ = false;
+    }
+
     void RefreshControllerSettings() {
         const auto prerequisites = WidgetRailOverlayPlatformControllerPrerequisites();
         const auto state = WidgetRailOverlayPlatformControllerControlState(platform_);
@@ -7418,6 +7462,7 @@ private:
     }
 
     OverlayShowResult ShowOverlay(const bool atomicVisibleTransition = false) {
+        trayStatus_ = trayStatusMonitor_.Read(true);
         if (!placementRefreshGate_.TryEnter()) return OverlayShowResult::Deferred;
         struct PlacementScope final {
             widgetrail::PlacementRefreshGate& gate;
@@ -9619,7 +9664,7 @@ private:
         }
         auto trayLayout = CurrentCompositionTrayLayout();
         if (!trayLayout) {
-            trayLayout = widgetrail::shell::ComputeTrayLayout(
+            trayLayout = widgetrail::shell::ComputeTrayStatusLayout(
                 metrics->viewportWidthDip, metrics->viewportHeightDip,
                 state_.order().size(), state_.selectedSlot(),
                 TrayBandBelowGuide(
@@ -9844,7 +9889,7 @@ private:
         if (tray) return IsTrayInteractivePoint(
             *tray, trayX, trayY,
             CurrentTrayViewportWidthDip(metrics->viewportWidthDip));
-        const auto fallbackTray = widgetrail::shell::ComputeTrayLayout(
+        const auto fallbackTray = widgetrail::shell::ComputeTrayStatusLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
             TrayBandBelowGuide(
@@ -12881,12 +12926,14 @@ private:
     }
 
     void PublishTrayAccessibility(
-        const widgetrail::shell::TrayLayout& layout,
+        const widgetrail::shell::TrayLayout& inputLayout,
         const float width,
         const float height,
         const widgetrail::accessibility::DashboardSemantics* dashboard = nullptr,
         const bool deferProviderPublication = false) {
         if (!accessibilityActive_) return;
+        auto layout = inputLayout;
+        if (layout.statusBounds) layout.statusDescription = trayStatus_.Description();
         if (textEntryModal_.active()) {
             ClearAccessibilityTree();
             return;
@@ -12934,7 +12981,7 @@ private:
             }
             const auto semanticRevision =
                 widgetrail::accessibility::ComputeOpenWidgetSemanticRevision(
-                    items, openWidgetAccessibility_);
+                    items, openWidgetAccessibility_, layout.statusDescription);
             if (deferProviderPublication) {
                 accessibilityTree_ = widgetrail::accessibility::BuildOpenWidgetTree(
                     semanticTree, items, layout, state_.selectedSlot(),
@@ -12991,7 +13038,7 @@ private:
             ? &dashboardSemantics : nullptr;
         const auto semanticRevision =
             widgetrail::accessibility::ComputeTraySemanticRevision(
-                items, effectiveDashboard);
+                items, effectiveDashboard, layout.statusDescription);
         const auto policy = appearanceState_.current()
             ? CurrentAccessibilityPolicy()
             : widgetrail::NativeAccessibilityPolicy{};
@@ -16003,7 +16050,7 @@ private:
             static_cast<int>(workWidth), static_cast<int>(workHeight),
             effectiveDpi, interfaceScale);
         if (!metrics) return false;
-        const auto policyLayout = widgetrail::shell::ComputeTrayLayout(
+        const auto policyLayout = widgetrail::shell::ComputeTrayStatusLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot());
         if (!policyLayout) return false;
@@ -16275,7 +16322,7 @@ private:
         const float menuHeadroom =
             static_cast<float>(session.trayMenuHeadroom) /
             session.pixelsPerDip;
-        auto layout = widgetrail::shell::ComputeTrayLayout(
+        auto layout = widgetrail::shell::ComputeTrayStatusLayout(
             session.trayCapacityWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
             widgetrail::shell::TrayBand{
@@ -16290,6 +16337,7 @@ private:
         for (auto& tile : layout->tiles) offset(tile.bounds);
         if (layout->previousOverflow) offset(layout->previousOverflow->bounds);
         if (layout->nextOverflow) offset(layout->nextOverflow->bounds);
+        if (layout->statusBounds) offset(*layout->statusBounds);
         return layout;
     }
 
@@ -16342,6 +16390,7 @@ private:
         const unsigned int height,
         const float pixelsPerDip) const {
         widgetrail::shell::RetainedTrayState state;
+        if (layout.statusBounds) state.statusKey = trayStatus_.Description();
         std::set<std::wstring> protectedIcons;
         state.width = width;
         state.height = height;
@@ -17066,7 +17115,7 @@ private:
         const bool publishAccessibility = true) {
         const auto computedLayout = frameLayout
             ? std::optional<widgetrail::shell::TrayLayout>{}
-            : widgetrail::shell::ComputeTrayLayout(
+            : widgetrail::shell::ComputeTrayStatusLayout(
                 width, height, state_.order().size(), state_.selectedSlot(),
                 TrayBandBelowGuide(height, surfaceGeometry));
         const auto* layout = frameLayout
@@ -17074,6 +17123,11 @@ private:
             : computedLayout ? &*computedLayout : nullptr;
         if (!layout) return;
         // The fallback HWND path has no retained tray-state pass.
+        if (layout->statusBounds)
+            widgetrail::shell::DrawTrayStatus(renderTarget_.Get(), writeFactory_.Get(),
+                hintFormat_.Get(), trayStatus_, *layout->statusBounds, trayItemBrush_.Get(),
+                trayItemTextBrush_.Get(), dashboardSecondaryBrush_.Get(),
+                traySelectedTextBrush_.Get(), trayItemCornerRadius_);
         std::set<std::wstring> protectedIcons;
         for (const auto& tile : layout->tiles) {
             (void)TrayWidgetPaintIdentity(state_.order()[tile.slot],
@@ -17337,7 +17391,7 @@ private:
         } else if (accessibilityActive_) {
             const auto layout = frameTrayLayout
                 ? std::optional<widgetrail::shell::TrayLayout>{*frameTrayLayout}
-                : widgetrail::shell::ComputeTrayLayout(
+                : widgetrail::shell::ComputeTrayStatusLayout(
                     width, height, state_.order().size(), state_.selectedSlot(),
                     TrayBandBelowGuide(height));
             if (layout) PublishTrayAccessibility(*layout, width, height, &dashboard);
@@ -17663,7 +17717,7 @@ private:
             : std::optional<widgetrail::shell::TrayLayout>{};
         const auto computedTrayLayout = frameTrayLayout || sessionTrayLayout
             ? std::optional<widgetrail::shell::TrayLayout>{}
-            : widgetrail::shell::ComputeTrayLayout(
+            : widgetrail::shell::ComputeTrayStatusLayout(
                 width, height, state_.order().size(), state_.selectedSlot(),
                 TrayBandBelowGuide(height, &*geometry));
         const auto* trayLayout = frameTrayLayout
@@ -18618,6 +18672,9 @@ private:
     ComPtr<IDWriteFactory> writeFactory_;
     widgetrail::OverlayCompositionSurface compositionSurface_;
     widgetrail::WindowPreviewCapture windowPreviews_;
+    widgetrail::shell::TrayStatusMonitor trayStatusMonitor_;
+    widgetrail::shell::TrayStatusSnapshot trayStatus_;
+    bool trayStatusPaintPending_{};
     struct GraphicsDrawGuard final {
         unsigned& depth;
         explicit GraphicsDrawGuard(unsigned& value) : depth(value) { ++depth; }

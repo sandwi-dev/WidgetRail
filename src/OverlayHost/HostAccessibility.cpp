@@ -7,6 +7,17 @@
 
 namespace widgetrail::accessibility {
 namespace {
+void AppendTrayStatus(Tree& tree, const shell::TrayLayout& layout) {
+    if (!layout.statusBounds || layout.statusDescription.empty()) return;
+    Node node;
+    node.id = L"host.tray.status";
+    node.domain = ElementDomain::HostShell;
+    node.name = layout.statusDescription;
+    node.bounds = *layout.statusBounds;
+    node.role = Role::Text;
+    node.keyboardFocusable = false;
+    tree.nodes.push_back(std::move(node));
+}
 
 void AppendTrayOverflow(
     Tree& tree,
@@ -94,7 +105,8 @@ bool IsCurrentBackAction(
 
 long long ComputeTraySemanticRevision(
     const std::vector<TrayItem>& items,
-    const DashboardSemantics* dashboard) noexcept {
+    const DashboardSemantics* dashboard,
+    const std::wstring_view trayStatus) noexcept {
     std::uint64_t hash = 1469598103934665603ULL;
     const auto hashText = [&](const std::wstring_view value) {
         for (const wchar_t codeUnit : value) {
@@ -104,6 +116,7 @@ long long ComputeTraySemanticRevision(
         hash ^= 0xffffU;
         hash *= 1099511628211ULL;
     };
+    if (!trayStatus.empty()) hashText(trayStatus);
     for (const auto& item : items) {
         hashText(item.widgetId);
         hashText(item.name);
@@ -133,13 +146,14 @@ long long ComputeTraySemanticRevision(
 
 long long ComputeOpenWidgetSemanticRevision(
     const std::vector<TrayItem>& items,
-    const OpenWidgetSemantics& semantics) noexcept {
+    const OpenWidgetSemantics& semantics,
+    const std::wstring_view trayStatus) noexcept {
     DashboardSemantics semanticText{
         semantics.title, {}, semantics.help, {}, semantics.status, {},
         semantics.contextMenu,
     };
     auto revision = static_cast<std::uint64_t>(
-        ComputeTraySemanticRevision(items, &semanticText));
+        ComputeTraySemanticRevision(items, &semanticText, trayStatus));
     revision ^= static_cast<std::uint64_t>(semantics.backAction) +
         0x9e3779b97f4a7c15ULL;
     revision *= 1099511628211ULL;
@@ -199,6 +213,7 @@ Tree BuildTrayTree(
         if (tree.nodes[index].focused) tree.focusedNode = index;
     }
     AppendTrayOverflow(tree, items, layout.nextOverflow);
+    AppendTrayStatus(tree, layout);
     if (dashboard) AppendTrayContextMenu(tree, dashboard->contextMenu);
     if (dashboard && !dashboard->help.empty()) {
         Node help;
@@ -308,6 +323,7 @@ Tree BuildOpenWidgetTree(
         if (widgetTree.nodes[index].focused) widgetTree.focusedNode = index;
     }
     AppendTrayOverflow(widgetTree, items, layout.nextOverflow);
+    AppendTrayStatus(widgetTree, layout);
     AppendTrayContextMenu(widgetTree, semantics.contextMenu);
     return widgetTree;
 }

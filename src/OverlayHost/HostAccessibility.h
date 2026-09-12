@@ -70,11 +70,13 @@ struct OpenWidgetSemantics final {
 
 [[nodiscard]] long long ComputeTraySemanticRevision(
     const std::vector<TrayItem>& items,
-    const DashboardSemantics* dashboard = nullptr) noexcept;
+    const DashboardSemantics* dashboard = nullptr,
+    std::wstring_view trayStatus = {}) noexcept;
 
 [[nodiscard]] long long ComputeOpenWidgetSemanticRevision(
     const std::vector<TrayItem>& items,
-    const OpenWidgetSemantics& semantics) noexcept;
+    const OpenWidgetSemantics& semantics,
+    std::wstring_view trayStatus = {}) noexcept;
 
 [[nodiscard]] Tree BuildTrayTree(
     const std::vector<TrayItem>& items,
