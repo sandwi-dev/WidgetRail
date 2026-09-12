@@ -6411,6 +6411,77 @@ void CursorWindowRegression(bool suppress, bool virtualGap=false) {
 
 } // namespace
 
+#define WRAIL_RETAINED_PREPARATION_BENCH
+
+void PlaybackPreparationWorkload() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> bitmap; ComPtr<ID2D1RenderTarget> target;
+    const auto ok=[](HRESULT hr) { Check(SUCCEEDED(hr), "playback workload native resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,d2d.ReleaseAndGetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(wic.ReleaseAndGetAddressOf())));
+    ok(wic->CreateBitmap(1000,700,GUID_WICPixelFormat32bppPBGRA,WICBitmapCacheOnLoad,bitmap.ReleaseAndGetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(bitmap.Get(),D2D1::RenderTargetProperties(),target.ReleaseAndGetAddressOf()));
+    DeclarativeRenderer renderer(d2d.Get(),write.Get(),nullptr);
+    WidgetSnapshot snapshot; snapshot.instanceId=L"playback.workload"; snapshot.sequence=1;
+    snapshot.root=Node(L"root",L"scroll"); snapshot.root.scrollAxis=L"vertical";
+    snapshot.root.baseStyle={{L"width",Length(1000)},{L"height",Length(700)}};
+    auto progress=Node(L"progress",L"progress"); progress.hasProgress=true;
+    snapshot.root.children.push_back(progress);
+    for(int i=0;i<60;++i) {
+        const auto id=L"track."+std::to_wstring(i);
+        auto row=Node(id.c_str(),L"button"); row.actionId=L"play";
+        row.text=L"A representative playlist track title "+std::to_wstring(i);
+        row.baseStyle={{L"height",Length(54)},{L"font-size",Length(17)},
+            {L"font-weight",Number(500)},{L"padding",LengthList(L"8px 12px")},
+            {L"background",Color(L"#20242a")},{L"color",Color(L"#ffffff")},
+            {L"flex-shrink",Number(0)},{L"text-align",Keyword(L"start")}};
+        snapshot.root.children.push_back(row);
+    }
+    const Rect viewport{0,0,1000,700};
+    widgetrail::DeclarativeRenderOptions options; options.suppressFocusedDescendantFollow=true;
+    const auto draw=[&]() {
+        target->BeginDraw(); auto result=renderer.Render(target.Get(),snapshot,L"track.0",viewport,options);
+        ok(target->EndDraw()); Check(result.succeeded,"playback workload renders"); return result;
+    };
+    auto cold=draw();
+    std::cout<<"WORKLOAD cold-prepare-us="<<cold.timing.preparationMicroseconds<<'\n';
+    for (const bool incremental : {false,true}) {
+        std::vector<std::uint64_t> elapsed, prepare;
+        for(int frame=0;frame<40;++frame) {
+            const auto start=std::chrono::steady_clock::now();
+            widgetrail::WidgetPresentationImpact impact{snapshot.sequence,snapshot.sequence+1,
+                widgetrail::WidgetPresentationEffect::Paint,{L"progress"}};
+            ++snapshot.sequence; snapshot.root.children[0].value=static_cast<double>(frame)/40;
+            if(incremental) Check(renderer.PlanPresentationUpdate(snapshot,impact,viewport).has_value(),"playback value plans incrementally");
+            const auto result=draw();
+            elapsed.push_back(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count()));
+            prepare.push_back(result.timing.preparationMicroseconds);
+#ifdef WRAIL_RETAINED_PREPARATION_BENCH
+            if(incremental && frame>1) {
+                Check(result.fullLayoutBuildCount==0,"progress avoids layout");
+                Check(result.timing.styleCacheMisses==0,"stable playlist reuses all resolved styles");
+                Check(result.timing.textLayoutCacheMisses==0,"stable playlist reuses text plans");
+            }
+#endif
+        }
+        std::sort(elapsed.begin(),elapsed.end()); std::sort(prepare.begin(),prepare.end());
+        std::cout<<"WORKLOAD mode="<<(incremental?"incremental":"full")
+            <<" total-median-us="<<elapsed[20]<<" total-p95-us="<<elapsed[38]
+            <<" prepare-median-us="<<prepare[20]<<" prepare-p95-us="<<prepare[38]<<'\n';
+    }
+#ifdef WRAIL_RETAINED_PREPARATION_BENCH
+    widgetrail::WidgetPresentationImpact impact{snapshot.sequence,snapshot.sequence+1,widgetrail::WidgetPresentationEffect::Paint,{L"progress"}};
+    ++snapshot.sequence;
+    Check(renderer.PlanPresentationUpdate(snapshot,impact,viewport).has_value(),"scale change initially has a pending plan");
+    options.accessibility.textScale=1.4F;
+    auto scaled=draw();
+    Check(scaled.fullLayoutBuildCount>0,"text scale invalidates pending retained geometry");
+    Check(scaled.timing.styleCacheMisses>0,"text scale invalidates resolved styles");
+#endif
+}
+
 int main() {
     {
         WidgetSnapshot snapshot; snapshot.instanceId=L"menu.hint"; snapshot.activeInputScopeId=L"root";
@@ -6427,6 +6498,7 @@ int main() {
 
     const auto initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     Check(SUCCEEDED(initialized), "initialize COM");
+    PlaybackPreparationWorkload();
     ImagePlacementMath();
     BackgroundImageFitAndDiagnosticsUseOneBoundedOwner();
     ButtonContentPlacementUsesSharedOpticalGeometry();

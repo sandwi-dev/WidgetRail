@@ -1,5 +1,7 @@
 #pragma once
 
+#include "NativeTextLayout.h"
+
 #include "DeclarativeLayout.h"
 #include "DeclarativeMotion.h"
 #include "NativeStyle.h"
@@ -71,6 +73,16 @@ struct DeclarativeRenderTiming final {
     std::uint64_t nodeDrawMicroseconds{};
     std::uint64_t deferredFocusMicroseconds{};
     std::uint64_t finalizationMicroseconds{};
+    // Layout includes its intrinsic text callbacks; these are nested timings.
+    std::uint64_t snapshotComparisonMicroseconds{};
+    std::uint64_t updatePlanningMicroseconds{};
+    std::uint64_t styleResolutionMicroseconds{};
+    std::uint64_t textMeasurementMicroseconds{};
+    std::uint64_t layoutMicroseconds{};
+    std::uint64_t styleCacheHits{};
+    std::uint64_t styleCacheMisses{};
+    std::uint64_t textLayoutCacheHits{};
+    std::uint64_t textLayoutCacheMisses{};
     /// One bounded, render-local convergence summary. It is populated only
     /// when focus following is slow, unusually iterative, or non-convergent;
     /// the existing host slow-frame diagnostic remains the sole log owner.
@@ -525,6 +537,18 @@ public:
         NativeTextAlign alignment = NativeTextAlign::Center) noexcept;
 
 private:
+    NativeTextLayoutCache textLayoutCache_;
+    struct StyleCacheEntry {
+        WidgetComputedStyle base;
+        WidgetComputedStyle focused;
+        WidgetComputedStyle pressed;
+        NativeStyleContext context;
+        NativeAccessibilityPolicy accessibility;
+        NativeStyleResult result;
+        bool isFocused{};
+        bool isPressed{};
+    };
+    std::unordered_map<std::wstring, std::vector<StyleCacheEntry>> styleCache_;
     struct PreparedNode;
     struct RenderPass;
     enum class ImagePresentationState {
@@ -547,6 +571,7 @@ private:
         bool valid{};
     };
     struct IncrementalNodeState final {
+        NativeRenderStyle baseStyle;
         declarative::Rect paintBounds;
         declarative::Rect visibleBounds;
         std::wstring safeBoundaryId;
@@ -588,6 +613,7 @@ private:
         DeclarativeRenderOptions options;
         std::map<std::wstring, IncrementalNodeState, std::less<>> nodes;
         std::map<std::wstring, TextMeasurementProof, std::less<>> textMeasurements;
+        std::map<std::wstring, std::vector<TextMeasurementProof>, std::less<>> textMeasurementQueries;
         std::map<std::wstring, CollectionDiagnosticObservation, std::less<>>
             collections;
         std::map<std::wstring, RenderScrollViewport, std::less<>> scrollViewports;
@@ -599,6 +625,8 @@ private:
         IncrementalPresentationWork work{IncrementalPresentationWork::PaintOnly};
         declarative::Rect damage;
         std::vector<std::wstring> layoutBoundaries;
+        std::uint64_t comparisonMicroseconds{};
+        std::uint64_t planningMicroseconds{};
     };
     struct ScrollStateEntry final {
         std::uint64_t collectionResetGeneration{};

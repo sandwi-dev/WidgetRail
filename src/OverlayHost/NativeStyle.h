@@ -74,6 +74,7 @@ struct NativeStyleContext final {
     /// the default button fill). Accessibility contrast is resolved against
     /// this painted fallback, not the inherited surface behind it.
     std::optional<NativeColor> fallbackBackground;
+    friend bool operator==(const NativeStyleContext&, const NativeStyleContext&) = default;
 };
 
 /// Composites an unassociated-alpha foreground over a background. Renderers

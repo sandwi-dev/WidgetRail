@@ -2663,7 +2663,29 @@ void VirtualWindowFreshSessionRequiresReplacement() {
 
 } // namespace
 
+void PresentationCoalescingPreservesAuthority() {
+    using namespace widgetrail;
+    WidgetSessionEvent first, second;
+    first.kind = second.kind = WidgetSessionEventKind::SnapshotAdmitted;
+    first.widgetId = second.widgetId = L"music";
+    first.presentationImpact = WidgetPresentationImpact{1, 2, WidgetPresentationEffect::Paint, {L"progress"}};
+    second.presentationImpact = WidgetPresentationImpact{2, 3, WidgetPresentationEffect::Accessibility, {L"label"}};
+    const auto original = second;
+    assert(TryCoalescePresentationEvents(first, second));
+    assert(second.presentationImpact->baseSequence == 1 && second.presentationImpact->sequence == 3);
+    assert(second.presentationImpact->affectedNodeIds.size() == 2);
+    second = original; second.correlationId = 99;
+    assert(!TryCoalescePresentationEvents(first, second));
+    second = original; second.presentationImpact->baseSequence = 7;
+    assert(!TryCoalescePresentationEvents(first, second));
+    second = original; second.completedRestart = true;
+    assert(!TryCoalescePresentationEvents(first, second));
+    second = original; second.generation = 4;
+    assert(!TryCoalescePresentationEvents(first, second));
+}
+
 int main() {
+    PresentationCoalescingPreservesAuthority();
     CatalogReplacementAndLastGoodSnapshot();
     StaleCompletionAndProtocolFailure();
     LifecycleDrainAndBoundedCorrelation();

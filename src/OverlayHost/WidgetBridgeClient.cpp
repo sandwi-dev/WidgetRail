@@ -20,6 +20,7 @@
 #include <limits>
 #include <unordered_set>
 #include <thread>
+#include <set>
 #include <utility>
 
 namespace widgetrail {
@@ -3386,6 +3387,105 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
 }
 
 } // namespace
+
+std::optional<WidgetPresentationImpact> CompareWidgetSnapshots(
+    const WidgetSnapshot& previous, const WidgetSnapshot& current) {
+    const auto started = std::chrono::steady_clock::now();
+    if (previous.instanceId != current.instanceId || previous.sequence >= current.sequence ||
+        previous.documentJson.empty() || current.documentJson.empty()) return std::nullopt;
+    try {
+        const auto before = JsonObject::Parse(winrt::hstring(previous.documentJson));
+        const auto after = JsonObject::Parse(winrt::hstring(current.documentJson));
+        WidgetPresentationUpdate changes;
+        changes.baseSequence = previous.sequence;
+        changes.sequence = current.sequence;
+        bool structureChanged{};
+        const auto diff = [&](const auto& self, const JsonObject& left,
+                              const JsonObject& right, const bool document) -> void {
+            WidgetPresentationUpdateOperation operation;
+            if (!document) {
+                operation.targetId = OptionalString(right, L"id");
+                if (OptionalString(left, L"id") != operation.targetId ||
+                    OptionalString(left, L"kind") != OptionalString(right, L"kind")) {
+                    structureChanged = true;
+                    return;
+                }
+            }
+            std::set<std::wstring> properties;
+            for (const auto& pair : left) properties.emplace(pair.Key());
+            for (const auto& pair : right) properties.emplace(pair.Key());
+            for (const auto& name : properties) {
+                if (document && (name == L"sequence" || name == L"protocolVersion" || name == L"root")) continue;
+                if (!document && (name == L"id" || name == L"kind" || name == L"children")) continue;
+                const winrt::hstring key{name};
+                const auto oldValue = left.GetNamedValue(key, JsonValue::CreateNullValue());
+                const auto newValue = right.GetNamedValue(key, JsonValue::CreateNullValue());
+                if (oldValue.Stringify() == newValue.Stringify()) continue;
+                // Pinned contents have their own surface owner and are updated
+                // before ordinary presentation. Only metadata affects the catalog.
+                if (document && name == L"pinnedLayouts" &&
+                    oldValue.ValueType() == JsonValueType::Array && newValue.ValueType() == JsonValueType::Array) {
+                    const auto oldLayouts = oldValue.GetArray();
+                    const auto newLayouts = newValue.GetArray();
+                    bool sameCatalog = oldLayouts.Size() == newLayouts.Size();
+                    for (std::uint32_t i = 0; sameCatalog && i < oldLayouts.Size(); ++i) {
+                        auto oldLayout = JsonObject::Parse(oldLayouts.GetAt(i).Stringify());
+                        auto newLayout = JsonObject::Parse(newLayouts.GetAt(i).Stringify());
+                        for (const auto field : {L"root", L"initialFocusId", L"activeInputScopeId"}) {
+                            if (oldLayout.HasKey(field)) oldLayout.Remove(field);
+                            if (newLayout.HasKey(field)) newLayout.Remove(field);
+                        }
+                        sameCatalog = oldLayout.Stringify() == newLayout.Stringify();
+                    }
+                    if (sameCatalog) continue;
+                }
+                operation.properties.push_back({name, {}});
+            }
+            if (!operation.properties.empty()) changes.operations.push_back(std::move(operation));
+            if (document) {
+                self(self, left.GetNamedObject(L"root"), right.GetNamedObject(L"root"), false);
+            } else {
+                const auto oldChildren = left.GetNamedArray(L"children", JsonArray{});
+                const auto newChildren = right.GetNamedArray(L"children", JsonArray{});
+                if (oldChildren.Size() != newChildren.Size()) { structureChanged = true; return; }
+                for (std::uint32_t i = 0; i < oldChildren.Size(); ++i)
+                    self(self, oldChildren.GetObjectAt(i), newChildren.GetObjectAt(i), false);
+            }
+        };
+        diff(diff, before, after, true);
+        auto impact = ClassifyPresentationImpact(changes);
+        if (changes.operations.empty()) impact.effects = WidgetPresentationEffect::None;
+        if (structureChanged) impact.effects |= WidgetPresentationEffect::Structure;
+        // Computed styles are response data outside documentJson. Never reuse
+        // geometry merely because the semantic document stayed the same.
+        const auto styles = [&](const auto& self, const WidgetNode& left, const WidgetNode& right) -> void {
+            if (left.id != right.id || left.children.size() != right.children.size()) return;
+            if (left.baseStyle != right.baseStyle || left.focusedStyle != right.focusedStyle ||
+                left.pressedStyle != right.pressedStyle) {
+                impact.effects |= WidgetPresentationEffect::MeasureLayout | WidgetPresentationEffect::Paint;
+                impact.hasNonTextMeasureLayout = true;
+                if (std::find(impact.affectedNodeIds.begin(), impact.affectedNodeIds.end(), right.id) == impact.affectedNodeIds.end())
+                    impact.affectedNodeIds.push_back(right.id);
+            }
+            if (left.focusPresentation.size() != right.focusPresentation.size() ||
+                left.defaultFocusPresentation.size() != right.defaultFocusPresentation.size())
+                impact.effects |= WidgetPresentationEffect::Structure;
+            else {
+                for (std::size_t i = 0; i < left.focusPresentation.size(); ++i)
+                    self(self, left.focusPresentation[i], right.focusPresentation[i]);
+                for (std::size_t i = 0; i < left.defaultFocusPresentation.size(); ++i)
+                    self(self, left.defaultFocusPresentation[i], right.defaultFocusPresentation[i]);
+            }
+            for (std::size_t i = 0; i < left.children.size(); ++i) self(self, left.children[i], right.children[i]);
+        };
+        styles(styles, previous.root, current.root);
+        impact.comparisonMicroseconds = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count());
+        return impact;
+    } catch (const winrt::hresult_error&) {
+        return std::nullopt;
+    }
+}
 
 std::optional<WidgetPresentationMaterialization>
 MaterializeWidgetPresentationUpdate(

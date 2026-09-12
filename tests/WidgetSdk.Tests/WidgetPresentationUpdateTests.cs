@@ -17,6 +17,7 @@ internal static class WidgetPresentationUpdateTests
         TransactionKindsRetainExactAuthority();
         KeyedStructureAndSubtreeReplacement();
         FallbacksAreDeterministic();
+        PinnedContentDoesNotChangeCatalogIdentity();
         FocusGroupEntryChangesForceCheckpoints();
         MalformedAndOversizedFailClosed();
         IntermediateStructureBoundsFailClosed();
@@ -498,6 +499,30 @@ internal static class WidgetPresentationUpdateTests
             operation.Kind == PresentationUpdateOperationKind.ReplaceSubtree &&
             operation.TargetId == "delta") == true,
             "A local kind change should use ReplaceSubtree.");
+    }
+
+    private static void PinnedContentDoesNotChangeCatalogIdentity()
+    {
+        var previous = Snapshot(1, "unchanged") with
+        {
+            PinnedLayouts = [new PinnedPresentationLayout
+            {
+                Id = "player", Name = "Player", Surface = new WidgetSurfaceHints(),
+                Root = Text("pinned.text", "00:01"),
+            }],
+        };
+        var content = previous with
+        {
+            Sequence = 2,
+            PinnedLayouts = [previous.PinnedLayouts[0] with { Root = Text("pinned.text", "00:02") }],
+        };
+        Equal("pinned_layout_content_changed", WidgetPresentationDiff.Create(previous, content,
+            Generation, 1, PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate).FallbackReason);
+        var catalog = content with { PinnedLayouts = [content.PinnedLayouts[0] with { Name = "Renamed" }] };
+        Equal("pinned_layout_catalog_changed", WidgetPresentationDiff.Create(previous, catalog,
+            Generation, 1, PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate).FallbackReason);
     }
 
     private static void FallbacksAreDeterministic()

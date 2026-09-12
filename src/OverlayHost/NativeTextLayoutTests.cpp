@@ -201,6 +201,21 @@ void DiagnosticMetricRowsRemainCompleteAtMaximumScale(IDWriteFactory* factory) {
 
 }
 
+void RetainedPlansAreBoundedAndConstraintExact(IDWriteFactory* factory) {
+    widgetrail::NativeTextLayoutCache cache;
+    const auto style = Style(13.0F, 1.2F, 1);
+    const auto first = cache.Get(factory, L"Retained", style, 200, 40);
+    const auto same = cache.Get(factory, L"Retained", style, 200, 40);
+    Check(first.layout.Get() == same.layout.Get(), "same text and constraints reuse immutable DirectWrite layout");
+    Check(cache.Get(factory, L"Retained", style, 201, 40).layout.Get() != first.layout.Get(), "width invalidates text layout");
+    Check(cache.Get(factory, L"Changed", style, 200, 40).layout.Get() != first.layout.Get(), "content invalidates text layout");
+    Check(cache.Get(factory, L"Retained", Style(18.0F, 1.2F, 1), 200, 40).layout.Get() != first.layout.Get(), "font size invalidates layout");
+    for (int i=0;i<1100;++i) (void)cache.Get(factory, std::to_wstring(i), style, 200, 40);
+    Check(cache.size() <= 1024, "retained layout count stays bounded");
+    Check(first.IsValid(), "eviction does not invalidate a caller's retained plan");
+    cache.Clear(); Check(cache.size()==0,"clear releases retained plans");
+}
+
 void InvalidInputsFailClosed(IDWriteFactory* factory) {
     const auto style = Style(13.0F, 1.2F, 1);
     Check(!widgetrail::CreateNativeTextLayoutPlan(
@@ -231,6 +246,7 @@ int main() {
         WrappingScaleAndAlignmentStayBounded(factory.Get());
         DiagnosticMetricRowsRemainCompleteAtMaximumScale(factory.Get());
         InvalidInputsFailClosed(factory.Get());
+        RetainedPlansAreBoundedAndConstraintExact(factory.Get());
     }
     std::cout << "NativeTextLayoutTests: " << checks << " checks passed\n";
     CoUninitialize();

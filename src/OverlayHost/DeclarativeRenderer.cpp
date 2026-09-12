@@ -26,6 +26,15 @@ using declarative::LayoutOptions;
 using declarative::Rect;
 using declarative::Size;
 
+struct PreparationTimer {
+    std::uint64_t& nanoseconds;
+    std::chrono::steady_clock::time_point start{std::chrono::steady_clock::now()};
+    ~PreparationTimer() {
+        nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - start).count());
+    }
+};
+
 constexpr std::size_t kMaximumDiagnostics = 256;
 constexpr std::size_t kMaximumBitmapEntries = 256;
 constexpr std::size_t kMaximumBitmapEntryBytes = 32U * 1024U * 1024U;
@@ -85,34 +94,7 @@ std::wstring gLastRetiredRendererWidgetInstance;
         std::abs(left.height - right.height) <= 0.01F;
 }
 
-[[nodiscard]] bool SameLayoutBox(
-    const declarative::LayoutBox& left,
-    const declarative::LayoutBox& right) noexcept {
-    return SameRect(left.borderBox, right.borderBox) &&
-        SameRect(left.contentBox, right.contentBox) &&
-        SameRect(left.visibleBox, right.visibleBox) &&
-        left.overflowX == right.overflowX &&
-        left.overflowY == right.overflowY &&
-        left.clippedByAncestor == right.clippedByAncestor &&
-        left.scrollAxis == right.scrollAxis &&
-        std::abs(left.scrollOffset - right.scrollOffset) <= 0.01F &&
-        std::abs(left.maximumScrollOffset - right.maximumScrollOffset) <= 0.01F;
-}
 
-[[nodiscard]] bool SameLayout(
-    const declarative::LayoutResult& left,
-    const declarative::LayoutResult& right) noexcept {
-    if (!left.valid() || !right.valid() ||
-        left.compactMode != right.compactMode ||
-        left.boxes.size() != right.boxes.size()) return false;
-    auto leftBox = left.boxes.begin();
-    auto rightBox = right.boxes.begin();
-    for (; leftBox != left.boxes.end(); ++leftBox, ++rightBox) {
-        if (leftBox->first != rightBox->first ||
-            !SameLayoutBox(leftBox->second, rightBox->second)) return false;
-    }
-    return true;
-}
 
 [[nodiscard]] D2D1_RECT_F D2DRect(const Rect& value) noexcept {
     return D2D1::RectF(value.x, value.y, value.x + value.width, value.y + value.height);
@@ -527,6 +509,11 @@ struct DeclarativeRenderer::RenderPass final {
         std::wstring key;
     };
 
+    std::uint64_t styleNanoseconds{};
+    std::uint64_t textNanoseconds{};
+    std::uint64_t layoutNanoseconds{};
+    std::uint64_t styleCacheHits{};
+    std::uint64_t styleCacheMisses{};
     DeclarativeRenderer* owner{};
     std::unordered_map<std::wstring, ScrollStateEntry>* scrollState{};
     std::uint64_t* scrollAccessClock{};
@@ -551,6 +538,7 @@ struct DeclarativeRenderer::RenderPass final {
     float deferredFocusOpacity{1.0F};
     std::optional<Rect> deferredFocusClip;
     std::map<std::wstring, TextMeasurementProof, std::less<>> textMeasurements;
+    std::map<std::wstring, std::vector<TextMeasurementProof>, std::less<>> textMeasurementQueries;
     std::map<std::wstring, CollectionReconciliationTrace, std::less<>>
         collectionReconciliationOffsets;
     std::set<std::wstring, std::less<>> resetCollections;
@@ -765,22 +753,41 @@ struct DeclarativeRenderer::RenderPass final {
         const float parentHeight,
         const float parentFontSize,
         const std::optional<NativeColor>& inheritedBackground) {
-        auto adapted = NativeStyleAdapter::Adapt(
-            ResolveDeclarativeComputedStyle(node, focused, pressed),
-            NativeStyleContext{
-                viewport.width,
-                viewport.height,
-                parentWidth,
-                parentHeight,
-                parentFontSize,
-                options.rootFontSizePx,
-                focused,
-                inheritedBackground,
-                (node.kind == L"button" || node.kind == L"actionSurface")
-                    ? std::optional<NativeColor>{kDefaultButton}
-                    : std::nullopt,
-            },
-            options.accessibility);
+        PreparationTimer timer{styleNanoseconds};
+        const NativeStyleContext context{
+            viewport.width, viewport.height, parentWidth, parentHeight,
+            parentFontSize, options.rootFontSizePx, focused, inheritedBackground,
+            (node.kind == L"button" || node.kind == L"actionSurface")
+                ? std::optional<NativeColor>{kDefaultButton} : std::nullopt};
+        auto& entries = owner->styleCache_[node.id];
+        const auto& policy = options.accessibility;
+        const auto samePolicy = [&](const NativeAccessibilityPolicy& previous) {
+            return !policy.contrastHook && !previous.contrastHook &&
+                policy.reducedMotion == previous.reducedMotion &&
+                policy.reducedTransparency == previous.reducedTransparency &&
+                policy.minimumFontWeight == previous.minimumFontWeight &&
+                policy.textScale == previous.textScale &&
+                policy.minimumFocusRingPx == previous.minimumFocusRingPx;
+        };
+        NativeStyleResult adapted;
+        const auto prior = std::find_if(entries.begin(), entries.end(), [&](const StyleCacheEntry& entry) {
+            return entry.isFocused == focused && entry.isPressed == pressed &&
+                entry.context == context && samePolicy(entry.accessibility) &&
+                entry.base == node.baseStyle &&
+                (!focused || entry.focused == node.focusedStyle) &&
+                (!pressed || entry.pressed == node.pressedStyle);
+        });
+        if (prior != entries.end()) {
+            ++styleCacheHits;
+            adapted = prior->result;
+        } else {
+            ++styleCacheMisses;
+            adapted = NativeStyleAdapter::Adapt(
+                ResolveDeclarativeComputedStyle(node, focused, pressed), context, policy);
+            if (entries.size() >= 4) entries.erase(entries.begin());
+            entries.push_back({node.baseStyle, focused ? node.focusedStyle : WidgetComputedStyle{},
+                pressed ? node.pressedStyle : WidgetComputedStyle{}, context, policy, adapted, focused, pressed});
+        }
         for (const auto& diagnostic : adapted.diagnostics) {
             Add(node.id, L"invalid_style",
                 diagnostic.property + L": " + diagnostic.message);
@@ -829,13 +836,10 @@ struct DeclarativeRenderer::RenderPass final {
         return spacer;
     }
 
-    [[nodiscard]] LayoutElement PrepareNode(
-        const WidgetNode& node,
-        const std::string_view parentId,
-        const float fallbackParentWidth,
-        const float fallbackParentHeight,
-        const float parentFontSize,
-        const std::optional<NativeColor>& inheritedBackground) {
+    void PrepareStyle(
+        const WidgetNode& node, const std::string_view parentId,
+        const float fallbackParentWidth, const float fallbackParentHeight,
+        const float parentFontSize, const std::optional<NativeColor>& inheritedBackground) {
         auto parentWidth = fallbackParentWidth;
         auto parentHeight = fallbackParentHeight;
         if (!parentId.empty()) {
@@ -868,6 +872,20 @@ struct DeclarativeRenderer::RenderPass final {
             inheritedBackground.value_or(NativeColor{0, 0, 0, 1}),
             style.opacity());
         prepared[narrowId].effectiveBackground = effectiveBackground;
+    }
+
+    [[nodiscard]] LayoutElement PrepareNode(
+        const WidgetNode& node, const std::string_view parentId,
+        const float fallbackParentWidth, const float fallbackParentHeight,
+        const float parentFontSize, const std::optional<NativeColor>& inheritedBackground) {
+        PrepareStyle(node, parentId, fallbackParentWidth, fallbackParentHeight,
+            parentFontSize, inheritedBackground);
+        const auto narrowId = NarrowStableId(node.id);
+        const auto& style = prepared.at(narrowId).baseStyle;
+        const auto effectiveBackground = prepared.at(narrowId).effectiveBackground;
+        const auto* parentBox = layout.Find(parentId);
+        const auto parentWidth = parentBox ? parentBox->contentBox.width : fallbackParentWidth;
+        const auto parentHeight = parentBox ? parentBox->contentBox.height : fallbackParentHeight;
         LayoutElement element;
         element.id = narrowId;
         if (node.kind == L"grid") {
@@ -2544,6 +2562,7 @@ struct DeclarativeRenderer::RenderPass final {
         const WidgetNode& node,
         const NativeRenderStyle& style,
         const declarative::MeasureConstraints& constraints) {
+        PreparationTimer timer{textNanoseconds};
         const auto maximumWidth = std::max(1.0F, constraints.maximumWidth);
         const auto lineHeight = style.fontSizePx() * style.lineHeight();
         const auto maximumHeight = std::max(
@@ -2553,7 +2572,7 @@ struct DeclarativeRenderer::RenderPass final {
                 constraints.maximumHeight > 0.0F
             ? std::max(maximumHeight, constraints.maximumHeight)
             : maximumHeight + style.fontSizePx();
-        const auto plan = CreateNativeTextLayoutPlan(
+        const auto plan = owner->textLayoutCache_.Get(
             owner->writeFactory_, node.text, style, maximumWidth,
             availableHeight);
         if (!plan.IsValid()) {
@@ -2599,6 +2618,13 @@ struct DeclarativeRenderer::RenderPass final {
             hasMetrics ? metrics.lineCount : 0U,
             hasMetrics,
         });
+        auto& queries = textMeasurementQueries[node.id];
+        const auto& proof = textMeasurements.at(node.id);
+        const auto existing = std::find_if(queries.begin(), queries.end(), [&](const auto& prior) {
+            return prior.maximumWidth == proof.maximumWidth && prior.maximumHeight == proof.maximumHeight;
+        });
+        if (existing == queries.end()) queries.push_back(proof);
+        else *existing = proof;
         return measured;
     }
 
@@ -2684,6 +2710,13 @@ struct DeclarativeRenderer::RenderPass final {
         return {};
     }
 
+    [[nodiscard]] declarative::LayoutResult ComputeTimedLayout(
+        const LayoutElement& root, const Rect bounds,
+        const declarative::IntrinsicMeasureCallback& measure, const LayoutOptions& settings) {
+        PreparationTimer timer{layoutNanoseconds};
+        return declarative::ComputeLayout(root, bounds, measure, settings);
+    }
+
     void BuildLayout(
         const bool followStaticFocus = true,
         const bool fillAutoRoot = true,
@@ -2695,6 +2728,7 @@ struct DeclarativeRenderer::RenderPass final {
         // First pass gives percentage/em adaptation a deterministic parent estimate.
         prepared.clear();
         textMeasurements.clear();
+        textMeasurementQueries.clear();
         layout = {};
         auto root = PrepareNode(
             snapshot->root,
@@ -2711,7 +2745,7 @@ struct DeclarativeRenderer::RenderPass final {
         layoutOptions.intrinsicRootHeight = measurementOnly;
         layoutOptions.responsiveViewport = options.responsiveViewport.value_or(
             Size{viewport.width, viewport.height});
-        layout = declarative::ComputeLayout(
+        layout = ComputeTimedLayout(
             root,
             viewport,
             [this](const LayoutElement& element, const declarative::MeasureConstraints& constraints) {
@@ -2721,6 +2755,7 @@ struct DeclarativeRenderer::RenderPass final {
         // One correction pass resolves parent-relative values against measured boxes.
         prepared.clear();
         textMeasurements.clear();
+        textMeasurementQueries.clear();
         auto correctedRoot = PrepareNode(
             snapshot->root,
             {},
@@ -2728,7 +2763,7 @@ struct DeclarativeRenderer::RenderPass final {
             viewport.height,
             options.rootFontSizePx,
             options.surfaceBackground);
-        layout = declarative::ComputeLayout(
+        layout = ComputeTimedLayout(
             correctedRoot,
             viewport,
             [this](const LayoutElement& element, const declarative::MeasureConstraints& constraints) {
@@ -2750,10 +2785,11 @@ struct DeclarativeRenderer::RenderPass final {
             ReconcileCollectionAnchors(collectionAnchorPolicy == CollectionAnchorPolicy::ReconcileContentChanges)) {
             prepared.clear();
             textMeasurements.clear();
+            textMeasurementQueries.clear();
             auto anchoredRoot = PrepareNode(
                 snapshot->root, {}, viewport.width, viewport.height,
                 options.rootFontSizePx, options.surfaceBackground);
-            layout = declarative::ComputeLayout(
+            layout = ComputeTimedLayout(
                 anchoredRoot, viewport,
                 [this](const LayoutElement& element,
                        const declarative::MeasureConstraints& constraints) {
@@ -2777,6 +2813,7 @@ struct DeclarativeRenderer::RenderPass final {
                     follow.repeatedOffsetState) break;
                 prepared.clear();
                 textMeasurements.clear();
+                textMeasurementQueries.clear();
                 auto revealedRoot = PrepareNode(
                     snapshot->root,
                     {},
@@ -2784,7 +2821,7 @@ struct DeclarativeRenderer::RenderPass final {
                     viewport.height,
                     options.rootFontSizePx,
                     options.surfaceBackground);
-                layout = declarative::ComputeLayout(
+                layout = ComputeTimedLayout(
                     revealedRoot,
                     viewport,
                     [this](const LayoutElement& element, const declarative::MeasureConstraints& constraints) {
@@ -2814,14 +2851,28 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     void PrepareAgainstCurrentLayout() {
+        // Paint needs current semantic pointers and resolved styles, not a new
+        // Taffy input tree. Rebind pointers while reusing exact style contexts.
         prepared.clear();
-        (void)PrepareNode(
-            snapshot->root,
-            {},
-            viewport.width,
-            viewport.height,
-            options.rootFontSizePx,
-            options.surfaceBackground);
+        const float textScale = std::clamp(options.accessibility.textScale, 0.85F, 1.5F);
+        const auto visit = [&](const auto& self, const WidgetNode& node,
+                               const std::string& parent, const float font,
+                               const std::optional<NativeColor>& background) -> void {
+            const auto id = NarrowStableId(node.id);
+            if (!layout.Find(id)) return;
+            PrepareStyle(node, parent, viewport.width, viewport.height, font, background);
+            const auto style = prepared.at(id).baseStyle;
+            const auto surface = prepared.at(id).effectiveBackground;
+            if (node.kind == L"focusPresentationSurface") {
+                const auto selection = ResolveFocusPresentationSelection(snapshot->root, focusedId);
+                const auto* fragment = selection.surface == &node ? selection.fragment
+                    : !node.defaultFocusPresentation.empty() ? &node.defaultFocusPresentation.front() : nullptr;
+                if (fragment) self(self, *fragment, id, style.fontSizePx() / textScale, surface);
+            }
+            for (const auto& child : node.children)
+                self(self, child, id, style.fontSizePx() / textScale, surface);
+        };
+        visit(visit, snapshot->root, {}, options.rootFontSizePx, options.surfaceBackground);
     }
 
     [[nodiscard]] bool BuildLocalLayout(
@@ -2899,7 +2950,7 @@ struct DeclarativeRenderer::RenderPass final {
                 // The retained border box already excludes the parent's
                 // allocation for this node's margins.
                 root.margin = {};
-                return declarative::ComputeLayout(
+                return ComputeTimedLayout(
                     root,
                     localViewport,
                     [this](const LayoutElement& element,
@@ -2925,7 +2976,7 @@ struct DeclarativeRenderer::RenderPass final {
         const NativeTextVerticalAlignment verticalAlignment =
             NativeTextVerticalAlignment::Start) {
         if (!target || node.text.empty()) return;
-        const auto plan = CreateNativeTextLayoutPlan(
+        const auto plan = owner->textLayoutCache_.Get(
             owner->writeFactory_, node.text, style,
             std::max(1.0F, rect.width), std::max(1.0F, rect.height));
         if (!plan.IsValid()) {
@@ -4843,6 +4894,7 @@ DeclarativeRenderer::PlanPresentationUpdate(
     const WidgetSnapshot& snapshot,
     const WidgetPresentationImpact& impact,
     const Rect viewport) {
+    const auto planningStarted = std::chrono::steady_clock::now();
     pendingIncrementalPlan_.reset();
     const auto& cache = incrementalLayoutCache_;
     if (!cache || cache->instanceId != snapshot.instanceId ||
@@ -4861,26 +4913,13 @@ DeclarativeRenderer::PlanPresentationUpdate(
         impact.effects, WidgetPresentationEffect::MeasureLayout);
     if (localLayout && !impact.hasNonTextMeasureLayout &&
         !impact.textMeasurementNodeIds.empty()) {
-        // Text is the one layout-affecting update that can sometimes retain
-        // committed Taffy geometry. Prove that with the exact prior options,
-        // DirectWrite constraints/line metrics, overflow flags, clipping, and
-        // every adjacent layout box. The proof pass borrows but never changes
-        // the renderer's sole scroll-state owner.
-        const auto savedScrollOffsets = scrollOffsets_;
-        const auto savedScrollClock = scrollStateAccessClock_;
+        // Re-measure only changed leaves at every constraint used by the
+        // committed layout. Equal intrinsic answers preserve the layout inputs;
+        // any difference uses the existing safe-boundary relayout path.
         RenderPass proof;
         proof.owner = this;
         proof.snapshot = &snapshot;
-        proof.focusedId = cache->focusedElementId;
-        proof.viewport = viewport;
         proof.options = cache->options;
-        const auto responsiveViewport = proof.options.responsiveViewport.value_or(
-            Size{viewport.width, viewport.height});
-        proof.compactMode = IsCompactResponsiveSurface(responsiveViewport);
-        proof.BuildLayout(false);
-        scrollOffsets_ = savedScrollOffsets;
-        scrollStateAccessClock_ = savedScrollClock;
-
         const auto sameProof = [](const TextMeasurementProof& left,
                                   const TextMeasurementProof& right) noexcept {
             const auto same = [](const float a, const float b) {
@@ -4898,16 +4937,26 @@ DeclarativeRenderer::PlanPresentationUpdate(
                 same(left.inkInsetBottom, right.inkInsetBottom) &&
                 same(left.baseline, right.baseline);
         };
-        bool textMeasurementStable = SameLayout(cache->layout, proof.layout);
+        bool textMeasurementStable = true;
         for (const auto& nodeId : impact.textMeasurementNodeIds) {
-            const auto prior = cache->textMeasurements.find(nodeId);
-            const auto next = proof.textMeasurements.find(nodeId);
-            if (prior == cache->textMeasurements.end() ||
-                next == proof.textMeasurements.end() ||
-                !sameProof(prior->second, next->second)) {
+            std::vector<const WidgetNode*> path;
+            const auto prior = cache->textMeasurementQueries.find(nodeId);
+            const auto state = cache->nodes.find(nodeId);
+            if (prior == cache->textMeasurementQueries.end() || prior->second.empty() ||
+                state == cache->nodes.end() || !FindNodePath(snapshot.root, nodeId, path) ||
+                (path.back()->kind != L"text" && path.back()->kind != L"button")) {
                 textMeasurementStable = false;
                 break;
             }
+            for (const auto& query : prior->second) {
+                (void)proof.MeasureText(*path.back(), state->second.baseStyle,
+                    {query.maximumWidth, query.maximumHeight});
+                if (!sameProof(query, proof.textMeasurements.at(nodeId))) {
+                    textMeasurementStable = false;
+                    break;
+                }
+            }
+            if (!textMeasurementStable) break;
         }
         if (textMeasurementStable) localLayout = false;
     }
@@ -4924,6 +4973,9 @@ DeclarativeRenderer::PlanPresentationUpdate(
             {},
             {},
         };
+        pendingIncrementalPlan_->comparisonMicroseconds = impact.comparisonMicroseconds;
+        pendingIncrementalPlan_->planningMicroseconds = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - planningStarted).count());
         return IncrementalPresentationPlan{
             IncrementalPresentationWork::NoRaster, {}};
     }
@@ -4978,6 +5030,9 @@ DeclarativeRenderer::PlanPresentationUpdate(
         damage,
         std::move(boundaries),
     };
+    pendingIncrementalPlan_->comparisonMicroseconds = impact.comparisonMicroseconds;
+    pendingIncrementalPlan_->planningMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - planningStarted).count());
     return IncrementalPresentationPlan{work, damage};
 }
 
@@ -5356,6 +5411,8 @@ RenderResult DeclarativeRenderer::Render(
     const Rect viewport,
     const DeclarativeRenderOptions& options) {
     const auto renderStarted = std::chrono::steady_clock::now();
+    const auto textHitsBefore = textLayoutCache_.hits;
+    const auto textMissesBefore = textLayoutCache_.misses;
     RenderPass pass;
     pass.owner = this;
     pass.target = renderTarget;
@@ -5398,7 +5455,21 @@ RenderResult DeclarativeRenderer::Render(
     // from the prior render target.
     pass.focusBackgrounds = focusBackgrounds_;
     pass.focusBackgroundAccessClock = focusBackgroundAccessClock_;
-    const bool pendingMatches = pendingIncrementalPlan_ &&
+    const auto preparationOptionsMatch = [&]() {
+        if (!incrementalLayoutCache_) return false;
+        const auto& previous = incrementalLayoutCache_->options;
+        const auto& a = previous.accessibility;
+        const auto& b = options.accessibility;
+        const auto oldResponsive = previous.responsiveViewport.value_or(Size{viewport.width, viewport.height});
+        const auto newResponsive = options.responsiveViewport.value_or(Size{viewport.width, viewport.height});
+        return previous.pixelScale == options.pixelScale && previous.rootFontSizePx == options.rootFontSizePx &&
+            previous.surfaceBackground == options.surfaceBackground &&
+            oldResponsive.width == newResponsive.width && oldResponsive.height == newResponsive.height &&
+            a.textScale == b.textScale && a.minimumFontWeight == b.minimumFontWeight &&
+            a.minimumFocusRingPx == b.minimumFocusRingPx && a.reducedMotion == b.reducedMotion &&
+            a.reducedTransparency == b.reducedTransparency && !a.contrastHook && !b.contrastHook;
+    };
+    const bool pendingMatches = preparationOptionsMatch() && pendingIncrementalPlan_ &&
         pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster &&
         incrementalLayoutCache_ &&
         pendingIncrementalPlan_->instanceId == snapshot.instanceId &&
@@ -5408,6 +5479,7 @@ RenderResult DeclarativeRenderer::Render(
     if (pendingMatches) {
         pass.layout = incrementalLayoutCache_->layout;
         pass.textMeasurements = incrementalLayoutCache_->textMeasurements;
+        pass.textMeasurementQueries = incrementalLayoutCache_->textMeasurementQueries;
         if (pendingIncrementalPlan_->work ==
             IncrementalPresentationWork::PaintOnly) {
             pass.PrepareAgainstCurrentLayout();
@@ -5549,6 +5621,7 @@ RenderResult DeclarativeRenderer::Render(
                 descendantBoundary = node.id;
             }
             IncrementalNodeState state;
+            if (prepared != pass.prepared.end()) state.baseStyle = prepared->second.baseStyle;
             state.parentId = parentId;
             state.safeBoundaryId = std::wstring{inheritedBoundary};
             state.scrollBoundary = node.kind == L"scroll";
@@ -5608,6 +5681,13 @@ RenderResult DeclarativeRenderer::Render(
     } else {
         incrementalLayoutCache_.reset();
     }
+    if (styleCache_.size() > 4096) {
+        std::erase_if(styleCache_, [&](const auto& entry) {
+            return !pass.prepared.contains(NarrowStableId(entry.first));
+        });
+    }
+    const auto snapshotComparisonMicroseconds = pendingMatches ? pendingIncrementalPlan_->comparisonMicroseconds : 0;
+    const auto updatePlanningMicroseconds = pendingMatches ? pendingIncrementalPlan_->planningMicroseconds : 0;
     pendingIncrementalPlan_.reset();
     const auto finalizationFinished = std::chrono::steady_clock::now();
     const auto elapsed = [](const auto started, const auto finished) {
@@ -5624,6 +5704,16 @@ RenderResult DeclarativeRenderer::Render(
         elapsed(nodeDrawFinished, deferredFocusFinished),
         elapsed(deferredFocusFinished, finalizationFinished),
     };
+    pass.result.timing.snapshotComparisonMicroseconds = snapshotComparisonMicroseconds;
+    pass.result.timing.updatePlanningMicroseconds = updatePlanningMicroseconds;
+    pass.result.timing.styleResolutionMicroseconds = pass.styleNanoseconds / 1000;
+    pass.result.timing.textMeasurementMicroseconds = pass.textNanoseconds / 1000;
+    pass.result.timing.layoutMicroseconds = pass.layoutNanoseconds / 1000;
+    pass.result.timing.styleCacheHits = pass.styleCacheHits;
+    pass.result.timing.styleCacheMisses = pass.styleCacheMisses;
+    pass.result.timing.textLayoutCacheHits = textLayoutCache_.hits - textHitsBefore;
+    pass.result.timing.textLayoutCacheMisses = textLayoutCache_.misses - textMissesBefore;
+
     pass.result.timing.focusFollowSummary = pass.BuildFocusFollowSummary();
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     pass.result.focusFollowPassCount = pass.focusFollowTrace.passCount;

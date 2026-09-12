@@ -186,6 +186,41 @@ struct PresentationTransactionRule final {
 
 } // namespace
 
+bool TryCoalescePresentationEvents(const WidgetSessionEvent& previous, WidgetSessionEvent& current) {
+    if (previous.kind != WidgetSessionEventKind::SnapshotAdmitted ||
+        current.kind != WidgetSessionEventKind::SnapshotAdmitted ||
+        previous.requestKind != WidgetSessionRequestKind::Snapshot ||
+        current.requestKind != WidgetSessionRequestKind::Snapshot ||
+        previous.widgetId != current.widgetId || previous.generation != current.generation ||
+        previous.lifecycle != current.lifecycle || previous.completedRestart || current.completedRestart ||
+        previous.correlationId != 0 || current.correlationId != 0 ||
+        !previous.presentationImpact || !current.presentationImpact ||
+        previous.presentationImpact->sequence != current.presentationImpact->baseSequence)
+        return false;
+    const auto visualOnly = [](const WidgetPresentationImpact& impact) {
+        constexpr auto allowed = static_cast<std::uint32_t>(WidgetPresentationEffect::Paint) |
+            static_cast<std::uint32_t>(WidgetPresentationEffect::Accessibility) |
+            static_cast<std::uint32_t>(WidgetPresentationEffect::Resource);
+        return (static_cast<std::uint32_t>(impact.effects) & ~allowed) == 0;
+    };
+    if (!visualOnly(*previous.presentationImpact) || !visualOnly(*current.presentationImpact)) return false;
+    const auto& prior = *previous.presentationImpact;
+    auto& combined = *current.presentationImpact;
+    combined.baseSequence = prior.baseSequence;
+    combined.effects |= prior.effects;
+    combined.hasNonTextMeasureLayout |= prior.hasNonTextMeasureLayout;
+    combined.selectOptionsChanged |= prior.selectOptionsChanged;
+    combined.comparisonMicroseconds += prior.comparisonMicroseconds;
+    const auto merge = [](auto& destination, const auto& source) {
+        for (const auto& id : source)
+            if (std::find(destination.begin(), destination.end(), id) == destination.end())
+                destination.push_back(id);
+    };
+    merge(combined.affectedNodeIds, prior.affectedNodeIds);
+    merge(combined.textMeasurementNodeIds, prior.textMeasurementNodeIds);
+    return true;
+}
+
 WidgetSessionCoordinator::WidgetSessionCoordinator(
     WidgetSessionOperations operations,
     std::function<void()> completionAvailable,
@@ -694,6 +729,10 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 events.push_back(std::move(event));
                 continue;
             }
+            if (retainedCheckpoint && !completion.presentationImpact && operations_.compareSnapshots &&
+                request.transactionKind != WidgetPresentationTransactionKind::RecoveryCheckpoint) {
+                completion.presentationImpact = operations_.compareSnapshots(*retainedCheckpoint, *completion.snapshot);
+            }
             const auto refreshRevision = refreshRevisions_.find(request.widgetId);
             const bool refreshRequestedDuringAdmission =
                 refreshRevision != refreshRevisions_.end() &&
@@ -709,7 +748,10 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             auto event = makeEvent(WidgetSessionEventKind::SnapshotAdmitted);
             event.completedRestart = awaitingRestartSnapshot_.erase(request.widgetId) > 0;
             event.presentationImpact = std::move(completion.presentationImpact);
-            events.push_back(std::move(event));
+            if (!events.empty() && TryCoalescePresentationEvents(events.back(), event))
+                events.back() = std::move(event);
+            else
+                events.push_back(std::move(event));
             continue;
         }
         if (request.kind == RequestKind::Lifecycle) {

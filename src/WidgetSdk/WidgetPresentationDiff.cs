@@ -69,7 +69,10 @@ internal static class WidgetPresentationDiff
         if (!StableRelationships(previous.Root, current.Root))
             return Checkpoint("unstable_identity");
         if (!SameJson(previous.PinnedLayouts, current.PinnedLayouts))
-            return Checkpoint("pinned_layout_catalog_changed");
+            return Checkpoint(SameJson(
+                previous.PinnedLayouts.Select(layout => layout with { Root = null, InitialFocusId = null, ActiveInputScopeId = null }),
+                current.PinnedLayouts.Select(layout => layout with { Root = null, InitialFocusId = null, ActiveInputScopeId = null }))
+                    ? "pinned_layout_content_changed" : "pinned_layout_catalog_changed");
         if (!SameJson(previous.EmbeddedMediaSession, current.EmbeddedMediaSession))
             return Checkpoint("embedded_media_changed");
         if (!SameJson(previous.FocusGroupEntryRequest, current.FocusGroupEntryRequest))

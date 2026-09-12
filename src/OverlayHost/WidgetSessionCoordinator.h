@@ -195,6 +195,8 @@ struct WidgetSessionEvent final {
     long long bridgeSessionGeneration{};
 };
 
+[[nodiscard]] bool TryCoalescePresentationEvents(const WidgetSessionEvent& previous, WidgetSessionEvent& current);
+
 template <typename Value>
 struct WidgetSessionOperationResult final {
     std::optional<Value> value;
@@ -236,6 +238,7 @@ struct WidgetSessionOperations final {
     std::function<WidgetSessionOperationResult<bool>(
         std::stop_token, std::wstring_view)> restart;
     std::function<long long()> bridgeSessionGeneration;
+    std::function<std::optional<WidgetPresentationImpact>(const WidgetSnapshot&, const WidgetSnapshot&)> compareSnapshots;
 };
 
 /// Owns bridge-facing widget session state and serial request policy. The host

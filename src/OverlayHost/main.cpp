@@ -696,6 +696,7 @@ public:
                                 bridge_.lastError());
                   },
                   [this] { return bridge_.bridgeSessionGeneration(); },
+                  widgetrail::CompareWidgetSnapshots,
               },
               [this] {
                   if (window_)
@@ -8487,11 +8488,23 @@ private:
         const long long sequence = measurementSnapshot
             ? measurementSnapshot->sequence
             : -1;
+        // Paint/semantic-only admissions cannot change the intrinsic surface
+        // size. Preserve the existing measure cache across their sequence change.
+        const auto unchangedMeasure = [&]() {
+            if (!widgetSurfaceResolutionCache_ || !pendingWidgetPresentationImpact_) return false;
+            const auto& impact = *pendingWidgetPresentationImpact_;
+            using Effect = widgetrail::WidgetPresentationEffect;
+            return impact.baseSequence == widgetSurfaceResolutionCache_->sequence &&
+                impact.sequence == sequence &&
+                !widgetrail::HasWidgetPresentationEffect(impact.effects,
+                    Effect::MeasureLayout | Effect::SurfacePlacement | Effect::Structure | Effect::Unknown);
+        };
         if (widgetSurfaceResolutionCache_ &&
             widgetSurfaceResolutionCache_->instanceId == instanceId &&
-            widgetSurfaceResolutionCache_->sequence == sequence &&
+            (widgetSurfaceResolutionCache_->sequence == sequence || unchangedMeasure()) &&
             sameRequest(widgetSurfaceResolutionCache_->request, *request) &&
             sameConstraints(widgetSurfaceResolutionCache_->constraints, constraints)) {
+            widgetSurfaceResolutionCache_->sequence = sequence;
             return widgetSurfaceResolutionCache_->resolved;
         }
         widgetrail::WidgetSurfaceIntrinsicMeasure measure;
@@ -15386,6 +15399,15 @@ private:
                 std::to_wstring(renderer.totalMicroseconds) +
                 L" slow-render-prepare-us=" +
                 std::to_wstring(renderer.preparationMicroseconds) +
+                L" snapshot-compare-us=" + std::to_wstring(renderer.snapshotComparisonMicroseconds) +
+                L" render-update-plan-us=" + std::to_wstring(renderer.updatePlanningMicroseconds) +
+                L" slow-render-style-us=" + std::to_wstring(renderer.styleResolutionMicroseconds) +
+                L" slow-render-text-us=" + std::to_wstring(renderer.textMeasurementMicroseconds) +
+                L" slow-render-layout-us=" + std::to_wstring(renderer.layoutMicroseconds) +
+                L" style-cache-hits=" + std::to_wstring(renderer.styleCacheHits) +
+                L" style-cache-misses=" + std::to_wstring(renderer.styleCacheMisses) +
+                L" text-cache-hits=" + std::to_wstring(renderer.textLayoutCacheHits) +
+                L" text-cache-misses=" + std::to_wstring(renderer.textLayoutCacheMisses) +
                 L" slow-render-presentation-us=" +
                 std::to_wstring(renderer.presentationMicroseconds) +
                 L" slow-render-clip-us=" +

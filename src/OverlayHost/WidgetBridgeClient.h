@@ -371,6 +371,7 @@ struct WidgetStyleValue final {
     std::wstring text;
     std::optional<double> number;
     std::wstring unit;
+    friend bool operator==(const WidgetStyleValue&, const WidgetStyleValue&) = default;
 };
 
 using WidgetComputedStyle =
@@ -687,6 +688,7 @@ struct WidgetPresentationImpact final {
     /// visible, main.cpp promotes the update to a full content raster so the
     /// old host-owned popup pixels cannot survive outside opener damage.
     bool selectOptionsChanged{};
+    std::uint64_t comparisonMicroseconds{};
 };
 
 [[nodiscard]] constexpr bool RequiresCompleteSelectPopupRaster(
@@ -695,6 +697,11 @@ struct WidgetPresentationImpact final {
     const bool popupIsOpen) noexcept {
     return impact.selectOptionsChanged && (popupWasOpen || popupIsOpen);
 }
+
+// Classifies an admitted full document against its retained base. This never
+// changes transport/admission authority and shares the delta impact vocabulary.
+[[nodiscard]] std::optional<WidgetPresentationImpact> CompareWidgetSnapshots(
+    const WidgetSnapshot& previous, const WidgetSnapshot& current);
 
 struct WidgetPresentationMaterialization final {
     WidgetSnapshot snapshot;

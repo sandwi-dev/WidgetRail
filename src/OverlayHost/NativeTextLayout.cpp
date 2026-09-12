@@ -189,4 +189,44 @@ NativeTextLayoutPlan CreateNativeTextLayoutPlan(
     return result;
 }
 
+void NativeTextLayoutCache::Clear() {
+    entries_.clear();
+    uses_.clear();
+    characters_ = 0;
+    factory_.Reset();
+}
+
+NativeTextLayoutPlan NativeTextLayoutCache::Get(
+    IDWriteFactory* factory, const std::wstring_view text,
+    const NativeRenderStyle& style, const float width, const float height) {
+    // Reject invalid constraints before constructing an ordered floating-point key.
+    if (!factory || !std::isfinite(width) || !std::isfinite(height) ||
+        width <= 0 || height <= 0)
+        return {};
+    if (factory_.Get() != factory) { Clear(); factory_ = factory; }
+    Key key{std::wstring(text.substr(0, kMaximumTextCharacters)), style.fontFamily(),
+        style.fontWeight(), style.fontSizePx(), style.letterSpacingPx(),
+        style.lineHeight(), style.maxLines(), style.textOverflow(),
+        style.overflowWrap(), style.textTransform(), style.textAlign(), width, height};
+    if (auto found = entries_.find(key); found != entries_.end()) {
+        ++hits;
+        uses_.splice(uses_.begin(), uses_, found->second.use);
+        return found->second.plan;
+    }
+    ++misses;
+    auto plan = CreateNativeTextLayoutPlan(factory, text, style, width, height);
+    if (!plan.IsValid()) return plan;
+    // Bound both layout count and retained source text; evict only the oldest entries.
+    const auto characters = std::get<0>(key).size() + std::get<1>(key).size();
+    while (!uses_.empty() && (entries_.size() >= 1024 || characters_ + characters > 131072)) {
+        characters_ -= std::get<0>(uses_.back()).size() + std::get<1>(uses_.back()).size();
+        entries_.erase(uses_.back());
+        uses_.pop_back();
+    }
+    characters_ += characters;
+    uses_.push_front(key);
+    entries_.emplace(std::move(key), Entry{plan, uses_.begin()});
+    return plan;
+}
+
 } // namespace widgetrail

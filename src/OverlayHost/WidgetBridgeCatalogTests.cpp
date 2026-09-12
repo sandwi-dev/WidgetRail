@@ -27,6 +27,68 @@ void Require(const bool condition, const char* message) {
 
 #define CHECK(condition) Require(static_cast<bool>(condition), #condition)
 
+void VerifySnapshotComparison() {
+    widgetrail::WidgetSnapshot before;
+    before.instanceId = L"compare"; before.sequence = 1;
+    before.root.id = L"root"; before.root.kind = L"text";
+    before.documentJson = LR"({"sequence":1,"root":{"id":"root","kind":"text","text":"one","children":[]},"pinnedLayouts":[{"id":"small","name":"Small","surface":{},"root":{"id":"p","kind":"text","text":"1"}}]})";
+    auto after = before; after.sequence = 2;
+    after.documentJson = LR"({"sequence":2,"root":{"id":"root","kind":"text","text":"one","children":[]},"pinnedLayouts":[{"id":"small","name":"Small","surface":{},"root":{"id":"p","kind":"text","text":"2"}}]})";
+    auto impact = widgetrail::CompareWidgetSnapshots(before, after);
+    CHECK(impact && impact->effects == widgetrail::WidgetPresentationEffect::None);
+    CHECK(impact->baseSequence == 1 && impact->sequence == 2);
+    auto replace = [](std::wstring& value, const std::wstring& from, const std::wstring& to) {
+        const auto start = value.find(from); CHECK(start != std::wstring::npos); value.replace(start, from.size(), to);
+    };
+    replace(after.documentJson, L"one", L"two");
+    impact = widgetrail::CompareWidgetSnapshots(before, after);
+    CHECK(impact && widgetrail::HasWidgetPresentationEffect(impact->effects, widgetrail::WidgetPresentationEffect::MeasureLayout));
+    CHECK(impact->textMeasurementNodeIds == std::vector<std::wstring>{L"root"});
+    CHECK(!impact->hasNonTextMeasureLayout);
+    after.root.baseStyle[L"font-size"] = {L"length", L"20px", 20, L"px"};
+    impact = widgetrail::CompareWidgetSnapshots(before, after);
+    CHECK(impact && impact->hasNonTextMeasureLayout);
+    replace(after.documentJson, L"Small", L"Renamed");
+    impact = widgetrail::CompareWidgetSnapshots(before, after);
+    CHECK(impact && widgetrail::HasWidgetPresentationEffect(impact->effects, widgetrail::WidgetPresentationEffect::Unknown));
+    replace(after.documentJson, L"\"id\":\"root\"", L"\"id\":\"changed\"");
+    impact = widgetrail::CompareWidgetSnapshots(before, after);
+    CHECK(impact && widgetrail::HasWidgetPresentationEffect(impact->effects, widgetrail::WidgetPresentationEffect::Structure));
+    after.instanceId = L"other";
+    CHECK(!widgetrail::CompareWidgetSnapshots(before, after));
+    after.instanceId = before.instanceId; after.documentJson = L"malformed";
+    CHECK(!widgetrail::CompareWidgetSnapshots(before, after));
+}
+
+void MeasureFullSnapshotComparison() {
+    widgetrail::WidgetSnapshot before;
+    before.instanceId = L"comparison.workload"; before.sequence = 1;
+    before.root.id = L"root"; before.root.kind = L"scroll";
+    std::wstring rows;
+    for (int i = 0; i < 60; ++i) {
+        if (i) rows += L",";
+        const auto id = L"track." + std::to_wstring(i);
+        rows += L"{\"id\":\"" + id + L"\",\"kind\":\"button\",\"text\":\"A representative playlist title\",\"actionId\":\"play\",\"children\":[]}";
+        widgetrail::WidgetNode row; row.id = id; row.kind = L"button";
+        row.baseStyle[L"height"] = {L"length", L"54px", 54, L"px"};
+        row.baseStyle[L"font-size"] = {L"length", L"17px", 17, L"px"};
+        before.root.children.push_back(std::move(row));
+    }
+    before.documentJson = L"{\"root\":{\"id\":\"root\",\"kind\":\"scroll\",\"scrollAxis\":\"vertical\",\"children\":[" + rows +
+        L"]},\"pinnedLayouts\":[{\"id\":\"player\",\"name\":\"Player\",\"surface\":{},\"root\":{\"id\":\"clock\",\"kind\":\"text\",\"text\":\"00:01\"}}]}";
+    auto current = before; current.sequence = 2;
+    current.documentJson.replace(current.documentJson.find(L"00:01"),5,L"00:02");
+    std::vector<std::uint64_t> samples;
+    for (int i = 0; i < 40; ++i) {
+        const auto impact = widgetrail::CompareWidgetSnapshots(before,current);
+        CHECK(impact && impact->effects == widgetrail::WidgetPresentationEffect::None);
+        samples.push_back(impact->comparisonMicroseconds);
+    }
+    std::sort(samples.begin(),samples.end());
+    std::cout << "WORKLOAD full-snapshot-compare-median-us=" << samples[20]
+        << " p95-us=" << samples[38] << '\n';
+}
+
 void VerifyWidgetBridgePipeReadinessContract() {
     ULONGLONG tick{};
     std::size_t attempts{};
@@ -1373,6 +1435,8 @@ int main() {
         Require(!widgetrail::testing::ParseWidgetSnapshotResponse(old,menuError), "legacy protocol rejects explicit menu trigger");
     }
 
+    VerifySnapshotComparison();
+    MeasureFullSnapshotComparison();
     VerifyWidgetBridgePipeReadinessContract();
     const auto nowPlayingManifest = std::filesystem::path{__FILE__}.parent_path()
         .parent_path() / L"FirstPartyWidgets" / L"MediaSessionsWidget" /
