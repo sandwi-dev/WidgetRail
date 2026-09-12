@@ -66,7 +66,7 @@ focus ordering, background composition and popup ordering. Source applications
 and Windows determine when new frames exist; there is no source frame-rate
 guarantee.
 
-Only visible preview demands are retained. Scrolling offscreen, hiding the
+Live previews update while the widget is visible, including while focus is on the tray. They do not require entering the widget. Only visible preview demands are retained. Scrolling offscreen, hiding the
 overlay, switching widget instances or losing source authority retires resources.
 Minimized sources pause capture and show a fallback; restoration can resume
 capture. Resizing uses the frame's actual ContentSize and recreates its pool

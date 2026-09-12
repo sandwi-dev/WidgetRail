@@ -12073,7 +12073,7 @@ private:
         return source;
     }
 
-    const widgetrail::WidgetSnapshot* FocusRestorationSnapshotFor(
+    const widgetrail::WidgetSnapshot* PresentationSnapshotFor(
         const std::wstring_view widgetId) const noexcept {
         const auto presentation = sessions_.Presentation(widgetId);
         return presentation.HasCommittedViewAuthority(
@@ -12175,7 +12175,7 @@ private:
         // asynchronous Interactive lifecycle request. This does not authorize
         // input: every action and navigation path continues to resolve through
         // InteractionSnapshotFor.
-        const auto* snapshot = FocusRestorationSnapshotFor(widgetId);
+        const auto* snapshot = PresentationSnapshotFor(widgetId);
         if (snapshot)
             (void)interactionSession_.RestoreFocus(widgetId, *snapshot);
         else
@@ -13164,7 +13164,7 @@ private:
             std::any_of(allowed.begin(), allowed.end(), [&](const auto& id) { return !windowPreviewPermissions_->contains(id); });
         windowPreviewPermissionWidget_ = widget;
         windowPreviewPermissions_ = std::move(allowed);
-        if (const auto* snapshot = InteractionSnapshotFor(widget))
+        if (const auto* snapshot = PresentationSnapshotFor(widget))
             ReconcileWindowPreviews(*snapshot, lastWidgetRenderResult_);
         pendingContentRenderPlan_.reset();
         if (declarativeRenderer_) declarativeRenderer_->CancelPresentationUpdatePlan();
@@ -13197,7 +13197,7 @@ private:
     }
 
     void PollWindowPreviews() {
-        const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+        const auto* snapshot = PresentationSnapshotFor(state_.activeWidget());
         if (state_.surface() != widgetrail::Surface::Widget || !snapshot ||
             snapshot->instanceId != windowPreviewInstance_) {
             ResetWindowPreviews();
