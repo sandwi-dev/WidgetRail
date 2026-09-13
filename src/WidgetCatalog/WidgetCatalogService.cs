@@ -123,6 +123,65 @@ public sealed class WidgetCatalog
             cancellationToken).ConfigureAwait(false);
     }
 
+    // Called only by the trusted Settings update flow after its disclosure page.
+    // Stage/validate first, pin the old version while publishing, then select
+    // the new version disabled. Failed validation never stops the old widget.
+    internal async Task<InstalledWidgetVersion> UpdateFromFileAsync(
+        Stream packageStream, string expectedTargetHash, WidgetPackageTrustApproval trustApproval,
+        Func<WidgetPackageInspection, CancellationToken, Task> trustedPrePublish,
+        CancellationToken cancellationToken = default)
+    {
+        await using var operation = await _operationLock.AcquireAsync(cancellationToken);
+        await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken).ConfigureAwait(false);
+        var installed = await CreateInstaller().InstallAsync(packageStream, async (incoming, token) =>
+        {
+            var expectedWidgetId = incoming.Id;
+            var targetHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(expectedWidgetId)));
+            if (!string.Equals(targetHash, expectedTargetHash, StringComparison.OrdinalIgnoreCase))
+                throw new WidgetPackageException("update_wrong_widget", "Choose an update for the selected widget.");
+            await DemandNoPendingUninstallAsync(expectedWidgetId, token).ConfigureAwait(false);
+            RequireFullTrustApproval(incoming.Manifest, true, trustApproval);
+            var all = DiscoverInstalledVersions(token);
+            var snapshot = await DiscoverAsync(token).ConfigureAwait(false);
+            var current = snapshot.Widgets.SingleOrDefault(item => item.Id == expectedWidgetId)
+                ?? throw new WidgetPackageException("update_target_missing", "The widget is no longer installed.");
+            if (incoming.Manifest.Publisher != current.ActiveVersion.Manifest.Publisher)
+                throw new WidgetPackageException("update_publisher_changed", "The update has a different publisher.");
+            if (WidgetManifestTrust.Resolve(incoming.Manifest) != WidgetManifestTrust.Resolve(current.ActiveVersion.Manifest))
+                throw new WidgetPackageException("update_trust_changed", "The update changes how this widget runs.");
+            if (incoming.Version <= current.ActiveVersion.Version || current.Versions.Any(item => item.Version == incoming.Version))
+                throw new WidgetPackageException("update_not_newer", "Choose a newer version that is not already installed.");
+            if (!WidgetHostCompatibility.Evaluate(incoming.Manifest).IsSupported)
+                throw new WidgetPackageException("update_incompatible", "The update is not compatible with this WidgetRail version.");
+            EnforceProspectiveInstallLimits(all, current.Versions.ToArray(), incoming);
+            await trustedPrePublish(incoming, token).ConfigureAwait(false);
+            await _stateStore.MutateAsync(state =>
+            {
+                var entries = state.Widgets.ToList();
+                var index = entries.FindIndex(item => item.Id == expectedWidgetId);
+                if (index >= 0) entries[index] = entries[index] with { ActiveVersion = current.ActiveVersion.Version.ToString() };
+                else entries.Add(new CatalogStateEntry { Id = expectedWidgetId, Enabled = current.Enabled,
+                    ActiveVersion = current.ActiveVersion.Version.ToString(), Order = entries.Count == 0 ? 0 : entries.Max(item => item.Order) + 1 });
+                return state with { Version = 2, Widgets = entries.OrderBy(item => item.Order).ToArray() };
+            }, token).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
+        // Publication is durable. Finish with a non-cancellable state commit;
+        // if storage fails, the old explicit pin still prevents activation.
+        try
+        {
+            await _stateStore.MutateAsync(state => state with
+            {
+                Widgets = state.Widgets.Select(item => item.Id == installed.Id
+                    ? item with { Enabled = false, ActiveVersion = installed.Version.ToString() } : item).ToArray(),
+            }, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or WidgetPackageException)
+        {
+            throw new WidgetPackageException("update_selection_failed", "The new version was installed. Review installed versions to finish the update.", exception);
+        }
+        return installed;
+    }
+
     public async Task<WidgetCatalogSnapshot> DiscoverAsync(CancellationToken cancellationToken = default)
     {
         var versions = DiscoverInstalledVersions(cancellationToken);

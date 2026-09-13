@@ -152,7 +152,8 @@ internal sealed record BridgeLocalWidgetPackageOrigin(
     string PublisherId,
     string InstanceId,
     string RuntimeGeneration,
-    string PresentationGeneration);
+    string PresentationGeneration,
+    string? UpdateTargetHash = null);
 internal sealed record BridgeLocalWidgetPackageInstallRequest(
     string OperationId,
     string PackagePath,

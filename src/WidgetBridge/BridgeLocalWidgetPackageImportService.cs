@@ -112,14 +112,15 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
         try
         {
             await using var package = _openPackage(active.Request.PackagePath);
-            var installed = await _catalog.InstallAsync(
-                package,
-                async (inspection, token) =>
-                {
-                    await _beforePublish(token).ConfigureAwait(false);
-                    using var admission = _admit(active.Request.Origin);
-                },
-                active.Cancellation.Token).ConfigureAwait(false);
+            async Task AdmitUpdate(WidgetPackageInspection inspection, CancellationToken token)
+            {
+                await _beforePublish(token).ConfigureAwait(false);
+                using var admission = _admit(active.Request.Origin);
+            }
+            var updating = !string.IsNullOrEmpty(active.Request.Origin.UpdateTargetHash);
+            var installed = updating
+                ? await _catalog.UpdateFromFileAsync(package, active.Request.Origin.UpdateTargetHash!, WidgetPackageTrustApproval.FullTrustCurrentUser, AdmitUpdate, active.Cancellation.Token).ConfigureAwait(false)
+                : await _catalog.InstallAsync(package, AdmitUpdate, active.Cancellation.Token).ConfigureAwait(false);
             // Publication is the operation's linearization point. Once the
             // catalog commit returns, a late overlay/session cancellation may
             // not relabel the durable install as cancelled.
@@ -129,7 +130,8 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
                 "installed-disabled",
                 installed.Id,
                 installed.Version.ToString(),
-                "Local widget package installed disabled. Review it before enabling.");
+                updating ? "Update installed and selected. Choose Review update to check permissions and enable it."
+                    : "Local widget package installed disabled. Review it before enabling.");
         }
         catch (OperationCanceledException) when (active.Cancellation.IsCancellationRequested)
         {
@@ -188,13 +190,24 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
                 : "install_failed";
         return new(
             operationId, "failed", "", "",
-            $"Local widget package install failed ({safeCode}).");
+            safeCode switch
+            {
+                "update_wrong_widget" => "Choose an update file for the selected widget. Nothing was changed.",
+                "update_not_newer" => "Choose a newer version that is not already installed.",
+                "update_publisher_changed" or "update_trust_changed" => "This update changes the publisher or execution permissions. It was not installed.",
+                "update_incompatible" => "This update needs a different WidgetRail version. Your current widget is unchanged.",
+                "update_selection_failed" => "The new version was installed. Open Manage versions to finish selecting it.",
+                _ => $"Local widget package install failed ({safeCode}).",
+            });
     }
 
     private static void ValidateRequest(BridgeLocalWidgetPackageInstallRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Origin);
+        if (request.Origin.UpdateTargetHash is { Length: > 0 } target &&
+            (target.Length != 64 || !target.All(char.IsAsciiHexDigit)))
+            throw new BridgeProtocolException("Widget update target is invalid.");
         if (!ValidOperationId(request.OperationId))
             throw new BridgeProtocolException("Local widget package operation ID is invalid.");
         if (string.IsNullOrWhiteSpace(request.PackagePath) ||

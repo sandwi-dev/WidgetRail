@@ -61,6 +61,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Local widget installation is an exact host-owned disabled-review action", LocalWidgetInstallationAction),
     ("Selected widget local data requires exact confirmation and stays document blind", InstalledWidgetLocalDataClear),
     ("Enabled widget uninstall confirms before disabling and preserves data", EnabledWidgetUninstall),
+    ("Update file flow binds target and reviews the newly selected version", WidgetUpdateReviewFlow),
     ("Unused version removal confirms exact content and protects the selected version", UnusedVersionRemoval),
     ("Disabled Community uninstall confirms exact package and preserves private data", InstalledWidgetPackageUninstall),
     ("Built-in widgets remain available and can be disabled without removing files", BuiltInWidgetInventory),
@@ -1258,6 +1259,33 @@ static async Task EnabledWidgetUninstall()
     Assert.Equal(0, (await catalog.DiscoverAsync()).Widgets.Count);
     Assert.True(File.Exists(data), "Uninstall removed saved data.");
     Assert.Equal(SettingsPage.InstalledWidgets, widget.CurrentPage);
+}
+
+static async Task WidgetUpdateReviewFlow()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "catalog");
+    var id = "dev." + new string('x', 50) + "." + new string('y', 50) + ".widget";
+    WriteInstalledWidget(root, id, "dev.publisher.update", "Update me", [], []);
+    var catalog = new WidgetCatalog(root);
+    var widget = CreateWithPermissions(temp.Path, root, new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    await Action(widget, "installed.select.0");
+    await Action(widget, "installed.update.open");
+    Assert.Equal(SettingsPage.InstalledWidgetUpdate, widget.CurrentPage);
+    var snapshot = Snapshot(widget);
+    Assert.Equal("host.install-local-widget", Button(snapshot.Root, SettingsUpdatePresentation.UpdateSourceId(id)).ActionId);
+    await Action(widget, "installed.update.review");
+    Assert.Equal(SettingsPage.InstalledWidgetUpdate, widget.CurrentPage);
+    WriteInstalledWidget(root, id, "dev.publisher.update", "Update me", [], [], version: "2.0.0");
+    await catalog.SetActiveVersionAsync(id, new Version(2, 0, 0));
+    await Action(widget, "installed.update.review");
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+    Assert.Contains("2.0.0", Text(Snapshot(widget).Root, "installed.details.version").Text!);
+    Assert.True(!(await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Review auto-enabled the update.");
+    Assert.Valid(snapshot);
+    Assert.Valid(Snapshot(widget));
 }
 
 static async Task UnusedVersionRemoval()

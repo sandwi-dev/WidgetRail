@@ -288,13 +288,37 @@ void BridgeReplacementTerminalizesExactlyOnce() {
             "terminal replacement-session completion was duplicated");
 }
 
+void UpdateTargetIsBoundToDisclosureScope() {
+    auto invocation = SettingsInvocation();
+    invocation.activeInputScopeId = L"installed.update";
+    invocation.sourceElementId = std::wstring(LocalWidgetPackageImport::UpdateSourcePrefix) + std::wstring(64, L'a');
+    Require(LocalWidgetPackageImport::Classify(invocation) == LocalWidgetPackageActionDisposition::Admitted,
+        "update source was not admitted");
+    FakePicker picker;
+    std::wstring target;
+    LocalWidgetPackageImport importer(picker, [] { return std::optional{SettingsOrigin()}; },
+        [&](auto, const auto& origin, auto) { target = origin.updateTargetHash; return true; });
+    const auto submitted = importer.Invoke(reinterpret_cast<HWND>(1), invocation);
+    Require(submitted.import.status == LocalWidgetPackageImportStatus::Submitted && target == std::wstring(64, L'a'),
+        "selected update target was not preserved");
+    invocation.activeInputScopeId = L"installed.widgets";
+    Require(LocalWidgetPackageImport::Classify(invocation) == LocalWidgetPackageActionDisposition::Refused,
+        "update was admitted outside its disclosure scope");
+    invocation.activeInputScopeId = L"installed.update";
+    invocation.sourceElementId = L"installed.update.review";
+    invocation.actionId = L"installed.update.review";
+    Require(LocalWidgetPackageImport::Classify(invocation) == LocalWidgetPackageActionDisposition::Unrelated,
+        "review action was swallowed by host import");
+}
+
 } // namespace
 
 int main() {
+    UpdateTargetIsBoundToDisclosureScope();
     ExactOriginAndQuietCancel();
     DuplicateAndCloseCancellation();
     StaleGenerationAndSubmissionAreBounded();
     ExactPrivateActionOwnsTheCompleteOperation();
     BridgeReplacementTerminalizesExactlyOnce();
-    std::cout << "LocalWidgetPackageImportTests passed (5 scenarios)\n";
+    std::cout << "LocalWidgetPackageImportTests passed (6 scenarios)\n";
 }

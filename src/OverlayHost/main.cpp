@@ -721,7 +721,8 @@ public:
                       origin.publisherId,
                       origin.instanceId,
                       origin.runtimeGeneration,
-                      origin.presentationGeneration};
+                      origin.presentationGeneration,
+                      origin.updateTargetHash};
                   const auto submitted = bridge_.BeginLocalWidgetPackageInstall(
                       path, requestOrigin, operationId);
                   return submitted.value_or(false);

@@ -21,6 +21,7 @@ struct LocalWidgetPackageOrigin final {
     std::wstring presentationGeneration;
     long long bridgeSessionGeneration{};
     WidgetLifecycleState lifecycle{WidgetLifecycleState::Background};
+    std::wstring updateTargetHash;
 };
 
 enum class LocalWidgetPackageActionDisposition {
@@ -105,13 +106,15 @@ public:
         Submit submit);
 
     static constexpr std::wstring_view ActionId = L"host.install-local-widget";
+    static constexpr std::wstring_view UpdateSourcePrefix = L"installed.update.file.";
+    static constexpr std::wstring_view UpdateInputScopeId = L"installed.update";
     static constexpr std::wstring_view SourceElementId = L"installed.install-local";
     static constexpr std::wstring_view InputScopeId = L"installed.widgets";
 
     [[nodiscard]] LocalWidgetPackageActionResult Invoke(
         HWND owner,
         const LocalWidgetPackageActionInvocation& invocation);
-    [[nodiscard]] LocalWidgetPackageImportResult Begin(HWND owner);
+    [[nodiscard]] LocalWidgetPackageImportResult Begin(HWND owner, std::wstring_view updateTargetHash = {});
     void CancelPicker() noexcept;
     [[nodiscard]] std::optional<std::wstring> CancelActiveOperation() noexcept;
     [[nodiscard]] std::optional<std::wstring> RetireBridgeSession(

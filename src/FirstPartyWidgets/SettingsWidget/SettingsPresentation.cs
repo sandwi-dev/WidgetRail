@@ -717,6 +717,7 @@ internal static class SettingsNavigationPolicy
         SettingsPage page,
         SettingsPage packageCapabilitiesReturnPage) => page switch
         {
+            SettingsPage.InstalledWidgetUpdate => SettingsPage.InstalledWidgetDetails,
             SettingsPage.InstalledWidgetVersionRemoval => SettingsPage.InstalledWidgetVersions,
             SettingsPage.ThemePicker => SettingsPage.Appearance,
             SettingsPage.ThemeVersion => SettingsPage.ThemePicker,

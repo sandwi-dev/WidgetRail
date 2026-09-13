@@ -26,6 +26,7 @@ public enum SettingsPage
     InstalledWidgetDetails,
     InstalledWidgetVersions,
     InstalledWidgetVersionRemoval,
+    InstalledWidgetUpdate,
     InstalledWidgetRecovery,
     InstalledWidgetLocalData,
     InstalledWidgetUninstall,
@@ -208,6 +209,7 @@ public sealed class SettingsWidget : Widget
             SettingsPage.InstalledWidgetDetails =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgetDetails(
                     header, busy, installedState, permissionState, settings),
+            SettingsPage.InstalledWidgetUpdate => SettingsUpdatePresentation.Render(header, busy, installedState),
             SettingsPage.InstalledWidgetVersionRemoval => SettingsVersionRemovalPresentation.Render(header, busy, installedState),
             SettingsPage.InstalledWidgetVersions =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgetVersions(
@@ -390,6 +392,8 @@ public sealed class SettingsWidget : Widget
                 case "installed.local-data.clear": await ClearSelectedWidgetLocalDataAsync(
                     cancellationToken).ConfigureAwait(false); break;
                 case "installed.uninstall.open": await OpenInstalledWidgetUninstallAsync(cancellationToken).ConfigureAwait(false); break;
+                case "installed.update.open": OpenWidgetUpdate(); break;
+                case "installed.update.review": await ReviewWidgetUpdateAsync(cancellationToken).ConfigureAwait(false); break;
                 case "installed.version-removal.cancel": CancelVersionRemoval(); break;
                 case "installed.version-removal.confirm": await RemoveSelectedVersionAsync(cancellationToken).ConfigureAwait(false); break;
                 case "installed.uninstall.confirm": await UninstallSelectedWidgetAsync(
@@ -1723,6 +1727,42 @@ public sealed class SettingsWidget : Widget
         }
         Invalidate();
         await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private void OpenWidgetUpdate()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetDetails || !_installedState.CatalogValid || _installedState.SelectedInstalled is not { } package) return;
+            _installedState = _installedState with { UpdateFromVersion = package.ActiveVersion.Version };
+            _page = SettingsPage.InstalledWidgetUpdate;
+        }
+        Invalidate();
+    }
+
+    private async Task ReviewWidgetUpdateAsync(CancellationToken cancellationToken)
+    {
+        string? id;
+        Version? previous;
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetUpdate) return;
+            id = _installedState.SelectedInstalledId;
+            previous = _installedState.UpdateFromVersion;
+        }
+        if (id is null || previous is null) return;
+        var warning = await ReloadInstalledWidgetsAsync(cancellationToken).ConfigureAwait(false);
+        if (warning is not null) { SetOperation(warning, false, true); return; }
+        CatalogWidget? current;
+        lock (_stateLock) current = _installedState.SelectedInstalled;
+        if (current is null || current.Id != id || current.ActiveVersion.Version <= previous)
+        { SetOperation("The update is not ready yet. Choose an update file and wait for installation to finish.", false, false); return; }
+        warning = await ReloadPermissionsAsync(cancellationToken).ConfigureAwait(false);
+        lock (_stateLock) _page = SettingsPage.InstalledWidgetDetails;
+        await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
+        await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
+        if (warning is null) OpenSelectedInstalledPermissions();
+        SetOperation(warning ?? $"Version {current.ActiveVersion.Version} is selected. Review permissions, then enable the widget from its details.", false, warning is not null);
     }
 
     private void OpenVersionRemoval(int index)

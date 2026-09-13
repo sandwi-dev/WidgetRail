@@ -372,6 +372,7 @@ internal static class SettingsInstalledWidgetPresentation
             .Classes("secondary-button");
         var controls = new List<WidgetElement>
         {
+            UI.Button("Update from file", "installed.update.open", "installed.details.update").Disabled(!valid).Busy(busy).Classes("primary-button"),
             versionsButton, permissionsButton,
             SurfaceAppearanceButton(manifest.Id, settings, busy),
             actionButton, localDataButton,
