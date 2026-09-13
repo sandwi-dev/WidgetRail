@@ -63,11 +63,19 @@ foreach ($edition in @('production', 'developer')) {
     $display = if ($edition -eq 'developer') { 'WidgetRail Developer' } else { 'WidgetRail' }
     $name = $display.Replace(' ', '-') + '-' + $manifest.version + '-win-x64-setup'
     $payloadId = $manifest.version + '-' + $edition + '-' + $manifest.sourceCommit.Substring(0, 12)
+    $dependencies = Get-Content (Join-Path $payload 'prerequisites/runtime-dependencies.json') -Raw | ConvertFrom-Json
+    $gameVersion = [version]$dependencies.gameInput.fileVersion
+    foreach ($redist in @(@{Name='GameInputRedist.msi';Hash=$dependencies.gameInput.sha256}, @{Name='MicrosoftEdgeWebview2Setup.exe';Hash=$dependencies.webView2.sha256})) {
+        $path = Join-Path $payload ('prerequisites/' + $redist.Name)
+        if ((Get-FileHash $path).Hash -ine $redist.Hash -or (Get-AuthenticodeSignature $path).Status -ne 'Valid') { throw 'Prerequisite integrity/signature check failed.' }
+    }
     $lines = [Collections.Generic.List[string]]::new()
     foreach ($pair in @{
         DisplayName = $display; AppVersion = $manifest.version; OutputDirectory = $stage
         InstallerName = $name; PayloadId = $payloadId; Edition = $edition
     }.GetEnumerator()) { $lines.Add('#define ' + $pair.Key + ' ' + (Quoted $pair.Value)) }
+    $lines.Add('#define GameInputVersionMS ' + (($gameVersion.Major -shl 16) + $gameVersion.Minor))
+    $lines.Add('#define GameInputVersionLS ' + (($gameVersion.Build -shl 16) + $gameVersion.Revision))
     $lines.Add('[Files]')
     foreach ($relative in @($manifest.files.path) + @('release.json')) {
         $source = Assert-ReleasePath (Join-Path $payload $relative) -Within $payload
@@ -95,7 +103,7 @@ Write-ReleaseJson (Join-Path $stage 'installer-build.json') ([ordered]@{
     version = $production.version; sourceCommit = $production.sourceCommit
     packagingCommit = $packagingCommit
     compiler = 'Inno Setup 6.7.3'; compilerSha256 = (Get-FileHash -LiteralPath $CompilerPath).Hash
-    signed = $false; scope = 'per-user'; runtimeProvisioning = 'prerequisite-check-only'
+    signed = $false; scope = 'per-user'; runtimeProvisioning = 'private-dotnet-and-microsoft-prerequisite-installers'
 })
 [IO.Directory]::Move($stage, $final)
 Write-Output "Installers ready: $final"

@@ -104,6 +104,7 @@ $extra = @(foreach ($widget in $content.developerWidgets) {
     }
 })
 Write-ReleaseJson (Join-Path $developer 'developer-widgets.json') @($extra)
+& (Join-Path $PSScriptRoot 'Get-ReleaseRuntimes.ps1') -Destination $developer
 $licenses = Join-Path $developer 'licenses'
 New-Item -ItemType Directory -Path $licenses | Out-Null
 $nuget = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE '.nuget/packages' }

@@ -28,12 +28,29 @@ compilation and publishes both installers with checksums atomically. Existing
 outputs cannot be replaced. Build metadata records application and packaging
 source revisions separately. Temporary build evidence is retained.
 
-Setup requires Windows 10 build 19041 or later, x64 app compatibility, the
-machine-registered .NET 8 x64 runtime, and GameInput.dll in System32. Missing
-prerequisites stop installation with download guidance. Custom private .NET
-installations are not detected. WebView2 is additionally required by web media.
-Runtime provisioning, signing and optional controller driver installation are not
-part of this installer. Developer tools need the .NET SDK to compile widgets.
+Setup requires Windows 10 build 19041 or later and x64 app compatibility. Each
+edition contains one private .NET 8 runtime, selected through process-local
+DOTNET_ROOT/DOTNET_ROOT_X64 by the native host. Isolated workers inherit that
+selection and receive read/execute access only to the private runtime actually
+hosting the bridge. Global .NET permissions and environment variables are not
+changed. The Developer edition's root `wrail.cmd` uses the private runtime; building
+widgets still requires a separately installed .NET SDK.
+
+`eng/runtime-dependencies.json` pins vendor downloads and hashes. The build checks
+Microsoft signatures and includes .NET license/notices. Its .NET patch version is
+serviced with WidgetRail releases and should be reviewed for each public build.
+The GameInput MSI must match NativeDependencies.csproj. Setup checks compatible
+DLL versions in Windows and the documented GameInput RedistDir, then uses the
+signed MSI with a Windows elevation prompt only when necessary. Cancellation,
+errors and restart-required results stop setup with retry guidance. It does not
+uninstall shared Microsoft components.
+
+WebView2 is detected in per-user and machine-wide EdgeUpdate registrations. If
+missing, setup runs Microsoft's signed Evergreen bootstrapper as the installing
+user. That download requires internet. Failure stops setup with retry guidance.
+Neither Microsoft runtime installer is run during automated packaging tests.
+Optional HidHide/ViGEm drivers remain outside basic setup. Application installers
+remain unsigned until release signing is configured.
 
 ## Startup and process lifetime
 
@@ -58,10 +75,15 @@ terminates an overlay that could own controller isolation.
 
 ## Validation boundaries
 
-Run the PlatformSettings and SettingsWidget executable test suites using the
+Run the PlatformSettings, SettingsWidget and WidgetRuntime executable test suites using the
 repository's binlog-enabled build workflow. Startup tests use fake storage only.
 `scripts/Test-InstallerContract.ps1` checks the shared registry/process contracts
 and non-destructive installer settings. Compile both editions for Pascal syntax
 and payload validation. Installer execution, upgrades, edition switching,
 Windows-level startup disablement and uninstall still require user acceptance on
 a disposable Windows profile or VM; do not automate those against a live profile.
+
+`scripts/Test-BundledRuntime.ps1 -RuntimeRoot <private-dotnet-directory>` copies
+the runtime and built WidgetRuntime tests into a temporary packaged layout and
+checks host startup and real AppContainer worker isolation using the private
+runtime. It does not install prerequisites or change startup configuration.

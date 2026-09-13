@@ -23,3 +23,9 @@ Require ($installer.Contains("CreateMutex('Local\WidgetRail.Setup')") -and
 Require ($installer.Contains("StartupCommand(ApplicationRoot)") -and
     !$installer.Contains("StartupCommand(ApplicationRoot) +")) 'Startup must use only the hidden application command.'
 Write-Output 'PASS installer scope, startup ownership, Windows approval, and process lifetime contracts'
+
+Require (!$installer.Contains("function HasNet8")) "Setup must not require global .NET."
+Require ($installer.Contains("Code = 3010") -and $installer.Contains("NeedsRestart := True")) "Prerequisite restart must be handled."
+Require ($installer.Contains("CompatibleGameInputFile") -and $installer.Contains("HKLM32, 'SOFTWARE\Microsoft\GameInput'")) "GameInput must use compatible redistributable detection."
+Require ($installer.Contains("/passive /norestart") -and $installer.Contains("/silent /install")) "Signed vendor installers must own runtime setup."
+Write-Output "PASS bundled runtime and prerequisite setup contracts"

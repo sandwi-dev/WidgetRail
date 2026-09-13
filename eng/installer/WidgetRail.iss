@@ -57,15 +57,33 @@ begin
   Result := '"' + Root + '\OverlayHost.exe"';
 end;
 
-function HasNet8: Boolean;
+function CompatibleGameInputFile(Path: String): Boolean;
 var
-  Names: TArrayOfString;
-  I: Integer;
+  MS, LS: Cardinal;
 begin
-  Result := False;
-  if RegGetValueNames(HKLM64, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.NETCore.App', Names) then
-    for I := 0 to GetArrayLength(Names) - 1 do
-      if Pos('8.0.', Names[I]) = 1 then Result := True;
+  Result := GetVersionNumbers(Path, MS, LS) and
+    ((MS > {#GameInputVersionMS}) or ((MS = {#GameInputVersionMS}) and (LS >= {#GameInputVersionLS})));
+end;
+
+function HasGameInput: Boolean;
+var
+  Directory: String;
+begin
+  Result := CompatibleGameInputFile(ExpandConstant('{sys}\GameInputRedist.dll')) or
+    CompatibleGameInputFile(ExpandConstant('{sys}\GameInput.dll'));
+  if not Result and RegQueryStringValue(HKLM32, 'SOFTWARE\Microsoft\GameInput', 'RedistDir', Directory) then
+    Result := CompatibleGameInputFile(AddBackslash(Directory) + 'GameInputRedist.dll');
+end;
+
+function HasWebView2: Boolean;
+var
+  Version: String;
+  Key: String;
+begin
+  Key := 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+  Result := (RegQueryStringValue(HKCU, Key, 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')) or
+    (RegQueryStringValue(HKLM32, Key, 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')) or
+    (RegQueryStringValue(HKLM64, Key, 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0'));
 end;
 
 procedure InitializeWizard;
@@ -86,19 +104,53 @@ begin
   end;
   WizardForm.WelcomeLabel2.Caption :=
     'Install WidgetRail for your Windows account. Your widgets and settings are kept when upgrading or changing edition.' + #13#10#13#10 +
-    'Requires the Microsoft .NET 8 x64 runtime and Microsoft GameInput. Web media also needs Microsoft Edge WebView2. Controller isolation drivers are optional and are not installed by this setup.';
+    '.NET is included. Setup installs Microsoft GameInput and WebView2 if needed. GameInput may request administrator approval; WebView2 may need an internet connection. Exclusive controller drivers remain optional and are not installed here.';
   WizardForm.TasksList.ItemCaption[0] := 'Start WidgetRail when I sign in (starts quietly; Windows Startup Apps restrictions still apply)';
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Code: Integer;
 begin
   Result := '';
-  if FindWindowByClassName('WidgetRail.OverlayHost') <> 0 then
-    Result := 'Quit WidgetRail from its Settings header, then try again. Setup will not force it to close.'
-  else if not HasNet8 then
-    Result := 'Install the Microsoft .NET 8 runtime for Windows x64, then try again: https://dotnet.microsoft.com/download/dotnet/8.0'
-  else if not FileExists(ExpandConstant('{sys}\GameInput.dll')) then
-    Result := 'Microsoft GameInput is required. Install Microsoft GameInput from https://aka.ms/gameinput and then try again.';
+  if FindWindowByClassName('WidgetRail.OverlayHost') <> 0 then begin
+    Result := 'Quit WidgetRail from its Settings header, then try again. Setup will not force it to close.';
+    Exit;
+  end;
+  try
+    if not HasGameInput then begin
+      ExtractTemporaryFile('GameInputRedist.msi');
+      if not ShellExec('runas', ExpandConstant('{sys}\msiexec.exe'),
+        '/i "' + ExpandConstant('{tmp}\GameInputRedist.msi') + '" /passive /norestart',
+        '', SW_SHOWNORMAL, ewWaitUntilTerminated, Code) then begin
+        Result := 'GameInput could not be installed. Allow its Windows approval prompt, then try again.';
+        Exit;
+      end;
+      if (Code = 3010) or (Code = 1641) then begin
+        NeedsRestart := True;
+        Result := 'GameInput needs a Windows restart. Restart your PC, then run WidgetRail setup again.';
+        Exit;
+      end;
+      if (Code <> 0) or not HasGameInput then begin
+        Result := 'GameInput installation did not complete. Try again after any other Windows installation finishes.';
+        Exit;
+      end;
+    end;
+    if not HasWebView2 then begin
+      ExtractTemporaryFile('MicrosoftEdgeWebview2Setup.exe');
+      if not Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '/silent /install',
+          '', SW_HIDE, ewWaitUntilTerminated, Code) then begin
+        Result := 'WebView2 could not start installing. Please try again.';
+        Exit;
+      end;
+      if not HasWebView2 then begin
+        Result := 'WebView2 could not finish installing. Check your internet connection, then try again.';
+        Exit;
+      end;
+    end;
+  except
+    Result := 'A required Microsoft component could not be prepared. Run setup again to retry.';
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

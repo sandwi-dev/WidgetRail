@@ -658,7 +658,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     throw new WidgetProcessAdmissionException(
                         "Worker content authority overlaps the trusted runtime directory.");
                 appContainer.GrantReadAndExecute(
-                    new[] { executableDirectory }.Concat(_options.ReadOnlyPaths));
+                    new[] { executableDirectory }.Concat(_options.ReadOnlyPaths)
+                        .Concat(BundledDotNetRuntime.ReadOnlyRoots()));
                 if (workerDiagnosticPath is not null)
                 {
                     try

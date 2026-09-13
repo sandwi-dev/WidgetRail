@@ -171,6 +171,9 @@ function New-WidgetRailReleaseFolders {
             Copy-ReleaseFile (Join-Path $RepositoryRoot $license) (Join-Path $root $license) $root
         }
         Copy-ReleaseTree (Join-Path $developer 'licenses') (Join-Path $root 'licenses') $root
+        foreach ($name in $Content.sharedRuntimeDirectories) {
+            Copy-ReleaseTree (Join-Path $developer $name) (Join-Path $root $name) $root
+        }
         foreach ($name in $Content.hostRuntimeDirectories) {
             Copy-ReleaseTree (Join-Path $build "runtime/$name") (Join-Path $root "runtime/$name") $root
         }
@@ -191,6 +194,7 @@ function New-WidgetRailReleaseFolders {
             }
             $selected += @($extraCatalog)
             Copy-ReleaseTree (Join-Path $developer 'tools/wrail') (Join-Path $root 'tools/wrail') $root
+            [IO.File]::WriteAllText((Join-Path $root 'wrail.cmd'), '@echo off' + "`r`n" + '"%~dp0dotnet\dotnet.exe" "%~dp0tools\wrail\wrail.dll" %*' + "`r`n")
         }
         $catalog = [ordered]@{
             catalogVersion = $baseCatalog.catalogVersion
@@ -211,14 +215,14 @@ function New-WidgetRailReleaseFolders {
             'View + Menu toggles the overlay by default; F1 is the keyboard fallback.'
             'Review widget permissions in Settings before using Windows controls.'
             ''
-            'This is a framework-dependent Windows x64 folder, not an installer.'
-            'Requires .NET 8 and a compatible GameInput runtime.'
+            'This Windows x64 folder includes a private .NET runtime.'
+            'Use setup to install missing GameInput and WebView2 dependencies.'
             'Embedded web media requires the Microsoft Edge WebView2 runtime.'
             'Settings and user data remain under %LOCALAPPDATA%\WidgetRail.'
             'Startup registration, driver installation and automatic updates are not performed.'
         )
         if ($edition -eq 'developer') {
-            $readme += @('', 'Developer tools: tools\wrail\wrail.exe help',
+            $readme += @('', 'Developer tools: wrail.cmd help',
                 'Create an independent widget with wrail new widget <Name> --output <new-directory>.',
                 'Building widgets requires a compatible .NET SDK; the application folder does not include an SDK.')
         }
@@ -226,7 +230,7 @@ function New-WidgetRailReleaseFolders {
         Write-ReleaseJson (Join-Path $root 'release.json') ([ordered]@{
             schemaVersion = 1; product = 'WidgetRail'; version = $Version; edition = $edition
             architecture = 'x64'; sourceCommit = $SourceCommit; sdkVersion = $SdkVersion
-            packaging = 'framework-dependent-folder'; signed = $false
+            packaging = 'private-runtime-folder'; signed = $false
             requirements = @($Content.runtimeRequirements); widgets = $packages
             files = @(Get-ReleaseInventory $root)
         })

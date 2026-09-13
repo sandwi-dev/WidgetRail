@@ -18754,6 +18754,18 @@ static int RunWidgetRail(HINSTANCE instance, int showCommand, bool& restart) {
         SaveStartupError(L"WidgetRail setup is running. Open WidgetRail after setup finishes.");
         return EXIT_FAILURE;
     }
+    // Process-local only: children use the packaged runtime without installing
+    // .NET globally or changing the user's environment.
+    std::array<wchar_t, 32768> runtimeExecutable{};
+    const DWORD runtimeLength = GetModuleFileNameW(nullptr, runtimeExecutable.data(),
+        static_cast<DWORD>(runtimeExecutable.size()));
+    if (runtimeLength == 0 || runtimeLength >= runtimeExecutable.size()) return EXIT_FAILURE;
+    const auto privateRuntime = std::filesystem::path(runtimeExecutable.data()).parent_path() / L"dotnet";
+    std::error_code runtimeError;
+    if (std::filesystem::is_directory(privateRuntime, runtimeError)) {
+        if (!SetEnvironmentVariableW(L"DOTNET_ROOT", privateRuntime.c_str()) ||
+            !SetEnvironmentVariableW(L"DOTNET_ROOT_X64", privateRuntime.c_str())) return EXIT_FAILURE;
+    }
     widgetrail::process::OverlayProcessOwner processOwner;
     std::wstring ownershipError;
     const auto ownership = processOwner.Begin(

@@ -32,6 +32,7 @@ function Make-Package([string]$Root, [string]$Id, [string]$Runtime) {
     })
     return [ordered]@{ id = $Id; packageId = "widgetrail.test.$Id"; instanceId = "$Id.default"; packageRoot = "runtime/$Runtime"; icon = 'settings'; quickActions = @() }
 }
+foreach ($name in $content.sharedRuntimeDirectories) { Put (Join-Path $developer "$name/fixture.txt") 'runtime fixture' }
 foreach ($file in $content.rootFiles) { Put (Join-Path $build $file) "fixture $file" }
 Put (Join-Path $build 'DoNotShipTests.exe') 'test only'
 Put (Join-Path $build 'developer-machine.env') 'must not ship'
