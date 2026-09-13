@@ -3836,6 +3836,7 @@ std::optional<long long> PlatformAppearanceRevisionTracker::Take() noexcept {
 }
 
 bool WidgetCatalogRevisionTracker::Notify(const long long revision) noexcept {
+    std::scoped_lock lock(mutex_);
     if (revision < 0 || revision > 9'007'199'254'740'991LL) return false;
     if (revision <= observed_) return true;
     if (inFlight_ && revision <= *inFlight_) return true;
@@ -3844,6 +3845,7 @@ bool WidgetCatalogRevisionTracker::Notify(const long long revision) noexcept {
 }
 
 bool WidgetCatalogRevisionTracker::ObserveSnapshot(const long long revision) noexcept {
+    std::scoped_lock lock(mutex_);
     if (revision < 0 || revision > 9'007'199'254'740'991LL) return false;
     if (revision < observed_ || (inFlight_ && revision < *inFlight_)) return false;
     if (revision > observed_) observed_ = revision;
@@ -3853,22 +3855,26 @@ bool WidgetCatalogRevisionTracker::ObserveSnapshot(const long long revision) noe
 }
 
 std::optional<long long> WidgetCatalogRevisionTracker::Take() noexcept {
+    std::scoped_lock lock(mutex_);
     if (inFlight_ || !pending_) return std::nullopt;
     inFlight_ = std::exchange(pending_, std::nullopt);
     return inFlight_;
 }
 
 void WidgetCatalogRevisionTracker::Retry() noexcept {
+    std::scoped_lock lock(mutex_);
     if (!inFlight_) return;
     if (!pending_ || *inFlight_ > *pending_) pending_ = *inFlight_;
     inFlight_.reset();
 }
 
 void WidgetCatalogRevisionTracker::Abandon() noexcept {
+    std::scoped_lock lock(mutex_);
     inFlight_.reset();
 }
 
 void WidgetCatalogRevisionTracker::Reset() noexcept {
+    std::scoped_lock lock(mutex_);
     observed_ = 0;
     pending_.reset();
     inFlight_.reset();
@@ -5615,8 +5621,7 @@ DWORD WidgetBridgeClient::lastStartupProcessId() const noexcept {
 }
 
 long long WidgetBridgeClient::bridgeSessionGeneration() const noexcept {
-    std::scoped_lock lock(requestMutex_);
-    return bridgeSessionGeneration_;
+    return bridgeSessionGeneration_.load();
 }
 
 std::wstring WidgetBridgeClient::lastControllerInputResultCode() const {
@@ -5746,17 +5751,14 @@ WidgetBridgeClient::TakeWidgetCatalogChangedRevision() noexcept {
 }
 
 void WidgetBridgeClient::RetryWidgetCatalogChangedRevision() noexcept {
-    std::scoped_lock lock(requestMutex_);
     catalogChanges_.Retry();
 }
 
 void WidgetBridgeClient::AbandonWidgetCatalogChangedRevision() noexcept {
-    std::scoped_lock lock(requestMutex_);
     catalogChanges_.Abandon();
 }
 
 bool WidgetBridgeClient::HasWidgetCatalogChangedRevisionInFlight() const noexcept {
-    std::scoped_lock lock(requestMutex_);
     return catalogChanges_.hasInFlight();
 }
 

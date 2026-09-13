@@ -186,6 +186,9 @@ static async Task ConnectionDetailsAreOptionalAndStaleSafe()
     fake.EmitConnectionDetailsChanged(2);
     await WaitUntil(() => fake.ConnectionDetailsCalls == 2);
     fake.EmitConnectionDetailsChanged(3);
+    // Enqueuing the event does not mean the widget has consumed it. The
+    // serialized replacement first cancels the old request, then waits for it.
+    await WaitUntil(() => fake.CanceledConnectionDetailsRequests == 1);
     stale.SetResult(fake.ConnectionDetails with
     {
         Revision = 2,
@@ -1419,6 +1422,7 @@ file sealed class FakeNetworkHost
     private int _radioSubscriptionCount;
     private int _bluetoothSubscriptionCount;
     private int _connectionDetailsCalls;
+    private int _canceledConnectionDetailsRequests;
     private int _canceledConnectionDetailsSubscriptions;
     private int _canceledStatusSubscriptions;
     private int _canceledWifiSubscriptions;
@@ -1485,6 +1489,7 @@ file sealed class FakeNetworkHost
     public int BluetoothPairCalls => Volatile.Read(ref _bluetoothPairCalls);
     public int BluetoothManageCalls => Volatile.Read(ref _bluetoothManageCalls);
     public int ConnectionDetailsCalls => Volatile.Read(ref _connectionDetailsCalls);
+    public int CanceledConnectionDetailsRequests => Volatile.Read(ref _canceledConnectionDetailsRequests);
     public int CanceledConnectionDetailsSubscriptions =>
         Volatile.Read(ref _canceledConnectionDetailsSubscriptions);
     public int BluetoothUnpairCalls => Volatile.Read(ref _bluetoothUnpairCalls);
@@ -1530,7 +1535,14 @@ file sealed class FakeNetworkHost
         if (ConnectionDetailsException is not null) throw ConnectionDetailsException;
         TaskCompletionSource<WidgetNetworkConnectionDetails>? response;
         lock (_gate) response = DetailResponses.Count == 0 ? null : DetailResponses.Dequeue();
-        if (response is not null) return await response.Task.ConfigureAwait(false);
+        if (response is not null)
+        {
+            // Observe cancellation but intentionally return the late response
+            // so the widget's stale-result guard is still exercised.
+            using var canceled = cancellationToken.Register(() =>
+                Interlocked.Increment(ref _canceledConnectionDetailsRequests));
+            return await response.Task.ConfigureAwait(false);
+        }
         cancellationToken.ThrowIfCancellationRequested();
         return ConnectionDetails with
         {

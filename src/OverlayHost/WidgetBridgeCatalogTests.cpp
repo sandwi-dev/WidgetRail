@@ -9,6 +9,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <mutex>
 #include <sstream>
@@ -364,6 +365,26 @@ std::string ReadRequiredBridgeRequest(const HANDLE server) {
                 request.error == ERROR_SUCCESS,
             "Fake WidgetBridge server did not receive a complete request");
     return *request.frame;
+}
+
+void VerifyControlMetadataDoesNotWaitForTransport() {
+    widgetrail::WidgetBridgeClient client;
+    client.LockRequestGateForTesting();
+    std::promise<bool> read;
+    auto completed = read.get_future();
+    std::jthread reader([&] {
+        const auto generation = client.bridgeSessionGeneration();
+        client.AbandonWidgetCatalogChangedRevision();
+        client.RetryWidgetCatalogChangedRevision();
+        read.set_value(generation == 0 && !client.HasWidgetCatalogChangedRevisionInFlight());
+    });
+    const bool independent = completed.wait_for(std::chrono::seconds(2)) ==
+        std::future_status::ready;
+    client.UnlockRequestGateForTesting();
+    reader.join();
+    Require(independent,
+            "UI-facing bridge metadata waited for an unrelated transport request");
+    Require(completed.get(), "UI-facing bridge metadata changed without a session or revision");
 }
 
 void VerifyArtworkRequestCancellationOwnership() {
@@ -1493,6 +1514,7 @@ int main() {
     CHECK(manifestText.find("\"pinningSupported\": true") != std::string::npos);
 
     VerifyFrameSafeCancellationRecovery();
+    VerifyControlMetadataDoesNotWaitForTransport();
     VerifyArtworkRequestCancellationOwnership();
     VerifyAtomicPresentationUpdateMaterialization();
     VerifySelectControllerInputSerializationAndPopupRaster();

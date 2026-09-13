@@ -6,6 +6,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -786,11 +787,22 @@ public:
     void Retry() noexcept;
     void Abandon() noexcept;
     void Reset() noexcept;
-    [[nodiscard]] bool hasInFlight() const noexcept { return inFlight_.has_value(); }
-    [[nodiscard]] const std::optional<long long>& pending() const noexcept { return pending_; }
-    [[nodiscard]] long long observed() const noexcept { return observed_; }
+    [[nodiscard]] bool hasInFlight() const noexcept {
+        std::scoped_lock lock(mutex_);
+        return inFlight_.has_value();
+    }
+    [[nodiscard]] std::optional<long long> pending() const noexcept {
+        std::scoped_lock lock(mutex_);
+        return pending_;
+    }
+    [[nodiscard]] long long observed() const noexcept {
+        std::scoped_lock lock(mutex_);
+        return observed_;
+    }
 
 private:
+    // UI hide/retry decisions must not wait behind a worker pipe request.
+    mutable std::mutex mutex_;
     long long observed_{};
     std::optional<long long> pending_;
     std::optional<long long> inFlight_;
@@ -1050,7 +1062,8 @@ private:
     WidgetBridgeRequestFailureCategory lastRequestFailureCategory_{
         WidgetBridgeRequestFailureCategory::None};
     long long nextRequestId_{};
-    long long bridgeSessionGeneration_{};
+    // An epoch read must not join a transport request; it is not readiness proof.
+    std::atomic<long long> bridgeSessionGeneration_{};
     WidgetInvalidationQueue invalidations_;
     WidgetActionFailureQueue actionFailures_;
     std::vector<WidgetBridgeRuntimeFailure> runtimeFailures_;
