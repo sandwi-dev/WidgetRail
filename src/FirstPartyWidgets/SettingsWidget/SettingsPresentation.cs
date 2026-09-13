@@ -161,7 +161,7 @@ internal static class SettingsPresentation
         var overlay = UI.Button("Overlay", "open.overlay", "category.overlay")
             .Busy(busy).Classes("category-card");
         var installedWidgets = UI.Button(
-                "Installed widgets", "open.installed-widgets", "category.installed-widgets")
+                "Widgets", "open.installed-widgets", "category.installed-widgets")
             .Busy(busy).Classes("category-card");
         var controllers = UI.Button("Controllers", "open.controllers", "category.controllers")
             .Busy(busy).Classes("category-card");
@@ -717,6 +717,7 @@ internal static class SettingsNavigationPolicy
         SettingsPage page,
         SettingsPage packageCapabilitiesReturnPage) => page switch
         {
+            SettingsPage.InstalledWidgetVersionRemoval => SettingsPage.InstalledWidgetVersions,
             SettingsPage.ThemePicker => SettingsPage.Appearance,
             SettingsPage.ThemeVersion => SettingsPage.ThemePicker,
             SettingsPage.ThemeRemoval => SettingsPage.ThemeVersion,

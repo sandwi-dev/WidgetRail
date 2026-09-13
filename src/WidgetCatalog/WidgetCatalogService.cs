@@ -219,10 +219,21 @@ public sealed class WidgetCatalog
     /// canonical directory identity. Cancellation is not observed after the
     /// atomic move removes that version from discovery.
     /// </summary>
-    public async Task<WidgetVersionRemovalResult> RemoveInactiveVersionAsync(
-        string widgetId,
-        Version version,
-        CancellationToken cancellationToken = default)
+    public Task<WidgetVersionRemovalResult> RemoveInactiveVersionAsync(
+        string widgetId, Version version, CancellationToken cancellationToken = default) =>
+        RemoveInactiveVersionCoreAsync(widgetId, version, null, cancellationToken);
+
+    /// <summary>Removes only the reviewed content while holding the catalog operation lock.
+    /// Selection and content changes invalidate the confirmation before retirement.</summary>
+    public Task<WidgetVersionRemovalResult> RemoveInactiveVersionConfirmedAsync(
+        string widgetId, Version version, string expectedContentDigest, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedContentDigest);
+        return RemoveInactiveVersionCoreAsync(widgetId, version, expectedContentDigest, cancellationToken);
+    }
+
+    private async Task<WidgetVersionRemovalResult> RemoveInactiveVersionCoreAsync(
+        string widgetId, Version version, string? expectedContentDigest, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         ArgumentNullException.ThrowIfNull(version);
@@ -242,6 +253,15 @@ public sealed class WidgetCatalog
             throw new WidgetPackageException(
                 "selected_version",
                 $"Widget '{widgetId}' version {canonicalVersion} is selected and cannot be removed.");
+
+        if (expectedContentDigest is not null)
+        {
+            var snapshot = await DiscoverAsync(cancellationToken).ConfigureAwait(false);
+            var installed = snapshot.Widgets.SingleOrDefault(widget => widget.Id == widgetId)?
+                .Versions.SingleOrDefault(item => item.Version == version);
+            if (installed is null || !string.Equals(installed.ContentDigest, expectedContentDigest, StringComparison.Ordinal))
+                throw new WidgetPackageException("version_changed", "The version changed. Review it again before removing it.");
+        }
 
         var packageDirectory = Path.Combine(_packagesRoot, widgetId);
         var versionDirectory = Path.Combine(packageDirectory, canonicalVersion);

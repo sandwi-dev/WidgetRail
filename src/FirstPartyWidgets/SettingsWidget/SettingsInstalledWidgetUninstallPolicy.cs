@@ -17,8 +17,8 @@ internal static class SettingsInstalledWidgetUninstallPolicy
     {
         var package = state.SelectedInstalled;
         var inspection = state.PackageUninstall;
-        if (package is null || package.Enabled || inspection is not
-            { CanUninstall: true, ConfirmationToken: not null } ||
+        if (package is null || !state.CatalogValid || inspection is null ||
+            !(package.Enabled && inspection.StatusCode == "widget_enabled" || inspection is { CanUninstall: true, ConfirmationToken: not null }) ||
             !Matches(package, inspection))
         {
             transition = default;
