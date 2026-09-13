@@ -2,6 +2,8 @@
 
 Audit date: 2026-09-12. Product baseline: `1e5a46b2`.
 
+Documentation preparation remains a draft pending packaging, release and branding decisions.
+
 **Assessment:** the implemented feature set is suitable for a source preview.
 A public desktop binary release still needs packaging, exact-commit CI and
 clean-machine validation. Local feature acceptance does not establish these.
@@ -10,7 +12,7 @@ clean-machine validation. Local feature acceptance does not establish these.
 
 | Priority | Finding | Evidence / disposition |
 |---|---|---|
-| High | No top-level project license at baseline | Owner selected GPLv3 platform/tools, MPL 2.0 SDK/protocol/application-bootstrap/shared files, MIT first-party widgets/samples/templates. Added explicit path/file licenses, SDK package metadata and generated-boilerplate notices. License metadata participates in the local package content version. |
+| High | No top-level project license at baseline | Owner selected MIT consistently for all project-owned code. Added the root license, SDK package metadata and generated-boilerplate notices. License metadata participates in the local package content version. |
 | High | No release artifact or canonical app version | GitHub has no releases; no application tag existed at audit time. SDK is `0.3.0-dev`; only SDK/CLI share canonical version properties. Documented a separate app/SDK/package strategy; version stamping and artifact automation remain open. |
 | High | No current green remote release evidence | The latest remote workflow is a failed run on `2dd8331d` from August 29, not the accepted current baseline. Managed failure involved YouTube tests; native failure involved WidgetSurfaceCoordinatorTests. These historical failures are not a finding that current code fails. New CI evidence requires a later authorized push/run. |
 | High | Clean-machine prerequisites are not packaged | Native build and framework-dependent managed outputs exist; no checked-in application installer/release workflow was found. Documented .NET 8 runtime, SDK 10 for builds, C++/Rust, GameInput and WebView2 distinctions. Validate optional drivers separately. |
@@ -20,7 +22,7 @@ clean-machine validation. Local feature acceptance does not establish these.
 | Medium | Task Switcher tests were missing from aggregate verification | Runner self-test identified the unregistered existing test project. Added build/test steps so CI includes it, and updated the explicit aggregate inventory for Task Switcher and the already-added Power steps (55 defaults). |
 | Medium | Documentation gate had two baseline false failures | Its source-text checks expected individual cleanup calls, while the build now loops over generated runtime directories. Updated the checks to verify the current cleanup block and ordering, retaining the cleanup requirements. |
 | Medium | Trust language was stale | Corrected SVG, full-trust application, pinning and local-data guidance. Package hashes do not authenticate publishers; full-trust widgets remain ordinary Windows applications. |
-| High before binaries | Proprietary runtime redistribution needs a license review | GameInput 3.5.262 carries Microsoft redistribution terms, including limits on imposing source-disclosure obligations on Microsoft code. The GPL project license does not relicense that runtime. Review the intended binary bundle and any needed linking permission before shipping it. |
+| High before binaries | Runtime redistribution needs a license review | GameInput 3.5.262 carries Microsoft redistribution terms. MIT does not relicense that runtime. Review the intended binary bundle and retain the vendor notices before shipping it. |
 | Medium | Third-party branding/redistribution review remains open | Dependency notices exist, but icon provenance explicitly includes provider-branded assets. Project licensing cannot grant trademark rights. Removed duplicate ViGEmClient notice; complete binary notices remain a release gate. |
 
 ## Repository hygiene

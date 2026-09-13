@@ -46,4 +46,4 @@ Keep controller actions and accessible labels stable across responsive surfaces.
 
 The original starter code is MIT-licensed. Keep `WIDGETRAIL-NOTICES.txt` when
 redistributing substantial copied portions; choose the license for your own
-widget. Referenced SDK/bootstrap libraries retain their MPL-2.0 obligations.
+widget. Referenced SDK/bootstrap libraries retain their MIT notices.

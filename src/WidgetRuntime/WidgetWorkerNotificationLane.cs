@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: MPL-2.0
-// Shared with the author-facing WidgetApplicationRuntime. See ../../LICENSES/MPL-2.0.txt.
 namespace WidgetRail.WidgetRuntime;
 
 internal sealed class WidgetWorkerNotificationLane

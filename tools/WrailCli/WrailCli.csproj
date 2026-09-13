@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="..\..\eng\WidgetSdkRelease.props" />
   <PropertyGroup>
-    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

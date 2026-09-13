@@ -34,7 +34,7 @@ describes the gates.
       multiple monitors, DPI/text scale, themes and reduced-motion settings.
 - [ ] Test expired/revoked authentication, provider rate limits, offline use,
       unavailable services, and full/denied/read-only storage.
-- [ ] Review GPL compatibility and any required linking permission for separately licensed runtimes such as GameInput; do not apply the project license to vendor code.
+- [ ] Review redistribution terms for separately licensed runtimes such as GameInput; do not apply the project license to vendor code.
 - [ ] Publish required license notices and corresponding source for every shipped component.
 - [ ] Review signing, checksums, runtime redistribution and SmartScreen experience.
 - [ ] Add real screenshots or a short demonstration from the accepted build.

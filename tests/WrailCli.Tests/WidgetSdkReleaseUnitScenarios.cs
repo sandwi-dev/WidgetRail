@@ -32,7 +32,7 @@ internal static class WidgetSdkReleaseUnitScenarios
         var nuspec = reader.ReadToEnd();
         Contains($"<id>{contract.PackageId}</id>", nuspec);
         Contains($"<version>{first.Version}</version>", nuspec);
-        Contains("<license type=\"expression\">MPL-2.0</license>", nuspec);
+        Contains("<license type=\"expression\">MIT</license>", nuspec);
         Contains("<files include=\"any/any/WidgetRail/EmbeddedMediaAdapterRuntime.js\"", nuspec);
         Contains("buildAction=\"None\"", nuspec);
         Contains("copyToOutput=\"false\"", nuspec);

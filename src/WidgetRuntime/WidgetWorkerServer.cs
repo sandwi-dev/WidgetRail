@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: MPL-2.0
-// Shared with the author-facing WidgetApplicationRuntime. See ../../LICENSES/MPL-2.0.txt.
 using System.IO.Pipes;
 using System.Collections.Concurrent;
 using System.Text;

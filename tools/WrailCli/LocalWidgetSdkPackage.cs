@@ -16,7 +16,7 @@ internal sealed record LocalWidgetSdkBundle(
 
 internal static class LocalWidgetSdkPackage
 {
-    internal const string LicenseExpression = "MPL-2.0";
+    internal const string LicenseExpression = "MIT";
     private const int MaximumAssemblyBytes = 16 * 1024 * 1024;
     private const int MaximumAdapterRuntimeBytes = 256 * 1024;
     internal const string AdapterRuntimePackagePath =

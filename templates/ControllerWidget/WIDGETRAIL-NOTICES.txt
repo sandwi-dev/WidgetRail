@@ -1,8 +1,7 @@
-The original WidgetRail starter boilerplate in this project is MIT-licensed.
-You may choose a different license for your own additions; preserve the MIT
-notice for substantial copied portions. Referenced SDK/bootstrap libraries are
-MPL-2.0 and retain their own license and source-availability requirements.
-This notice does not license third-party assets or dependencies.
+The original WidgetRail starter code and referenced WidgetRail SDK/bootstrap
+libraries are MIT-licensed. Choose the license for your own widget; retain this
+notice for substantial copied portions. Third-party dependencies and assets
+retain their own terms.
 
 MIT License
 

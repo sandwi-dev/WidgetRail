@@ -85,8 +85,8 @@ before the first downloadable release.
 
 ## Open platform, independent widgets
 
-The platform is GPLv3, the SDK and shared protocol are MPL 2.0, and the
-first-party widgets, samples and templates are MIT. Build your own widgets
+WidgetRail, its SDK, first-party widgets, samples and templates are MIT-licensed.
+Build your own widgets
 under the license you choose, and learn from or reuse our bundled widget code.
 
 See [Licensing](LICENSING.md) for the boundaries and dependency requirements.
