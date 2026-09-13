@@ -1053,6 +1053,11 @@ std::string AutomationIdOf(IUIAutomationElement* element) {
 }
 
 void RunRetentionScenario(const Arguments& arguments) {
+    BOOL systemAnimations = TRUE;
+    if (!SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &systemAnimations, 0))
+        systemAnimations = TRUE;
+    std::cout << "WidgetSwitch system client-area animations="
+              << (systemAnimations ? "enabled" : "disabled") << '\n';
     auto installation = std::make_unique<TemporaryInstallation>(
         arguments.installation, arguments.fixtureWorker);
     const auto quoted = [](const fs::path& path) {
@@ -4959,9 +4964,14 @@ void RunRetentionScenario(const Arguments& arguments) {
                         "opacity=composition-effect hwnd-background=none") !=
                     std::string::npos,
                 "Production diagnostics omitted the active composition alpha owner.");
-        Require(log.find("Composition motion start") != std::string::npos &&
-                    log.find("anchor=bottom") != std::string::npos,
-                "Variable widget extents omitted bottom-anchored composition continuity.");
+        Require(log.find("anchor=bottom") != std::string::npos,
+                "Variable widget extents omitted bottom-anchored composition placement.");
+        const bool recordedMotion = log.find("Composition motion start") != std::string::npos;
+        Require(systemAnimations ? recordedMotion : !recordedMotion,
+                "Composition motion did not respect the system animation preference.");
+        if (!systemAnimations)
+            Require(log.find("order=commit-set-position") != std::string::npos,
+                    "Disabled system animations omitted immediate composition placement.");
         Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
                     log.find("Overlay render target resized in place") == std::string::npos,
                 "Positive composition route fell back to direct HWND presentation.");
