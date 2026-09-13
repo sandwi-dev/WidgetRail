@@ -1329,7 +1329,7 @@ void Run(const Arguments& arguments) {
 
             return contentVisible && chromeVisible && reopenedContentRoot &&
                 reopenedChromeRoot && reopenPaintCurrent && reopenedTray &&
-                reopenedTraySelected && reopenedTrayFocused && reopenedPlayPause &&
+                reopenedTraySelected && reopenedTrayFocused && !reopenedPlayPause &&
                 !reopenedPlayPauseFocused && dashboardStatusAbsent &&
                 openStatusAbsent && originalWorkerRetained;
         };
@@ -1350,8 +1350,8 @@ void Run(const Arguments& arguments) {
                     "Reopened YT Music tray item was not selected.");
             Require(reopenedTrayFocused,
                     "Reopened YT Music tray item did not own keyboard focus.");
-            Require(reopenedPlayPause,
-                    "Reopened content root omitted exact widget:play-pause.");
+            Require(!reopenedPlayPause,
+                    "Reopened tray-owned surface exposed interactive widget authority.");
             Require(!reopenedPlayPauseFocused,
                     "Reopened YT Music play-pause incorrectly retained keyboard focus.");
             Require(dashboardStatusAbsent,
@@ -1361,6 +1361,16 @@ void Run(const Arguments& arguments) {
             Require(originalWorkerRetained,
                     "Reopened overlay did not retain the exact sole fixture worker PID.");
         }
+        // Reopen starts with Visible presentation authority. Interactive widget
+        // controls are published only after explicitly entering the widget.
+        PostKey(window, VK_RETURN);
+        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                    auto currentRoot = RootForWindow(automation.Get(), window);
+                    auto currentPlayPause = currentRoot ? FindByAutomationId(
+                        automation.Get(), currentRoot.Get(), kPlayPauseAutomationId)
+                        : ComPtr<IUIAutomationElement>{};
+                    return IsFocused(currentPlayPause.Get());
+                }), "Re-entering the reopened widget did not restore focused play-pause authority.");
         const std::string finalLog = ReadLog(logPath);
         Require(finalLog.find(kSecretSentinel) == std::string::npos,
                 "The private exception sentinel leaked into overlay.log.");

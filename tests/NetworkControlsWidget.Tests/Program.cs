@@ -1314,9 +1314,11 @@ static ViewSnapshot Snapshot(NetworkControlsWidget widget, long sequence)
 {
     var snapshot = widget.RenderSnapshot("network.test", sequence);
     Assert.Equal(
-        Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.TextEntry)
-            ? ProtocolConstants.TextEntryVersion
-            : ProtocolConstants.ScrollContainerVersion,
+        Nodes(snapshot.Root).Any(node => node.Shortcuts?.Any(shortcut => shortcut.Label is not null) == true)
+            ? ProtocolConstants.ControllerShortcutLabelVersion
+            : Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.TextEntry)
+                ? ProtocolConstants.TextEntryVersion
+                : ProtocolConstants.ScrollContainerVersion,
         snapshot.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Compact, snapshot.Surface!.Mode);
     Assert.Equal(560D, snapshot.Surface.PreferredWidth);

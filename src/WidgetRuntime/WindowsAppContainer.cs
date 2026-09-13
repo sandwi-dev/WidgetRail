@@ -411,8 +411,7 @@ internal sealed class WindowsAppContainer : IDisposable
         {
             var actual = GetAccessDescriptor(GetBoundHandle(snapshot));
             RejectAlternateAppContainerAuthority(snapshot.Target, actual);
-            if (!string.Equals(
-                    snapshot.AccessDescriptor, actual, StringComparison.Ordinal))
+            if (!AppContainerDaclComparison.Matches(snapshot.AccessDescriptor, actual))
             {
                 throw new IOException(
                     "An AppContainer content-authority DACL did not verify after restore.");

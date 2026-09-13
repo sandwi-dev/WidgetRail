@@ -226,7 +226,8 @@ static async Task LoaderFailureCodeIsSafe()
     if (thrown is null)
         throw new InvalidOperationException("Invalid assembly startup unexpectedly connected.");
     Assert.True(thrown.Message.Contains("invalid_assembly", StringComparison.Ordinal),
-        "The safe loader code was not retained through worker connection failure.");
+        $"The safe loader code was not retained through worker connection failure: {thrown.Message}; " +
+        $"diagnostic={failure?.DiagnosticCode}, exit={failure?.ExitCode}.");
     Assert.True(!thrown.ToString().Contains(temporary.Path, StringComparison.OrdinalIgnoreCase),
         "The public startup failure exposed the installed package path.");
     if (failure is null)

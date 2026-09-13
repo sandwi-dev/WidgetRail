@@ -17,7 +17,7 @@ public sealed class FullApplicationWidgetTests
         Assert.AreEqual(ReferenceLibrary.DocumentCount, widget.PrivateDocumentCount);
         Assert.IsTrue(widget.Documents.Items.Count <= FullApplicationReferenceWidget.MaximumRetainedItems);
         var view = Snapshot(widget, 1);
-        Assert.AreEqual(ProtocolConstants.VirtualCollectionWindowVersion, view.ProtocolVersion);
+        Assert.AreEqual(ProtocolConstants.CollectionResetGenerationVersion, view.ProtocolVersion);
         var scroll = Nodes(view.Root).Single(node => node.Id == "full-app.document-list");
         Assert.AreEqual(ReferenceLibrary.DocumentCount,
             scroll.VirtualCollectionWindow?.TotalItemCount);

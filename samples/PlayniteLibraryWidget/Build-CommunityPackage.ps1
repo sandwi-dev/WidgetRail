@@ -23,6 +23,7 @@ $stagingRoot = Join-Path $artifactsRoot 'package-root'
 $payloadRoot = Join-Path $stagingRoot 'payload'
 $publishRoot = Join-Path $artifactsRoot 'application-publish'
 $buildGraphRoot = Join-Path $artifactsRoot 'build-graph'
+$buildLogRoot = Join-Path $repositoryRoot 'logs\playnite-package'
 $manifestPath = Join-Path $widgetRoot 'manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).wrwidget"
@@ -61,6 +62,7 @@ function Assert-NoReparsePoint {
 }
 
 New-Item -ItemType Directory -Force -Path $artifactsRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $buildLogRoot | Out-Null
 Assert-NoReparsePoint $artifactsRoot
 foreach ($generated in @($stagingRoot, $publishRoot, $buildGraphRoot)) {
     Assert-ChildPath $artifactsRoot $generated
@@ -73,6 +75,7 @@ New-Item -ItemType Directory -Force -Path $payloadRoot,
     (Join-Path $stagingRoot 'styles'), (Join-Path $stagingRoot 'assets\icons') | Out-Null
 
 & dotnet publish $applicationProject `
+    "-bl:$buildLogRoot/publish-{}.binlog" `
     --configuration $Configuration `
     --no-self-contained `
     --nologo `
@@ -136,10 +139,12 @@ if (Test-Path -LiteralPath $packagePath) {
     Remove-Item -LiteralPath $packagePath -Force
 }
 & dotnet run --project $cliProject --configuration $Configuration `
+    "-bl:$buildLogRoot/validate-{}.binlog" `
     --no-launch-profile --property:UseSharedCompilation=false `
     --property:BuildInParallel=false -- validate $stagingRoot
 if ($LASTEXITCODE -ne 0) { throw 'wrail validate rejected Playnite Library.' }
 & dotnet run --project $cliProject --configuration $Configuration `
+    "-bl:$buildLogRoot/pack-{}.binlog" `
     --no-launch-profile --property:UseSharedCompilation=false `
     --property:BuildInParallel=false -- pack $stagingRoot --output $packagePath
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {

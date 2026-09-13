@@ -303,12 +303,12 @@ internal static class FullTrustCommunityScenarios
             var snapshot = await client.GetSnapshotAsync();
             for (var attempt = 0; attempt != 12; attempt++)
             {
-                if (UsablePlayniteLibraryLibrary(snapshot)) break;
+                if (UsablePlayniteHome(snapshot)) break;
                 await invalidated.WaitAsync(TimeSpan.FromSeconds(5));
                 snapshot = await client.GetSnapshotAsync();
             }
-            Check(UsablePlayniteLibraryLibrary(snapshot),
-                $"The ordinary full-trust route did not reach a usable library/source " +
+            Check(UsablePlayniteHome(snapshot),
+                $"The ordinary full-trust route did not reach a settled, navigable Home " +
                 $"snapshot. Root '{snapshot.Root.Id}', focus " +
                 $"'{snapshot.InitialFocusId ?? "<null>"}'.");
             await client.StopAsync();
@@ -324,22 +324,20 @@ internal static class FullTrustCommunityScenarios
             "The ordinary Playnite Library package did not disable and remove cleanly.");
     }
 
-    private static bool UsablePlayniteLibraryLibrary(ViewSnapshot snapshot)
+    private static bool UsablePlayniteHome(ViewSnapshot snapshot)
     {
-        if (snapshot.InitialFocusId is null ||
-            TryFind(snapshot.Root, "playnite-library.retry") is not null)
+        if (snapshot.Root.Id != "playnite-library.root" || snapshot.InitialFocusId is null ||
+            ViewSnapshotValidator.Validate(snapshot).Count != 0)
             return false;
         var focused = TryFind(snapshot.Root, snapshot.InitialFocusId);
-        return focused is
-            {
-                Kind: ViewNodeKind.ActionSurface,
-                ActionId: "playnite-library.launch",
-            } &&
-            focused.Id.StartsWith("playnite-library.item.grid.", StringComparison.Ordinal) &&
-            Descendants(snapshot.Root).Any(node =>
-                node.Kind == ViewNodeKind.ActionSurface &&
-                node.ActionId == "playnite-library.launch" &&
-                node.Id.StartsWith("playnite-library.item.grid.", StringComparison.Ordinal));
+        // The ordinary application must be usable on a fresh CI account without
+        // Playnite credentials or installed games. Do not require a live library
+        // (or obsolete Browse tile IDs) to prove generic worker startup.
+        return focused is { Kind: ViewNodeKind.ActionSurface, ActionId: "playnite-library.launch" } ||
+            focused is { Kind: ViewNodeKind.Button, Id: "playnite-library.empty.action",
+                ActionId: "playnite-library.refresh" } ||
+            focused is { Kind: ViewNodeKind.Button, Id: "playnite-library.error.action",
+                ActionId: "playnite-library.retry" };
     }
 
     private static IEnumerable<ViewNode> Descendants(ViewNode root)
@@ -387,7 +385,7 @@ internal static class FullTrustCommunityScenarios
         var expectedDirectories = new[]
         {
             "AudioMixer", "Bridge", "EmbeddedMediaSample", "GamesApps", "MediaSessions",
-            "NetworkControls", "Settings", "TaskSwitcher", "WidgetWorkerHost",
+            "NetworkControls", "Power", "Settings", "TaskSwitcher", "WidgetWorkerHost",
         };
         var actualDirectories = Directory.EnumerateDirectories(runtimeRoot)
             .Select(Path.GetFileName)

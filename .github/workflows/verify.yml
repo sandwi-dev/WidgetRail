@@ -20,6 +20,13 @@ jobs:
           dotnet-version: |
             10.0.302
             8.0.x
+          cache: true
+          cache-dependency-path: |
+            global.json
+            **/*.csproj
+            **/*.props
+            **/*.targets
+            **/NuGet.Config
       - name: Run bounded managed verification
         shell: pwsh
         run: ./scripts/Verify.ps1 -Configuration Release -Lane managed -OverallTimeoutSeconds 1800
@@ -42,6 +49,13 @@ jobs:
           dotnet-version: |
             10.0.302
             8.0.x
+          cache: true
+          cache-dependency-path: |
+            global.json
+            **/*.csproj
+            **/*.props
+            **/*.targets
+            **/NuGet.Config
       - name: Install pinned native layout toolchain
         shell: pwsh
         run: |

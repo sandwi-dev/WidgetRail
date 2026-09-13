@@ -356,7 +356,7 @@ static async Task ShippedPackageIconContracts()
             WidgetGlyph.Play, "youtube.brand.red", "assets/icons/youtube-red.svg"),
         new IconContract("samples/YtMusicWidget", "0.2.12",
             WidgetGlyph.Music, "ytmusic.mark", "assets/icons/yt-music.svg"),
-        new IconContract("samples/PlayniteLibraryWidget", "0.2.55",
+        new IconContract("samples/PlayniteLibraryWidget", "0.2.74",
             WidgetGlyph.Play, "playnite-library.mark", "assets/icons/playnite-library.svg"),
         new IconContract("samples/ClockWidget", "0.1.1",
             WidgetGlyph.Connection, "clock.mark", "assets/icons/clock.svg"),
@@ -415,6 +415,7 @@ static async Task ShippedPackageIconContracts()
 static async Task BundledCatalogUsesManifests()
 {
     using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
+    deployment.SealBundledPackages();
     var catalog = BridgeCatalog.Load(deployment.BundledCatalogPath);
     Assert.SequenceEqual(
         new[] { "media-sessions", "games-apps", "audio-mixer", "network-controls" },
@@ -449,6 +450,7 @@ static async Task BundledCatalogUsesManifests()
 static async Task BundledCatalogRejectsUnsafeSources()
 {
     using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
+    deployment.SealBundledPackages();
     var directory = Path.GetDirectoryName(deployment.BundledCatalogPath)!;
     var fixture = deployment.Packages[0];
 
@@ -579,6 +581,7 @@ static async Task PackagesRunIsolated()
         deployment.Packages,
         package => package.Manifest.Id,
         "installed");
+    deployment.SealBundledPackages();
     var bundled = BridgeCatalog.Load(deployment.BundledCatalogPath);
     await RunCatalogAsync(
         bundled,
@@ -1636,24 +1639,28 @@ static async Task MaximumDirectoryPackageRunsIsolated()
     var fixture = deployment.Packages[0];
     var source = Path.Combine(deployment.RootPath, "maximum-directory-source");
     CopyDirectory(fixture.BundleRoot, source);
-    for (var index = 0; index < 255; index++)
+    Directory.CreateDirectory(Path.Combine(source, "assets"));
+    var remainingDirectories = 1_024 -
+        (Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories).Count() + 1);
+    for (var index = 0; remainingDirectories > 0; index++)
     {
-        var directory = Path.Combine(
-            source,
-            "assets",
-            $"edge-{index:000}",
-            "one",
-            "two",
-            "three");
+        var directory = Path.Combine(source, "assets");
+        foreach (var segment in new[] { $"edge-{index:000}", "one", "two", "three" })
+        {
+            if (remainingDirectories == 0) break;
+            directory = Path.Combine(directory, segment);
+            remainingDirectories--;
+        }
         Directory.CreateDirectory(directory);
         await File.WriteAllTextAsync(Path.Combine(directory, "asset.txt"), "x");
     }
+    var expectedFileCount = Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories).Count();
 
     var packagePath = Path.Combine(deployment.RootPath, "maximum-directory.wrwidget");
     var packStopwatch = Stopwatch.StartNew();
     var pack = await RunCliAsync("pack", source, "--output", packagePath);
     packStopwatch.Stop();
-    Assert.Equal(0, pack.Code);
+    Assert.True(pack.Code == 0, $"Maximum-directory package failed to pack: {pack.Error}");
     Assert.True(File.Exists(packagePath),
         "The exact directory-bound package was not published.");
 
@@ -1674,7 +1681,7 @@ static async Task MaximumDirectoryPackageRunsIsolated()
         Assert.Equal(1_024, lease.Targets.Count(target => target.Target.Kind is
             AppContainerAuthorityTargetKind.AuthorityRootDirectory or
             AppContainerAuthorityTargetKind.VerifiedDirectory));
-        Assert.Equal(258, lease.Targets.Count(target => target.Target.Kind ==
+        Assert.Equal(expectedFileCount, lease.Targets.Count(target => target.Target.Kind ==
             AppContainerAuthorityTargetKind.VerifiedFile));
     }
 
@@ -1691,7 +1698,7 @@ static async Task MaximumDirectoryPackageRunsIsolated()
                 activationElapsed < TimeSpan.FromSeconds(10),
         $"Exact directory-bound activation exceeded ten seconds ({activationElapsed.TotalMilliseconds:0} ms).");
     Console.WriteLine(
-        $"METRIC exact_directory_package directories=1024 files=258 packMilliseconds={packStopwatch.Elapsed.TotalMilliseconds:F3} activationMilliseconds={activationElapsed.TotalMilliseconds:F3}");
+        $"METRIC exact_directory_package directories=1024 files={expectedFileCount} packMilliseconds={packStopwatch.Elapsed.TotalMilliseconds:F3} activationMilliseconds={activationElapsed.TotalMilliseconds:F3}");
 }
 
 static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput = null)
@@ -2997,8 +3004,9 @@ static async Task ExerciseControlAsync(
     switch (package.Manifest.Id)
     {
         case "widgetrail.firstparty.games-apps":
-            var openCatalog = Nodes(snapshot.Root).Single(node =>
-                string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal));
+            var compactNavigation = Nodes(snapshot.Root).Single(node => node.Id == "games.sections.compact");
+            var openCatalog = Nodes(compactNavigation).Single(node =>
+                node.Kind == ViewNodeKind.Button && node.ActionId == "games.open-catalog");
             await client.SendActionAsync(new WidgetActionEvent(
                 "games.open-catalog", openCatalog.Id));
             snapshot = await WaitForActionSnapshotAsync(
@@ -3011,7 +3019,10 @@ static async Task ExerciseControlAsync(
                 "games.toggle-curation", add.Id));
             await WaitForActionSnapshotAsync(
                 client, "games.toggle-curation", "Conformance Library App", selected: true);
-            await client.SendActionAsync(new WidgetActionEvent("back", "games.catalog"));
+            var libraryDestination = Nodes(Nodes(snapshot.Root).Single(node =>
+                    node.Id == "games.sections.compact")).Single(node =>
+                node.Kind == ViewNodeKind.Button && node.ActionId == "games.open-library");
+            await client.SendActionAsync(new WidgetActionEvent("games.open-library", libraryDestination.Id));
             snapshot = await WaitForActionSnapshotAsync(
                 client, "games.launch", "Conformance Library App");
             actionId = "games.launch";
@@ -3604,6 +3615,12 @@ file sealed class Deployment : IDisposable
     public required IReadOnlyList<PackageFixture> Packages { get; init; }
     public PackageFixture? SpotifyCommunityPackage { get; init; }
     public PackageFixture? YtMusicPackage { get; init; }
+
+    public void SealBundledPackages()
+    {
+        foreach (var package in Packages)
+            InstalledPackageIntegrity.Seal(RootPath, package.BundleRoot, new WidgetCatalogOptions());
+    }
 
     public static async Task<Deployment> CreateAsync(
         bool installAsCommunity,

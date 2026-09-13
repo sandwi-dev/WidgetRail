@@ -792,6 +792,7 @@ public sealed class SessionTransportTests
         Id = "session-widget",
         Name = "Session widget",
         InstanceId = instanceId,
+        PackageContentDigest = new string('e', 64),
         RuntimeGeneration = runtimeGeneration ?? new string('a', 32),
         PresentationGeneration = presentationGeneration ?? new string('b', 32),
         Icon = WidgetGlyph.Connection,

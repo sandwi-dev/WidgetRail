@@ -5004,8 +5004,10 @@ static async Task ManagedPresentationSessionPreservesFullTrustRuntime()
         catch (WidgetPresentationSessionException exception)
         {
             admissionOutcome = $"{nameof(WidgetPresentationSessionException)}:{exception.Code}";
+            // The request reply and terminal worker-failure event can race.
+            // Below we still require the restartable failure and retained frame.
             Assert.True(
-                exception.Code == "worker-runtime-failed",
+                exception.Code is "worker-runtime-failed" or "request_failed",
                 $"Unexpected full-trust crash admission outcome '{admissionOutcome}'.");
         }
 

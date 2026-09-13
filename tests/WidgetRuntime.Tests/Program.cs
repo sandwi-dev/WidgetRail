@@ -126,6 +126,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Host authority journal rejects corrupt and hostile entries", ContentAuthorityJournalRejectsUnsafeState),
     ("Profile authority quarantine permits disjoint worker recovery", ProfileQuarantinePermitsDisjointWorker),
     ("Profile authority quarantine rejects overlapping worker targets", ProfileQuarantineRejectsOverlap),
+    ("DACL comparison preserves all authority except Windows AI bookkeeping", DaclRestorationScenarios.ComparisonPreservesAuthority),
+    ("DACL restoration accepts real Windows legacy descriptor normalization", DaclRestorationScenarios.LegacyDescriptorRoundTrip),
+    ("Worker exit diagnostic survives completed session cleanup", SessionRetirementScenarios.ExitDiagnosticSurvivesCleanup),
     ("Authority recovery retries exact state and rejects stale confirmation", AuthorityRecoveryIsExact),
     ("Legacy authority recovery uses the recorded profile owner", LegacyAuthorityRecoveryUsesOwner),
     ("Host authority journal recovers real DACLs after process termination", AuthorityJournalRecoversAfterHostTermination),
@@ -978,9 +981,9 @@ static async Task AuthorityRecoveryIsExact()
     using (var operations = container.CreateAuthorityOperationsForTesting())
     {
         foreach (var original in originals)
-            Assert.Equal(
-                original.AccessDescriptor,
-                operations.Capture(original.Target).AccessDescriptor);
+            Assert.True(AppContainerDaclComparison.Matches(
+                original.AccessDescriptor, operations.Capture(original.Target).AccessDescriptor),
+                "Recovered DACL authority differs from its captured state.");
     }
     var stale = Assert.Throws<AppContainerAuthorityRecoveryException>(() =>
         service.Retry(candidate.ConfirmationToken));
@@ -1039,9 +1042,9 @@ static async Task LegacyAuthorityRecoveryUsesOwner()
     Assert.Equal(0, journal.ListPending().Count);
     using var verification = firstContainer.CreateAuthorityOperationsForTesting();
     foreach (var original in originals)
-        Assert.Equal(
-            original.AccessDescriptor,
-            verification.Capture(original.Target).AccessDescriptor);
+        Assert.True(AppContainerDaclComparison.Matches(
+            original.AccessDescriptor, verification.Capture(original.Target).AccessDescriptor),
+            "Legacy recovery changed DACL authority.");
 }
 
 static async Task AuthorityJournalRecoversAfterHostTermination()
@@ -1111,9 +1114,9 @@ static async Task AuthorityJournalRecoversAfterHostTermination()
         lease.ClearPending();
     }
     foreach (var original in originals)
-        Assert.Equal(
-            original.AccessDescriptor,
-            recoveryOperations.Capture(original.Target).AccessDescriptor);
+        Assert.True(AppContainerDaclComparison.Matches(
+            original.AccessDescriptor, recoveryOperations.Capture(original.Target).AccessDescriptor),
+            "Crash recovery changed DACL authority.");
     using (var lease = journal.Acquire(profile))
         Assert.True(lease.ReadPending() is null,
             "Verified crash recovery did not clear the pending record.");

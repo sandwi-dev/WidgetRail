@@ -13,6 +13,7 @@ internal sealed class WidgetProcessSession(
     private Task? _terminalTask;
     private int _activePublications;
     private int _handshakeCompleted;
+    private int? _exitCode;
     private TaskCompletionSource? _publicationsDrained;
 
     internal WidgetPendingRequests PendingRequests { get; } = new();
@@ -56,8 +57,16 @@ internal sealed class WidgetProcessSession(
     {
         get
         {
-            try { return Process?.HasExited == true ? Process.ExitCode : null; }
-            catch (InvalidOperationException) { return null; }
+            lock (_terminalGate)
+            {
+                try
+                {
+                    if (_exitCode is null && Process is { HasExited: true } process)
+                        _exitCode = process.ExitCode;
+                }
+                catch (InvalidOperationException) { }
+                return _exitCode;
+            }
         }
     }
 
@@ -277,7 +286,14 @@ internal sealed class WidgetProcessSession(
         PendingRequests.FailAll(new WidgetProcessException("Widget session ended."));
         Cancel();
         Pipe?.Dispose();
-        Process?.Dispose();
+        lock (_terminalGate)
+        {
+            // Startup failure handling can resume after the exit callback has
+            // retired the process. Preserve its diagnostic through that cleanup.
+            _ = ExitCode;
+            Process?.Dispose();
+            Process = null;
+        }
         WindowsJob?.Dispose();
 
         Task? companionDisposeTask = null;
@@ -304,7 +320,6 @@ internal sealed class WidgetProcessSession(
 
         Pipe = null;
         Channel = null;
-        Process = null;
         WindowsJob = null;
         Companion = null;
         _readerTask = null;

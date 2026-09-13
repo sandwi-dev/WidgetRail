@@ -521,10 +521,10 @@ void FullscreenExitSettlesBeforeCompositionAdmission() {
 
 void SlowDrawingDoesNotConsumeMotionAndRetargetUsesCurrentProgress() {
     widgetrail::OverlayPresentationTransaction transaction;
-    constexpr widgetrail::OverlayPresentationExtent small{400, 300};
+    constexpr widgetrail::OverlayPresentationExtent smallExtent{400, 300};
     constexpr widgetrail::OverlayPresentationExtent large{800, 600};
     constexpr widgetrail::OverlayPlacement largePlacement{0, 0, 800, 600};
-    transaction.BeginExtentTransition(small, large, 100, false, true);
+    transaction.BeginExtentTransition(smallExtent, large, 100, false, true);
     const auto first = transaction.PrepareCompositionAdmission(
         400, 300, largePlacement, largePlacement, large, 1000, false, true);
     Check(first.animateMotion, "slow destination draw retains a full resize animation");
@@ -535,7 +535,7 @@ void SlowDrawingDoesNotConsumeMotionAndRetargetUsesCurrentProgress() {
 
     constexpr widgetrail::OverlayPresentationExtent medium{600, 450};
     constexpr widgetrail::OverlayPlacement mediumPlacement{100, 150, 600, 450};
-    transaction.BeginExtentTransition(small, medium, 1040, false, true);
+    transaction.BeginExtentTransition(smallExtent, medium, 1040, false, true);
     const auto next = transaction.PrepareCompositionAdmission(
         800, 600, mediumPlacement, largePlacement, medium, 1100, false, true);
     // Old compositor motion advances while the next destination is being drawn.

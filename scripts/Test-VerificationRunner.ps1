@@ -71,6 +71,7 @@ $expectedDefaultStepIds = @(
     'recent-apps-tests',
     'games-apps-tests',
     'playnite-library-tests',
+    'playnite-library-package',
     'playnite-library-community-application-tests',
     'full-application-widget-tests',
     'media-sessions-tests',
@@ -83,24 +84,25 @@ $expectedDefaultStepIds = @(
     'settings-worker-build',
     'widget-catalog-tests',
     'documentation-tests',
-    'widget-bridge-tests',
     'first-party-conformance-tests',
     'overlay-native-build-tests',
     'overlay-hidden-smoke',
+    'widget-bridge-tests',
     'input-probe-build',
     'input-probe-smoke'
 )
 $defaultSelection = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all)
 $defaultIds = @($defaultSelection | ForEach-Object { $_.id })
-if ($defaultIds.Count -ne 57 -or
+if ($defaultIds.Count -ne 58 -or
     [string]::Join("`n", $defaultIds) -cne [string]::Join("`n", $expectedDefaultStepIds)) {
-    throw 'Focused selection changed the exact 57-step default aggregate identity or order.'
+    throw 'Focused selection changed the exact 58-step default aggregate identity or order.'
 }
 $nativeDefaults = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native)
 if ([string]::Join("`n", @($nativeDefaults | ForEach-Object id)) -cne
     [string]::Join("`n", @(
         'overlay-native-build-tests',
         'overlay-hidden-smoke',
+        'widget-bridge-tests',
         'input-probe-build',
         'input-probe-smoke'))) {
     throw 'Non-default native focused selectors entered the default native lane.'
@@ -534,9 +536,11 @@ $child = Start-Process (Join-Path $env:SystemRoot 'System32\ping.exe') -Argument
 Write-Output "CHILD=$($child.Id)"
 Wait-Process -Id $child.Id
 '@
+    # Include enough time for a cold PowerShell startup to create/report the
+    # descendant; the test still requires timeout and cleanup within 10 seconds.
     $timed = Invoke-BoundedVerificationProcess -Id timeout -Description 'timeout' `
         -FilePath pwsh -ArgumentList @('-NoProfile', '-Command', $childCommand) `
-        -WorkingDirectory $temporary -TimeoutSeconds 1 -OutputDirectory $temporary
+        -WorkingDirectory $temporary -TimeoutSeconds 3 -OutputDirectory $temporary
     if ($timed.status -ne 'timed_out' -or $timed.durationMilliseconds -gt 10000) {
         throw 'Timed process was not bounded.'
     }

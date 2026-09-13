@@ -415,7 +415,8 @@ void TestWidgetContextActionHostContract() {
           "context action revalidates, dismisses, and dispatches exactly once");
     Check(source.find("HostAction::InvokeWidgetContextAction") != std::string::npos &&
               source.find("key == VK_APPS") != std::string::npos &&
-              source.find("OpenWidgetContextMenu(\n                interactionSession_.focusedElementId())") != std::string::npos,
+              source.find("widgetrail::input::ResolveContextMenuSource(") != std::string::npos &&
+              source.find("OpenWidgetContextMenu(*source)") != std::string::npos,
           "context menu exposes UIA, keyboard, and controller entry paths");
 }
 

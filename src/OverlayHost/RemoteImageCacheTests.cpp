@@ -208,6 +208,10 @@ int main() {
                 const auto encoded = EncodeWicImage(format, 1200, 1800);
                 const auto mime = IsEqualGUID(format, GUID_ContainerFormatPng) ? L"image/png" : L"image/jpeg";
                 const auto poster = decoder.Decode(encoded, mime, {}, artworkdecoder::TestBehavior::Normal, 256, 384);
+                if (!poster.succeeded()) {
+                    std::wcerr << L"Display-sized artwork decode failed: " << poster.error
+                               << L" (HRESULT " << poster.result << L")." << std::endl;
+                }
                 assert(poster.succeeded() && poster.image.width == 256 && poster.image.height == 384);
                 assert(poster.image.premultipliedBgra.size() == 256U * 384U * 4U);
                 const auto background = decoder.Decode(encoded, mime, {}, artworkdecoder::TestBehavior::Normal, 1024, 576);

@@ -190,6 +190,13 @@ try {
             $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds
         $file = ([string]$step.file).Replace('{configuration}', $Configuration)
         $arguments = @($step.arguments | ForEach-Object { ([string]$_).Replace('{configuration}', $Configuration) })
+        # Keep a distinct build trace with the run's evidence, including builds
+        # performed by dotnet run/test. Insert before any application arguments.
+        if ($file -eq 'dotnet' -and $arguments[0] -in @('build', 'test', 'run', 'restore', 'publish', 'pack') -and
+            '--no-build' -notin $arguments -and -not ($arguments -match '^[-/]bl(?::|$)')) {
+            $binlog = Join-Path $runDirectory "$($step.id).binlog"
+            $arguments = @($arguments[0], "-bl:$binlog") + @($arguments | Select-Object -Skip 1)
+        }
         Write-Host "`n== $($step.description) [$($step.id), ${timeout}s] =="
         Write-Host (Get-CommandText $file $arguments)
         $result = Invoke-BoundedVerificationProcess -Id $step.id -Description $step.description `

@@ -402,7 +402,9 @@ $libraryArguments = @(
     'userenv.lib',
     'ws2_32.lib'
 )
-$common = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-', '/DUSING_GAMEINPUT', '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') +
+# Compile independent translation units two at a time without running tests in
+# parallel or oversubscribing memory on the hosted Windows runners.
+$common = @('/nologo', '/MP2', '/FS', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-', '/DUSING_GAMEINPUT', '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') +
     $optimization + $includeArguments
 
 function Invoke-WindowPreviewTests {
@@ -2306,6 +2308,9 @@ if ($TrayRefreshHostTestsOnly) {
 }
 
 if (-not $SkipTests) {
+    # RemoteImageCacheTests invokes the fault-injection decoder, which does not
+    # exist in a clean checkout unless this test dependency is built explicitly.
+    Invoke-ArtworkDecoderBuild -Testing
     $trayStatusTestObjects = Join-Path $outputDirectory 'obj\tray-status-tests'
     New-Item -ItemType Directory -Force -Path $trayStatusTestObjects | Out-Null
     $trayStatusArguments = $common + @(
@@ -2647,6 +2652,7 @@ if (-not $SkipTests) {
     $surfaceFocusTestArguments = $common + @(
         (Join-Path $projectDirectory 'WidgetSurfaceFocusTests.cpp'),
         (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
+        (Join-Path $projectDirectory 'FocusNavigation.cpp'),
         "/Fo:$surfaceFocusTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetSurfaceFocusTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
