@@ -130,7 +130,8 @@ function New-WidgetRailReleaseFolders {
         [Parameter(Mandatory)][string]$SdkVersion,
         [Parameter(Mandatory)]$Content,
         [scriptblock]$VerifyCatalog,
-        [scriptblock]$BeforePublish
+        [scriptblock]$BeforePublish,
+        [string]$PackagingCommit
     )
     if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$' -or $SourceCommit -notmatch '^[0-9a-f]{40}$') {
         throw 'Release version or source commit is invalid.'
@@ -193,9 +194,9 @@ function New-WidgetRailReleaseFolders {
                 Copy-ReleaseTree $source (Join-Path $root $widget.packageRoot) $root -SealedPackage
             }
             $selected += @($extraCatalog)
-            Copy-ReleaseTree (Join-Path $developer 'tools/wrail') (Join-Path $root 'tools/wrail') $root
-            [IO.File]::WriteAllText((Join-Path $root 'wrail.cmd'), '@echo off' + "`r`n" + '"%~dp0dotnet\dotnet.exe" "%~dp0tools\wrail\wrail.dll" %*' + "`r`n")
         }
+        Copy-ReleaseTree (Join-Path $developer 'tools/wrail') (Join-Path $root 'tools/wrail') $root
+        [IO.File]::WriteAllText((Join-Path $root 'wrail.cmd'), '@echo off' + "`r`n" + '"%~dp0dotnet\dotnet.exe" "%~dp0tools\wrail\wrail.dll" %*' + "`r`n")
         $catalog = [ordered]@{
             catalogVersion = $baseCatalog.catalogVersion
             genericWorkerExecutable = $baseCatalog.genericWorkerExecutable
@@ -221,16 +222,15 @@ function New-WidgetRailReleaseFolders {
             'Settings and user data remain under %LOCALAPPDATA%\WidgetRail.'
             'Startup registration, driver installation and automatic updates are not performed.'
         )
-        if ($edition -eq 'developer') {
-            $readme += @('', 'Developer tools: wrail.cmd help',
-                'Create an independent widget with wrail new widget <Name> --output <new-directory>.',
-                'Building widgets requires a compatible .NET SDK; the application folder does not include an SDK.')
-        }
+        $readme += @('', 'Command-line tools: wrail.cmd help',
+            'Create an independent widget with wrail new widget <Name> --output <new-directory>.',
+            'Building widgets requires a compatible .NET SDK; the application folder does not include an SDK.')
         [IO.File]::WriteAllText((Join-Path $root 'START-HERE.txt'), ($readme -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
         Write-ReleaseJson (Join-Path $root 'release.json') ([ordered]@{
             schemaVersion = 1; product = 'WidgetRail'; version = $Version; edition = $edition
             architecture = 'x64'; sourceCommit = $SourceCommit; sdkVersion = $SdkVersion
             packaging = 'private-runtime-folder'; signed = $false
+            packagingCommit = $(if ($PackagingCommit) { $PackagingCommit } else { $SourceCommit })
             requirements = @($Content.runtimeRequirements); widgets = $packages
             files = @(Get-ReleaseInventory $root)
         })

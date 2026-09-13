@@ -33,7 +33,7 @@ edition contains one private .NET 8 runtime, selected through process-local
 DOTNET_ROOT/DOTNET_ROOT_X64 by the native host. Isolated workers inherit that
 selection and receive read/execute access only to the private runtime actually
 hosting the bridge. Global .NET permissions and environment variables are not
-changed. The Developer edition's root `wrail.cmd` uses the private runtime; building
+changed. Both editions include the CLI. The root `wrail.cmd` uses the private runtime; building
 widgets still requires a separately installed .NET SDK.
 
 `eng/runtime-dependencies.json` pins vendor downloads and hashes. The build checks
@@ -87,3 +87,7 @@ a disposable Windows profile or VM; do not automate those against a live profile
 the runtime and built WidgetRuntime tests into a temporary packaged layout and
 checks host startup and real AppContainer worker isolation using the private
 runtime. It does not install prerequisites or change startup configuration.
+
+Release folders record their compiled source and packaging revisions separately.
+Packaging-only changes can reuse verified build inputs when the native/managed
+sources are unchanged; record both revisions and validate both catalogs again.

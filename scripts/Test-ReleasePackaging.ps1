@@ -75,8 +75,10 @@ $prodCatalog = Get-Content (Join-Path $production 'widget-catalog.json') -Raw | 
 $devCatalog = Get-Content (Join-Path $dev 'widget-catalog.json') -Raw | ConvertFrom-Json
 Check (@($prodCatalog.bundledWidgets).Count -eq 6) 'Production catalog differs.'
 Check (@($devCatalog.bundledWidgets).Count -eq 10) 'Developer catalog differs.'
-Check (!(Test-Path (Join-Path $production 'tools')) -and !(Test-Path (Join-Path $production 'runtime/embedded-media-sample'))) 'Developer content leaked into Production.'
-Check (Test-Path (Join-Path $dev 'tools/wrail/templates/ControllerWidget/template.json')) 'Developer tooling missing.'
+Check (!(Test-Path (Join-Path $production 'runtime/embedded-media-sample'))) 'Developer content leaked into Production.'
+foreach ($editionRoot in @($production, $dev)) {
+    Check ((Test-Path (Join-Path $editionRoot 'tools/wrail/templates/ControllerWidget/template.json')) -and (Test-Path (Join-Path $editionRoot 'wrail.cmd'))) 'Shared CLI or launcher missing.'
+}
 Check (!(Test-Path (Join-Path $production 'DoNotShipTests.exe')) -and !(Test-Path (Join-Path $production 'developer-machine.env')) -and
     !(Test-Path (Join-Path $production 'runtime/Bridge/Bridge.pdb'))) 'Build debris leaked into release.'
 Write-Output 'PASS edition catalogs, tools and explicit distribution roots'

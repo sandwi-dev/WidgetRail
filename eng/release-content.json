@@ -60,7 +60,8 @@
       "name": "Microsoft Edge WebView2",
       "version": "Evergreen runtime",
       "scope": "setup bootstrapper installs Evergreen per user if missing; download requires internet",
-      "bundled": true
+      "bundled": false,
+      "bootstrapperBundled": true
     }
   ],
   "sharedRuntimeDirectories": [

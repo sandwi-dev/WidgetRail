@@ -30,14 +30,16 @@ foreach ($root in $roots) {
     $manifest = Get-Content -LiteralPath (Join-Path $root.FullName 'release.json') -Raw | ConvertFrom-Json
     if ($manifest.edition -notin @('production', 'developer') -or $manifests.ContainsKey($manifest.edition) -or
         $manifest.version -notmatch '^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?$' -or
-        $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or $manifest.architecture -ne 'x64') {
+        $manifest.sourceCommit -notmatch '^[0-9a-f]{40}$' -or
+        $manifest.packagingCommit -notmatch '^[0-9a-f]{40}$' -or $manifest.architecture -ne 'x64') {
         throw 'Invalid installer release identity.'
     }
     $manifests[$manifest.edition] = @{ Root = $root.FullName; Manifest = $manifest }
 }
 $production = $manifests.production.Manifest
 $developer = $manifests.developer.Manifest
-if ($production.version -cne $developer.version -or $production.sourceCommit -cne $developer.sourceCommit) {
+if ($production.version -cne $developer.version -or $production.sourceCommit -cne $developer.sourceCommit -or
+    $production.packagingCommit -cne $developer.packagingCommit) {
     throw 'Both editions must come from the same release source.'
 }
 $final = Assert-ReleasePath (Join-Path $OutputRoot $production.version) -Within $OutputRoot
@@ -62,7 +64,7 @@ foreach ($edition in @('production', 'developer')) {
     Test-ReleaseInventory $payload
     $display = if ($edition -eq 'developer') { 'WidgetRail Developer' } else { 'WidgetRail' }
     $name = $display.Replace(' ', '-') + '-' + $manifest.version + '-win-x64-setup'
-    $payloadId = $manifest.version + '-' + $edition + '-' + $manifest.sourceCommit.Substring(0, 12)
+    $payloadId = $manifest.version + '-' + $edition + '-' + $manifest.sourceCommit.Substring(0, 12) + '-' + $manifest.packagingCommit.Substring(0, 12)
     $dependencies = Get-Content (Join-Path $payload 'prerequisites/runtime-dependencies.json') -Raw | ConvertFrom-Json
     $gameVersion = [version]$dependencies.gameInput.fileVersion
     foreach ($redist in @(@{Name='GameInputRedist.msi';Hash=$dependencies.gameInput.sha256}, @{Name='MicrosoftEdgeWebview2Setup.exe';Hash=$dependencies.webView2.sha256})) {
@@ -77,7 +79,8 @@ foreach ($edition in @('production', 'developer')) {
     $lines.Add('#define GameInputVersionMS ' + (($gameVersion.Major -shl 16) + $gameVersion.Minor))
     $lines.Add('#define GameInputVersionLS ' + (($gameVersion.Build -shl 16) + $gameVersion.Revision))
     $lines.Add('[Files]')
-    foreach ($relative in @($manifest.files.path) + @('release.json')) {
+    $installerFiles = @($manifest.files.path) + @('release.json') | Sort-Object @{ Expression = { if ($_ -like 'prerequisites/*') { 0 } else { 1 } } }, @{ Expression = { $_ } }
+    foreach ($relative in $installerFiles) {
         $source = Assert-ReleasePath (Join-Path $payload $relative) -Within $payload
         $directory = [IO.Path]::GetDirectoryName($relative.Replace('/', '\'))
         $destination = '{app}\versions\' + $payloadId
