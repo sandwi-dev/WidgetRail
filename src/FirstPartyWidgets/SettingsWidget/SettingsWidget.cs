@@ -46,6 +46,8 @@ public sealed class SettingsWidget : Widget
 
     private readonly PlatformSettingsStore _store;
     private readonly ThemeCatalog _catalog;
+    private readonly IStartupRegistration _startup;
+    private StartupRegistrationStatus _startupStatus = new(false, false, "Checking Windows startup settings…");
     private readonly ThemeCatalogMutationPolicy _themeMutations;
     private readonly CatalogService _widgetCatalog;
     private readonly ConsentStore _consentStore;
@@ -110,9 +112,11 @@ public sealed class SettingsWidget : Widget
         IPlatformDiagnosticsService? diagnostics = null,
         string? bundledWidgetRoot = null,
         IPlatformDiagnosticsService? readinessDiagnostics = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IStartupRegistration? startup = null)
     {
         _toastExpiry = CreateTimedMutation(timeProvider: timeProvider);
+        _startup = startup ?? StartupRegistration.CreateForSettingsWorker();
         var paths = store?.Paths ?? PlatformSettingsPaths.CreateDefault();
         _store = store ?? new PlatformSettingsStore(paths);
         _catalog = catalog ?? new ThemeCatalog(paths);
@@ -162,8 +166,10 @@ public sealed class SettingsWidget : Widget
         string? themePickerFocusId;
         string? selectedAuthorityRecoveryId;
         string status;
+        StartupRegistrationStatus startupStatus;
         lock (_stateLock)
         {
+            startupStatus = _startupStatus;
             settings = _settings;
             themes = _themes;
             page = _page;
@@ -190,7 +196,7 @@ public sealed class SettingsWidget : Widget
             busy,
             error,
             selectedTheme,
-            themePickerFocusId);
+            themePickerFocusId, startupStatus);
         if (SettingsPresentation.TryRender(presentation, out var view)) return view;
         var header = SettingsPresentation.Header(presentation);
         return page switch
@@ -347,6 +353,12 @@ public sealed class SettingsWidget : Widget
             }
             switch (action.ActionId)
             {
+                case "startup.toggle":
+                    var startup = _startup.Read();
+                    var changed = startup.CanChange ? _startup.SetEnabled(!startup.Registered) : startup;
+                    lock (_stateLock) _startupStatus = changed;
+                    SetOperation(changed.Message, false, changed.Error);
+                    break;
                 case "application.quit":
                 case "application.restart":
                     await RequestApplicationControlAsync(action.ActionId == "application.restart", cancellationToken).ConfigureAwait(false);
@@ -480,8 +492,10 @@ public sealed class SettingsWidget : Widget
                     $"Runtime diagnostics unavailable ({exception.Code})");
                 warning ??= $"Runtime diagnostics unavailable ({exception.Code})";
             }
+            var startupStatus = _startup.Read();
             lock (_stateLock)
             {
+                _startupStatus = startupStatus;
                 _settings = settings;
                 _settingsValid = settingsValid;
                 _themes = themes;
@@ -922,8 +936,10 @@ public sealed class SettingsWidget : Widget
 
     private void Navigate(SettingsPage page)
     {
+        var startup = page == SettingsPage.Overlay ? _startup.Read() : null;
         lock (_stateLock)
         {
+            if (startup is not null) _startupStatus = startup;
             var previousPage = _page;
             _page = page;
             if (page == SettingsPage.Permissions &&
