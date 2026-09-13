@@ -18,6 +18,8 @@ foreach ($key in @('Software\WidgetRail\Installation', 'Software\Microsoft\Windo
 }
 Require ($native.Contains('Local\\WidgetRail.OverlayHost.Running') -and
     $native.Contains('Local\\WidgetRail.Setup')) 'Host must participate in installer lifetime protection.'
+Require ($installer.Contains("CreateMutex('Local\WidgetRail.Setup')") -and
+    $installer.Contains("not CheckForMutexes('Local\WidgetRail.OverlayHost.Running')")) 'Uninstall must block new launches and wait for cleanup.'
 Require ($installer.Contains("StartupCommand(ApplicationRoot)") -and
     !$installer.Contains("StartupCommand(ApplicationRoot) +")) 'Startup must use only the hidden application command.'
 Write-Output 'PASS installer scope, startup ownership, Windows approval, and process lifetime contracts'

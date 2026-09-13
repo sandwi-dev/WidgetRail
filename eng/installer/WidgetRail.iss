@@ -123,7 +123,15 @@ end;
 
 function InitializeUninstall: Boolean;
 begin
-  Result := FindWindowByClassName('WidgetRail.OverlayHost') = 0;
+  if CheckForMutexes('Local\WidgetRail.Setup') then begin
+    MsgBox('Another WidgetRail setup is open. Close it before uninstalling.', mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+  { Unlike SetupMutex, this also covers uninstall's entire file-removal phase. }
+  CreateMutex('Local\WidgetRail.Setup');
+  Result := not CheckForMutexes('Local\WidgetRail.OverlayHost.Running') and
+    (FindWindowByClassName('WidgetRail.OverlayHost') = 0);
   if not Result then
     MsgBox('Quit WidgetRail from its Settings header before uninstalling. Your widgets and settings will be kept.', mbError, MB_OK);
 end;
