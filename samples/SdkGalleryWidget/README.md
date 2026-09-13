@@ -100,7 +100,7 @@ executable AppContainer integration. The separate `wrail preview` manifest
 workflow currently validates and lists scenario declarations without loading
 their provider assembly. Selected scenario execution fails closed until an
 AppContainer preview worker exists. See the
-[widget authoring guide](../../docs/developers/widget-authoring-guide.md#validate-list-scenarios-render-replay-and-test).
+[widget authoring guide](../../docs/reference/cli-scenarios.md).
 
 Build a deterministic `.wrwidget` with the same public CLI available to
 community authors:

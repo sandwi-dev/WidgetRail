@@ -145,7 +145,7 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   with the user's ambient file, network, registry, database, and child-process
   authority. This is an explicit trust decision, not a capability grant or a
   publisher-verification result. See the
-  [widget authoring guide](../../docs/developers/widget-authoring-guide.md#full-trust-community-application-runtime)
+  [widget authoring guide](../../docs/maintainers/security-and-trust.md#execution-models)
   for the manifest and bootstrap contract.
 - `replay` walks explicit D-pad focus edges and resolves `A` actions and
   declared non-Guide shortcuts from a versioned JSON event stream.

@@ -1,7 +1,27 @@
 using System.Text.RegularExpressions;
+using System.Text.Json;
 
 var repository = FindRepositoryRoot(AppContext.BaseDirectory);
 var failures = new List<string>();
+// This map checks feature-family discoverability, not completeness of prose.
+// New public SDK files need an explicit documentation destination.
+var sdkDocMap = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(
+    Path.Combine(repository, "tests", "Documentation.Tests", "sdk-doc-map.json")))!;
+var publicDeclaration = new Regex(
+    @"^public\s+(?:(?:sealed|abstract|readonly|static|partial)\s+)*(?:class|record|struct|interface|enum)\s+",
+    RegexOptions.Multiline | RegexOptions.CultureInvariant);
+var publicApiFiles = new[] { "WidgetSdk", "WidgetApplicationRuntime" }
+    .SelectMany(name => Directory.EnumerateFiles(Path.Combine(repository, "src", name), "*.cs"))
+    .Where(path => publicDeclaration.IsMatch(File.ReadAllText(path)))
+    .Select(path => Path.GetRelativePath(repository, path).Replace('\\', '/'))
+    .ToHashSet(StringComparer.Ordinal);
+foreach (var source in publicApiFiles)
+    if (!sdkDocMap.ContainsKey(source)) failures.Add($"Public SDK file needs a documentation topic: {source}");
+foreach (var (source, topic) in sdkDocMap)
+{
+    if (!publicApiFiles.Contains(source)) failures.Add($"Stale SDK documentation mapping: {source}");
+    if (!File.Exists(Path.Combine(repository, topic))) failures.Add($"Missing SDK topic: {source} -> {topic}");
+}
 var markdownLink = new Regex(
     @"!?\[[^\]]*\]\((?<target>[^)\r\n]+)\)",
     RegexOptions.CultureInvariant);
@@ -41,25 +61,10 @@ var optimisticCommandSource = File.ReadAllText(Path.Combine(
     repository, "src", "WidgetSdk", "WidgetOptimisticCommand.cs"));
 string[] requiredModelContracts =
 [
-    "## Choose the owner, not just a container",
-    "## Equality is the publication contract",
-    "## Read one committed state",
-    "## Set and Update",
-    "## Publication and observation",
-    "## Migrate a field cluster without creating two owners",
-    "## Anti-patterns",
-    "WidgetResource<TValue>",
-    "WidgetCursorResource<TItem>",
-    "WidgetNavigator<TRoute>",
-    "WidgetOperations",
-    "WidgetOptimisticCommand<TState,TRequest,TExecution,TResult>",
-    "private readonly WidgetModel<CounterState> _model;",
-    "_model = CreateModel(CounterState.Initial);",
-    "WidgetModel<CounterState>.CreateForTesting(CounterState.Initial);",
-    "var snapshot = _model.Snapshot;",
-    "return (next, new RefreshRequest(next.Filter));",
-    "../src/FirstPartyWidgets/MediaSessionsWidget/MediaSessionsWidget.cs",
-    "../samples/PlayniteLibraryWidget/PlayniteLibraryWidget.cs",
+    "WidgetModel<TState>", "CreateModel(initialState)", "CreateForTesting(initialState)",
+    "var snapshot = _model.Snapshot;", "Set(value)", "Update(state => next)",
+    "Equality", "Observers", "WidgetResource<TValue>", "WidgetCursorResource<TItem>",
+    "WidgetNavigator<TRoute>", "async-work.md#optimistic-actions",
 ];
 foreach (var contract in requiredModelContracts)
     if (!model.Contains(contract, StringComparison.Ordinal))
@@ -88,18 +93,10 @@ foreach (var contract in requiredOptimisticCommandSourceContracts)
             $"WidgetOptimisticCommand source no longer supports documented claim '{contract}'.");
 string[] requiredGuideContracts =
 [
-    "## Versions: three different contracts",
-    "## Tutorial 2: make the controller model intentional",
-    "## Tutorial 3: nested windows and scoped shortcuts",
-    "## Tutorial 4: controller-owned scrolling",
-    "## Tutorial 5: choose a useful surface without hard-coding a window",
-    "## Lifecycle API",
-    "## Typed audio and network capabilities",
-    "## Package and install locally",
-    "## Share from a GitHub repository",
-    "## Isolation and security expectations",
-    "## Resolution and monitor contract",
-    "## Diagnostics and recovery",
+    "declarative-ui.md", "collections.md", "controller-input.md", "visual-content.md",
+    "accessibility.md", "async-work.md", "routes.md", "capabilities.md",
+    "cli-workflows.md", "WidgetModel<TState>", "WidgetResource<TValue>",
+    "WidgetCursorResource<TItem>", "WidgetNavigator<TRoute>", "WidgetOperations",
 ];
 foreach (var contract in requiredGuideContracts)
     if (!guide.Contains(contract, StringComparison.Ordinal))
@@ -123,32 +120,34 @@ foreach (var contract in requiredCompanionContracts)
     if (!companion.Contains(contract, StringComparison.Ordinal))
         failures.Add($"docs/reference/community-companion-services.md is missing '{contract}'.");
 
-var quickstartPath = Path.Combine(repository, "docs", "reference", "cli-workflows.md");
-var quickstart = File.ReadAllText(quickstartPath);
+var quickstart = string.Join("\n", new[] { "cli-projects.md", "cli-scenarios.md", "cli-packages.md" }
+    .Select(name => File.ReadAllText(Path.Combine(repository, "docs", "reference", name))));
+var recovery = File.ReadAllText(Path.Combine(repository, "docs", "maintainers", "authority-recovery.md"));
+var scenarios = File.ReadAllText(Path.Combine(repository, "docs", "reference", "cli-scenarios.md"));
 string[] requiredAuthorityRecoveryContracts =
 [
     "wrail authority-recovery retry <confirmation-token-from-list>",
     "It does not accept a journal path, content path, security",
-    "raw clear, or force option",
+    "force option",
     "Settings → Diagnostics",
     "initial focus is **Cancel**",
     "never renders or speaks the opaque confirmation token",
     "Community widgets cannot request this channel",
 ];
 foreach (var contract in requiredAuthorityRecoveryContracts)
-    if (!quickstart.Contains(contract, StringComparison.Ordinal))
-        failures.Add($"docs/developers/widget-quickstart.md is missing '{contract}'.");
+    if (!recovery.Contains(contract, StringComparison.Ordinal))
+        failures.Add($"docs/maintainers/authority-recovery.md is missing '{contract}'.");
 
 string[] requiredScenarioContracts =
 [
     "WidgetScenarioDefinition",
     "--scenario running",
     "AppContainer/Job worker",
-    "Created -> Visible -> Interactive -> Background ->",
+    "Lifecycle transitions",
     "The CLI process never loads the assembly",
 ];
 foreach (var contract in requiredScenarioContracts)
-    if (!guide.Contains(contract, StringComparison.Ordinal))
+    if (!scenarios.Contains(contract, StringComparison.Ordinal))
         failures.Add($"docs/developers/widget-authoring-guide.md is missing '{contract}'.");
 if (!quickstart.Contains("--scenario muted", StringComparison.Ordinal) ||
     !quickstart.Contains("WidgetScenarioResult", StringComparison.Ordinal))

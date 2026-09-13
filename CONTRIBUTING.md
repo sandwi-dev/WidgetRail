@@ -85,3 +85,9 @@ Introduce one idea at a time. Explain a term before using its internal name.
 Prefer a short working example, explain what the reader should see, and link to
 reference material for limits and advanced behavior. Keep operational evidence,
 ticket histories, and obsolete design proposals out of the public learning path.
+
+When adding a public SDK feature, give its family a focused documentation topic
+and update `tests/Documentation.Tests/sdk-doc-map.json`. That map catches missing
+entry points when public SDK files are added. It does not prove that prose is
+complete or correct: review behavior against the implementation and compile
+working examples as well.

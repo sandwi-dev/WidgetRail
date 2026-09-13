@@ -18,6 +18,7 @@ Start with one button, then grow the interface as you need more features.
 
 | Goal | Guide |
 |---|---|
+| Build a tab/rail interface or a custom page header | [Presentation composition](../reference/presentation-composition.md) |
 | Load data or keep work running at the right time | [Data and lifecycle](data-and-lifecycle.md) |
 | Show media, window previews, or a compact pinned view | [Media and pinning](media-and-pinning.md) |
 | Control supported Windows features | [Capabilities reference](../reference/capabilities.md) |

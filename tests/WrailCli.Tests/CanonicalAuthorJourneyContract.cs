@@ -1,11 +1,13 @@
+using System.Text.RegularExpressions;
+
 internal static class CanonicalAuthorJourneyContract
 {
     private const string MarkerPrefix = "<!-- canonical-author-journey:";
 
     internal static void VerifyQuickstart(string repositoryRoot, string generatedSource)
     {
-        var path = Path.Combine(repositoryRoot, "docs", "reference", "cli-workflows.md");
-        var markdown = File.ReadAllText(path);
+        var markdown = string.Join("\n", new[] { "cli-projects.md", "cli-scenarios.md", "cli-packages.md" }
+            .Select(name => File.ReadAllText(Path.Combine(repositoryRoot, "docs", "reference", name))));
         var blocks = ExtractBlocks(markdown);
         var expected = new[]
         {
@@ -68,6 +70,12 @@ internal static class CanonicalAuthorJourneyContract
                     !block.Content.Contains("example/widgets@", StringComparison.Ordinal),
                 "Canonical offline author journey included an advanced or credential-adjacent placeholder.");
         }
+
+        foreach (var id in new[] { "pack-install", "version-lifecycle", "remove" })
+            foreach (var line in blocks[id].Content.Split('\n'))
+                if (Regex.IsMatch(line, @"^& \$wrail (install|enable|disable|version|uninstall)\b"))
+                    Require(line.Contains("--catalog .\\scratch\\catalog", StringComparison.Ordinal),
+                        $"Documented catalog mutation must use the disposable catalog: {id}");
     }
 
     private static IReadOnlyDictionary<string, CodeBlock> ExtractBlocks(string markdown)

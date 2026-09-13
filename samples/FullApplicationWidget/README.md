@@ -23,7 +23,7 @@ pwsh -NoProfile -File .\samples\FullApplicationWidget\Export-ExternalReference.p
 The output owns its local offline SDK feed, source, manifest, styles, and bounded
 credential-free scenario. It contains no checkout path or project reference;
 follow the external restore/build/validate/pack/install/scenario/remove commands
-in the [quickstart](../../docs/developers/widget-quickstart.md#prove-the-workflow-in-an-isolated-catalog).
+in the [quickstart](../../docs/reference/cli-packages.md).
 
 Build and test from the repository root:
 

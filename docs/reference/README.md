@@ -10,6 +10,10 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 - [State-model contracts](widget-model-reference.md)
 - [CLI scenarios, replay, and package workflows](cli-workflows.md)
 - [UI elements](declarative-ui.md) and [controller components](controller-ui-components.md)
+- [Presentation composition and NavigationShell](presentation-composition.md)
+- [Identity and input helpers](identity-and-input.md), [pinned layout handles](pinned-layouts.md), and [widget tests](widget-tests.md)
+- [Collections](collections.md), [routes](routes.md), and [asynchronous work](async-work.md)
+- [Visual content](visual-content.md) and [accessibility](accessibility.md)
 - [WRSS properties and cascade](wrss.md)
 - [Controller input](controller-input.md) and [read fallback](controller-read-fallback.md)
 - [Widget lifecycle](widget-residency.md) and [display sizing](display-and-resolution.md)
@@ -17,6 +21,7 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 ## Integration and packages
 
 - [Capabilities](capabilities.md)
+- [Full-access application widgets](application-widgets.md)
 - [Local companions and secrets](community-companion-services.md)
 - [Private widget state](private-widget-state.md)
 - [Widget package format](widget-packaging.md)

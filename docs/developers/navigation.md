@@ -3,6 +3,10 @@
 A controller interface needs a clear answer to two questions: which control is
 focused, and what happens when the user moves or activates it?
 
+For a multi-section layout, start with
+[NavigationShell](../reference/presentation-composition.md). It composes compact
+tabs and an expanded rail around shared content while your widget owns route state.
+
 ## Let controls do the ordinary work
 
 Start with SDK buttons, sliders, menus, and collection components. They already
