@@ -19,6 +19,7 @@ if (args is ["--export-renderer-fixture", var rendererFixturePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Package completion produces one themed expiring toast without navigation", SettingsToastScenarios.PackageCompletionUsesToast),
     ("Startup setting preserves focus and gates mutations", StartupSettingsScenarios.Run),
     ("Settings toast replaces feedback expires and retires without taking focus", SettingsToastScenarios.ExpiryAndReplacement),
     ("Controllers page separates input behavior and prerequisite status", ControllerSettingsScenarios.LayoutAndGates),

@@ -1932,9 +1932,9 @@ private:
             }
             lastLocalWidgetPackageInstallResult_ = result;
             if (result.status != widgetrail::LocalWidgetPackageInstallStatus::Cancelled) {
-                lastActionWidgetId_ = L"settings";
-                lastActionMessage_ = result.safeMessage;
-                lastActionExpiresAt_ = GetTickCount64() + 5000;
+                // Settings receives this completion through its authenticated
+                // companion and renders the shared themed toast.
+                if (lastActionWidgetId_ == L"settings") lastActionExpiresAt_ = 0;
                 AppendDiagnostic(L"Local widget package import: " +
                                  result.safeMessage);
             }

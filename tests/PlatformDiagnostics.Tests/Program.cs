@@ -6,6 +6,7 @@ using WidgetRail.PlatformDiagnostics;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Package notifications use bounded authenticated one-shot delivery", PackageNotificationRoundTrip),
     ("Trusted application controls request quit and restart without OS actions", ApplicationControlRoundTrip),
     ("Exclusive controller control is authenticated and returns actual status", ControllerControlRoundTrip),
     ("Bound worker receives a validated sanitized snapshot", AuthenticatedRoundTrip),
@@ -43,6 +44,21 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task PackageNotificationRoundTrip()
+{
+    var pending = new PlatformWidgetPackageNotification("Widget installed. Review permissions before enabling.");
+    await using var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(HealthySnapshot(1)),
+        packageNotification: _ => { var result = pending; pending = PlatformWidgetPackageNotification.Empty; return ValueTask.FromResult(result); });
+    Assert.True((await harness.Client.TakeWidgetPackageNotificationAsync()).Message.StartsWith("Widget installed"));
+    Assert.Equal(string.Empty, (await harness.Client.TakeWidgetPackageNotificationAsync()).Message);
+    pending = new("Could not install this widget", true);
+    Assert.True((await harness.Client.TakeWidgetPackageNotificationAsync()).Failed);
+    pending = new(new string('x', 513));
+    await Assert.ThrowsAsync<PlatformDiagnosticsException>(async () => await harness.Client.TakeWidgetPackageNotificationAsync());
+    pending = PlatformWidgetPackageNotification.Empty;
+    Assert.Equal(string.Empty, (await harness.Client.TakeWidgetPackageNotificationAsync()).Message);
+}
 
 static async Task ApplicationControlRoundTrip()
 {
@@ -744,12 +760,13 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
         Func<string, string, string, string, CancellationToken,
             ValueTask<PlatformWidgetPackageUninstallResult>>? uninstall = null,
         Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null,
-        Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? applicationControl = null)
+        Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? applicationControl = null,
+        Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null)
     {
         PipeName = $"wrail-diagnostics-test-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
             PipeName, provider, serverTimeout, retry, inspect, clear,
-            uninstallInspect, uninstall, exclusiveControl, applicationControl);
+            uninstallInspect, uninstall, exclusiveControl, applicationControl, packageNotification);
         _server.BindExpectedClientProcess(Environment.ProcessId);
         Client = new PlatformDiagnosticsPipeClient(
             PipeName, _server.ChannelNonce, Environment.ProcessId,

@@ -1,3 +1,4 @@
+using WidgetRail.PlatformDiagnostics;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
@@ -17,6 +18,7 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
     private readonly Func<BridgeLocalWidgetPackageInstallCompleted, Task> _completed;
     private readonly Func<string, Stream> _openPackage;
     private ActiveInstall? _active;
+    private (string Runtime, PlatformWidgetPackageNotification Value, DateTimeOffset Expires)? _notification;
     private bool _disposed;
 
     internal BridgeLocalWidgetPackageImportService(
@@ -51,6 +53,18 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
         _completed = completed ?? throw new ArgumentNullException(nameof(completed));
         _openPackage = openPackage ?? OpenPackageWithoutFollowingReparsePoints;
         _beforePublish = beforePublish ?? (_ => Task.CompletedTask);
+    }
+
+    internal PlatformWidgetPackageNotification TakeNotification(string runtimeGeneration)
+    {
+        lock (_gate)
+        {
+            if (_notification is not { } pending) return PlatformWidgetPackageNotification.Empty;
+            if (pending.Expires <= DateTimeOffset.UtcNow) { _notification = null; return PlatformWidgetPackageNotification.Empty; }
+            if (pending.Runtime != runtimeGeneration) return PlatformWidgetPackageNotification.Empty;
+            _notification = null;
+            return pending.Value;
+        }
     }
 
     internal bool Active { get { lock (_gate) return _active is not null; } }
@@ -131,7 +145,7 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
                 installed.Id,
                 installed.Version.ToString(),
                 updating ? "Update installed and selected. Choose Review update to check permissions and enable it."
-                    : "Local widget package installed disabled. Review it before enabling.");
+                    : "Widget installed. Open Widgets to review its permissions and enable it.");
         }
         catch (OperationCanceledException) when (active.Cancellation.IsCancellationRequested)
         {
@@ -159,6 +173,11 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
             result = Failure(active.Request.OperationId, "install_failed");
         }
 
+        if (result.Status != "cancelled")
+        {
+            lock (_gate) _notification = (active.Request.Origin.RuntimeGeneration,
+                new(result.Message, result.Status == "failed"), DateTimeOffset.UtcNow.AddSeconds(15));
+        }
         try { await _completed(result).ConfigureAwait(false); }
         catch (Exception exception) when (exception is IOException or
                                                   OperationCanceledException or

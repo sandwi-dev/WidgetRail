@@ -3834,6 +3834,9 @@ static async Task LocalPackageImportIsDisabledRevisionedAndPathFree()
     var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
     Assert.Equal("installed-disabled", result.Status);
+    Assert.Equal(string.Empty, service.TakeNotification("different-runtime").Message);
+    Assert.Equal(result.Message, service.TakeNotification(origin.RuntimeGeneration).Message);
+    Assert.Equal(string.Empty, service.TakeNotification(origin.RuntimeGeneration).Message);
     Assert.Equal("dev.example.local", result.WidgetId);
     Assert.Equal("1.2.3", result.Version);
     Assert.True(!result.Message.Contains(packagePath, StringComparison.OrdinalIgnoreCase) &&

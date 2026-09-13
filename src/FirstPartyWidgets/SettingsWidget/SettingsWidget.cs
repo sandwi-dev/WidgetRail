@@ -69,7 +69,7 @@ public sealed class SettingsWidget : Widget
     private string? _themePickerFocusId;
     private SettingsPage _page;
     private int _activationLoadCount;
-    private Task _controllerStatusTask = Task.CompletedTask;
+    private Task _settingsStatusTask = Task.CompletedTask;
     private Task _initializationTask = Task.CompletedTask;
     private bool _initializing;
     internal Task InitializationTask => _initializationTask;
@@ -248,7 +248,7 @@ public sealed class SettingsWidget : Widget
             try
             {
                 await ReloadAsync(activeLifetime).ConfigureAwait(false);
-                EnsureControllerStatusPolling();
+                EnsureSettingsStatusPolling();
             }
             catch (OperationCanceledException) when (activeLifetime.IsCancellationRequested) { }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or PlatformSettingsException)
@@ -268,28 +268,29 @@ public sealed class SettingsWidget : Widget
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         await _initializationTask.ConfigureAwait(false);
-        await _controllerStatusTask.ConfigureAwait(false);
+        await _settingsStatusTask.ConfigureAwait(false);
         lock (_stateLock) _toastVisible = false;
     }
 
-    private void EnsureControllerStatusPolling()
+    private void EnsureSettingsStatusPolling()
     {
-        if (_controllerStatusTask.IsCompleted &&
+        if (_settingsStatusTask.IsCompleted &&
             !ActiveCancellationToken.IsCancellationRequested)
-            _controllerStatusTask = PollControllerStatusAsync(ActiveCancellationToken);
+            _settingsStatusTask = PollSettingsStatusAsync(ActiveCancellationToken);
     }
 
-    private async Task PollControllerStatusAsync(CancellationToken cancellationToken)
+    private async Task PollSettingsStatusAsync(CancellationToken cancellationToken)
     {
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(1_000, cancellationToken).ConfigureAwait(false);
-                if (CurrentPage != SettingsPage.Controllers ||
-                    !await _operationGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) continue;
+                if (!await _operationGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) continue;
                 try
                 {
+                    await ReadPackageNotificationAsync(cancellationToken).ConfigureAwait(false);
+                    if (CurrentPage != SettingsPage.Controllers) continue;
                     ControllerControlStatus status;
                     try { status = (await _diagnosticsService.GetSnapshotAsync(cancellationToken).ConfigureAwait(false)).Controllers; }
                     catch (PlatformDiagnosticsException) { status = ControllerControlStatus.Unavailable; }
@@ -305,6 +306,19 @@ public sealed class SettingsWidget : Widget
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    internal async Task ReadPackageNotificationAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            // A small non-blocking companion read; never enumerate catalogs or
+            // call external providers just to retrieve transient feedback.
+            var notification = await _readinessDiagnosticsService.TakeWidgetPackageNotificationAsync(cancellationToken).ConfigureAwait(false);
+            if (notification.Message.Length != 0)
+                SetOperation(notification.Message, false, notification.Failed);
+        }
+        catch (PlatformDiagnosticsException) { }
     }
 
     public override async ValueTask OnActionAsync(
@@ -966,7 +980,7 @@ public sealed class SettingsWidget : Widget
                 previousPage != SettingsPage.PermissionDiagnostics)
                 _permissionState = _permissionState with { DiagnosticsReturnFocus = false };
         }
-        EnsureControllerStatusPolling();
+        EnsureSettingsStatusPolling();
         Invalidate();
     }
 

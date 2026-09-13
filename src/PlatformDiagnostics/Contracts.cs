@@ -184,8 +184,15 @@ public sealed record PlatformDiagnosticsSnapshot(
 
 public sealed record ApplicationControlResult(bool Accepted);
 
+public sealed record PlatformWidgetPackageNotification(string Message, bool Failed = false)
+{
+    public static PlatformWidgetPackageNotification Empty { get; } = new(string.Empty);
+}
+
 public interface IPlatformDiagnosticsService
 {
+    ValueTask<PlatformWidgetPackageNotification> TakeWidgetPackageNotificationAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(PlatformWidgetPackageNotification.Empty);
     ValueTask<ApplicationControlResult> RequestApplicationControlAsync(
         bool restart, CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(new ApplicationControlResult(false));

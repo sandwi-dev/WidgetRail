@@ -18,6 +18,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private const string InspectWidgetPackageUninstallOperation = "inspect-widget-package-uninstall";
     private const string UninstallWidgetPackageOperation = "uninstall-widget-package";
     internal static readonly TimeSpan MaximumOperationTimeout = TimeSpan.FromSeconds(10);
+    private readonly Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? _packageNotification;
     private readonly string _pipeName;
     private readonly Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> _snapshotProvider;
     private readonly Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? _exclusiveControl;
@@ -53,7 +54,8 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         Func<string, string, string, string, CancellationToken,
             ValueTask<PlatformWidgetPackageUninstallResult>>? packageUninstall = null,
         Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null,
-        Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? applicationControl = null)
+        Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? applicationControl = null,
+        Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null)
     {
         if (!IsToken(pipeName, 200))
             throw new ArgumentException("Diagnostics pipe name is invalid.", nameof(pipeName));
@@ -61,6 +63,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         _snapshotProvider = snapshotProvider ?? throw new ArgumentNullException(nameof(snapshotProvider));
         _exclusiveControl = exclusiveControl;
         _applicationControl = applicationControl;
+        _packageNotification = packageNotification;
         _authorityRecoveryRetry = authorityRecoveryRetry;
         _localDataInspection = localDataInspection;
         _localDataClear = localDataClear;
@@ -160,6 +163,18 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         string receiptOperation;
         switch (request.Operation)
         {
+            case "take-widget-package-notification":
+            {
+                if (request.ConfirmationToken is not null || request.WidgetId is not null ||
+                    request.PublisherId is not null || request.ActiveVersion is not null)
+                    throw new PlatformDiagnosticsException("malformed_request");
+                var result = _packageNotification is null ? PlatformWidgetPackageNotification.Empty :
+                    await _packageNotification(cancellationToken).AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+                ValidatePackageNotification(result);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = request.Operation;
+                break;
+            }
             case "quit-widgetrail":
             case "restart-widgetrail":
             {
@@ -554,6 +569,12 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private static extern bool GetNamedPipeClientProcessId(IntPtr pipe, out uint clientProcessId);
 
     private sealed record DiagnosticsHello(string Nonce);
+    internal static void ValidatePackageNotification(PlatformWidgetPackageNotification notification)
+    {
+        if (notification is null || notification.Message is null || notification.Message.Length > 512 || notification.Message.Contains('\0'))
+            throw new PlatformDiagnosticsException("malformed_response");
+    }
+
     internal static void ValidateControllerStatus(ControllerControlStatus status)
     {
         if (status is null || !Enum.IsDefined(status.State))
@@ -600,6 +621,11 @@ public sealed class PlatformDiagnosticsPipeClient(
             PlatformDiagnosticsPipeServer.ValidateSnapshot,
             cancellationToken).ConfigureAwait(false);
     }
+
+    public async ValueTask<PlatformWidgetPackageNotification> TakeWidgetPackageNotificationAsync(CancellationToken cancellationToken = default) =>
+        await ExecuteAsync<PlatformWidgetPackageNotification>(new DiagnosticsRequest("take-widget-package-notification"),
+            "take-widget-package-notification", PlatformDiagnosticsPipeServer.ValidatePackageNotification,
+            cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<ApplicationControlResult> RequestApplicationControlAsync(
         bool restart, CancellationToken cancellationToken = default)
