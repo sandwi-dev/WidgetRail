@@ -3,6 +3,7 @@ using System.Text.Json;
 using WidgetRail.FirstPartyWidgets.Power;
 using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
 using WidgetRail.WindowsPowerProvider;
@@ -147,6 +148,16 @@ static async Task Assets()
     var root = Path.Combine(Environment.CurrentDirectory, "src/FirstPartyWidgets/PowerWidget");
     var manifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(Path.Combine(root, "manifest.json")));
     Check(WidgetManifestValidator.Validate(manifest).Count == 0);
+    Check(manifest.Presentation.PackageIcon?.AssetId == "power.shutdown");
+    var widget = new Fake().Create();
+    await Open(widget);
+    Check(Nodes(Snapshot(widget).Root).Single(node => node.Id == "power.shutdown.icon").PackageIcon?.AssetId == "power.shutdown");
+    await Close(widget);
+    foreach (var asset in manifest.IconAssets.Values)
+    {
+        var normalized = SvgIconNormalizer.Normalize(await File.ReadAllBytesAsync(Path.Combine(root, asset.Path)));
+        Check(normalized.Bytes.Length > 0);
+    }
     Check(manifest.Permissions.SequenceEqual(["system.power.read.v1"]));
     Check(manifest.OptionalPermissions.SequenceEqual(["system.power.control.v1"]));
     var compiled = WrssThemeCompiler.Compile(WrssPackageLoader.LoadFile(Path.Combine(root, "styles/default.wrss"),
