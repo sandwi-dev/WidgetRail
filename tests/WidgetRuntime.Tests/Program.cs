@@ -3236,7 +3236,9 @@ static async Task CompanionEndpointPrecedesLaunch()
 
 static async Task HungActionAdmissionIsPrompt()
 {
-    await using var client = CreateClient(requestTimeout: TimeSpan.FromMilliseconds(250));
+    // The stopwatch below owns the admission bound. Healthy lifecycle setup
+    // and cancellation should retain the normal request budget.
+    await using var client = CreateClient();
     await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
     var stopwatch = System.Diagnostics.Stopwatch.StartNew();
     await client.SendActionAsync(new WidgetActionEvent("hang", "button"));
