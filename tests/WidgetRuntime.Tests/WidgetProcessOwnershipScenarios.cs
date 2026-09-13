@@ -245,8 +245,10 @@ internal static class WidgetProcessOwnershipScenarios
             timeoutHooks,
             new TrackingCompanion(),
             replacementCompanion: hangingLifecycle,
-            connectTimeout: TimeSpan.FromSeconds(15),
-            requestTimeout: TimeSpan.FromMilliseconds(100));
+            // Normal lifecycle setup and crash acknowledgement also use this
+            // request budget. Keep the usual bounded budget; the replacement
+            // companion hangs indefinitely, so its timeout remains guaranteed.
+            connectTimeout: TimeSpan.FromSeconds(15));
         await timeoutClient.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
         var crashFailure = new TaskCompletionSource<WidgetFailure>(
             TaskCreationOptions.RunContinuationsAsynchronously);
