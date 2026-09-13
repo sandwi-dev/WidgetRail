@@ -29,7 +29,7 @@ DisableProgramGroupPage=yes
 SetupLogging=yes
 
 [Tasks]
-Name: startup; Description: "Start WidgetRail when I sign in"; Flags: unchecked
+Name: startup; Description: "Start WidgetRail when I sign in (starts quietly; Windows Startup Apps restrictions still apply)"; Flags: unchecked
 
 [Icons]
 Name: "{userprograms}\WidgetRail"; Filename: "{app}\versions\{#PayloadId}\OverlayHost.exe"; Parameters: "--show"; WorkingDir: "{app}\versions\{#PayloadId}"
@@ -46,6 +46,8 @@ var
   PreviousRoot: String;
   PreviousCommand: String;
   ForeignStartup: Boolean;
+  StartupWasEnabled: Boolean;
+  StartupSelectionInitialized: Boolean;
 
 function ApplicationRoot: String;
 begin
@@ -95,17 +97,27 @@ begin
   ForeignStartup := RegValueExists(HKCU, RunKey, 'WidgetRail') and
     ((not RegQueryStringValue(HKCU, RunKey, 'WidgetRail', Current)) or
     (PreviousRoot = '') or (CompareText(Current, PreviousCommand) <> 0));
-  if (PreviousRoot <> '') and not ForeignStartup and
-     RegQueryStringValue(HKCU, RunKey, 'WidgetRail', Current) then
-    WizardSelectTasks('startup');
-  if ForeignStartup then begin
-    WizardForm.TasksList.ItemEnabled[0] := False;
-    WizardSelectTasks('!startup');
-  end;
+  StartupWasEnabled := (PreviousRoot <> '') and not ForeignStartup and
+    RegQueryStringValue(HKCU, RunKey, 'WidgetRail', Current);
   WizardForm.WelcomeLabel2.Caption :=
     'Install WidgetRail for your Windows account. Your widgets and settings are kept when upgrading or changing edition.' + #13#10#13#10 +
     '.NET is included. Setup installs Microsoft GameInput and WebView2 if needed. GameInput may request administrator approval; WebView2 may need an internet connection. Exclusive controller drivers remain optional and are not installed here.';
-  WizardForm.TasksList.ItemCaption[0] := 'Start WidgetRail when I sign in (starts quietly; Windows Startup Apps restrictions still apply)';
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if CurPageID <> wpSelectTasks then Exit;
+  { Inno populates tasks on page entry, after InitializeWizard. Restore the
+    default only once so Back/Next navigation preserves the user's choice. }
+  if not StartupSelectionInitialized then begin
+    if StartupWasEnabled then
+      WizardSelectTasks('startup');
+    StartupSelectionInitialized := True;
+  end;
+  { This page contains only startup. Preserve registrations owned elsewhere. }
+  if ForeignStartup then
+    WizardSelectTasks('!startup');
+  WizardForm.TasksList.Enabled := not ForeignStartup;
 end;
 
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo,

@@ -24,6 +24,23 @@ Require ($installer.Contains("StartupCommand(ApplicationRoot)") -and
     !$installer.Contains("StartupCommand(ApplicationRoot) +")) 'Startup must use only the hidden application command.'
 Write-Output 'PASS installer scope, startup ownership, Windows approval, and process lifetime contracts'
 
+# Inno creates the task items on entry to wpSelectTasks, not InitializeWizard.
+# An indexed caption/enable assignment crashed both installers before page one;
+# early WizardSelectTasks calls also silently lost the existing startup choice.
+$initializeWizard = [regex]::Match($installer, '(?s)procedure InitializeWizard;.*?(?=\r?\n(?:procedure|function) )').Value
+Require ($initializeWizard.Length -gt 0) 'Expected an InitializeWizard handler.'
+Require ($initializeWizard -notmatch 'TasksList|WizardSelectTasks') 'Do not access unpopulated tasks in InitializeWizard.'
+Require ($installer -notmatch 'TasksList\.(?:ItemCaption|ItemEnabled|Checked)\s*\[') 'Startup setup must not depend on a task row index.'
+$taskPage = [regex]::Match($installer, '(?s)procedure CurPageChanged\(CurPageID: Integer\);.*?(?=\r?\n(?:procedure|function) )').Value
+Require ($taskPage.Contains('if CurPageID <> wpSelectTasks then Exit;') -and
+    $taskPage.Contains('if not StartupSelectionInitialized then begin') -and
+    $taskPage.Contains('if StartupWasEnabled then') -and
+    $taskPage.Contains("WizardSelectTasks('startup')") -and
+    $taskPage.Contains('StartupSelectionInitialized := True;')) 'Restore startup only after task creation and preserve edits on Back/Next.'
+Require ($taskPage.Contains("WizardSelectTasks('!startup')") -and
+    $taskPage.Contains('WizardForm.TasksList.Enabled := not ForeignStartup;')) 'Foreign startup entries must remain unselected and unavailable.'
+Write-Output 'PASS task initialization timing and startup selection contracts'
+
 Require (!$installer.Contains("function HasNet8")) "Setup must not require global .NET."
 Require ($installer.Contains("Code = 3010") -and $installer.Contains("NeedsRestart := True")) "Prerequisite restart must be handled."
 Require ($installer.Contains("CompatibleGameInputFile") -and $installer.Contains("HKLM32, 'SOFTWARE\Microsoft\GameInput'")) "GameInput must use compatible redistributable detection."
