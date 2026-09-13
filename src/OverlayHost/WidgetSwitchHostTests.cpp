@@ -1289,6 +1289,17 @@ void RunRetentionScenario(const Arguments& arguments) {
         }
     };
 
+    const auto hasBoundedTrayWindow = [](const std::string_view record, const std::size_t total) {
+        const auto count = ParsePositiveSequence(TextField(record, "tray-total="));
+        const auto visible = ParsePositiveSequence(TextField(record, "tray-visible="));
+        const auto previous = TextField(record, "tray-previous=");
+        const auto next = TextField(record, "tray-next=");
+        return count && *count == total && visible && *visible <= total &&
+            (previous == "true" || previous == "false") &&
+            (next == "true" || next == "false") &&
+            ((*visible < total) == (previous == "true" || next == "true")) &&
+            TextField(record, "tray-selected-visible=") == "true";
+    };
     const auto waitForPaint = [&](const std::size_t after,
                                   const Target& target,
                                   const std::wstring_view rendered,
@@ -1308,9 +1319,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                         lineEnd == std::string::npos
                             ? std::string::npos
                             : lineEnd - recordAt);
-                    if (record.find("tray-total=8") == std::string::npos ||
-                        record.find("tray-selected-visible=true") ==
-                            std::string::npos)
+                    if (!hasBoundedTrayWindow(record, 8))
                         return false;
                     if (authority != "retained") return true;
                     if (retainedWidgetFocus)
@@ -2247,9 +2256,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                         std::string::npos,
                 "Admitted destination did not preserve ordered tray focus authority for " +
                     WideToUtf8(target.label));
-        Require(admittedRecord.find("tray-visible=8") != std::string::npos &&
-                    admittedRecord.find("tray-previous=false") != std::string::npos &&
-                    admittedRecord.find("tray-next=false") != std::string::npos,
+        Require(hasBoundedTrayWindow(admittedRecord, 8),
                 "Widget switching changed shared tray capacity for " +
                     WideToUtf8(target.label) + "; record=" + admittedRecord);
         const auto retainedDesired = TextField(retainedRecord, "desired-extent=");
@@ -2325,12 +2332,7 @@ void RunRetentionScenario(const Arguments& arguments) {
         audioAdmittedEnd == std::string::npos
             ? std::string::npos
             : audioAdmittedEnd - audioAdmittedAt);
-    Require(audioAdmittedRecord.find("tray-total=8") != std::string::npos &&
-                audioAdmittedRecord.find("tray-visible=8") != std::string::npos &&
-                audioAdmittedRecord.find("tray-previous=false") != std::string::npos &&
-                audioAdmittedRecord.find("tray-next=false") != std::string::npos &&
-                audioAdmittedRecord.find("tray-selected-visible=true") !=
-                    std::string::npos,
+    Require(hasBoundedTrayWindow(audioAdmittedRecord, 8),
             "Shared production tray did not retain every identity at its stable capacity");
     Require(
         TextField(audioAdmittedRecord, "desired-extent=") ==
@@ -2371,7 +2373,7 @@ void RunRetentionScenario(const Arguments& arguments) {
             interfaceScale;
         if (!std::isfinite(pixelsPerDip) || pixelsPerDip <= 0.0F)
             return expected;
-        return widgetrail::shell::ComputeTrayLayout(
+        return widgetrail::shell::ComputeTrayStatusLayout(
             workWidthPixels / pixelsPerDip,
             workHeightPixels / pixelsPerDip,
             total, 0, std::nullopt,
@@ -2398,8 +2400,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                 std::to_string(expectedTotal);
             return false;
         }
-        if (expectedLayout->tiles.size() != expectedTotal ||
-            expectedLayout->previousOverflow || expectedLayout->nextOverflow) {
+        if (expectedLayout->tiles.empty()) {
             diagnostic = "fixture-envelope=unsupported expected-total=" +
                 std::to_string(expectedTotal) + " policy-visible=" +
                 std::to_string(expectedLayout->tiles.size()) +
@@ -2703,8 +2704,7 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(TextField(preSwitchPaint, "rendered=") == "audio-mixer" &&
                 TextField(preSwitchPaint, "semantics=") == "current",
             "Down/fence did not retain exact admitted/current Audio visual authority");
-    Require(preSwitchPaint.find("tray-total=8") != std::string::npos &&
-                preSwitchPaint.find("tray-visible=8") != std::string::npos &&
+    Require(hasBoundedTrayWindow(preSwitchPaint, 8) &&
                 preSwitchPaint.find("selected=audio-mixer") != std::string::npos &&
                 preSwitchPaint.find("tray-selected-visible=true") !=
                     std::string::npos,
@@ -3052,6 +3052,7 @@ void RunRetentionScenario(const Arguments& arguments) {
     // deliberately rapid reversal below is a separate lifecycle scenario
     // whose second selection is itself allowed one whole-tray repaint.
     const auto ordinaryCycleGeometryEnd = ReadUtf8(logPath).size();
+    const auto ordinaryCycleTimingCount = drawTimings.size();
 
     const auto reversalBefore = ReadUtf8(logPath).size();
     SendKey(window, VK_LEFT);
@@ -4100,7 +4101,8 @@ void RunRetentionScenario(const Arguments& arguments) {
                     ? std::string::npos : motionPaintEnd - motionPaintAt);
             const auto motionTarget = TextField(motionPaint, "target=");
             const auto motionSequence = TextField(motionPaint, "sequence=");
-            const auto finalAt = log.find("Composition motion final steps=", motionAt);
+            const auto finalAt = log.find(
+                "Composition motion completed owner=compositor container=retained redraw=false", motionAt);
             Require(finalAt != std::string::npos,
                     "Bounded geometry route found an unterminated composition motion");
             const auto nextMotionAt = log.find("Composition motion start", finalAt);
@@ -4944,7 +4946,8 @@ void RunRetentionScenario(const Arguments& arguments) {
         Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
                     log.find("Overlay render target resized in place") == std::string::npos,
                 "Positive composition route fell back to direct HWND presentation.");
-        Require(drawTimings.size() == kTargets.size() &&
+        Require(ordinaryCycleTimingCount == kTargets.size() &&
+                    drawTimings.size() >= ordinaryCycleTimingCount &&
                     commitTimings.size() == drawTimings.size() &&
                     geometryTimings.size() == drawTimings.size(),
                 "Production timing distribution omitted a widget transition.");

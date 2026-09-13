@@ -530,12 +530,15 @@ static Task PolicyInterfaceProbe()
 static async Task ProductionAdapterSmoke()
 {
     if (!OperatingSystem.IsWindows()) return;
+    bool hasDefaultOutput;
     var apartmentInitialized = CoreAudioInterop.InitializeMta();
     try
     {
         using var native = new CoreAudioNativeAdapter();
         var nativeDevices = native.EnumerateDevices();
-        if (nativeDevices.Any(device => device.Direction == NativeAudioDeviceDirection.Output && device.IsDefault))
+        hasDefaultOutput = nativeDevices.Any(device =>
+            device.Direction == NativeAudioDeviceDirection.Output && device.IsDefault);
+        if (hasDefaultOutput)
         {
             var spatial = native.GetSpatialAudio();
             Assert.True(spatial is not null);
@@ -550,8 +553,20 @@ static async Task ProductionAdapterSmoke()
         if (apartmentInitialized) CoreAudioInterop.Uninitialize();
     }
     await using var backend = new WindowsAudioPlatformBackend();
-    var sessions = await backend.GetAudioSessionsAsync(CancellationToken.None)
-        .WaitAsync(TimeSpan.FromSeconds(5));
+    IReadOnlyList<AudioSessionSummary> sessions;
+    try
+    {
+        sessions = await backend.GetAudioSessionsAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+    }
+    catch (BrokerException exception) when (!hasDefaultOutput && exception.Code == "platform_unavailable")
+    {
+        // Hosted Windows runners can enumerate devices successfully while
+        // having no default render endpoint on which to open session control.
+        Assert.Equal("Windows audio is temporarily unavailable.", exception.Message);
+        sessions = [];
+        Console.WriteLine("Audio smoke: no default output; verified the bounded unavailable result.");
+    }
     foreach (var session in sessions)
     {
         Assert.True(session.SessionId.StartsWith("audio_", StringComparison.Ordinal));
