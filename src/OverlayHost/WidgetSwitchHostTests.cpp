@@ -2682,12 +2682,21 @@ void RunRetentionScenario(const Arguments& arguments) {
             "Catalog-boundary Audio paint omitted exact target/sequence authority");
     SendKey(window, VK_DOWN);
     FenceWindow(window);
-    const auto preSwitchLog = ReadUtf8(logPath);
-    const auto preSwitchPaintAt = preSwitchLog.rfind(
-        "Widget presentation paint target=audio-mixer content=admitted");
-    Require(preSwitchPaintAt != std::string::npos &&
-                preSwitchPaintAt >= removedCatalogBefore,
-            "Down/fence did not leave a current admitted Audio paint authority");
+    std::string preSwitchLog;
+    std::size_t preSwitchPaintAt = std::string::npos;
+    // A sent-message fence can run during a COM callback inside a paint.
+    // Wait for that frame's composition sample before reading its geometry.
+    const bool preSwitchFrameCompleted = WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        preSwitchLog = ReadUtf8(logPath);
+        preSwitchPaintAt = preSwitchLog.rfind(
+            "Widget presentation paint target=audio-mixer content=admitted");
+        return preSwitchPaintAt != std::string::npos &&
+            preSwitchPaintAt >= removedCatalogBefore &&
+            preSwitchLog.find("Composition child sample step=", preSwitchPaintAt) !=
+                std::string::npos;
+    });
+    Require(preSwitchFrameCompleted,
+            "Down/fence did not complete a current admitted Audio composition frame");
     const auto preSwitchPaintEnd = preSwitchLog.find('\n', preSwitchPaintAt);
     const auto preSwitchPaint = preSwitchLog.substr(
         preSwitchPaintAt,
@@ -3725,12 +3734,14 @@ void RunRetentionScenario(const Arguments& arguments) {
     const auto settingsAfterEnterSequence = ParsePositiveSequence(
         TextField(settingsAfterEnter, "sequence="));
     std::string readyActionCurrent;
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+    // Refresh does not change this view. It may retain the already committed
+    // Current frame without rasterizing another one after the action.
+    const bool readyActionCurrentObserved = WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 const auto current = ReadUtf8(logPath);
                 constexpr std::string_view needle =
                     "Widget presentation paint target=settings content=admitted "
                     "rendered=settings sequence=";
-                for (auto at = current.find(needle, ordinaryRefreshBefore);
+                for (auto at = current.find(needle, enterFromTrayBefore);
                      at != std::string::npos;
                      at = current.find(needle, at + 1)) {
                     const auto candidate = RecordLine(current, at);
@@ -3756,17 +3767,18 @@ void RunRetentionScenario(const Arguments& arguments) {
                     return true;
                 }
                 return false;
-            }),
-            "Ready-triggered blocked refresh did not settle its exact Current action paint; "
+            });
+    Require(readyActionCurrentObserved,
+            "Blocked refresh did not retain its exact accepted Current paint; "
             "blocked-render-sequence=" +
                 std::to_string(ordinaryBlockedRenderSequence) + " log=" +
                 ReadUtf8(logPath).substr(ordinaryRefreshBefore));
     requireCurrentPresentationCompletion(
-        ordinaryRefreshBefore, readyActionCurrent, kTargets.back().id,
+        enterFromTrayBefore, readyActionCurrent, kTargets.back().id,
         "ready-action-current-before-stable-retained", L"widget:settings-ready");
     if (*interactiveMode) {
         const auto current = ReadUtf8(logPath);
-        const auto paintAt = current.find(readyActionCurrent, ordinaryRefreshBefore);
+        const auto paintAt = current.find(readyActionCurrent, enterFromTrayBefore);
         Require(paintAt != std::string::npos,
                 "Ready-triggered Current paint disappeared before composition completion");
         recordComposition(
@@ -3793,7 +3805,7 @@ void RunRetentionScenario(const Arguments& arguments) {
         const auto selectBlockedFallback = [&](const std::string_view log,
                                                 const std::array<std::string, 2>& geometry) {
             std::optional<std::string> selected;
-            for (auto paintAt = log.find("Widget presentation paint target=settings", ordinaryRefreshBefore);
+            for (auto paintAt = log.find("Widget presentation paint target=settings", enterFromTrayBefore);
                  paintAt != std::string::npos;
                  paintAt = log.find("Widget presentation paint target=settings", paintAt + 1)) {
                 const auto paint = RecordLine(log, paintAt);
@@ -3802,7 +3814,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                     continue;
                 const auto authorityAt = log.rfind(
                     "Fallback placement mode=hwnd-fallback phase=", paintAt);
-                if (authorityAt == std::string::npos || authorityAt < ordinaryRefreshBefore) continue;
+                if (authorityAt == std::string::npos || authorityAt < enterFromTrayBefore) continue;
                 const auto authority = RecordLine(log, authorityAt);
                 const auto authorityEnd = authorityAt + authority.size();
                 bool superseded = false;
@@ -3850,7 +3862,7 @@ void RunRetentionScenario(const Arguments& arguments) {
     }
     FenceWindow(window);
     std::string retainedInteractiveUiDiagnostic{"not-observed"};
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+    const bool retainedInteractiveUiReady = WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 ComPtr<IUIAutomationElement> contentRoot;
                 const bool contentRootReady = SUCCEEDED(automation->ElementFromHandle(
                     window, contentRoot.GetAddressOf())) && contentRoot;
@@ -3874,9 +3886,14 @@ void RunRetentionScenario(const Arguments& arguments) {
                 return contentRootReady && readyPresent && readyEnabled &&
                     readyFocused && focusedReady &&
                     AutomationIdOf(focused.Get()) == "widget:settings-ready";
-            }),
+            });
+    const auto retainedUiLog = retainedInteractiveUiReady ? std::string{} : ReadUtf8(logPath);
+    const auto retainedUiLogStart = retainedUiLog.size() > 16'384
+        ? retainedUiLog.size() - 16'384 : 0;
+    Require(retainedInteractiveUiReady,
             "Stable RefreshRetained did not preserve exact Interactive Settings "
-            "UIA/action authority; ui=" + retainedInteractiveUiDiagnostic);
+            "UIA/action authority; ui=" + retainedInteractiveUiDiagnostic +
+                "; host-log=" + retainedUiLog.substr(retainedUiLogStart));
     const auto readyActionCurrentSequence = ParsePositiveSequence(
         TextField(readyActionCurrent, "sequence="));
     Require(readyActionCurrentSequence &&
@@ -4579,7 +4596,9 @@ void RunRetentionScenario(const Arguments& arguments) {
             }), "Close-time blocked Settings host Back did not restore exact tray authority");
     const auto closeWhileBlockedBoundary = ReadUtf8(logPath).size();
     const auto closeStarted = std::chrono::steady_clock::now();
-    SendKey(window, VK_ESCAPE);
+    // Measure dispatch of the press, independently of asynchronous close
+    // work that can begin before a synchronous key-up message is handled.
+    widgetrail::host_testing::SendKeyDownAndPostRelease(window, VK_ESCAPE);
     const auto blockedCloseDispatchMilliseconds = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - closeStarted).count());
