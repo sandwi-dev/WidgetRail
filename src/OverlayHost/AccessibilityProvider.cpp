@@ -1025,13 +1025,13 @@ std::vector<ActionRequest> ProviderHost::TakeActions() noexcept {
     return actions;
 }
 
-void ProviderHost::RaisePendingEvents() noexcept {
+std::size_t ProviderHost::RaisePendingEvents() noexcept {
     std::shared_ptr<const PublishedTree> previous;
     std::shared_ptr<const PublishedTree> current;
     std::uint64_t binding{};
     {
         std::scoped_lock lock(state_->mutex);
-        if (!state_->eventMessagePending || !state_->window) return;
+        if (!state_->eventMessagePending || !state_->window) return 0;
         state_->eventMessagePending = false;
         previous = state_->announced;
         current = state_->current;
@@ -1105,7 +1105,7 @@ void ProviderHost::RaisePendingEvents() noexcept {
         }
     }
     ComPtr<IRawElementProviderSimple> root;
-    if (FAILED(GetRootProvider(root.GetAddressOf())) || !root) return;
+    if (FAILED(GetRootProvider(root.GetAddressOf())) || !root) return 0;
     if (plan.structureChanged)
         (void)UiaRaiseStructureChangedEvent(
             root.Get(), StructureChangeType_ChildrenInvalidated, nullptr, 0);
@@ -1214,11 +1214,14 @@ void ProviderHost::RaisePendingEvents() noexcept {
         VariantClear(&oldValue);
         VariantClear(&newValue);
     }
+    std::size_t liveRegionEmissions{};
     for (const auto& element : plan.liveRegionChangedElements) {
         auto liveRegion = providerFor(element);
-        if (liveRegion)
+        if (liveRegion) {
+            ++liveRegionEmissions;
             (void)UiaRaiseAutomationEvent(
                 liveRegion.Get(), UIA_LiveRegionChangedEventId);
+        }
     }
     for (const auto& element : plan.selectedElements) {
         auto selected = providerFor(element);
@@ -1226,6 +1229,7 @@ void ProviderHost::RaisePendingEvents() noexcept {
             (void)UiaRaiseAutomationEvent(
                 selected.Get(), UIA_SelectionItem_ElementSelectedEventId);
     }
+    return liveRegionEmissions;
 }
 
 std::optional<ResolvedAction> ResolveActionRequest(

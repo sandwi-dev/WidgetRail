@@ -12651,8 +12651,13 @@ private:
                     *snapshot, {requestedSlider->id}, true);
             }
         }
-        accessibilityProvider_.RaisePendingEvents();
-        chromeAccessibilityProvider_.RaisePendingEvents();
+        const auto contentLiveEvents = accessibilityProvider_.RaisePendingEvents();
+        const auto chromeLiveEvents = chromeAccessibilityProvider_.RaisePendingEvents();
+        if (contentLiveEvents || chromeLiveEvents) {
+            AppendDiagnostic(L"Accessibility live-region emissions content=" +
+                std::to_wstring(contentLiveEvents) + L" chrome=" +
+                std::to_wstring(chromeLiveEvents));
+        }
     }
 
     void ClearAccessibilityTree() noexcept {

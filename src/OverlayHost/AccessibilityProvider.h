@@ -5,6 +5,7 @@
 #include <UIAutomation.h>
 #include <Windows.h>
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -89,7 +90,8 @@ public:
     [[nodiscard]] LRESULT HandleWmGetObject(WPARAM wParam, LPARAM lParam);
     [[nodiscard]] HRESULT GetRootProvider(IRawElementProviderSimple** provider) const;
     [[nodiscard]] std::vector<ActionRequest> TakeActions() noexcept;
-    void RaisePendingEvents() noexcept;
+    // Returns the number of live-region events submitted to UI Automation.
+    std::size_t RaisePendingEvents() noexcept;
 
 private:
     std::shared_ptr<ProviderState> state_;
