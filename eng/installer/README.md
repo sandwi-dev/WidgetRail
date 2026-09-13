@@ -4,8 +4,8 @@ Production and Developer installers use one per-user Inno Setup AppId. Installin
 either edition updates the same Start menu entry and uninstall entry. Files live
 under `%LOCALAPPDATA%\Programs\WidgetRail\versions\<version-edition-commit>`.
 The active application root is recorded in
-`HKCU\Software\WidgetRail\Installation`. Existing user data under
-`%LOCALAPPDATA%\WidgetRail` is never removed by setup or uninstall.
+`HKCU\Software\WidgetRail\Installation`. Setup preserves existing user data.
+Uninstall keeps data by default and offers an explicit option to delete it.
 
 Previous version payloads remain installed until uninstall. This avoids deleting
 working binaries during an interrupted upgrade and keeps file removal restricted
@@ -41,8 +41,16 @@ Microsoft signatures and includes .NET license/notices. Its .NET patch version i
 serviced with WidgetRail releases and should be reviewed for each public build.
 The GameInput MSI must match NativeDependencies.csproj. Setup checks compatible
 DLL versions in Windows and the documented GameInput RedistDir, then uses the
-signed MSI with a Windows elevation prompt only when necessary. Cancellation,
-errors and restart-required results stop setup with retry guidance. It does not
+signed MSI with a Windows elevation prompt only when necessary. The supported
+minimum is independently recorded in `eng/installer/requirements.json`:
+3.3.221.0, the redistributable used for the existing controller acceptance checks.
+It supports the v3 API used by the host. The SDK/package version is not the
+runtime compatibility floor; Windows' legacy 0.x GameInput does not satisfy it.
+The Ready page explains that a stalled vendor update may require a normal PC
+restart. MSI diagnostics overwrite `%LOCALAPPDATA%\WidgetRail\logs\GameInput-setup.log`
+on each attempt; setup also records the vendor exit code. Cancellation,
+errors and restart-required results stop setup with retry guidance. There is no
+watchdog, forced termination, automatic reboot, or overlapping MSI retry. It does not
 uninstall shared Microsoft components.
 
 WebView2 is detected in per-user and machine-wide EdgeUpdate registrations. If
@@ -66,7 +74,38 @@ surface does not gain registry access. The service checks that the worker's
 application directory matches the registered installation. Development copies
 cannot redirect the installed startup entry. Registration failures become UI
 feedback. Uninstall removes the startup entry only when it exactly matches this
-installation, and retains user settings, widgets and caches.
+installation. The empty WidgetRail installation registry parent is also removed;
+unrelated values or subkeys prevent that removal.
+
+## Uninstall data choices
+
+Interactive uninstall asks whether to delete **all WidgetRail data for this
+Windows account**, including data shared with development copies. **No** is the
+default; Cancel stops uninstall. Silent uninstall always keeps data. Explicit Yes
+removes data only after payload removal and only when this uninstaller owns the
+active installation registration:
+
+- `%LOCALAPPDATA%\WidgetRail`: installed community widgets, settings, permissions,
+  sign-ins, artwork caches, diagnostic logs and other application data.
+- `%TEMP%\WidgetRail`: WidgetRail temporary files.
+- WidgetRail's isolated-worker profiles: only names with the exact
+  `widgetrail.widget.` prefix followed by 32 hexadecimal characters. These are
+  removed using Windows' `DeleteAppContainerProfile`, not by deleting arbitrary
+  package folders or registry mappings.
+
+Directory junctions and symbolic links inside the two application data roots
+are unlinked without traversing their targets. Missing paths are harmless;
+locked/read-only data or profile cleanup failures are reported rather than
+claiming complete deletion. Uninstall does not remove GameInput, WebView2,
+optional controller drivers, Windows-owned StartupApproved entries, or other
+applications' data. Standard Windows installation logs are left to Windows.
+
+When data is kept, the completion message explains how to remove it later:
+press Win+R, open `%LOCALAPPDATA%`, and delete only its `WidgetRail` folder. The
+`WidgetRail` folder inside `%TEMP%` may also be removed. These manual folder
+deletions do not unregister Windows sandbox profiles; for that complete cleanup,
+reinstall WidgetRail and choose Yes to delete all data when uninstalling. Close
+all WidgetRail/development copies before either form of cleanup.
 
 Setup and uninstall require WidgetRail to be quit by the user. The native process
 holds a lifetime mutex until cleanup finishes; it refuses a new launch while setup
@@ -78,7 +117,12 @@ terminates an overlay that could own controller isolation.
 Run the PlatformSettings, SettingsWidget and WidgetRuntime executable test suites using the
 repository's binlog-enabled build workflow. Startup tests use fake storage only.
 `scripts/Test-InstallerContract.ps1` checks the shared registry/process contracts
-and non-destructive installer settings. Compile both editions for Pascal syntax
+and installer settings. `scripts/Test-InstallerDataCleanup.ps1 -CompilerPath <ISCC.exe>`
+compiles the actual Pascal deletion routines into a fixture executable that
+exits before any installation or wizard UI. It exercises synthetic nested data,
+root/nested junctions with outside sentinel files, preserved siblings, missing
+paths, read-only failures and profile-name ownership checks. It does not call
+the real profile cleanup or touch real WidgetRail data. Compile both editions for Pascal syntax
 and payload validation. Installer execution, upgrades, edition switching,
 Windows-level startup disablement and uninstall still require user acceptance on
 a disposable Windows profile or VM; do not automate those against a live profile.

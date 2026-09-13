@@ -48,6 +48,10 @@ var
   ForeignStartup: Boolean;
   StartupWasEnabled: Boolean;
   StartupSelectionInitialized: Boolean;
+  DeleteUserData: Boolean;
+  OwnsInstallation: Boolean;
+
+#include "UninstallData.iss"
 
 function ApplicationRoot: String;
 begin
@@ -126,7 +130,8 @@ begin
   Result := MemoDirInfo + NewLine + NewLine + MemoTasksInfo + NewLine + NewLine +
     'Microsoft components:' + NewLine + Space + '.NET is included with WidgetRail.';
   if not HasGameInput then
-    Result := Result + NewLine + Space + 'Install GameInput (Windows will ask for administrator approval).';
+    Result := Result + NewLine + Space + 'Install GameInput (Windows will ask for administrator approval).' +
+      NewLine + Space + 'If its update gets stuck, restart your PC normally, then run WidgetRail setup again.';
   if not HasWebView2 then
     Result := Result + NewLine + Space + 'Download and install WebView2 (internet connection needed).';
 end;
@@ -134,6 +139,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Code: Integer;
+  GameInputLog, LogArguments: String;
 begin
   Result := '';
   if FindWindowByClassName('WidgetRail.OverlayHost') <> 0 then begin
@@ -143,19 +149,34 @@ begin
   try
     if not HasGameInput then begin
       ExtractTemporaryFile('GameInputRedist.msi');
+      LogArguments := '';
+      GameInputLog := ExpandConstant('{localappdata}\WidgetRail\logs\GameInput-setup.log');
+      if ForceDirectories(ExtractFileDir(GameInputLog)) then begin
+        LogArguments := ' /L*v "' + GameInputLog + '"';
+        Log('GameInput installer log: ' + GameInputLog);
+      end else
+        Log('Could not prepare GameInput log directory; continuing without the additional log.');
       if not ShellExec('runas', ExpandConstant('{sys}\msiexec.exe'),
-        '/i "' + ExpandConstant('{tmp}\GameInputRedist.msi') + '" /passive /norestart',
+        '/i "' + ExpandConstant('{tmp}\GameInputRedist.msi') + '" /passive /norestart' + LogArguments,
         '', SW_SHOWNORMAL, ewWaitUntilTerminated, Code) then begin
         Result := 'GameInput could not be installed. Allow its Windows approval prompt, then try again.';
         Exit;
       end;
+      Log('GameInput installer exit code: ' + IntToStr(Code));
       if (Code = 3010) or (Code = 1641) then begin
         NeedsRestart := True;
         Result := 'GameInput needs a Windows restart. Restart your PC, then run WidgetRail setup again.';
         Exit;
       end;
       if (Code <> 0) or not HasGameInput then begin
-        Result := 'GameInput installation did not complete. Try again after any other Windows installation finishes.';
+        if Code = 1602 then
+          Result := 'GameInput installation was cancelled. Retry when you are ready, or cancel WidgetRail setup.'
+        else if Code = 1618 then
+          Result := 'Another Windows installation is running. Wait for it to finish, then retry, or cancel WidgetRail setup.'
+        else if Code = 1622 then
+          Result := 'GameInput could not write its setup log. Check your free disk space and access to your user folder, then retry.'
+        else
+          Result := 'GameInput could not finish updating. Restart your PC, then run WidgetRail setup again. You can cancel setup now.';
         Exit;
       end;
     end;
@@ -197,6 +218,8 @@ begin
 end;
 
 function InitializeUninstall: Boolean;
+var
+  Choice: Integer;
 begin
   if CheckForMutexes('Local\WidgetRail.Setup') then begin
     MsgBox('Another WidgetRail setup is open. Close it before uninstalling.', mbError, MB_OK);
@@ -208,22 +231,54 @@ begin
   Result := not CheckForMutexes('Local\WidgetRail.OverlayHost.Running') and
     (FindWindowByClassName('WidgetRail.OverlayHost') = 0);
   if not Result then
-    MsgBox('Quit WidgetRail from its Settings header before uninstalling. Your widgets and settings will be kept.', mbError, MB_OK);
+    MsgBox('Quit WidgetRail from its Settings header before uninstalling.', mbError, MB_OK);
+  if not Result then Exit;
+  { Silent uninstall preserves data and never treats suppressed UI as consent. }
+  if UninstallSilent then Exit;
+  Choice := MsgBox('Also delete all WidgetRail data for this Windows account?' + #13#10#13#10 +
+    'This includes installed widgets, settings, sign-ins, caches, logs and isolated-widget data, including data shared with development copies.' + #13#10#13#10 +
+    'Yes: permanently delete all data.' + #13#10 +
+    'No (recommended): keep data for reinstalling.' + #13#10 +
+    'Cancel: do not uninstall.',
+    mbConfirmation, MB_YESNOCANCEL or MB_DEFBUTTON2);
+  DeleteUserData := Choice = IDYES;
+  Result := Choice <> IDCANCEL;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Root, Current: String;
 begin
+  if (CurUninstallStep = usDone) and OwnsInstallation and
+     not DeleteUserData and not UninstallSilent then begin
+    MsgBox('Your WidgetRail data was kept.' + #13#10#13#10 +
+      'To remove saved data manually later, press Win+R, enter %LOCALAPPDATA%, and delete only the WidgetRail folder. You can also delete the WidgetRail folder inside %TEMP%.' + #13#10#13#10 +
+      'For complete cleanup of Windows sandbox profiles too, reinstall WidgetRail and choose Yes to delete all data when uninstalling.', mbInformation, MB_OK);
+    Exit;
+  end;
+  if CurUninstallStep = usPostUninstall then begin
+    if DeleteUserData and OwnsInstallation then begin
+      try
+        if not RemoveAllWidgetRailData then
+          MsgBox('WidgetRail was uninstalled, but some data could not be removed. Close applications using that data and retry cleanup. Saved data is in %LOCALAPPDATA%\WidgetRail and temporary files are in %TEMP%\WidgetRail.', mbError, MB_OK);
+      except
+        Log('WidgetRail data cleanup failed: ' + GetExceptionMessage);
+        MsgBox('WidgetRail was uninstalled, but some data could not be removed. Close applications using that data and retry cleanup. Saved data is in %LOCALAPPDATA%\WidgetRail and temporary files are in %TEMP%\WidgetRail.', mbError, MB_OK);
+      end;
+    end;
+    Exit;
+  end;
   if CurUninstallStep <> usUninstall then Exit;
   if RegQueryStringValue(HKCU, InstallKey, 'ApplicationRoot', Root) and
      (CompareText(Root, ApplicationRoot) = 0) then begin
+    OwnsInstallation := True;
     if RegQueryStringValue(HKCU, RunKey, 'WidgetRail', Current) and
        (CompareText(Current, StartupCommand(Root)) = 0) then
       RegDeleteValue(HKCU, RunKey, 'WidgetRail');
     RegDeleteValue(HKCU, InstallKey, 'ApplicationRoot');
     RegDeleteValue(HKCU, InstallKey, 'Edition');
     RegDeleteKeyIfEmpty(HKCU, InstallKey);
+    RegDeleteKeyIfEmpty(HKCU, 'Software\WidgetRail');
   end;
-  { Inno removes only logged installation files. Never delete the user data root. }
+  { Inno removes logged payloads; separate data cleanup requires the opt-in above. }
 end;

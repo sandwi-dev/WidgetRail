@@ -46,3 +46,23 @@ Require ($installer.Contains("Code = 3010") -and $installer.Contains("NeedsResta
 Require ($installer.Contains("CompatibleGameInputFile") -and $installer.Contains("HKLM32, 'SOFTWARE\Microsoft\GameInput'")) "GameInput must use compatible redistributable detection."
 Require ($installer.Contains("/passive /norestart") -and $installer.Contains("/silent /install")) "Signed vendor installers must own runtime setup."
 Write-Output "PASS bundled runtime and prerequisite setup contracts"
+
+$builder = Get-Content -LiteralPath (Join-Path $repository 'scripts/Build-Installer.ps1') -Raw
+$requirements = Get-Content -LiteralPath (Join-Path $repository 'eng/installer/requirements.json') -Raw | ConvertFrom-Json
+$minimum = [version]$requirements.gameInputMinimumFileVersion
+Require ($minimum -eq [version]'3.3.221.0') 'Keep the physically verified GameInput compatibility floor.'
+foreach ($version in @('3.3.221.0','3.5.262.0','3.5.270.0')) {
+    Require ([version]$version -ge $minimum) "Compatible GameInput rejected: $version"
+}
+Require ([version]'0.2309.26100.9278' -lt $minimum -and [version]'3.2.0.0' -lt $minimum) 'Unverified/OS legacy GameInput must not satisfy setup.'
+Require ($builder.Contains('$requirements.gameInputMinimumFileVersion')) 'Compatibility must not be tied to the SDK package version.'
+Require ($installer.Contains('/L*v') -and $installer.Contains('GameInput installer exit code:')) 'GameInput installation must leave diagnostic evidence.'
+Require ($installer.Contains('If its update gets stuck, restart your PC normally') -and
+    $installer.Contains('GameInput could not finish updating. Restart your PC')) 'Setup must explain stalled and failed updates.'
+Require ($installer.Contains('if UninstallSilent then Exit;') -and
+    $installer.Contains('MB_YESNOCANCEL or MB_DEFBUTTON2') -and
+    $installer.Contains('DeleteUserData := Choice = IDYES;') -and
+    $installer.Contains('DeleteUserData and OwnsInstallation')) 'Data cleanup must require explicit consent and installation ownership.'
+Require ($installer.Contains('if CurUninstallStep = usPostUninstall then begin')) 'Data cleanup must follow payload removal.'
+Require ($installer.Contains('To remove saved data manually later')) 'Uninstall must explain later manual deletion.'
+Write-Output 'PASS GameInput compatibility, recovery guidance, data consent and cleanup ordering contracts'

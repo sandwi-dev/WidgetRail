@@ -66,7 +66,12 @@ foreach ($edition in @('production', 'developer')) {
     $name = $display.Replace(' ', '-') + '-' + $manifest.version + '-win-x64-setup'
     $payloadId = $manifest.version + '-' + $edition + '-' + $manifest.sourceCommit.Substring(0, 12) + '-' + $manifest.packagingCommit.Substring(0, 12)
     $dependencies = Get-Content (Join-Path $payload 'prerequisites/runtime-dependencies.json') -Raw | ConvertFrom-Json
-    $gameVersion = [version]$dependencies.gameInput.fileVersion
+    # Runtime compatibility is independent of the redistributable package version.
+    $requirements = Get-Content (Join-Path $repository 'eng/installer/requirements.json') -Raw | ConvertFrom-Json
+    $gameVersion = [version]$requirements.gameInputMinimumFileVersion
+    if ($gameVersion -lt [version]'3.3.221.0' -or $gameVersion -gt [version]$dependencies.gameInput.fileVersion) {
+        throw 'Invalid GameInput minimum runtime version.'
+    }
     foreach ($redist in @(@{Name='GameInputRedist.msi';Hash=$dependencies.gameInput.sha256}, @{Name='MicrosoftEdgeWebview2Setup.exe';Hash=$dependencies.webView2.sha256})) {
         $path = Join-Path $payload ('prerequisites/' + $redist.Name)
         if ((Get-FileHash $path).Hash -ine $redist.Hash -or (Get-AuthenticodeSignature $path).Status -ne 'Valid') { throw 'Prerequisite integrity/signature check failed.' }
@@ -89,6 +94,7 @@ foreach ($edition in @('production', 'developer')) {
     }
     [IO.File]::WriteAllLines((Join-Path $editionWork 'Payload.iss'), $lines, [Text.UTF8Encoding]::new($true))
     Copy-Item -LiteralPath (Join-Path $repository 'eng/installer/WidgetRail.iss') -Destination $editionWork
+    Copy-Item -LiteralPath (Join-Path $repository 'eng/installer/UninstallData.iss') -Destination $editionWork
     & $CompilerPath /Qp (Join-Path $editionWork 'WidgetRail.iss')
     if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed for $edition. Staging retained at $stage" }
     Test-ReleaseInventory $entry.Root
