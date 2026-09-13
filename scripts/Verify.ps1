@@ -40,7 +40,7 @@ function Invoke-ProvenanceCommand(
         -TimeoutSeconds $timeoutSeconds -OutputDirectory $outputDirectory `
         -MaximumOutputBytes $maximumOutputBytes -SuppressReplay
     if ($result.status -ne 'passed') {
-        throw "Unable to capture $id provenance; inspect $($result.stderrLog)."
+        throw "Unable to capture $id provenance: status=$($result.status), exit=$($result.exitCode), elapsed=$($result.durationMilliseconds)ms, limit=${timeoutSeconds}s; inspect $($result.stderrLog)."
     }
     [pscustomobject]@{
         text = ([IO.File]::ReadAllText((Join-Path $outputDirectory $result.stdoutLog))).Trim()
@@ -139,7 +139,7 @@ try {
     $nativeToolchainResult = Invoke-ProvenanceCommand -Id native-toolchain -File pwsh `
         -Arguments @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'Get-NativeToolchainProvenance.ps1')) `
         -MaximumOutputBytes 65536 -WorkingDirectory $repositoryRoot -OutputDirectory $runDirectory `
-        -TimeoutSeconds (Get-RemainingVerificationTimeout 10 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
+        -TimeoutSeconds (Get-RemainingVerificationTimeout 30 $runStopwatch.Elapsed.TotalSeconds $OverallTimeoutSeconds)
     if ($nativeToolchainResult.truncated) {
         throw 'Native toolchain provenance output exceeded its configured limit.'
     }
