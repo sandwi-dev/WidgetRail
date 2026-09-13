@@ -255,6 +255,7 @@ if (!cleanupLoop.Success ||
     failures.Add("OverlayHost must clean Bridge and retired Spotify runtime output before republishing.");
 
 
+
 RequireLink(Path.Combine(repository, "README.md"), "docs/developers/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "README.md"), "docs/reference/community-companion-services.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "developers/widget-authoring-guide.md");

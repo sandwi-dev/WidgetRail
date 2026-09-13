@@ -1,4 +1,5 @@
 #include "OverlayState.h"
+#include "ApplicationIcon.h"
 #include "TrayStatus.h"
 #include "../OverlayPlatformInterop/OverlayPlatformInterop.h"
 #include "AccessibilityProvider.h"
@@ -721,7 +722,8 @@ public:
                       origin.publisherId,
                       origin.instanceId,
                       origin.runtimeGeneration,
-                      origin.presentationGeneration};
+                      origin.presentationGeneration,
+                      origin.updateTargetHash};
                   const auto submitted = bridge_.BeginLocalWidgetPackageInstall(
                       path, requestOrigin, operationId);
                   return submitted.value_or(false);
@@ -771,6 +773,10 @@ public:
         windowClass.lpfnWndProc = WindowProc;
         windowClass.hInstance = instance_;
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        windowClass.hIcon = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_WIDGETRAIL),
+            IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED));
+        windowClass.hIconSm = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_WIDGETRAIL),
+            IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
         // This HWND is a premultiplied DirectComposition target. A class brush
         // is an independent opaque presentation owner and can become visible
         // in uncovered client pixels while a hidden host is reopened. The
@@ -786,6 +792,8 @@ public:
         backdropClass.lpfnWndProc = BackdropWindowProc;
         backdropClass.hInstance = instance_;
         backdropClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        backdropClass.hIcon = windowClass.hIcon;
+        backdropClass.hIconSm = windowClass.hIconSm;
         backdropClass.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
         backdropClass.lpszClassName = kBackdropWindowClass;
         if (!RegisterClassExW(&backdropClass)) {
@@ -797,6 +805,8 @@ public:
         chromeClass.lpfnWndProc = ChromeWindowProc;
         chromeClass.hInstance = instance_;
         chromeClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        chromeClass.hIcon = windowClass.hIcon;
+        chromeClass.hIconSm = windowClass.hIconSm;
         chromeClass.hbrBackground = nullptr;
         chromeClass.lpszClassName = kChromeWindowClass;
         if (!RegisterClassExW(&chromeClass)) {
@@ -1931,9 +1941,9 @@ private:
             }
             lastLocalWidgetPackageInstallResult_ = result;
             if (result.status != widgetrail::LocalWidgetPackageInstallStatus::Cancelled) {
-                lastActionWidgetId_ = L"settings";
-                lastActionMessage_ = result.safeMessage;
-                lastActionExpiresAt_ = GetTickCount64() + 5000;
+                // Settings receives this completion through its authenticated
+                // companion and renders the shared themed toast.
+                if (lastActionWidgetId_ == L"settings") lastActionExpiresAt_ = 0;
                 AppendDiagnostic(L"Local widget package import: " +
                                  result.safeMessage);
             }
@@ -18741,6 +18751,30 @@ static int RunWidgetRail(HINSTANCE instance, int showCommand, bool& restart) {
                 L"WidgetRail Controller Isolation", MB_OK | MB_ICONERROR);
             return EXIT_FAILURE;
         }
+    }
+    // The installer checks this lifetime marker before touching installed files.
+    // Declare it before the app/ownership objects so cleanup finishes first.
+    struct InstallerLifetimeMarker {
+        HANDLE handle{CreateMutexW(nullptr, FALSE, L"Local\\WidgetRail.OverlayHost.Running")};
+        ~InstallerLifetimeMarker() { if (handle) CloseHandle(handle); }
+    } installerLifetimeMarker;
+    if (!installerLifetimeMarker.handle) return EXIT_FAILURE;
+    if (const HANDLE setup = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\WidgetRail.Setup")) {
+        CloseHandle(setup);
+        SaveStartupError(L"WidgetRail setup is running. Open WidgetRail after setup finishes.");
+        return EXIT_FAILURE;
+    }
+    // Process-local only: children use the packaged runtime without installing
+    // .NET globally or changing the user's environment.
+    std::array<wchar_t, 32768> runtimeExecutable{};
+    const DWORD runtimeLength = GetModuleFileNameW(nullptr, runtimeExecutable.data(),
+        static_cast<DWORD>(runtimeExecutable.size()));
+    if (runtimeLength == 0 || runtimeLength >= runtimeExecutable.size()) return EXIT_FAILURE;
+    const auto privateRuntime = std::filesystem::path(runtimeExecutable.data()).parent_path() / L"dotnet";
+    std::error_code runtimeError;
+    if (std::filesystem::is_directory(privateRuntime, runtimeError)) {
+        if (!SetEnvironmentVariableW(L"DOTNET_ROOT", privateRuntime.c_str()) ||
+            !SetEnvironmentVariableW(L"DOTNET_ROOT_X64", privateRuntime.c_str())) return EXIT_FAILURE;
     }
     widgetrail::process::OverlayProcessOwner processOwner;
     std::wstring ownershipError;

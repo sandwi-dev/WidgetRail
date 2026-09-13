@@ -20,7 +20,8 @@ internal sealed record SettingsPresentationState(
     bool Busy,
     bool Error,
     SettingsThemeSelection? SelectedTheme = null,
-    string? ThemePickerFocusId = null);
+    string? ThemePickerFocusId = null,
+    StartupRegistrationStatus? Startup = null);
 
 /// <summary>Pure snapshot-only composition for Settings pages owned by DLV-036.</summary>
 internal static class SettingsPresentation
@@ -42,7 +43,7 @@ internal static class SettingsPresentation
                 header, state.Settings, state.Busy),
             SettingsPage.AccessibilityVisual => RenderVisualAccessibility(
                 header, state.Settings, state.Busy),
-            SettingsPage.Overlay => RenderOverlay(header, state.Settings, state.Busy),
+            SettingsPage.Overlay => RenderOverlay(header, state.Settings, state.Busy, state.Startup),
             SettingsPage.Controllers => ControllerSettingsPresentation.Render(state),
             SettingsPage.Diagnostics => RenderDiagnostics(header, state),
             SettingsPage.AuthorityRecovery => RenderAuthorityRecovery(header, state),
@@ -160,7 +161,7 @@ internal static class SettingsPresentation
         var overlay = UI.Button("Overlay", "open.overlay", "category.overlay")
             .Busy(busy).Classes("category-card");
         var installedWidgets = UI.Button(
-                "Installed widgets", "open.installed-widgets", "category.installed-widgets")
+                "Widgets", "open.installed-widgets", "category.installed-widgets")
             .Busy(busy).Classes("category-card");
         var controllers = UI.Button("Controllers", "open.controllers", "category.controllers")
             .Busy(busy).Classes("category-card");
@@ -288,7 +289,8 @@ internal static class SettingsPresentation
     private static WidgetView RenderOverlay(
         StackElement header,
         PlatformSettingsDocument settings,
-        bool busy)
+        bool busy,
+        StartupRegistrationStatus? startup)
     {
         var appearance = settings.Appearance;
         var interfaceScale = LinkStepper(
@@ -316,7 +318,12 @@ internal static class SettingsPresentation
                 UI.Text("Overlay", "overlay.heading", "Overlay settings")
                     .Classes("page-heading"),
                 interfaceScale, opacity, surfaceAppearance,
-                UI.Text("Changes are stored atomically and applied by the host theme pipeline.",
+                UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
+                    "startup.toggle", "overlay.startup").Busy(busy).Disabled(startup?.CanChange != true)
+                    .AddClasses("setting-row"),
+                UI.Text("Status — " + (startup?.Message ?? "Startup settings unavailable."),
+                    "overlay.startup.status", "Startup status").Classes("page-help"),
+                UI.Text("Choose how WidgetRail looks and when it starts.",
                     "overlay.help", "Overlay settings help").Classes("page-help")),
             "interface.stepper.decrement",
             "overlay.page");
@@ -710,6 +717,8 @@ internal static class SettingsNavigationPolicy
         SettingsPage page,
         SettingsPage packageCapabilitiesReturnPage) => page switch
         {
+            SettingsPage.InstalledWidgetUpdate => SettingsPage.InstalledWidgetDetails,
+            SettingsPage.InstalledWidgetVersionRemoval => SettingsPage.InstalledWidgetVersions,
             SettingsPage.ThemePicker => SettingsPage.Appearance,
             SettingsPage.ThemeVersion => SettingsPage.ThemePicker,
             SettingsPage.ThemeRemoval => SettingsPage.ThemeVersion,

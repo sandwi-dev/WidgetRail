@@ -33,6 +33,8 @@ if ($manifest.schemaVersion -ne 1 -or $duplicateIds.Count -ne 0) {
 }
 $expectedDefaultStepIds = @(
     'nuget-build-execution-contract',
+    'installer-contract-selftest',
+    'release-packaging-selftest',
     'verification-runner-selftest',
     'performance-harness-selftest',
     'widget-sdk-build',
@@ -90,9 +92,9 @@ $expectedDefaultStepIds = @(
 )
 $defaultSelection = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all)
 $defaultIds = @($defaultSelection | ForEach-Object { $_.id })
-if ($defaultIds.Count -ne 55 -or
+if ($defaultIds.Count -ne 57 -or
     [string]::Join("`n", $defaultIds) -cne [string]::Join("`n", $expectedDefaultStepIds)) {
-    throw 'Focused selection changed the exact 55-step default aggregate identity or order.'
+    throw 'Focused selection changed the exact 57-step default aggregate identity or order.'
 }
 $nativeDefaults = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native)
 if ([string]::Join("`n", @($nativeDefaults | ForEach-Object id)) -cne

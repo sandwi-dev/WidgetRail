@@ -4,6 +4,8 @@
   "maximumCasesPerStep": 10000,
   "steps": [
     { "id": "nuget-build-execution-contract", "description": "Validate deterministic NuGet-audited build execution", "lane": "managed", "file": "pwsh", "arguments": ["-NoProfile", "-File", "scripts/Test-NuGetBuildExecutionContract.ps1"], "timeoutSeconds": 30 },
+    { "id": "installer-contract-selftest", "description": "Verify per-user installer startup and process contracts", "lane": "managed", "file": "pwsh", "arguments": ["-NoProfile", "-File", "scripts/Test-InstallerContract.ps1"], "timeoutSeconds": 30 },
+    { "id": "release-packaging-selftest", "description": "Verify deterministic Production and Developer release assembly", "lane": "managed", "file": "pwsh", "arguments": ["-NoProfile", "-File", "scripts/Test-ReleasePackaging.ps1", "-SelfTest"], "timeoutSeconds": 180 },
     { "id": "verification-runner-selftest", "description": "Validate bounded verification runner", "lane": "managed", "file": "pwsh", "arguments": ["-NoProfile", "-File", "scripts/Test-VerificationRunner.ps1", "-SelfTest"], "timeoutSeconds": 30 },
     { "id": "performance-harness-selftest", "description": "Validate bounded performance harness helpers", "lane": "managed", "file": "pwsh", "arguments": ["-NoProfile", "-File", "scripts/Measure-OverlayPerformance.ps1", "-SelfTest"], "timeoutSeconds": 60 },
     { "id": "widget-sdk-build", "description": "Build widget protocol, SDK, sample, and tests", "lane": "managed", "file": "dotnet", "arguments": ["build", "tests/WidgetSdk.Tests/WidgetSdk.Tests.csproj", "--configuration", "{configuration}", "--nologo"], "timeoutSeconds": 300 },

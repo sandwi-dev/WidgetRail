@@ -268,7 +268,7 @@ internal sealed class WindowsAppContainer : IDisposable
         {
             "SystemRoot", "WINDIR",
             "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "NUMBER_OF_PROCESSORS",
-            "DOTNET_ROOT", "DOTNET_ROOT(x86)",
+            "DOTNET_ROOT", "DOTNET_ROOT_X64", "DOTNET_ROOT(x86)",
         })
         {
             var value = Environment.GetEnvironmentVariable(name);

@@ -17,6 +17,9 @@ internal sealed record SettingsInstalledWidgetState(
     string? SelectedBuiltInId,
     WidgetCatalogRepairCandidate? SelectedRepair)
 {
+    public Version? UpdateFromVersion { get; init; }
+    public SettingsVersionRemoval? VersionRemoval { get; init; }
+    public string? VersionFocusId { get; init; }
     public PlatformWidgetLocalDataInspection? LocalData { get; init; }
     public PlatformWidgetPackageUninstallInspection? PackageUninstall { get; init; }
     public string? DetailsFocusId { get; init; }
@@ -69,8 +72,14 @@ internal static class SettingsInstalledWidgetPolicy
             versionPage = 0;
             if (page is SettingsPage.InstalledWidgetDetails or
                 SettingsPage.InstalledWidgetVersions or
+                SettingsPage.InstalledWidgetUpdate or
+                SettingsPage.InstalledWidgetVersionRemoval or
                 SettingsPage.InstalledWidgetRecovery)
                 page = SettingsPage.InstalledWidgets;
+        }
+        else if (page == SettingsPage.InstalledWidgetVersionRemoval)
+        {
+            page = SettingsPage.InstalledWidgetVersions;
         }
         else if (page == SettingsPage.InstalledWidgetRecovery)
         {
@@ -96,6 +105,7 @@ internal static class SettingsInstalledWidgetPolicy
             SelectedBuiltInId: selectedBuiltIn,
             SelectedRepair: null)
         {
+            UpdateFromVersion = selectedInstalled is not null ? current.UpdateFromVersion : null,
             LocalData = selectedInstalled is not null || selectedBuiltIn is not null
                 ? current.LocalData
                 : null,
@@ -120,6 +130,7 @@ internal static class SettingsInstalledWidgetPolicy
         ArgumentNullException.ThrowIfNull(health);
         if (page is SettingsPage.InstalledWidgetDetails or
             SettingsPage.InstalledWidgetVersions or
+            SettingsPage.InstalledWidgetVersionRemoval or
             SettingsPage.InstalledWidgetRecovery or
             SettingsPage.InstalledWidgetLocalData)
             page = SettingsPage.InstalledWidgets;

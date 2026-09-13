@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "architecture": "x64",
+  "rootFiles": [
+    "OverlayHost.exe",
+    "OverlayPlatformInterop.dll",
+    "ArtworkDecoderHost.exe",
+    "public_suffix_list.dat"
+  ],
+  "hostRuntimeDirectories": [
+    "Bridge",
+    "WidgetWorkerHost",
+    "Settings"
+  ],
+  "productionWidgets": [
+    "media-sessions",
+    "games-apps",
+    "task-switcher",
+    "audio-mixer",
+    "network-controls",
+    "power"
+  ],
+  "developerWidgets": [
+    {
+      "id": "sdk-gallery",
+      "project": "samples/SdkGalleryWidget",
+      "assembly": "SdkGalleryWidget",
+      "runtime": "SdkGallery"
+    },
+    {
+      "id": "clock-sample",
+      "project": "samples/ClockWidget",
+      "assembly": "ClockWidget",
+      "runtime": "Clock"
+    },
+    {
+      "id": "full-application-reference",
+      "project": "samples/FullApplicationWidget",
+      "assembly": "FullApplicationWidget",
+      "runtime": "FullApplication"
+    }
+  ],
+  "developerExistingWidgets": [
+    "embedded-media-sample"
+  ],
+  "runtimeRequirements": [
+    {
+      "name": ".NET",
+      "version": "8.0.31",
+      "scope": "managed hosts and framework-dependent widgets",
+      "bundled": true
+    },
+    {
+      "name": "Microsoft GameInput",
+      "version": "3.5.262",
+      "scope": "setup installs the signed redistributable if a compatible version is missing",
+      "bundled": true
+    },
+    {
+      "name": "Microsoft Edge WebView2",
+      "version": "Evergreen runtime",
+      "scope": "setup bootstrapper installs Evergreen per user if missing; download requires internet",
+      "bundled": false,
+      "bootstrapperBundled": true
+    }
+  ],
+  "sharedRuntimeDirectories": [
+    "dotnet",
+    "prerequisites"
+  ]
+}

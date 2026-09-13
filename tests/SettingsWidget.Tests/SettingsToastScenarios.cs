@@ -1,3 +1,4 @@
+using WidgetRail.PlatformDiagnostics;
 using WidgetRail.FirstPartyWidgets.Settings;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetProtocol;
@@ -5,6 +6,53 @@ using WidgetRail.WidgetSdk;
 
 internal static class SettingsToastScenarios
 {
+    public static async Task PackageCompletionUsesToast()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "wrail-package-toast-" + Guid.NewGuid().ToString("N"));
+        var clock = new ManualTimerTimeProvider();
+        var service = new NotificationService();
+        var widget = new SettingsWidget(new PlatformSettingsStore(new(root)), readinessDiagnostics: service, timeProvider: clock);
+        static IEnumerable<ViewNode> Nodes(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Nodes));
+        ViewSnapshot Snapshot() => widget.Render().CreateSnapshot("settings-toast-test", 1);
+        try
+        {
+            await widget.InitializeAsync(default);
+            await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
+            await widget.InitializationTask;
+            var focus = Snapshot().InitialFocusId;
+            service.Pending = new("Widget installed. Open Widgets to review its permissions and enable it.");
+            await widget.ReadPackageNotificationAsync(default);
+            var toast = Nodes(Snapshot().Root).Single(node => node.Id == "settings.toast");
+            if (!toast.StyleClasses.Contains("wrail-toast") || Nodes(toast).Any(node => node.Kind == ViewNodeKind.Button))
+                throw new Exception("Package completion did not use the shared non-focusable toast.");
+            if (Snapshot().InitialFocusId != focus || widget.CurrentPage != SettingsPage.Root)
+                throw new Exception("Package completion moved focus or navigated.");
+            clock.Advance(TimeSpan.FromSeconds(4));
+            await widget.ReadPackageNotificationAsync(default);
+            clock.Advance(TimeSpan.FromSeconds(1));
+            await widget.ToastExpiryTask.WaitAsync(TimeSpan.FromSeconds(5));
+            if (Nodes(Snapshot().Root).Any(node => node.Id == "settings.toast"))
+                throw new Exception("Empty notification reads extended toast lifetime.");
+            service.Pending = new("Could not install this widget", true);
+            await widget.ReadPackageNotificationAsync(default);
+            if (!Nodes(Snapshot().Root).Single(node => node.Id == "settings.toast").StyleClasses.Contains("wrail-toast--danger"))
+                throw new Exception("Install failure did not use the themed error tone.");
+        }
+        finally
+        {
+            await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    private sealed class NotificationService : IPlatformDiagnosticsService
+    {
+        public PlatformWidgetPackageNotification Pending = PlatformWidgetPackageNotification.Empty;
+        public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(CancellationToken token = default) => ValueTask.FromResult(PlatformDiagnosticsSnapshot.Unavailable());
+        public ValueTask<PlatformWidgetPackageNotification> TakeWidgetPackageNotificationAsync(CancellationToken token = default)
+        { var current = Pending; Pending = PlatformWidgetPackageNotification.Empty; return ValueTask.FromResult(current); }
+    }
+
     public static async Task ExpiryAndReplacement()
     {
         var root = Path.Combine(Path.GetTempPath(), "wrail-settings-toast-" + Guid.NewGuid().ToString("N"));

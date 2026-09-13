@@ -301,6 +301,7 @@ struct LocalWidgetPackageInstallOrigin final {
     std::wstring instanceId;
     std::wstring runtimeGeneration;
     std::wstring presentationGeneration;
+    std::wstring updateTargetHash;
 };
 
 enum class LocalWidgetPackageInstallStatus { InstalledDisabled, Cancelled, Failed };

@@ -5448,6 +5448,8 @@ std::optional<bool> WidgetBridgeClient::BeginLocalWidgetPackageInstall(
             JsonValue::CreateStringValue(origin.runtimeGeneration));
         originPayload.Insert(L"presentationGeneration",
             JsonValue::CreateStringValue(origin.presentationGeneration));
+        if (!origin.updateTargetHash.empty())
+            originPayload.Insert(L"updateTargetHash", JsonValue::CreateStringValue(origin.updateTargetHash));
         JsonObject payload;
         payload.Insert(L"operationId", JsonValue::CreateStringValue(operationId));
         payload.Insert(L"packagePath", JsonValue::CreateStringValue(packagePath));

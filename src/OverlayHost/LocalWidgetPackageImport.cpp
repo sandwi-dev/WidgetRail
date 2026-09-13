@@ -111,10 +111,11 @@ LocalWidgetPackageActionResult LocalWidgetPackageImport::Invoke(
         return {true, {LocalWidgetPackageImportStatus::Refused, {},
             L"Settings changed before the package picker opened."}};
     }
-    return {true, Begin(owner)};
+    return {true, Begin(owner, invocation.activeInputScopeId == UpdateInputScopeId
+        ? std::wstring_view(invocation.sourceElementId).substr(UpdateSourcePrefix.size()) : std::wstring_view{})};
 }
 
-LocalWidgetPackageImportResult LocalWidgetPackageImport::Begin(HWND owner) {
+LocalWidgetPackageImportResult LocalWidgetPackageImport::Begin(HWND owner, const std::wstring_view updateTargetHash) {
     if (active_ || picker_.active() || !activeOperationId_.empty())
         return {LocalWidgetPackageImportStatus::Busy, {},
                 L"A local widget package picker is already open."};
@@ -134,11 +135,12 @@ LocalWidgetPackageImportResult LocalWidgetPackageImport::Begin(HWND owner) {
                     ? L"The local widget package picker failed."
                     : std::move(selected.safeMessage)};
 
-    const auto current = currentOrigin_ ? currentOrigin_() : std::nullopt;
+    auto current = currentOrigin_ ? currentOrigin_() : std::nullopt;
     if (!current || !SameOrigin(*origin, *current) || !Admit(*current))
         return {LocalWidgetPackageImportStatus::Refused, {},
                 L"Settings changed while the package picker was open."};
 
+    current->updateTargetHash = updateTargetHash;
     const auto operationId = NewOperationId();
     if (operationId.empty() || !submit_ ||
         !submit_(selected.path, *current, operationId))
@@ -195,13 +197,19 @@ bool LocalWidgetPackageImport::Admit(const LocalWidgetPackageOrigin& origin) noe
 LocalWidgetPackageActionDisposition LocalWidgetPackageImport::Classify(
     const LocalWidgetPackageActionInvocation& invocation) noexcept {
     const bool reservedAction = invocation.actionId == ActionId;
-    const bool reservedSource = invocation.sourceElementId == SourceElementId;
+    const bool updateSource = invocation.sourceElementId.starts_with(UpdateSourcePrefix);
+    const auto updateId = updateSource ? std::wstring_view(invocation.sourceElementId).substr(UpdateSourcePrefix.size()) : std::wstring_view{};
+    const bool validUpdate = updateSource && updateId.size() == 64 &&
+        updateId.find_first_not_of(L"abcdefABCDEF0123456789") == std::wstring_view::npos;
+    const bool reservedSource = invocation.sourceElementId == SourceElementId || updateSource;
+    const bool validScope = (invocation.sourceElementId == SourceElementId && invocation.activeInputScopeId == InputScopeId) ||
+        (validUpdate && invocation.activeInputScopeId == UpdateInputScopeId);
     if (!reservedAction && !reservedSource)
         return LocalWidgetPackageActionDisposition::Unrelated;
     if (!reservedAction || !reservedSource || !invocation.origin ||
         !Admit(*invocation.origin) ||
         invocation.snapshotInstanceId != invocation.origin->instanceId ||
-        invocation.activeInputScopeId != InputScopeId ||
+        !validScope ||
         invocation.protocolButton != L"a" || !invocation.pressed ||
         !invocation.enabled || invocation.busy) {
         return LocalWidgetPackageActionDisposition::Refused;

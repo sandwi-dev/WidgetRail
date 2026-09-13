@@ -25,6 +25,8 @@ public enum SettingsPage
     InstalledWidgets,
     InstalledWidgetDetails,
     InstalledWidgetVersions,
+    InstalledWidgetVersionRemoval,
+    InstalledWidgetUpdate,
     InstalledWidgetRecovery,
     InstalledWidgetLocalData,
     InstalledWidgetUninstall,
@@ -46,6 +48,8 @@ public sealed class SettingsWidget : Widget
 
     private readonly PlatformSettingsStore _store;
     private readonly ThemeCatalog _catalog;
+    private readonly IStartupRegistration _startup;
+    private StartupRegistrationStatus _startupStatus = new(false, false, "Checking Windows startup settings…");
     private readonly ThemeCatalogMutationPolicy _themeMutations;
     private readonly CatalogService _widgetCatalog;
     private readonly ConsentStore _consentStore;
@@ -65,7 +69,7 @@ public sealed class SettingsWidget : Widget
     private string? _themePickerFocusId;
     private SettingsPage _page;
     private int _activationLoadCount;
-    private Task _controllerStatusTask = Task.CompletedTask;
+    private Task _settingsStatusTask = Task.CompletedTask;
     private Task _initializationTask = Task.CompletedTask;
     private bool _initializing;
     internal Task InitializationTask => _initializationTask;
@@ -110,9 +114,11 @@ public sealed class SettingsWidget : Widget
         IPlatformDiagnosticsService? diagnostics = null,
         string? bundledWidgetRoot = null,
         IPlatformDiagnosticsService? readinessDiagnostics = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IStartupRegistration? startup = null)
     {
         _toastExpiry = CreateTimedMutation(timeProvider: timeProvider);
+        _startup = startup ?? StartupRegistration.CreateForSettingsWorker();
         var paths = store?.Paths ?? PlatformSettingsPaths.CreateDefault();
         _store = store ?? new PlatformSettingsStore(paths);
         _catalog = catalog ?? new ThemeCatalog(paths);
@@ -162,8 +168,10 @@ public sealed class SettingsWidget : Widget
         string? themePickerFocusId;
         string? selectedAuthorityRecoveryId;
         string status;
+        StartupRegistrationStatus startupStatus;
         lock (_stateLock)
         {
+            startupStatus = _startupStatus;
             settings = _settings;
             themes = _themes;
             page = _page;
@@ -190,17 +198,19 @@ public sealed class SettingsWidget : Widget
             busy,
             error,
             selectedTheme,
-            themePickerFocusId);
+            themePickerFocusId, startupStatus);
         if (SettingsPresentation.TryRender(presentation, out var view)) return view;
         var header = SettingsPresentation.Header(presentation);
         return page switch
         {
             SettingsPage.InstalledWidgets =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
-                    header, busy, installedState),
+                    header, busy, installedState, settings),
             SettingsPage.InstalledWidgetDetails =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgetDetails(
                     header, busy, installedState, permissionState, settings),
+            SettingsPage.InstalledWidgetUpdate => SettingsUpdatePresentation.Render(header, busy, installedState),
+            SettingsPage.InstalledWidgetVersionRemoval => SettingsVersionRemovalPresentation.Render(header, busy, installedState),
             SettingsPage.InstalledWidgetVersions =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgetVersions(
                     header, busy, installedState),
@@ -238,7 +248,7 @@ public sealed class SettingsWidget : Widget
             try
             {
                 await ReloadAsync(activeLifetime).ConfigureAwait(false);
-                EnsureControllerStatusPolling();
+                EnsureSettingsStatusPolling();
             }
             catch (OperationCanceledException) when (activeLifetime.IsCancellationRequested) { }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or PlatformSettingsException)
@@ -258,28 +268,29 @@ public sealed class SettingsWidget : Widget
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         await _initializationTask.ConfigureAwait(false);
-        await _controllerStatusTask.ConfigureAwait(false);
+        await _settingsStatusTask.ConfigureAwait(false);
         lock (_stateLock) _toastVisible = false;
     }
 
-    private void EnsureControllerStatusPolling()
+    private void EnsureSettingsStatusPolling()
     {
-        if (_controllerStatusTask.IsCompleted &&
+        if (_settingsStatusTask.IsCompleted &&
             !ActiveCancellationToken.IsCancellationRequested)
-            _controllerStatusTask = PollControllerStatusAsync(ActiveCancellationToken);
+            _settingsStatusTask = PollSettingsStatusAsync(ActiveCancellationToken);
     }
 
-    private async Task PollControllerStatusAsync(CancellationToken cancellationToken)
+    private async Task PollSettingsStatusAsync(CancellationToken cancellationToken)
     {
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(1_000, cancellationToken).ConfigureAwait(false);
-                if (CurrentPage != SettingsPage.Controllers ||
-                    !await _operationGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) continue;
+                if (!await _operationGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) continue;
                 try
                 {
+                    await ReadPackageNotificationAsync(cancellationToken).ConfigureAwait(false);
+                    if (CurrentPage != SettingsPage.Controllers) continue;
                     ControllerControlStatus status;
                     try { status = (await _diagnosticsService.GetSnapshotAsync(cancellationToken).ConfigureAwait(false)).Controllers; }
                     catch (PlatformDiagnosticsException) { status = ControllerControlStatus.Unavailable; }
@@ -297,6 +308,19 @@ public sealed class SettingsWidget : Widget
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
+    internal async Task ReadPackageNotificationAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            // A small non-blocking companion read; never enumerate catalogs or
+            // call external providers just to retrieve transient feedback.
+            var notification = await _readinessDiagnosticsService.TakeWidgetPackageNotificationAsync(cancellationToken).ConfigureAwait(false);
+            if (notification.Message.Length != 0)
+                SetOperation(notification.Message, false, notification.Failed);
+        }
+        catch (PlatformDiagnosticsException) { }
+    }
+
     public override async ValueTask OnActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
@@ -309,11 +333,21 @@ public sealed class SettingsWidget : Widget
         if (action.ActionId == "refresh")
         {
             await ReloadAsync(cancellationToken, "Settings refreshed").ConfigureAwait(false);
+            if (CurrentPage == SettingsPage.InstalledWidgetDetails)
+            {
+                await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
+                await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
+            }
             return;
         }
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (action.ActionId == "back" && CurrentPage == SettingsPage.InstalledWidgetVersionRemoval)
+            {
+                CancelVersionRemoval();
+                return;
+            }
             if (action.ActionId == "installed.uninstall.cancel" ||
                 action.ActionId == "back" && CurrentPage == SettingsPage.InstalledWidgetUninstall)
             {
@@ -347,6 +381,12 @@ public sealed class SettingsWidget : Widget
             }
             switch (action.ActionId)
             {
+                case "startup.toggle":
+                    var startup = _startup.Read();
+                    var changed = startup.CanChange ? _startup.SetEnabled(!startup.Registered) : startup;
+                    lock (_stateLock) _startupStatus = changed;
+                    SetOperation(changed.Message, false, changed.Error);
+                    break;
                 case "application.quit":
                 case "application.restart":
                     await RequestApplicationControlAsync(action.ActionId == "application.restart", cancellationToken).ConfigureAwait(false);
@@ -365,7 +405,11 @@ public sealed class SettingsWidget : Widget
                 case "installed.local-data.open": OpenInstalledWidgetLocalData(); break;
                 case "installed.local-data.clear": await ClearSelectedWidgetLocalDataAsync(
                     cancellationToken).ConfigureAwait(false); break;
-                case "installed.uninstall.open": OpenInstalledWidgetUninstall(); break;
+                case "installed.uninstall.open": await OpenInstalledWidgetUninstallAsync(cancellationToken).ConfigureAwait(false); break;
+                case "installed.update.open": OpenWidgetUpdate(); break;
+                case "installed.update.review": await ReviewWidgetUpdateAsync(cancellationToken).ConfigureAwait(false); break;
+                case "installed.version-removal.cancel": CancelVersionRemoval(); break;
+                case "installed.version-removal.confirm": await RemoveSelectedVersionAsync(cancellationToken).ConfigureAwait(false); break;
                 case "installed.uninstall.confirm": await UninstallSelectedWidgetAsync(
                     cancellationToken).ConfigureAwait(false); break;
                 case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
@@ -397,6 +441,8 @@ public sealed class SettingsWidget : Widget
                             .ConfigureAwait(false);
                     else if (TryIndexedAction(action.ActionId, "installed.version.select.", out index))
                         await SelectInstalledVersionAsync(index, cancellationToken).ConfigureAwait(false);
+                    else if (TryIndexedAction(action.ActionId, "installed.version.remove.", out index))
+                        OpenVersionRemoval(index);
                     else if (TryIndexedAction(action.ActionId, "installed.repair.select.", out index))
                         SelectRepairCandidate(index);
                     else if (TryIndexedAction(action.ActionId, "permission.select.", out index))
@@ -480,8 +526,10 @@ public sealed class SettingsWidget : Widget
                     $"Runtime diagnostics unavailable ({exception.Code})");
                 warning ??= $"Runtime diagnostics unavailable ({exception.Code})";
             }
+            var startupStatus = _startup.Read();
             lock (_stateLock)
             {
+                _startupStatus = startupStatus;
                 _settings = settings;
                 _settingsValid = settingsValid;
                 _themes = themes;
@@ -922,15 +970,17 @@ public sealed class SettingsWidget : Widget
 
     private void Navigate(SettingsPage page)
     {
+        var startup = page == SettingsPage.Overlay ? _startup.Read() : null;
         lock (_stateLock)
         {
+            if (startup is not null) _startupStatus = startup;
             var previousPage = _page;
             _page = page;
             if (page == SettingsPage.Permissions &&
                 previousPage != SettingsPage.PermissionDiagnostics)
                 _permissionState = _permissionState with { DiagnosticsReturnFocus = false };
         }
-        EnsureControllerStatusPolling();
+        EnsureSettingsStatusPolling();
         Invalidate();
     }
 
@@ -1499,17 +1549,22 @@ public sealed class SettingsWidget : Widget
         }
     }
 
-    private void OpenInstalledWidgetUninstall()
+    private async Task OpenInstalledWidgetUninstallAsync(CancellationToken cancellationToken)
     {
+        if (CurrentPage != SettingsPage.InstalledWidgetDetails) return;
+        await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
+        bool opened;
         lock (_stateLock)
         {
-            if (_page != SettingsPage.InstalledWidgetDetails ||
-                !SettingsInstalledWidgetUninstallPolicy.TryOpen(
-                    _installedState, out var transition)) return;
-            _installedState = transition.State;
-            _page = transition.Page;
+            opened = SettingsInstalledWidgetUninstallPolicy.TryOpen(_installedState, out var transition);
+            if (opened)
+            {
+                _installedState = transition.State;
+                _page = transition.Page;
+            }
         }
-        Invalidate();
+        if (!opened) SetOperation("This widget could not be checked for removal. Refresh its details and try again.", false, true);
+        else Invalidate();
     }
 
     private void CancelInstalledWidgetUninstall()
@@ -1527,15 +1582,30 @@ public sealed class SettingsWidget : Widget
     private async Task UninstallSelectedWidgetAsync(CancellationToken cancellationToken)
     {
         PlatformWidgetPackageUninstallInspection? displayed;
+        CatalogWidget? selected;
+        lock (_stateLock) selected = _installedState.CatalogValid ? _installedState.SelectedInstalled : null;
         lock (_stateLock)
             displayed = _page == SettingsPage.InstalledWidgetUninstall
                 ? _installedState.PackageUninstall
                 : null;
-        if (displayed is not { CanUninstall: true, ConfirmationToken: not null }) return;
+        if (selected is null || displayed is null || !SettingsInstalledWidgetUninstallPolicy.Matches(selected, displayed)) return;
 
         SetOperation("Checking current installed package…", busy: true, error: false);
         try
         {
+            if (selected.Enabled)
+            {
+                var current = await _packageUninstall.InspectAsync(selected.Id, cancellationToken).ConfigureAwait(false);
+                if (!SettingsInstalledWidgetUninstallPolicy.Matches(selected, current))
+                { SetOperation("This widget changed. Open its details and confirm again.", false, true); return; }
+                await _widgetCatalog.SetEnabledAsync(selected.Id, false, cancellationToken).ConfigureAwait(false);
+                await ReloadInstalledWidgetsAsync(CancellationToken.None).ConfigureAwait(false);
+                displayed = await _packageUninstall.InspectAsync(selected.Id, cancellationToken).ConfigureAwait(false);
+                if (!SettingsInstalledWidgetUninstallPolicy.Matches(selected, displayed) || !displayed.CanUninstall || displayed.ConfirmationToken is null)
+                { SetOperation("Widget disabled. It could not be uninstalled yet; open its details and try again.", false, true); return; }
+            }
+            if (!displayed.CanUninstall || displayed.ConfirmationToken is null)
+            { SetOperation("Uninstall is not available yet. Open this widget again and retry.", false, true); return; }
             var execution = await _packageUninstall.ExecuteAsync(displayed, cancellationToken)
                 .ConfigureAwait(false);
             string? warning = null;
@@ -1569,7 +1639,20 @@ public sealed class SettingsWidget : Widget
             SetOperation("Widget uninstall cancelled", busy: false, error: true);
             return;
         }
-        Invalidate();
+        catch (Exception exception) when (exception is WidgetPackageException or IOException or UnauthorizedAccessException or KeyNotFoundException)
+        {
+            SetOperation("The widget could not be uninstalled. Open its details and try again.", false, true);
+            return;
+        }
+        finally
+        {
+            lock (_stateLock)
+            {
+                _busy = false;
+                if (_page == SettingsPage.InstalledWidgetUninstall) _page = SettingsPage.InstalledWidgetDetails;
+            }
+            Invalidate();
+        }
     }
 
     private void OpenInstalledWidgetLocalData()
@@ -1660,6 +1743,101 @@ public sealed class SettingsWidget : Widget
         await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    private void OpenWidgetUpdate()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetDetails || !_installedState.CatalogValid || _installedState.SelectedInstalled is not { } package) return;
+            _installedState = _installedState with { UpdateFromVersion = package.ActiveVersion.Version };
+            _page = SettingsPage.InstalledWidgetUpdate;
+        }
+        Invalidate();
+    }
+
+    private async Task ReviewWidgetUpdateAsync(CancellationToken cancellationToken)
+    {
+        string? id;
+        Version? previous;
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetUpdate) return;
+            id = _installedState.SelectedInstalledId;
+            previous = _installedState.UpdateFromVersion;
+        }
+        if (id is null || previous is null) return;
+        var warning = await ReloadInstalledWidgetsAsync(cancellationToken).ConfigureAwait(false);
+        if (warning is not null) { SetOperation(warning, false, true); return; }
+        CatalogWidget? current;
+        lock (_stateLock) current = _installedState.SelectedInstalled;
+        if (current is null || current.Id != id || current.ActiveVersion.Version <= previous)
+        { SetOperation("The update is not ready yet. Choose an update file and wait for installation to finish.", false, false); return; }
+        warning = await ReloadPermissionsAsync(cancellationToken).ConfigureAwait(false);
+        lock (_stateLock) _page = SettingsPage.InstalledWidgetDetails;
+        await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
+        await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
+        if (warning is null) OpenSelectedInstalledPermissions();
+        SetOperation(warning ?? $"Version {current.ActiveVersion.Version} is selected. Review permissions, then enable the widget from its details.", false, warning is not null);
+    }
+
+    private void OpenVersionRemoval(int index)
+    {
+        lock (_stateLock)
+        {
+            var package = _installedState.CatalogValid ? _installedState.SelectedInstalled : null;
+            if (_page != SettingsPage.InstalledWidgetVersions || package is null || index < 0 || index >= package.Versions.Count) return;
+            var version = package.Versions[index];
+            if (version.Version == package.ActiveVersion.Version) return;
+            _installedState = _installedState with
+            {
+                VersionRemoval = new(package.Id, package.Name, version.Version, version.ContentDigest),
+                VersionFocusId = $"installed.version.remove.{index}",
+            };
+            _page = SettingsPage.InstalledWidgetVersionRemoval;
+        }
+        Invalidate();
+    }
+
+    private void CancelVersionRemoval()
+    {
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetVersionRemoval) return;
+            _installedState = _installedState with { VersionRemoval = null };
+            _page = SettingsPage.InstalledWidgetVersions;
+        }
+        Invalidate();
+    }
+
+    private async Task RemoveSelectedVersionAsync(CancellationToken cancellationToken)
+    {
+        SettingsVersionRemoval? selected;
+        lock (_stateLock) selected = _page == SettingsPage.InstalledWidgetVersionRemoval && _installedState.CatalogValid
+            ? _installedState.VersionRemoval : null;
+        if (selected is null) return;
+        SetOperation($"Removing version {selected.Version}…", true, false);
+        try
+        {
+            var result = await _widgetCatalog.RemoveInactiveVersionConfirmedAsync(selected.WidgetId, selected.Version,
+                selected.Digest, cancellationToken).ConfigureAwait(false);
+            var warning = await ReloadInstalledWidgetsAsync(CancellationToken.None).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _installedState = _installedState with { VersionRemoval = null, VersionFocusId = null };
+                _page = _installedState.SelectedInstalled is null ? SettingsPage.InstalledWidgets : SettingsPage.InstalledWidgetVersions;
+            }
+            SetOperation(warning ?? (result.CleanupPending ? "Version removed. Windows will finish deleting its files later." : $"Version {selected.Version} removed"), false, warning is not null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        { SetOperation("Version removal cancelled", false, false); }
+        catch (Exception exception) when (exception is WidgetPackageException or IOException or UnauthorizedAccessException or KeyNotFoundException)
+        {
+            await ReloadInstalledWidgetsAsync(CancellationToken.None).ConfigureAwait(false);
+            SetOperation(exception is WidgetPackageException { Code: "selected_version" or "version_changed" }
+                ? "This version changed or is now in use. Review the version list and try again."
+                : "This version could not be removed. It may still be in use; try again shortly.", false, true);
+        }
+    }
+
     private void OpenInstalledWidgetVersions()
     {
         lock (_stateLock)
@@ -1726,7 +1904,7 @@ public sealed class SettingsWidget : Widget
                 _busy = false;
                 _error = permissionWarning is not null;
                 StatusMessage = permissionWarning ??
-                    $"{selected.Name} {requested.Version} selected; review its unsigned digest and capabilities before enabling";
+                    $"{selected.Name} {requested.Version} selected; review its permissions before enabling";
             }
         }
         catch (WidgetPackageException exception)

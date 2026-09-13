@@ -83,8 +83,13 @@ if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     }
 }
 
+var expectedRuntime = Environment.GetEnvironmentVariable("WRAIL_EXPECT_PRIVATE_RUNTIME");
+if (expectedRuntime is not null && !RuntimeEnvironment.GetRuntimeDirectory().StartsWith(expectedRuntime + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+    throw new Exception("Test process did not use the expected private runtime.");
+
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Bundled runtime grants only its exact loaded private runtime", BundledRuntimeScenarios.RootsAreExact),
     ("Length framing rejects oversized input before allocation", OversizedFrameIsRejected),
     ("Artwork framing streams one wire-compatible bounded envelope", ArtworkFrameStreamsWithoutPayloadBuffering),
     ("Pending worker requests correlate and drain through one typed owner", WidgetProcessOwnershipScenarios.PendingRequestsCorrelateExactly),

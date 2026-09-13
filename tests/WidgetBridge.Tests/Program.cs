@@ -114,6 +114,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Embedded media resolution requires exact current publication authority", BridgeClientRegistryScenarios.EmbeddedMediaRequiresExactPublicationAuthority),
     ("Local package import origin is exact current Interactive Settings", BridgeClientRegistryScenarios.LocalPackageImportOriginIsExact),
     ("Local package import is disabled revisioned and path free", LocalPackageImportIsDisabledRevisionedAndPathFree),
+    ("Local package update validates first selects disabled and retains rollback", LocalPackageUpdateFlow),
     ("Local package import failures preserve catalog state", LocalPackageImportFailuresPreserveCatalog),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
     ("Private diagnostics attach only to the exact trusted Settings identity", DiagnosticsAreSettingsOnly),
@@ -3833,6 +3834,9 @@ static async Task LocalPackageImportIsDisabledRevisionedAndPathFree()
     var result = await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
     Assert.Equal("installed-disabled", result.Status);
+    Assert.Equal(string.Empty, service.TakeNotification("different-runtime").Message);
+    Assert.Equal(result.Message, service.TakeNotification(origin.RuntimeGeneration).Message);
+    Assert.Equal(string.Empty, service.TakeNotification(origin.RuntimeGeneration).Message);
     Assert.Equal("dev.example.local", result.WidgetId);
     Assert.Equal("1.2.3", result.Version);
     Assert.True(!result.Message.Contains(packagePath, StringComparison.OrdinalIgnoreCase) &&
@@ -3844,6 +3848,44 @@ static async Task LocalPackageImportIsDisabledRevisionedAndPathFree()
     Assert.Equal("1.2.3", installed.ActiveVersion.Version.ToString());
     Assert.Equal(1L, monitor.Revision);
     Assert.Equal(1, revisions);
+}
+
+static async Task LocalPackageUpdateFlow()
+{
+    using var root = new TemporaryDirectory("wrail-update-flow");
+    const string id = "dev.example.update";
+    var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(Path.Combine(root.Path, "catalog"));
+    await catalog.InstallAsync(await CreateWidgetPackageAsync(root.Path, id, "1.0.0"));
+    await catalog.SetEnabledAsync(id, true);
+    var origin = new BridgeLocalWidgetPackageOrigin("settings", "widgetrail.firstparty.settings", "widgetrail.firstparty",
+        "settings.default", new string('a', 64), new string('b', 64), Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(id))));
+    async Task<BridgeLocalWidgetPackageInstallCompleted> Run(string path, Func<CancellationToken, Task>? beforePublish = null)
+    {
+        var done = new TaskCompletionSource<BridgeLocalWidgetPackageInstallCompleted>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var service = new BridgeLocalWidgetPackageImportService(catalog, _ => NoopDisposable.Instance,
+            _ => Task.CompletedTask, result => { done.SetResult(result); return Task.CompletedTask; }, null, beforePublish);
+        service.Start(new(Guid.NewGuid().ToString(), path, origin), CancellationToken.None);
+        return await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+    foreach (var wrong in new[] {
+        await CreateWidgetPackageAsync(root.Path, "dev.example.other", "2.0.0"),
+        await CreateWidgetPackageAsync(root.Path, id, "0.9.0"),
+        await CreateWidgetPackageAsync(root.Path, id, "2.0.0", publisher: "dev.other") })
+    {
+        Assert.Equal("failed", (await Run(wrong)).Status);
+        var current = (await catalog.DiscoverAsync()).Widgets.Single();
+        Assert.True(current.Enabled && current.ActiveVersion.Version.ToString() == "1.0.0", "Rejected update changed the current widget.");
+    }
+    var update = await CreateWidgetPackageAsync(root.Path, id, "2.0.0");
+    Assert.Equal("failed", (await Run(update, _ => throw new IOException("fixture failure"))).Status);
+    Assert.True((await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Failed prepublication stopped the widget.");
+    var result = await Run(update);
+    Assert.Equal("installed-disabled", result.Status);
+    var updated = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.False(updated.Enabled, "Update enabled unreviewed code.");
+    Assert.Equal("2.0.0", updated.ActiveVersion.Version.ToString());
+    Assert.Equal(2, updated.Versions.Count);
+    Assert.True(result.Message.Contains("Review update"), "Update did not give the next action.");
 }
 
 static async Task LocalPackageImportFailuresPreserveCatalog()

@@ -1,0 +1,16 @@
+{
+  "dotnet": {
+    "version": "8.0.31",
+    "url": "https://builds.dotnet.microsoft.com/dotnet/Runtime/8.0.31/dotnet-runtime-8.0.31-win-x64.zip",
+    "sha512": "9c55c58694676ee64b0eed2cd6d8cbf58b9aa8288420acc66841e15ca0099c75d4af0182d23a641c2342e5a151a325df4a12fa0bde2e47c0fb7e9a33e7b09896"
+  },
+  "gameInput": {
+    "version": "3.5.262",
+    "fileVersion": "3.5.262.0",
+    "sha256": "768EFBB4D1D05FD1700EA71231D18F01E744F3960CF1AA5DD0B0899247253759"
+  },
+  "webView2": {
+    "url": "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/474c9f1d-0fd5-49da-b3b0-df536d328170/MicrosoftEdgeWebview2Setup.exe",
+    "sha256": "17DEBF797A6C737959BC588236E897936FFAC1AF5F7E515E674AB32F9EDFE719"
+  }
+}

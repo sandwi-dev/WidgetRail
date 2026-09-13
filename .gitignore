@@ -33,6 +33,5 @@ TestResults/
 *.wrtheme
 
 # Personal development notes retained locally after the docs reorganization
-docs/implementation-agent-goal.md
 docs/controller-isolation-architecture-reference.md
 docs/cursor-resource-redesign.md
