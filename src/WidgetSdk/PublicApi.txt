@@ -116,6 +116,7 @@ ctor WidgetRail.WidgetSdk.WidgetPage<TItem>(System.Collections.Generic.IReadOnly
 ctor WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>()
 ctor WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>(WidgetRail.WidgetSdk.WidgetPagedResourceStatus Status, WidgetRail.WidgetSdk.WidgetPage<TItem>? Page, WidgetRail.WidgetSdk.WidgetResourceError? Error, string? RequestedFocusId, long Revision)
 ctor WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>(string ScrollId, System.Func<TItem,int,string> ItemFocusId, string? EmptyFocusId = null)
+ctor WidgetRail.WidgetSdk.WidgetPowerAvailability(bool CanShutDown, bool CanRestart, bool CanSleep)
 ctor WidgetRail.WidgetSdk.WidgetPrivateSecretExists(bool Exists)
 ctor WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata(bool Exists, long? LastWrittenUnixMilliseconds)
 ctor WidgetRail.WidgetSdk.WidgetPrivateSecretSlotRequest(string Slot)
@@ -1300,6 +1301,15 @@ method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RestoreAsync(string layou
 method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RevokeAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RouteActionAsync(WidgetRail.WidgetProtocol.ControllerButton button, string focusedElementId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.SelectAsync(string layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
+method WidgetRail.WidgetSdk.WidgetPowerAvailability.<Clone>$() -> WidgetRail.WidgetSdk.WidgetPowerAvailability
+method WidgetRail.WidgetSdk.WidgetPowerAvailability.Deconstruct(out bool CanShutDown, out bool CanRestart, out bool CanSleep) -> void
+method WidgetRail.WidgetSdk.WidgetPowerAvailability.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetPowerAvailability.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetPowerAvailability.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetPowerService.GetAvailabilityAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetPowerAvailability>
+method WidgetRail.WidgetSdk.WidgetPowerService.RestartAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetPowerService.ShutDownAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetPowerService.SleepAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetPrivateSecretExists.<Clone>$() -> WidgetRail.WidgetSdk.WidgetPrivateSecretExists
 method WidgetRail.WidgetSdk.WidgetPrivateSecretExists.Deconstruct(out bool Exists) -> void
 method WidgetRail.WidgetSdk.WidgetPrivateSecretExists.Equals(object? obj) -> bool
@@ -1830,6 +1840,8 @@ method static WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.op_Equalit
 method static WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>? left, WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>? left, WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>? left, WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetPowerAvailability.op_Equality(WidgetRail.WidgetSdk.WidgetPowerAvailability? left, WidgetRail.WidgetSdk.WidgetPowerAvailability? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetPowerAvailability.op_Inequality(WidgetRail.WidgetSdk.WidgetPowerAvailability? left, WidgetRail.WidgetSdk.WidgetPowerAvailability? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetPrivateSecretExists.op_Equality(WidgetRail.WidgetSdk.WidgetPrivateSecretExists? left, WidgetRail.WidgetSdk.WidgetPrivateSecretExists? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetPrivateSecretExists.op_Inequality(WidgetRail.WidgetSdk.WidgetPrivateSecretExists? left, WidgetRail.WidgetSdk.WidgetPrivateSecretExists? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata.op_Equality(WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata? left, WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata? right) -> bool
@@ -2056,6 +2068,7 @@ method virtual WidgetRail.WidgetSdk.WidgetPage<TItem>.Equals(WidgetRail.WidgetSd
 method virtual WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.Equals(WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.Equals(WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.Equals(WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetPowerAvailability.Equals(WidgetRail.WidgetSdk.WidgetPowerAvailability? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetPrivateSecretExists.Equals(WidgetRail.WidgetSdk.WidgetPrivateSecretExists? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata.Equals(WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetPrivateSecretSlotRequest.Equals(WidgetRail.WidgetSdk.WidgetPrivateSecretSlotRequest? other) -> bool
@@ -2342,6 +2355,7 @@ property WidgetRail.WidgetSdk.WidgetPage<TItem>? WidgetRail.WidgetSdk.WidgetPage
 property WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetPagedResource<TItem>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetPagedResourceStatus WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Status { get; set; }
 property WidgetRail.WidgetSdk.WidgetPagedResourceStatus WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.Status { get; set; }
+property WidgetRail.WidgetSdk.WidgetPowerService WidgetRail.WidgetSdk.WidgetHostServices.Power { get; }
 property WidgetRail.WidgetSdk.WidgetPrivateSecretService WidgetRail.WidgetSdk.WidgetHostServices.PrivateSecrets { get; }
 property WidgetRail.WidgetSdk.WidgetPrivateStateService WidgetRail.WidgetSdk.WidgetHostServices.PrivateState { get; }
 property WidgetRail.WidgetSdk.WidgetRecentActivityKind WidgetRail.WidgetSdk.WidgetRecentActivity.Kind { get; set; }
@@ -2430,6 +2444,9 @@ property bool WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.RetainLastG
 property bool WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.HasNext { get; }
 property bool WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.HasPrevious { get; }
 property bool WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.HasValue { get; }
+property bool WidgetRail.WidgetSdk.WidgetPowerAvailability.CanRestart { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetPowerAvailability.CanShutDown { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetPowerAvailability.CanSleep { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetPrivateSecretExists.Exists { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata.Exists { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot.Exists { get; set; }
@@ -2598,8 +2615,12 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetAvailableWifi { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetBluetoothSnapshot> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetBluetooth { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.RequestWifiScan { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPowerCapabilities.Restart { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPowerCapabilities.ShutDown { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPowerCapabilities.Sleep { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetConnectionDetails { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetNetworkStatus> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetStatus { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetPowerAvailability> WidgetRail.WidgetSdk.WidgetPowerCapabilities.Get { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetRunningAppObservation> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.ObserveRunning { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetWifiRadio> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetWifiRadio { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetPrivateSecretSlotRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.Delete { get; }
@@ -3023,6 +3044,8 @@ type sealed class WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem> : Syste
 type sealed class WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetPagedViewport<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost
+type sealed class WidgetRail.WidgetSdk.WidgetPowerAvailability : System.IEquatable<WidgetRail.WidgetSdk.WidgetPowerAvailability>
+type sealed class WidgetRail.WidgetSdk.WidgetPowerService
 type sealed class WidgetRail.WidgetSdk.WidgetPrivateSecretExists : System.IEquatable<WidgetRail.WidgetSdk.WidgetPrivateSecretExists>
 type sealed class WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata : System.IEquatable<WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata>
 type sealed class WidgetRail.WidgetSdk.WidgetPrivateSecretService
@@ -3071,6 +3094,7 @@ type static class WidgetRail.WidgetSdk.WidgetIds
 type static class WidgetRail.WidgetSdk.WidgetLoopbackCapabilities
 type static class WidgetRail.WidgetSdk.WidgetMediaCapabilities
 type static class WidgetRail.WidgetSdk.WidgetNetworkCapabilities
+type static class WidgetRail.WidgetSdk.WidgetPowerCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities
 type static class WidgetRail.WidgetSdk.WidgetRecentActivityCapabilities
 type static class WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities

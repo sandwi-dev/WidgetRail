@@ -1087,7 +1087,7 @@ public interface ILoopbackHttpPlatformBrokerBackend
 public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend,
     INetworkPlatformBrokerBackend, IActivityPlatformBrokerBackend,
     IAppLibraryPlatformBrokerBackend, IBluetoothPlatformBrokerBackend,
-    IMediaPlatformBrokerBackend,
+    IMediaPlatformBrokerBackend, IPowerPlatformBrokerBackend,
     IPrivateSecretPlatformBrokerBackend,
     IPrivateStatePlatformBrokerBackend, ILoopbackHttpPlatformBrokerBackend
 {

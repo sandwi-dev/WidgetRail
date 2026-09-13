@@ -119,11 +119,12 @@ static Task CapabilityDomainAuthorityIsSingular()
     Assert.True(rootFields.Any(field => field.Name == "_subscriptions"));
     Assert.True(rootFields.Any(field => field.Name == "_dashboardGestureAuthorities"));
     Assert.True(rootFields.Any(field => field.Name == "_eventSequence"));
-    Assert.Equal(6, rootFields.Count(field =>
+    Assert.Equal(7, rootFields.Count(field =>
         field.FieldType.Name.EndsWith("CapabilityDomain", StringComparison.Ordinal)));
 
     Type[] domainTypes =
     [
+        typeof(PowerCapabilityDomain),
         typeof(AudioCapabilityDomain),
         typeof(NetworkCapabilityDomain),
         typeof(AppLibraryCapabilityDomain),
@@ -145,6 +146,8 @@ static Task CapabilityDomainAuthorityIsSingular()
             $"{domainType.Name} acquired broker authorization or lifecycle authority.");
     }
 
+    Assert.Equal(BrokerCapabilityDomain.Power,
+        BrokerCapabilityDomains.Resolve(PlatformCapabilities.PowerControlV1));
     Assert.Equal(BrokerCapabilityDomain.Audio,
         BrokerCapabilityDomains.Resolve(PlatformCapabilities.AudioSessionsReadV1));
     Assert.Equal(BrokerCapabilityDomain.Network,
@@ -414,7 +417,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(35, PlatformCapabilities.All.Count);
+    Assert.Equal(37, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));

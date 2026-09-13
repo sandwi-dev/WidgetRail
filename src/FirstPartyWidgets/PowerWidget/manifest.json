@@ -1,0 +1,52 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.firstparty.power",
+  "publisher": "widgetrail.firstparty",
+  "name": "Power",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/PowerWidget.dll",
+    "type": "WidgetRail.FirstPartyWidgets.Power.PowerWidget"
+  },
+  "presentation": {
+    "icon": "settings",
+    "packageIcon": {
+      "assetId": "power.shutdown",
+      "colorMode": "themeTint"
+    }
+  },
+  "iconAssets": {
+    "power.shutdown": {
+      "path": "assets/icons/shutdown.svg"
+    },
+    "power.restart": {
+      "path": "assets/icons/restart.svg"
+    },
+    "power.sleep": {
+      "path": "assets/icons/sleep.svg"
+    }
+  },
+  "permissions": [
+    "system.power.read.v1"
+  ],
+  "optionalPermissions": [
+    "system.power.control.v1"
+  ],
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "unload-after-idle",
+    "idleSeconds": 120
+  },
+  "resourceRequest": {
+    "memoryMb": 48,
+    "updateHz": 2
+  },
+  "architectures": [
+    "x64"
+  ]
+}

@@ -931,3 +931,9 @@ Use `UI.WindowPreview` by itself or pass it to the content overload of
 `system.apps.windows.preview.v1` permission. Existing artwork posters are
 unchanged. See [live window previews](../../docs/window-previews.md) for the
 complete authoring example, theme hooks, backend behavior and limits.
+
+### PC power controls
+
+Use `HostServices.Power` to check availability and request PC shutdown, restart or sleep.
+The separate read/control permissions, confirmation guidance, and Windows behavior
+are documented in [Power widget](../../docs/power-widget.md).

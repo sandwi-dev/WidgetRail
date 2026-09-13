@@ -429,6 +429,8 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
         PlatformCapabilities.AppLibraryReadV1 => "See your app library",
         PlatformCapabilities.TaskWindowsPreviewV1 => "Show live previews of open windows",
+        PlatformCapabilities.PowerReadV1 => "Check available PC power options",
+        PlatformCapabilities.PowerControlV1 => "Shut down, restart or sleep this PC",
         PlatformCapabilities.TaskWindowsReadV1 => "See open windows and their titles",
         PlatformCapabilities.TaskWindowsSwitchV1 => "Switch to open windows",
         PlatformCapabilities.TaskWindowsCloseV1 => "Close open windows",
@@ -512,6 +514,10 @@ internal static class SettingsPermissionPresentation
             "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",
         PlatformCapabilities.TaskWindowsPreviewV1 =>
             "Display window contents inside the overlay. Previews are view-only.",
+        PlatformCapabilities.PowerReadV1 =>
+            "Check whether this PC supports shutdown, restart and sleep.",
+        PlatformCapabilities.PowerControlV1 =>
+            "Allow this widget to shut down, restart or put your PC to sleep when you use it.",
         PlatformCapabilities.TaskWindowsReadV1 =>
             "See open application windows and their titles. Window handles and process IDs stay private to the host.",
         PlatformCapabilities.TaskWindowsSwitchV1 =>

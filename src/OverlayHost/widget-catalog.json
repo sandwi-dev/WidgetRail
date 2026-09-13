@@ -72,6 +72,14 @@
       "packageRoot": "runtime/EmbeddedMediaSample",
       "icon": "play",
       "quickActions": []
+    },
+    {
+      "id": "power",
+      "packageId": "widgetrail.firstparty.power",
+      "instanceId": "power.default",
+      "packageRoot": "runtime/Power",
+      "icon": "settings",
+      "quickActions": []
     }
   ]
 }

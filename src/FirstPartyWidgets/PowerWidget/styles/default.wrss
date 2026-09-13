@@ -1,0 +1,16 @@
+.power-widget { padding: 20px; gap: 10px; background: var(--surface); color: var(--text); }
+.power-title { font-size: 26px; font-weight: 600; flex-shrink: 0; }
+.power-subtitle { font-size: 13px; color: var(--text-muted); flex-shrink: 0; }
+.power-options { gap: 12px; flex-grow: 1; min-height: 126px; }
+.power-option { flex-grow: 1; flex-basis: 0; min-width: 0; padding: 16px; gap: 8px; corner-radius: 12px; background: var(--surface-raised); border-width: 1px; border-color: var(--border, rgba(246, 240, 226, 0.12)); }
+.power-option:focused { border-color: var(--accent); background: var(--surface-selected, var(--surface-raised)); }
+.power-option:disabled { opacity: 0.45; }
+.power-icon { width: 30px; height: 30px; color: var(--accent); flex-shrink: 0; }
+.power-option-title { font-size: 18px; font-weight: 600; max-lines: 1; }
+.power-option-hint { font-size: 12px; color: var(--text-muted); max-lines: 2; }
+.power-help { font-size: 13px; color: var(--text-muted); max-lines: 3; flex-shrink: 0; }
+.power-check { padding: 6px 12px; flex-shrink: 0; }
+.power-question { font-size: 24px; font-weight: 600; flex-shrink: 0; }
+.power-actions { gap: 12px; flex-shrink: 0; }
+.power-cancel { padding: 14px 22px; flex-grow: 1; }
+.power-confirm { padding: 14px 22px; flex-grow: 1; color: var(--warning); }

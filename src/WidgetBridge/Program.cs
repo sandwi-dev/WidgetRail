@@ -93,7 +93,8 @@ internal static class Program
                     installedCatalogRoot),
                 communityBackend,
                 communityBackend,
-                communityBackend);
+                communityBackend,
+                power: new WidgetRail.WindowsPowerProvider.WindowsPowerPlatformBackend());
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor, residencyBudget,

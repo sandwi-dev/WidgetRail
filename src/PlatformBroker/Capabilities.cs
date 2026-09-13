@@ -49,6 +49,12 @@ public sealed record BrokerCapabilityDefinition(
 /// <summary>Closed public capability vocabulary. Version is part of every ID.</summary>
 public static class PlatformCapabilities
 {
+    public const string PowerReadV1 = "system.power.read.v1";
+    public const string PowerControlV1 = "system.power.control.v1";
+    public const string PowerGet = "power.get";
+    public const string PowerShutDown = "power.shut-down";
+    public const string PowerRestart = "power.restart";
+    public const string PowerSleep = "power.sleep";
     public const string AudioSessionsReadV1 = "system.audio.sessions.read.v1";
     public const string AudioSessionsControlV1 = "system.audio.sessions.control.v1";
     public const string AudioOutputReadV1 = "system.audio.output.read.v1";
@@ -158,6 +164,9 @@ public static class PlatformCapabilities
     private static readonly IReadOnlyDictionary<string, BrokerCapabilityDefinition> Definitions =
         new Dictionary<string, BrokerCapabilityDefinition>(StringComparer.Ordinal)
         {
+            [PowerReadV1] = new(PowerReadV1, 1, BrokerCapabilityKind.Read, Set(PowerGet), Set()),
+            [PowerControlV1] = new(PowerControlV1, 1, BrokerCapabilityKind.Control,
+                Set(PowerShutDown, PowerRestart, PowerSleep), Set()),
             [AudioSessionsReadV1] = new(AudioSessionsReadV1, 1, BrokerCapabilityKind.Read,
                 Set(AudioSessionsList), Set(AudioSessionsChanged)),
             [AudioSessionsControlV1] = new(AudioSessionsControlV1, 1, BrokerCapabilityKind.Control,

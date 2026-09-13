@@ -13,6 +13,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     private readonly IPrivateSecretPlatformBrokerBackend _privateSecrets;
     private readonly ILoopbackHttpPlatformBrokerBackend _loopbackHttp;
     private readonly IPrivateStatePlatformBrokerBackend _privateState;
+    private readonly IPowerPlatformBrokerBackend? _power;
     private int _disposed;
 
     public CompositePlatformBrokerBackend(
@@ -24,8 +25,10 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         IAppLibraryPlatformBrokerBackend? appLibrary = null,
         IPrivateSecretPlatformBrokerBackend? privateSecrets = null,
         ILoopbackHttpPlatformBrokerBackend? loopbackHttp = null,
-        IPrivateStatePlatformBrokerBackend? privateState = null)
+        IPrivateStatePlatformBrokerBackend? privateState = null,
+        IPowerPlatformBrokerBackend? power = null)
     {
+        _power = power;
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _network = network ?? throw new ArgumentNullException(nameof(network));
         _activity = activity ?? UnavailableActivityPlatformBrokerBackend.Instance;
@@ -48,6 +51,12 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         _appLibrary.SwitchTaskWindowAsync(windowId, cancellationToken);
     public Task CloseTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>
         _appLibrary.CloseTaskWindowAsync(windowId, cancellationToken);
+
+    public Task<PowerAvailability> GetPowerAvailabilityAsync(CancellationToken token) =>
+        _power?.GetPowerAvailabilityAsync(token) ?? Task.FromResult(new PowerAvailability(false, false, false));
+    public Task ExecutePowerAsync(PowerCommand command, CancellationToken token) =>
+        _power?.ExecutePowerAsync(command, token) ??
+        Task.FromException(new BrokerException("power_unavailable", "PC power controls are unavailable."));
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
