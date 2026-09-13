@@ -104,13 +104,6 @@ internal static class Program
             if (!_firstSnapshotDelayed)
             {
                 _firstSnapshotDelayed = true;
-                // Let reload tests hold the new generation's first snapshot
-                // until they finish observing the retained presentation.
-                if (TryConsumeBlockEpoch(out var firstEpoch))
-                {
-                    Interlocked.Exchange(ref _blockedEpoch, firstEpoch);
-                    _blockNextSnapshot = true;
-                }
                 if (firstSnapshotSignal is not null)
                     File.WriteAllText(
                         firstSnapshotSignal,

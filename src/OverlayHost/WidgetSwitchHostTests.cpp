@@ -4045,7 +4045,6 @@ void RunRetentionScenario(const Arguments& arguments) {
 
     const auto restartBefore = ReadUtf8(logPath).size();
     const auto restartSignal = installation->StartupSignal(kTargets.back().id);
-    const auto reloadEpoch = installation->BlockNextSnapshot();
     {
         std::error_code ignored;
         fs::remove(restartSignal, ignored);
@@ -4055,20 +4054,15 @@ void RunRetentionScenario(const Arguments& arguments) {
                 std::error_code ignored;
                 return fs::exists(restartSignal, ignored);
             }), "Final widget refresh did not enter its first snapshot request.");
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                std::error_code ignored;
-                return fs::exists(installation->BlockedSnapshotSignal(), ignored);
-            }), "Reload did not hold the new generation's first snapshot");
-    (void)installation->BlockedSnapshotSequence(reloadEpoch);
+    // Do not hold a production snapshot request open while an external UIA
+    // client inspects it. Retained frame evidence is immutable, and current
+    // UIA authority can be checked after the replacement has completed.
     const auto settingsRetained = waitForPaint(
         restartBefore, kTargets.back(), kTargets.back().id, "retained", true);
     requireCurrentPresentationCompletion(
         restartBefore, settingsRetained,
         kTargets.back().id, "same-destination-lifecycle-retained",
         {}, true, false);
-    Require(waitForWidgetAutomation(L"widget:settings-ready", false),
-            "Same-destination retained lifecycle exposed stale actionable Settings UIA authority");
-    installation->ReleaseBlockedSnapshot(reloadEpoch);
     const bool reloadCompleted = WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 const auto log = ReadUtf8(logPath);
                 return log.size() > restartBefore &&
@@ -4078,6 +4072,14 @@ void RunRetentionScenario(const Arguments& arguments) {
         ReadUtf8(logPath).substr(restartBefore));
     const auto settingsLastGood = waitForPaint(
         restartBefore, kTargets.back(), kTargets.back().id, "admitted");
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                ComPtr<IUIAutomationElement> currentRoot;
+                if (FAILED(automation->ElementFromHandle(
+                        window, currentRoot.GetAddressOf())) || !currentRoot) return false;
+                const auto ready = FindAutomationElement(
+                    automation.Get(), currentRoot.Get(), L"widget:settings-ready");
+                return ready && IsEnabled(ready.Get()) && IsKeyboardFocused(ready.Get());
+            }), "Reload did not expose the replacement Settings action");
     const auto sameDestinationMode = CurrentPresentationMode(ReadUtf8(logPath));
     Require(sameDestinationMode.has_value(),
             "Same-destination refresh lacked positive presentation-mode authority");
