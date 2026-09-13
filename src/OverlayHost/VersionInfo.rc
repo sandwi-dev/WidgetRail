@@ -1,0 +1,30 @@
+#include <winver.h>
+#include "WidgetRailVersion.h"
+
+1 VERSIONINFO
+ FILEVERSION WRAIL_FILE_VERSION
+ PRODUCTVERSION WRAIL_FILE_VERSION
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+ FILEFLAGS WRAIL_FILE_FLAGS
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+ BLOCK "StringFileInfo"
+ BEGIN
+  BLOCK "040904B0"
+  BEGIN
+   VALUE "CompanyName", "WidgetRail contributors\0"
+   VALUE "FileDescription", "WidgetRail Windows overlay\0"
+   VALUE "FileVersion", WRAIL_FILE_VERSION_TEXT
+   VALUE "InternalName", "WidgetRail\0"
+   VALUE "OriginalFilename", "OverlayHost.exe\0"
+   VALUE "ProductName", "WidgetRail\0"
+   VALUE "ProductVersion", WRAIL_RELEASE_VERSION_TEXT
+   VALUE "LegalCopyright", "Copyright (c) 2026 WidgetRail contributors\0"
+  END
+ END
+ BLOCK "VarFileInfo"
+ BEGIN
+  VALUE "Translation", 0x0409, 1200
+ END
+END

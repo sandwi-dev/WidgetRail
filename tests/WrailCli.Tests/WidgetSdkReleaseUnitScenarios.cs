@@ -32,6 +32,7 @@ internal static class WidgetSdkReleaseUnitScenarios
         var nuspec = reader.ReadToEnd();
         Contains($"<id>{contract.PackageId}</id>", nuspec);
         Contains($"<version>{first.Version}</version>", nuspec);
+        Contains("<license type=\"expression\">MIT</license>", nuspec);
         Contains("<files include=\"any/any/WidgetRail/EmbeddedMediaAdapterRuntime.js\"", nuspec);
         Contains("buildAction=\"None\"", nuspec);
         Contains("copyToOutput=\"false\"", nuspec);
@@ -54,6 +55,7 @@ internal static class WidgetSdkReleaseUnitScenarios
         hash.AppendData(adapterRuntime);
         hash.AppendData(Encoding.UTF8.GetBytes(
             LocalWidgetSdkPackage.AdapterRuntimeContentFilesContract));
+        hash.AppendData(Encoding.UTF8.GetBytes(LocalWidgetSdkPackage.LicenseExpression));
         var expectedSuffix = Convert.ToHexString(hash.GetHashAndReset())[..16]
             .ToLowerInvariant();
         Equal(contract.LocalPackageVersion(expectedSuffix), first.Version);

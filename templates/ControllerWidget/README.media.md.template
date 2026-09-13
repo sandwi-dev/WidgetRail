@@ -41,3 +41,9 @@ wrail pack . --configuration Release --output .\{{WidgetName}}-0.1.0.wrwidget
 Locally generated packages remain unsigned development artifacts. Do not put
 credentials, raw paths, provider responses, or unbounded media data in snapshots.
 Keep controller actions and accessible labels stable across responsive surfaces.
+
+## Licensing your widget
+
+The original starter code is MIT-licensed. Keep `WIDGETRAIL-NOTICES.txt` when
+redistributing substantial copied portions; choose the license for your own
+widget. Referenced SDK/bootstrap libraries retain their MIT notices.

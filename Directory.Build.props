@@ -1,10 +1,17 @@
 <Project>
+  <Import Project="$(MSBuildThisFileDirectory)eng/WidgetRailRelease.props" />
   <PropertyGroup>
+    <PackageLicenseExpression Condition="'$(PackageLicenseExpression)' == ''">MIT</PackageLicenseExpression>
     <AnalysisLevel>latest</AnalysisLevel>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <Deterministic>true</Deterministic>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'WidgetBridge' Or '$(MSBuildProjectName)' == 'WidgetWorkerHost' Or '$(MSBuildProjectName)' == 'SettingsWidget.Worker'">
+    <Version>$(WidgetRailReleaseVersion)</Version>
+    <FileVersion>$(WidgetRailFileVersion)</FileVersion>
+    <AssemblyVersion>$(WidgetRailFileVersion)</AssemblyVersion>
   </PropertyGroup>
 </Project>

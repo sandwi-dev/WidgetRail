@@ -134,6 +134,8 @@ $gameInputHeader = Join-Path $gameInputPackage 'native\include\GameInput.h'
 $webView2Package = Join-Path $nugetRoot "microsoft.web.webview2\$webView2Version"
 $webView2Header = Join-Path $webView2Package 'build\native\include\WebView2.h'
 $webView2Loader = Join-Path $webView2Package "build\native\$Architecture\WebView2LoaderStatic.lib"
+$buildLogRoot = Join-Path $projectDirectory '..\..\logs\native-build'
+New-Item -ItemType Directory -Force -Path $buildLogRoot | Out-Null
 $restoredNuGetProjects = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 
@@ -144,7 +146,7 @@ function Invoke-NuGetAuditedRestore {
     if (-not $restoredNuGetProjects.Add($resolvedProject)) {
         return
     }
-    & dotnet restore $resolvedProject --nologo
+    & dotnet restore $resolvedProject --nologo "-bl:$(Join-Path $buildLogRoot ([guid]::NewGuid().ToString('N') + '.binlog'))"
     if ($LASTEXITCODE -ne 0) {
         throw "NuGet-audited restore failed for $resolvedProject with exit code $LASTEXITCODE."
     }
@@ -261,7 +263,9 @@ function Invoke-SerializedManagedPublish {
     }
     & dotnet publish $Project --no-restore `
         --configuration $Configuration --no-self-contained --nologo --output $Output `
-        -m:1 -p:BuildInParallel=false -nr:false -p:UseSharedCompilation=false
+        -m:1 -p:BuildInParallel=false -nr:false -p:UseSharedCompilation=false `
+        -p:CopyOutputSymbolsToPublishDirectory=false -p:ContinuousIntegrationBuild=true `
+        "-bl:$(Join-Path $buildLogRoot ([guid]::NewGuid().ToString('N') + '.binlog'))"
     $ExitCode.Value = $LASTEXITCODE
 }
 
@@ -276,7 +280,10 @@ if (-not $cargo) {
 $taffyManifest = Join-Path $projectDirectory 'taffy_bridge\Cargo.toml'
 $taffyTargetDirectory = Join-Path $outputDirectory 'cargo'
 $taffyProfile = if ($Configuration -eq 'Release') { 'release' } else { 'debug' }
-$taffyArguments = @(
+$rustPin = Get-Content -LiteralPath (Join-Path $projectDirectory 'taffy_bridge\rust-toolchain.toml') -Raw
+if ($rustPin -notmatch '(?m)^channel = "([0-9.]+)"\s*$') { throw 'Missing Rust toolchain pin.' }
+$taffyToolchain = $Matches[1]
+$taffyArguments = @('+' + $taffyToolchain) + @(
     'build', '--locked', '--manifest-path', $taffyManifest,
     '--target', 'x86_64-pc-windows-msvc')
 if ($Configuration -eq 'Release') { $taffyArguments += '--release' }
@@ -1077,7 +1084,7 @@ function Invoke-TrayAccessibilityTests {
         (Join-Path $projectDirectory 'TrayLayout.cpp'),
         "/Fo:$hostAccessibilityTestObjectDirectory\",
         "/Fe:$outputDirectory\HostAccessibilityTests.exe",
-        '/link', '/SUBSYSTEM:CONSOLE'
+    '/link', '/SUBSYSTEM:CONSOLE'
     ) + $libraryArguments
     & $cl $hostArguments
     if ($LASTEXITCODE -ne 0) {
@@ -1958,6 +1965,22 @@ if ($WidgetSwitchFallbackAuthorityTestsOnly -or
 
 Invoke-OverlayPlatformInteropBuild
 
+$releaseProperties = [xml](Get-Content -LiteralPath (Join-Path $projectDirectory '..\..\eng\WidgetRailRelease.props') -Raw)
+$releaseVersion = [string]$releaseProperties.Project.PropertyGroup.WidgetRailReleaseVersion
+$fileVersion = [string]$releaseProperties.Project.PropertyGroup.WidgetRailFileVersion
+if ($releaseVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$' -or
+    $fileVersion -notmatch '^\d+\.\d+\.\d+\.\d+$') { throw 'Invalid app release version.' }
+$versionHeader = Join-Path $outputDirectory 'WidgetRailVersion.h'
+@(
+    "#define WRAIL_FILE_FLAGS $(if ($releaseVersion.Contains('-')) { 2 } else { 0 })"
+    "#define WRAIL_FILE_VERSION $($fileVersion.Replace('.', ','))"
+    "#define WRAIL_FILE_VERSION_TEXT "+'"'+$fileVersion+'\0"'
+    "#define WRAIL_RELEASE_VERSION_TEXT "+'"'+$releaseVersion+'\0"'
+) | Set-Content -LiteralPath $versionHeader -Encoding ascii
+$versionResource = Join-Path $outputDirectory 'WidgetRailVersion.res'
+& (Join-Path $sdkBin 'rc.exe') /nologo "/I$outputDirectory" "/I$($sdk.FullName)\um" "/I$($sdk.FullName)\shared" "/fo$versionResource" (Join-Path $projectDirectory 'VersionInfo.rc')
+if ($LASTEXITCODE -ne 0) { throw 'Application version resource compilation failed.' }
+
 $hostCompileArguments = $common + @('/Zi')
 if ($PinnedSliderRouteTestsOnly) {
     $hostCompileArguments += '/DWRAIL_PINNED_SLIDER_ROUTE_TESTING'
@@ -2012,9 +2035,9 @@ $hostArguments = $hostCompileArguments + @(
     (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
     "/Fo:$hostObjectDirectory\",
     "/Fe:$outputDirectory\OverlayHost.exe",
-    '/link'
+    '/link', $versionResource
 ) + $libraryArguments + @(
-    '/SUBSYSTEM:WINDOWS',
+    '/SUBSYSTEM:WINDOWS', '/Brepro', '/PDBALTPATH:%_PDB%',
     '/MANIFEST:EMBED',
     "/MANIFESTINPUT:$(Join-Path $projectDirectory 'app.manifest')",
     'user32.lib', 'gdi32.lib', 'd2d1.lib', 'dwrite.lib', 'dwmapi.lib',

@@ -243,18 +243,17 @@ foreach (var retiredPath in new[]
 var overlayBuild = File.ReadAllText(Path.Combine(repository, "src", "OverlayHost", "build.ps1"));
 var bridgeOutputDeclaration = overlayBuild.IndexOf(
     "$bridgeOutput = Join-Path $outputDirectory 'runtime\\Bridge'", StringComparison.Ordinal);
-var bridgeOutputCleanup = overlayBuild.IndexOf(
-    "Remove-GeneratedDirectory -Path $bridgeOutput", StringComparison.Ordinal);
+var cleanupLoop = Regex.Match(overlayBuild,
+    @"foreach\s*\(\$hostRuntimeOutput\s+in\s+@\((?<paths>[\s\S]*?)\)\)\s*\{\s*Remove-GeneratedDirectory\s+-Path\s+\$hostRuntimeOutput\s*\}");
 var bridgePublish = overlayBuild.IndexOf(
     "..\\WidgetBridge\\WidgetBridge.csproj", StringComparison.Ordinal);
-foreach (var retiredOutput in new[] { "runtime\\SpotifyPlaybackHost" })
-    if (!overlayBuild.Contains(
-            $"Remove-GeneratedDirectory -Path (Join-Path $outputDirectory '{retiredOutput}')",
-            StringComparison.Ordinal))
-        failures.Add($"OverlayHost incremental packaging does not purge {retiredOutput}.");
-if (bridgeOutputDeclaration < 0 || bridgeOutputCleanup <= bridgeOutputDeclaration ||
-    bridgePublish <= bridgeOutputCleanup)
-    failures.Add("OverlayHost incremental packaging does not clean Bridge before republishing it.");
+if (!cleanupLoop.Success ||
+    !cleanupLoop.Groups["paths"].Value.Contains("$bridgeOutput", StringComparison.Ordinal) ||
+    !cleanupLoop.Groups["paths"].Value.Contains("runtime\\SpotifyPlaybackHost", StringComparison.Ordinal) ||
+    bridgeOutputDeclaration < 0 || cleanupLoop.Index <= bridgeOutputDeclaration ||
+    bridgePublish <= cleanupLoop.Index + cleanupLoop.Length)
+    failures.Add("OverlayHost must clean Bridge and retired Spotify runtime output before republishing.");
+
 
 RequireLink(Path.Combine(repository, "README.md"), "docs/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "README.md"), "docs/community-companion-services.md");

@@ -78,3 +78,9 @@ contracts; this workflow does not grant additional trust or capabilities.
 
 WRSS is declarative. It cannot execute scripts or load network/file URLs.
 Accessibility rules applied by the host always override widget styles.
+
+## Licensing your widget
+
+The original starter code is MIT-licensed. Keep `WIDGETRAIL-NOTICES.txt` when
+redistributing substantial copied portions; choose the license for your own
+widget. Referenced SDK/bootstrap libraries retain their MIT notices.

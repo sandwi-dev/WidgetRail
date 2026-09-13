@@ -23,3 +23,7 @@ logs/
 # Local IDE metadata
 .idea/
 .vscode/
+
+# MSBuild binary logs and local verification output
+*.binlog
+TestResults/
