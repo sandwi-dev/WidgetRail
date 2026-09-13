@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(WidgetRailOverlayHost LANGUAGES CXX)
+project(WidgetRailOverlayHost LANGUAGES CXX RC)
 
 set(GAMEINPUT_VERSION "3.5.262")
 set(GAMEINPUT_ROOT "$ENV{USERPROFILE}/.nuget/packages/microsoft.gameinput/${GAMEINPUT_VERSION}")
@@ -50,7 +50,8 @@ endfunction()
 # path compile identical literals (including test executables).
 add_compile_options(/utf-8)
 
-add_executable(ArtworkDecoderHost ArtworkDecoderHost.cpp)
+add_executable(ArtworkDecoderHost ArtworkDecoderHost.cpp ApplicationIcon.rc)
+target_include_directories(ArtworkDecoderHost PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../assets/branding")
 target_compile_features(ArtworkDecoderHost PRIVATE cxx_std_20)
 target_compile_options(ArtworkDecoderHost PRIVATE /W4 /permissive- /EHsc)
 target_compile_definitions(ArtworkDecoderHost PRIVATE
@@ -58,6 +59,7 @@ target_compile_definitions(ArtworkDecoderHost PRIVATE
 target_link_libraries(ArtworkDecoderHost PRIVATE windowscodecs ole32 d2d1 d3d11 dxgi)
 
 add_executable(OverlayHost WIN32
+    ApplicationIcon.rc
     main.cpp
     MediaSessionManager.cpp
     OverlayCompositionSurface.cpp
@@ -119,6 +121,7 @@ target_compile_features(OverlayHost PRIVATE cxx_std_20)
 target_compile_definitions(OverlayHost PRIVATE USING_GAMEINPUT
     WRAIL_VIGEM_NATIVE_BACKEND WRAIL_GAMEINPUT_ISOLATION_READER)
 target_include_directories(OverlayHost PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../assets/branding"
     "${GAMEINPUT_ROOT}/native/include"
     ../../third_party/ViGEmClient/include)
 target_link_directories(OverlayHost PRIVATE "${GAMEINPUT_ROOT}/native/lib/x64")

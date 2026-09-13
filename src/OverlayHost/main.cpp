@@ -1,4 +1,5 @@
 #include "OverlayState.h"
+#include "ApplicationIcon.h"
 #include "TrayStatus.h"
 #include "../OverlayPlatformInterop/OverlayPlatformInterop.h"
 #include "AccessibilityProvider.h"
@@ -772,6 +773,10 @@ public:
         windowClass.lpfnWndProc = WindowProc;
         windowClass.hInstance = instance_;
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        windowClass.hIcon = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_WIDGETRAIL),
+            IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED));
+        windowClass.hIconSm = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(IDI_WIDGETRAIL),
+            IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
         // This HWND is a premultiplied DirectComposition target. A class brush
         // is an independent opaque presentation owner and can become visible
         // in uncovered client pixels while a hidden host is reopened. The
@@ -787,6 +792,8 @@ public:
         backdropClass.lpfnWndProc = BackdropWindowProc;
         backdropClass.hInstance = instance_;
         backdropClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        backdropClass.hIcon = windowClass.hIcon;
+        backdropClass.hIconSm = windowClass.hIconSm;
         backdropClass.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
         backdropClass.lpszClassName = kBackdropWindowClass;
         if (!RegisterClassExW(&backdropClass)) {
@@ -798,6 +805,8 @@ public:
         chromeClass.lpfnWndProc = ChromeWindowProc;
         chromeClass.hInstance = instance_;
         chromeClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        chromeClass.hIcon = windowClass.hIcon;
+        chromeClass.hIconSm = windowClass.hIconSm;
         chromeClass.hbrBackground = nullptr;
         chromeClass.lpszClassName = kChromeWindowClass;
         if (!RegisterClassExW(&chromeClass)) {

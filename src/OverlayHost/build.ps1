@@ -430,8 +430,12 @@ function Invoke-ArtworkDecoderBuild {
         $artworkDecoderObjectDirectory
     }
     $definitions = if ($Testing) { @('/DWRAIL_ARTWORK_DECODER_TESTING') } else { @() }
+    $applicationIconResource = Join-Path $outputDirectory 'WidgetRailIcon.res'
+    & (Join-Path $sdkBin 'rc.exe') /nologo "/I$projectDirectory" "/I$projectDirectory\..\..\assets\branding" "/fo$applicationIconResource" (Join-Path $projectDirectory 'ApplicationIcon.rc')
+    if ($LASTEXITCODE -ne 0) { throw 'Application icon resource compilation failed.' }
     $arguments = $common + $definitions + @(
         (Join-Path $projectDirectory 'ArtworkDecoderHost.cpp'),
+        $applicationIconResource,
         "/Fo:$objectDirectory\",
         "/Fe:$outputDirectory\$name.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -1986,6 +1990,7 @@ if ($PinnedSliderRouteTestsOnly) {
     $hostCompileArguments += '/DWRAIL_PINNED_SLIDER_ROUTE_TESTING'
 }
 $hostArguments = $hostCompileArguments + @(
+    (Join-Path $outputDirectory 'WidgetRailIcon.res'),
     '/DWRAIL_OVERLAY_PLATFORM_IMPORTS',
     (Join-Path $projectDirectory 'main.cpp'),
     (Join-Path $projectDirectory 'ControllerOpenShortcut.cpp'),

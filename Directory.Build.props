@@ -13,5 +13,6 @@
     <Version>$(WidgetRailReleaseVersion)</Version>
     <FileVersion>$(WidgetRailFileVersion)</FileVersion>
     <AssemblyVersion>$(WidgetRailFileVersion)</AssemblyVersion>
+    <ApplicationIcon>$(MSBuildThisFileDirectory)assets/branding/widgetrail.ico</ApplicationIcon>
   </PropertyGroup>
 </Project>

@@ -95,6 +95,7 @@ foreach ($edition in @('production', 'developer')) {
     [IO.File]::WriteAllLines((Join-Path $editionWork 'Payload.iss'), $lines, [Text.UTF8Encoding]::new($true))
     Copy-Item -LiteralPath (Join-Path $repository 'eng/installer/WidgetRail.iss') -Destination $editionWork
     Copy-Item -LiteralPath (Join-Path $repository 'eng/installer/UninstallData.iss') -Destination $editionWork
+    Copy-Item -LiteralPath (Join-Path $repository 'assets/branding/widgetrail.ico') -Destination $editionWork
     & $CompilerPath /Qp (Join-Path $editionWork 'WidgetRail.iss')
     if ($LASTEXITCODE -ne 0) { throw "Installer compilation failed for $edition. Staging retained at $stage" }
     Test-ReleaseInventory $entry.Root

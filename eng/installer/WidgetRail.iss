@@ -6,6 +6,7 @@ AppId={{B72CEDF4-8B83-4B69-9E63-F90C6F54AA31}
 AppName={#DisplayName}
 AppVersion={#AppVersion}
 AppPublisher=WidgetRail
+SetupIconFile=widgetrail.ico
 DefaultDirName={localappdata}\Programs\WidgetRail
 DisableDirPage=yes
 UsePreviousAppDir=no
