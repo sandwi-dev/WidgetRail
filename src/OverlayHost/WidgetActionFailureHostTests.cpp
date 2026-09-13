@@ -1382,6 +1382,11 @@ void Run(const Arguments& arguments) {
                     WAIT_OBJECT_0,
                 "Fixture worker survived production WM_CLOSE/Stop.");
     } catch (...) {
+        const auto failureLog = ReadLog(logPath);
+        constexpr std::size_t maximumFailureSuffix = 32 * 1024;
+        std::cerr << "Isolated action-failure host log suffix: "
+                  << failureLog.substr(failureLog.size() > maximumFailureSuffix
+                      ? failureLog.size() - maximumFailureSuffix : 0) << '\n';
         removeEventHandler();
         throw;
     }

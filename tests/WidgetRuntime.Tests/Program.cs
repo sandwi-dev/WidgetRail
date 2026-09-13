@@ -2814,13 +2814,18 @@ static async Task BrokerAdapterBindsCloseActionContext()
     ]);
     var effects = 0;
     var pipeName = $"wrail-runtime-action-close-{Guid.NewGuid():N}";
+    var effectNotifications = System.Threading.Channels.Channel.CreateUnbounded<int>();
     await using var server = new BrokerPipeServer(
         pipeName,
         identity,
         [PlatformCapabilities.AppLibraryReadV1, PlatformCapabilities.AppLibraryLaunchV1],
         consent,
         backend,
-        hostEffectSink: _ => Interlocked.Increment(ref effects));
+        hostEffectSink: _ =>
+        {
+            var count = Interlocked.Increment(ref effects);
+            effectNotifications.Writer.TryWrite(count);
+        });
     server.SetLifecycle(BrokerLifecycleState.Interactive);
     var serverTask = server.RunAsync();
     await using var transport = new BrokerPipeClient(
@@ -2846,7 +2851,8 @@ static async Task BrokerAdapterBindsCloseActionContext()
             });
         Assert.True(response.Acknowledged, "Active action launch was not acknowledged.");
     }
-    Assert.Equal(1, Volatile.Read(ref effects));
+    Assert.Equal(1, await effectNotifications.Reader.ReadAsync().AsTask()
+        .WaitAsync(TimeSpan.FromSeconds(3)));
 
     var release = new TaskCompletionSource(
         TaskCreationOptions.RunContinuationsAsynchronously);
@@ -2895,7 +2901,8 @@ static async Task BrokerAdapterBindsCloseActionContext()
             CloseOverlayOnSuccess = true,
         });
     Assert.True(ordinary.Acknowledged, "Out-of-action launch compatibility regressed.");
-    Assert.Equal(2, Volatile.Read(ref effects));
+    Assert.Equal(2, await effectNotifications.Reader.ReadAsync().AsTask()
+        .WaitAsync(TimeSpan.FromSeconds(3)));
     Assert.Equal(2, backend.AppLibraryLaunchCalls);
 
     await transport.DisposeAsync();

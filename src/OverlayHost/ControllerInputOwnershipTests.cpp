@@ -76,6 +76,9 @@ int main() {
     Check(DecideVisibleForegroundTransition(false, true, false) ==
               VisibleForegroundTransition::Ignore,
           "hidden overlay ignores foreground changes");
+    Check(DecideVisibleForegroundTransition(true, true, false, false) ==
+              VisibleForegroundTransition::Ignore,
+          "a queued external activation cannot close a reopened overlay after foreground has moved");
 
     Check(ResolveBasicKeyboardAction(0x25) == BasicKeyboardAction::NavigateLeft &&
               ResolveBasicKeyboardAction(0x27) == BasicKeyboardAction::NavigateRight &&

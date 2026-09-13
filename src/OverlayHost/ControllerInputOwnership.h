@@ -78,8 +78,9 @@ enum class VisibleForegroundTransition {
 DecideVisibleForegroundTransition(
     const bool overlayVisible,
     const bool candidateIsValid,
-    const bool candidateOwnedByOverlayProcess) noexcept {
-    return overlayVisible && candidateIsValid && !candidateOwnedByOverlayProcess
+    const bool candidateOwnedByOverlayProcess,
+    const bool notificationIsCurrent = true) noexcept {
+    return overlayVisible && candidateIsValid && !candidateOwnedByOverlayProcess && notificationIsCurrent
         ? VisibleForegroundTransition::CloseOverlay
         : VisibleForegroundTransition::Ignore;
 }

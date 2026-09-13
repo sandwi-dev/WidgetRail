@@ -2148,15 +2148,18 @@ private:
                 return 0;
             }
             if (state_.surface() != widgetrail::Surface::Hidden) {
-                // The keyboard can activate between WinEvent capture and this
-                // message. Evaluate live ownership for its asynchronous scope.
+                // WinEvent delivery is asynchronous. In particular, the
+                // external activation from hiding can arrive after reopening.
+                // It must not dismiss a window that has regained foreground.
+                const HWND currentForeground = GetForegroundWindow();
                 const HWND foreground = textEntryModal_.active()
-                    ? GetForegroundWindow() : reinterpret_cast<HWND>(lParam);
+                    ? currentForeground : reinterpret_cast<HWND>(lParam);
                 const bool valid = foreground && IsWindow(foreground);
                 DWORD processId = 0;
                 if (valid) (void)GetWindowThreadProcessId(foreground, &processId);
                 if (widgetrail::input::DecideVisibleForegroundTransition(
-                        true, valid, processId == GetCurrentProcessId()) ==
+                        true, valid, processId == GetCurrentProcessId(),
+                        foreground == currentForeground) ==
                     widgetrail::input::VisibleForegroundTransition::CloseOverlay) {
                     (void)WidgetRailOverlayPlatformObserveForegroundTarget(
                         platform_,
