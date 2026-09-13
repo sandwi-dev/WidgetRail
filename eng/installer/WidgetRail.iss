@@ -108,6 +108,17 @@ begin
   WizardForm.TasksList.ItemCaption[0] := 'Start WidgetRail when I sign in (starts quietly; Windows Startup Apps restrictions still apply)';
 end;
 
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo,
+  MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+begin
+  Result := MemoDirInfo + NewLine + NewLine + MemoTasksInfo + NewLine + NewLine +
+    'Microsoft components:' + NewLine + Space + '.NET is included with WidgetRail.';
+  if not HasGameInput then
+    Result := Result + NewLine + Space + 'Install GameInput (Windows will ask for administrator approval).';
+  if not HasWebView2 then
+    Result := Result + NewLine + Space + 'Download and install WebView2 (internet connection needed).';
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Code: Integer;
