@@ -94,8 +94,7 @@ Durations are capped at 2 seconds, at most 1,024 nodes are tracked, and settled
 content schedules no animation work. Reduced motion snaps immediately and
 cancels outstanding transitions. Layout, colors, borders, shadows, blur,
 progress width, shell placement, and widget replacement are not interpolated
-by this version. See [GBA-032](../archive/known-issues.md#gba-032--wrss-transition-declarations-do-not-animate)
-for the remaining packaged visual/performance evidence.
+by these WRSS transitions. Host window resizing and background-surface transitions use separate animation paths.
 
 Untrusted input is bounded before publication: source bytes/characters,
 statements, imports and import depth, selectors per rule, declarations per

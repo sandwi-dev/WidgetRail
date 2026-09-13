@@ -579,5 +579,3 @@ such a driver.
 Use `tools/InputProbe` and its documented test matrix when evaluating a game,
 controller, Steam, or Xbox Game Bar conflict. Do not claim universal input
 suppression from a successful test in one title.
-
-For the broader interaction rationale, see [PS5 control-center research](../archive/ps5-control-center-research.md).

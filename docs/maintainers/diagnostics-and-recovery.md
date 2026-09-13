@@ -100,7 +100,7 @@ identity input.
 
 This operation is separate from ordinary diagnostics and other recovery
 surfaces. Failed workers still restart lazily within their runtime budget;
-installed packages are disabled or rolled back under **Installed widgets**;
+installed packages are disabled or rolled back under **Widgets**;
 appearance reset and permission changes retain their own confirmation pages.
 Diagnostics does not offer a universal worker kill/restart/reset action.
 

@@ -6,7 +6,7 @@ These are different execution models; an installable package is not necessarily
 sandboxed or trustworthy.
 
 This describes implemented boundaries, not an independent security certification.
-See [Release readiness](release-readiness.md) for remaining distribution gates.
+See [Release readiness](release-checklist.md) for remaining distribution gates.
 
 ## Execution models
 

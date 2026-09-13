@@ -31,9 +31,9 @@ foreach (var markdown in markdownFiles)
     }
 }
 
-var guidePath = Path.Combine(repository, "docs", "developers", "widget-authoring-guide.md");
+var guidePath = Path.Combine(repository, "docs", "reference", "sdk-reference.md");
 var guide = File.ReadAllText(guidePath);
-var modelPath = Path.Combine(repository, "docs", "developers", "widget-model.md");
+var modelPath = Path.Combine(repository, "docs", "reference", "widget-model-reference.md");
 var model = File.ReadAllText(modelPath);
 var modelSource = File.ReadAllText(Path.Combine(
     repository, "src", "WidgetSdk", "WidgetModel.cs"));
@@ -123,7 +123,7 @@ foreach (var contract in requiredCompanionContracts)
     if (!companion.Contains(contract, StringComparison.Ordinal))
         failures.Add($"docs/reference/community-companion-services.md is missing '{contract}'.");
 
-var quickstartPath = Path.Combine(repository, "docs", "developers", "widget-quickstart.md");
+var quickstartPath = Path.Combine(repository, "docs", "reference", "cli-workflows.md");
 var quickstart = File.ReadAllText(quickstartPath);
 string[] requiredAuthorityRecoveryContracts =
 [
@@ -274,6 +274,17 @@ RequireLink(Path.Combine(repository, "samples", "ClockWidget", "README.md"),
 RequireLink(Path.Combine(repository, "samples", "YtMusicWidget", "README.md"),
     "../../docs/reference/community-companion-services.md");
 
+// Public learning paths must stay discoverable independently of detailed contracts.
+foreach (var topic in new[] { "concepts", "navigation", "styling", "data-and-lifecycle", "media-and-pinning" })
+    RequireLink(Path.Combine(repository, "docs", "README.md"), $"developers/{topic}.md");
+foreach (var plan in new[] { "delivery-plan.md", "review-planner-goal.md", "implementation-agent-goal.md" })
+    if (!File.Exists(Path.Combine(repository, "docs", plan))) failures.Add($"Missing retained plan: {plan}");
+foreach (var removed in new[] { "archive", "history" })
+    if (Directory.Exists(Path.Combine(repository, "docs", removed)) &&
+        Directory.EnumerateFiles(Path.Combine(repository, "docs", removed), "*", SearchOption.AllDirectories).Any())
+        failures.Add($"Retired notes remain: {removed}");
+RequireLink(Path.Combine(repository, "docs", "README.md"), "images/README.md");
+
 if (failures.Count != 0)
 {
     Console.Error.WriteLine($"Documentation contract failed ({failures.Count}):");
@@ -306,6 +317,10 @@ static string FindRepositoryRoot(string start)
 static bool HasIgnoredSegment(string root, string path)
 {
     var relative = Path.GetRelativePath(root, path);
+    // Owner-retained working plans are not public guides; preserve their text,
+    // including historical links, while validating every public Markdown page.
+    if (relative.Replace('\\', '/') is "docs/implementation-agent-goal.md" or
+        "docs/review-planner-goal.md" or "docs/delivery-plan.md") return true;
     return relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
         .Any(segment => segment is ".git" or "bin" or "obj" or "artifacts" or "history" or "archive" or "logs");
 }

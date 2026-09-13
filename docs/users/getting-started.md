@@ -1,70 +1,73 @@
-# Build and run WidgetRail
+# Install and get started
 
-WidgetRail currently ships as source. A public binary release and installer
-have not been published.
+WidgetRail runs on Windows 10 build 19041 or newer and Windows 11, on x64 systems.
+You can use a controller, with keyboard navigation available as a fallback.
 
-## Choose what you want to build
+## Choose an edition
 
-**Writing a widget?** Start with the [SDK quickstart](../developers/widget-quickstart.md).
-The developer CLI can scaffold and test widgets without compiling the native overlay.
+| Edition | Choose it when… |
+|---|---|
+| Production | You want the everyday PC, audio, media, network, and app widgets. |
+| Developer | You also want SDK Gallery and sample widgets to explore the framework. |
 
-**Trying the overlay?** Follow the full build below.
+Both include the `wrail` CLI and widget templates. They use the same application
+version and share your WidgetRail data. Installing the other edition replaces
+the active edition; it does not create an independent setup.
 
-## Full overlay prerequisites
+## Install
 
-- Windows x64. The Windows-facing managed projects target Windows 10 build
-  19041 APIs or later; this API floor is not a complete hardware support matrix.
-- PowerShell 7.
-- .NET SDK **10.0.302**, selected by the repository's `global.json`.
-- .NET **8 runtime** for managed tools and workers. Installing the .NET 8
-  SDK alongside SDK 10 is one way to provide it.
-- Visual Studio or Build Tools with **Desktop development with C++**, MSVC x64
-  tools and a Windows SDK.
-- Rust through rustup, including the **1.97.1** toolchain and
-  `x86_64-pc-windows-msvc` target for the native layout library.
-- Network access for the initial NuGet and Cargo restores.
+1. Get the installer for your edition from [GitHub Releases](https://github.com/sandwi-dev/WidgetRail/releases).
+   If there is no published download yet, use the [source build guide](../maintainers/building.md).
+2. Quit WidgetRail if another copy is running.
+3. Run setup. It installs for your Windows account.
+4. Review the startup option. It is off by default; enabling it starts WidgetRail quietly when you sign in.
+5. Open WidgetRail from the Start menu.
 
-The GameInput runtime must be available for its controller backend. Embedded
-web media also needs the Microsoft Edge WebView2 runtime. Build-time SDK
-packages do not establish that these runtimes are installed on a clean PC.
-Clean-machine runtime provisioning is still a [release task](../maintainers/release-checklist.md).
+You do not need the .NET SDK to use the app. Setup includes its own .NET runtime.
+It checks GameInput and WebView2 and installs them if needed. GameInput may ask
+for administrator approval. A missing WebView2 runtime requires an internet download.
 
-HidHide and ViGEmBus are optional prerequisites for **Exclusive control**.
-They are not required for ordinary controller navigation; leave Exclusive
-control off unless you need it.
+If Microsoft's GameInput update becomes stuck, restart Windows normally and run
+setup again. See [Troubleshooting](troubleshooting.md) for more help.
 
-## Build
+## Open the overlay
 
-From PowerShell:
+Press **View + Menu** together. Press the same shortcut again to hide it.
+You can choose Guide instead in Settings. **F1** is the keyboard fallback.
 
-```powershell
-git clone https://github.com/sandwi-dev/WidgetRail.git
-Set-Location WidgetRail
-rustup toolchain install 1.97.1 --profile minimal --target x86_64-pc-windows-msvc
-$env:RUSTUP_TOOLCHAIN = '1.97.1'
-pwsh -NoProfile -File .\src\OverlayHost\build.ps1 -Configuration Release -SkipTests
-```
+The row of widget icons is the **tray**. Choose an icon to open its widget.
+Use the on-screen controller guide to discover the actions available at your
+current focus. [Learn the controls](controls.md).
 
-The explicit Rust selection matters when building from the repository root:
-the toolchain file lives in the nested layout crate. This command builds the
-host and managed runtime together. `-SkipTests` makes a runnable build; it
-does not certify a release. See [build execution](../maintainers/build-execution.md)
-and [Contributing](../../CONTRIBUTING.md) for verification.
+## Enable the features you want
 
-## Run
+Open **Settings → Widgets**. Review each widget's permissions before enabling it.
+For example, Audio Mixer needs access to audio controls. Settings stays enabled
+so you can always manage the rest of the application.
 
-```powershell
-.\src\OverlayHost\out\Release\OverlayHost.exe --show
-```
+Spotify, YouTube, and Playnite are separate add-ons. Follow each widget's README
+for installation and service setup; installing WidgetRail alone does not configure them.
 
-Keep the complete output directory together. Copying only `OverlayHost.exe`
-omits its workers, libraries, widget packages and resources.
+## Updates
 
-Use **View + Menu** to show or hide the overlay. Settings lets you choose
-Guide instead. **F1** is a keyboard fallback.
+Updates are manual. Quit WidgetRail and run a newer application installer.
+Your widgets and settings are kept. Built-in widgets update with the application.
 
-Open **Settings → Installed widgets** to review widget permissions. Built-in
-widgets also require consent for Windows operations. Some service widgets
-must be packaged and installed separately; their READMEs describe setup.
+For an add-on, open its details in **Settings → Widgets → Update from file**.
+Choose the newer `.wrwidget` package, then review and enable the update. See
+[Managing widgets](customization.md#manage-widgets).
 
-Continue with [Controls](controls.md) and [Known limitations](known-limitations.md).
+## Uninstall
+
+Quit WidgetRail, then uninstall it through Windows Settings → Apps. The uninstaller
+asks whether to keep your data or delete it. **Keep data is the default.**
+Deletion applies to WidgetRail data shared by this account, including development copies.
+Shared Microsoft runtimes and optional controller drivers are not removed.
+
+To remove the saved-data folder manually later, press Win+R, enter `%LOCALAPPDATA%`,
+and delete only the `WidgetRail` folder. Temporary files are under `%TEMP%\WidgetRail`.
+Close every WidgetRail copy first. To also unregister its Windows sandbox profiles,
+reinstall and choose the uninstaller's delete-data option.
+
+Full-access add-ons can store data outside WidgetRail's folders, such as their
+own Windows credentials. Follow their instructions for any additional cleanup.

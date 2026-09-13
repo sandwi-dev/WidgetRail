@@ -324,6 +324,6 @@ quality. Before release, run and retain screenshots/measurements for:
 - controller focus reachability after every responsive reflow; and
 - supported game presentation modes, including Alt+Tab and focus restoration.
 
-See the [visual design system](../archive/visual-design-system.md) for intended geometry,
+See the [Styling guide](../developers/styling.md) for intended geometry,
 [settings and global themes](settings-and-themes.md) for author-facing styling,
 and [performance](../maintainers/performance.md) for presentation and measurement budgets.

@@ -12,7 +12,7 @@ You do not need to modify the host to add a widget.
 
 ## Work on the platform
 
-Follow [Build and run](docs/users/getting-started.md) for Windows prerequisites.
+Follow [Building from source](docs/maintainers/building.md) for Windows prerequisites.
 Work on a branch, keep changes focused, and include reproduction steps and
 relevant validation in your pull request.
 
@@ -74,7 +74,14 @@ to silence a regression.
 
 Public docs live in `docs/users`, `docs/developers`, `docs/reference` and
 `docs/maintainers`. Keep ticket transcripts and one-off development records out
-of those guides. Archived plans are historical context, not current requirements.
+of those guides. The three retained planning documents are working records, not public API requirements.
 
 For bugs, provide the exact build, steps, expected behavior and observed behavior.
 Do not post credentials or raw diagnostic archives without reviewing them.
+
+## Write docs for someone learning
+
+Introduce one idea at a time. Explain a term before using its internal name.
+Prefer a short working example, explain what the reader should see, and link to
+reference material for limits and advanced behavior. Keep operational evidence,
+ticket histories, and obsolete design proposals out of the public learning path.

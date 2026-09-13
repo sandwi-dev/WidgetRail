@@ -252,7 +252,7 @@ Those increments are below DLV-016's 128 MiB material memory and 50 ms response
 gates. The DLV-011 two-node projection is intentionally much smaller than
 DLV-016's 48-node workload, so the timings are not interchangeable throughput
 benchmarks. The fixture's private pages are also not a production process-tree
-total. See [host-owned pinned-surface feasibility](../archive/pinned-surfaces.md) for the
+total. See [Pinned views](../users/pinning.md) for the
 window-policy decision and complete evidence limits.
 
 DLV-058's focused production-coordinator fixture adds one validated immutable

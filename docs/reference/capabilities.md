@@ -435,7 +435,7 @@ Settings discovers installed and bundled first-party manifests when the
 Settings widget enters a new Visible/Interactive lifetime; it does not poll.
 The controller flow is:
 
-1. **Installed widgets** lists built-in and community packages. A opens the
+1. **Widgets** lists built-in and community packages. A opens the
    exact widget management page; **Permissions & configuration** opens its
    bounded capability Scroll.
 2. When unsupported declarations or inactive saved decisions exist, one

@@ -16,4 +16,4 @@ observed impact. Share the minimum data needed to reproduce the issue.
 
 See [Security and trust](docs/maintainers/security-and-trust.md) for current
 process boundaries, package trust and limitations, and
-[Release readiness](docs/maintainers/release-readiness.md) for outstanding gates.
+[Release readiness](docs/maintainers/release-checklist.md) for outstanding gates.

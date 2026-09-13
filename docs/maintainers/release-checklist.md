@@ -1,43 +1,65 @@
-# Release checklist
+# Prepare a public release
 
-Source publication and a downloadable desktop release are separate milestones.
-Use the [readiness audit](release-readiness.md) for current evidence; this page
-describes the gates.
+Use this checklist for the exact commit and artifacts being offered to users.
+The project has accepted local installers, version stamping, and initial
+branding. Publishing those artifacts is a separate step.
 
-## Publish the source repository
+## Prepare the public repository
 
-- [ ] Review the root README, license split and contribution instructions.
-- [ ] Confirm ownership/redistribution terms for third-party assets and service branding.
-- [ ] Review a redacted secret scan of the exact Git history being made public.
-      Removing a file from the current tree does not remove it from history.
-- [ ] Review historical personal information, old paths and copyright identities.
-- [ ] Establish a private security-reporting channel and update `SECURITY.md`.
-- [ ] Push the reviewed branch and obtain CI results for the exact proposed main commit.
-- [ ] Review known limitations and use an honest preview label.
-- [ ] Owner explicitly approves changing repository visibility.
+- Review the README, user guides, and [screenshot slots](../images/README.md).
+- Check the MIT license and third-party license/branding notices.
+- Review the Git history being published for secrets and personal information. Deleting old notes from the current tree does not erase history.
+- Establish the reporting channel described in [SECURITY.md](../../SECURITY.md).
+- Run CI on the exact proposed main commit after an authorized push.
 
-## Publish a desktop preview
+The repository retains three active planning documents at the owner's request:
+`docs/delivery-plan.md`, `docs/review-planner-goal.md`, and
+`docs/implementation-agent-goal.md`. They are working records, not user guides
+or the public API contract. Older research and archived progress notes are removed;
+their previous revisions remain available through Git.
 
-- [ ] Choose and stamp an application version; see [Versioning](versioning.md).
-- [ ] Produce a complete relocatable artifact from a clean checkout.
-- [ ] Verify supported Windows versions and runtime provisioning on a clean PC.
-- [ ] Verify launch from a normal user account with no development tools installed.
-- [ ] Verify installation, upgrade, rollback, removal and retention of user settings.
-- [ ] Define optional driver installation/removal and recovery behavior; never
-      silently install controller drivers as part of testing.
-- [ ] Run current managed/native gates, keep exact-commit evidence, and resolve
-      or explicitly document any waived failures.
-- [ ] Test controller disconnect/reconnect and wired/wireless changes.
-- [ ] Test sleep/resume, audio/network changes, prolonged sessions and bounded
-      cache growth. Power tests must be explicitly performed by a person.
-- [ ] Test standard and elevated applications, window previews, foreground behavior,
-      multiple monitors, DPI/text scale, themes and reduced-motion settings.
-- [ ] Test expired/revoked authentication, provider rate limits, offline use,
-      unavailable services, and full/denied/read-only storage.
-- [ ] Review redistribution terms for separately licensed runtimes such as GameInput; do not apply the project license to vendor code.
-- [ ] Publish required license notices and corresponding source for every shipped component.
-- [ ] Review signing, checksums, runtime redistribution and SmartScreen experience.
-- [ ] Add real screenshots or a short demonstration from the accepted build.
-- [ ] Owner approves the final release artifacts and publication.
+## Build the editions
 
-These are release gates, not a claim that each check has already passed.
+From a clean checkout with the [development tools](building.md):
+
+```powershell
+$env:RUSTUP_TOOLCHAIN = '1.97.1'
+pwsh -NoProfile -File .\scripts\Build-Release.ps1
+pwsh -NoProfile -File .\scripts\Get-InstallerCompiler.ps1
+pwsh -NoProfile -File .\scripts\Build-Installer.ps1 `
+  -ReleaseRoot .\artifacts\releases\0.1.0-preview.1 `
+  -CompilerPath .\artifacts\tools\installer-compiler\package\tools\ISCC.exe
+```
+
+Use the actual version from the build output when it changes. Existing release
+destinations are not overwritten. The build records source and packaging revisions
+and validates the catalogs and file inventory for both editions.
+
+Read the [installer contract](../../eng/installer/README.md) for runtime provisioning,
+startup ownership, uninstall behavior, and the supported GameInput minimum.
+
+## Check the user journey
+
+- Fresh installation on supported Windows without developer tools.
+- Missing-runtime prompts, cancellation, failure messages, and retry after restart.
+- Upgrade and edition switch with settings and add-ons preserved.
+- Startup enabled/disabled, including a Windows Startup Apps override.
+- Widget installation, permission review, manual update, and removal.
+- Uninstall with data kept and with explicit data deletion.
+- Representative controllers, display scales, media, window previews, and games.
+
+Full-access add-ons may save data outside the host's directories, including
+credentials in Windows Credential Manager. The host uninstaller does not
+generically erase arbitrary add-on-owned stores. Review and document those
+cleanup boundaries before describing uninstall as removing every possible sign-in.
+
+## Publish deliberately
+
+Choose the signing and distribution policy. Test the download/install experience
+on a normal user account, including the warnings an unsigned preview may show.
+Review third-party redistribution terms for the actual bundle and retain notices.
+
+Advance versions according to [Versioning](versioning.md), publish immutable
+artifacts with checksums and release notes, and describe remaining compatibility
+limits. Clean-machine coverage and signing are release work, not something a
+documentation pass can certify.

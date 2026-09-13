@@ -75,7 +75,7 @@ widget styles consume the same semantic `wrail-*` contract available to
 Community authors. Physical packaged screenshots across the supported display,
 text-scale, high-contrast, and reduced-transparency matrix remain the evidence
 gate tracked by
-[GBA-031](../archive/known-issues.md#gba-031--default-components-need-a-minimalist-visual-system).
+[Compatibility notes](../users/known-limitations.md).
 
 The separately installable
 [SDK Gallery Community addon](../../samples/SdkGalleryWidget/README.md) is the
@@ -299,8 +299,7 @@ is pending. Cancel provider operations when the active lifecycle ends.
 Treat optional providers as independent feature slices. Loss or denial of
 device enumeration or microphone control must disable/explain only those rows;
 working master output and per-application sessions stay usable, and focus stays
-on the same stable target. This partial-degradation/focus contract is tracked as
-[GBA-035](../archive/known-issues.md).
+on the same stable target. Each unavailable feature should explain its own state without moving focus unnecessarily.
 
 ## Interaction-state contract
 
@@ -408,5 +407,5 @@ Visual polish alone is not a component contract.
   loading/error state, dynamic item removal, and rapid repeated input.
 
 See [Declarative UI](declarative-ui.md), [Controller input](controller-input.md),
-[WRSS](wrss.md), [Visual design system](../archive/visual-design-system.md), and
+[WRSS](wrss.md), [Styling guide](../developers/styling.md), and
 [Performance](../maintainers/performance.md) for the underlying contracts.

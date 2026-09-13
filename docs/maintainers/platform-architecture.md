@@ -534,5 +534,5 @@ then deterministic geometry from the last render.
 See [security and trust](security-and-trust.md) before executing third-party
 widgets, [display and resolution](../reference/display-and-resolution.md) for the monitor/
 viewport contract, [performance](performance.md) for evidence gates, and
-[architecture research](../archive/architecture-plan.md) for the longer-term technology
+[Platform architecture](../maintainers/platform-architecture.md) for the longer-term technology
 rationale.

@@ -43,7 +43,7 @@ That projection does not add a declarative node kind or expose an HWND: catalog
 identity and exact runtime/presentation generations remain the admission seam.
 The pinned projection starts click-through, stays alive when the main overlay
 closes, and is torn down on unpin, close, worker/package replacement, removal,
-or host exit. See [Host-owned pinned surfaces](../archive/pinned-surfaces.md).
+or host exit. See [Pinned views](../users/pinning.md).
 
 A composed real-HWND contract now sends representative production-shaped
 Settings, YT Music, and Spotify trees through the same `BuildWidgetTree`,

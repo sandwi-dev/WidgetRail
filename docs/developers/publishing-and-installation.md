@@ -1,11 +1,23 @@
-# Publishing and installation
+# Package and share your widget
 
-Status: deterministic pack/install/catalog commands, bounded HTTPS release
-downloads, immutable version pin/rollback CLI, live last-good bridge catalog
-revisions, controller package review/enablement, and the host-owned local-file
-picker/import prerequisite are implemented; the visible Settings import action,
-publisher signing, automatic update discovery, and version removal/garbage
-collection are not
+A `.wrwidget` package is the file users install. It contains a reviewed version
+of your code, manifest, styles, and assets. Choose a new manifest version whenever
+you distribute changed contents.
+
+## The short path
+
+1. Build and test your widget.
+2. Run `wrail validate` and `wrail pack` on its project folder.
+3. Share the resulting package with setup instructions and a license.
+4. Users install it in **Settings → Widgets**, then review permissions and enable it.
+
+For an update, share a newer package version. Users can choose **Update from file**
+from that widget's details, then review and enable the result. The previous
+version remains available until removed. There is no automatic update service.
+
+The remaining sections cover repeatable source builds, checksums, CLI installation,
+and remote distribution. You can use them when preparing a release, rather than
+before your first local widget works.
 
 ## Recommended workflow today: share source and immutable releases on GitHub
 
@@ -163,7 +175,7 @@ new version or changing the working version; disable it explicitly before
 retrying. This prevents unreviewed code or a failed download/extraction from
 changing the active widget's state. Review the
 source, manifest permissions, publisher, and reported digest before opting in.
-The preferred controller flow is Settings → Installed widgets; the CLI remains
+The preferred controller flow is Settings → Widgets; the CLI remains
 available for scripted/test catalogs:
 
 ```powershell
@@ -185,7 +197,7 @@ The complete update review sequence is therefore:
 1. Disable the widget ID.
 2. Install the exact new GitHub Release asset with its independently obtained
    SHA-256 pin. The old immutable version remains installed.
-3. In Settings → Installed widgets, open the package and choose **Manage
+3. In Settings → Widgets, open the package and choose **Manage
    versions**. Select the exact new version. For scripted catalogs, use `wrail
    version list <widget-id>` followed by `wrail version select <widget-id>
    <new-version>`.
@@ -209,7 +221,7 @@ The packaged bridge and Settings widget read the default current-user catalog;
 an override is an alternate test/script catalog and is managed with matching
 CLI commands rather than appearing in the packaged overlay.
 
-Settings → Installed widgets exposes the same package-only operation as
+Settings → Widgets exposes the same package-only operation as
 **Uninstall widget** after the Community widget is disabled. It confirms the
 safe package identity—not a path—and revalidates the current publisher
 authority, active version, complete version inventory, disabled state, and
@@ -245,7 +257,7 @@ wrail enable dev.example.volume-control
 ```
 
 A newly discovered widget ID is disabled by default. Explicitly enable it after
-review in Settings → Installed widgets (or with the CLI for automation).
+review in Settings → Widgets (or with the CLI for automation).
 Installing another local version of an ID preserves that ID's existing catalog
 state and the old version-addressed package. Follow the same disable, install, explicit
 version selection, review, and enable sequence for local updates. Both local
@@ -263,7 +275,7 @@ policy rejection removes staging and leaves the installed catalog unchanged.
 Remote installation applies the same pre-publish policy to its already locked,
 digest-verified temporary-file stream.
 
-Settings → Installed widgets now exposes **Install local widget**, backed by the
+Settings → Widgets now exposes **Install local widget**, backed by the
 native host's private `.wrwidget` picker/import boundary. It admits one modal
 `IFileOpenDialog` only while the exact bundled Settings instance is current and
 `Interactive`, revalidates instance plus runtime/presentation generations after
@@ -298,7 +310,7 @@ wrail disable dev.example.widget --catalog .\artifacts\test-catalog
 wrail version list dev.example.widget --catalog .\artifacts\test-catalog
 ```
 
-Settings → Installed widgets provides one host-owned local `.wrwidget` file
+Settings → Widgets provides one host-owned local `.wrwidget` file
 picker and installs the selected package disabled for review. There is no
 remote graphical acquisition, automatic updater, signature verification, or
 marketplace client. The bridge watches the default current-user catalog without
@@ -351,7 +363,7 @@ UTF-8, and compares its bytes with that inventory before parsing. Modified and
 late-added style sources fail closed. Executable assemblies, lazy dependencies,
 and general package assets use the same verified-content lease described above.
 
-After CLI installation, open Settings → Installed widgets. The paginated
+After CLI installation, open Settings → Widgets. The paginated
 controller surface shows package ID, publisher, active/installed versions,
 runtime, host-API range, architectures, compatibility result/reason, and
 required versus optional capability declarations before enable or disable.
@@ -452,20 +464,11 @@ deployment catalog with enabled compatible entries from the default user
 catalog, then maintains complete validated live revisions. This discovery/
 reload path is not publisher proof; do not enable code you do not already trust.
 
-## Planned production flow
+## Trust and update boundaries
 
-The intended flow is explicitly **planned**:
-
-1. A publisher builds and signs an immutable `.wrwidget`.
-2. GitHub Releases or another HTTPS source hosts the exact bytes plus signed
-   metadata; the current bounded downloader acquires the package.
-3. A future trust layer verifies publisher identity, host compatibility,
-   permissions, and revocation before the existing atomic installation.
-4. The user reviews permissions and enables the widget.
-5. The bridge resolves the installed version through the generic worker host;
-   the current lazy path requires the package-specific capability-free
-   AppContainer, Job Object restrictions, and PID/nonce/identity-authenticated
-   main and broker pipes with no desktop-token fallback.
+The current flow validates package integrity and compatibility, then asks the
+user to review and enable the widget. Publisher signing and revocation are not
+implemented. Do not describe an unsigned package as publisher-verified.
 
 Until publisher signing exists, the host seals every installed unsigned content
 tree and derives authority from its verified SHA-256 digest rather than its
@@ -477,10 +480,11 @@ verified bytes restores only that content identity and its prior decisions.
 This blocks silent unsigned-update authority inheritance but does not prove who
 published either byte tree.
 
-Update checks, version removal/garbage collection, signature chains,
-revocation, CPU quotas, disk/profile quotas and cleanup, and an audit UI are
-also planned. The implemented Settings and CLI pin/rollback flows deliberately
-do not remove immutable versions or discover updates automatically.
+Updates remain manual. Settings supports removing unused versions and uninstalling
+community widgets; the current version is protected. Application uninstall can
+optionally remove host data and WidgetRail sandbox profiles. These operations
+are distinct from automatic garbage collection, publisher verification, or
+general quotas on a full-access application.
 
 Read [security and trust](../maintainers/security-and-trust.md) before running a package you
 did not build yourself.

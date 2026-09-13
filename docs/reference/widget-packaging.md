@@ -173,7 +173,7 @@ result. This is a private PID- and nonce-authenticated control channel, not a
 manifest capability or community-widget API.
 
 The same trusted companion provides per-widget **Clear local data** under
-**Settings → Installed widgets**. Inspection returns only the exact current
+**Settings → Widgets**. Inspection returns only the exact current
 widget ID, a safe label, whether overlay-owned private state exists, a bounded
 status code, and—only when state exists—an opaque revision-bound confirmation
 token. After explicit confirmation the bridge retires the selected worker,
@@ -434,7 +434,7 @@ revalidates the exact current `Interactive` bundled Settings generation before
 publication. Success remains disabled and produces a semantic catalog reload.
 Cancel, stale origin, duplicate selection/version, changing or reparse-point
 source, and installer failure leave no newly admitted catalog state and return
-only a bounded path-free status. Settings → Installed widgets exposes that
+only a bounded path-free status. Settings → Widgets exposes that
 closed operation as **Install local widget**; the worker receives neither the
 selected path nor package-install authority, and the published package appears
 disabled for explicit review.
@@ -459,7 +459,7 @@ rollback require a disabled widget, preserve that disabled state, and require a
 separate review and `wrail enable` action afterward. There is no history stack:
 use `version select` to move forward to a newer installed version.
 
-For local packages, Settings → Installed widgets exposes the implemented
+For local packages, Settings → Widgets exposes the implemented
 host-owned file picker through **Install local widget**. It publishes a
 successful package disabled for review without giving the widget worker a path
 or general file-picker authority.

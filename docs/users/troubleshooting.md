@@ -6,12 +6,12 @@ Use **View + Menu** together on one controller, or try **F1** with a keyboard.
 The opening shortcut can be changed to Guide in Settings. Release both buttons
 after reconnecting a controller before trying the shortcut again.
 
-If WidgetRail is not running, start the complete built application directory
-as described in [Build and run](getting-started.md).
+If WidgetRail is not running, open WidgetRail from the Start menu. For a source build, follow
+[Building from source](../maintainers/building.md).
 
 ## The overlay opens but a widget cannot control Windows
 
-Open **Settings → Installed widgets**, select the widget and review its
+Open **Settings → Widgets**, select the widget and review its
 permissions. Built-in widgets are not automatically granted permissions.
 Audio, networking, window management and power operations require their
 respective permissions.
@@ -65,3 +65,18 @@ Runtime diagnostics are under `%LOCALAPPDATA%\WidgetRail`. Do not upload the
 entire directory: it contains settings, private state and service data.
 Review individual logs before sharing them. For deeper diagnosis, see
 [Diagnostics and recovery](../maintainers/diagnostics-and-recovery.md).
+
+## GameInput setup does not finish
+
+Setup checks for a compatible runtime before offering installation. If Microsoft's
+update becomes stuck, save your work and restart Windows normally, then run setup
+again. If Windows blocks the restart, keep the error message for diagnosis.
+
+WidgetRail records the vendor exit code in the setup log. When logging can be
+prepared, the MSI log is `%LOCALAPPDATA%\WidgetRail\logs\GameInput-setup.log`.
+It is replaced on the next attempt. Do not run another MSI over an active update.
+
+## WidgetRail no longer starts when I sign in
+
+Check both the WidgetRail setting and Windows Settings → Apps → Startup. Windows
+can disable a startup entry independently; WidgetRail respects that choice.

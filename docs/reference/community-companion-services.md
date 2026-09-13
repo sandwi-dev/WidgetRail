@@ -1,20 +1,12 @@
-# Local companion HTTP and private secrets
+# Local companion services and secrets
 
-Status: implemented typed SDK, broker, and Windows provider foundation,
-2026-08-07. YT Music is the first migration consumer; consult its [reference
-README](../../samples/YtMusicWidget/README.md) for the addon workflow and the
-[known-issues ledger](../archive/known-issues.md) for product evidence still open.
+A companion is a separate local application your widget talks to. Sandboxed
+widgets use the host's exact-port JSON service rather than opening arbitrary
+sockets. This page documents that service and its secret-handling boundary.
 
-Community workers have no ambient network capability and cannot access Windows
-Credential Manager. These host services cover the narrower recurring case of a
-widget talking to one local desktop companion without exposing a raw socket or
-persisted bearer value:
-
-- exact-port, IPv4-loopback, JSON-only HTTP; and
-- package-scoped, write-only private secret slots with host-side Bearer
-  injection.
-
-They are independent permissions. Bearer injection requires both.
+Start with [Core concepts](../developers/concepts.md) if the host/widget distinction
+is new. The [YT Music example](../../samples/YtMusicWidget/README.md) demonstrates
+a complete integration. Full-access application widgets use a different trust model.
 
 ## Manifest declarations
 

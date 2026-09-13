@@ -1,90 +1,71 @@
 # Versioning
 
-WidgetRail has several version numbers because they identify different things.
-They should not all increment together.
+The application, SDK, and widgets have separate versions because people update
+them for different reasons. An audio-widget fix does not need to renumber every
+community package.
 
-## What the repository does today
+## The version a user installs
 
-| Component / contract | Current authority | Meaning |
-|---|---|---|
-| Desktop application | No canonical application release version or public tag yet | A local Git commit identifies a candidate; default assembly or crate versions are not an app release |
-| SDK and `wrail` | `eng/WidgetSdkRelease.props`: `0.3.0-dev` | One reviewed developer release unit, including its author-facing application bootstrap |
-| Local scaffold SDK package | Developer version plus `.local.<content hash>` | Exact local content, not a published NuGet release |
-| ControllerWidget template format | `ControllerWidgetTemplateVersion`: `2` | Template contract format; bundled with the matching CLI |
-| Widget packages | Each widget's `manifest.json` version | Independently versioned immutable packages |
-| Theme packages | Each theme's manifest version | Independently versioned data packages |
-| Presentation protocol | `ProtocolConstants`: supported range `1–52` | Wire format and feature requirements, not SemVer |
-| Manifest / broker capabilities | Manifest schema and IDs such as `system.power.control.v1` | Separate schema and operation contracts |
-| Native layout crate | `Cargo.toml`: `0.1.0`, `publish = false` | Internal build metadata, not a separately released product |
+The **application version** identifies a complete WidgetRail release. Its source
+is `eng/WidgetRailRelease.props`; the current preview is `0.1.0-preview.1`.
+Both Production and Developer use this version. Their contents differ, not
+their stability channel.
 
-The SDK/CLI contract already has compatibility tests and a reviewed public API
-baseline. The desktop application still needs release-version plumbing.
-No product version or public tag was created by this documentation change.
+The host, bridge, workers, built-in widgets, resources, and private runtime ship
+together. Native and managed product metadata, artifact names, and release
+manifests use the application release settings. Users update by running a newer
+installer; there is no automatic updater.
 
-## Recommended public release policy
+The Windows numeric file version is `0.1.0.0` for this preview. A source commit
+distinguishes local candidates with the same preview label. Never replace a
+published release's bytes: advance its version before distributing a correction.
 
-### One desktop application release
+## The version a widget author builds against
 
-Use SemVer with prereleases, for example **`v0.1.0-preview.1`** for a first app
-preview. This is a proposed tag, not an existing release.
+The **SDK and CLI** are a coordinated developer release unit. Their source is
+`eng/WidgetSdkRelease.props`; the current unit is `0.3.0-dev`. It includes matching
+templates and the author-facing application bootstrap.
 
-Release the native host, bridge, broker, generic workers, bundled widgets,
-resources and dependency notices together. Users should never assemble these
-from different releases. Internal libraries do not need independently marketed
-version numbers.
+The scaffold bundles an exact SDK package in a local feed. Its version adds a
+`.local.<content-hash>` suffix so different SDK contents are not confused. This
+is an offline developer workflow, not evidence of a published NuGet feed.
 
-Before shipping, add one canonical application version source and stamp it into
-the native version resource, managed product metadata, release manifest and
-artifact filename. Include the exact Git commit. Do not use the SDK version or
-the native layout crate version as a substitute.
+During `0.x`, breaking SDK changes advance the minor version and need migration
+notes. Compatible fixes or additions advance the patch/prerelease version.
+After `1.0`, use the usual SemVer major/minor/patch rules. See
+[SDK evolution](../developers/widget-sdk-evolution.md) for the detailed policy.
 
-### One developer release unit
+## Widget and theme versions
 
-Keep **SDK, CLI and bundled templates synchronized**, as they are today.
-Publish a distinct immutable version for every externally distributed artifact;
-for example `sdk-v0.3.0-preview.1` for the first developer preview.
+Each widget or theme owns its manifest version. Update it when distributing new
+bytes, even for an artwork change. Installed versions are immutable so users can
+review an update and keep a previous version for rollback.
 
-- During `0.x`, breaking SDK changes advance the minor version and include
-  migration notes.
-- Compatible fixes/additions advance the patch or prerelease sequence within
-  the current minor line.
-- After `1.0`, use normal SemVer: major for breaking changes, minor for compatible
-  additions, patch for compatible fixes.
-- Keep template format changes explicit. A new CLI release does not require a
-  new template format number when the format itself is unchanged.
-- Local content-hash package versions remain useful for development, but are not
-  a replacement for public release identities.
+A widget's manifest declares the host API range it expects. That range is a
+compatibility contract; it is not the application's marketing version. Matching
+version numbers alone do not establish compatibility.
 
-Follow the existing [SDK evolution policy](../developers/widget-sdk-evolution.md)
-for deprecation and migration obligations.
+## Protocol and internal versions
 
-### Independent widget and theme versions
+| Version | Meaning |
+|---|---|
+| Presentation protocol (currently 1–52) | The UI data features supported between a widget and host |
+| Capability suffix, such as `.v1` | A particular Windows-service contract |
+| Manifest version | The package schema |
+| Template format (currently 2) | The format understood by the scaffold tooling |
+| Native layout crate version | Internal build metadata |
 
-Each separately distributed widget or theme keeps its own SemVer version.
-A Spotify widget fix should not force a Playnite package version change.
-Bundled widget versions can also remain independent internally; the app
-release manifest records which exact versions and digests it contains.
+These numbers change when their own contracts change. They do not all move
+with an application patch.
 
-Never replace published bytes under an existing package version. Build a new
-version even for an asset-only correction. Do not infer widget compatibility
-from a matching app version; check manifest requirements, SDK compatibility,
-capabilities and the supported presentation protocol.
+## Record what shipped
 
-### Protocol and schema versions
+`release.json` records the app and SDK versions, exact compiled-source commit,
+packaging commit, edition, bundled widgets, and file inventory. Installer metadata
+records its packaging revision too. This allows packaging-only fixes to be
+distinguished from newly compiled application code.
 
-Keep protocol feature versions and capability `.v1` identifiers separate from
-release SemVer. An app patch can ship the same protocol, and a new protocol
-feature does not require renumbering every widget.
-
-The manifest's `hostApi` range is a compatibility contract, not the desktop
-application's marketing version. Define its published support policy alongside
-the first release rather than treating existing `1.0` declarations as proof
-of universal cross-version compatibility.
-
-## Every release records its contents
-
-Record the app version, source commit, SDK/CLI unit, protocol range, bundled
-widget/theme versions, dependency versions, checksums and required runtimes.
-Publish matching source and license notices. Keep old release artifacts immutable.
-Automating that manifest, signing, packaging and update validation remains a
-[release checklist](release-checklist.md) task.
+Suggested public tag names are `v0.1.0-preview.1` for the application and
+`sdk-v0.3.0-preview.1` for a separately published SDK preview. These are naming
+examples, not a claim that those tags have been published. Follow the
+[release checklist](release-checklist.md) before publishing either.

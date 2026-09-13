@@ -38,7 +38,7 @@ automatically a pin option.
 ## Review permissions
 
 Built-in widgets and sandboxed community widgets request specific permissions
-for Windows operations. Review them under Installed widgets.
+for Windows operations. Review them under Widgets.
 
 A **full-trust application** widget is different: it runs with your ordinary
 Windows user access. Only enable one from a source you trust. See

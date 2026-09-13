@@ -386,7 +386,7 @@ exited app or target a process/window. Observation remains event-driven until
 backend disposal after it first starts; consent revocation blocks broker
 delivery and cancels in-flight work, while immediate native-observer shutdown/
 history clear on revocation remains future hardening. Recent Apps is retained
-only as the [read-only activity reference](../archive/recent-apps.md), not a bundled widget.
+only as the [Activity provider contracts](../maintainers/windows-provider-architecture.md), not a bundled widget.
 
 ## Start Menu, AppsFolder, and Steam application-library provider
 

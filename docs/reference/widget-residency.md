@@ -122,6 +122,6 @@ Manifest-v1 prototypes remain deterministic:
 New packages should emit `residencyPolicy`. A manifest cannot declare both the
 legacy field and the versioned object.
 
-Settings > Installed widgets shows the resolved policy, including the exact
+Settings > Widgets shows the resolved policy, including the exact
 idle duration and an explicit warning that suspension is cooperative rather
 than thread suspension.

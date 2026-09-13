@@ -1,92 +1,112 @@
+<p align="center"><img src="assets/branding/widgetrail.svg" width="88" alt="WidgetRail icon"></p>
+
 # WidgetRail
 
-### Your PC, from your controller.
+**Your PC's controls, media, and widgets—within reach of your controller.**
 
-WidgetRail brings games, music and everyday PC controls into one Windows
-overlay. Open it with your controller, do what you need, and get back to your game.
+WidgetRail is a Windows overlay built for the moments between playing: change
+the volume, choose your next track, switch apps, or keep a video beside your game.
+Open it with **View + Menu**, do what you need, and get back to playing.
 
-It is also a framework for building your own controller-friendly widgets in C#.
-You describe the UI; WidgetRail handles rendering, navigation, scrolling,
-themes and the on-screen keyboard.
+[Get started](docs/users/getting-started.md) · [Build a widget](docs/developers/widget-quickstart.md) · [Documentation](docs/README.md) · [Releases](https://github.com/sandwi-dev/WidgetRail/releases)
 
-[Get started](docs/users/getting-started.md) ·
-[Build a widget](docs/developers/widget-quickstart.md) ·
-[Documentation](docs/README.md) ·
-[Contribute](CONTRIBUTING.md)
+![Screenshot placeholder: the WidgetRail overlay over a game](docs/images/overview-placeholder.svg)
 
-## Keep your controller in your hands
+## Made for a controller
 
-- **Launch and switch apps.** Browse games and applications, switch between open
-  windows with live previews, and close an app when you're done.
-- **Control your audio.** Adjust individual apps, choose speakers and microphones,
-  and change supported spatial sound options.
-- **Keep music close.** Control Windows media sessions or add the Spotify and
-  YouTube widgets.
-- **Manage your PC.** Check connectivity, use Wi-Fi and Bluetooth controls, or
-  put your PC to sleep, restart it, or shut it down.
-- **Make it yours.** Reorder widgets, choose a theme, adjust scale, and pin
-  supported widget views.
+Move naturally through buttons, sliders, lists, and game posters with the D-pad
+or left stick. Use the right stick to scroll. The controller guide changes with
+your focus, so you can see the actions available without memorizing shortcuts.
 
-The default shortcut is **View + Menu**. Prefer the Guide button? Change the
-shortcut in Settings. The on-screen controller guide shows the actions available
-where you're focused.
+Need to search or enter text? Bring up the built-in controller keyboard.
+Prefer the Guide button to View + Menu? Change the opening shortcut in Settings.
 
-## A home for your widgets
+## Keep a video in view
 
-Build a small tool, a media experience, or a complete application interface.
-Widgets share the overlay's visual language and controller behavior.
+Pin a supported video view, then hide the main overlay. The video stays visible
+while you use another app or play a game. Pin controls let you adjust its placement
+and size, or remove it when you're done.
 
-| You bring | WidgetRail provides |
+Widgets can also offer compact pinned layouts, such as music controls. They
+choose which views make sense outside the full overlay.
+
+![Screenshot placeholder: pinned YouTube playback beside a game](docs/images/pinned-video-placeholder.svg)
+
+Try the separately installed [YouTube widget](samples/YouTubeWidget/README.md),
+or learn [how pinning works](docs/users/pinning.md). Availability over a game
+depends on its display mode; see [compatibility notes](docs/users/known-limitations.md).
+
+## Everyday controls, together
+
+The standard edition includes these widgets:
+
+| Widget | What you can do |
 |---|---|
-| Your C# logic and data | Typed SDK, lifecycle and state helpers |
-| Lists, cards, posters and controls | Responsive layout, focus navigation and scrolling |
-| Your look and feel | Theme-aware styling with WRSS |
-| A service or Windows integration | Permission-based [host services](docs/reference/capabilities.md) and [companion integration](docs/reference/community-companion-services.md) |
-| A widget to share | Scaffolding, testing, packaging and installation tools |
+| Audio Mixer | Adjust app volumes, choose output and microphone devices, and select supported spatial sound options. |
+| Games & Apps | Browse and launch your applications and discovered games. |
+| Task Switcher | See live window previews, switch to an app, or ask it to close. |
+| Now Playing | Control media sessions reported by Windows. |
+| Network Controls | Manage supported Wi-Fi and Bluetooth controls. |
+| Power | Sleep, restart, or shut down your PC. |
+| Settings | Choose your theme, manage widgets and permissions, and configure the overlay. |
 
-WidgetRail uses a native Windows renderer. Standard declarative widgets do not
-need a browser to draw their UI. Embedded web media is a separate, host-managed
-feature.
+The tray also keeps the time, internet connectivity, and Bluetooth status nearby.
 
-Start with the [quickstart](docs/developers/widget-quickstart.md), explore the
-[authoring guide](docs/developers/widget-authoring-guide.md), or learn from:
+Want more? The repository includes installable [Spotify](samples/SpotifyWidget/README.md),
+[YouTube](samples/YouTubeWidget/README.md), and [Playnite Library](samples/PlayniteLibraryWidget/README.md)
+widgets. These are separate add-ons, with their own setup and account or companion
+requirements. They are not included in the standard installer.
 
-- [SDK Gallery](samples/SdkGalleryWidget/README.md): UI components and layouts.
-- [Playnite Library](samples/PlayniteLibraryWidget/README.md): a game library with
-  posters, search and controller browsing.
-- [Spotify](samples/SpotifyWidget/README.md): search, playlists, playback and queue controls.
-- [YouTube](samples/YouTubeWidget/README.md): embedded video and media navigation.
+## Make it yours
 
-## Try WidgetRail
+Choose a theme, adjust the interface scale, and arrange the widgets you use most.
+Shared controls and controller hints follow the selected theme. Widget authors
+can add artwork and animated background transitions that fit their content.
 
-WidgetRail is currently a **source preview for Windows x64**. There is no
-published end-user release or installer yet.
+![Screenshot placeholder: the same widget in two themes](docs/images/themes-placeholder.svg)
 
-Follow [Build and run](docs/users/getting-started.md) to try the overlay locally.
-Widget developers can start with the CLI and SDK without building the native host.
-Service integrations may need their own account, configuration or companion app;
-each sample explains its requirements.
+[Personalize WidgetRail](docs/users/customization.md)
 
-Some games and Windows surfaces handle controller input differently. See the
-[known limitations](docs/users/known-limitations.md), especially for elevated
-games and optional Exclusive control.
+## Build something for your setup
 
-## Help shape the platform
+WidgetRail is also an **open-source C# widget framework**. Describe your interface
+with SDK components and handle actions. The platform takes care of native
+rendering, responsive layout, controller navigation, scrolling, and shared styling.
 
-Useful contributions include widgets, themes, controller compatibility reports,
-accessibility improvements and fixes to the framework itself.
+You can build a small utility or a multi-page experience. Start with a template,
+then add the features you need:
 
-Read [Contributing](CONTRIBUTING.md) for the project map and verification workflow.
-For bugs, include your build, controller and clear reproduction steps; avoid
-posting access tokens or unreviewed diagnostic files.
+- **Controller-ready components:** buttons, sliders, menus, posters, and responsive grids.
+- **Paged collections:** load long lists as people browse, with shared loading and focus behavior.
+- **Media and previews:** embed supported media or live application-window previews.
+- **Pinned layouts:** offer a compact view that remains useful outside the main overlay.
+- **Windows integrations:** request permission to use supported [host services](docs/reference/capabilities.md), or connect a [local companion](docs/reference/community-companion-services.md).
+- **Developer tools:** scaffold, preview, test, and package widgets with `wrail`.
 
-[Release readiness](docs/maintainers/release-readiness.md) tracks what remains
-before the first downloadable release.
+Standard widget interfaces use the native renderer. They do not need a browser
+to draw their controls; embedded web media is a separate feature.
 
-## Open platform, independent widgets
+[Build your first widget](docs/developers/widget-quickstart.md) → [Understand the concepts](docs/developers/concepts.md) → [Explore the authoring guides](docs/developers/widget-authoring-guide.md)
 
-WidgetRail, its SDK, first-party widgets, samples and templates are MIT-licensed.
-Build your own widgets
-under the license you choose, and learn from or reuse our bundled widget code.
+## Get WidgetRail
 
-See [Licensing](LICENSING.md) for the boundaries and dependency requirements.
+WidgetRail is currently preview software for **Windows 10 (build 19041+) and
+Windows 11, x64**. See [Releases](https://github.com/sandwi-dev/WidgetRail/releases)
+for published downloads. If no release is listed yet, follow the
+[source build instructions](docs/maintainers/building.md).
+
+Choose **Production** for everyday use or **Developer** for additional sample
+widgets and SDK Gallery. Both editions include the CLI and templates. Developer
+is an edition with more examples, not a separate unstable update channel.
+
+The installer includes a private .NET runtime and can install the required
+Microsoft components. Updates are manual. Follow the
+[installation guide](docs/users/getting-started.md) for setup and first use.
+
+## Open source, including the examples
+
+The platform, SDK, first-party widgets, and templates are **MIT-licensed**.
+Learn from the bundled widgets, reuse their code, and choose your own license
+for the widgets you create. Third-party dependencies retain their licenses.
+
+[Contribute](CONTRIBUTING.md) · [Report a bug](https://github.com/sandwi-dev/WidgetRail/issues) · [Licensing](LICENSING.md)
