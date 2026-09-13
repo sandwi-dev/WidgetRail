@@ -474,26 +474,32 @@ void ProductMatrixUsesSharedGeometry(
         target, states.snapshot, {}, {0.0F, 0.0F, 420.0F, 360.0F});
     Check(SUCCEEDED(target->EndDraw()),
         "state geometry completes a real DirectWrite paint");
-    const auto relative = [&](const std::wstring& id) {
+    for (const auto& id : states.buttonIds) {
         const auto& box = stateResult.elementRects.at(id);
         const auto& placement = stateResult.buttonContentPlacements.at(id);
-        return Rect{
-            placement.leading.x - box.x,
-            placement.leading.y - box.y,
-            placement.text.x - box.x,
-            placement.trailingStateCue.x > 0.0F
-                ? placement.trailingStateCue.y - box.y
-                : 0.0F};
-    };
-    const auto selected = relative(L"games.selected");
-    const auto busy = relative(L"games.busy");
-    const auto disabled = relative(L"games.disabled");
-    Near(selected.x, busy.x, "busy state does not shift shared leading content");
-    Near(selected.x, disabled.x, "disabled state does not shift shared leading content");
-    Near(selected.y, busy.y, "busy state preserves shared vertical center");
-    Near(selected.y, disabled.y, "disabled state preserves shared vertical center");
-    Near(selected.height, busy.height, "selected and busy cues share one vertical center");
-    Near(selected.height, disabled.height, "selected and disabled cues share one vertical center");
+        Near((placement.leading.x + placement.text.x + placement.text.width) * 0.5F,
+            box.x + box.width * 0.5F,
+            "shared button content remains centered in every state");
+        Near(placement.leading.y + placement.leading.height * 0.5F,
+            box.y + box.height * 0.5F,
+            "shared leading content remains vertically centered in every state");
+        Near(placement.text.y + placement.text.height * 0.5F,
+            box.y + box.height * 0.5F,
+            "shared label remains vertically centered in every state");
+        if (id == L"games.busy") {
+            const auto& cue = placement.trailingStateCue;
+            Check(cue.width > 0.0F && cue.height > 0.0F &&
+                    cue.x + cue.width <= box.x + box.width &&
+                    placement.text.x + placement.text.width + 7.5F <= cue.x,
+                "busy button reserves a bounded cue lane clear of its label");
+            Near(cue.y + cue.height * 0.5F, box.y + box.height * 0.5F,
+                "busy cue shares the content vertical center");
+        } else {
+            Check(placement.trailingStateCue.width == 0.0F &&
+                    placement.trailingStateCue.height == 0.0F,
+                "ordinary selected and disabled buttons reserve no automatic cue lane");
+        }
+    }
 }
 
 } // namespace
