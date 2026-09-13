@@ -16,6 +16,7 @@ internal sealed record LocalWidgetSdkBundle(
 
 internal static class LocalWidgetSdkPackage
 {
+    internal const string LicenseExpression = "MPL-2.0";
     private const int MaximumAssemblyBytes = 16 * 1024 * 1024;
     private const int MaximumAdapterRuntimeBytes = 256 * 1024;
     internal const string AdapterRuntimePackagePath =
@@ -42,6 +43,7 @@ internal static class LocalWidgetSdkPackage
         hash.AppendData(applicationRuntime);
         hash.AppendData(adapterRuntime);
         hash.AppendData(Encoding.UTF8.GetBytes(AdapterRuntimeContentFilesContract));
+        hash.AppendData(Encoding.UTF8.GetBytes(LicenseExpression));
         var suffix = Convert.ToHexString(hash.GetHashAndReset())[..16]
             .ToLowerInvariant();
         var contract = WidgetSdkReleaseContract.Current;
@@ -143,6 +145,7 @@ internal static class LocalWidgetSdkPackage
             <version>{{version}}</version>
             <authors>WidgetRail</authors>
             <requireLicenseAcceptance>false</requireLicenseAcceptance>
+            <license type="expression">{{LicenseExpression}}</license>
             <description>Local offline WidgetRail widget SDK bundled by wrail.</description>
             <packageTypes>
               <packageType name="Dependency" />

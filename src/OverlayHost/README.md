@@ -1,8 +1,9 @@
-# Native overlay host spike
+# Native overlay host
 
-This directory contains a Windows SDK-only C++20 feasibility shell. It starts
-hidden by default, registers a GameInput Guide-button callback, and does no
-controller polling or rendering while hidden.
+This directory contains WidgetRail's native C++20 Windows overlay. It owns
+rendering, focus, controller navigation and the tray. The default controller
+shortcut is View + Menu; Settings can select Guide instead. Hidden behavior
+keeps only the work required by active features and the configured shortcut.
 
 Build and run tests from PowerShell:
 
@@ -16,7 +17,7 @@ checked-in lockfile and statically link Taffy; packaged binaries do not require
 Rust at runtime. `DeclarativeLayout` retains validation, native DirectWrite
 measurement, scrolling, clipping, DPI snapping, focus, controller, UIA, and
 rendering ownership while Taffy computes Flexbox and CSS Grid geometry. See
-[`docs/third-party-dependencies.md`](../../docs/third-party-dependencies.md).
+[`docs/maintainers/third-party-dependencies.md`](../../docs/maintainers/third-party-dependencies.md).
 
 Production-HWND fixtures launch with an isolated `--process-profile` and drive
 the same keyboard/controller focus path as the product. In particular, the
@@ -25,7 +26,7 @@ querying UI Automation; changing the raw HWND size does not change the committed
 DirectComposition content or semantic extent.
 
 Run `out\Debug\OverlayHost.exe --show` to display it immediately. Without
-`--show`, press Guide on a supported controller or F1 (developer fallback).
+`--show`, press the configured controller shortcut or F1 (developer fallback).
 
 Visible controls:
 
@@ -36,7 +37,7 @@ Visible controls:
 - Tray Y: tap to enter/leave reorder mode; hold for 700 ms to restart the exact
   selected bundled or installed bridge widget once through the F5 authority
 - X, LB, RB, triggers, or stick clicks: run a selected card's declared quick action, when present
-- Guide: show/hide from any state
+- Configured View + Menu or Guide shortcut: show/hide
 - Keyboard fallback: arrows navigate, Enter selects, Escape goes Back; F1
   toggles and F5 restarts the current tray/open widget through its recovery path
 
@@ -64,7 +65,7 @@ game reading XInput, Raw Input, HID, Steam Input, or a remapped virtual device;
 universal containment would require an optional interception/virtual-controller
 layer that this prototype does not install.
 The full policy is documented in
-[`docs/controller-input.md`](../../docs/controller-input.md).
+[`docs/reference/controller-input.md`](../../docs/reference/controller-input.md).
 
 ## Widget lifecycle mapping
 

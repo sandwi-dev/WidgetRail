@@ -1,18 +1,7 @@
 # Third-party notices
 
-WidgetRail native binaries statically link the components below.
-
-## ViGEmClient 1.16.18.0
-
-Project: https://github.com/nefarius/ViGEmClient
-
-Pinned commit: 9e91a124d179bf26a878a952153042ac871da243
-
-Copyright (c) 2017-2023 Nefarius Software Solutions e.U. and Contributors.
-
-License: MIT. The complete license and byte-identical pinned native source
-closure are in `third_party/ViGEmClient`. WidgetRail links this source only into
-the dormant controller-isolation worker executable.
+WidgetRail includes or uses the third-party components below. These retain
+their own licenses; the project license does not replace these terms.
 
 ## ViGEmClient 1.16.18.0
 

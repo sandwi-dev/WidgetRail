@@ -10,8 +10,8 @@ offsets. A view may also provide bounded `WidgetSurfaceHints` so compact and
 wide widgets communicate a useful shape without assuming a monitor or fixed
 window. Both are optional snapshot protocol-v2 features. Widgets that use
 neither continue emitting the package-API-1-compatible protocol-v1 snapshot.
-See [Declarative UI](../../docs/declarative-ui.md) and
-[Display and resolution](../../docs/display-and-resolution.md).
+See [Declarative UI](../../docs/reference/declarative-ui.md) and
+[Display and resolution](../../docs/reference/display-and-resolution.md).
 
 SDK composites own their required `wrail-*` root, state, and generated-part
 classes intrinsically. `.Classes(...)` replaces only author-owned classes;
@@ -340,7 +340,7 @@ fields form one immutable render state:
 The complete public contract—including owner selection, collection equality,
 atomic reads, revisions, result-bearing updates, failure/publication behavior,
 Destroying semantics, and migration guidance—is in
-[Immutable widget models](../../docs/widget-model.md).
+[Immutable widget models](../../docs/developers/widget-model.md).
 
 ```csharp
 private readonly WidgetModel<PlayerState> _model;
@@ -929,11 +929,11 @@ Use `UI.WindowPreview` by itself or pass it to the content overload of
 `UI.PosterTile`. Window previews are view-only, use opaque IDs from
 `HostServices.TaskSwitcher.GetWindowsAsync`, and require the separate
 `system.apps.windows.preview.v1` permission. Existing artwork posters are
-unchanged. See [live window previews](../../docs/window-previews.md) for the
+unchanged. See [live window previews](../../docs/reference/window-previews.md) for the
 complete authoring example, theme hooks, backend behavior and limits.
 
 ### PC power controls
 
 Use `HostServices.Power` to check availability and request PC shutdown, restart or sleep.
 The separate read/control permissions, confirmation guidance, and Windows behavior
-are documented in [Power widget](../../docs/power-widget.md).
+are documented in [Power widget](../../docs/reference/power-widget.md).

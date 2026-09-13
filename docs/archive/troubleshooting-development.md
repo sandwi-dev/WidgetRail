@@ -1,0 +1,522 @@
+# Troubleshooting
+
+## Start with a bounded verification run
+
+From the repository root:
+
+```powershell
+.\scripts\Verify.ps1 -Configuration Release -Lane managed
+```
+
+For native verification, install Visual Studio's Desktop development with C++
+workload and run:
+
+```powershell
+.\scripts\Verify.ps1 -Configuration Release
+```
+
+Do not claim a native pass when using `-SkipNative`.
+`-SkipNative` remains an alias for `-Lane managed`. A complete run writes
+`verification-result.json`, per-step stdout/stderr logs, and JUnit-compatible
+XML below `artifacts/verification/<run-id>`. Each command has a manifest-owned
+timeout and the aggregate has an independent overall timeout. To reproduce one
+failure without silently changing its command, use its stable ID:
+
+```powershell
+.\scripts\Verify.ps1 -Configuration Release -Lane managed -StepId widget-catalog-tests
+```
+
+One checkout runs one verifier at a time because managed and native builds share
+output trees. `verification_lease_busy` means another process still owns the
+live lease under ignored `artifacts/verification`; do not delete the lock file.
+Wait for that process, or request an explicit bounded wait such as
+`-LeaseWaitSeconds 30`. Process exit releases the OS handle automatically, so
+stale metadata never owns the lease.
+
+Schema-v2 results record starting and finished commit/status fingerprints,
+`repositoryStateStable`, and `releaseEvidenceIneligibilityReasons`. A passing
+test set is not release evidence when either endpoint is dirty, the commit or
+status changed, output was truncated, final provenance failed, or the run itself
+failed. Package hashes are captured after all steps and therefore describe the
+retained final artifacts.
+
+A `timed_out` result means the runner terminated that process tree. A Windows
+filesystem or driver call that never returns can still require the independent
+GitHub job timeout or an external local watchdog.
+
+GitHub retains each lane's bundle for 30 days. Local bundles are ignored by Git
+and intentionally are not deleted automatically; keep a run while it supports a
+review or release record, then remove only that exact run directory after any
+needed evidence has been copied.
+
+Community-package provenance is also bounded: it skips reparse points, traverses
+at most 4,096 entries, hashes at most 256 `.wrwidget` files of at most 72 MiB
+each and 2 GiB total, and runs in its own 30-second supervised process. Exceeding
+any bound fails the gate instead of silently omitting evidence.
+
+## `wrail` is not found
+
+Build and invoke the repository-local executable:
+
+```powershell
+dotnet build .\tools\WrailCli\WrailCli.csproj -c Release
+.\tools\WrailCli\bin\Release\net8.0\wrail.exe help
+```
+
+The repository does not add `wrail` to PATH; invoke the built executable or add
+that directory to your development shell explicitly.
+
+## `wrail new` cannot find the template
+
+Run it from this checkout, use the built executable with its copied templates,
+or set `WRAIL_TEMPLATE_ROOT` to the directory containing
+`templates/ControllerWidget/template.json`.
+
+## `wrail new` reports that its bundled SDK is unavailable
+
+The CLI creates a project-local offline `WidgetRail.WidgetSdk` package;
+it does not search for a source project or use an external feed. Rebuild or
+reinstall the complete `wrail` distribution so `wrail.exe`, `WidgetSdk.dll`,
+`WidgetProtocol.dll`, and the controller template come from the same build,
+then rerun `wrail new`. The command validates those bounded inputs before it
+publishes the target directory and never leaves a partial scaffold. The
+ControllerWidget `template.json` must be supported version 2 and declare every
+input as bounded `text` or `binary`; the error identifies a missing,
+undeclared, unsafe, unreadable, or oversized file and the correction. The
+requested output path must not already exist, because `wrail new` never removes
+or overwrites an author-owned destination.
+
+If an external scaffold succeeds only on a previously used machine, repeat the
+documented restore with `NUGET_PACKAGES` pointed at a new empty directory. A
+successful clean restore must populate the exact content-versioned
+`WidgetRail.WidgetSdk` from the generated `.widgetrail\packages` feed. Do not
+add nuget.org or a checkout-relative source to work around a missing local
+artifact; reinstall the complete matching `wrail` distribution instead.
+
+## Spotify Connect returns `ERR_CONNECTION_REFUSED`
+
+Register `http://127.0.0.1:43827/callback/` exactly in the Spotify Developer
+Dashboard, including the IPv4 literal, port, path, and trailing slash. Start
+Connect from the Interactive widget surface. Opening the browser may hide or
+background the overlay. The action should acknowledge immediately; its
+already-started authorization task uses the widget's Created-to-Destroying
+lifetime, so the exact Connect lease and listener remain alive for the bounded
+callback even though new inactive controls are still denied.
+
+The temporary listener is created only after an explicit Connect action and
+waits at most fifteen minutes; there is no listener while the addon is merely open,
+Visible, or Background. The broker grants only that exact Spotify authorization
+`connect` operation a seventeen-minute deadline. The remaining two minutes cover
+bounded token exchange, retry/backoff, and credential-vault persistence.
+Package 0.1.7 uses `keep-alive` so idle unload cannot destroy the one explicit
+attempt, and the listener tolerates at most 16 bounded local connections within
+the same fifteen-minute window. It still rejects a non-loopback peer,
+wrong Host/path/method/version, or mismatched OAuth state.
+Disconnect, Destroying, consent revocation, explicit reload/disposal, caller
+cancellation, and timeout intentionally close the listener. Do not repeatedly
+press Connect or launch a second worker while one attempt is active.
+
+If refusal occurs immediately, confirm the overlay/bridge/provider and Spotify
+Community package 0.1.7 were rebuilt and installed together, then inspect
+`%LOCALAPPDATA%\WidgetRail\overlay.log` for lifecycle, port-collision,
+state, timeout, or provider diagnostics. Never paste authorization codes,
+verifiers, access/refresh tokens, or credential-vault contents into logs or an
+issue. A successful local Client-ID write is public configuration; it is not
+evidence that the package version or running provider was refreshed.
+
+For Now Playing load failures, `overlay.log` may contain a bounded
+`Media Sessions diagnostic` line with `stage=snapshot-read`,
+`subscription-open`, or `subscription-read` and a sanitized broker `code`.
+The line deliberately omits player/session identity, media metadata, process
+details, and provider bodies. `platform_unavailable`, `permission_denied`,
+`lifecycle_denied`, and `channel_closed` therefore identify the owning boundary
+without exposing which application is playing media.
+
+## Manifest validation fails
+
+- JSON property names and casing are strict; unknown members fail.
+- Use reverse-DNS lowercase `id` and `publisher` values.
+- The only supported runtime is `dotnet-worker`.
+- Entrypoint assembly paths use forward slashes and cannot contain `.` or `..`.
+- `resourceRequest.memoryMb`, when present, is a positive advisory estimate;
+  `updateHz` is 1–60 Hz metadata.
+- Architectures are `x64` and/or `arm64`.
+
+Run `wrail validate <manifest.json>` for the precise JSON path and diagnostic.
+
+## WRSS fails or a theme does not appear
+
+For widget-local WRSS, run `wrail validate <style.wrss>`. For a global theme,
+run:
+
+```powershell
+wrail theme validate <directory-or-file.wrtheme>
+wrail theme preview <directory-or-file.wrtheme>
+```
+
+Check that:
+
+- imports precede rules and stay package-relative;
+- every property appears in the safe allowlist;
+- values include required units and are within documented bounds;
+- there are no URLs, paths, scripts, `calc`, `expression`, or unknown
+  functions; and
+- variables resolve without a missing value or cycle.
+
+The bridge publishes typed `base`, `focused`, and transient `pressed` maps.
+Static snapshot `selected`, `disabled`, and `busy` state participates while
+those maps are computed. If a pressed style appears stuck, capture diagnostics
+for the physical button-up, focus transition, and snapshot generation; the host
+is required to cancel or reconcile it at each boundary. See [WRSS](../reference/wrss.md).
+
+For `translate-x`/`translate-y`, remember that translation changes presentation
+geometry, not layout allocation. Unexpected sibling gaps are therefore a
+layout/spacing issue, while misaligned paint, clip, focus, hit targets, or Scroll
+focus-follow indicate a native presentation-geometry regression. Reduced motion
+snaps translation immediately, and a settled or hidden surface must not retain
+an animation loop.
+
+The first-party Settings widget, managed appearance store, immutable versioned
+themes, and bridge watcher are connected. Check these boundaries:
+
+- Settings is a catalog widget. If its card is missing, rebuild/package
+  `OverlayHost` and verify `runtime\Settings\SettingsWidget.Worker.exe`, its
+  manifest/style/payload files, and the `settings` entry in
+  `widget-catalog.json`.
+- Settings loads on each new Visible/Interactive lifetime, not on a timer. A
+  stale page after an external edit should refresh when the widget next enters
+  a new active lifetime.
+- The store is
+  `%LOCALAPPDATA%\WidgetRail\platform-settings.json`. Invalid JSON
+  displays safe defaults and an error; use the confirmed Reset page to replace
+  it safely rather than editing while the overlay is open.
+- Installed themes live under
+  `%LOCALAPPDATA%\WidgetRail\themes\<id>\<version>\` with exact-case
+  `theme.json` and its package-relative WRSS entry. The manifest ID/version must
+  exactly match both directories. Invalid themes remain visible but disabled
+  in the picker and diagnostics.
+- The bridge uses file notifications with a 200 ms debounce, retains the
+  last-good revision after an invalid edit, and does not poll. Correct the
+  reported manifest/WRSS diagnostic; do not repeatedly touch files to force a
+  fallback.
+- Theme shell styles and appearance/accessibility preferences should update
+  after the bridge publishes a valid newer revision; the host ignores stale
+  revisions and retains the last good appearance after an invalid edit.
+  `textScale`, contrast, bold text, reduced transparency, and motion are applied
+  after WRSS; globally layered widget styles update when a new snapshot is
+  requested. Windows setting changes also reapply System contrast/motion.
+- If a valid shell change does not appear, inspect the host diagnostic log for
+  `Applied platform appearance revision` or a retained-last-good refresh error,
+  then verify the settings/theme diagnostic rather than restarting workers.
+  The host log is `%LOCALAPPDATA%\WidgetRail\overlay.log`.
+
+The host and Bridge share one bounded writer for `overlay.log`. The current
+file and two retained generations (`overlay.1.log` and `overlay.2.log`) are each
+limited to 4 MiB, for a 12 MiB total ceiling. Rotation preserves the newest
+complete records; the first write after upgrading trims an oversized legacy
+log to its recent tail. Cross-process admission waits at most 50 ms. If the
+lock, directory, or rotation operation is unavailable, that diagnostic is
+dropped without retrying in a loop or affecting overlay/Bridge behavior.
+
+Worker-origin request, bootstrap, and runtime-session failures use the
+host-selected `%LOCALAPPDATA%\WidgetRail\worker-diagnostics` root. Identifiers
+and records are bounded and sanitized; each process retains a 128 KiB current
+file plus two generations, and each widget retains four recent process
+directories. Diagnostic write failure never changes worker lifecycle or IPC
+outcomes.
+
+If install fails, run `wrail theme inspect <file.wrtheme>` and compare the
+reported digest. Remote installs require `--sha256`, existing versions are not
+overwritten, and the installed catalog is capped at 128 user-theme versions.
+Publisher signing is not implemented. Track exact commands and limits in
+[theme packaging and distribution](../developers/theme-packaging.md).
+
+## Snapshot validation fails
+
+Common causes are duplicate/unstable IDs, an initial focus ID that is not a
+button, focus neighbors that name missing/non-focusable nodes, invalid
+progress ranges, more than three quick actions, or a reserved dashboard
+button. Images require absolute HTTPS URLs and accessible labels.
+
+Shortcut bindings must also be unique for the same button and event phase
+inside one input scope. The root is the default scope. Use `.InputScope(id)` on
+a Stack or Row only when a nested surface needs to reuse bindings independently.
+
+Use `wrail render <snapshot.json>` to inspect an existing bounded data-only
+snapshot. DLL input fails closed; use `wrail dev` for isolated widget execution.
+
+## Package, download, or catalog command fails
+
+- For a source directory or `.csproj`, `wrail pack` performs the bounded build,
+  isolated staging, and package validation itself. A successful build that
+  misses `entrypoint.assembly` means `AssemblyName` and the manifest disagree;
+  the diagnostic names the missing entry and no archive is published.
+- For an already-staged package directory, `wrail pack` requires exact-case root
+  `manifest.json` and the manifest's entrypoint at that relative path/casing.
+  It recursively includes the complete bounded directory, so stage only
+  intended release files and never source, `obj`, or secrets.
+- Output must end in `.wrwidget`.
+- Installed versions are immutable. Bump the canonical dotted manifest version
+  instead of reinstalling or overwriting the same `<id>/<version>`.
+- `wrail install` accepts a local `.wrwidget`, an absolute HTTPS URL, or
+  `github:<owner>/<repository>@<tag>/<asset.wrwidget>`.
+- GitHub shorthand identifies one exact Release asset. It cannot use `latest`,
+  query the GitHub API, clone a repository, or build a widget from source.
+- Remote URLs cannot contain embedded credentials or fragments. HTTP and any
+  redirect to HTTP are rejected. HTTPS must use port 443. Localhost names and
+  private, loopback, unspecified, or link-local IP literals are rejected.
+- A remote response may redirect at most five times and may transfer at most
+  72 MiB of compressed package bytes. Connection, response-header, and overall
+  time limits are 10, 20, and 120 seconds respectively. Encoded HTTP responses
+  are rejected; release servers must return the asset with identity encoding.
+- Every remote source requires `--sha256`, with exactly 64 hexadecimal
+  characters. A mismatch means the downloaded bytes are not the pinned asset;
+  verify the release, tag, asset name, and independently published digest
+  instead of bypassing the check.
+- The CLI prints the actual SHA-256 after every successful remote install. A
+  mismatch diagnostic also reports the received digest. For other failures,
+  inspect the network/redirect diagnostic. Temporary download files are removed
+  on success and failure.
+- `wrail list`, `enable`, `disable`, and every `wrail version` command must use
+  the same `--catalog` value as install. The default is
+  `%LOCALAPPDATA%\WidgetRail\widgets`.
+- The packaged native host and Settings widget discover and watch the default
+  current-user catalog. A custom `--catalog` path is an isolated CLI/test
+  catalog and does not appear in the packaged overlay.
+- Newly discovered widget IDs are disabled. Local and remote updates refuse to
+  add a version while that ID is enabled; run `wrail disable <widget-id>`, retry
+  installation, run `wrail version list <widget-id>` and `wrail version select
+  <widget-id> <version>`, review the result, then run `wrail enable <widget-id>`
+  with the same `--catalog`.
+- Version selection and rollback are disabled-only. `wrail version rollback
+  <widget-id>` chooses the greatest installed version older than the active
+  version; `--to <version>` must name a specific installed older version. Use
+  `version select` to move forward.
+- An `active_version_missing` diagnostic means schema-2 catalog state pins an
+  immutable version directory that is absent. Discovery intentionally fails
+  closed rather than running another version. Reinstall the exact pinned
+  package first; after discovery succeeds, an explicitly selected installed
+  version can replace the pin while the widget is disabled. Do not hand-edit
+  the state to an arbitrary version.
+
+Remote acquisition does not launch the widget. A successful download therefore
+cannot create lifecycle logs by itself; lifecycle begins only when a configured
+host launches the installed worker.
+
+## Controller input is not handled
+
+- Guide/Home is never delivered to widgets.
+- Dashboard A, B, Y, and D-pad are host-owned.
+- Dashboard quick actions support X, bumpers, triggers, stick clicks, Menu,
+  and View.
+- Open-widget shortcuts check the focused node, then the explicitly published
+  active scope-root container. They do not search an unfocused child, infer a
+  scope from focus, or fall through to a parent or sibling scope.
+- Every open-widget event must echo the latest snapshot's
+  `ActiveInputScopeId` and `SnapshotSequence`. A stale sequence, wrong scope,
+  or focus ID outside that scope is deliberately unhandled.
+- The MVP supports only Pressed bindings. A is reserved for focused activation;
+  D-pad is reserved for focus navigation.
+- Disabled and busy Buttons/Sliders remain focusable but do not activate or
+  adjust. If focus jumps, first verify the stable ID still exists in the active
+  scope; ordinary Disabled/Busy changes must retain it.
+- An unhandled B returns to the dashboard only from the widget's root scope. A
+  nested scope does not bubble B or get dismissed by the host.
+- B on the dashboard/icon tray closes the overlay. A widget cannot claim it as
+  a dashboard quick action.
+
+If a modal has no focusable controls, bind B directly on its Stack/Row with
+`.InputScope("modal").Shortcut(ControllerButton.B, "dismiss")`, publish
+`ActiveInputScopeId: "modal"`, and leave `InitialFocusId` null. This is a valid
+focusless surface.
+
+If directional focus does not move, first inspect the explicit neighbor. A
+missing target uses geometric fallback; Disabled and Busy Buttons/Sliders remain
+valid focus targets and suppress actions without forcing fallback. Geometric
+fallback needs focus rectangles from a completed render and never wraps. For analog tests,
+return the stick below the release threshold before expecting a fresh direction
+and remember that the dashboard consumes only horizontal movement.
+
+## Guide works in one controller mode but not another
+
+GameInput is the primary Guide source. The native host also includes an
+isolated compatibility adapter for an observed Xbox-360-class driver gap. It
+uses undocumented behavior from the system `xinput1_4.dll`, so it is not a
+guarantee for all 8BitDo models, modes, firmware versions, USB/Bluetooth paths,
+or remapping software.
+
+- Run `tools/InputProbe` in each actual controller mode and transport.
+- Test with Xbox Game Bar and Steam enabled and disabled; they may also claim or
+  react to Guide.
+- Use `--show` or F1 to separate Guide discovery from overlay rendering.
+- Inspect `%LOCALAPPDATA%\WidgetRail\overlay.log` for the reported Guide
+  source and compatibility-adapter availability.
+
+For Game Bar, Steam, game, or device conflicts, run the bounded
+`tools/InputProbe` matrix. Background Raw Input/HID can still reach a game.
+
+## Worker or bridge failure
+
+The runtime starts workers lazily. Check that the configured executable and
+arguments are trusted and package-relative, the .NET runtime is installed,
+and the worker uses the pipe/instance/message-size values supplied by the
+runtime. Request timeouts terminate a hung worker; restart attempts are
+bounded.
+
+The bridge catalog is strict trusted configuration. Invalid worker paths,
+duplicate IDs/actions, invalid styles, malformed JSON, or message ceilings can
+prevent startup. `src/WidgetBridge/README.md` documents its protocol and
+catalog shape.
+
+Installed/community workers never fall back to the desktop token. A startup
+failure can therefore mean the host could not open/create the stable package
+AppContainer profile, grant read/execute access to the generic runtime and
+exact package root, verify the Low-integrity exact-SID/zero-capability token, or
+establish the SID/Low-label/PID-bound main or broker pipe. Inspect the bounded
+worker failure and `%LOCALAPPDATA%\WidgetRail\overlay.log`; do not work
+around the failure by launching the package DLL directly.
+
+Direct sockets and arbitrary desktop-user files are intentionally unavailable
+to installed/community code. Use declared typed `HostServices` audio/network
+operations and grant them separately in Settings. A broker request still fails
+closed on missing declaration/consent, Background lifecycle, wrong PID, nonce,
+or package/publisher/instance identity. Bundled Settings is the only temporary
+trusted Job-only exception. YT Music now uses the normal Community package,
+AppContainer, broker, and consent path; no package can opt out.
+Win32k disable is not enabled because its tested configuration caused CoreCLR
+DLL initialization failure (`0xC0000142`); Job Object UI restrictions are the
+active UI containment control.
+
+## A widget keeps polling while in Background
+
+Lifecycle state is explicit; worker process lifetime is not visibility. The
+current host publishes `Visible` for a selected dashboard card,
+`Interactive` for an open widget, and `Background` when selection changes or
+the overlay hides. Once launched, the process remains resident in Background by
+default.
+
+Bind work that may run in both Visible and Interactive to the visible-lifetime
+token received by legacy `OnActivatedAsync`, preferably through
+`RunPeriodicUpdatesWhileActiveAsync` or
+`InvalidatePeriodicallyWhileActiveAsync`. Do not use an uncanceled process-wide
+timer. Use the token passed to `OnLifecycleStateChangedAsync` for work exclusive
+to one state. Retain and observe ticker tasks: visible-lifetime cancellation
+completes normally, but callback errors fault the task. Lifecycle hooks must
+start work and return promptly.
+
+Do not diagnose process residency itself as a leak. First determine whether the
+work is UI-bound or explicitly permitted background work. UI rendering,
+animation, controller polling, and ordinary refresh must stop with the
+appropriate state/visible token. Legitimate widget-lifetime background work may
+continue in Background and should be governed by permissions and resource
+reporting. Those controls, plus opt-in `suspend-when-hidden`/
+`unload-after-idle` policies, are not yet enforced by the prototype.
+
+## Network Controls cannot show or switch Wi-Fi
+
+Network Controls has provider, widget, worker, catalog, and Release packaging
+wiring, but it is not yet a production-supported feature. If the card is
+missing, rebuild the complete Release package before treating it as a runtime
+failure; an older `out/Release` directory will not contain newly wired assets.
+Check the current [implementation status](../archive/implementation-status.md).
+
+When the package/provider path is available, diagnose its two independent
+permission layers separately:
+
+- In the widget's **Settings → Installed widgets → Permissions &
+  configuration** page, grant
+  `system.network.read.v1` for coarse status and
+  `system.network.wifi.read.v1` for nearby-network scan/read. Grant the
+  optional `system.network.wifi.connect.v1` separately to connect. Required
+  capabilities are not auto-granted; scan and connect are denied unless the
+  widget is Interactive.
+- Coarse status deliberately does not query location-sensitive active Wi-Fi
+  profile/signal automatically. Expect `PrivacyRestricted` with those fields
+  omitted. Nearby-network listing is a separate explicit scan: Windows also
+  requires precise-location consent and returns a readable required/denied
+  state when it is absent. Opening/selecting the widget does not prompt or scan.
+- Only networks in the current ready scan are eligible. Saved-profile-backed
+  and unsaved open results may connect; a protected unsaved result reports
+  `credential_required` and must currently be completed in Windows Settings.
+  An ID from an earlier scan reports `resource_not_found`; scan again.
+- WLAN connection is asynchronous. An accepted command should display bounded
+  busy feedback until a native status event confirms success or reports a
+  terminal failure/timeout; acknowledgement alone is not “connected.”
+- A missing WLAN adapter, disabled service/radio, device removal, access denial,
+  and policy restriction are ordinary unavailable states. Do not retry them on
+  a timer or ask the user to elevate the overlay.
+
+Do not put profile names, SSIDs, interface identifiers, addresses, profile XML,
+or keys in an issue or log. Report the stable error code, lifecycle state,
+Windows version, `Transport`, `WirelessAvailability`, `DetailsAccess`, and
+`ConnectionAttemptState`. See the [Network Controls
+reference](../reference/network-controls.md) for the full privacy and test contract.
+
+## Overlay does not open or render
+
+- Build with `src/OverlayHost/build.ps1`; CMake/MSBuild metadata may lag the
+  primary prototype script.
+- Run the host with `--show` to bypass Guide discovery during diagnostics.
+- OverlayHost is one owner per Windows user and production profile. If a hidden
+  or visible owner is already resident, a later ordinary launch or `--show`
+  invocation authenticates to that owner, queues one bounded Show request, and
+  exits before initializing another bridge, controller lease, or HWND. The
+  startup log distinguishes `process owner elected`, `activation client`, and
+  rejected/timed-out activation paths.
+- F1 is the developer visibility fallback.
+- Read `%LOCALAPPDATA%\WidgetRail\startup-error.log` for the latest
+  initialization failure.
+- `%LOCALAPPDATA%\WidgetRail\overlay-state.ini` is state, not a log.
+
+True Fullscreen Exclusive is not a current target. Test in a windowed or
+borderless presentation mode first.
+
+The host uses ordinary topmost DWM windows, so secure desktop/UAC, elevated
+foreground apps, exclusive-render paths, or Windows foreground restrictions can
+still keep it behind the target. The dimming backdrop covers only the monitor
+that contained the previously foreground app. Clicking that backdrop closes
+the overlay; it is not forwarded to a widget or evidence of general mouse UI.
+
+## YT Music state snaps back or stops updating
+
+YT Music is a Community package, so first confirm it appears under Installed
+widgets and is enabled, then grant `network.loopback:13091` under Permissions.
+If YTMDesktop2 requires authentication, grant the separate optional private-
+secret capability before pairing. Enable YTMDesktop2's companion API on its
+standard port; the addon never scans other ports or bypasses denied consent.
+
+`loopback_unavailable` means nothing accepted the exact local connection;
+`loopback_timeout` means the bounded request expired. `secret_not_found`
+returns to pairing. A revoked/denied vault may leave an authentication-disabled
+companion usable, but authenticated pairing cannot persist. Do not paste raw
+service bodies or bearer values into diagnostics or issues.
+
+YT Music's authenticated requests opt into host-side rejected-Bearer
+invalidation. If YTMDesktop2 returns HTTP 401, the host deletes the exact scoped
+slot before the widget receives that status; the widget clears only local state
+and offers pairing again. If deletion fails or its consent/lifecycle lease is
+revoked, the request surfaces that typed error instead of returning a misleading
+401 with the rejected credential still stored.
+
+The reference widget works only while the host marks it active. It locally
+interpolates progress at four Hz and requests authoritative YTMDesktop2 state
+every two seconds. Transport and rating commands are optimistic for at most two
+seconds; a stale companion response is ignored during that window, then the
+companion wins. Refresh requests immediate authoritative reconciliation.
+
+A failed command restores the prior snapshot and keeps connected controls
+available with a bounded error status. Next/previous set visible progress to
+zero but retain old metadata until the companion reports a changed track. The
+progress control is display-only; seeking and scrubbing are not implemented.
+
+For packaging or consent issues, follow the [YT Music Community addon
+workflow](../../samples/YtMusicWidget/README.md#build-and-tests) and [local
+companion service errors](../reference/community-companion-services.md#errors-and-recovery).
+
+## Remote artwork is missing
+
+The source must be HTTPS and credential-free. The native cache applies
+redirect, response-size, decoded-dimension, MIME, timeout, and cache limits.
+Failure should leave a semantic icon/placeholder rather than execute widget
+content. Verify the same URL is reachable outside the game and inspect host
+diagnostics without copying private tokens into issues.

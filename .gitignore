@@ -23,3 +23,16 @@ logs/
 # Local IDE metadata
 .idea/
 .vscode/
+
+# Local verification, packages and agent workspace data
+*.binlog
+TestResults/
+.widge32-artifacts/
+.claude/
+*.wrwidget
+*.wrtheme
+
+# Personal development notes retained locally after the docs reorganization
+docs/implementation-agent-goal.md
+docs/controller-isolation-architecture-reference.md
+docs/cursor-resource-redesign.md

@@ -72,6 +72,10 @@ $expectedDefaultStepIds = @(
     'playnite-library-community-application-tests',
     'full-application-widget-tests',
     'media-sessions-tests',
+    'task-switcher-widget-build',
+    'task-switcher-widget-tests',
+    'power-widget-build',
+    'power-widget-tests',
     'settings-widget-tests',
     'platform-diagnostics-tests',
     'settings-worker-build',
@@ -86,9 +90,9 @@ $expectedDefaultStepIds = @(
 )
 $defaultSelection = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all)
 $defaultIds = @($defaultSelection | ForEach-Object { $_.id })
-if ($defaultIds.Count -ne 51 -or
+if ($defaultIds.Count -ne 55 -or
     [string]::Join("`n", $defaultIds) -cne [string]::Join("`n", $expectedDefaultStepIds)) {
-    throw 'Focused selection changed the exact 51-step default aggregate identity or order.'
+    throw 'Focused selection changed the exact 55-step default aggregate identity or order.'
 }
 $nativeDefaults = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native)
 if ([string]::Join("`n", @($nativeDefaults | ForEach-Object id)) -cne

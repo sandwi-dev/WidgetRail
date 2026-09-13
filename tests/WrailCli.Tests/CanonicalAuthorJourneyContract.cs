@@ -4,7 +4,7 @@ internal static class CanonicalAuthorJourneyContract
 
     internal static void VerifyQuickstart(string repositoryRoot, string generatedSource)
     {
-        var path = Path.Combine(repositoryRoot, "docs", "widget-quickstart.md");
+        var path = Path.Combine(repositoryRoot, "docs", "developers", "widget-quickstart.md");
         var markdown = File.ReadAllText(path);
         var blocks = ExtractBlocks(markdown);
         var expected = new[]

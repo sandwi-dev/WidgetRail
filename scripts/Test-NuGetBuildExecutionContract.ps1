@@ -4,8 +4,8 @@ param()
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $buildPath = Join-Path $repositoryRoot 'src\OverlayHost\build.ps1'
-$guidePath = Join-Path $repositoryRoot 'docs\build-execution.md'
-$readmePath = Join-Path $repositoryRoot 'README.md'
+$guidePath = Join-Path $repositoryRoot 'docs\maintainers\build-execution.md'
+$readmePath = Join-Path $repositoryRoot 'CONTRIBUTING.md'
 $docsReadmePath = Join-Path $repositoryRoot 'docs\README.md'
 $build = Get-Content -LiteralPath $buildPath -Raw
 $guide = Get-Content -LiteralPath $guidePath -Raw
@@ -71,8 +71,8 @@ foreach ($requiredGuidance in @(
     Require-Text -Source $normalizedGuide -Expected $requiredGuidance -Owner 'Build execution guide'
 }
 Require-Text -Source (Get-Content -LiteralPath $readmePath -Raw) `
-    -Expected '](docs/build-execution.md)' -Owner 'README'
+    -Expected '](docs/maintainers/build-execution.md)' -Owner 'Contributing guide'
 Require-Text -Source (Get-Content -LiteralPath $docsReadmePath -Raw) `
-    -Expected '](build-execution.md)' -Owner 'Documentation index'
+    -Expected '](maintainers/build-execution.md)' -Owner 'Documentation index'
 
 Write-Output 'NuGet build execution contract passed (1 restore owner, audited fail-closed guidance, explicit no-restore path).'

@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 var repository = FindRepositoryRoot(AppContext.BaseDirectory);
 var failures = new List<string>();
 var markdownLink = new Regex(
-    @"!?\[[^\]\r\n]*\]\((?<target>[^)\r\n]+)\)",
+    @"!?\[[^\]]*\]\((?<target>[^)\r\n]+)\)",
     RegexOptions.CultureInvariant);
 var markdownFiles = Directory.EnumerateFiles(repository, "*.md", SearchOption.AllDirectories)
     .Where(path => !HasIgnoredSegment(repository, path))
@@ -31,9 +31,9 @@ foreach (var markdown in markdownFiles)
     }
 }
 
-var guidePath = Path.Combine(repository, "docs", "widget-authoring-guide.md");
+var guidePath = Path.Combine(repository, "docs", "developers", "widget-authoring-guide.md");
 var guide = File.ReadAllText(guidePath);
-var modelPath = Path.Combine(repository, "docs", "widget-model.md");
+var modelPath = Path.Combine(repository, "docs", "developers", "widget-model.md");
 var model = File.ReadAllText(modelPath);
 var modelSource = File.ReadAllText(Path.Combine(
     repository, "src", "WidgetSdk", "WidgetModel.cs"));
@@ -63,7 +63,7 @@ string[] requiredModelContracts =
 ];
 foreach (var contract in requiredModelContracts)
     if (!model.Contains(contract, StringComparison.Ordinal))
-        failures.Add($"docs/widget-model.md is missing '{contract}'.");
+        failures.Add($"docs/developers/widget-model.md is missing '{contract}'.");
 string[] requiredModelSourceContracts =
 [
     "public TState Value",
@@ -103,9 +103,9 @@ string[] requiredGuideContracts =
 ];
 foreach (var contract in requiredGuideContracts)
     if (!guide.Contains(contract, StringComparison.Ordinal))
-        failures.Add($"docs/widget-authoring-guide.md is missing '{contract}'.");
+        failures.Add($"docs/developers/widget-authoring-guide.md is missing '{contract}'.");
 
-var companionPath = Path.Combine(repository, "docs", "community-companion-services.md");
+var companionPath = Path.Combine(repository, "docs", "reference", "community-companion-services.md");
 var companion = File.ReadAllText(companionPath);
 string[] requiredCompanionContracts =
 [
@@ -121,9 +121,9 @@ string[] requiredCompanionContracts =
 ];
 foreach (var contract in requiredCompanionContracts)
     if (!companion.Contains(contract, StringComparison.Ordinal))
-        failures.Add($"docs/community-companion-services.md is missing '{contract}'.");
+        failures.Add($"docs/reference/community-companion-services.md is missing '{contract}'.");
 
-var quickstartPath = Path.Combine(repository, "docs", "widget-quickstart.md");
+var quickstartPath = Path.Combine(repository, "docs", "developers", "widget-quickstart.md");
 var quickstart = File.ReadAllText(quickstartPath);
 string[] requiredAuthorityRecoveryContracts =
 [
@@ -137,7 +137,7 @@ string[] requiredAuthorityRecoveryContracts =
 ];
 foreach (var contract in requiredAuthorityRecoveryContracts)
     if (!quickstart.Contains(contract, StringComparison.Ordinal))
-        failures.Add($"docs/widget-quickstart.md is missing '{contract}'.");
+        failures.Add($"docs/developers/widget-quickstart.md is missing '{contract}'.");
 
 string[] requiredScenarioContracts =
 [
@@ -149,13 +149,13 @@ string[] requiredScenarioContracts =
 ];
 foreach (var contract in requiredScenarioContracts)
     if (!guide.Contains(contract, StringComparison.Ordinal))
-        failures.Add($"docs/widget-authoring-guide.md is missing '{contract}'.");
+        failures.Add($"docs/developers/widget-authoring-guide.md is missing '{contract}'.");
 if (!quickstart.Contains("--scenario muted", StringComparison.Ordinal) ||
     !quickstart.Contains("WidgetScenarioResult", StringComparison.Ordinal))
-    failures.Add("docs/widget-quickstart.md is missing the executable scenario workflow.");
+    failures.Add("docs/developers/widget-quickstart.md is missing the executable scenario workflow.");
 
 var publishing = File.ReadAllText(Path.Combine(
-    repository, "docs", "publishing-and-installation.md"));
+    repository, "docs", "developers", "publishing-and-installation.md"));
 var cliReadme = File.ReadAllText(Path.Combine(
     repository, "tools", "WrailCli", "README.md"));
 string[] requiredExternalAuthorContracts =
@@ -167,12 +167,12 @@ string[] requiredExternalAuthorContracts =
 ];
 foreach (var contract in requiredExternalAuthorContracts)
     if (!quickstart.Contains(contract, StringComparison.Ordinal))
-        failures.Add($"docs/widget-quickstart.md is missing '{contract}'.");
+        failures.Add($"docs/developers/widget-quickstart.md is missing '{contract}'.");
 foreach (var (name, text) in new[]
          {
-             ("docs/widget-quickstart.md", quickstart),
-             ("docs/widget-authoring-guide.md", guide),
-             ("docs/publishing-and-installation.md", publishing),
+             ("docs/developers/widget-quickstart.md", quickstart),
+             ("docs/developers/widget-authoring-guide.md", guide),
+             ("docs/developers/publishing-and-installation.md", publishing),
              ("tools/WrailCli/README.md", cliReadme),
          })
 {
@@ -182,7 +182,7 @@ foreach (var (name, text) in new[]
 }
 if (!publishing.Contains("NuGet.Config", StringComparison.Ordinal) ||
     !publishing.Contains("bounded isolated Release build", StringComparison.Ordinal))
-    failures.Add("docs/publishing-and-installation.md is missing the external source-pack contract.");
+    failures.Add("docs/developers/publishing-and-installation.md is missing the external source-pack contract.");
 if (!cliReadme.Contains("WidgetRail.WidgetSdk", StringComparison.Ordinal) ||
     !cliReadme.Contains("private intermediates", StringComparison.Ordinal))
     failures.Add("tools/WrailCli/README.md is missing the offline scaffold/source-pack contract.");
@@ -243,36 +243,35 @@ foreach (var retiredPath in new[]
 var overlayBuild = File.ReadAllText(Path.Combine(repository, "src", "OverlayHost", "build.ps1"));
 var bridgeOutputDeclaration = overlayBuild.IndexOf(
     "$bridgeOutput = Join-Path $outputDirectory 'runtime\\Bridge'", StringComparison.Ordinal);
-var bridgeOutputCleanup = overlayBuild.IndexOf(
-    "Remove-GeneratedDirectory -Path $bridgeOutput", StringComparison.Ordinal);
+var cleanupLoop = Regex.Match(overlayBuild,
+    @"foreach\s*\(\$hostRuntimeOutput\s+in\s+@\((?<paths>[\s\S]*?)\)\)\s*\{\s*Remove-GeneratedDirectory\s+-Path\s+\$hostRuntimeOutput\s*\}");
 var bridgePublish = overlayBuild.IndexOf(
     "..\\WidgetBridge\\WidgetBridge.csproj", StringComparison.Ordinal);
-foreach (var retiredOutput in new[] { "runtime\\SpotifyPlaybackHost" })
-    if (!overlayBuild.Contains(
-            $"Remove-GeneratedDirectory -Path (Join-Path $outputDirectory '{retiredOutput}')",
-            StringComparison.Ordinal))
-        failures.Add($"OverlayHost incremental packaging does not purge {retiredOutput}.");
-if (bridgeOutputDeclaration < 0 || bridgeOutputCleanup <= bridgeOutputDeclaration ||
-    bridgePublish <= bridgeOutputCleanup)
-    failures.Add("OverlayHost incremental packaging does not clean Bridge before republishing it.");
+if (!cleanupLoop.Success ||
+    !cleanupLoop.Groups["paths"].Value.Contains("$bridgeOutput", StringComparison.Ordinal) ||
+    !cleanupLoop.Groups["paths"].Value.Contains("runtime\\SpotifyPlaybackHost", StringComparison.Ordinal) ||
+    bridgeOutputDeclaration < 0 || cleanupLoop.Index <= bridgeOutputDeclaration ||
+    bridgePublish <= cleanupLoop.Index + cleanupLoop.Length)
+    failures.Add("OverlayHost must clean Bridge and retired Spotify runtime output before republishing.");
 
-RequireLink(Path.Combine(repository, "README.md"), "docs/widget-authoring-guide.md");
-RequireLink(Path.Combine(repository, "README.md"), "docs/community-companion-services.md");
-RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-authoring-guide.md");
-RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-model.md");
-RequireLink(Path.Combine(repository, "docs", "README.md"), "community-companion-services.md");
-RequireLink(Path.Combine(repository, "docs", "widget-authoring-guide.md"),
+
+RequireLink(Path.Combine(repository, "README.md"), "docs/developers/widget-authoring-guide.md");
+RequireLink(Path.Combine(repository, "README.md"), "docs/reference/community-companion-services.md");
+RequireLink(Path.Combine(repository, "docs", "README.md"), "developers/widget-authoring-guide.md");
+RequireLink(Path.Combine(repository, "docs", "README.md"), "developers/widget-model.md");
+RequireLink(Path.Combine(repository, "docs", "README.md"), "reference/community-companion-services.md");
+RequireLink(Path.Combine(repository, "docs", "developers", "widget-authoring-guide.md"),
     "widget-model.md");
 RequireLink(Path.Combine(repository, "src", "WidgetSdk", "README.md"),
-    "../../docs/widget-model.md");
+    "../../docs/developers/widget-model.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"),
     "../samples/PlayniteLibraryWidget/README.md");
 RequireLink(Path.Combine(repository, "README.md"),
     "samples/PlayniteLibraryWidget/README.md");
 RequireLink(Path.Combine(repository, "samples", "ClockWidget", "README.md"),
-    "../../docs/widget-authoring-guide.md");
+    "../../docs/developers/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "samples", "YtMusicWidget", "README.md"),
-    "../../docs/community-companion-services.md");
+    "../../docs/reference/community-companion-services.md");
 
 if (failures.Count != 0)
 {
@@ -307,5 +306,5 @@ static bool HasIgnoredSegment(string root, string path)
 {
     var relative = Path.GetRelativePath(root, path);
     return relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-        .Any(segment => segment is ".git" or "bin" or "obj" or "artifacts" or "history");
+        .Any(segment => segment is ".git" or "bin" or "obj" or "artifacts" or "history" or "archive" or "logs");
 }

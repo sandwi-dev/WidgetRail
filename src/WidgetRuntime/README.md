@@ -223,7 +223,7 @@ bounded bootstrap arguments. Companion lifecycle is updated before the worker
 lifecycle request. The generic worker authenticates that channel and attaches
 typed SDK host services before widget lifecycle creation. Widget protocol messages cannot
 provide a companion or choose its identity/backend. See [widget
-capabilities](../../docs/capabilities.md).
+capabilities](../../docs/reference/capabilities.md).
 
 For an AppContainer session the companion receives the runtime-derived SID and
 must expose a host-secured plain pipe name. Both the main and broker endpoints

@@ -24,7 +24,7 @@ runtime boundary. Installed `.wrwidget` packages normally use the platform's
 generic worker host and need only name this public Widget type in their
 manifest.
 
-Continue with the [complete authoring guide](../../docs/widget-authoring-guide.md)
+Continue with the [complete authoring guide](../../docs/developers/widget-authoring-guide.md)
 for nested input scopes, host-owned Scroll, surface hints, lifecycle work,
 capabilities, packaging, GitHub Releases, isolation, and responsive layout.
 Use [YT Music](../YtMusicWidget/README.md) as the advanced state-reconciliation

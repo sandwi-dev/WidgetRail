@@ -6,6 +6,7 @@
       "name": "Basic controller widget",
       "description": "Lifecycle, stable focus, shortcuts, and local state.",
       "files": [
+        { "source": "WIDGETRAIL-NOTICES.txt", "destination": "WIDGETRAIL-NOTICES.txt", "kind": "binary" },
         { "source": "WidgetName.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
         { "source": "manifest.json.template", "destination": "manifest.json", "kind": "text" },
         { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
@@ -23,6 +24,7 @@
       "name": "Data resource widget",
       "description": "One lifecycle-owned resource with loading, retry, last-good, and safe errors.",
       "files": [
+        { "source": "WIDGETRAIL-NOTICES.txt", "destination": "WIDGETRAIL-NOTICES.txt", "kind": "binary" },
         { "source": "WidgetName.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
         { "source": "manifest.json.template", "destination": "manifest.json", "kind": "text" },
         { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
@@ -40,6 +42,7 @@
       "name": "Pinned media controller",
       "description": "Full fallback plus compact and detailed typed pinned layouts with selection-scoped queue demand.",
       "files": [
+        { "source": "WIDGETRAIL-NOTICES.txt", "destination": "WIDGETRAIL-NOTICES.txt", "kind": "binary" },
         { "source": "WidgetName.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
         { "source": "manifest.media.json.template", "destination": "manifest.json", "kind": "text" },
         { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
@@ -57,6 +60,7 @@
       "name": "Embedded media player",
       "description": "Two sealed sources, native full-player controls, retained-hidden routes, and optional compact pinning.",
       "files": [
+        { "source": "WIDGETRAIL-NOTICES.txt", "destination": "WIDGETRAIL-NOTICES.txt", "kind": "binary" },
         { "source": "WidgetName.embedded-media.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
         { "source": "manifest.embedded-media.json.template", "destination": "manifest.json", "kind": "text" },
         { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
@@ -76,6 +80,7 @@
       "name": "Responsive multipage widget",
       "description": "Bounded route navigation composed through one responsive navigation shell.",
       "files": [
+        { "source": "WIDGETRAIL-NOTICES.txt", "destination": "WIDGETRAIL-NOTICES.txt", "kind": "binary" },
         { "source": "WidgetName.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
         { "source": "manifest.json.template", "destination": "manifest.json", "kind": "text" },
         { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },

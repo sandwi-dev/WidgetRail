@@ -100,7 +100,7 @@ executable AppContainer integration. The separate `wrail preview` manifest
 workflow currently validates and lists scenario declarations without loading
 their provider assembly. Selected scenario execution fails closed until an
 AppContainer preview worker exists. See the
-[widget authoring guide](../../docs/widget-authoring-guide.md#validate-list-scenarios-render-replay-and-test).
+[widget authoring guide](../../docs/developers/widget-authoring-guide.md#validate-list-scenarios-render-replay-and-test).
 
 Build a deterministic `.wrwidget` with the same public CLI available to
 community authors:
@@ -147,7 +147,7 @@ artwork, root/nested background ownership, all current fit modes, missing-art
 fallback, remembered focus groups, visible density, header-focus stability,
 generic package isolation, and responsive/theme-safe WRSS.
 
-See the [widget authoring guide](../../docs/widget-authoring-guide.md),
-[declarative UI reference](../../docs/declarative-ui.md), and
-[controller component guide](../../docs/controller-ui-components.md) for the
+See the [widget authoring guide](../../docs/developers/widget-authoring-guide.md),
+[declarative UI reference](../../docs/reference/declarative-ui.md), and
+[controller component guide](../../docs/reference/controller-ui-components.md) for the
 full contracts and design rationale.

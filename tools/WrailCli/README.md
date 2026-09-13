@@ -1,10 +1,10 @@
 # wrail developer CLI
 
 For an end-to-end walkthrough, see the repository
-[widget quickstart](../../docs/widget-quickstart.md). For package and trust
-limitations, see [publishing and installation](../../docs/publishing-and-installation.md).
+[widget quickstart](../../docs/developers/widget-quickstart.md). For package and trust
+limitations, see [publishing and installation](../../docs/developers/publishing-and-installation.md).
 Global-theme authors should use [theme packaging and
-distribution](../../docs/theme-packaging.md).
+distribution](../../docs/developers/theme-packaging.md).
 
 The prototype CLI makes the controller-widget development loop usable before
 the graphical simulator exists. It has no third-party runtime dependencies.
@@ -145,7 +145,7 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   with the user's ambient file, network, registry, database, and child-process
   authority. This is an explicit trust decision, not a capability grant or a
   publisher-verification result. See the
-  [widget authoring guide](../../docs/widget-authoring-guide.md#full-trust-community-application-runtime)
+  [widget authoring guide](../../docs/developers/widget-authoring-guide.md#full-trust-community-application-runtime)
   for the manifest and bootstrap contract.
 - `replay` walks explicit D-pad focus edges and resolves `A` actions and
   declared non-Guide shortcuts from a versioned JSON event stream.

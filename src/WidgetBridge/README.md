@@ -191,8 +191,8 @@ network/Bluetooth, foreground-activity, Start Menu app-library, and GSMTC
 media-session providers plus constrained loopback JSON and write-only package
 secret services;
 deterministic tests use `SimulatedPlatformBrokerBackend`.
-See [widget capabilities](../../docs/capabilities.md) and [local companion HTTP
-and private secrets](../../docs/community-companion-services.md).
+See [widget capabilities](../../docs/reference/capabilities.md) and [local companion HTTP
+and private secrets](../../docs/reference/community-companion-services.md).
 
 Asynchronous `widget-invalidated` and `widget-failed` events identify the widget
 by catalog ID. `platform-appearance-changed` instead contains only the newly

@@ -8,7 +8,7 @@ trusted-catalog fallback and does not attempt binary compatibility with Xbox
 Game Bar.
 
 The reusable host-service contract is documented in [local companion HTTP and
-private secrets](../../docs/community-companion-services.md). This README
+private secrets](../../docs/reference/community-companion-services.md). This README
 covers the YTMDesktop2-specific integration and package workflow.
 
 The addon keeps the useful integration behavior while moving privileged work

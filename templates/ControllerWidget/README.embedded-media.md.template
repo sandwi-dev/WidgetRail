@@ -84,3 +84,9 @@ only that host projection; the ordinary native full player and its command
 authority remain.
 The pinned surface owns X/LT/RT/B/View behavior through the declared generic
 media contract—do not author a second pinned control tree.
+
+## Licensing your widget
+
+The original starter code is MIT-licensed. Keep `WIDGETRAIL-NOTICES.txt` when
+redistributing substantial copied portions; choose the license for your own
+widget. Referenced SDK/bootstrap libraries retain their MPL-2.0 obligations.
