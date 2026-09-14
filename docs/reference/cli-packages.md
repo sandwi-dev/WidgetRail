@@ -7,6 +7,19 @@ in the ordinary overlay, install its package through Settings instead.
 
 ## Pack and install
 
+Inspect an existing package before installation:
+
+```powershell
+& $wrail inspect .\example.wrwidget
+```
+
+This validates the archive using the installer's rules and shows its identity,
+SHA-256, execution model, required and optional permissions, host API range,
+architectures and size. It does not install the package or execute widget code.
+Full-trust packages can be inspected without approving their installation.
+Add `--json` for structured metadata. Inspection validates package structure;
+it does not prove publisher identity or runtime behavior.
+
 <!-- canonical-author-journey:pack-install -->
 ```powershell
 & $wrail pack .\scratch\VolumeControl `

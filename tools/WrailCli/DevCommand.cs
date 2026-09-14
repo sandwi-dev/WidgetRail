@@ -22,12 +22,12 @@ internal static class DevCommand
         CancellationToken cancellationToken)
     {
         var parsed = new CommandArguments(
-            args, "--host", "--configuration", "--build-timeout-seconds", "--debounce-ms");
+            args, "--host", "--configuration", "--build-timeout-seconds", "--debounce-ms", "--log");
         if (parsed.Positionals.Count != 1)
             throw new CliUsageException(
                 "Usage: wrail dev <widget-directory|widget.csproj|file.wrwidget> " +
                 "[--host <OverlayHost.exe>] [--configuration <name>] " +
-                "[--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>]");
+                "[--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>] [--log <new-file>]");
 
         var configuration = parsed.Option("--configuration") ?? "Debug";
         if (configuration.Length is < 1 or > 64 ||
@@ -40,9 +40,17 @@ internal static class DevCommand
         var source = DevWidgetSource.Discover(parsed.Positionals[0]);
         var host = DevHostLocator.Resolve(parsed.Option("--host"), configuration);
 
+        using var log = parsed.Option("--log") is { } logPath
+            ? new DevDiagnosticLog(logPath, error) : null;
+        if (log is not null)
+        {
+            output = log.Wrap(output, "info");
+            error = log.Wrap(error, "error");
+        }
+
         await output.WriteLineAsync($"Development widget: {source.DisplayPath}");
         await output.WriteLineAsync($"Overlay host: {host}");
-        await output.WriteLineAsync("Unsigned development mode uses the normal community AppContainer worker boundary.");
+        await output.WriteLineAsync("Development mode uses the widget's declared execution model and an isolated temporary catalog.");
         await output.WriteLineAsync("Press Ctrl+C to stop; the temporary catalog and worker processes will be removed.");
 
         await using var session = new DevSession(
@@ -128,12 +136,19 @@ internal sealed record DevWidgetSource(
 internal static class DevHostLocator
 {
     public static string Resolve(string? requested, string configuration)
+        => Resolve(requested, configuration, [Environment.CurrentDirectory, AppContext.BaseDirectory]);
+
+    internal static string Resolve(string? requested, string configuration, IEnumerable<string> searchRoots)
     {
         if (!string.IsNullOrWhiteSpace(requested)) return Validate(requested);
-        foreach (var start in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
+        foreach (var start in searchRoots)
         {
             for (var directory = new DirectoryInfo(start); directory is not null; directory = directory.Parent)
             {
+                // Installed CLI lives at <app>/tools/wrail. Source builds use
+                // src/OverlayHost/out/<configuration>; support both layouts.
+                var installed = Path.Combine(directory.FullName, "OverlayHost.exe");
+                if (File.Exists(installed)) return Validate(installed);
                 foreach (var candidateConfiguration in new[] { configuration, "Release", "Debug" }
                              .Distinct(StringComparer.OrdinalIgnoreCase))
                 {
@@ -227,7 +242,7 @@ internal sealed class DevSession : IAsyncDisposable
         Directory.CreateDirectory(_sessionRoot);
         _watcher = DevSourceWatcher.Create(_source, SignalChange);
         SignalChange();
-        while (await _changes.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
+        while (await WaitForSourceChangeAsync(cancellationToken).ConfigureAwait(false))
         {
             while (_changes.Reader.TryRead(out _)) { }
             await Task.Delay(_debounce, cancellationToken).ConfigureAwait(false);
@@ -239,6 +254,38 @@ internal sealed class DevSession : IAsyncDisposable
                 continue;
             }
             await TryPublishAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<bool> WaitForSourceChangeAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var change = _changes.Reader.WaitToReadAsync(wait.Token).AsTask();
+            var host = _hostProcess;
+            if (host is null) return await change.ConfigureAwait(false);
+            var exited = host.Process.WaitForExitAsync(wait.Token);
+            try
+            {
+                await Task.WhenAny(change, exited).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (change.IsCompleted) return await change.ConfigureAwait(false);
+                await exited.ConfigureAwait(false);
+                await _error.WriteLineAsync(
+                    $"Development host exited (code {host.Process.ExitCode}) for {_activeIdentity?.Id}. " +
+                    "No development widget is running. Edit a source file to rebuild, or restart wrail dev.");
+                var stopped = await StopHostAsync(host).ConfigureAwait(false);
+                if (!stopped.Reclaimed) throw new CliOperationException(stopped.Diagnostic ?? "Development host descendants could not be reclaimed.");
+                host.Dispose();
+                _hostProcess = null;
+            }
+            finally
+            {
+                wait.Cancel();
+                try { await Task.WhenAll(change, exited).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (wait.IsCancellationRequested) { }
+            }
         }
     }
 
@@ -268,11 +315,15 @@ internal sealed class DevSession : IAsyncDisposable
     {
         var generation = Path.Combine(_sessionRoot, $"generation-{++_generation:D6}");
         Directory.CreateDirectory(generation);
+        var elapsed = Stopwatch.StartNew();
+        var phase = "build and validate";
+        await _output.WriteLineAsync($"[{DateTime.Now:HH:mm:ss}] Generation {_generation}: {phase} — {_source.DisplayPath}");
         try
         {
             var prepared = await DevGenerationBuilder.PrepareAsync(
                 _source, generation, _configuration, _buildTimeout, _output, _error,
                 cancellationToken).ConfigureAwait(false);
+            phase = "stage package";
             var catalogRoot = Path.Combine(generation, "catalog");
             var catalog = new CatalogService(catalogRoot);
             var installed = await catalog.InstallAsync(prepared.PackagePath, cancellationToken)
@@ -287,6 +338,8 @@ internal sealed class DevSession : IAsyncDisposable
             // A probe host has no hotkey/controller registrations. It must
             // authenticate exact bridge/catalog reconciliation before the
             // last-good interactive host is touched.
+            phase = "check widget readiness";
+            await _output.WriteLineAsync($"Generation {_generation}: {phase} — {prepared.Manifest.Id}");
             var probe = await StartReadyHostAsync(
                 catalogRoot, nextIdentity, generation, probeOnly: true, cancellationToken)
                 .ConfigureAwait(false);
@@ -296,6 +349,7 @@ internal sealed class DevSession : IAsyncDisposable
                 throw new CliOperationException(
                     $"Development readiness probe could not be reclaimed: {probeStop.Diagnostic}");
 
+            phase = "replace development host";
             var previousStop = await StopHostAsync(previousHost).ConfigureAwait(false);
             if (!previousStop.Reclaimed)
                 throw new CliOperationException(
@@ -333,7 +387,7 @@ internal sealed class DevSession : IAsyncDisposable
             _activeIdentity = nextIdentity;
             await _output.WriteLineAsync(
                 $"Ready: {prepared.Manifest.Id} {prepared.Manifest.Version} " +
-                $"(generation {_generation}, PID {nextHost.Id}).");
+                $"(generation {_generation}, PID {nextHost.Id}, {elapsed.Elapsed.TotalSeconds:F1}s). Watching for changes.");
             if (previousGeneration is not null)
             {
                 if (!await DeleteTreeWithRetriesAsync(previousGeneration).ConfigureAwait(false))
@@ -350,7 +404,7 @@ internal sealed class DevSession : IAsyncDisposable
                                            IOException or UnauthorizedAccessException or JsonException or
                                            System.ComponentModel.Win32Exception)
         {
-            await _error.WriteLineAsync($"dev build rejected: {SafeMessage(exception)}");
+            await _error.WriteLineAsync($"dev build rejected: generation {_generation}, phase '{phase}': {SafeMessage(exception)}");
             await _error.WriteLineAsync(_hostProcess is { HasExited: false }
                 ? "Retained the last-good running widget. Waiting for another declared source change."
                 : "No last-good widget is running. Waiting for another declared source change.");

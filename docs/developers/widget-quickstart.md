@@ -16,10 +16,14 @@ Open PowerShell in a folder where you keep your projects. Find the installed CLI
 $appRoot = (Get-ItemProperty 'HKCU:\Software\WidgetRail\Installation').ApplicationRoot
 $wrail = Join-Path $appRoot 'wrail.cmd'
 & $wrail help
+& $wrail doctor
 ```
 
 If you use a source build instead, follow [Building from source](../maintainers/building.md).
 The installed CLI is not automatically added to your system PATH.
+If `doctor` reports a missing SDK or incomplete host, follow its suggested fix
+before starting. Run it again from a project directory to check that project's
+SDK selection.
 
 ## 1. Create the project
 

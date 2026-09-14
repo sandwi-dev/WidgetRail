@@ -14,11 +14,14 @@ copied output can scaffold and package an external widget without this checkout;
 copying only the executable is unsupported.
 
 ```text
+wrail doctor
+wrail doctor .\\VolumeControl --json
 wrail new widget VolumeControl --id dev.example.volume-control --template basic
 dotnet build .\\VolumeControl\\VolumeControl.csproj -c Release
 dotnet run --project .\\VolumeControl\\tests\\VolumeControl.Tests.csproj -c Release
 wrail validate .\\VolumeControl
 wrail dev .\\VolumeControl
+wrail dev .\\VolumeControl --log development.log
 wrail preview .\\VolumeControl
 wrail preview .\\VolumeControl --scenario ready --output .\\VolumeControl\\fixtures\\ready.scenario.json
 wrail preview .\\VolumeControl --scenario ready --pinned-layout compact
@@ -27,6 +30,7 @@ wrail render .\\VolumeControl\\fixtures\\ready.snapshot.json --output snapshot.j
 wrail replay .\\VolumeControl\\fixtures\\ready.snapshot.json .\\VolumeControl\\replays\\smoke.json
 wrail pack .\\VolumeControl --configuration Release --output .\\VolumeControl-1.0.0.wrwidget
 wrail install .\\VolumeControl-1.0.0.wrwidget
+wrail inspect .\\VolumeControl-1.0.0.wrwidget --json
 wrail install github:example/widgets@v1.0.0/volume-control.wrwidget --sha256 <64-hex-digest>
 wrail list
 wrail disable dev.example.volume-control
@@ -60,6 +64,15 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
 
 ## Commands
 
+- `doctor [project-directory|widget.csproj]` checks the selected .NET SDK, CLI/SDK
+  release pairing and packaged host discovery without building or launching a
+  widget. Use `--host` for an explicit host and `--json` for a versioned report.
+  Missing prerequisites produce actionable messages and exit code 1. This is
+  a development prerequisite check, not a hardware or runtime health test.
+- `inspect <file.wrwidget>` validates and hashes the same locked package stream
+  without installation or code execution. It reports permissions, execution
+  model, host API requirements, architectures, pinned support and package size.
+  Add `--json` for versioned metadata. It does not verify publisher identity.
 - `new widget` selects the closed version-2 `basic`, `data`, `media`,
   `embedded-media`, or `multipage` controller-first C# template inventory and a
   matching `WidgetRail.WidgetSdk` package in `.widgetrail/packages`. Its
@@ -104,6 +117,12 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   `--host` selects a packaged `OverlayHost.exe`, `--configuration` selects the
   project build configuration, `--build-timeout-seconds` is bounded to
   10–600 seconds, and `--debounce-ms` is bounded to 50–2000 milliseconds.
+  Installed `<app>/tools/wrail` and source checkout layouts are both discovered.
+  `--log <new-file>` records bounded build/lifecycle messages for this invocation.
+  Files are created exclusively and capped at 2 MiB; a cap or write failure
+  stops file logging while console feedback continues. It does not collect
+  installed-host or widget runtime logs. Generation phases, readiness duration
+  and unexpected dev-host exits are reported in the terminal.
   Source projects use bounded non-recursive per-directory handles for the
   manifest, project file, C# source set, `Directory.Build.props/targets`, and
   WRSS sources; newly created source/style directories are adopted after a

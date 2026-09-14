@@ -17,6 +17,13 @@ using WidgetRail.WidgetSdk;
 using WidgetRail.WindowsAppLibraryProvider;
 using WidgetRail.EmbeddedMediaAdapterConformance;
 
+if (args is ["--doctor-stalled-probe", var probeMarker])
+{
+    await File.WriteAllTextAsync(probeMarker, Environment.ProcessId.ToString());
+    await Task.Delay(Timeout.InfiniteTimeSpan);
+    return 0;
+}
+
 if (args is ["--dev-persistent-grandchild", ..])
 {
     await Task.Delay(Timeout.InfiniteTimeSpan);
@@ -80,6 +87,11 @@ if (args.Contains("--embedded-media-template", StringComparer.Ordinal))
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Help describes the complete workflow", HelpWorks),
+    ("Doctor reports selected SDK and host failures without mutations", DoctorWorkflow),
+    ("Doctor cancels and reclaims a stalled SDK probe", DoctorCancelsProbe),
+    ("Widget inspection validates bytes without installing or executing", InspectWorkflow),
+    ("Development host discovery supports installed CLI layout", InstalledDevHostDiscovery),
+    ("Development transcripts are bounded and preserve console output", DevTranscriptWorkflow),
     ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow),
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
@@ -179,11 +191,153 @@ foreach (var test in tests)
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
 
+static async Task DoctorWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    var output = new StringWriter();
+    var failed = await DoctorCommand.RunAsync([temp.Path, "--json"], output, default,
+        (directory, _) =>
+        {
+            Assert.Equal(temp.Path, directory);
+            return Task.FromResult(new SdkProbeResult(false, "", "SDK selection failed."));
+        },
+        _ => throw new CliUsageException("Host package missing its bridge."));
+    Assert.Equal(1, failed);
+    using var report = JsonDocument.Parse(output.ToString());
+    Assert.True(!report.RootElement.GetProperty("passed").GetBoolean(), "Failed doctor claimed readiness.");
+    foreach (var id in new[] { "dotnet-sdk", "overlay-host" })
+    {
+        var check = report.RootElement.GetProperty("checks").EnumerateArray()
+            .Single(item => item.GetProperty("id").GetString() == id);
+        Assert.Equal("fail", check.GetProperty("status").GetString());
+        Assert.True(check.GetProperty("remedy").GetString()!.Length > 10, "No actionable remedy.");
+    }
+    output.GetStringBuilder().Clear();
+    Assert.Equal(0, await DoctorCommand.RunAsync([temp.Path], output, default,
+        (_, _) => Task.FromResult(new SdkProbeResult(true, "10.0.302\r\n")), _ => "test-host"));
+    Assert.Contains("10.0.302", output.ToString());
+    Assert.True(!Directory.EnumerateFileSystemEntries(temp.Path).Any(), "Doctor wrote to the project.");
+    output.GetStringBuilder().Clear();
+    Assert.Equal(1, await DoctorCommand.RunAsync([temp.Path], output, default,
+        (_, _) => Task.FromResult(new SdkProbeResult(true, "7.0.400")), _ => "test-host"));
+    Assert.Equal(2, (await RunCli("doctor", "--unknown")).Code);
+}
+
+static async Task DoctorCancelsProbe()
+{
+    using var temp = new TemporaryDirectory();
+    var marker = Path.Combine(temp.Path, "probe.pid");
+    var start = new ProcessStartInfo(Environment.ProcessPath!);
+    start.ArgumentList.Add("--doctor-stalled-probe");
+    start.ArgumentList.Add(marker);
+    using var cancellation = new CancellationTokenSource();
+    var probe = DoctorCommand.ProbeSdkAsync(temp.Path, cancellation.Token, start);
+    try
+    {
+        await WaitUntilAsync(() => File.Exists(marker) && new FileInfo(marker).Length > 0, TimeSpan.FromSeconds(5));
+        var pid = int.Parse(await File.ReadAllTextAsync(marker));
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => probe);
+        AssertProcessExited(pid);
+    }
+    finally
+    {
+        cancellation.Cancel();
+        try { await probe; } catch (OperationCanceledException) { }
+    }
+}
+
+static async Task InspectWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    var package = await CreatePackedPackageAsync(temp.Path, "dev.test.inspect", "1.2.3");
+    var before = Directory.GetFiles(temp.Path, "*", SearchOption.AllDirectories).Order().ToArray();
+    var inspected = await RunCli("inspect", package, "--json");
+    Assert.Equal(0, inspected.Code);
+    using var json = JsonDocument.Parse(inspected.Output);
+    Assert.Equal("dev.test.inspect", json.RootElement.GetProperty("id").GetString());
+    Assert.Equal("appcontainer", json.RootElement.GetProperty("executionModel").GetString());
+    Assert.Equal(Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(package))).ToLowerInvariant(),
+        json.RootElement.GetProperty("sha256").GetString());
+    Assert.True(before.SequenceEqual(Directory.GetFiles(temp.Path, "*", SearchOption.AllDirectories).Order()),
+        "Inspection extracted or installed a package.");
+    Assert.Contains("No widget code was run", (await RunCli("inspect", package)).Output);
+    // Fixture payload is deliberately not a .NET assembly. Success above
+    // proves inspection does not try to load the widget.
+    var unsafePackage = Path.Combine(temp.Path, "unsafe.wrwidget");
+    using (var archive = ZipFile.Open(unsafePackage, ZipArchiveMode.Create))
+    {
+        using var writer = new StreamWriter(archive.CreateEntry("../escaped.txt").Open());
+        writer.Write("unsafe");
+    }
+    Assert.Equal(1, (await RunCli("inspect", unsafePackage)).Code);
+    Assert.True(!File.Exists(Path.Combine(temp.Path, "escaped.txt")), "Unsafe package wrote a file.");
+    var fullRoot = CreatePackageSource(temp.Path, "dev.test.inspect-full", "dev.test", "1.0.0");
+    var full = BuildManifest("dev.test.inspect-full", "dev.test", "1.0.0") with
+    {
+        Entrypoint = new WidgetEntrypoint(WidgetEntrypointRuntimes.FullTrustApplicationV1,
+            Executable: "payload/Widget.exe"),
+    };
+    await File.WriteAllBytesAsync(Path.Combine(fullRoot, "manifest.json"), ManifestJson.Serialize(full));
+    await File.WriteAllTextAsync(Path.Combine(fullRoot, "payload", "Widget.exe"), "not executable");
+    var fullPackage = Path.Combine(temp.Path, "full.wrwidget");
+    Assert.Equal(0, (await RunCli("pack", fullRoot, "--output", fullPackage)).Code);
+    var fullInspection = await RunCli("inspect", fullPackage);
+    Assert.Equal(0, fullInspection.Code);
+    Assert.Contains("Full trust", fullInspection.Output);
+}
+
+static Task InstalledDevHostDiscovery()
+{
+    using var temp = new TemporaryDirectory();
+    var root = Path.Combine(temp.Path, "app");
+    var cli = Path.Combine(root, "tools", "wrail");
+    Directory.CreateDirectory(cli);
+    foreach (var file in new[] { "OverlayHost.exe", "widget-catalog.json", "runtime/Bridge/WidgetBridge.exe", "runtime/WidgetWorkerHost/WidgetWorkerHost.exe" })
+    {
+        var path = Path.Combine(root, file);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "fixture");
+    }
+    Assert.Equal(Path.Combine(root, "OverlayHost.exe"), DevHostLocator.Resolve(null, "Debug", [cli]));
+    File.Delete(Path.Combine(root, "runtime", "Bridge", "WidgetBridge.exe"));
+    try { DevHostLocator.Resolve(null, "Debug", [cli]); throw new Exception("Incomplete host was accepted."); }
+    catch (CliUsageException exception) { Assert.Contains("WidgetBridge.exe", exception.Message); }
+    return Task.CompletedTask;
+}
+
+static async Task DevTranscriptWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    var logPath = Path.Combine(temp.Path, "development.log");
+    var console = new StringWriter();
+    var warnings = new StringWriter();
+    using (var log = new DevDiagnosticLog(logPath, warnings, maximumBytes: 250))
+    {
+        var writer = log.Wrap(console, "error");
+        await writer.WriteLineAsync("phase readiness: widget unavailable");
+        for (var index = 0; index < 20; index++) await writer.WriteLineAsync("still visible on console");
+    }
+    var text = await File.ReadAllTextAsync(logPath);
+    Assert.Contains("[error] phase readiness", text);
+    Assert.True(new FileInfo(logPath).Length <= 250, "Transcript exceeded its cap.");
+    Assert.Contains("size limit", warnings.ToString());
+    Assert.Contains("still visible on console", console.ToString());
+    try { using var duplicate = new DevDiagnosticLog(logPath, warnings); throw new Exception("Existing log overwritten."); }
+    catch (IOException) { }
+    Assert.Equal(text, await File.ReadAllTextAsync(logPath));
+    warnings.GetStringBuilder().Clear();
+    using (var broken = new DevDiagnosticLog(new FailingDiagnosticStream(), warnings))
+        await broken.Wrap(console, "info").WriteLineAsync("console survives disk failure");
+    Assert.Contains("could not be written", warnings.ToString());
+    Assert.Contains("console survives disk failure", console.ToString());
+}
+
 static async Task HelpWorks()
 {
     var result = await RunCli("help");
     Assert.Equal(0, result.Code);
-    foreach (var command in new[] { "new", "validate", "dev", "preview", "render", "replay", "pack", "install", "uninstall", "repair", "authority-recovery", "list", "enable", "disable", "version" })
+    foreach (var command in new[] { "doctor", "inspect", "new", "validate", "dev", "preview", "render", "replay", "pack", "install", "uninstall", "repair", "authority-recovery", "list", "enable", "disable", "version" })
         Assert.Contains(command, result.Output);
     Assert.Contains("repair manages quarantined installed-catalog generations", result.Output);
     Assert.Contains("no force-clear", result.Output);
@@ -1657,6 +1811,12 @@ static async Task DevRetainsAndCleans()
         await WaitUntilAsync(() => errorBuffer.ToString().Contains("Retained the last-good", StringComparison.Ordinal),
             TimeSpan.FromSeconds(5));
         Assert.Equal(firstPid, session.ActiveHostProcessId);
+        Assert.Contains("phase 'build and validate'", errorBuffer.ToString());
+        using (var host = Process.GetProcessById(firstPid!.Value)) host.Kill();
+        await WaitUntilAsync(() => errorBuffer.ToString().Contains("Development host exited", StringComparison.Ordinal),
+            TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(() => session.ActiveHostProcessId is null, TimeSpan.FromSeconds(5));
+        Assert.Contains("Edit a source file to rebuild", errorBuffer.ToString());
         cancellation.Cancel();
         await Assert.ThrowsAsync<OperationCanceledException>(() => run);
     }
@@ -3023,6 +3183,12 @@ file sealed class StubHttpHandler(
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
         send(request, cancellationToken);
+}
+
+file sealed class FailingDiagnosticStream : MemoryStream
+{
+    public override void Write(byte[] buffer, int offset, int count) => throw new IOException("Simulated disk full");
+    public override void Write(ReadOnlySpan<byte> buffer) => throw new IOException("Simulated disk full");
 }
 
 file sealed class RepeatingReadStream : Stream
