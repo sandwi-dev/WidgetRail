@@ -935,7 +935,7 @@ internal static class DevGenerationBuilder
         Directory.CreateDirectory(outputDirectory);
         await RunBuildAsync(
             source.ProjectPath!, configuration, outputDirectory, buildTimeout,
-            output, error, includeDebugSymbols, Path.Combine(generationRoot, "obj"),
+            output, error, includeDebugSymbols, Path.Combine(generationRoot, "build"),
             cancellationToken).ConfigureAwait(false);
         if (!File.Exists(entrypoint))
             throw new CliOperationException(
@@ -990,12 +990,12 @@ internal static class DevGenerationBuilder
         TextWriter output,
         TextWriter error,
         bool includeDebugSymbols,
-        string intermediateDirectory,
+        string artifactsDirectory,
         CancellationToken cancellationToken)
     {
         var start = CreateBuildStartInfo(
             project, configuration, outputDirectory, includeDebugSymbols,
-            intermediateDirectory);
+            artifactsDirectory);
         using var process = Process.Start(start)
             ?? throw new CliOperationException("dotnet build could not be started.");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -1028,7 +1028,7 @@ internal static class DevGenerationBuilder
         string configuration,
         string outputDirectory,
         bool includeDebugSymbols = true,
-        string? intermediateDirectory = null)
+        string? artifactsDirectory = null)
     {
         var start = new ProcessStartInfo("dotnet")
         {
@@ -1050,13 +1050,14 @@ internal static class DevGenerationBuilder
                      "--property:BuildInParallel=false",
                      "--property:MSBuildNodeReuse=false",
                  }) start.ArgumentList.Add(argument);
-        intermediateDirectory = Path.GetFullPath(intermediateDirectory ?? Path.Combine(
+        artifactsDirectory = Path.GetFullPath(artifactsDirectory ?? Path.Combine(
             Directory.GetParent(outputDirectory)?.FullName ?? outputDirectory,
-            ".wrail-obj")) + Path.DirectorySeparatorChar;
-        start.ArgumentList.Add(
-            $"--property:IntermediateOutputPath={intermediateDirectory}");
-        start.ArgumentList.Add(
-            $"--property:MSBuildProjectExtensionsPath={intermediateDirectory}");
+            ".wrail-build"));
+        // Global obj-path overrides make every ProjectReference share restore
+        // assets and compiler state. The SDK artifacts layout isolates each
+        // project's intermediates while keeping them inside this generation.
+        start.ArgumentList.Add("--artifacts-path");
+        start.ArgumentList.Add(artifactsDirectory);
         if (!includeDebugSymbols)
         {
             start.ArgumentList.Add("--property:DebugSymbols=false");

@@ -128,6 +128,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Dev discovers only bounded declared source files", DevSourceDiscoveryIsScoped),
     ("Dev package watching matches bounded pack inputs and new directories", DevPackageWatchingIsComplete),
     ("Dev builds a scaffold into a catalog-valid package", DevBuildsIsolatedPackage),
+    ("Dev builds isolate transitive project restore and compiler outputs", DevBuildsProjectGraph),
     ("Dev builds cannot leave persistent compiler or build servers", DevBuildDisablesPersistentServers),
     ("Dev diagnostics are bounded and single-line", DevDiagnosticsAreSanitized),
     ("Dev rejects absent or forged readiness without replacing last good", DevReadinessFailsClosed),
@@ -1949,6 +1950,49 @@ static async Task DevBuildsIsolatedPackage()
     Assert.Equal("dev.test.dev-panel", inspection.Id);
     Assert.True(inspection.Manifest.Entrypoint.Assembly!.StartsWith("payload/", StringComparison.Ordinal),
         "Dev entrypoint did not remain in the isolated package payload.");
+}
+
+static async Task DevBuildsProjectGraph()
+{
+    using var temp = new TemporaryDirectory();
+    var sourceRoot = Path.Combine(temp.Path, "GraphPanel");
+    Assert.Equal(0, (await RunCli("new", "widget", "GraphPanel", "--output", sourceRoot,
+        "--id", "dev.test.graph-panel", "--publisher", "dev.test")).Code);
+    var contracts = Path.Combine(temp.Path, "Contracts");
+    var library = Path.Combine(temp.Path, "Library");
+    Directory.CreateDirectory(contracts); Directory.CreateDirectory(library);
+    await File.WriteAllTextAsync(Path.Combine(contracts, "Contracts.csproj"),
+        "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+    await File.WriteAllTextAsync(Path.Combine(contracts, "Contract.cs"),
+        "namespace GraphContracts; public sealed class Contract { public int Value => 42; }");
+    await File.WriteAllTextAsync(Path.Combine(library, "Library.csproj"),
+        "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup><ItemGroup><ProjectReference Include=\"../Contracts/Contracts.csproj\" /></ItemGroup></Project>");
+    await File.WriteAllTextAsync(Path.Combine(library, "Api.cs"),
+        "namespace GraphLibrary; public static class Api { public static GraphContracts.Contract Create() => new(); }");
+    var project = Path.Combine(sourceRoot, "GraphPanel.csproj");
+    var document = XDocument.Load(project);
+    document.Root!.Add(new XElement("ItemGroup", new XElement("ProjectReference", new XAttribute("Include", "../Library/Library.csproj"))));
+    document.Save(project);
+    await File.WriteAllTextAsync(Path.Combine(sourceRoot, "GraphUsage.cs"),
+        "public static class GraphUsage { public static GraphContracts.Contract Read() => GraphLibrary.Api.Create(); }");
+    using var output = new StringWriter();
+    using var error = new StringWriter();
+    var generation = Path.Combine(temp.Path, "generation");
+    Directory.CreateDirectory(generation);
+    try
+    {
+        var prepared = await DevGenerationBuilder.PrepareAsync(DevWidgetSource.Discover(sourceRoot), generation,
+            "Release", TimeSpan.FromSeconds(90), output, error, CancellationToken.None);
+        Assert.True(File.Exists(prepared.PackagePath), "Transitive project graph did not produce a package.");
+        foreach (var assembly in new[] { "Contracts.dll", "Library.dll", "GraphPanel.dll" })
+            Assert.True(File.Exists(Path.Combine(generation, "package", "payload", assembly)), "Missing transitive assembly: " + assembly);
+        var assets = Directory.GetFiles(generation, "project.assets.json", SearchOption.AllDirectories);
+        Assert.Equal(3, assets.Length);
+        foreach (var root in new[] { sourceRoot, contracts, library })
+            Assert.True(!Directory.Exists(Path.Combine(root, "obj")) && !Directory.Exists(Path.Combine(root, "bin")),
+                "Dev build wrote intermediate/output artifacts into a source project.");
+    }
+    catch (CliOperationException failure) { throw new Exception(output.ToString() + error + failure.Message, failure); }
 }
 
 static Task DevDiagnosticsAreSanitized()
