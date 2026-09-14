@@ -1,5 +1,10 @@
 # YT Music community addon
 
+> **Maintenance status:** This widget is not actively maintained. Its widget
+> tests and dedicated lifecycle acceptance test are excluded from automatic
+> managed verification; they remain available for manual runs. Compatibility
+> with future WidgetRail or YTMDesktop2 releases is not routinely verified.
+
 This is a source port of `YtMusicGameBar`, rewritten as a controller-first
 community addon for the declarative `WidgetSdk`. It uses the same immutable
 `.wrwidget` package, generic worker, AppContainer, consent, lifecycle, and

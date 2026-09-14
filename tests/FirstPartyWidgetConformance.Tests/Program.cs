@@ -317,7 +317,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Real first-party packages merge through the community catalog path", InstalledPackagesMerge),
     ("First-party and advanced sample packages run through generic AppContainer worker and broker", PackagesRunIsolated),
     ("Exact maximum directory package packs installs and runs isolated", MaximumDirectoryPackageRunsIsolated),
-    ("YT Music community package completes isolated install lifecycle recovery and removal", () => YtMusicCommunityPackageRunsIsolated()),
 };
 var failures = new List<string>();
 foreach (var test in tests)

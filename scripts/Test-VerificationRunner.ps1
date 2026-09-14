@@ -43,7 +43,6 @@ $expectedDefaultStepIds = @(
     'widget-sdk-compatibility-tests',
     'widget-scenario-tests',
     'widget-ticker-tests',
-    'yt-music-tests',
     'youtube-widget-tests',
     'widget-runtime-tests',
     'widget-presentation-session-tests',
@@ -93,9 +92,9 @@ $expectedDefaultStepIds = @(
 )
 $defaultSelection = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all)
 $defaultIds = @($defaultSelection | ForEach-Object { $_.id })
-if ($defaultIds.Count -ne 58 -or
+if ($defaultIds.Count -ne 57 -or
     [string]::Join("`n", $defaultIds) -cne [string]::Join("`n", $expectedDefaultStepIds)) {
-    throw 'Focused selection changed the exact 58-step default aggregate identity or order.'
+    throw 'Focused selection changed the exact 57-step default aggregate identity or order.'
 }
 $nativeDefaults = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native)
 if ([string]::Join("`n", @($nativeDefaults | ForEach-Object id)) -cne
