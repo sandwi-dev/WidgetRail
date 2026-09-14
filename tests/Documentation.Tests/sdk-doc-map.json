@@ -34,6 +34,7 @@
   "src/WidgetSdk/PlatformServices.cs": "docs/reference/capabilities.md",
   "src/WidgetSdk/PrivateStateService.cs": "docs/reference/private-widget-state.md",
   "src/WidgetSdk/Power.cs": "docs/reference/application-capabilities.md",
+  "src/WidgetSdk/DisplayProfiles.cs": "docs/reference/display-profiles.md",
   "src/WidgetSdk/TaskSwitcher.cs": "docs/reference/application-capabilities.md",
   "src/WidgetSdk/WindowPreview.cs": "docs/reference/window-previews.md",
   "src/WidgetSdk/WidgetIcon.cs": "docs/reference/widget-icon-provenance.md",

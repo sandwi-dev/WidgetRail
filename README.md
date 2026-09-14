@@ -48,6 +48,7 @@ The standard edition includes these widgets:
 | Now Playing | Control media sessions reported by Windows. |
 | Network Controls | Manage supported Wi-Fi and Bluetooth controls. |
 | Power | Sleep, restart, or shut down your PC. |
+| Display Profiles | Save your monitor setups and switch between them with automatic rollback. |
 | Settings | Choose your theme, manage widgets and permissions, and configure the overlay. |
 
 The tray also keeps the time, internet connectivity, and Bluetooth status nearby.

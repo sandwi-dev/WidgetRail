@@ -9,3 +9,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("wrail")]
 
 [assembly: InternalsVisibleTo("PowerWidget.Tests")]
+[assembly: InternalsVisibleTo("DisplayProfilesWidget.Tests")]

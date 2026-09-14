@@ -73,8 +73,10 @@ $production = Join-Path $first 'WidgetRail-0.1.0-preview.1-win-x64'
 $dev = Join-Path $first 'WidgetRail-Developer-0.1.0-preview.1-win-x64'
 $prodCatalog = Get-Content (Join-Path $production 'widget-catalog.json') -Raw | ConvertFrom-Json
 $devCatalog = Get-Content (Join-Path $dev 'widget-catalog.json') -Raw | ConvertFrom-Json
-Check (@($prodCatalog.bundledWidgets).Count -eq 6) 'Production catalog differs.'
-Check (@($devCatalog.bundledWidgets).Count -eq 10) 'Developer catalog differs.'
+Check (@($prodCatalog.bundledWidgets).Count -eq 7) 'Production catalog differs.'
+Check (@($devCatalog.bundledWidgets).Count -eq 11) 'Developer catalog differs.'
+Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1 -and
+       @($devCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1) 'Display Profiles is missing from an edition.'
 Check (!(Test-Path (Join-Path $production 'runtime/embedded-media-sample'))) 'Developer content leaked into Production.'
 foreach ($editionRoot in @($production, $dev)) {
     Check ((Test-Path (Join-Path $editionRoot 'tools/wrail/templates/ControllerWidget/template.json')) -and (Test-Path (Join-Path $editionRoot 'wrail.cmd'))) 'Shared CLI or launcher missing.'

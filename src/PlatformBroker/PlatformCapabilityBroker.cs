@@ -122,6 +122,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly NetworkCapabilityDomain _networkDomain;
     private readonly AppLibraryCapabilityDomain _appLibraryDomain;
     private readonly PowerCapabilityDomain _powerDomain;
+    private readonly DisplayProfilesCapabilityDomain _displayProfilesDomain;
     private readonly MediaCapabilityDomain _mediaDomain;
     private readonly PrivateSecretCapabilityDomain _privateSecretDomain;
     private readonly PrivateStateCapabilityDomain _privateStateDomain;
@@ -179,6 +180,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _appLibraryDomain = new AppLibraryCapabilityDomain(
             _backend, _identity, appLibrarySavedIdIssuer, appLibraryArtwork);
         _powerDomain = new PowerCapabilityDomain(_backend);
+        _displayProfilesDomain = new DisplayProfilesCapabilityDomain(_backend);
         _mediaDomain = new MediaCapabilityDomain(_backend);
         _privateSecretDomain = new PrivateSecretCapabilityDomain(_backend, _identity);
         _privateStateDomain = new PrivateStateCapabilityDomain(_backend, _identity);
@@ -337,6 +339,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         var requestToken = lease.Token;
         return BrokerCapabilityDomains.Resolve(request.CapabilityId) switch
         {
+            BrokerCapabilityDomain.Displays =>
+                await _displayProfilesDomain.ExecuteAsync(request.Operation, request.Payload, _identity, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Power =>
                 await _powerDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Audio =>

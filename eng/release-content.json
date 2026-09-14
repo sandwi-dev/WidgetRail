@@ -18,7 +18,8 @@
     "task-switcher",
     "audio-mixer",
     "network-controls",
-    "power"
+    "power",
+    "display-profiles"
   ],
   "developerWidgets": [
     {

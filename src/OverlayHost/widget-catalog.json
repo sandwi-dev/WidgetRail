@@ -26,6 +26,14 @@
   ],
   "bundledWidgets": [
     {
+      "id": "display-profiles",
+      "packageId": "widgetrail.firstparty.display-profiles",
+      "instanceId": "display-profiles.default",
+      "packageRoot": "runtime/DisplayProfiles",
+      "icon": "fullscreen",
+      "quickActions": []
+    },
+    {
       "id": "media-sessions",
       "packageId": "widgetrail.firstparty.media-sessions",
       "instanceId": "media-sessions.default",

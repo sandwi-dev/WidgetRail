@@ -1,0 +1,322 @@
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WindowsDisplayProvider;
+using WidgetRail.FirstPartyWidgets.DisplayProfiles;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetStyling;
+
+if (args is ["--native-read"])
+{
+    await NativeRead();
+    Console.WriteLine("PASS current desktop captured and validated without applying changes.");
+    return;
+}
+
+if (args is ["--guard-probe", var guardExecutable])
+{
+    Console.WriteLine("Guard probe: starting");
+    await using var connection = await DisplayGuardConnection.StartAsync(Path.GetFullPath(guardExecutable), default);
+    Console.WriteLine("Guard probe: connected and authenticated");
+    // Missing transaction identity is rejected before native capture or apply.
+    await connection.Writer.WriteLineAsync("{}");
+    Console.WriteLine("Guard probe: sent empty transaction");
+    var reply = await connection.Reader.ReadToEndAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    Check(reply.Length == 0, "Guard failed independent startup: " + reply);
+    Console.WriteLine("PASS packaged guard started with explicit breakaway, authenticated its pipe and rejected an empty transaction without display changes.");
+    return;
+}
+if (args is ["--guard-parent-exit", var bridgeExecutable])
+{
+    var connection = await DisplayGuardConnection.StartAsync(Path.GetFullPath(bridgeExecutable), default);
+    Console.WriteLine(connection.ProcessId);
+    await Console.Out.FlushAsync();
+    await Console.In.ReadLineAsync();
+    Environment.Exit(0); // Deliberately bypass disposal: the child must observe OS pipe closure.
+    return;
+}
+
+var checks = new (string Name, Func<Task> Run)[]
+{
+    ("Native structures and configuration serialization preserve display modes", Layout),
+    ("Monitor identities remap adapter IDs and preserve clone groups", Matching),
+    ("Profile writes are atomic and corrupt data is preserved", Storage),
+    ("Guard reverts on timeout, parent EOF and partial apply failure", Guard),
+    ("Broker enforces consent, interactive state and closed request payloads", Authority),
+    ("Widget supports naming, unavailable profile management and guarded focus", Widget),
+    ("Packaged manifest, monitor glyph and theme styles validate", Assets),
+};
+foreach (var (name, run) in checks) { await run(); Console.WriteLine("PASS " + name); }
+Console.WriteLine($"{checks.Length}/{checks.Length} display profile checks passed. No real display changes were applied.");
+
+static void Check(bool value, string reason = "Assertion failed") { if (!value) throw new Exception(reason); }
+static async Task<T> Throws<T>(Func<Task> action) where T : Exception
+{
+    try { await action(); } catch (T error) { return error; }
+    throw new Exception("Expected " + typeof(T).Name);
+}
+static Task Layout()
+{
+    Check(Marshal.SizeOf<NativeLuid>() == 8 && Marshal.SizeOf<NativePath>() == 72 && Marshal.SizeOf<NativeMode>() == 64);
+    Check(Marshal.SizeOf<WindowsDisplayNative.TargetName>() == 420);
+    var original = Fixture.Setup(1920, 2);
+    var copy = JsonSerializer.Deserialize<DisplayConfiguration>(JsonSerializer.Serialize(original))!;
+    Check(copy.Paths.SequenceEqual(original.Paths) && copy.Modes.SequenceEqual(original.Modes));
+    Check(copy.Matches(original));
+    return Task.CompletedTask;
+}
+static Task Matching()
+{
+    var saved = Fixture.Setup(1920, 2, clone: true);
+    var inventory = saved.ReadPaths().Select((path, index) =>
+    {
+        path.Source.Adapter = path.Target.Adapter = new(88, 0);
+        path.Source.Id += 10; path.Target.Id += 20;
+        return new DisplayPathTarget(path, saved.Targets[index]);
+    }).Reverse().ToArray();
+    var restored = DisplayProfileMatching.Remap(saved, inventory);
+    Check(restored.Mode == "Duplicated" && restored.Matches(saved));
+    Check(restored.ReadPaths().All(path => path.Source.Adapter.Low == 88 && path.Source.Id == 10));
+    Check(restored.ReadModes()[0].Adapter.Low == 88);
+    try { DisplayProfileMatching.Remap(saved, inventory[..1]); throw new Exception("Missing monitor accepted"); }
+    catch (BrokerException error) { Check(error.Code == "display_monitor_missing"); }
+    return Task.CompletedTask;
+}
+static async Task Storage()
+{
+    using var temp = new TemporaryDirectory();
+    var native = new FakeNative();
+    var launcher = new FakeLauncher();
+    await using var backend = new WindowsDisplayProfilesBackend(temp.Path, native, launcher);
+    var state = await backend.ChangeDisplayProfileAsync(DisplayProfileCommand.Save, new(Name: "Desk"), Fixture.Identity, default);
+    var profile = state.Profiles.Single();
+    Check(profile.MatchesCurrent && native.Applies.Count == 0);
+    var path = Path.Combine(temp.Path, "profiles.json");
+    var original = File.ReadAllBytes(path);
+    File.SetAttributes(path, FileAttributes.ReadOnly);
+    await Throws<BrokerException>(() => backend.ChangeDisplayProfileAsync(DisplayProfileCommand.Rename,
+        new(profile.Id, "Renamed"), Fixture.Identity, default));
+    Check(original.SequenceEqual(File.ReadAllBytes(path)), "Failed save replaced the original file");
+    File.SetAttributes(path, FileAttributes.Normal);
+    native.Current = Fixture.Setup(1280);
+    state = await backend.ChangeDisplayProfileAsync(DisplayProfileCommand.Apply, new(profile.Id), Fixture.Identity, default);
+    Check(state.PendingRestore is not null);
+    await Throws<BrokerException>(() => backend.ChangeDisplayProfileAsync(DisplayProfileCommand.Keep,
+        new(RestoreId: state.PendingRestore!.Id), new("dev.other.widget", "dev.other", "other"), default));
+    await backend.ChangeDisplayProfileAsync(DisplayProfileCommand.Revert, new(RestoreId: state.PendingRestore!.Id), Fixture.Identity, default);
+    Check(launcher.Session.Decision == false);
+    File.WriteAllText(path, "{broken");
+    await Throws<BrokerException>(() => backend.ChangeDisplayProfileAsync(DisplayProfileCommand.Save, new(Name: "New"), Fixture.Identity, default));
+    Check(File.ReadAllText(path) == "{broken", "Corrupt user data was overwritten");
+}
+static async Task Guard()
+{
+    var target = Fixture.Setup(1920);
+    foreach (var decision in new[] { "keep", "revert", "eof", "timeout", "late" })
+    {
+        var native = new FakeNative { Current = Fixture.Setup(1280) };
+        var id = Guid.NewGuid().ToString("N");
+        var reader = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(id, target)));
+        var writer = new GuardWriter();
+        var clock = new ManualClock();
+        var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, clock, TimeSpan.FromSeconds(15));
+        await writer.Applied.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        if (decision is "timeout" or "late") clock.Advance(TimeSpan.FromSeconds(16));
+        if (decision != "timeout") reader.Decision.TrySetResult(decision == "eof" ? null :
+            (decision is "keep" or "late" ? "keep:" : "revert:") + id);
+        Check(await run.WaitAsync(TimeSpan.FromSeconds(2)) == 0);
+        Check(native.Applies.Count == 2);
+        Check(native.Applies[0].Width == 1920 && !native.Applies[0].Persist);
+        Check(native.Applies[1] == (decision == "keep" ? (1920, true) : (1280, false)), decision);
+    }
+    var failed = new FakeNative { Current = Fixture.Setup(1280), FailApply = 1 };
+    var request = JsonSerializer.Serialize(new GuardRequest(Guid.NewGuid().ToString("N"), target));
+    Check(await DisplayRestoreGuard.RunCoreAsync(new StringReader(request + "\n"), new StringWriter(),
+        failed, TimeProvider.System, TimeSpan.FromSeconds(15)) == 1);
+    Check(failed.Applies.Count == 2 && failed.Applies[1].Width == 1280, "Partial apply did not roll back");
+}
+static async Task Authority()
+{
+    using var temp = new TemporaryDirectory();
+    var native = new FakeNative();
+    await using var provider = new WindowsDisplayProfilesBackend(Path.Combine(temp.Path, "profiles"), native, new FakeLauncher());
+    var simulator = new SimulatedPlatformBrokerBackend();
+    await using var backend = new CompositePlatformBrokerBackend(simulator, simulator, displays: provider);
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    await using var broker = new PlatformCapabilityBroker(Fixture.Identity,
+        [PlatformCapabilities.DisplaysReadV1, PlatformCapabilities.DisplaysControlV1], consent, backend);
+    long sequence = 0;
+    Task Send(object payload) => broker.ExecuteAsync(new(BrokerJson.ProtocolVersion, ++sequence, Fixture.Identity,
+        PlatformCapabilities.DisplaysControlV1, PlatformCapabilities.DisplayProfilesSave, BrokerJson.ToElement(payload)));
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    await Throws<BrokerException>(() => Send(new { name = "Desk" }));
+    await consent.SetDecisionAsync(Fixture.Identity, PlatformCapabilities.DisplaysControlV1, ConsentDecision.Grant);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    await Throws<BrokerException>(() => Send(new { name = "Desk" }));
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    await Throws<BrokerException>(() => Send(new { name = "Desk", resolution = "custom" }));
+    await Send(new { name = "Desk" });
+    Check(native.Applies.Count == 0);
+}
+static async Task Widget()
+{
+    var profileId = Guid.NewGuid().ToString("N");
+    var monitor = new WidgetDisplayProfileMonitor("one", "Monitor", 1920, 1080, 0, 0, 60, "Landscape", true);
+    var state = new WidgetDisplayProfilesState("Single display", [monitor],
+        [new(profileId, "TV gaming", "Single display", [monitor], false, false, "Connect TV.")], null, null);
+    var saves = 0;
+    var builder = new WidgetTestHostServicesBuilder()
+        .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) => ValueTask.FromResult(state))
+        .WithEvents(WidgetDisplayProfilesCapabilities.Changed, Array.Empty<WidgetCapabilityAcknowledgement>())
+        .WithHandler(WidgetDisplayProfilesCapabilities.Save, (request, _) => { ++saves; Check(request.Name == "Desk"); return ValueTask.FromResult(state); })
+        .WithHandler(WidgetDisplayProfilesCapabilities.Delete, (_, _) =>
+            throw new WidgetCapabilityException("display_profile_io", "Private native file path"))
+        .WithHandler(WidgetDisplayProfilesCapabilities.Apply, (_, _) =>
+        {
+            state = state with { PendingRestore = new(Guid.NewGuid().ToString("N"), "TV gaming", DateTimeOffset.UtcNow.AddSeconds(15)) };
+            return ValueTask.FromResult(state);
+        });
+    var widget = WidgetTestHost.Attach(new DisplayProfilesWidget(), builder.Build());
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    ViewSnapshot Snapshot() => widget.Render().CreateSnapshot("display.test", 1);
+    IEnumerable<ViewNode> Nodes(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Nodes));
+    void Valid()
+    {
+        var snapshot = Snapshot();
+        Check(ViewSnapshotValidator.Validate(snapshot).Count == 0, string.Join("; ", ViewSnapshotValidator.Validate(snapshot)));
+    }
+    Valid();
+    var card = Nodes(Snapshot().Root).Single(node => node.Id == "display.profile." + profileId);
+    Check(card.IsDisabled != true && card.ContextActions.Count == 3, "Unavailable profile cannot be managed");
+    await widget.OnActionAsync(new("apply." + profileId, card.Id));
+    Check(Nodes(Snapshot().Root).Any(node => node.Text == "Connect TV."));
+    await widget.OnActionAsync(new("delete." + profileId, card.Id));
+    await widget.OnActionAsync(new("confirm", "display.confirm"));
+    Check(Nodes(Snapshot().Root).Any(node => node.Text?.Contains("Check disk space") == true));
+    Check(!Nodes(Snapshot().Root).Any(node => node.Text?.Contains("Private native") == true));
+    await widget.OnActionAsync(new("cancel", "display.cancel"));
+    await widget.OnActionAsync(new("name-new", "display.save"));
+    Check(Snapshot().InitialFocusId == "display.name"); Valid();
+    await widget.OnActionAsync(new("commit-name", "display.name") { CommittedText = "Desk" });
+    Check(saves == 1); Valid();
+    state = state with { Profiles = [state.Profiles[0] with { Available = true, UnavailableReason = null }] };
+    await widget.OnActionAsync(new("retry", "display.retry"));
+    await widget.OnActionAsync(new("apply." + profileId, card.Id));
+    Check(Snapshot().InitialFocusId == "display.revert"); Valid();
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+    Check(state.PendingRestore is not null, "Widget hiding cancelled independent confirmation");
+}
+static Task NativeRead()
+{
+    var native = new WindowsDisplayNative();
+    var state = native.Capture();
+    native.Validate(DisplayProfileMatching.Remap(state, native.ConnectedPaths()));
+    Console.WriteLine($"Read-only Windows probe: {state.Targets.Length} displays, {state.Mode}");
+    return Task.CompletedTask;
+}
+static Task Assets()
+{
+    var root = Path.Combine(Environment.CurrentDirectory, "src/FirstPartyWidgets/DisplayProfilesWidget");
+    var manifest = ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(root, "manifest.json")));
+    Check(WidgetManifestValidator.Validate(manifest).Count == 0);
+    Check(manifest.Permissions.SequenceEqual([PlatformCapabilities.DisplaysReadV1]));
+    Check(manifest.OptionalPermissions.SequenceEqual([PlatformCapabilities.DisplaysControlV1]));
+    foreach (var asset in manifest.IconAssets.Values)
+        Check(SvgIconNormalizer.Normalize(File.ReadAllBytes(Path.Combine(root, asset.Path))).Bytes.Length > 0);
+    var styles = Path.Combine(root, "styles");
+    var compiled = WrssThemeCompiler.Compile(WrssPackageLoader.LoadFile(Path.Combine(styles, "default.wrss"), styles));
+    Check(compiled.IsValid, string.Join("; ", compiled.Diagnostics));
+    return Task.CompletedTask;
+}
+
+file static class Fixture
+{
+    public static readonly BrokerWidgetIdentity Identity = new("dev.test.displays", "dev.test", "default");
+    public static DisplayConfiguration Setup(int width = 1920, int count = 1, bool clone = false)
+    {
+        var paths = new NativePath[count]; var modes = new NativeMode[count * 2]; var targets = new DisplayIdentity[count];
+        for (var i = 0; i < count; ++i)
+        {
+            var sourceId = clone ? 0u : (uint)i;
+            paths[i] = new() { Flags = 1,
+                Source = new() { Adapter = new(42,0), Id = sourceId, ModeIndex = sourceId * 2 },
+                Target = new() { Adapter = new(42,0), Id = (uint)i + 10, ModeIndex = (uint)i * 2 + 1,
+                    Rotation = 1, Available = 1, Refresh = new() { Numerator = 60000, Denominator = 1000 } } };
+            modes[i * 2] = new() { Type = 1, Id = sourceId, Adapter = new(42,0),
+                Source = new() { Width = (uint)width, Height = 1080, PixelFormat = 4, X = (int)sourceId * width } };
+            modes[i * 2 + 1] = new() { Type = 2, Id = (uint)i + 10, Adapter = new(42,0), Signal0 = 148500000 };
+            targets[i] = new("monitor-" + i, "Monitor " + i);
+        }
+        return DisplayConfiguration.Create(paths, modes, targets);
+    }
+}
+file sealed class FakeNative : IDisplayNative
+{
+    public DisplayConfiguration Current = Fixture.Setup();
+    public List<(int Width, bool Persist)> Applies = [];
+    public int FailApply;
+    public DisplayConfiguration Capture() => Current;
+    public IReadOnlyList<DisplayPathTarget> ConnectedPaths() => Current.ReadPaths().Select((path, index) => new DisplayPathTarget(path, Current.Targets[index])).ToArray();
+    public void Validate(DisplayConfiguration configuration) => configuration.Validate();
+    public void Apply(DisplayConfiguration configuration, bool persist)
+    {
+        Applies.Add((configuration.Summaries()[0].Width, persist));
+        if (Applies.Count == FailApply) throw new Win32Exception(31);
+        Current = configuration;
+    }
+}
+file sealed class FakeLauncher : IDisplayRestoreLauncher
+{
+    public FakeSession Session = new();
+    public Task<IDisplayRestoreSession> StartAsync(DisplayConfiguration configuration, CancellationToken token) => Task.FromResult<IDisplayRestoreSession>(Session);
+}
+file sealed class FakeSession : IDisplayRestoreSession
+{
+    public DisplayProfilePending Pending { get; } = new(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow.AddSeconds(15));
+    private readonly TaskCompletionSource<string> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task<string> Completion => _result.Task;
+    public bool? Decision;
+    public Task DecideAsync(bool keep, CancellationToken token) { Decision = keep; _result.TrySetResult(keep ? "kept" : "reverted"); return Task.CompletedTask; }
+    public ValueTask DisposeAsync() { _result.TrySetResult("reverted"); return ValueTask.CompletedTask; }
+}
+file sealed class DecisionReader(string setup) : TextReader
+{
+    private bool _read;
+    public TaskCompletionSource<string?> Decision = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public override Task<string?> ReadLineAsync() { if (_read) return Decision.Task; _read = true; return Task.FromResult<string?>(setup); }
+}
+file sealed class GuardWriter : StringWriter
+{
+    public TaskCompletionSource Applied = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public override Task WriteLineAsync(string? value) { if (value?.Contains("applied") == true) Applied.TrySetResult(); return base.WriteLineAsync(value); }
+}
+file sealed class ManualClock : TimeProvider
+{
+    private long _ticks;
+    private readonly List<Timer> _timers = [];
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    public override long GetTimestamp() => _ticks;
+    public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(_ticks);
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        var timer = new Timer(callback, state, _ticks + dueTime.Ticks); _timers.Add(timer); return timer;
+    }
+    public void Advance(TimeSpan duration) { _ticks += duration.Ticks; foreach (var timer in _timers.ToArray()) timer.Fire(_ticks); }
+    private sealed class Timer(TimerCallback callback, object? state, long due) : ITimer
+    {
+        private bool _disposed;
+        public void Fire(long now) { if (!_disposed && now >= due) { _disposed = true; callback(state); } }
+        public bool Change(TimeSpan dueTime, TimeSpan period) => throw new NotSupportedException();
+        public void Dispose() => _disposed = true;
+        public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+    }
+}
+file sealed class TemporaryDirectory : IDisposable
+{
+    public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wrail-displays-test-" + Guid.NewGuid().ToString("N"));
+    public TemporaryDirectory() => Directory.CreateDirectory(Path);
+    public void Dispose() { if (Directory.Exists(Path)) Directory.Delete(Path, true); }
+}

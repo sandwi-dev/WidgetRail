@@ -18,6 +18,8 @@ service. See [Capabilities](capabilities.md) for consent, lifecycle, and error b
 | `system.apps.windows.close.v1` | `HostServices.TaskSwitcher.CloseAsync` | Interactive |
 | `system.power.read.v1` | `HostServices.Power.GetAvailabilityAsync` | Visible or Interactive |
 | `system.power.control.v1` | `ShutDownAsync`, `RestartAsync`, `SleepAsync` | Interactive |
+| `system.displays.read.v1` | `HostServices.DisplayProfiles.GetAsync` and the `Changed` event | Visible or Interactive |
+| `system.displays.control.v1` | Save, manage, apply, keep and revert display profiles | Interactive; restores have an independent confirmation timeout |
 
 ## Important behavior
 

@@ -14,6 +14,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     private readonly ILoopbackHttpPlatformBrokerBackend _loopbackHttp;
     private readonly IPrivateStatePlatformBrokerBackend _privateState;
     private readonly IPowerPlatformBrokerBackend? _power;
+    private readonly IDisplayProfilesPlatformBackend? _displays;
     private int _disposed;
 
     public CompositePlatformBrokerBackend(
@@ -26,8 +27,11 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         IPrivateSecretPlatformBrokerBackend? privateSecrets = null,
         ILoopbackHttpPlatformBrokerBackend? loopbackHttp = null,
         IPrivateStatePlatformBrokerBackend? privateState = null,
-        IPowerPlatformBrokerBackend? power = null)
+        IPowerPlatformBrokerBackend? power = null,
+        IDisplayProfilesPlatformBackend? displays = null)
     {
+        _displays = displays;
+        if (_displays is not null) _displays.EventPublished += ForwardDisplayEvent;
         _power = power;
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _network = network ?? throw new ArgumentNullException(nameof(network));
@@ -59,6 +63,18 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         Task.FromException(new BrokerException("power_unavailable", "PC power controls are unavailable."));
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
+
+    public Task<DisplayProfilesState> GetDisplayProfilesAsync(CancellationToken token) =>
+        _displays?.GetDisplayProfilesAsync(token) ?? Task.FromException<DisplayProfilesState>(
+            new BrokerException("display_unavailable", "Display profiles are unavailable."));
+    public Task<DisplayProfilesState> ChangeDisplayProfileAsync(DisplayProfileCommand command,
+        DisplayProfileRequest request, BrokerWidgetIdentity identity, CancellationToken token) =>
+        _displays?.ChangeDisplayProfileAsync(command, request, identity, token) ?? Task.FromException<DisplayProfilesState>(
+            new BrokerException("display_unavailable", "Display profiles are unavailable."));
+    private void ForwardDisplayEvent(object? sender, BrokerPlatformEvent value)
+    {
+        if (value.CapabilityId == PlatformCapabilities.DisplaysReadV1) EventPublished?.Invoke(this, value);
+    }
 
     public Task<IReadOnlyList<AudioSessionSummary>> GetAudioSessionsAsync(
         CancellationToken cancellationToken) => _audio.GetAudioSessionsAsync(cancellationToken);
@@ -305,6 +321,8 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (_displays is not null) _displays.EventPublished -= ForwardDisplayEvent;
+        if (_displays is IAsyncDisposable displays) await displays.DisposeAsync().ConfigureAwait(false);
         _audio.EventPublished -= ForwardAudioEvent;
         _network.EventPublished -= ForwardNetworkEvent;
         _activity.EventPublished -= ForwardActivityEvent;

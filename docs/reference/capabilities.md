@@ -49,5 +49,6 @@ See [Security](../maintainers/security-and-trust.md).
 
 The current typed service definitions live in
 [`Capabilities.cs`](../../src/WidgetSdk/Capabilities.cs),
-[`Power.cs`](../../src/WidgetSdk/Power.cs), and
+[`Power.cs`](../../src/WidgetSdk/Power.cs),
+[`DisplayProfiles.cs`](../../src/WidgetSdk/DisplayProfiles.cs), and
 [`TaskSwitcher.cs`](../../src/WidgetSdk/TaskSwitcher.cs).

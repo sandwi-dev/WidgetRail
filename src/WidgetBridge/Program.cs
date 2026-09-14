@@ -17,6 +17,12 @@ internal static class Program
     {
         try
         {
+            if (args is ["--display-profile-guard"])
+                return await WidgetRail.WindowsDisplayProvider.DisplayRestoreGuard.RunAsync().ConfigureAwait(false);
+            if (args is ["--display-profile-guard", var guardPipe] &&
+                guardPipe.StartsWith("WidgetRail.DisplayGuard.", StringComparison.Ordinal) &&
+                Guid.TryParseExact(guardPipe["WidgetRail.DisplayGuard.".Length..], "N", out _))
+                return await WidgetRail.WindowsDisplayProvider.DisplayRestoreGuard.RunAsync(guardPipe).ConfigureAwait(false);
             var pipeName = RequiredValue(args, "--host-pipe");
             var catalogPath = RequiredValue(args, "--catalog");
             var acceptTimeout = OptionalInt(args, "--accept-timeout-ms", 10_000, 100, 60_000);
@@ -94,7 +100,9 @@ internal static class Program
                 communityBackend,
                 communityBackend,
                 communityBackend,
-                power: new WidgetRail.WindowsPowerProvider.WindowsPowerPlatformBackend());
+                power: new WidgetRail.WindowsPowerProvider.WindowsPowerPlatformBackend(),
+                displays: new WidgetRail.WindowsDisplayProvider.WindowsDisplayProfilesBackend(
+                    settingsPaths.RootDirectory, Path.Combine(AppContext.BaseDirectory, "WidgetBridge.exe")));
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor, residencyBudget,

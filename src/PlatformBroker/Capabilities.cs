@@ -49,6 +49,17 @@ public sealed record BrokerCapabilityDefinition(
 /// <summary>Closed public capability vocabulary. Version is part of every ID.</summary>
 public static class PlatformCapabilities
 {
+    public const string DisplaysReadV1 = "system.displays.read.v1";
+    public const string DisplaysControlV1 = "system.displays.control.v1";
+    public const string DisplayProfilesGet = "display-profiles.get";
+    public const string DisplayProfilesSave = "display-profiles.save";
+    public const string DisplayProfilesRename = "display-profiles.rename";
+    public const string DisplayProfilesReplace = "display-profiles.replace";
+    public const string DisplayProfilesDelete = "display-profiles.delete";
+    public const string DisplayProfilesApply = "display-profiles.apply";
+    public const string DisplayProfilesKeep = "display-profiles.keep";
+    public const string DisplayProfilesRevert = "display-profiles.revert";
+    public const string DisplayProfilesChanged = "display-profiles.changed";
     public const string PowerReadV1 = "system.power.read.v1";
     public const string PowerControlV1 = "system.power.control.v1";
     public const string PowerGet = "power.get";
@@ -164,6 +175,11 @@ public static class PlatformCapabilities
     private static readonly IReadOnlyDictionary<string, BrokerCapabilityDefinition> Definitions =
         new Dictionary<string, BrokerCapabilityDefinition>(StringComparer.Ordinal)
         {
+            [DisplaysReadV1] = new(DisplaysReadV1, 1, BrokerCapabilityKind.Read, Set(DisplayProfilesGet), Set(DisplayProfilesChanged)),
+            [DisplaysControlV1] = new(DisplaysControlV1, 1, BrokerCapabilityKind.Control,
+                Set(DisplayProfilesSave, DisplayProfilesRename, DisplayProfilesReplace, DisplayProfilesDelete,
+                    DisplayProfilesApply, DisplayProfilesKeep, DisplayProfilesRevert), Set(),
+                InFlightContinuationOperations: Set(DisplayProfilesApply, DisplayProfilesKeep, DisplayProfilesRevert)),
             [PowerReadV1] = new(PowerReadV1, 1, BrokerCapabilityKind.Read, Set(PowerGet), Set()),
             [PowerControlV1] = new(PowerControlV1, 1, BrokerCapabilityKind.Control,
                 Set(PowerShutDown, PowerRestart, PowerSleep), Set()),

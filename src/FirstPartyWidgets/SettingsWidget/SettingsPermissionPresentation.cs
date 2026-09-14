@@ -430,6 +430,8 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AppLibraryReadV1 => "See your app library",
         PlatformCapabilities.TaskWindowsPreviewV1 => "Show live previews of open windows",
         PlatformCapabilities.PowerReadV1 => "Check available PC power options",
+        PlatformCapabilities.DisplaysReadV1 => "See display setups and saved profiles",
+        PlatformCapabilities.DisplaysControlV1 => "Save and restore display profiles",
         PlatformCapabilities.PowerControlV1 => "Shut down, restart or sleep this PC",
         PlatformCapabilities.TaskWindowsReadV1 => "See open windows and their titles",
         PlatformCapabilities.TaskWindowsSwitchV1 => "Switch to open windows",
@@ -516,6 +518,10 @@ internal static class SettingsPermissionPresentation
             "Display window contents inside the overlay. Previews are view-only.",
         PlatformCapabilities.PowerReadV1 =>
             "Check whether this PC supports shutdown, restart and sleep.",
+        PlatformCapabilities.DisplaysReadV1 =>
+            "Read monitor names, resolutions, arrangement and saved display profiles.",
+        PlatformCapabilities.DisplaysControlV1 =>
+            "Save and manage display profiles, and restore a setup with an automatic confirmation timeout. Windows scaling stays unchanged.",
         PlatformCapabilities.PowerControlV1 =>
             "Allow this widget to shut down, restart or put your PC to sleep when you use it.",
         PlatformCapabilities.TaskWindowsReadV1 =>

@@ -119,11 +119,12 @@ static Task CapabilityDomainAuthorityIsSingular()
     Assert.True(rootFields.Any(field => field.Name == "_subscriptions"));
     Assert.True(rootFields.Any(field => field.Name == "_dashboardGestureAuthorities"));
     Assert.True(rootFields.Any(field => field.Name == "_eventSequence"));
-    Assert.Equal(7, rootFields.Count(field =>
+    Assert.Equal(8, rootFields.Count(field =>
         field.FieldType.Name.EndsWith("CapabilityDomain", StringComparison.Ordinal)));
 
     Type[] domainTypes =
     [
+        typeof(DisplayProfilesCapabilityDomain),
         typeof(PowerCapabilityDomain),
         typeof(AudioCapabilityDomain),
         typeof(NetworkCapabilityDomain),
@@ -148,6 +149,10 @@ static Task CapabilityDomainAuthorityIsSingular()
 
     Assert.Equal(BrokerCapabilityDomain.Power,
         BrokerCapabilityDomains.Resolve(PlatformCapabilities.PowerControlV1));
+    Assert.Equal(BrokerCapabilityDomain.Displays,
+        BrokerCapabilityDomains.Resolve(PlatformCapabilities.DisplaysReadV1));
+    Assert.Equal(BrokerCapabilityDomain.Displays,
+        BrokerCapabilityDomains.Resolve(PlatformCapabilities.DisplaysControlV1));
     Assert.Equal(BrokerCapabilityDomain.Audio,
         BrokerCapabilityDomains.Resolve(PlatformCapabilities.AudioSessionsReadV1));
     Assert.Equal(BrokerCapabilityDomain.Network,
@@ -417,7 +422,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(37, PlatformCapabilities.All.Count);
+    Assert.Equal(39, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -462,13 +467,17 @@ static Task CapabilityVocabularyIsClosed()
         .All(capability => !capability.AllowsDashboardGesture));
     Assert.True(PlatformCapabilities.All
         .Where(capability => capability.Id != PlatformCapabilities.AppLibraryLaunchV1 &&
-            capability.Id != PlatformCapabilities.TaskWindowsSwitchV1)
+            capability.Id != PlatformCapabilities.TaskWindowsSwitchV1 &&
+            capability.Id != PlatformCapabilities.DisplaysControlV1)
         .All(capability => capability.InFlightContinuationOperations is null ||
             capability.InFlightContinuationOperations.Count == 0));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.AppLibraryLaunchV1)
         .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.AppLibraryLaunch, PlatformCapabilities.AppLibraryLaunchObserved]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.TaskWindowsSwitchV1)
         .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.TaskWindowsSwitch]));
+    Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.DisplaysControlV1)
+        .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.DisplayProfilesApply,
+            PlatformCapabilities.DisplayProfilesKeep, PlatformCapabilities.DisplayProfilesRevert]));
     var defaultControl = new BrokerCapabilityDefinition(
         "test.future.control.v1",
         1,

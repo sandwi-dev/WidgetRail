@@ -4,6 +4,7 @@ namespace WidgetRail.PlatformBroker;
 
 internal enum BrokerCapabilityDomain
 {
+    Displays,
     Power,
     Audio,
     Network,
@@ -18,6 +19,8 @@ internal static class BrokerCapabilityDomains
 {
     internal static BrokerCapabilityDomain Resolve(string capabilityId)
     {
+        if (capabilityId is PlatformCapabilities.DisplaysReadV1 or PlatformCapabilities.DisplaysControlV1)
+            return BrokerCapabilityDomain.Displays;
         if (capabilityId is PlatformCapabilities.PowerReadV1 or PlatformCapabilities.PowerControlV1)
             return BrokerCapabilityDomain.Power;
         if (PlatformCapabilities.TryGetLoopbackPort(capabilityId, out _))

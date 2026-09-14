@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.firstparty.display-profiles",
+  "publisher": "widgetrail.firstparty",
+  "name": "Display Profiles",
+  "version": "0.1.0",
+  "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": { "runtime": "dotnet-worker", "assembly": "payload/DisplayProfilesWidget.dll", "type": "WidgetRail.FirstPartyWidgets.DisplayProfiles.DisplayProfilesWidget" },
+  "presentation": { "icon": "fullscreen", "packageIcon": { "assetId": "display.monitor", "colorMode": "themeTint" } },
+  "iconAssets": { "display.monitor": { "path": "assets/icons/display.svg" } },
+  "permissions": ["system.displays.read.v1"],
+  "optionalPermissions": ["system.displays.control.v1"],
+  "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 120 },
+  "resourceRequest": { "memoryMb": 48, "updateHz": 2 },
+  "architectures": ["x64"]
+}

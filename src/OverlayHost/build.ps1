@@ -2070,6 +2070,7 @@ $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
 $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
 $gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
 $powerOutput = Join-Path $outputDirectory 'runtime\Power'
+$displayProfilesOutput = Join-Path $outputDirectory 'runtime\DisplayProfiles'
 $taskSwitcherOutput = Join-Path $outputDirectory 'runtime\TaskSwitcher'
 $mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
 $embeddedMediaSampleOutput = Join-Path $outputDirectory 'runtime\EmbeddedMediaSample'
@@ -2238,6 +2239,9 @@ Publish-BundledWidgetPackage `
 Publish-BundledWidgetPackage `
     (Join-Path $projectDirectory '..\FirstPartyWidgets\PowerWidget') `
     $powerOutput 'PowerWidget' 'Power'
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\FirstPartyWidgets\DisplayProfilesWidget') `
+    $displayProfilesOutput 'DisplayProfilesWidget' 'Display Profiles'
 
 Publish-BundledWidgetPackage `
     (Join-Path $projectDirectory '..\FirstPartyWidgets\MediaSessionsWidget') `

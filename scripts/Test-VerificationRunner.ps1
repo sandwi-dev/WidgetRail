@@ -76,6 +76,8 @@ $expectedDefaultStepIds = @(
     'media-sessions-tests',
     'task-switcher-widget-build',
     'task-switcher-widget-tests',
+    'display-profiles-build',
+    'display-profiles-tests',
     'power-widget-build',
     'power-widget-tests',
     'settings-widget-tests',
@@ -92,9 +94,9 @@ $expectedDefaultStepIds = @(
 )
 $defaultSelection = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all)
 $defaultIds = @($defaultSelection | ForEach-Object { $_.id })
-if ($defaultIds.Count -ne 57 -or
+if ($defaultIds.Count -ne 59 -or
     [string]::Join("`n", $defaultIds) -cne [string]::Join("`n", $expectedDefaultStepIds)) {
-    throw 'Focused selection changed the exact 57-step default aggregate identity or order.'
+    throw 'Focused selection changed the exact 59-step default aggregate identity or order.'
 }
 $nativeDefaults = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native)
 if ([string]::Join("`n", @($nativeDefaults | ForEach-Object id)) -cne
