@@ -230,17 +230,6 @@ internal static class SettingsInstalledWidgetPresentation
         var permissionPackageIds = permissionState.Projection.Packages
             .Select(item => item.Id)
             .ToArray();
-        static WidgetElement SurfaceAppearanceButton(
-            string widgetId, PlatformSettingsDocument settings, bool busy)
-        {
-            var value = settings.Appearance.WidgetSurfaceAppearanceOverrides
-                .GetValueOrDefault(widgetId, WidgetSurfaceAppearanceOverride.Widget);
-            return UI.Button(
-                    $"Surface override: {value}",
-                    "installed.surface-appearance.cycle",
-                    "installed.details.surface-appearance")
-                .Busy(busy).Classes("setting-row");
-        }
         static ButtonElement EnabledActionButton(string label, string actionId, bool enabled, bool canToggle, bool busy) =>
             UI.Button(label, actionId, "installed.details.toggle")
                 .Disabled(!canToggle).Busy(busy).Classes(enabled ? "danger-button" : "primary-button");
@@ -261,7 +250,6 @@ internal static class SettingsInstalledWidgetPresentation
                 UI.Button(builtInHasPermissions ? "Permissions & configuration" : "No host permissions requested",
                         "installed.permissions.open", "installed.details.permissions")
                     .Disabled(!builtInHasPermissions).Busy(busy).Classes("setting-row"),
-                SurfaceAppearanceButton(builtIn.Id, settings, busy),
                 EnabledActionButton(enabled ? "Disable widget" : "Enable widget", "installed.builtin.toggle",
                     enabled, builtIn.Id != BuiltInWidgetSettings.SettingsWidgetId, busy),
                 LocalDataButton(state, busy),
@@ -297,7 +285,8 @@ internal static class SettingsInstalledWidgetPresentation
                         "installed.details.status", "Built-in widget management status")
                         .Classes("page-help"),
                     .. builtInControls]),
-                builtInHasPermissions ? "installed.details.permissions" : "installed.details.surface-appearance",
+                builtInHasPermissions ? "installed.details.permissions" :
+                    builtIn.Id != BuiltInWidgetSettings.SettingsWidgetId ? "installed.details.toggle" : "installed.details.back",
                 "installed.details");
         }
         if (package is null)
@@ -378,7 +367,6 @@ internal static class SettingsInstalledWidgetPresentation
         {
             UI.Button("Update from file", "installed.update.open", "installed.details.update").Disabled(!valid).Busy(busy).Classes("primary-button"),
             versionsButton, permissionsButton,
-            SurfaceAppearanceButton(manifest.Id, settings, busy),
             actionButton, localDataButton,
         };
         controls.Add(uninstallButton);

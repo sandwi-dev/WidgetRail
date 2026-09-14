@@ -309,15 +309,11 @@ internal static class SettingsPresentation
             up: "interface.stepper.decrement",
             down: null,
             busy);
-        var surfaceAppearance = UI.Button(
-                $"Widget surfaces: {appearance.WidgetSurfaceAppearance}",
-                "surface-appearance.cycle", "surface-appearance.cycle")
-            .Busy(busy).Classes("setting-row");
         return View(header,
             PageScope("overlay.page",
                 UI.Text("Overlay", "overlay.heading", "Overlay settings")
                     .Classes("page-heading"),
-                interfaceScale, opacity, surfaceAppearance,
+                interfaceScale, opacity,
                 UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
                     "startup.toggle", "overlay.startup").Busy(busy).Disabled(startup?.CanChange != true)
                     .AddClasses("setting-row"),

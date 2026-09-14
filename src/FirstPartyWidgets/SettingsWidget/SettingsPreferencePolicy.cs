@@ -17,7 +17,6 @@ internal enum SettingsPreferenceKind
     BoldText,
     ReducedTransparency,
     AnimateWidgetSwitching,
-    WidgetSurfaceAppearance,
     Theme,
 }
 
@@ -118,22 +117,9 @@ internal readonly record struct SettingsPreferenceMutation(
         {
             AnimateWidgetSwitching = !appearance.AnimateWidgetSwitching,
         },
-        SettingsPreferenceKind.WidgetSurfaceAppearance => appearance with
-        {
-            WidgetSurfaceAppearance = Next(appearance.WidgetSurfaceAppearance),
-        },
         SettingsPreferenceKind.Theme when ThemeId is not null && ThemeVersion is not null =>
             appearance with { ThemeId = ThemeId, ThemeVersion = ThemeVersion },
         _ => appearance,
-    };
-
-    private static WidgetSurfaceAppearanceOverride Next(
-        WidgetSurfaceAppearanceOverride value) => value switch
-    {
-        WidgetSurfaceAppearanceOverride.Widget => WidgetSurfaceAppearanceOverride.Theme,
-        WidgetSurfaceAppearanceOverride.Theme => WidgetSurfaceAppearanceOverride.Transparent,
-        WidgetSurfaceAppearanceOverride.Transparent => WidgetSurfaceAppearanceOverride.Solid,
-        _ => WidgetSurfaceAppearanceOverride.Widget,
     };
 
     private static double Step(double current, double delta, double minimum, double maximum) =>
@@ -182,9 +168,6 @@ internal static class SettingsPreferencePolicy
             "widget-switch-animation.toggle" => new(
                 SettingsPreferenceKind.AnimateWidgetSwitching,
                 "Widget-switch animation preference saved"),
-            "surface-appearance.cycle" => new(
-                SettingsPreferenceKind.WidgetSurfaceAppearance,
-                "Widget surface preference saved"),
             _ => default,
         };
         return mutation.SuccessStatus is not null;

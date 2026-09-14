@@ -416,9 +416,6 @@ public sealed class SettingsWidget : Widget
                     .ConfigureAwait(false); break;
                 case "installed.builtin.toggle": await ToggleSelectedBuiltInWidgetAsync(cancellationToken).ConfigureAwait(false); break;
                 case "installed.builtin.open": await OpenSelectedBuiltInCopyAsync(cancellationToken).ConfigureAwait(false); break;
-                case "installed.surface-appearance.cycle":
-                    await CycleSelectedWidgetSurfaceAppearanceAsync(cancellationToken)
-                        .ConfigureAwait(false); break;
                 case "capability.grant": await ChangeConsentAsync(
                     ConsentDecision.Grant, cancellationToken).ConfigureAwait(false); break;
                 case "capabilities.grant-all": await AllowAllPermissionsAsync(cancellationToken).ConfigureAwait(false); break;
@@ -787,70 +784,6 @@ public sealed class SettingsWidget : Widget
                 StatusMessage = saved.Controllers.OpenShortcut == ControllerOpenShortcut.Guide
                     ? "Controller shortcut set to Guide"
                     : "Controller shortcut set to View + Menu";
-            }
-        }
-        catch (PlatformSettingsException exception)
-        {
-            SetOperation($"Save failed ({exception.Code})", busy: false, error: true);
-            return;
-        }
-        Invalidate();
-    }
-
-    private async Task CycleSelectedWidgetSurfaceAppearanceAsync(
-        CancellationToken cancellationToken)
-    {
-        string? widgetId;
-        bool valid;
-        PlatformSettingsDocument fallback;
-        lock (_stateLock)
-        {
-            widgetId = _installedState.SelectedInstalled?.ActiveVersion.Manifest.Id ??
-                       _installedState.SelectedBuiltIn?.Id;
-            valid = _settingsValid;
-            fallback = _settings;
-        }
-        if (widgetId is null) return;
-        SetOperation("Saving widget surface…", busy: true, error: false);
-        try
-        {
-            PlatformSettingsDocument Apply(PlatformSettingsDocument current)
-            {
-                var overrides = new Dictionary<string, WidgetSurfaceAppearanceOverride>(
-                    current.Appearance.WidgetSurfaceAppearanceOverrides,
-                    StringComparer.Ordinal);
-                var existing = overrides.GetValueOrDefault(
-                    widgetId, WidgetSurfaceAppearanceOverride.Widget);
-                var next = existing switch
-                {
-                    WidgetSurfaceAppearanceOverride.Widget => WidgetSurfaceAppearanceOverride.Theme,
-                    WidgetSurfaceAppearanceOverride.Theme => WidgetSurfaceAppearanceOverride.Transparent,
-                    WidgetSurfaceAppearanceOverride.Transparent => WidgetSurfaceAppearanceOverride.Solid,
-                    _ => WidgetSurfaceAppearanceOverride.Widget,
-                };
-                if (next == WidgetSurfaceAppearanceOverride.Widget)
-                    overrides.Remove(widgetId);
-                else
-                    overrides[widgetId] = next;
-                return current with
-                {
-                    Appearance = current.Appearance with
-                    {
-                        WidgetSurfaceAppearanceOverrides = overrides,
-                    },
-                };
-            }
-            var saved = valid
-                ? await _store.UpdateAsync(Apply, cancellationToken).ConfigureAwait(false)
-                : await _store.ReplaceAsync(Apply(fallback), cancellationToken)
-                    .ConfigureAwait(false);
-            lock (_stateLock)
-            {
-                _settings = saved;
-                _settingsValid = true;
-                _busy = false;
-                _error = false;
-                StatusMessage = $"Surface preference saved for {widgetId}";
             }
         }
         catch (PlatformSettingsException exception)

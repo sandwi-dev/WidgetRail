@@ -1477,7 +1477,7 @@ static async Task BuiltInWidgetInventory()
         Text(details.Root, "installed.details.status").Text!);
     Assert.True(Button(details.Root, "installed.details.toggle").StyleClasses.Contains("danger-button"),
         "Built-in disable must use the community-widget danger style.");
-    string[] controlOrder = ["installed.details.permissions", "installed.details.surface-appearance",
+    string[] controlOrder = ["installed.details.permissions",
         "installed.details.toggle", "installed.details.local-data", "installed.details.back"];
     Assert.SequenceEqual(controlOrder, Buttons(details.Root)
         .Where(button => controlOrder.Contains(button.Id)).Select(button => button.Id));
@@ -1492,7 +1492,7 @@ static async Task BuiltInWidgetInventory()
     Assert.True(Button(disabledBuiltIn.Root, "installed.details.toggle").StyleClasses.Contains("primary-button"),
         "Built-in enable must use the community-widget primary style.");
     Assert.Equal("installed.details.toggle", Button(disabledBuiltIn.Root, "installed.details.local-data").Focus!.Up);
-    Assert.Equal("installed.details.toggle", Button(disabledBuiltIn.Root, "installed.details.surface-appearance").Focus!.Down);
+    Assert.Equal("installed.details.toggle", Button(disabledBuiltIn.Root, "installed.details.permissions").Focus!.Down);
     Assert.Valid(disabledBuiltIn);
     await Action(widget, "installed.builtin.toggle");
     Assert.True((await Store(temp.Path).LoadAsync()).BuiltInWidgets.IsEnabled("widgetrail.firstparty.audio-mixer"), "Built-in re-enable failed.");
