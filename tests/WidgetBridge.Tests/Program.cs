@@ -73,6 +73,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bridge alone synthesizes private state authority for capability-free workers", PrivateStateAuthorityIsHostSynthesized),
     ("Action-bound app launch closes only after exact successful terminal", ActionBoundLaunchCloseIsTerminalExact),
     ("Installed worker local data clears after exact retirement and preserves its neighbor", InstalledWorkerLocalDataClearIsExact),
+    ("Built-in local data resolves disabled runtime aliases without touching installed copies", BuiltInLocalDataIsSourceScoped),
     ("Disabled package uninstall is exact revisioned and preserves private data", InstalledPackageUninstallIsExact),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
@@ -2901,6 +2902,58 @@ static async Task ActionBoundLaunchCloseIsTerminalExact()
     lifetime.Cancel();
     try { await server; }
     catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+}
+
+static async Task BuiltInLocalDataIsSourceScoped()
+{
+    const string packageId = "dev.example.shared-data";
+    using var trusted = TemporaryCatalog.Create(id: "builtin-alias", packageId: packageId);
+    using var temp = new TemporaryDirectory("wrail-builtin-data");
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
+    var installed = await InstallWidgetAsync(catalog, temp.Path, packageId, enabled: false);
+    var trustedCatalog = BridgeCatalog.LoadTrusted(trusted.Path, catalogRoot);
+    var configured = trustedCatalog.GetConfigured("builtin-alias");
+    var builtinIdentity = new BrokerWidgetIdentity(configured.PackageId, configured.PublisherId, configured.InstanceId);
+    var installedIdentity = new BrokerWidgetIdentity(packageId, InstalledWidgetAuthority.PublisherId(installed),
+        InstalledWidgetInstanceIdentity.Derive(packageId, installed.Manifest.Version));
+    var backend = new WindowsCommunityPlatformBackend(Path.Combine(temp.Path, "state"));
+    var document = Convert.ToBase64String("{}"u8);
+    await backend.WritePrivateStateAsync(builtinIdentity, new WritePrivateStateRequest(document, null), default);
+    await backend.WritePrivateStateAsync(installedIdentity, new WritePrivateStateRequest(document, null), default);
+    var empty = new BridgeCatalog(Array.Empty<ConfiguredWidget>());
+    await using var fixture = new RegistryFixture(empty);
+    var settingsPaths = new WidgetRail.PlatformSettings.PlatformSettingsPaths(Path.Combine(temp.Path, "settings"));
+    var settingsStore = new WidgetRail.PlatformSettings.PlatformSettingsStore(settingsPaths);
+    await settingsStore.UpdateAsync(settings => settings with { BuiltInWidgets = new() { DisabledIds = [packageId] } });
+    await using var monitor = new BridgeCatalogMonitor(trusted.Path, catalogRoot, Environment.ProcessPath!, empty,
+        initialDiagnostics: null, loadCatalog: null, installedCatalogPending: false, settingsFilePath: settingsPaths.SettingsFile);
+    var service = new BridgeWidgetLocalDataService(fixture.Registry, backend, monitor);
+    var builtIn = await service.InspectBuiltInAsync(packageId, default);
+    var extra = await service.InspectAsync(packageId, default);
+    Assert.Equal(packageId, builtIn.WidgetId);
+    Assert.True(builtIn.Exists && extra.Exists, "Both independent data stores must be present.");
+    Assert.True(builtIn.ConfirmationToken != extra.ConfirmationToken, "Copies shared a destructive confirmation token.");
+    var refused = await service.ClearBuiltInAsync(packageId, extra.ConfirmationToken!, default);
+    Assert.Equal(PlatformWidgetLocalDataClearStatus.Stale, refused.Status);
+    var cleared = await service.ClearBuiltInAsync(packageId, builtIn.ConfirmationToken!, default);
+    Assert.Equal(PlatformWidgetLocalDataClearStatus.Cleared, cleared.Status);
+    Assert.True((await backend.ReadPrivateStateAsync(installedIdentity, default)).Exists,
+        "Clearing disabled built-in data touched the installed copy.");
+    Assert.True(!(await backend.ReadPrivateStateAsync(builtinIdentity, default)).Exists,
+        "Disabled built-in data was not cleared.");
+    await backend.WritePrivateStateAsync(builtinIdentity, new WritePrivateStateRequest(document, null), default);
+    await settingsStore.UpdateAsync(settings => settings with { BuiltInWidgets = new() });
+    Assert.True(!(await service.InspectBuiltInAsync(packageId, default)).Exists,
+        "An enabled widget pending runtime registration was treated as safely inactive.");
+    fixture.Registry.ApplyCatalog(trustedCatalog, 1);
+    await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+    builtIn = await service.InspectBuiltInAsync(packageId, default);
+    cleared = await service.ClearBuiltInAsync(packageId, builtIn.ConfirmationToken!, default);
+    Assert.Equal(PlatformWidgetLocalDataClearStatus.Cleared, cleared.Status);
+    Assert.Equal(1, fixture.Clients[0].DisposeCount);
+    Assert.True((await backend.ReadPrivateStateAsync(installedIdentity, default)).Exists,
+        "Clearing active built-in data touched the installed copy.");
 }
 
 static async Task InstalledWorkerLocalDataClearIsExact()

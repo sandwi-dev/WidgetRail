@@ -15,6 +15,10 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private const string RetryAuthorityRecoveryOperation = "retry-authority-recovery";
     private const string InspectWidgetLocalDataOperation = "inspect-widget-local-data";
     private const string ClearWidgetLocalDataOperation = "clear-widget-local-data";
+    private const string InspectBuiltInLocalDataOperation = "inspect-builtin-widget-local-data";
+    private const string ClearBuiltInLocalDataOperation = "clear-builtin-widget-local-data";
+    private readonly Func<string, CancellationToken, ValueTask<PlatformWidgetLocalDataInspection>>? _builtInLocalDataInspection;
+    private readonly Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? _builtInLocalDataClear;
     private const string InspectWidgetPackageUninstallOperation = "inspect-widget-package-uninstall";
     private const string UninstallWidgetPackageOperation = "uninstall-widget-package";
     internal static readonly TimeSpan MaximumOperationTimeout = TimeSpan.FromSeconds(10);
@@ -55,7 +59,9 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             ValueTask<PlatformWidgetPackageUninstallResult>>? packageUninstall = null,
         Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null,
         Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? applicationControl = null,
-        Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null)
+        Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null,
+        Func<string, CancellationToken, ValueTask<PlatformWidgetLocalDataInspection>>? builtInLocalDataInspection = null,
+        Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? builtInLocalDataClear = null)
     {
         if (!IsToken(pipeName, 200))
             throw new ArgumentException("Diagnostics pipe name is invalid.", nameof(pipeName));
@@ -67,6 +73,8 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         _authorityRecoveryRetry = authorityRecoveryRetry;
         _localDataInspection = localDataInspection;
         _localDataClear = localDataClear;
+        _builtInLocalDataInspection = builtInLocalDataInspection;
+        _builtInLocalDataClear = builtInLocalDataClear;
         _packageUninstallInspection = packageUninstallInspection;
         _packageUninstall = packageUninstall;
         _requestTimeout = ValidateTimeout(
@@ -229,36 +237,40 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
                 break;
             }
             case InspectWidgetLocalDataOperation:
+            case InspectBuiltInLocalDataOperation:
             {
                 ValidateWidgetId(request.WidgetId);
                 if (request.ConfirmationToken is not null)
                     throw new PlatformDiagnosticsException("malformed_request");
-                var result = _localDataInspection is null
+                var inspect = request.Operation == InspectBuiltInLocalDataOperation ? _builtInLocalDataInspection : _localDataInspection;
+                var result = inspect is null
                     ? new PlatformWidgetLocalDataInspection(
                         request.WidgetId!, request.WidgetId!, false,
                         "inspection_unsupported", null)
-                    : await _localDataInspection(request.WidgetId!, cancellationToken)
+                    : await inspect(request.WidgetId!, cancellationToken)
                         .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
                 ValidateLocalDataInspection(result);
                 await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
-                receiptOperation = InspectWidgetLocalDataOperation;
+                receiptOperation = request.Operation;
                 break;
             }
             case ClearWidgetLocalDataOperation:
+            case ClearBuiltInLocalDataOperation:
             {
                 ValidateConfirmationToken(request.ConfirmationToken);
                 ValidateWidgetId(request.WidgetId);
                 if (request.PublisherId is not null || request.ActiveVersion is not null)
                     throw new PlatformDiagnosticsException("malformed_request");
-                var result = _localDataClear is null
+                var clear = request.Operation == ClearBuiltInLocalDataOperation ? _builtInLocalDataClear : _localDataClear;
+                var result = clear is null
                     ? new PlatformWidgetLocalDataClearResult(
                         PlatformWidgetLocalDataClearStatus.Refused, "clear_unsupported")
-                    : await _localDataClear(
+                    : await clear(
                             request.WidgetId!, request.ConfirmationToken!, cancellationToken)
                         .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
                 ValidateLocalDataClearResult(result);
                 await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
-                receiptOperation = ClearWidgetLocalDataOperation;
+                receiptOperation = request.Operation;
                 break;
             }
             case InspectWidgetPackageUninstallOperation:
@@ -659,12 +671,20 @@ public sealed class PlatformDiagnosticsPipeClient(
 
     public async ValueTask<PlatformWidgetLocalDataInspection> InspectWidgetLocalDataAsync(
         string widgetId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await InspectLocalDataAsync(widgetId, "inspect-widget-local-data", cancellationToken).ConfigureAwait(false);
+
+    public ValueTask<PlatformWidgetLocalDataInspection> InspectBuiltInWidgetLocalDataAsync(
+        string packageId, CancellationToken cancellationToken = default) =>
+        InspectLocalDataAsync(packageId, "inspect-builtin-widget-local-data", cancellationToken);
+
+    private async ValueTask<PlatformWidgetLocalDataInspection> InspectLocalDataAsync(
+        string widgetId, string operation, CancellationToken cancellationToken)
     {
         PlatformDiagnosticsPipeServer.ValidateWidgetId(widgetId);
         return await ExecuteAsync<PlatformWidgetLocalDataInspection>(
-            new DiagnosticsRequest("inspect-widget-local-data", WidgetId: widgetId),
-            "inspect-widget-local-data",
+            new DiagnosticsRequest(operation, WidgetId: widgetId),
+            operation,
             PlatformDiagnosticsPipeServer.ValidateLocalDataInspection,
             cancellationToken).ConfigureAwait(false);
     }
@@ -672,7 +692,15 @@ public sealed class PlatformDiagnosticsPipeClient(
     public async ValueTask<PlatformWidgetLocalDataClearResult> ClearWidgetLocalDataAsync(
         string widgetId,
         string confirmationToken,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await ClearLocalDataAsync(widgetId, confirmationToken, "clear-widget-local-data", cancellationToken).ConfigureAwait(false);
+
+    public ValueTask<PlatformWidgetLocalDataClearResult> ClearBuiltInWidgetLocalDataAsync(
+        string packageId, string confirmationToken, CancellationToken cancellationToken = default) =>
+        ClearLocalDataAsync(packageId, confirmationToken, "clear-builtin-widget-local-data", cancellationToken);
+
+    private async ValueTask<PlatformWidgetLocalDataClearResult> ClearLocalDataAsync(
+        string widgetId, string confirmationToken, string operation, CancellationToken cancellationToken)
     {
         PlatformDiagnosticsPipeServer.ValidateWidgetId(widgetId);
         if (!IsConfirmationToken(confirmationToken))
@@ -680,8 +708,8 @@ public sealed class PlatformDiagnosticsPipeClient(
                 nameof(confirmationToken));
         return await ExecuteAsync<PlatformWidgetLocalDataClearResult>(
             new DiagnosticsRequest(
-                "clear-widget-local-data", confirmationToken, widgetId),
-            "clear-widget-local-data",
+                operation, confirmationToken, widgetId),
+            operation,
             PlatformDiagnosticsPipeServer.ValidateLocalDataClearResult,
             cancellationToken).ConfigureAwait(false);
     }

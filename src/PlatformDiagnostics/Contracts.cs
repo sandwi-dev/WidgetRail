@@ -234,6 +234,19 @@ public interface IPlatformDiagnosticsService
         ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(
             PlatformWidgetLocalDataClearStatus.Refused, "clear_unsupported"));
 
+    ValueTask<PlatformWidgetLocalDataInspection> InspectBuiltInWidgetLocalDataAsync(
+        string packageId,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new PlatformWidgetLocalDataInspection(
+            packageId, packageId, false, "inspection_unsupported", null));
+
+    ValueTask<PlatformWidgetLocalDataClearResult> ClearBuiltInWidgetLocalDataAsync(
+        string packageId,
+        string confirmationToken,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(
+            PlatformWidgetLocalDataClearStatus.Refused, "clear_unsupported"));
+
     ValueTask<PlatformWidgetPackageUninstallInspection> InspectWidgetPackageUninstallAsync(
         string widgetId,
         CancellationToken cancellationToken = default) =>

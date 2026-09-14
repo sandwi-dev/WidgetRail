@@ -32,6 +32,11 @@ widget, install packages, and manage versions.
 Built-in widgets belong to the application release. Disable them if you do not
 want them; they are not separately uninstalled or updated from a package file.
 
+If you previously installed a widget that now comes with WidgetRail, Settings
+labels that installed package as an **Unused copy**. Choose **Manage built-in
+version** to enable the version the overlay uses. You can disable and remove
+the extra copy separately. Local Data controls apply only to the copy you select.
+
 ## Permissions
 
 Enable only the Windows capabilities you want a widget to use. A permission

@@ -12,6 +12,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bound worker receives a validated sanitized snapshot", AuthenticatedRoundTrip),
     ("Authenticated worker retries only the exact recovery confirmation token", AuthenticatedRecoveryRetry),
     ("Trusted worker inspects and clears only exact widget local data", WidgetLocalDataRoundTrip),
+    ("Built-in and installed data operations stay distinct across the diagnostics pipe", BuiltInLocalDataRoundTrip),
     ("Trusted worker uninstalls only an exact path-free package identity", WidgetPackageUninstallRoundTrip),
     ("Recovery retry reports stale and refused outcomes without mutation ambiguity", RecoveryRetryStaleAndRefused),
     ("Recovery retry timeout and caller cancellation fail closed", RecoveryRetryCancellationIsBounded),
@@ -145,6 +146,28 @@ static async Task AuthenticatedRecoveryRetry()
     await Assert.ThrowsAsync<ArgumentException>(() =>
         harness.Client.RetryAuthorityRecoveryAsync(token.ToLowerInvariant()).AsTask());
     Assert.Equal(1, calls);
+}
+
+static async Task BuiltInLocalDataRoundTrip()
+{
+    var token = new string('B', 64);
+    var installedCalls = 0;
+    var builtInClears = 0;
+    await using var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(HealthySnapshot(1)),
+        inspect: (id, _) => { installedCalls++; return ValueTask.FromResult(new PlatformWidgetLocalDataInspection(id, "Installed", false, "no_local_data", null)); },
+        inspectBuiltIn: (id, _) => ValueTask.FromResult(new PlatformWidgetLocalDataInspection(id, "Built in", true, "local_data_present", token)),
+        clearBuiltIn: (id, confirmation, _) =>
+        {
+            Assert.Equal("dev.example.shared", id); Assert.Equal(token, confirmation); builtInClears++;
+            return ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(PlatformWidgetLocalDataClearStatus.Cleared, "cleared"));
+        });
+    var data = await harness.Client.InspectBuiltInWidgetLocalDataAsync("dev.example.shared");
+    Assert.True(data.Exists);
+    Assert.Equal(PlatformWidgetLocalDataClearStatus.Cleared,
+        (await harness.Client.ClearBuiltInWidgetLocalDataAsync(data.WidgetId, data.ConfirmationToken!)).Status);
+    Assert.Equal(0, installedCalls); Assert.Equal(1, builtInClears);
+    Assert.True(!(await harness.Client.InspectWidgetLocalDataAsync("dev.example.shared")).Exists);
+    Assert.Equal(1, installedCalls);
 }
 
 static async Task WidgetLocalDataRoundTrip()
@@ -761,12 +784,14 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
             ValueTask<PlatformWidgetPackageUninstallResult>>? uninstall = null,
         Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? exclusiveControl = null,
         Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? applicationControl = null,
-        Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null)
+        Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null,
+        Func<string, CancellationToken, ValueTask<PlatformWidgetLocalDataInspection>>? inspectBuiltIn = null,
+        Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? clearBuiltIn = null)
     {
         PipeName = $"wrail-diagnostics-test-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
             PipeName, provider, serverTimeout, retry, inspect, clear,
-            uninstallInspect, uninstall, exclusiveControl, applicationControl, packageNotification);
+            uninstallInspect, uninstall, exclusiveControl, applicationControl, packageNotification, inspectBuiltIn, clearBuiltIn);
         _server.BindExpectedClientProcess(Environment.ProcessId);
         Client = new PlatformDiagnosticsPipeClient(
             PipeName, _server.ChannelNonce, Environment.ProcessId,

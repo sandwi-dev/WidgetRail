@@ -66,6 +66,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unused version removal confirms exact content and protects the selected version", UnusedVersionRemoval),
     ("Disabled Community uninstall confirms exact package and preserves private data", InstalledWidgetPackageUninstall),
     ("Built-in widgets remain available and can be disabled without removing files", BuiltInWidgetInventory),
+    ("Installed copies cannot shadow built-in widget management", InstalledBuiltInCopy),
     ("Installed widget enable and disable update catalog state", InstalledWidgetToggle),
     ("Installed widget versions support controller rollback while disabled", InstalledWidgetVersionRollback),
     ("Installed version changes immediately refresh permission authority", InstalledVersionRefreshesPermissions),
@@ -1512,6 +1513,60 @@ static async Task BuiltInWidgetInventory()
     Assert.Valid(details);
 }
 
+static async Task InstalledBuiltInCopy()
+{
+    using var temp = new TemporaryDirectory();
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var bundledRoot = Path.Combine(temp.Path, "runtime");
+    const string id = "widgetrail.samples.sdk-gallery";
+    WriteBundledWidget(bundledRoot, "SdkGallery", id, "widgetrail.samples", "SDK Gallery", [], []);
+    WriteInstalledWidget(catalogRoot, id, "widgetrail.samples", "SDK Gallery", [], []);
+    var catalog = new WidgetCatalog(catalogRoot);
+    await catalog.SetEnabledAsync(id, true);
+    await Store(temp.Path).UpdateAsync(settings => settings with
+    {
+        BuiltInWidgets = new() { DisabledIds = [id] },
+    });
+    var service = new LocalDataDiagnosticsService(id);
+    var widget = CreateWithPermissions(temp.Path, catalogRoot,
+        new ConsentStore(Path.Combine(temp.Path, "consent")), bundledRoot, diagnostics: service);
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    var list = Snapshot(widget);
+    Assert.Contains("Unused copy", Button(list.Root, "installed.item.0").Text!);
+    Assert.Contains("Disabled", Button(list.Root, "installed.builtin.item.0").Text!);
+    await Action(widget, "installed.select.0");
+    var details = Snapshot(widget);
+    Assert.Equal("installed.details.builtin", details.InitialFocusId);
+    Assert.Equal("Manage built-in version", Button(details.Root, "installed.details.builtin").Text);
+    Assert.Contains("disable this unused copy first", Button(details.Root, "installed.details.local-data").Text!);
+    Assert.Equal(0, service.InspectCount);
+    Assert.True(!Buttons(details.Root).Any(button => button.ActionId == "installed.permissions.open"),
+        "Unused package exposed shared built-in settings as its own.");
+    await Action(widget, "installed.toggle");
+    Assert.True(!(await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Unused copy was not disabled.");
+    Assert.Equal(1, service.InspectCount);
+    var disabled = Snapshot(widget);
+    Assert.Equal("Clear local data", Button(disabled.Root, "installed.details.local-data").Text);
+    Assert.True(!Buttons(disabled.Root).Any(button => button.ActionId == "installed.toggle"),
+        "Unused copy still offers to enable itself.");
+    await Action(widget, "installed.toggle");
+    Assert.True(!(await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Stale enable action enabled an ignored package.");
+    await Action(widget, "installed.builtin.open");
+    var builtIn = Snapshot(widget);
+    Assert.Equal(1, service.BuiltInInspectCount);
+    await Action(widget, "installed.local-data.open");
+    await Action(widget, "installed.local-data.clear");
+    Assert.Equal(1, service.BuiltInClearCount);
+    Assert.Equal(0, service.ClearCount);
+    Assert.Equal("installed.builtin.toggle", Button(builtIn.Root, "installed.details.toggle").ActionId);
+    await Action(widget, "installed.builtin.toggle");
+    Assert.True((await Store(temp.Path).LoadAsync()).BuiltInWidgets.IsEnabled(id), "Manage built-in did not enable the runnable widget.");
+    Assert.True(!(await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Built-in control modified the installed copy.");
+    Assert.Equal(0, service.ClearCount);
+    Assert.Valid(list); Assert.Valid(details); Assert.Valid(disabled); Assert.Valid(builtIn);
+}
+
 static async Task InstalledWidgetToggle()
 {
     using var temp = new TemporaryDirectory();
@@ -2819,6 +2874,19 @@ file sealed class SequenceDiagnosticsService(params PlatformDiagnosticsSnapshot[
 
 file sealed class LocalDataDiagnosticsService(string selectedId) : IPlatformDiagnosticsService
 {
+    public int BuiltInInspectCount { get; private set; }
+    public int BuiltInClearCount { get; private set; }
+    public ValueTask<PlatformWidgetLocalDataInspection> InspectBuiltInWidgetLocalDataAsync(string packageId, CancellationToken cancellationToken = default)
+    {
+        BuiltInInspectCount++;
+        return ValueTask.FromResult(new PlatformWidgetLocalDataInspection(packageId, "Built in", true, "local_data_present", new string('B', 64)));
+    }
+    public ValueTask<PlatformWidgetLocalDataClearResult> ClearBuiltInWidgetLocalDataAsync(string packageId, string confirmationToken, CancellationToken cancellationToken = default)
+    {
+        if (confirmationToken != new string('B', 64)) throw new InvalidOperationException("Wrong source token.");
+        BuiltInClearCount++;
+        return ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(PlatformWidgetLocalDataClearStatus.Cleared, "cleared"));
+    }
     private bool _selectedExists = true;
     public string Token { get; } = new('A', 64);
     public int InspectCount { get; private set; }

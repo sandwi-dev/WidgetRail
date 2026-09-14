@@ -79,7 +79,8 @@ internal static class SettingsInstalledWidgetPresentation
             var index = start + offset;
             var package = visible[offset];
             var compatibility = WidgetHostCompatibility.Evaluate(package.ActiveVersion.Manifest);
-            var status = package.Enabled
+            var superseded = builtIn.Any(manifest => manifest.Id == package.Id);
+            var status = superseded ? "Unused copy · built-in version takes priority" : package.Enabled
                 ? compatibility.IsSupported ? "Enabled" : "Enabled · incompatible"
                 : compatibility.IsSupported ? "Disabled · review before enabling" : "Incompatible";
             children.Add(UI.Button(
@@ -87,8 +88,8 @@ internal static class SettingsInstalledWidgetPresentation
                     (valid ? status : $"Last good · {status}"),
                     $"installed.select.{index}", $"installed.item.{index}")
                 .Busy(busy)
-                .Selected(package.Enabled)
-                .Classes("setting-row", package.Enabled ? "is-enabled" : "is-disabled"));
+                .Selected(package.Enabled && !superseded)
+                .Classes("setting-row", package.Enabled && !superseded ? "is-enabled" : "is-disabled"));
         }
 
         if (visible.Length == 0)
@@ -309,6 +310,9 @@ internal static class SettingsInstalledWidgetPresentation
                     UI.Button("Back", "back", "installed.details.back").Classes("secondary-button")),
                 "installed.details.back", "installed.details");
 
+        if (state.SelectedInstalledBuiltIn is not null)
+            return RenderUnusedInstalledCopy(header, busy, state);
+
         var manifest = package.ActiveVersion.Manifest;
         var compatibility = WidgetHostCompatibility.Evaluate(manifest);
         var requiredPermissions = manifest.Permissions.Count == 0
@@ -439,6 +443,41 @@ internal static class SettingsInstalledWidgetPresentation
             "installed.details");
     }
 
+    private static WidgetView RenderUnusedInstalledCopy(
+        StackElement header, bool busy, SettingsInstalledWidgetState state)
+    {
+        var package = state.SelectedInstalled!;
+        var controls = new List<WidgetElement>
+        {
+            UI.Button("Manage built-in version", "installed.builtin.open", "installed.details.builtin")
+                .Disabled(!state.CatalogValid).Busy(busy).Classes("primary-button"),
+        };
+        if (package.Enabled)
+            controls.Add(UI.Button("Disable unused copy", "installed.toggle", "installed.details.toggle")
+                .Disabled(!state.CatalogValid).Busy(busy).Classes("danger-button"));
+        controls.Add(LocalDataButton(state, busy));
+        controls.Add(UI.Button($"Manage versions ({package.Versions.Count})", "installed.versions.open", "installed.details.versions")
+            .Disabled(!state.CatalogValid).Busy(busy).Classes("setting-row"));
+        controls.Add(UI.Button("Uninstall unused copy", "installed.uninstall.open", SettingsInstalledWidgetUninstallPolicy.FocusId)
+            .Disabled(!state.CatalogValid).Busy(busy).Classes("danger-button"));
+        controls.Add(UI.Button("Back", "back", "installed.details.back").Classes("secondary-button"));
+        SettingsPresentation.LinkVertical(controls);
+        return SettingsPresentation.View(header,
+            SettingsPresentation.PageScope("installed.details", [
+                UI.Text(package.Name, "installed.details.heading", "Widget name").Classes("page-heading"),
+                UI.Text("Unused installed copy", "installed.details.source", "Widget source").Classes("section-heading"),
+                UI.Text("WidgetRail includes this widget. The built-in version takes priority, even when it is disabled. Use Manage built-in version to turn it on or change its settings.",
+                    "installed.details.status", "Widget copy status").Classes("page-help"),
+                UI.Text($"Installed copy: {package.ActiveVersion.Version} · Built-in version: {state.SelectedInstalledBuiltIn!.Version}",
+                    "installed.details.version", "Widget versions").Classes("diagnostic-line"),
+                UI.Text("You can remove this extra copy without removing the built-in widget. Disable the extra copy first to manage its stored data or uninstall it.",
+                    "installed.details.cleanup", "Unused copy cleanup").Classes("page-help"),
+                .. controls]),
+            state.DetailsFocusId == SettingsInstalledWidgetUninstallPolicy.FocusId
+                ? SettingsInstalledWidgetUninstallPolicy.FocusId : "installed.details.builtin",
+            "installed.details");
+    }
+
     public static WidgetView RenderInstalledWidgetUninstall(
         StackElement header,
         bool busy,
@@ -529,6 +568,7 @@ internal static class SettingsInstalledWidgetPresentation
         {
             { Exists: true, ConfirmationToken: not null } => "Clear local data",
             { StatusCode: "no_local_data" } => "No local data stored",
+            { StatusCode: "unused_copy_enabled" } => "Local data · disable this unused copy first",
             null => "Checking local data…",
             _ => $"Local data unavailable ({data.StatusCode})",
         };
