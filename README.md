@@ -10,7 +10,7 @@ Open it with **View + Menu**, do what you need, and get back to playing.
 
 [Get started](docs/users/getting-started.md) · [Build a widget](docs/developers/widget-quickstart.md) · [Documentation](docs/README.md) · [Releases](https://github.com/sandwi-dev/WidgetRail/releases)
 
-![Screenshot placeholder: the WidgetRail overlay over a game](docs/images/overview-placeholder.svg)
+![The WidgetRail overlay over a game](docs/images/overview.png)
 
 ## Made for a controller
 
@@ -30,7 +30,7 @@ and size, or remove it when you're done.
 Widgets can also offer compact pinned layouts, such as music controls. They
 choose which views make sense outside the full overlay.
 
-![Screenshot placeholder: pinned YouTube playback beside a game](docs/images/pinned-video-placeholder.svg)
+![Pinned YouTube playback beside a game](docs/images/pinned-video.png)
 
 Try the separately installed [YouTube widget](samples/YouTubeWidget/README.md),
 or learn [how pinning works](docs/users/pinning.md). Availability over a game
@@ -63,7 +63,7 @@ Choose a theme, adjust the interface scale, and arrange the widgets you use most
 Shared controls and controller hints follow the selected theme. Widget authors
 can add artwork and animated background transitions that fit their content.
 
-![Screenshot placeholder: the same widget in two themes](docs/images/themes-placeholder.svg)
+![WidgetRail theme comparison](docs/images/themes.png)
 
 [Personalize WidgetRail](docs/users/customization.md)
 

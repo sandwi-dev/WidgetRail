@@ -37,7 +37,7 @@ shared host and approved capabilities. Full-access applications use a separate
 bootstrap and have ordinary user-level Windows access. They are not interchangeable
 security models. [Understand the boundary](../maintainers/security-and-trust.md).
 
-![Screenshot placeholder: SDK Gallery components with controller focus](../images/sdk-gallery-placeholder.svg)
+![SDK Gallery components with controller focus](../images/sdk-gallery.png)
 
 ## When you need exact details
 
