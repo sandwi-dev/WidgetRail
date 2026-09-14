@@ -9,7 +9,7 @@ namespace {{Publisher}}.{{WidgetName}}.Tests;
 public sealed class MediaScenarioTests
 {
     [TestMethod]
-    public async Task FullWidgetRemainsTheOrdinaryFallback()
+    public async Task OrdinaryWidgetViewHandlesPlayback()
     {
         var result = await new WidgetScenario("ready", Scenarios.Ready())
             .Activate()

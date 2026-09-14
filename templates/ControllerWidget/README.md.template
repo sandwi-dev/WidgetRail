@@ -6,7 +6,10 @@ public SDK helpers for the profile's state, lifecycle, and controller policy.
 
 The scaffold carries its matching `WidgetRail.WidgetSdk` dependency in
 the project-local `.widgetrail/packages` feed. Restore is offline, requires no source
-checkout or absolute machine path, and `NuGet.Config` clears external feeds.
+checkout or absolute machine path, and the root `NuGet.Config` clears external feeds.
+The generated tests have their own `tests/NuGet.Config`: their first run needs
+internet access to download MSTest and its dependencies from NuGet.org. The
+WidgetRail SDK still comes only from the local feed.
 
 ## Build, exercise, and validate
 

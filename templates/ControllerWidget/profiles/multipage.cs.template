@@ -33,7 +33,10 @@ public sealed class {{WidgetName}} : Widget
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (action.ActionId is "primary" or "open-library")
+        if (action.ActionId == "primary")
+            _navigation.Navigate(_navigation.Value.Route == Route.Home ? Route.Library : Route.Home,
+                action.SourceElementId);
+        else if (action.ActionId == "open-library")
             _navigation.Navigate(Route.Library, action.SourceElementId);
         else if (action.ActionId == "open-home")
             _navigation.Navigate(Route.Home, action.SourceElementId);

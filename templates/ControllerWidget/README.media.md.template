@@ -3,10 +3,15 @@
 `{{WidgetId}}` is a controller-first WidgetRail media widget generated from the
 `media` starter. One widget instance owns three projections:
 
-- the ordinary **Full widget** root, which remains the host fallback;
+- the ordinary widget view shown in the overlay;
 - package-authored **Compact media** controls; and
 - package-authored **Media and queue**, whose fake queue demand exists only while
   that typed layout handle is selected.
+
+The manifest enables `pinningSupported` for the two authored layouts. It does
+not offer the ordinary view as a **Full widget** pin. To offer that option too,
+explicitly add `"fullWidgetPinningSupported": true` to `manifest.json`, after
+checking that the ordinary view works at a pinned size.
 
 The authored layouts register stable identity, sizing, focus, and input scope
 once through `PinnedLayoutHandle`. Selection receives a fresh cancellation token;
@@ -15,6 +20,10 @@ a revoked or replaced selection cannot publish a late queue result. Replace
 second lifecycle, focus, input, or provider owner.
 
 ## Build, test, and preview
+
+The widget builds with the included local SDK package. The tests use their own
+`tests/NuGet.Config` and need internet access on the first run to download MSTest
+and its dependencies from NuGet.org. The WidgetRail SDK stays on the local feed.
 
 ```powershell
 dotnet build .\{{WidgetName}}.csproj --configuration Release
@@ -25,7 +34,7 @@ wrail preview . --scenario ready --pinned-layout @all --output .\fixtures\pinned
 wrail validate .
 ```
 
-The focused `MSTest.Sdk` 4.3.2 project proves the ordinary Full fallback,
+The focused `MSTest.Sdk` 4.3.2 project checks the ordinary widget view,
 stable layout order, bounded responsive surfaces, valid focus/scope identities,
 loading/ready/empty/error states, selection cancellation, and stale-result
 rejection without sleeps or a live media provider. Semantic preview uses the

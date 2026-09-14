@@ -7,10 +7,14 @@ credential, DOM, window, or browser authority.
 
 ## Build and verify
 
+The widget builds with the included local SDK package. The tests use their own
+`tests/NuGet.Config` and need internet access on the first run to download MSTest
+and its dependencies from NuGet.org. The WidgetRail SDK stays on the local feed.
+
 ```powershell
 dotnet build .\{{WidgetName}}.csproj --configuration Release
-dotnet test --project .\tests\{{WidgetName}}.Tests.csproj `
-  --configuration Release --no-ansi --progress off --output Detailed `
+dotnet run --project .\tests\{{WidgetName}}.Tests.csproj `
+  --configuration Release -- --no-ansi --progress off --output Detailed `
   --minimum-expected-tests 4
 wrail preview . --scenario ready
 wrail validate .

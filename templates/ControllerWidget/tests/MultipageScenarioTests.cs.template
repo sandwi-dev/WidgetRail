@@ -1,0 +1,41 @@
+using WidgetRail.WidgetSdk;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace {{Publisher}}.{{WidgetName}}.Tests;
+
+[TestClass]
+public sealed class ScenarioTests
+{
+    [TestMethod]
+    public async Task PrimaryActionNavigatesBothWays()
+    {
+        var result = await new WidgetScenario("round-trip", Scenarios.Ready())
+            .Activate()
+            .ExpectText("home", "status", "Home route")
+            .Action("to-library", new("primary", "primary"))
+            .ExpectText("library", "status", "Library route")
+            .Action("to-home", new("primary", "primary"))
+            .ExpectText("home-again", "status", "Home route")
+            .ExpectFocus("focus", "primary")
+            .RunAsync();
+
+        Assert.IsTrue(result.Passed,
+            string.Join("; ", result.Steps.Where(step => !step.Passed)
+                .Select(step => $"{step.StepId}:{step.Code}:{step.Message}")));
+    }
+
+    [TestMethod]
+    public async Task ReadyScenarioIsDeterministic()
+    {
+        var result = await new WidgetScenario("ready", Scenarios.Ready())
+            .Activate()
+            .Action("primary-action", new("primary", "primary"))
+            .ExpectText("result", "status", Scenarios.ExpectedText)
+            .ExpectFocus("focus", "primary")
+            .RunAsync();
+
+        Assert.IsTrue(result.Passed,
+            string.Join("; ", result.Steps.Where(step => !step.Passed)
+                .Select(step => $"{step.StepId}:{step.Code}:{step.Message}")));
+    }
+}

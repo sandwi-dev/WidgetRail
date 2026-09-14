@@ -104,7 +104,9 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   contract verifies this with a fresh temporary `NUGET_PACKAGES` root and the
   generated cleared `NuGet.Config`. Each sibling `MSTest.Sdk` 4.3.2 project
   executes the same semantic scenario declared for isolated `wrail preview`; no
-  repository project reference or credential is generated.
+  repository project reference or credential is generated. Tests have a separate
+  `tests/NuGet.Config` that downloads MSTest and its dependencies from NuGet.org
+  on the first run. It keeps the WidgetRail SDK mapped to the local feed.
   `eng/WidgetSdkRelease.props` supplies the shared pre-release version and
   supported template version stamped into the CLI and SDK. The generated
   package adds a deterministic content suffix and the project references that
