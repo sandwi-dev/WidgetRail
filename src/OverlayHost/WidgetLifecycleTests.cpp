@@ -1,5 +1,8 @@
 #include "WidgetLifecycle.h"
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <iostream>
 
