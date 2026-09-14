@@ -113,6 +113,12 @@ These are recommendations, not requirements. [Setup details](docs/users/getting-
 
 ## FAQ
 
+### What if widgets look too big or too small, or the guide, tray, and widget overlap?
+
+Open **Settings → Overlay → Interface size**. Decrease it if the overlay feels
+too large or its parts overlap; increase it if widgets and controls are too small.
+Adjust it until the overlay fits comfortably on your display.
+
 ### Why does the overlay open but fail to take focus or switch apps?
 
 Windows can refuse to give WidgetRail foreground focus, including over some
