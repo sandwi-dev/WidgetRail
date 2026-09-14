@@ -56,11 +56,11 @@ foreach (var test in tests)
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
 
-static Task DefaultsAreSafe()
+static async Task DefaultsAreSafe()
 {
     using var temp = new TemporaryDirectory();
     var store = Store(temp.Path);
-    return VerifyAsync();
+    await VerifyAsync();
 
     async Task VerifyAsync()
     {
@@ -75,8 +75,11 @@ static Task DefaultsAreSafe()
         Assert.Equal(ContrastPreference.System, settings.Appearance.Contrast);
         Assert.Equal(false, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
-        Assert.Equal(false, settings.Appearance.AnimateWidgetSwitching);
+        Assert.Equal(true, settings.Appearance.AnimateWidgetSwitching);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
+
+        await File.WriteAllTextAsync(store.Paths.SettingsFile, SettingsJson());
+        Assert.Equal(false, (await store.LoadAsync()).Appearance.AnimateWidgetSwitching);
     }
 }
 
@@ -116,10 +119,16 @@ static async Task SettingsRoundTrip()
     Assert.True(!Directory.EnumerateFiles(temp.Path, ".platform-settings.*.tmp").Any(),
         "Atomic settings temporary file leaked.");
 
+    await store.UpdateAsync(current => current with
+    {
+        Appearance = current.Appearance with { AnimateWidgetSwitching = false },
+    });
+    Assert.Equal(false, (await new PlatformSettingsStore(store.Paths).LoadAsync()).Appearance.AnimateWidgetSwitching);
+
     var reset = await store.ReplaceAsync(PlatformSettingsDocument.Default);
-    Assert.Equal(false, reset.Appearance.AnimateWidgetSwitching);
+    Assert.Equal(true, reset.Appearance.AnimateWidgetSwitching);
     var resetReloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
-    Assert.Equal(false, resetReloaded.Appearance.AnimateWidgetSwitching);
+    Assert.Equal(true, resetReloaded.Appearance.AnimateWidgetSwitching);
 }
 
 static async Task LegacySchemaOneRetiresObsoleteSettings()
