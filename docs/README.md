@@ -53,6 +53,5 @@ Use [Build execution and diagnostics](maintainers/build-execution.md) for restor
 requirements and build-log guidance.
 
 Maintainers can find [versioning](maintainers/versioning.md),
-[release preparation](maintainers/release-checklist.md),
-[security boundaries](maintainers/security-and-trust.md), and
-[screenshot instructions](images/README.md) in their respective guides.
+[release preparation](maintainers/release-checklist.md), and
+[security boundaries](maintainers/security-and-trust.md) in their respective guides.

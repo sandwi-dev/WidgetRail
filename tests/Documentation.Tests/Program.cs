@@ -282,7 +282,9 @@ foreach (var removed in new[] { "archive", "history" })
     if (Directory.Exists(Path.Combine(repository, "docs", removed)) &&
         Directory.EnumerateFiles(Path.Combine(repository, "docs", removed), "*", SearchOption.AllDirectories).Any())
         failures.Add($"Retired notes remain: {removed}");
-RequireLink(Path.Combine(repository, "docs", "README.md"), "images/README.md");
+foreach (var screenshot in new[] { "overview", "pinned-video", "themes" })
+    RequireLink(Path.Combine(repository, "README.md"), $"docs/images/{screenshot}.png");
+RequireLink(Path.Combine(repository, "docs", "developers", "widget-authoring-guide.md"), "../images/sdk-gallery.png");
 
 if (failures.Count != 0)
 {

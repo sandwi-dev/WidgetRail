@@ -6,7 +6,7 @@ branding. Publishing those artifacts is a separate step.
 
 ## Prepare the public repository
 
-- Review the README, user guides, and [screenshot slots](../images/README.md).
+- Review the README, user guides, and product screenshots in `docs/images`.
 - Check the MIT license and third-party license/branding notices.
 - Review the Git history being published for secrets and personal information. Deleting old notes from the current tree does not erase history.
 - Establish the reporting channel described in [SECURITY.md](../../SECURITY.md).
@@ -27,7 +27,7 @@ $env:RUSTUP_TOOLCHAIN = '1.97.1'
 pwsh -NoProfile -File .\scripts\Build-Release.ps1
 pwsh -NoProfile -File .\scripts\Get-InstallerCompiler.ps1
 pwsh -NoProfile -File .\scripts\Build-Installer.ps1 `
-  -ReleaseRoot .\artifacts\releases\0.1.0-preview.1 `
+  -ReleaseRoot .\artifacts\releases\0.1.0-preview.2 `
   -CompilerPath .\artifacts\tools\installer-compiler\package\tools\ISCC.exe
 ```
 
