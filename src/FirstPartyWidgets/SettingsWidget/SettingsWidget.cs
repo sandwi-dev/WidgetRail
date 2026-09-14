@@ -415,6 +415,7 @@ public sealed class SettingsWidget : Widget
                 case "installed.toggle": await ToggleSelectedInstalledWidgetAsync(cancellationToken)
                     .ConfigureAwait(false); break;
                 case "installed.builtin.toggle": await ToggleSelectedBuiltInWidgetAsync(cancellationToken).ConfigureAwait(false); break;
+                case "installed.builtin.open": await OpenSelectedBuiltInCopyAsync(cancellationToken).ConfigureAwait(false); break;
                 case "installed.surface-appearance.cycle":
                     await CycleSelectedWidgetSurfaceAppearanceAsync(cancellationToken)
                         .ConfigureAwait(false); break;
@@ -1494,18 +1495,46 @@ public sealed class SettingsWidget : Widget
         await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    private async Task OpenSelectedBuiltInCopyAsync(CancellationToken cancellationToken)
+    {
+        int index;
+        lock (_stateLock)
+        {
+            if (_page != SettingsPage.InstalledWidgetDetails || !_installedState.CatalogValid ||
+                _installedState.SelectedInstalledBuiltIn is not { } builtIn) return;
+            index = _installedState.BuiltIns.ToList().FindIndex(item => item.Id == builtIn.Id);
+        }
+        await SelectBuiltInWidgetAsync(index, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task InspectSelectedWidgetLocalDataAsync(CancellationToken cancellationToken)
     {
         string? widgetId;
+        bool unusedCopyEnabled = false;
+        bool builtIn;
         lock (_stateLock)
+        {
+            builtIn = _installedState.SelectedBuiltIn is not null;
+            if (_installedState.SelectedInstalled is { Enabled: true } unused &&
+                _installedState.SelectedInstalledBuiltIn is not null)
+            {
+                _installedState = _installedState with
+                {
+                    LocalData = new(unused.Id, unused.Name, false, "unused_copy_enabled", null),
+                };
+                unusedCopyEnabled = true;
+            }
             widgetId = _installedState.SelectedInstalled?.ActiveVersion.Manifest.Id ??
                        _installedState.SelectedBuiltIn?.Id;
+        }
+        if (unusedCopyEnabled) { Invalidate(); return; }
         if (widgetId is null) return;
         PlatformWidgetLocalDataInspection inspection;
         try
         {
-            inspection = await _diagnosticsService.InspectWidgetLocalDataAsync(
-                widgetId, cancellationToken).ConfigureAwait(false);
+            inspection = await (builtIn
+                ? _diagnosticsService.InspectBuiltInWidgetLocalDataAsync(widgetId, cancellationToken)
+                : _diagnosticsService.InspectWidgetLocalDataAsync(widgetId, cancellationToken)).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1519,7 +1548,8 @@ public sealed class SettingsWidget : Widget
         {
             var currentId = _installedState.SelectedInstalled?.ActiveVersion.Manifest.Id ??
                             _installedState.SelectedBuiltIn?.Id;
-            if (!string.Equals(currentId, inspection.WidgetId, StringComparison.Ordinal)) return;
+            if (!string.Equals(currentId, inspection.WidgetId, StringComparison.Ordinal) ||
+                builtIn != (_installedState.SelectedBuiltIn is not null)) return;
             _installedState = _installedState with { LocalData = inspection };
         }
         Invalidate();
@@ -1673,8 +1703,10 @@ public sealed class SettingsWidget : Widget
     {
         string? widgetId;
         string? displayedToken;
+        bool builtIn;
         lock (_stateLock)
         {
+            builtIn = _installedState.SelectedBuiltIn is not null;
             widgetId = _installedState.SelectedInstalled?.ActiveVersion.Manifest.Id ??
                        _installedState.SelectedBuiltIn?.Id;
             displayedToken = _page == SettingsPage.InstalledWidgetLocalData
@@ -1686,8 +1718,9 @@ public sealed class SettingsWidget : Widget
         PlatformWidgetLocalDataInspection current;
         try
         {
-            current = await _diagnosticsService.InspectWidgetLocalDataAsync(
-                widgetId, cancellationToken).ConfigureAwait(false);
+            current = await (builtIn
+                ? _diagnosticsService.InspectBuiltInWidgetLocalDataAsync(widgetId, cancellationToken)
+                : _diagnosticsService.InspectWidgetLocalDataAsync(widgetId, cancellationToken)).ConfigureAwait(false);
             if (!string.Equals(current.ConfirmationToken, displayedToken, StringComparison.Ordinal))
             {
                 lock (_stateLock)
@@ -1702,8 +1735,9 @@ public sealed class SettingsWidget : Widget
                 return;
             }
             SetOperation("Clearing local data and restarting widget…", busy: true, error: false);
-            var result = await _diagnosticsService.ClearWidgetLocalDataAsync(
-                widgetId, displayedToken, cancellationToken).ConfigureAwait(false);
+            var result = await (builtIn
+                ? _diagnosticsService.ClearBuiltInWidgetLocalDataAsync(widgetId, displayedToken, cancellationToken)
+                : _diagnosticsService.ClearWidgetLocalDataAsync(widgetId, displayedToken, cancellationToken)).ConfigureAwait(false);
             lock (_stateLock)
             {
                 _page = SettingsPage.InstalledWidgetDetails;
@@ -1963,6 +1997,13 @@ public sealed class SettingsWidget : Widget
         if (selected is null) return;
 
         var nextEnabled = !selected.Enabled;
+        bool hasBuiltInCopy;
+        lock (_stateLock) hasBuiltInCopy = _installedState.BuiltIns.Any(item => item.Id == selected.Id);
+        if (nextEnabled && hasBuiltInCopy)
+        {
+            SetOperation("This widget is included with WidgetRail. Enable its built-in version instead.", false, false);
+            return;
+        }
         if (nextEnabled && !WidgetHostCompatibility.Evaluate(selected.ActiveVersion.Manifest).IsSupported)
         {
             SetOperation("Widget cannot be enabled because it is incompatible with this host",
@@ -2013,6 +2054,7 @@ public sealed class SettingsWidget : Widget
             return;
         }
         Invalidate();
+        await InspectSelectedWidgetLocalDataAsync(cancellationToken).ConfigureAwait(false);
         await InspectSelectedWidgetUninstallAsync(cancellationToken).ConfigureAwait(false);
     }
 

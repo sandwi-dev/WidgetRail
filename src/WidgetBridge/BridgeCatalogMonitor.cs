@@ -170,6 +170,21 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
     }
 
     internal string InstalledCatalogRoot => _installedCatalogRoot;
+    internal BridgeCatalog LoadTrustedForManagement() =>
+        BridgeCatalog.LoadTrusted(_trustedCatalogPath, _installedCatalogRoot);
+    internal async Task<bool> IsBuiltInDisabledForManagementAsync(string packageId, CancellationToken cancellationToken)
+    {
+        if (_settingsFilePath is null) return false;
+        var paths = new WidgetRail.PlatformSettings.PlatformSettingsPaths(Path.GetDirectoryName(_settingsFilePath)!);
+        if (!string.Equals(paths.SettingsFile, _settingsFilePath, StringComparison.OrdinalIgnoreCase)) return false;
+        try
+        {
+            var settings = await new WidgetRail.PlatformSettings.PlatformSettingsStore(paths)
+                .LoadAsync(cancellationToken).ConfigureAwait(false);
+            return !settings.BuiltInWidgets.IsEnabled(packageId);
+        }
+        catch (WidgetRail.PlatformSettings.PlatformSettingsException) { return false; }
+    }
 
     public void Start()
     {

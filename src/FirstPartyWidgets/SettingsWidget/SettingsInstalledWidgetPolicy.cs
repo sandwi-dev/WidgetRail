@@ -40,6 +40,9 @@ internal sealed record SettingsInstalledWidgetState(
 
     public WidgetManifest? SelectedBuiltIn => BuiltIns.FirstOrDefault(
         manifest => string.Equals(manifest.Id, SelectedBuiltInId, StringComparison.Ordinal));
+
+    public WidgetManifest? SelectedInstalledBuiltIn => BuiltIns.FirstOrDefault(
+        manifest => string.Equals(manifest.Id, SelectedInstalledId, StringComparison.Ordinal));
 }
 
 internal readonly record struct SettingsInstalledWidgetTransition(

@@ -17,19 +17,26 @@ internal sealed class BridgeWidgetLocalDataService(
     BridgeCatalogMonitor? catalogMonitor = null,
     IAppLibraryPlatformBrokerBackend? appLibrary = null)
 {
-    internal async ValueTask<PlatformWidgetLocalDataInspection> InspectAsync(
+    internal ValueTask<PlatformWidgetLocalDataInspection> InspectAsync(string widgetId, CancellationToken cancellationToken) =>
+        InspectCoreAsync(widgetId, false, cancellationToken);
+
+    internal ValueTask<PlatformWidgetLocalDataInspection> InspectBuiltInAsync(string packageId, CancellationToken cancellationToken) =>
+        InspectCoreAsync(packageId, true, cancellationToken);
+
+    private async ValueTask<PlatformWidgetLocalDataInspection> InspectCoreAsync(
         string widgetId,
+        bool builtIn,
         CancellationToken cancellationToken)
     {
         if (backend is null) return Unavailable(widgetId, "provider_unavailable");
         LocalDataTarget target;
         try
         {
-            target = await ResolveAsync(widgetId, cancellationToken).ConfigureAwait(false);
+            target = await ResolveAsync(widgetId, cancellationToken, builtIn).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is KeyNotFoundException or
                                               BridgeProtocolException or
-                                              WidgetPackageException)
+                                              WidgetPackageException or BridgeCatalogException or IOException or UnauthorizedAccessException)
         {
             return Unavailable(widgetId, "widget_not_found");
         }
@@ -40,7 +47,7 @@ internal sealed class BridgeWidgetLocalDataService(
             var state = await ReadStateAsync(identity, cancellationToken)
                 .ConfigureAwait(false);
             return new PlatformWidgetLocalDataInspection(
-                target.Configured.Id,
+                widgetId,
                 BridgeDiagnosticsProjection.SafeLabel(
                     target.Configured.Name, target.Configured.Id),
                 state.Exists,
@@ -60,22 +67,29 @@ internal sealed class BridgeWidgetLocalDataService(
         }
     }
 
-    internal async ValueTask<PlatformWidgetLocalDataClearResult> ClearAsync(
+    internal ValueTask<PlatformWidgetLocalDataClearResult> ClearAsync(string widgetId, string confirmationToken, CancellationToken cancellationToken) =>
+        ClearCoreAsync(widgetId, confirmationToken, false, cancellationToken);
+
+    internal ValueTask<PlatformWidgetLocalDataClearResult> ClearBuiltInAsync(string packageId, string confirmationToken, CancellationToken cancellationToken) =>
+        ClearCoreAsync(packageId, confirmationToken, true, cancellationToken);
+
+    private async ValueTask<PlatformWidgetLocalDataClearResult> ClearCoreAsync(
         string widgetId,
         string confirmationToken,
+        bool builtIn,
         CancellationToken cancellationToken)
     {
         if (backend is null) return Result(
             PlatformWidgetLocalDataClearStatus.Unavailable, "provider_unavailable");
         try
         {
-            var target = await ResolveAsync(widgetId, cancellationToken).ConfigureAwait(false);
+            var target = await ResolveAsync(widgetId, cancellationToken, builtIn).ConfigureAwait(false);
             if (!target.HasRuntimeRegistration)
                 return await ClearDisabledAsync(
-                    target.Configured, confirmationToken, cancellationToken)
+                    target.Configured, confirmationToken, cancellationToken, builtIn)
                     .ConfigureAwait(false);
             var replacement = await registry.ReplaceAsync(
-                widgetId,
+                target.Configured.Id,
                 async (configured, operationCancellation) =>
                 {
                     LocalDataState state;
@@ -123,7 +137,7 @@ internal sealed class BridgeWidgetLocalDataService(
         }
         catch (Exception exception) when (exception is BridgeProtocolException or
                                                AggregateException or ObjectDisposedException or
-                                               KeyNotFoundException or WidgetPackageException)
+                                               KeyNotFoundException or WidgetPackageException or BridgeCatalogException or IOException or UnauthorizedAccessException)
         {
             return Result(PlatformWidgetLocalDataClearStatus.RestartFailed, "restart_failed");
         }
@@ -132,11 +146,12 @@ internal sealed class BridgeWidgetLocalDataService(
     private async ValueTask<PlatformWidgetLocalDataClearResult> ClearDisabledAsync(
         ConfiguredWidget configured,
         string confirmationToken,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool builtIn = false)
     {
         try
         {
-            var current = await ResolveAsync(configured.Id, cancellationToken)
+            var current = await ResolveAsync(builtIn ? configured.PackageId : configured.Id, cancellationToken, builtIn)
                 .ConfigureAwait(false);
             if (current.HasRuntimeRegistration ||
                 !string.Equals(current.Configured.WorkerFingerprint,
@@ -173,8 +188,31 @@ internal sealed class BridgeWidgetLocalDataService(
 
     private async ValueTask<LocalDataTarget> ResolveAsync(
         string widgetId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool builtIn = false)
     {
+        if (builtIn)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            // Resolve source before identity: an installed package with this ID
+            // must never become the target of a built-in data operation.
+            var trusted = catalogMonitor?.LoadTrustedForManagement().GetConfiguredPackage(widgetId) ??
+                throw new BridgeProtocolException("Built-in management catalog is unavailable.");
+            try
+            {
+                var active = registry.CatalogSnapshot().Catalog.GetConfigured(trusted.Id);
+                if (active.PackageId != trusted.PackageId || active.PublisherId != trusted.PublisherId ||
+                    active.InstanceId != trusted.InstanceId || active.WorkerFingerprint != trusted.WorkerFingerprint)
+                    throw new KeyNotFoundException("Built-in widget catalog reconciliation is pending.");
+                return new(active, HasRuntimeRegistration: true);
+            }
+            catch (BridgeProtocolException)
+            {
+                if (!await catalogMonitor!.IsBuiltInDisabledForManagementAsync(widgetId, cancellationToken).ConfigureAwait(false))
+                    throw new KeyNotFoundException("Built-in widget catalog reconciliation is pending.");
+                return new(trusted, HasRuntimeRegistration: false);
+            }
+        }
         try
         {
             return new(

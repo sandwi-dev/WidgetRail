@@ -219,6 +219,10 @@ public sealed class BridgeCatalog
         return widget;
     }
 
+    internal ConfiguredWidget GetConfiguredPackage(string packageId) =>
+        _ordered.SingleOrDefault(widget => widget.PackageId == packageId) ??
+        throw new BridgeProtocolException($"Unknown package '{packageId}'.");
+
     internal ResolvedPackageIconPayload ResolvePackageIcon(
         string widgetId,
         string presentationGeneration,

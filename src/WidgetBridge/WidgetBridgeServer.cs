@@ -987,7 +987,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     _packageUninstall.UninstallAsync,
                     context, _controllers.SetAsync, RequestApplicationControlAsync,
                     _ => ValueTask.FromResult(_localPackageImport?.TakeNotification(configured.PublicDescriptor().RuntimeGeneration)
-                        ?? PlatformWidgetPackageNotification.Empty))
+                        ?? PlatformWidgetPackageNotification.Empty),
+                    _localData.InspectBuiltInAsync, _localData.ClearBuiltInAsync)
                 : _consentStore is null || _platformBackend is null
                     ? null
                     : CreateCompanionFactory(configured),
