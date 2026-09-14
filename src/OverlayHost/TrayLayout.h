@@ -62,12 +62,17 @@ struct TrayLayout final {
 /// Exact-capacity child surfaces must not apply this policy a second time.
 [[nodiscard]] float ComputeTrayCapacityWidth(float monitorUsableWidth) noexcept;
 
-/// Reserves a passive trailing status area without moving the selected tile
-/// away from the screen center. Narrow surfaces retain a compact clock.
+/// Extends the centered tray surface for passive status without reducing icon capacity.
+[[nodiscard]] float ComputeTrayStatusSurfaceWidth(float monitorUsableWidth) noexcept;
+
+/// Adds passive status in spare trailing space without changing icon geometry.
+/// Narrow surfaces compact or omit status before sacrificing icon space.
+/// Exact-capacity child surfaces may supply their original icon capacity separately.
 [[nodiscard]] std::optional<TrayLayout> ComputeTrayStatusLayout(
     float width, float height, std::size_t widgetCount, std::size_t selectedSlot,
     std::optional<TrayBand> band = std::nullopt,
-    TrayWidthBasis widthBasis = TrayWidthBasis::MonitorUsableWidth);
+    TrayWidthBasis widthBasis = TrayWidthBasis::MonitorUsableWidth,
+    std::optional<float> iconCapacityWidth = std::nullopt);
 
 [[nodiscard]] const TrayTileLayout* HitTestTray(
     const TrayLayout& layout, float x, float y) noexcept;

@@ -16176,7 +16176,7 @@ private:
             (focusOutlineWidth_ + 2.0F) * metrics->physicalPixelsPerDip)));
         const LONG trayWidth = std::max(
             1L, static_cast<LONG>(std::ceil(
-                trayCapacityWidthDip *
+                widgetrail::shell::ComputeTrayStatusSurfaceWidth(metrics->viewportWidthDip) *
                 metrics->physicalPixelsPerDip))) + focusPadding * 2;
         const LONG trayHeight = std::max(
             1L, static_cast<LONG>(std::ceil(
@@ -16434,11 +16434,12 @@ private:
             static_cast<float>(session.trayMenuHeadroom) /
             session.pixelsPerDip;
         auto layout = widgetrail::shell::ComputeTrayStatusLayout(
-            session.trayCapacityWidthDip, metrics->viewportHeightDip,
+            metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
             widgetrail::shell::TrayBand{
                 menuHeadroom, metrics->viewportHeightDip},
-            widgetrail::shell::TrayWidthBasis::ExactCapacity);
+            widgetrail::shell::TrayWidthBasis::ExactCapacity,
+            session.trayCapacityWidthDip);
         if (!layout) return std::nullopt;
         const auto offset = [inset](widgetrail::declarative::Rect& bounds) {
             bounds.x += inset;

@@ -309,14 +309,52 @@ int main() {
           !widgetrail::shell::ComputeTrayLayout(800, 600, 0, 0),
           "empty or invalid surfaces publish no tray geometry");
 
-    for (float width : {250.0F, 420.0F, 680.0F, 1100.0F, 2800.0F}) {
+    const auto sameBounds = [](const auto& a, const auto& b) {
+        return std::abs(a.x - b.x) < .01F && std::abs(a.y - b.y) < .01F &&
+            std::abs(a.width - b.width) < .01F && std::abs(a.height - b.height) < .01F;
+    };
+    for (float width : {192.0F, 250.0F, 420.0F, 680.0F, 1100.0F, 1920.0F, 2800.0F}) {
         for (std::size_t count : {1U, 2U, 11U, 40U}) {
             for (std::size_t selected = 0; selected < count; ++selected) {
+                const auto original = widgetrail::shell::ComputeTrayLayout(
+                    width, 160, count, selected, widgetrail::shell::TrayBand{40,140});
                 const auto status = widgetrail::shell::ComputeTrayStatusLayout(
-                    width, 160, count, selected, widgetrail::shell::TrayBand{40,140},
-                    widgetrail::shell::TrayWidthBasis::ExactCapacity);
-                Check(status && status->statusBounds, "status has reserved bounds");
+                    width, 160, count, selected, widgetrail::shell::TrayBand{40,140});
+                Check(original && status, "status layout preserves valid icon layout");
+                Check(original->tiles.size() == status->tiles.size(), "status preserves visible icon capacity");
+                for (std::size_t i = 0; i < original->tiles.size(); ++i) {
+                    Check(original->tiles[i].slot == status->tiles[i].slot &&
+                        sameBounds(original->tiles[i].bounds, status->tiles[i].bounds),
+                        "status preserves icon identities, positions and sizes");
+                }
+                const auto sameOverflow = [&](const auto& a, const auto& b) {
+                    return a.has_value() == b.has_value() && (!a ||
+                        (a->targetSlot == b->targetSlot && a->hiddenCount == b->hiddenCount &&
+                         sameBounds(a->bounds, b->bounds)));
+                };
+                Check(sameOverflow(original->previousOverflow, status->previousOverflow) &&
+                    sameOverflow(original->nextOverflow, status->nextOverflow),
+                    "status preserves overflow geometry and navigation targets");
                 CheckCenteredSelection(*status, width, selected, "status does not move the centered selection");
+
+                const float childWidth = widgetrail::shell::ComputeTrayStatusSurfaceWidth(width);
+                const auto child = widgetrail::shell::ComputeTrayStatusLayout(
+                    childWidth, 160, count, selected, widgetrail::shell::TrayBand{40,140},
+                    widgetrail::shell::TrayWidthBasis::ExactCapacity,
+                    widgetrail::shell::ComputeTrayCapacityWidth(width));
+                Check(child && child->tiles.size() == status->tiles.size(),
+                    "expanded child surface preserves monitor icon capacity");
+                CheckCenteredSelection(*child, childWidth, selected, "child selection stays centered");
+                Check(child->statusBounds.has_value() == status->statusBounds.has_value(),
+                    "child and monitor agree on status availability");
+                const float childOffset = (width - childWidth) * .5F;
+                for (std::size_t i = 0; i < status->tiles.size(); ++i) {
+                    Check(child->tiles[i].slot == status->tiles[i].slot &&
+                        std::abs(child->tiles[i].bounds.x + childOffset - status->tiles[i].bounds.x) < .01F &&
+                        child->tiles[i].bounds.width == status->tiles[i].bounds.width,
+                        "child and fallback project identical monitor icon geometry");
+                }
+                if (!status->statusBounds) continue;
                 const auto& bounds = *status->statusBounds;
                 Check(bounds.x >= 0 && bounds.x + bounds.width <= width + .01F,
                     "clock remains within the tray surface");
@@ -325,9 +363,21 @@ int main() {
                     "status never steals tray pointer actions");
                 for (const auto& tile : status->tiles)
                     Check(tile.bounds.x + tile.bounds.width <= bounds.x, "status cannot overlap an icon");
+                if (status->nextOverflow)
+                    Check(status->nextOverflow->bounds.x + status->nextOverflow->bounds.width < bounds.x,
+                        "status keeps a gap after the next arrow");
             }
         }
     }
+    const auto narrow = widgetrail::shell::ComputeTrayStatusLayout(192, 160, 40, 0);
+    Check(narrow && !narrow->statusBounds && narrow->previousOverflow && narrow->nextOverflow,
+        "narrow surfaces omit status instead of sacrificing icon navigation");
+    const auto compactStatus = widgetrail::shell::ComputeTrayStatusLayout(680, 160, 40, 0);
+    Check(compactStatus && compactStatus->statusBounds && compactStatus->statusBounds->width == 100,
+        "limited spare space keeps a compact clock");
+    const auto wideStatus = widgetrail::shell::ComputeTrayStatusLayout(1920, 160, 40, 0);
+    Check(wideStatus && wideStatus->statusBounds && wideStatus->statusBounds->width == 188,
+        "wide surfaces retain clock and connectivity indicators");
     std::cout << "TrayLayoutTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }
