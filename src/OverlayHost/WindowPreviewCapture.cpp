@@ -21,6 +21,7 @@ constexpr size_t MaximumSources = 8;
 // at this aggregate pixel limit, excluding driver metadata and D2D wrappers.
 constexpr uint64_t MaximumPixels = 16ULL * 1024ULL * 1024ULL;
 constexpr uint64_t MaximumSourcePixels = 4096ULL * 2160ULL;
+constexpr ULONGLONG FirstFrameTimeoutMilliseconds = 3000;
 
 struct Capture final {
     WindowPreviewSource source;
@@ -29,10 +30,24 @@ struct Capture final {
     GraphicsCaptureSession session{nullptr};
     Direct3D11CaptureFrame frame{nullptr};
     winrt::Windows::Graphics::SizeInt32 size{};
-    bool failed{};
+    unsigned failures{};
+    ULONGLONG retryAt{};
+    ULONGLONG startedAt{};
+    HRESULT restartError{S_OK};
+    std::wstring_view state;
+    std::wstring_view reportedState;
+    HRESULT stateError{S_OK};
+    HRESULT reportedError{S_OK};
+    winrt::Windows::Graphics::SizeInt32 stateSize{};
+    winrt::Windows::Graphics::SizeInt32 reportedSize{};
     std::shared_ptr<std::atomic_bool> ready = std::make_shared<std::atomic_bool>(false);
     winrt::event_token arrived{};
     ~Capture() { Close(); }
+    void SetState(std::wstring_view reason, HRESULT error = S_OK) noexcept {
+        state = reason;
+        stateError = error;
+        stateSize = size;
+    }
     void Pause() noexcept {
         try { if (session) session.Close(); } catch (...) {}
         session = nullptr;
@@ -43,8 +58,17 @@ struct Capture final {
         try { if (pool) pool.Close(); } catch (...) {}
         ready->store(false);
         pool = nullptr;
+        startedAt = 0;
     }
     void Close() noexcept { Pause(); item = nullptr; }
+    void Retry(std::wstring_view reason, HRESULT error) noexcept {
+        Close();
+        SetState(reason, error);
+        size = {};
+        retryAt = GetTickCount64() + std::min<ULONGLONG>(30000, 500ULL << std::min(failures, 6U));
+        failures = std::min(failures + 1, 7U);
+        restartError = S_OK;
+    }
 };
 }
 
@@ -115,6 +139,10 @@ void WindowPreviewCapture::Reconcile(
         uint64_t allocated{};
         size_t active{};
         for (const auto& [id, capture] : impl_->captures) {
+            // Bitmap import runs during drawing. Defer capture COM teardown to
+            // this timer-owned path, where message pumping is safe.
+            if (FAILED(capture->restartError))
+                capture->Retry(L"bitmap-import-retry", capture->restartError);
             if (!capture->pool) continue;
             ++active;
             allocated += static_cast<uint64_t>(capture->size.Width) * capture->size.Height;
@@ -128,10 +156,11 @@ void WindowPreviewCapture::Reconcile(
                 found = impl_->captures.emplace(source.windowId, std::move(entry)).first;
             }
             auto& capture = found->second;
-            if (capture->failed || capture->session || active >= MaximumSources) continue;
+            if (capture->session || GetTickCount64() < capture->retryAt) continue;
+            if (active >= MaximumSources) { capture->SetState(L"waiting-source-budget"); continue; }
             try {
-                if (!Validate(source)) { capture->failed = true; continue; }
-                if (IsIconic(source.window)) continue;
+                if (!Validate(source)) { capture->Retry(L"source-validation-retry", S_FALSE); continue; }
+                if (IsIconic(source.window)) { capture->SetState(L"minimized"); continue; }
                 if (!capture->item) {
                     const auto interop = winrt::get_activation_factory<
                         GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
@@ -141,9 +170,22 @@ void WindowPreviewCapture::Reconcile(
                 if (capture->size.Width <= 0 || capture->size.Height <= 0)
                     capture->size = capture->item.Size();
                 const auto size = capture->size;
-                if (size.Width <= 0 || size.Height <= 0) continue;
+                if (size.Width <= 0 || size.Height <= 0) {
+                    capture->Retry(L"empty-size-retry", E_PENDING);
+                    continue;
+                }
                 const auto pixels = static_cast<uint64_t>(size.Width) * size.Height;
-                if (pixels > MaximumSourcePixels || allocated + pixels > MaximumPixels) continue;
+                if (pixels > MaximumSourcePixels || allocated + pixels > MaximumPixels) {
+                    capture->Close();
+                    capture->SetState(pixels > MaximumSourcePixels
+                        ? L"waiting-source-pixel-budget" : L"waiting-total-pixel-budget");
+                    // Re-read the current size after a resize even when no pool
+                    // fits. A stale oversized capture must not stay stuck forever.
+                    capture->size = {};
+                    capture->retryAt = GetTickCount64() + 1000;
+                    continue;
+                }
+                capture->ready = std::make_shared<std::atomic_bool>(false);
                 capture->pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
                     impl_->captureDevice, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, size);
                 capture->arrived = capture->pool.FrameArrived(
@@ -151,11 +193,14 @@ void WindowPreviewCapture::Reconcile(
                 capture->session = capture->pool.CreateCaptureSession(capture->item);
                 capture->session.IsCursorCaptureEnabled(false);
                 capture->session.StartCapture();
+                capture->startedAt = GetTickCount64();
+                capture->SetState(L"starting");
                 allocated += pixels;
                 ++active;
+            } catch (const winrt::hresult_error& error) {
+                capture->Retry(L"capture-start-retry", error.code());
             } catch (...) {
-                capture->Close();
-                capture->failed = true;
+                capture->Retry(L"capture-start-retry", E_FAIL);
             }
         }
     } catch (...) { Reset(); }
@@ -164,11 +209,17 @@ void WindowPreviewCapture::Reconcile(
 std::vector<std::wstring> WindowPreviewCapture::Poll() noexcept {
     std::vector<std::wstring> changed;
     for (auto& [id, capture] : impl_->captures) {
-        if (capture->failed || !capture->session) continue;
+        if (!capture->session) continue;
         try {
             if (!Validate(capture->source)) throw winrt::hresult_error(E_HANDLE);
             if (IsIconic(capture->source.window)) {
                 capture->Pause();
+                capture->SetState(L"minimized");
+                changed.push_back(id);
+                continue;
+            }
+            if (!capture->frame && GetTickCount64() - capture->startedAt >= FirstFrameTimeoutMilliseconds) {
+                capture->Retry(L"first-frame-timeout-retry", HRESULT_FROM_WIN32(ERROR_TIMEOUT));
                 changed.push_back(id);
                 continue;
             }
@@ -188,15 +239,20 @@ std::vector<std::wstring> WindowPreviewCapture::Poll() noexcept {
                 // describe the original window size. Recreate under the aggregate budget.
                 capture->Pause();
                 capture->size = size;
+                capture->SetState(L"resizing");
                 changed.push_back(id);
                 continue;
             }
             if (capture->frame) capture->frame.Close();
             capture->frame = std::move(frame);
+            capture->failures = 0;
+            capture->SetState(L"live");
+            changed.push_back(id);
+        } catch (const winrt::hresult_error& error) {
+            capture->Retry(L"capture-frame-retry", error.code());
             changed.push_back(id);
         } catch (...) {
-            capture->Close();
-            capture->failed = true;
+            capture->Retry(L"capture-frame-retry", E_FAIL);
             changed.push_back(id);
         }
     }
@@ -218,8 +274,30 @@ Microsoft::WRL::ComPtr<ID2D1Bitmap1> WindowPreviewCapture::Bitmap(
             D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
         winrt::check_hresult(context->CreateBitmapFromDxgiSurface(
             surface.Get(), &properties, &bitmap));
-    } catch (...) { bitmap.Reset(); }
+    } catch (const winrt::hresult_error& error) {
+        found->second->restartError = error.code();
+        bitmap.Reset();
+    } catch (...) {
+        found->second->restartError = E_FAIL;
+        bitmap.Reset();
+    }
     return bitmap;
+}
+
+std::vector<std::wstring> WindowPreviewCapture::TakeDiagnostics() {
+    std::vector<std::wstring> result;
+    for (const auto& [id, capture] : impl_->captures) {
+        if (capture->state.empty() || (capture->state == capture->reportedState &&
+            capture->stateError == capture->reportedError && capture->stateSize == capture->reportedSize)) continue;
+        result.push_back(L"Window preview id=" + id + L" state=" + std::wstring(capture->state) +
+            L" size=" + std::to_wstring(capture->stateSize.Width) + L"x" +
+            std::to_wstring(capture->stateSize.Height) + L" hresult=" +
+            std::to_wstring(static_cast<long>(capture->stateError)));
+        capture->reportedState = capture->state;
+        capture->reportedError = capture->stateError;
+        capture->reportedSize = capture->stateSize;
+    }
+    return result;
 }
 
 size_t WindowPreviewCapture::activeCount() const noexcept {

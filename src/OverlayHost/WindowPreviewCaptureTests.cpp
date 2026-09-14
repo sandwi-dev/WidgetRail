@@ -82,9 +82,24 @@ int wmain() {
         if (capture.Validate(wrong)) return 5;
         // First paint records visible demand. Capture setup must follow EndDraw:
         // WGC may pump messages and dispatch another composition paint.
+        std::cout << "Preview test: initial composition" << std::endl;
         drawComposedPreview(160, 90);
+        // Temporarily exclude only our own synthetic window. Removing the
+        // restriction must recover with identical demand, without leaving and
+        // reentering the widget. Previously this latched failed forever.
+        if (!SetWindowDisplayAffinity(window, WDA_EXCLUDEFROMCAPTURE)) return 9;
+        std::cout << "Preview test: restricted source" << std::endl;
         capture.Reconcile(device.Get(), {&source, 1});
+        if (capture.activeCount() != 0) return 10;
+        const auto blocked = capture.TakeDiagnostics();
+        if (blocked.size() != 1 || blocked[0].find(L"source-validation-retry") == std::wstring::npos)
+            return 11;
+        if (!SetWindowDisplayAffinity(window, WDA_NONE)) return 12;
+        std::cout << "Preview test: restriction removed" << std::endl;
+        capture.Reconcile(device.Get(), {&source, 1});
+        if (capture.activeCount() != 0 || !capture.TakeDiagnostics().empty()) return 13;
         int frames{};
+        std::cout << "Preview test: waiting for recovery" << std::endl;
         const auto deadline = GetTickCount64() + 3000;
         while (GetTickCount64() < deadline && frames < 2) {
             MSG message{};
@@ -94,6 +109,7 @@ int wmain() {
             }
             InvalidateRect(window, nullptr, FALSE);
             UpdateWindow(window);
+            capture.Reconcile(device.Get(), {&source, 1});
             if (!capture.Poll().empty()) {
                 auto bitmap = capture.Bitmap(context.Get(), source.windowId);
                 if (bitmap) {
@@ -108,6 +124,7 @@ int wmain() {
             }
             Sleep(16);
         }
+        std::cout << "Preview test: retiring source" << std::endl;
         DestroyWindow(window);
         (void)capture.Poll();
         if (capture.activeCount() != 0) return 6;
@@ -115,7 +132,7 @@ int wmain() {
         drawComposedPreview(160, 90);
         if (capture.Bitmap(context.Get(), source.windowId)) return 7;
         std::cout << "Synthetic GPU frames: " << frames
-            << "; composed startup/resize/retirement, wrong-lifetime rejection and closure passed.\n";
+            << "; transient restriction recovery, bounded retry, composed startup/resize/retirement, wrong-lifetime rejection and closure passed.\n";
         return frames > 0 ? 0 : 8;
     } catch (const winrt::hresult_error& error) {
         std::cerr << "Native preview check failed: " << std::hex << error.code().value << "\n";

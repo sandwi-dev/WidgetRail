@@ -31,6 +31,8 @@ public:
     void Reset() noexcept;
     void Reconcile(ID3D11Device* device, std::span<const WindowPreviewSource> sources) noexcept;
     [[nodiscard]] std::vector<std::wstring> Poll() noexcept;
+    // State changes only; contains opaque IDs and capture metadata, never pixels or titles.
+    [[nodiscard]] std::vector<std::wstring> TakeDiagnostics();
     [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap1> Bitmap(
         ID2D1RenderTarget* target, std::wstring_view windowId) noexcept;
     [[nodiscard]] size_t activeCount() const noexcept;

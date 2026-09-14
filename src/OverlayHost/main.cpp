@@ -13339,6 +13339,8 @@ private:
             if (revision != windowPreviewDemandRevision_) return;
             changed = windowPreviews_.Poll();
         }
+        for (const auto& diagnostic : windowPreviews_.TakeDiagnostics())
+            AppendDiagnostic(diagnostic);
         if (revision != windowPreviewDemandRevision_) return;
         if (sources.empty()) {
             KillTimer(window_, kWindowPreviewTimer);
