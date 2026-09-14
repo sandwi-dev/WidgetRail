@@ -444,7 +444,8 @@ if(WRAIL_BUILD_TESTS)
     target_compile_options(LocalWidgetPackageImportTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(LocalWidgetPackageImportTests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(LocalWidgetPackageImportTests PRIVATE user32 ole32 uuid)
+    target_link_libraries(LocalWidgetPackageImportTests PRIVATE user32 ole32 uuid comctl32)
+    target_link_options(LocalWidgetPackageImportTests PRIVATE /MANIFEST:EMBED "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/app.manifest")
     add_test(NAME LocalWidgetPackageImportTests COMMAND LocalWidgetPackageImportTests)
 
     add_executable(SliderInteractionTests SliderInteractionTests.cpp SliderInteraction.cpp)

@@ -305,7 +305,7 @@ struct LocalWidgetPackageInstallOrigin final {
     std::wstring updateTargetHash;
 };
 
-enum class LocalWidgetPackageInstallStatus { InstalledDisabled, Cancelled, Failed };
+enum class LocalWidgetPackageInstallStatus { InstalledDisabled, ApprovalRequired, Cancelled, Failed };
 
 struct LocalWidgetPackageInstallResult final {
     std::wstring operationId;
@@ -1001,6 +1001,8 @@ public:
         std::wstring_view operationId);
     [[nodiscard]] std::optional<bool> CancelLocalWidgetPackageInstall(
         std::wstring_view operationId);
+    [[nodiscard]] std::optional<bool> ApproveLocalWidgetPackageInstall(
+        std::wstring_view operationId, bool approved);
     [[nodiscard]] std::wstring lastError() const;
     [[nodiscard]] DWORD lastStartupProcessId() const noexcept;
     [[nodiscard]] long long bridgeSessionGeneration() const noexcept;
@@ -1049,6 +1051,8 @@ private:
     [[nodiscard]] std::optional<std::string> ReadFrame(
         HANDLE stopEvent = nullptr);
     void Fail(std::wstring message);
+    [[nodiscard]] std::optional<bool> RespondToLocalWidgetPackageInstall(
+        std::wstring_view operationId, std::optional<bool> approval);
 
     HANDLE pipe_{INVALID_HANDLE_VALUE};
     HANDLE process_{};

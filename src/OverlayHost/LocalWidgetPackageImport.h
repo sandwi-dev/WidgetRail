@@ -58,6 +58,7 @@ class ILocalWidgetPackagePicker {
 public:
     virtual ~ILocalWidgetPackagePicker() = default;
     [[nodiscard]] virtual LocalWidgetPackagePickerResult Select(HWND owner) = 0;
+    [[nodiscard]] virtual bool ConfirmFullTrust(HWND, std::wstring_view, std::wstring_view) { return false; }
     virtual void Cancel() noexcept = 0;
     [[nodiscard]] virtual bool active() const noexcept = 0;
 };
@@ -65,11 +66,13 @@ public:
 class FileOpenDialogWidgetPackagePicker final : public ILocalWidgetPackagePicker {
 public:
     [[nodiscard]] LocalWidgetPackagePickerResult Select(HWND owner) override;
+    [[nodiscard]] bool ConfirmFullTrust(HWND owner, std::wstring_view widgetId, std::wstring_view version) override;
     void Cancel() noexcept override;
-    [[nodiscard]] bool active() const noexcept override { return activeDialog_ != nullptr; }
+    [[nodiscard]] bool active() const noexcept override { return activeDialog_ != nullptr || confirmationDialog_ != nullptr; }
 
 private:
     IFileOpenDialog* activeDialog_{};
+    HWND confirmationDialog_{};
 };
 
 enum class LocalWidgetPackageImportStatus {
@@ -122,6 +125,8 @@ public:
     [[nodiscard]] bool Complete(
         std::wstring_view operationId,
         long long bridgeSessionGeneration) noexcept;
+    [[nodiscard]] bool ReviewFullTrust(HWND owner, std::wstring_view operationId,
+        long long bridgeSessionGeneration, std::wstring_view widgetId, std::wstring_view version);
     [[nodiscard]] bool active() const noexcept {
         return active_ || !activeOperationId_.empty();
     }
@@ -145,6 +150,8 @@ private:
     bool active_{};
     std::wstring activeOperationId_;
     long long activeBridgeSessionGeneration_{};
+    std::optional<LocalWidgetPackageOrigin> activeOrigin_;
+    bool approvalShown_{};
 };
 
 } // namespace widgetrail::packages

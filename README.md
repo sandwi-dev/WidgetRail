@@ -103,6 +103,52 @@ The installer includes a private .NET runtime and can install the required
 Microsoft components. Updates are manual. Follow the
 [installation guide](docs/users/getting-started.md) for setup and first use.
 
+## Recommended setup
+
+- Turn on **Automatically hide the taskbar** for more room around the overlay.
+- Turn off **Xbox full-screen experience / Xbox mode** if your PC offers it, so WidgetRail runs alongside the normal Windows desktop.
+- Use **borderless windowed** mode in games for the most reliable desktop overlay and pinned-video experience.
+
+These are recommendations, not requirements. [Setup details](docs/users/getting-started.md#recommended-windows-settings)
+
+## FAQ
+
+### Why does the overlay open but fail to take focus or switch apps?
+
+Windows can refuse to give WidgetRail foreground focus, including over some
+system windows such as Task Manager and Settings. The overlay may stay visible
+while input still reaches the other app, and Task Switcher may be unable to
+activate a window. This does not always mean the other app is running as administrator.
+
+If the guide says **Focus blocked**, try clicking inside the overlay. If that
+does not help, switch to the desktop or a regular app with Alt+Tab, then reopen
+WidgetRail. [Foreground troubleshooting](docs/users/troubleshooting.md#the-overlay-cannot-take-foreground-focus)
+
+### How do I install Playnite Library or another full-access widget?
+
+Download its `.wrwidget` file and choose **Settings → Widgets → Install local
+widget**. Full-access packages ask for confirmation because they run with your
+Windows account's permissions. Review the source before approving installation.
+They are installed disabled; review their settings and enable them separately.
+Playnite also needs its [companion setup](samples/PlayniteLibraryWidget/README.md).
+
+If an older build reports `full_trust_approval_required` without showing a
+confirmation, update WidgetRail to a build containing the local-install fix.
+
+### Why is an enabled widget missing from the tray?
+
+Check whether the widget is also included under **Built in**. That copy takes
+priority over an installed duplicate, even when the built-in copy is disabled.
+Use **Manage built-in version** to enable it. Other widgets may need permission
+review or a compatible package. [Manage widgets](docs/users/customization.md#manage-widgets)
+
+### What if my controller shortcut does not open WidgetRail?
+
+Make sure WidgetRail is running, then press **View + Menu** together and release
+both buttons. Try **F1** on a keyboard. If you selected Guide as the shortcut,
+Windows gaming features may also respond to that button.
+[More troubleshooting](docs/users/troubleshooting.md)
+
 ## Open source, including the examples
 
 The platform, SDK, first-party widgets, and templates are **MIT-licensed**.

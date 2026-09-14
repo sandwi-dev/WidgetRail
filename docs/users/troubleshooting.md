@@ -9,6 +9,22 @@ after reconnecting a controller before trying the shortcut again.
 If WidgetRail is not running, open WidgetRail from the Start menu. For a source build, follow
 [Building from source](../maintainers/building.md).
 
+## The overlay cannot take foreground focus
+
+Windows sometimes keeps another app in the foreground even when WidgetRail is
+visible. This can happen with Task Manager, Windows Settings, some games, and
+elevated windows. It is not proof that every affected app is elevated.
+
+The guide shows **Focus blocked** if Windows refuses the overlay's activation
+attempt and fallback. Input can still reach the other app, and app switching may
+fail. Click inside WidgetRail to try to give it focus. If that does not work,
+use Alt+Tab to switch to the desktop or a regular app, then reopen the overlay.
+The warning clears when WidgetRail gains foreground focus or the overlay closes.
+
+This is separate from Exclusive control and from a widget's Windows permissions.
+Some protected or elevated windows may still refuse switching or previews after
+the overlay gains focus.
+
 ## The overlay opens but a widget cannot control Windows
 
 Open **Settings → Widgets**, select the widget and review its
@@ -48,6 +64,12 @@ successful download does not establish compatibility.
 Do not rename files, bypass validation or change a package's manifest to force
 it to load. Obtain a compatible package from its author. Review full-trust
 applications as you would other Windows software.
+
+Full-access packages such as Playnite Library require an explicit confirmation
+after file selection. **Cancel** is selected by default. Approving installs the
+package disabled; enabling it remains a separate action in Settings. A cancelled
+or expired review does not install the package. If an older build only reports
+`full_trust_approval_required`, update WidgetRail to a build with this review step.
 
 ## No artwork, media or window preview
 

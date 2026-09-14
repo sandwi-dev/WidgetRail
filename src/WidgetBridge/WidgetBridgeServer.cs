@@ -728,6 +728,15 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.ApproveLocalWidgetPackageInstall:
+        {
+            if (_localPackageImport is null) throw new BridgeProtocolException("Local widget installation is unavailable.");
+            var approval = BridgeJson.FromElement<BridgeLocalWidgetPackageInstallApprovalRequest>(request.Payload);
+            var approved = _localPackageImport.Approve(approval.OperationId, approval.Approved);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId,
+                new { operationId = approval.OperationId, approved }, cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.CancelLocalWidgetPackageInstall:
         {
             if (_localPackageImport is null)

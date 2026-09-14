@@ -23,6 +23,7 @@ internal enum BridgeRequestKind
     ConnectProtectedWifi,
     InstallLocalWidgetPackage,
     CancelLocalWidgetPackageInstall,
+    ApproveLocalWidgetPackageInstall,
     QuickAction,
     Stop,
     Malformed,
@@ -147,6 +148,7 @@ internal static class BridgeRequestClassifier
                     request.Payload),
                 BridgeMessageTypes.CancelLocalWidgetPackageInstall => LocalPackageCancel(
                     request.Payload),
+                BridgeMessageTypes.ApproveLocalWidgetPackageInstall => LocalPackageApproval(request.Payload),
                 BridgeMessageTypes.QuickAction => Widget(
                     BridgeJson.FromElement<BridgeQuickActionRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.QuickAction),
@@ -246,5 +248,11 @@ internal static class BridgeRequestClassifier
     {
         _ = BridgeJson.FromElement<BridgeLocalWidgetPackageInstallCancelRequest>(payload);
         return BridgeRequestKey.Global(BridgeRequestKind.CancelLocalWidgetPackageInstall);
+    }
+
+    private static BridgeRequestKey LocalPackageApproval(JsonElement payload)
+    {
+        _ = BridgeJson.FromElement<BridgeLocalWidgetPackageInstallApprovalRequest>(payload);
+        return BridgeRequestKey.Global(BridgeRequestKind.ApproveLocalWidgetPackageInstall);
     }
 }

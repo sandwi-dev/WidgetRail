@@ -1,8 +1,33 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
+#include <string_view>
 
 namespace widgetrail::input {
+
+// Report the one show-time attempt; observing focus never retries acquisition.
+class ForegroundAcquisitionFeedback final {
+public:
+    bool CompleteAttempt(bool confirmed) noexcept {
+        const bool changed = blocked_ != !confirmed;
+        blocked_ = !confirmed;
+        return changed;
+    }
+    bool ObserveForeground(bool confirmed) noexcept {
+        if (!blocked_ || !confirmed) return false;
+        blocked_ = false;
+        return true;
+    }
+    void Hide() noexcept { blocked_ = false; }
+    [[nodiscard]] bool blocked() const noexcept { return blocked_; }
+    [[nodiscard]] std::optional<std::wstring_view> message() const noexcept {
+        return blocked_ ? std::optional<std::wstring_view>{
+            L"Focus blocked. Click the overlay, or switch apps and reopen."} : std::nullopt;
+    }
+private:
+    bool blocked_{};
+};
 
 // The strongest controller ownership a normal desktop process can request is
 // GameInput's foreground-exclusive policy. It is deliberately not described

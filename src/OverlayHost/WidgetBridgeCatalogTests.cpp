@@ -2496,18 +2496,27 @@ int main() {
             "local completion exposed a path");
 
     error.clear();
-    const auto cancelledPackage =
+    const auto approvalPackage =
+        widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+        "type":"local-widget-package-install-completed","requestId":0,
+        "payload":{"operationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","status":"approval-required","widgetId":"fixture","version":"1.2.3","message":"This widget runs with full access to your Windows account."}
+    })json", error);
+    Require(approvalPackage && error.empty() && approvalPackage->status == widgetrail::LocalWidgetPackageInstallStatus::ApprovalRequired,
+            "full-access approval event was not admitted with exact package identity");
+
+    error.clear();
+    const auto cancelledPackageResult =
         widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","status":"cancelled","widgetId":"","version":"","message":"Local widget package install was cancelled."}
     })json", error);
-    Require(cancelledPackage && error.empty(),
+    Require(cancelledPackageResult && error.empty(),
             "valid local package cancellation framing was rejected");
-    Require(cancelledPackage->status ==
+    Require(cancelledPackageResult->status ==
                 widgetrail::LocalWidgetPackageInstallStatus::Cancelled,
             "cancelled completion status changed");
-    Require(cancelledPackage->widgetId.empty() &&
-                cancelledPackage->version.empty(),
+    Require(cancelledPackageResult->widgetId.empty() &&
+                cancelledPackageResult->version.empty(),
             "cancelled completion carried package identity");
 
     error.clear();

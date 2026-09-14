@@ -2779,12 +2779,14 @@ bool HandleAsyncEvent(
         const auto message = OptionalString(payload, L"message");
         const auto mapped = resultStatus == L"installed-disabled"
             ? LocalWidgetPackageInstallStatus::InstalledDisabled
+            : resultStatus == L"approval-required"
+            ? LocalWidgetPackageInstallStatus::ApprovalRequired
             : resultStatus == L"cancelled"
             ? LocalWidgetPackageInstallStatus::Cancelled
             : LocalWidgetPackageInstallStatus::Failed;
         const bool optionalIdentityValid =
-            mapped == LocalWidgetPackageInstallStatus::InstalledDisabled
-                ? IsIdentifier(resultWidgetId) && !version.empty() && version.size() <= 64
+            (mapped == LocalWidgetPackageInstallStatus::InstalledDisabled || mapped == LocalWidgetPackageInstallStatus::ApprovalRequired)
+                ? IsIdentifier(resultWidgetId) && IsIdentifier(version) && version.size() <= 64
                 : resultWidgetId.empty() && version.empty();
         const bool messageValid = !message.empty() && message.size() <= 512 &&
             message.find_first_of(L"\\/:") == std::wstring::npos &&
@@ -2793,7 +2795,7 @@ bool HandleAsyncEvent(
             });
         if (!IsIdentifier(operationId) ||
             (resultStatus != L"installed-disabled" && resultStatus != L"cancelled" &&
-             resultStatus != L"failed") || !optionalIdentityValid || !messageValid ||
+             resultStatus != L"failed" && resultStatus != L"approval-required") || !optionalIdentityValid || !messageValid ||
             !localPackageInstallResults->Push({
                 operationId, mapped, resultWidgetId, version, message})) {
             status = L"WidgetBridge local package result could not be queued.";
@@ -5507,16 +5509,27 @@ std::optional<bool> WidgetBridgeClient::BeginLocalWidgetPackageInstall(
 
 std::optional<bool> WidgetBridgeClient::CancelLocalWidgetPackageInstall(
     const std::wstring_view operationId) {
+    return RespondToLocalWidgetPackageInstall(operationId, std::nullopt);
+}
+
+std::optional<bool> WidgetBridgeClient::ApproveLocalWidgetPackageInstall(
+    const std::wstring_view operationId, const bool approved) {
+    return RespondToLocalWidgetPackageInstall(operationId, approved);
+}
+
+std::optional<bool> WidgetBridgeClient::RespondToLocalWidgetPackageInstall(
+    const std::wstring_view operationId, const std::optional<bool> approval) {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE || !IsIdentifier(operationId)) return std::nullopt;
     try {
         JsonObject payload;
         payload.Insert(L"operationId", JsonValue::CreateStringValue(operationId));
+        if (approval) payload.Insert(L"approved", JsonValue::CreateBooleanValue(*approval));
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
         envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
         envelope.Insert(L"type", JsonValue::CreateStringValue(
-            L"cancel-local-widget-package-install"));
+            approval ? L"approve-local-widget-package-install" : L"cancel-local-widget-package-install"));
         envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
             static_cast<double>(requestId)));
         envelope.Insert(L"payload", payload);
@@ -5538,7 +5551,7 @@ std::optional<bool> WidgetBridgeClient::CancelLocalWidgetPackageInstall(
                 if (type == L"error") Fail(SafeBridgeError(response));
                 return std::nullopt;
             }
-            return response.GetNamedObject(L"payload").GetNamedBoolean(L"cancelled", false);
+            return response.GetNamedObject(L"payload").GetNamedBoolean(approval ? L"approved" : L"cancelled", false);
         }
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid WidgetBridge local package cancellation response: " +

@@ -1125,7 +1125,7 @@ function Invoke-LocalPackageImportTests {
         "/Fo:$localPackageImportTestObjectDirectory\",
         "/Fe:$outputDirectory\LocalWidgetPackageImportTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('user32.lib', 'ole32.lib', 'uuid.lib')
+    ) + $libraryArguments + @('user32.lib', 'ole32.lib', 'uuid.lib', 'comctl32.lib', '/MANIFEST:EMBED', "/MANIFESTINPUT:$(Join-Path $projectDirectory 'app.manifest')")
     & $cl $arguments
     if ($LASTEXITCODE -ne 0) {
         throw "LocalWidgetPackageImportTests build failed with exit code $LASTEXITCODE."

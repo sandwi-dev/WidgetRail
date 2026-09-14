@@ -30,6 +30,16 @@ for administrator approval. A missing WebView2 runtime requires an internet down
 If Microsoft's GameInput update becomes stuck, restart Windows normally and run
 setup again. See [Troubleshooting](troubleshooting.md) for more help.
 
+## Recommended Windows settings
+
+For a comfortable controller setup:
+
+- **Automatically hide the taskbar:** on Windows 11, open Settings → Personalization → Taskbar → Taskbar behaviors. On Windows 10, use the taskbar's desktop-mode auto-hide setting. This leaves more room for WidgetRail near the screen edge.
+- **Xbox full-screen experience / Xbox mode:** if your Windows build offers this mode, turn it off and use the normal Windows desktop with WidgetRail. Its name and availability vary by device and Windows version; look for the Xbox mode or full-screen experience setting on your PC.
+- **Borderless windowed games:** start with this display mode when using the overlay or pinned video. Exclusive fullscreen can hide desktop overlays.
+
+These choices are optional. WidgetRail does not change these Windows settings for you.
+
 ## Open the overlay
 
 Press **View + Menu** together. Press the same shortcut again to hide it.

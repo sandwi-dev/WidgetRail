@@ -1961,6 +1961,14 @@ private:
             }
         }
         for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {
+            if (result.status == widgetrail::LocalWidgetPackageInstallStatus::ApprovalRequired) {
+                const auto generation = bridge_.bridgeSessionGeneration();
+                const bool approved = localWidgetPackageImport_.ReviewFullTrust(window_, result.operationId,
+                    generation, result.widgetId, result.version);
+                if (generation == bridge_.bridgeSessionGeneration())
+                    (void)bridge_.ApproveLocalWidgetPackageInstall(result.operationId, approved);
+                continue;
+            }
             if (!localWidgetPackageImport_.Complete(
                     result.operationId,
                     bridge_.bridgeSessionGeneration())) {
@@ -1970,6 +1978,7 @@ private:
                 continue;
             }
             lastLocalWidgetPackageInstallResult_ = result;
+            localWidgetPackageImport_.CancelPicker();
             if (result.status != widgetrail::LocalWidgetPackageInstallStatus::Cancelled) {
                 // Settings receives this completion through its authenticated
                 // companion and renders the shared themed toast.
@@ -2422,6 +2431,9 @@ private:
                 return 0;
             }
             if (wParam == kControllerSettingsTimer) {
+                if (foregroundAcquisitionFeedback_.blocked() &&
+                    foregroundAcquisitionFeedback_.ObserveForeground(IsOverlayProcessForeground()))
+                    InvalidateRect(window_, nullptr, FALSE);
                 RefreshTrayStatus();
                 RefreshControllerSettings();
                 RefreshWindowPreviewPermissions();
@@ -7941,6 +7953,7 @@ private:
     void HideOverlay() {
         ResetWindowPreviews();
         visibleSessionStartedAt_ = 0;
+        foregroundAcquisitionFeedback_.Hide();
         pendingCompositionContentRevealWidget_.clear();
         if (compositionSurface_.available()) (void)compositionSurface_.SnapContentVisible();
         textEntryModal_.SetVisible(false);
@@ -10734,6 +10747,8 @@ private:
         }
 
         const bool confirmed = IsOverlayProcessForeground();
+        if (foregroundAcquisitionFeedback_.CompleteAttempt(confirmed))
+            InvalidateRect(window_, nullptr, FALSE);
         if (!lastForegroundOwnership_ || *lastForegroundOwnership_ != confirmed) {
             lastForegroundOwnership_ = confirmed;
             if (confirmed) {
@@ -17375,6 +17390,7 @@ private:
     }
 
     std::optional<std::wstring> DashboardStatus() const {
+        if (const auto message = foregroundAcquisitionFeedback_.message()) return std::wstring{*message};
         const auto now = GetTickCount64();
         if (const auto* startup = sessions_.Failure(state_.selectedWidget()))
             return startup->safeMessage;
@@ -17473,7 +17489,9 @@ private:
             DrawTextLine(title, titleFormat_.Get(),
                          D2D1::RectF(contentLeft, titleTop, contentRight, titleBottom),
                          dashboardTextBrush_.Get());
-            if (status) DrawTextLine(displayedHint, hintFormat_.Get(),
+            if (status && foregroundAcquisitionFeedback_.blocked())
+                PaintGuideHints({{L"", *status}, {viewMenuShortcutEnabled_ ? L"View + Menu" : L"Guide", L"Close"}}, hintBounds);
+            else if (status) DrawTextLine(displayedHint, hintFormat_.Get(),
                          D2D1::RectF(contentLeft, hintTop, contentRight, hintBottom), dashboardSecondaryBrush_.Get());
             else PaintGuideHints(visualHints,hintBounds);
         }
@@ -17493,6 +17511,7 @@ private:
     }
 
     std::optional<std::wstring> OpenWidgetStatus() const {
+        if (const auto message = foregroundAcquisitionFeedback_.message()) return std::wstring{*message};
         const auto now = GetTickCount64();
         if (const auto* startup = sessions_.Failure(state_.activeWidget()))
             return startup->safeMessage;
@@ -17565,6 +17584,8 @@ private:
             const auto help=DashboardHint(footerBounds.width,&hints);
             if (const auto status=DashboardStatus()) {
                 hints={{L"",*status}};
+                if (foregroundAcquisitionFeedback_.blocked())
+                    hints.push_back({viewMenuShortcutEnabled_ ? L"View + Menu" : L"Guide", L"Close"});
                 openWidgetAccessibility_.status=*status;
                 openWidgetAccessibility_.statusBounds=footerBounds;
             } else {
@@ -18655,6 +18676,7 @@ private:
     std::wstring rightStickDropSignature_;
     std::uint64_t rightStickDropCount_{};
     std::optional<bool> lastForegroundOwnership_;
+    widgetrail::input::ForegroundAcquisitionFeedback foregroundAcquisitionFeedback_;
     long long controllerSequence_{};
     std::wstring lastActionMessage_;
     std::wstring lastActionWidgetId_;

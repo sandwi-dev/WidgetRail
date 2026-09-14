@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetBridge;
 
@@ -103,6 +104,17 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
         }
     }
 
+    internal bool Approve(string operationId, bool approved)
+    {
+        if (!ValidOperationId(operationId)) return false;
+        lock (_gate)
+        {
+            if (_active is not { } active || active.Approval is not { } decision ||
+                active.Request.OperationId != operationId || active.Cancellation.IsCancellationRequested) return false;
+            return decision.TrySetResult(approved);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         Task? task;
@@ -126,6 +138,22 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
         try
         {
             await using var package = _openPackage(active.Request.PackagePath);
+            var inspection = await _catalog.CreateInstaller().ValidateAsync(package, active.Cancellation.Token).ConfigureAwait(false);
+            var trustApproval = WidgetPackageTrustApproval.None;
+            if (WidgetManifestTrust.Resolve(inspection.Manifest) == WidgetExecutionTrust.FullTrustCurrentUser)
+            {
+                using (_admit(active.Request.Origin)) { }
+                var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                lock (_gate) active.Approval = decision;
+                await _completed(new(active.Request.OperationId, "approval-required", inspection.Id,
+                    inspection.Version.ToString(), "This widget runs with full access to your Windows account.")).ConfigureAwait(false);
+                bool approved;
+                try { approved = await decision.Task.WaitAsync(TimeSpan.FromMinutes(2), active.Cancellation.Token).ConfigureAwait(false); }
+                catch (TimeoutException) { throw new WidgetPackageException("approval_expired", "Full-access review expired. Choose the package again."); }
+                finally { lock (_gate) active.Approval = null; }
+                if (!approved) { active.Cancellation.Cancel(); active.Cancellation.Token.ThrowIfCancellationRequested(); }
+                trustApproval = WidgetPackageTrustApproval.FullTrustCurrentUser;
+            }
             async Task AdmitUpdate(WidgetPackageInspection inspection, CancellationToken token)
             {
                 await _beforePublish(token).ConfigureAwait(false);
@@ -133,8 +161,8 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
             }
             var updating = !string.IsNullOrEmpty(active.Request.Origin.UpdateTargetHash);
             var installed = updating
-                ? await _catalog.UpdateFromFileAsync(package, active.Request.Origin.UpdateTargetHash!, WidgetPackageTrustApproval.FullTrustCurrentUser, AdmitUpdate, active.Cancellation.Token).ConfigureAwait(false)
-                : await _catalog.InstallAsync(package, AdmitUpdate, active.Cancellation.Token).ConfigureAwait(false);
+                ? await _catalog.UpdateFromFileAsync(package, active.Request.Origin.UpdateTargetHash!, trustApproval, AdmitUpdate, active.Cancellation.Token).ConfigureAwait(false)
+                : await _catalog.InstallAsync(package, AdmitUpdate, active.Cancellation.Token, trustApproval).ConfigureAwait(false);
             // Publication is the operation's linearization point. Once the
             // catalog commit returns, a late overlay/session cancellation may
             // not relabel the durable install as cancelled.
@@ -211,6 +239,7 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
             operationId, "failed", "", "",
             safeCode switch
             {
+                "approval_expired" => "Full-access review expired. Choose the package again. Nothing was installed.",
                 "update_wrong_widget" => "Choose an update file for the selected widget. Nothing was changed.",
                 "update_not_newer" => "Choose a newer version that is not already installed.",
                 "update_publisher_changed" or "update_trust_changed" => "This update changes the publisher or execution permissions. It was not installed.",
@@ -304,5 +333,6 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
         internal BridgeLocalWidgetPackageInstallRequest Request { get; } = request;
         internal CancellationTokenSource Cancellation { get; } = cancellation;
         internal Task? Task { get; set; }
+        internal TaskCompletionSource<bool>? Approval { get; set; }
     }
 }

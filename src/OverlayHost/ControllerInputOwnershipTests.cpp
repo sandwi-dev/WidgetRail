@@ -67,6 +67,20 @@ int main() {
     Check(DecideVisibleForegroundTransition(true, true, false) ==
               VisibleForegroundTransition::CloseOverlay,
           "valid external foreground closes a visible overlay");
+
+    ForegroundAcquisitionFeedback feedback;
+    Check(!feedback.message(), "no foreground error before an acquisition attempt");
+    Check(feedback.CompleteAttempt(false) && feedback.message().has_value(),
+          "failed final foreground attempt exposes feedback");
+    Check(!feedback.ObserveForeground(false) && feedback.blocked(),
+          "background reads do not falsely clear foreground failure");
+    Check(feedback.ObserveForeground(true) && !feedback.message(),
+          "clicking into the overlay clears foreground feedback");
+    feedback.CompleteAttempt(false);
+    feedback.Hide();
+    Check(!feedback.message(), "closing clears the old session warning");
+    feedback.CompleteAttempt(true);
+    Check(!feedback.message(), "successful reopening has no stale warning");
     Check(DecideVisibleForegroundTransition(true, true, true) ==
               VisibleForegroundTransition::Ignore,
           "our own overlay or backdrop activation is ignored");

@@ -115,6 +115,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Embedded media resolution requires exact current publication authority", BridgeClientRegistryScenarios.EmbeddedMediaRequiresExactPublicationAuthority),
     ("Local package import origin is exact current Interactive Settings", BridgeClientRegistryScenarios.LocalPackageImportOriginIsExact),
     ("Local package import is disabled revisioned and path free", LocalPackageImportIsDisabledRevisionedAndPathFree),
+    ("Local package full-access review is explicit cancellable and source locked", LocalPackageFullTrustReview),
     ("Local package update validates first selects disabled and retains rollback", LocalPackageUpdateFlow),
     ("Local package import failures preserve catalog state", LocalPackageImportFailuresPreserveCatalog),
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
@@ -1787,6 +1788,16 @@ static Task RequestClassificationIsClosed()
     });
     Assert.Equal(BridgeRequestKind.CancelLocalWidgetPackageInstall, localCancel.Kind);
     Assert.Equal<string?>(null, localCancel.WidgetId);
+
+    var localApproval = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.ApproveLocalWidgetPackageInstall,
+        RequestId = 9,
+        Payload = BridgeJson.ToElement(new BridgeLocalWidgetPackageInstallApprovalRequest(
+            "11111111-2222-3333-4444-555555555555", true)),
+    });
+    Assert.Equal(BridgeRequestKind.ApproveLocalWidgetPackageInstall, localApproval.Kind);
+    Assert.Equal<string?>(null, localApproval.WidgetId);
 
     var forgedLocalInstall = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
@@ -3901,6 +3912,48 @@ static async Task LocalPackageImportIsDisabledRevisionedAndPathFree()
     Assert.Equal("1.2.3", installed.ActiveVersion.Version.ToString());
     Assert.Equal(1L, monitor.Revision);
     Assert.Equal(1, revisions);
+}
+
+static async Task LocalPackageFullTrustReview()
+{
+    foreach (var mode in new[] { "approve", "decline", "cancel", "stale" })
+    {
+        using var root = new TemporaryDirectory("wrail-full-access-review");
+        var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(Path.Combine(root.Path, "catalog"));
+        var path = CreateFullTrustSessionPackage(root.Path,
+            Path.Combine(FindRepositoryRoot(), "tests", "FullTrustAlphaFixture", "bin", "Release", "net8.0", "win-x64"),
+            "FullTrustAlphaFixture.exe", "dev.sessionfixture.review");
+        var origin = new BridgeLocalWidgetPackageOrigin("settings", "widgetrail.firstparty.settings", "widgetrail.firstparty",
+            "settings.default", new string('a', 64), new string('b', 64));
+        var current = 1;
+        var review = new TaskCompletionSource<BridgeLocalWidgetPackageInstallCompleted>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var terminal = new TaskCompletionSource<BridgeLocalWidgetPackageInstallCompleted>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var service = new BridgeLocalWidgetPackageImportService(catalog,
+            _ => Volatile.Read(ref current) == 1 ? NoopDisposable.Instance : throw new BridgeProtocolException("stale"),
+            _ => Task.CompletedTask,
+            result => { if (result.Status == "approval-required") review.TrySetResult(result); else terminal.TrySetResult(result); return Task.CompletedTask; },
+            openPackage: null, beforePublish: null);
+        var operation = Guid.NewGuid().ToString("N");
+        service.Start(new(operation, path, origin), default);
+        var shown = await review.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("dev.sessionfixture.review", shown.WidgetId);
+        Assert.Equal(0, (await catalog.DiscoverAsync()).Widgets.Count);
+        Assert.False(terminal.Task.IsCompleted, "Unapproved package reached a terminal install result.");
+        Assert.False(service.Approve(Guid.NewGuid().ToString("N"), true), "Wrong operation approved this package.");
+        Assert.Throws<IOException>(() => { using var write = File.Open(path, FileMode.Open, FileAccess.Write, FileShare.None); });
+        if (mode == "cancel") service.Cancel(operation);
+        else
+        {
+            if (mode == "stale") Volatile.Write(ref current, 0);
+            Assert.True(service.Approve(operation, mode != "decline"), "Review response was not accepted.");
+            Assert.False(service.Approve(operation, true), "Review approval was replayed.");
+        }
+        var result = await terminal.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(mode == "approve" ? "installed-disabled" : mode == "stale" ? "failed" : "cancelled", result.Status);
+        var installed = (await catalog.DiscoverAsync()).Widgets;
+        Assert.Equal(mode == "approve" ? 1 : 0, installed.Count);
+        if (mode == "approve") Assert.False(installed[0].Enabled, "Full-access import enabled the widget.");
+    }
 }
 
 static async Task LocalPackageUpdateFlow()

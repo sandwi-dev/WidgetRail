@@ -42,6 +42,14 @@ struct FakePicker final : ILocalWidgetPackagePicker {
     std::function<void()> duringSelect;
     bool open{};
     bool cancelled{};
+    bool approve{};
+    std::function<void()> duringApproval;
+    int reviews{};
+    bool ConfirmFullTrust(HWND, std::wstring_view, std::wstring_view) override {
+        ++reviews;
+        if (duringApproval) duringApproval();
+        return approve;
+    }
 
     LocalWidgetPackagePickerResult Select(HWND) override {
         open = true;
@@ -311,14 +319,36 @@ void UpdateTargetIsBoundToDisclosureScope() {
         "review action was swallowed by host import");
 }
 
+void FullTrustApprovalUsesCurrentOperation() {
+    for (int mode = 0; mode < 4; ++mode) {
+        FakePicker picker;
+        auto origin = SettingsOrigin();
+        LocalWidgetPackageImport importer(picker, [&] { return std::optional{origin}; },
+            [](auto, const auto&, auto) { return true; });
+        const auto submitted = importer.Begin(reinterpret_cast<HWND>(1));
+        picker.approve = mode != 0;
+        picker.duringApproval = [&] {
+            if (mode == 2) origin.runtimeGeneration = L"changed";
+            if (mode == 3) (void)importer.CancelActiveOperation();
+        };
+        Require(!importer.ReviewFullTrust(reinterpret_cast<HWND>(1), L"wrong", 1, L"widget", L"1.0.0") && picker.reviews == 0,
+            "stale approval opened a dialog");
+        Require(importer.ReviewFullTrust(reinterpret_cast<HWND>(1), submitted.operationId, 1, L"widget", L"1.0.0") == (mode == 1),
+            "declined, cancelled or stale approval was granted");
+        Require(!importer.ReviewFullTrust(reinterpret_cast<HWND>(1), submitted.operationId, 1, L"widget", L"1.0.0") && picker.reviews == 1,
+            "approval dialog was replayed");
+    }
+}
+
 } // namespace
 
 int main() {
+    FullTrustApprovalUsesCurrentOperation();
     UpdateTargetIsBoundToDisclosureScope();
     ExactOriginAndQuietCancel();
     DuplicateAndCloseCancellation();
     StaleGenerationAndSubmissionAreBounded();
     ExactPrivateActionOwnsTheCompleteOperation();
     BridgeReplacementTerminalizesExactlyOnce();
-    std::cout << "LocalWidgetPackageImportTests passed (6 scenarios)\n";
+    std::cout << "LocalWidgetPackageImportTests passed (7 scenarios)\n";
 }

@@ -1,6 +1,7 @@
 #include "LocalWidgetPackageImport.h"
 
 #include <ShObjIdl.h>
+#include <commctrl.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -84,8 +85,37 @@ LocalWidgetPackagePickerResult FileOpenDialogWidgetPackagePicker::Select(HWND ow
     return {LocalWidgetPackagePickerStatus::Selected, std::move(path), {}};
 }
 
+bool FileOpenDialogWidgetPackagePicker::ConfirmFullTrust(HWND owner, std::wstring_view widgetId, std::wstring_view version) {
+    if (!owner || !IsWindow(owner) || active()) return false;
+    const std::wstring identity = std::wstring(widgetId) + L"  " + std::wstring(version);
+    const TASKDIALOG_BUTTON buttons[]{{IDYES, L"Install disabled"}, {IDCANCEL, L"Cancel"}};
+    TASKDIALOGCONFIG config{sizeof(config)};
+    config.hwndParent = owner;
+    config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_SIZE_TO_CONTENT;
+    config.pszWindowTitle = L"WidgetRail - Review full-access widget";
+    config.pszMainIcon = TD_WARNING_ICON;
+    config.pszMainInstruction = L"Allow installation of a full-access widget?";
+    config.pszContent = L"This widget can access your files, network, and other apps with your Windows account's permissions. It is not sandboxed, and its publisher is not verified.\n\nOnly continue if you trust where you downloaded it. It will be installed disabled. You must enable it separately in Settings.";
+    config.pszFooter = identity.c_str();
+    config.pButtons = buttons;
+    config.cButtons = static_cast<UINT>(std::size(buttons));
+    config.nDefaultButton = IDCANCEL;
+    config.lpCallbackData = reinterpret_cast<LONG_PTR>(this);
+    config.pfCallback = [](HWND dialog, UINT event, WPARAM, LPARAM, LONG_PTR data) -> HRESULT {
+        auto* picker = reinterpret_cast<FileOpenDialogWidgetPackagePicker*>(data);
+        if (event == TDN_CREATED) picker->confirmationDialog_ = dialog;
+        else if (event == TDN_DESTROYED) picker->confirmationDialog_ = nullptr;
+        return S_OK;
+    };
+    int selected = IDCANCEL;
+    const auto result = TaskDialogIndirect(&config, &selected, nullptr, nullptr);
+    confirmationDialog_ = nullptr;
+    return SUCCEEDED(result) && selected == IDYES;
+}
+
 void FileOpenDialogWidgetPackagePicker::Cancel() noexcept {
     if (activeDialog_) (void)activeDialog_->Close(HRESULT_FROM_WIN32(ERROR_CANCELLED));
+    if (confirmationDialog_) PostMessageW(confirmationDialog_, TDM_CLICK_BUTTON, IDCANCEL, 0);
 }
 
 LocalWidgetPackageImport::LocalWidgetPackageImport(
@@ -148,8 +178,24 @@ LocalWidgetPackageImportResult LocalWidgetPackageImport::Begin(HWND owner, const
                 L"The local widget package install request could not be submitted."};
     activeOperationId_ = operationId;
     activeBridgeSessionGeneration_ = current->bridgeSessionGeneration;
+    activeOrigin_ = *current;
+    approvalShown_ = false;
     return {LocalWidgetPackageImportStatus::Submitted, operationId,
             L"Installing the selected widget package disabled."};
+}
+
+bool LocalWidgetPackageImport::ReviewFullTrust(HWND owner, std::wstring_view operationId,
+    long long bridgeSessionGeneration, std::wstring_view widgetId, std::wstring_view version) {
+    const auto valid = [&] {
+        const auto current = currentOrigin_ ? currentOrigin_() : std::nullopt;
+        return !operationId.empty() && operationId == activeOperationId_ &&
+            bridgeSessionGeneration == activeBridgeSessionGeneration_ && activeOrigin_ &&
+            current && Admit(*current) && SameOrigin(*activeOrigin_, *current);
+    };
+    if (approvalShown_ || !valid()) return false;
+    approvalShown_ = true;
+    const bool approved = picker_.ConfirmFullTrust(owner, widgetId, version);
+    return approved && valid();
 }
 
 void LocalWidgetPackageImport::CancelPicker() noexcept {

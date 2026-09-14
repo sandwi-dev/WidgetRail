@@ -104,10 +104,12 @@ public sealed class WidgetCatalog
     internal async Task<InstalledWidgetVersion> InstallAsync(
         Stream packageStream,
         Func<WidgetPackageInspection, CancellationToken, Task> trustedPrePublish,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        WidgetPackageTrustApproval trustApproval = WidgetPackageTrustApproval.None)
     {
         ArgumentNullException.ThrowIfNull(packageStream);
         ArgumentNullException.ThrowIfNull(trustedPrePublish);
+        ValidateTrustApproval(trustApproval);
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
         await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -116,7 +118,7 @@ public sealed class WidgetCatalog
             async (inspection, token) =>
             {
                 await PreparePackageInstallUnderLockAsync(
-                        inspection, WidgetPackageTrustApproval.None, token)
+                        inspection, trustApproval, token)
                     .ConfigureAwait(false);
                 await trustedPrePublish(inspection, token).ConfigureAwait(false);
             },
