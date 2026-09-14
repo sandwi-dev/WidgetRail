@@ -4612,6 +4612,10 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(blockedCloseDispatchMilliseconds <= 50,
             "Ordinary tray B dispatch exceeded 50 ms while a worker was nonresponsive; ms=" +
                 std::to_string(blockedCloseDispatchMilliseconds));
+    // The synchronous close press retires session authority. Let the worker
+    // finish afterward so rejection tests a late response, rather than relying
+    // on the production request timeout to manufacture a completion.
+    installation->ReleaseBlockedSnapshot(closeRevokedEpoch);
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 return IsWindowVisible(window) == FALSE;
             }), "Ordinary tray B did not close while a worker snapshot was nonresponsive.");
@@ -4626,7 +4630,11 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(closeRejectedCompletion,
             "Hide/close did not revoke the nonresponsive Settings request; " +
                 ReadUtf8(logPath).substr(rearmBefore));
-    installation->ReleaseBlockedSnapshot(closeRevokedEpoch);
+    Require(ReadUtf8(installation->BlockedSnapshotComplete()) ==
+                "epoch=" + std::to_string(closeRevokedEpoch) + " completed",
+            "Close-time revocation did not observe completion of the released snapshot epoch.");
+    Require(ReadUtf8(logPath).find("Settings failed:", rearmBefore) == std::string::npos,
+            "Close-time late-response scenario reached a Settings failure instead of clean revocation.");
 
     const auto lateBoundary = ReadUtf8(logPath).size();
     Require(PostMessageW(window, WM_HOTKEY, 1, 0) != FALSE,
