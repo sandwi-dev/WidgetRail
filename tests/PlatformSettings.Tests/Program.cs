@@ -66,8 +66,8 @@ static async Task DefaultsAreSafe()
     {
         var settings = await store.LoadAsync();
         Assert.Equal(3, settings.SchemaVersion);
-        Assert.Equal(ThemeIdentity.BuiltInDefault, settings.Appearance.ThemeId);
-        Assert.Equal(ThemeIdentity.BuiltInDefaultVersion, settings.Appearance.ThemeVersion);
+        Assert.Equal(ThemeIdentity.BuiltInNeonCircuit, settings.Appearance.ThemeId);
+        Assert.Equal(ThemeIdentity.BuiltInNeonCircuitVersion, settings.Appearance.ThemeVersion);
         Assert.Equal(1D, settings.Appearance.InterfaceScale);
         Assert.Equal(1D, settings.Appearance.TextScale);
         Assert.Equal(0.64D, settings.Appearance.BackdropOpacity);
@@ -78,7 +78,13 @@ static async Task DefaultsAreSafe()
         Assert.Equal(true, settings.Appearance.AnimateWidgetSwitching);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
 
+        using var manager = new ThemeManager(store, Catalog(temp.Path));
+        var initialTheme = await manager.ReloadAsync();
+        Assert.True(initialTheme.Published, Describe(initialTheme.Diagnostics));
+        Assert.Equal(ThemeIdentity.BuiltInNeonCircuit, initialTheme.Current.ActiveTheme.Id);
+
         await File.WriteAllTextAsync(store.Paths.SettingsFile, SettingsJson());
+        Assert.Equal(ThemeIdentity.BuiltInDefault, (await store.LoadAsync()).Appearance.ThemeId);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.AnimateWidgetSwitching);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.BoldText);
     }
@@ -128,6 +134,7 @@ static async Task SettingsRoundTrip()
     Assert.Equal(false, (await new PlatformSettingsStore(store.Paths).LoadAsync()).Appearance.BoldText);
 
     var reset = await store.ReplaceAsync(PlatformSettingsDocument.Default);
+    Assert.Equal(ThemeIdentity.BuiltInNeonCircuit, reset.Appearance.ThemeId);
     Assert.Equal(true, reset.Appearance.AnimateWidgetSwitching);
     Assert.Equal(true, reset.Appearance.BoldText);
     var resetReloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();

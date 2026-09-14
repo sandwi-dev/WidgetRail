@@ -6,6 +6,8 @@ actions live in the Power widget.
 
 ## Appearance
 
+New installations start with the Neon Circuit theme.
+
 Choose a theme and adjust the interface scale until text and controls are easy
 to read from where you play. Shared widget controls and controller hints use
 theme colors. Widgets may also supply their own artwork and style choices.
