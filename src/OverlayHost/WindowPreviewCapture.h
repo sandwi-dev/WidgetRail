@@ -5,6 +5,7 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 #include <memory>
+#include <cstdint>
 #include <span>
 #include <string>
 #include <vector>
@@ -36,6 +37,7 @@ public:
     [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap1> Bitmap(
         ID2D1RenderTarget* target, std::wstring_view windowId) noexcept;
     [[nodiscard]] size_t activeCount() const noexcept;
+    [[nodiscard]] std::uint64_t reservedBytes() const noexcept;
     [[nodiscard]] static bool Validate(const WindowPreviewSource& source) noexcept;
 private:
     struct Impl;

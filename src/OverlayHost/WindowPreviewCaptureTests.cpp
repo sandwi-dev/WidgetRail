@@ -3,11 +3,15 @@
 #include <dcomp.h>
 #include <winrt/base.h>
 #include <iostream>
+#include <array>
+#include <algorithm>
 
-// Own synthetic offscreen window only. No user application is captured and no
-// screenshots/pixel files are written. Exercises WGC -> D3D -> D2D directly.
+// Own synthetic windows only. Large allocation probes remain offscreen; a
+// small non-activating bottommost window verifies continuous DWM frame delivery.
+// No user application is captured and no screenshots/pixel files are written.
 int wmain() {
     try {
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         winrt::init_apartment(winrt::apartment_type::single_threaded);
         Microsoft::WRL::ComPtr<ID3D11Device> device;
         winrt::check_hresult(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE,
@@ -31,12 +35,13 @@ int wmain() {
         cls.hInstance = GetModuleHandleW(nullptr);
         cls.lpfnWndProc = [](HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) -> LRESULT {
             if (message != WM_PAINT) return DefWindowProcW(hwnd, message, wparam, lparam);
-            static int tick{};
+            const auto tick = GetWindowLongPtrW(hwnd, GWLP_USERDATA) + 1;
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, tick);
             PAINTSTRUCT paint{};
             HDC dc = BeginPaint(hwnd, &paint);
             RECT client{};
             GetClientRect(hwnd, &client);
-            HBRUSH brush = CreateSolidBrush((++tick % 2) ? RGB(180, 20, 50) : RGB(20, 80, 190));
+            HBRUSH brush = CreateSolidBrush((tick % 2) ? RGB(180, 20, 50) : RGB(20, 80, 190));
             FillRect(dc, &client, brush);
             DeleteObject(brush);
             EndPaint(hwnd, &paint);
@@ -45,11 +50,14 @@ int wmain() {
         cls.lpszClassName = L"WidgetRail.Preview.Synthetic";
         cls.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
         if (!RegisterClassW(&cls)) return 2;
-        HWND window = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+        HWND window = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
             cls.lpszClassName, L"Synthetic preview contract", WS_POPUP,
             -20000, -20000, 320, 180, nullptr, nullptr, cls.hInstance, nullptr);
         if (!window) return 3;
         ShowWindow(window, SW_SHOWNOACTIVATE);
+        RECT work{};
+        if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0)) return 19;
+        SetWindowPos(window, HWND_BOTTOM, work.left + 4, work.bottom - 52, 48, 48, SWP_NOACTIVATE);
         UpdateWindow(window);
         FILETIME created{}, ignored{};
         GetProcessTimes(GetCurrentProcess(), &created, &ignored, &ignored, &ignored);
@@ -131,9 +139,67 @@ int wmain() {
         capture.Reconcile(device.Get(), {});
         drawComposedPreview(160, 90);
         if (capture.Bitmap(context.Get(), source.windowId)) return 7;
+        if (frames < 2) return 8;
+
+        // Six simultaneous windows with the resolutions seen in the reported
+        // failure. All must receive GPU previews without increasing the old
+        // 192 MiB texture-storage budget or retaining full-size paint images.
+        std::cout << "Preview test: six large windows" << std::endl;
+        const std::array<SIZE, 6> sizes{{{3840,2160}, {3840,2160}, {3814,2146},
+            {3638,2086}, {2539,1430}, {2516,1417}}};
+        std::vector<widgetrail::WindowPreviewSource> sources;
+        for (std::size_t i = 0; i < sizes.size(); ++i) {
+            HWND candidate = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                cls.lpszClassName, L"Synthetic large preview", WS_POPUP,
+                -20000, -20000, sizes[i].cx, sizes[i].cy, nullptr, nullptr, cls.hInstance, nullptr);
+            if (!candidate) return 14;
+            ShowWindow(candidate, SW_SHOWNOACTIVATE);
+            UpdateWindow(candidate);
+            auto next = source;
+            next.windowId = L"synthetic-" + std::to_wstring(i);
+            next.window = candidate;
+            sources.push_back(std::move(next));
+        }
+        std::array<unsigned, 6> updates{};
+        const auto largeDeadline = GetTickCount64() + 8000;
+        while (GetTickCount64() < largeDeadline &&
+            std::any_of(updates.begin(), updates.end(), [](unsigned count) { return count == 0; })) {
+            MSG message{};
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
+            for (const auto& candidate : sources) {
+                InvalidateRect(candidate.window, nullptr, FALSE);
+                UpdateWindow(candidate.window);
+            }
+            capture.Reconcile(device.Get(), sources);
+            const auto changed = capture.Poll();
+            for (std::size_t i = 0; i < sources.size(); ++i) {
+                if (std::find(changed.begin(), changed.end(), sources[i].windowId) == changed.end()) continue;
+                const auto bitmap = capture.Bitmap(context.Get(), sources[i].windowId);
+                if (!bitmap) continue;
+                const auto extent = bitmap->GetPixelSize();
+                if (extent.width > 960 || extent.height > 540 || !extent.width || !extent.height) return 15;
+                ++updates[i];
+            }
+            if (capture.reservedBytes() > 192ULL * 1024 * 1024) return 16;
+            Sleep(16);
+        }
+        const auto largeBytes = capture.reservedBytes();
+        const auto largeCount = capture.activeCount();
+        for (const auto& diagnostic : capture.TakeDiagnostics()) std::wcout << diagnostic << L"\n";
+        capture.Reset();
+        for (const auto& candidate : sources) DestroyWindow(candidate.window);
+        if (capture.reservedBytes() != 0 || capture.activeCount() != 0) return 17;
+        std::cout << "Large preview updates:";
+        for (const auto count : updates) std::cout << ' ' << count;
+        std::cout << "; reserved bytes=" << largeBytes << std::endl;
+        if (largeCount != 6 || std::any_of(updates.begin(), updates.end(), [](unsigned count) { return count == 0; }))
+            return 18;
         std::cout << "Synthetic GPU frames: " << frames
             << "; transient restriction recovery, bounded retry, composed startup/resize/retirement, wrong-lifetime rejection and closure passed.\n";
-        return frames > 0 ? 0 : 8;
+        return 0;
     } catch (const winrt::hresult_error& error) {
         std::cerr << "Native preview check failed: " << std::hex << error.code().value << "\n";
         return 1;
