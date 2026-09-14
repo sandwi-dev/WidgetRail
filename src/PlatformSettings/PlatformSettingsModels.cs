@@ -68,7 +68,11 @@ public sealed record AppearanceSettings
     /// </summary>
     public ContrastPreference Contrast { get; init; } = ContrastPreference.System;
 
-    /// <summary>Raises rendered text to at least semibold after WRSS resolution.</summary>
+    /// <summary>
+    /// Raises rendered text to at least semibold after WRSS resolution.
+    /// Existing settings that omit this value retain the legacy disabled behavior.
+    /// Fresh installations use the explicit value in Default.
+    /// </summary>
     public bool BoldText { get; init; }
 
     /// <summary>Removes blur, translucent surfaces, and partial node opacity.</summary>
@@ -99,7 +103,7 @@ public sealed record AppearanceSettings
         BackdropOpacity = 0.64,
         Motion = MotionPreference.System,
         Contrast = ContrastPreference.System,
-        BoldText = false,
+        BoldText = true,
         Transparency = TransparencyPreference.Full,
         AnimateWidgetSwitching = true,
         WidgetSurfaceAppearance = WidgetSurfaceAppearanceOverride.Widget,

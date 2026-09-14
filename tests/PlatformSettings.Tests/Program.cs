@@ -73,13 +73,14 @@ static async Task DefaultsAreSafe()
         Assert.Equal(0.64D, settings.Appearance.BackdropOpacity);
         Assert.Equal(MotionPreference.System, settings.Appearance.Motion);
         Assert.Equal(ContrastPreference.System, settings.Appearance.Contrast);
-        Assert.Equal(false, settings.Appearance.BoldText);
+        Assert.Equal(true, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
         Assert.Equal(true, settings.Appearance.AnimateWidgetSwitching);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
 
         await File.WriteAllTextAsync(store.Paths.SettingsFile, SettingsJson());
         Assert.Equal(false, (await store.LoadAsync()).Appearance.AnimateWidgetSwitching);
+        Assert.Equal(false, (await store.LoadAsync()).Appearance.BoldText);
     }
 }
 
@@ -121,14 +122,17 @@ static async Task SettingsRoundTrip()
 
     await store.UpdateAsync(current => current with
     {
-        Appearance = current.Appearance with { AnimateWidgetSwitching = false },
+        Appearance = current.Appearance with { AnimateWidgetSwitching = false, BoldText = false },
     });
     Assert.Equal(false, (await new PlatformSettingsStore(store.Paths).LoadAsync()).Appearance.AnimateWidgetSwitching);
+    Assert.Equal(false, (await new PlatformSettingsStore(store.Paths).LoadAsync()).Appearance.BoldText);
 
     var reset = await store.ReplaceAsync(PlatformSettingsDocument.Default);
     Assert.Equal(true, reset.Appearance.AnimateWidgetSwitching);
+    Assert.Equal(true, reset.Appearance.BoldText);
     var resetReloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
     Assert.Equal(true, resetReloaded.Appearance.AnimateWidgetSwitching);
+    Assert.Equal(true, resetReloaded.Appearance.BoldText);
 }
 
 static async Task LegacySchemaOneRetiresObsoleteSettings()
