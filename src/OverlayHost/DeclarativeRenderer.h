@@ -93,6 +93,22 @@ struct DeclarativeRenderTiming final {
     std::wstring collectionAdmissionSummary;
 };
 
+// Opt-in developer data from the same prepared/presented nodes used to paint.
+// Deliberately excludes text values, artwork handles and media/window IDs.
+struct RenderInspectionNode final {
+    std::wstring id, parentId, kind;
+    declarative::Rect bounds, visibleBounds;
+    NativeRenderStyle layoutStyle, paintStyle;
+    bool laidOut{};
+};
+
+struct RenderInspection final {
+    static constexpr std::size_t maximumNodes = 2048;
+    declarative::Rect viewport;
+    std::vector<RenderInspectionNode> nodes;
+    bool truncated{};
+};
+
 enum class ResponsiveSurfaceMode {
     Compact,
     Expanded,
@@ -155,6 +171,7 @@ struct ComputedCompositorBackground final {
 
 struct RenderResult final {
     bool succeeded{};
+    std::shared_ptr<const RenderInspection> inspection;
     /// True only while at least one paint-only node transition requires a
     /// future frame. The renderer never owns a timer or animation thread.
     bool animationActive{};
@@ -309,6 +326,7 @@ struct FocusedFreeScrollPlanDiagnostic final {
 };
 
 struct DeclarativeRenderOptions final {
+    bool collectInspection{};
     std::function<Microsoft::WRL::ComPtr<ID2D1Bitmap1>(ID2D1RenderTarget*, std::wstring_view)> windowPreviewBitmap;
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};

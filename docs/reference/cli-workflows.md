@@ -44,5 +44,35 @@ render inspects presentation data, and replay applies declared inputs to that da
 They are not all graphical screenshots. Read [Scenarios](cli-scenarios.md) before
 using their output as evidence of a feature.
 
+## Inspect a running development widget
+
+```powershell
+& $wrail dev . --inspect
+```
+
+Use a host build that supports the inspector; `--host <OverlayHost.exe>` selects
+a particular packaged build. The inspector opens beside the development
+overlay, opens the requested widget, and follows its committed ordinary widget
+frames. When the overlay hides, the last captured frame remains available and
+is labeled inactive.
+
+Select a node in the tree or the layout map. The details pane shows rendered
+bounds, clipping, resolved layout and paint styles, explicit focus links,
+navigation eligibility, and scroll/cursor state. Blue marks the inspected node;
+green marks widget focus. Inspecting a node does not focus or activate it in
+the widget. The navigation summary reports the host's latest directional
+resolution, including geometry, explicit links and cursor waits.
+
+Use **Pause capture** while reading a changing view. Close the inspector
+independently; press **F12 in the overlay** to reopen it. Rendered frame display
+updates at most four times a second, with at most 2,048 nodes per frame.
+Capture is off in ordinary overlay sessions.
+
+The map shows layout geometry, not captured application pixels. It excludes
+text-entry values, artwork handles and media/window identifiers. Render timings
+are CPU timings from the production renderer; enabled inspection adds its own
+capture overhead. This first inspector is read-only and follows the ordinary
+development widget, not pinned windows or the full compositor.
+
 For the complete command syntax, run `wrail help` or use the
 [CLI reference](../../tools/WrailCli/README.md).

@@ -159,6 +159,29 @@ void WindowPreviewGeometryAndRetainedFrames() {
     Check(std::none_of(result.windowPreviewRegions.begin(), result.windowPreviewRegions.end(),
         [](const auto& region) { return region.windowId == L"window-0"; }),
         "scrolling offscreen retires the first preview demand");
+    Check(!result.inspection, "ordinary render does not allocate inspector capture");
+    snapshot.sequence++;
+    snapshot.root.children[2].focusedStyle = {{L"background", Color(L"#ff0000")}};
+    widgetrail::DeclarativeRenderOptions inspectedOptions;
+    inspectedOptions.collectInspection = true;
+    target->BeginDraw();
+    const auto inspected = renderer.Render(target.Get(), snapshot, L"poster-2", {0, 0, 240, 160}, inspectedOptions);
+    Check(SUCCEEDED(target->EndDraw()) && inspected.succeeded && inspected.inspection,
+        "opt-in inspector captures a successful real renderer pass");
+    Check(inspected.inspection->nodes.size() == 7, "inspector includes structural and decorative preview nodes");
+    for (const auto& node : inspected.inspection->nodes) {
+        const auto geometry = inspected.elementRects.find(node.id);
+        if (!node.laidOut || geometry == inspected.elementRects.end()) continue;
+        Near(node.bounds.x, geometry->second.x, "inspector x matches production presented geometry");
+        Near(node.bounds.y, geometry->second.y, "inspector y matches focus-follow scroll geometry");
+        Near(node.bounds.width, geometry->second.width, "inspector width matches renderer");
+    }
+    const auto focused = std::find_if(inspected.inspection->nodes.begin(), inspected.inspection->nodes.end(),
+        [](const auto& node) { return node.id == L"poster-2"; });
+    Check(focused != inspected.inspection->nodes.end() && focused->paintStyle.background() &&
+        focused->paintStyle.background()->red == 1.0F && focused->paintStyle.background()->green == 0.0F,
+        "inspector retains actual focused paint style rather than base layout style");
+    Check(!render(L"poster-2").inspection, "disabling inspector releases capture on the next paint");
 }
 
 void ImagePlacementMath() {

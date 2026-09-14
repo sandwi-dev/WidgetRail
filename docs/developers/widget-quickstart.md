@@ -92,6 +92,8 @@ Press A on Raise level, or use RB, and watch the level change.
 
 For a faster iteration loop, [CLI workflows](../reference/cli-workflows.md#authoring-loop)
 explain `wrail dev`, scenario tests, rendering, and input replay.
+Add `--inspect` to `wrail dev` when you want to see the native layout, resolved
+styles and focus decisions while trying the widget.
 
 ## Next steps
 

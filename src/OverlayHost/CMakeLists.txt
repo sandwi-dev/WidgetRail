@@ -61,6 +61,8 @@ target_link_libraries(ArtworkDecoderHost PRIVATE windowscodecs ole32 d2d1 d3d11 
 add_executable(OverlayHost WIN32
     ApplicationIcon.rc
     main.cpp
+    DeveloperInspector.cpp
+    DeveloperInspectorWindow.cpp
     MediaSessionManager.cpp
     OverlayCompositionSurface.cpp
     CompositorBackgroundSurfaceCoordinator.cpp
@@ -133,6 +135,7 @@ target_compile_definitions(OverlayHost PRIVATE
 )
 target_compile_options(OverlayHost PRIVATE /W4 /permissive- /EHsc)
 target_link_libraries(OverlayHost PRIVATE
+    comctl32
     user32
     gdi32
     d2d1
@@ -584,6 +587,13 @@ if(WRAIL_BUILD_TESTS)
     target_compile_options(AccessibilityEventsTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(AccessibilityEventsTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME AccessibilityEventsTests COMMAND AccessibilityEventsTests)
+
+    add_executable(DeveloperInspectorTests DeveloperInspectorTests.cpp DeveloperInspector.cpp DeveloperInspectorWindow.cpp NativeStyle.cpp)
+    target_compile_features(DeveloperInspectorTests PRIVATE cxx_std_20)
+    target_compile_options(DeveloperInspectorTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(DeveloperInspectorTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(DeveloperInspectorTests PRIVATE user32 gdi32 comctl32)
+    add_test(NAME DeveloperInspectorTests COMMAND DeveloperInspectorTests)
 
     add_executable(DeclarativeRendererTests
         DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp

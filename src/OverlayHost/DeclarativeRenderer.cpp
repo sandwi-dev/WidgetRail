@@ -5623,6 +5623,8 @@ RenderResult DeclarativeRenderer::Render(
     std::wstring collectionAdmissionSummary;
     if (pass.result.succeeded) {
         auto collectionObservations = pass.CaptureCollectionObservations();
+        auto inspection = options.collectInspection ? std::make_shared<RenderInspection>() : nullptr;
+        if (inspection) inspection->viewport = viewport;
         collectionAdmissionSummary = pass.BuildCollectionAdmissionSummary(
             previousCollectionCache, collectionObservations);
         IncrementalLayoutCache cache;
@@ -5643,6 +5645,22 @@ RenderResult DeclarativeRenderer::Render(
             const auto narrowId = NarrowStableId(node.id);
             const auto prepared = pass.prepared.find(narrowId);
             const auto presented = pass.presentation.find(narrowId);
+            if (inspection) {
+                if (inspection->nodes.size() < RenderInspection::maximumNodes) {
+                    RenderInspectionNode item;
+                    item.id = node.id;
+                    item.parentId = parentId;
+                    item.kind = node.kind;
+                    if (prepared != pass.prepared.end() && presented != pass.presentation.end()) {
+                        item.laidOut = true;
+                        item.bounds = presented->second.borderBox;
+                        item.visibleBounds = presented->second.visibleBox;
+                        item.layoutStyle = prepared->second.baseStyle;
+                        item.paintStyle = prepared->second.paintStyle;
+                    }
+                    inspection->nodes.push_back(std::move(item));
+                } else inspection->truncated = true;
+            }
             // A target may use only an already-committed clipping ancestor as
             // its local relayout boundary. Fixed dimensions alone do not
             // contain visible-overflow descendants, and the boundary itself
@@ -5699,6 +5717,7 @@ RenderResult DeclarativeRenderer::Render(
                 self(self, child, node.id, descendantBoundary);
         };
         retain(retain, snapshot.root, std::wstring_view{}, std::wstring_view{});
+        pass.result.inspection = std::move(inspection);
         if (!pass.focusedId.empty()) {
             if (const auto boundary =
                     cache.nodes.find(pass.focusedId);

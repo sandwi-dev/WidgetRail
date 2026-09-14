@@ -23,6 +23,7 @@ dotnet run --project .\\VolumeControl\\tests\\VolumeControl.Tests.csproj -c Rele
 wrail validate .\\VolumeControl
 wrail dev .\\VolumeControl
 wrail dev .\\VolumeControl --log development.log
+wrail dev .\\VolumeControl --inspect
 wrail preview .\\VolumeControl
 wrail preview .\\VolumeControl --scenario ready --output .\\VolumeControl\\fixtures\\ready.scenario.json
 wrail preview .\\VolumeControl --scenario ready --pinned-layout compact
@@ -135,6 +136,11 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   stops file logging while console feedback continues. It does not collect
   installed-host or widget runtime logs. Generation phases, readiness duration
   and unexpected dev-host exits are reported in the terminal.
+  `--inspect` opens a read-only native inspector for the development widget.
+  It uses production renderer capture for its node tree, layout map, resolved
+  styles, focus/cursor information and render timings. Pause capture from its
+  menu, or close it and press F12 in the overlay to reopen. A matching host
+  build is required. See [visual inspection](../../docs/reference/cli-workflows.md#inspect-a-running-development-widget).
   Source projects use bounded non-recursive per-directory handles for the
   manifest, project file, C# source set, `Directory.Build.props/targets`, and
   WRSS sources; newly created source/style directories are adopted after a

@@ -6,6 +6,7 @@
 #include "AccessibilityProjection.h"
 #include "AccessibilityTree.h"
 #include "DeclarativeRenderer.h"
+#include "DeveloperInspector.h"
 #include "EmbeddedMediaResourceContract.h"
 #include "ControllerNavigation.h"
 #include "ControllerOpenShortcut.h"
@@ -93,6 +94,7 @@ constexpr UINT_PTR kActionFeedbackTimer = 6;
 constexpr UINT_PTR kPinnedSurfaceTimer = 7;
 constexpr UINT_PTR kBridgeControlPlaneTimer = 8;
 constexpr UINT_PTR kControllerSettingsTimer = 9;
+constexpr UINT_PTR kDeveloperInspectorTimer = 21;
 constexpr UINT_PTR kWindowPreviewTimer = 20;
 constexpr UINT_PTR kControllerOpenShortcutTimer = 10;
 constexpr UINT kVisibleControllerTimerMilliseconds = 15;
@@ -1154,6 +1156,13 @@ public:
             if (!ProbeExpectedDevelopmentWidget()) return false;
             if (developmentProbeOnly_ && !PublishDevelopmentReady()) return false;
         }
+        if (developmentInspectorRequested_) {
+            developerInspector_ = std::make_unique<widgetrail::DeveloperInspectorWindow>();
+            widgetrail::DeveloperInspectorFrame waiting;
+            waiting.status = L"Waiting for a committed widget frame.";
+            developerInspector_->Publish(window_, std::move(waiting));
+            SetTimer(window_, kDeveloperInspectorTimer, 250, nullptr);
+        }
 
         (void)showCommand;
         if (performanceState_) {
@@ -1170,7 +1179,17 @@ public:
         }
         if (richMediaProof_) startShown = true;
         if (startShown && !developmentProbeOnly_) {
-            if (developmentCatalogRoot_) {
+            if (developmentInspectorRequested_) {
+                bool opened = false;
+                ApplyStateTransition([&] {
+                    opened = state_.OpenWidgetWithTrayFocus(*developmentWidgetId_);
+                    return opened;
+                });
+                if (!opened) {
+                    initializationError_ = L"Could not open the requested development widget for inspection.";
+                    return false;
+                }
+            } else if (developmentCatalogRoot_) {
                 Dispatch(widgetrail::Command::ToggleOverlay);
             } else {
                 bool opened = false;
@@ -1314,6 +1333,12 @@ private:
             } else if (_wcsicmp(__wargv[i], L"--development-widget-instance") == 0) {
                 if (!takeValue(i, developmentWidgetInstance_, L"--development-widget-instance")) return false;
                 ++i;
+            } else if (_wcsicmp(__wargv[i], L"--development-inspector") == 0) {
+                if (developmentInspectorRequested_) {
+                    initializationError_ = L"--development-inspector was supplied more than once.";
+                    return false;
+                }
+                developmentInspectorRequested_ = true;
             } else if (_wcsicmp(__wargv[i], L"--development-probe-only") == 0) {
                 if (developmentProbeOnly_) {
                     initializationError_ = L"--development-probe-only was supplied more than once.";
@@ -1375,6 +1400,10 @@ private:
         }
         if (developmentProbeOnly_ && !hasHandshake) {
             initializationError_ = L"A development probe requires an authenticated readiness handshake.";
+            return false;
+        }
+        if (developmentInspectorRequested_ && (!hasHandshake || developmentProbeOnly_)) {
+            initializationError_ = L"The developer inspector requires an interactive development readiness handshake.";
             return false;
         }
         if (scrollEvidencePath_ && !hasHandshake) {
@@ -1630,7 +1659,8 @@ private:
         const std::wstring widePayload =
             L"wrail-dev-ready-v1\n" + *developmentReadyNonce_ + L"\n" +
             *developmentCatalogRoot_ + L"\n" + *developmentWidgetId_ + L"\n" +
-            *developmentWidgetInstance_ + L"\n";
+            *developmentWidgetInstance_ + L"\n" +
+            (developmentInspectorRequested_ ? L"inspector-v1\n" : L"");
         if (widePayload.size() > static_cast<std::size_t>(INT_MAX)) {
             initializationError_ = L"The development readiness record is too large.";
             return false;
@@ -2330,6 +2360,12 @@ private:
             }
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_KEYDOWN:
+            if (wParam == VK_F12 && developerInspector_) {
+                developerInspector_->Reopen();
+                lastInspectorCapture_.reset();
+                InvalidateRect(window_, nullptr, FALSE);
+                return 0;
+            }
             if (auto* session = RichMediaProofSession();
                 session && session->coordinator &&
                 session->coordinator->ForwardKey(message, wParam, lParam))
@@ -2377,6 +2413,10 @@ private:
                 static_cast<float>(static_cast<short>(HIWORD(lParam))), true);
             return 0;
         case WM_TIMER:
+            if (wParam == kDeveloperInspectorTimer) {
+                PublishDeveloperInspection();
+                return 0;
+            }
             if (wParam == kWindowPreviewTimer) {
                 PollWindowPreviews();
                 return 0;
@@ -13765,6 +13805,43 @@ private:
         }
     }
 
+    void PublishDeveloperInspection() {
+        if (!developerInspector_) return;
+        if (!developerInspector_->WantsCapture()) { lastInspectorCapture_.reset(); return; }
+        if (state_.surface() == widgetrail::Surface::Hidden) {
+            lastInspectorCapture_.reset();
+            developerInspector_->RetainLastFrame(L"Overlay hidden - showing the last captured frame. Reopen the overlay to continue.");
+            return;
+        }
+        if (!committedWidgetVisualState_) {
+            lastInspectorCapture_.reset();
+            developerInspector_->Unavailable(L"Awaiting the development widget's first committed frame.");
+            return;
+        }
+        const auto& committed = *committedWidgetVisualState_;
+        if (committed.widgetId != *developmentWidgetId_ || committed.instanceId != *developmentWidgetInstance_) {
+            lastInspectorCapture_.reset();
+            developerInspector_->Unavailable(L"Select the development widget to inspect its frame.");
+            return;
+        }
+        const auto* snapshot = SnapshotFor(committed.widgetId);
+        const auto* descriptor = sessions_.FindDescriptor(committed.widgetId);
+        const auto& capture = lastWidgetRenderResult_.inspection;
+        if (!snapshot || !descriptor || !capture || snapshot->instanceId != committed.instanceId ||
+            snapshot->sequence != committed.snapshotSequence ||
+            descriptor->runtimeGeneration != committed.runtimeGeneration ||
+            descriptor->presentationGeneration != committed.presentationGeneration) {
+            lastInspectorCapture_.reset();
+            developerInspector_->Unavailable(L"Awaiting a current committed widget frame.");
+            return;
+        }
+        if (capture == lastInspectorCapture_ && lastInspectorSequence_ == snapshot->sequence) return;
+        developerInspector_->Publish(window_, widgetrail::BuildDeveloperInspectorFrame(
+            committed.widgetId, *snapshot, lastWidgetRenderResult_, committed.focusId));
+        lastInspectorCapture_ = capture;
+        lastInspectorSequence_ = snapshot->sequence;
+    }
+
     void MoveWidgetFocus(
         const std::wstring_view direction,
         const widgetrail::input::NavigationEventPhase phase) {
@@ -13798,6 +13875,16 @@ private:
         }
         auto resolution = interactionSession_.ResolveDirectionalFocus(
             widgetId, *snapshot, navigationDirection, lastWidgetRenderResult_);
+        if (developerInspector_) {
+            using Disposition = widgetrail::input::DirectionalFocusDisposition;
+            const auto label = resolution.disposition == Disposition::Explicit ? L"explicit link" :
+                resolution.disposition == Disposition::Geometric ? L"geometry" :
+                resolution.disposition == Disposition::VisibleRecovery ? L"visible-focus recovery" :
+                resolution.disposition == Disposition::BlockedAuthority ? L"blocked authority" :
+                resolution.disposition == Disposition::MissingVisibleFocus ? L"missing visible focus" : L"boundary";
+            developerInspector_->Navigation(interactionSession_.focusedElementId(), direction,
+                resolution.target.value_or(L"no target"), label);
+        }
         if (resolution.disposition ==
             widgetrail::input::DirectionalFocusDisposition::MissingVisibleFocus) {
             // A constrained viewport or responsive branch can leave a valid
@@ -13822,7 +13909,11 @@ private:
                 DirectionalNavigation,
             GetTickCount64());
         PublishScrollPaginationOutcome(admission.pagination);
-        if (admission.retainFocus) return;
+        if (admission.retainFocus) {
+            if (developerInspector_) developerInspector_->Navigation(interactionSession_.focusedElementId(),
+                direction, interactionSession_.focusedElementId(), L"retained while admitting cursor navigation");
+            return;
+        }
         resolution = std::move(admission.resolution);
         if (resolution.target) {
             const auto flushInstanceId = snapshot->instanceId;
@@ -18033,6 +18124,9 @@ private:
                     accessibilityActive_ && descriptor &&
                     widgetAccessibilityProjection_.ShouldCollect(projectionKey);
                 options.collectAccessibility = collectAccessibility;
+                options.collectInspection = !inertRetainedSnapshot && developerInspector_ &&
+                    developerInspector_->WantsCapture() && widget == *developmentWidgetId_ &&
+                    snapshot->instanceId == *developmentWidgetInstance_;
                 auto result = declarativeRenderer_->Render(
                     renderTarget_.Get(), *snapshot, renderedFocusId, viewport, options);
                 for (const auto& diagnostic : result.diagnostics) {
@@ -18518,6 +18612,10 @@ private:
     std::optional<std::wstring> developmentWidgetId_;
     std::optional<std::wstring> developmentWidgetInstance_;
     bool developmentProbeOnly_{};
+    bool developmentInspectorRequested_{};
+    std::unique_ptr<widgetrail::DeveloperInspectorWindow> developerInspector_;
+    std::shared_ptr<const widgetrail::RenderInspection> lastInspectorCapture_;
+    long long lastInspectorSequence_{};
     std::optional<std::wstring> performanceState_;
     std::optional<std::wstring> performanceWidgetId_;
     std::optional<std::wstring> performanceDiagnosticsPath_;

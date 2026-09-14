@@ -6,6 +6,7 @@
 #include <TlHelp32.h>
 #include <UIAutomation.h>
 #include <Windows.h>
+#include <commctrl.h>
 #include <Xinput.h>
 #include <wrl/client.h>
 
@@ -65,6 +66,7 @@ struct Arguments final {
     std::optional<std::size_t> fallbackAuthorityReplayMarker;
     std::optional<long long> fallbackAuthorityReplaySequence;
     bool geometryOnly{};
+    bool inspectorOnly{};
     bool pinnedSliderRouteOnly{};
     bool fallbackAuthoritySelectionOnly{};
 };
@@ -329,6 +331,8 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
         const std::wstring_view argument(argv[index]);
         if (argument == L"--geometry-only") {
             result.geometryOnly = true;
+        } else if (argument == L"--inspector-only") {
+            result.inspectorOnly = true;
         } else if (argument == L"--pinned-slider-route-only") {
             result.pinnedSliderRouteOnly = true;
         } else if (argument == L"--fallback-authority-selection-only") {
@@ -364,7 +368,7 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
             Fail("Usage: WidgetSwitchHostTests --installation <dir> "
                  "--fixture-worker <exe> --repository-commit <sha> "
                  "--host-sha256 <sha256> [--geometry-only] "
-                 "[--pinned-slider-route-only] "
+                 "[--pinned-slider-route-only] [--inspector-only] "
                  "[--fallback-authority-selection-only] "
                  "[--fallback-authority-replay-log <path> "
                  "--fallback-authority-marker <offset> "
@@ -5042,6 +5046,85 @@ void RunRetentionScenario(const Arguments& arguments) {
     installation.reset();
 }
 
+void RunDeveloperInspectorScenario(const Arguments& arguments) {
+    auto installation = std::make_unique<TemporaryInstallation>(arguments.installation, arguments.fixtureWorker);
+    const auto quoted = [](const fs::path& path) { return L"\"" + path.wstring() + L"\""; };
+    const std::wstring hostArguments =
+        L"--show --process-profile " + installation->ProcessProfile() +
+        L" --development-catalog-root " + quoted(installation->Root()) +
+        L" --development-ready-path " + quoted(installation->ReadyPath()) +
+        L" --development-ready-nonce " + kDevelopmentNonce +
+        L" --development-widget-id audio-mixer --development-widget-instance audio-mixer.default --development-inspector";
+    auto host = std::make_unique<HostProcess>(installation->Root(), installation->LocalAppData(), hostArguments);
+    HWND inspector{};
+    const bool inspectorReady = WaitUntil(kStartupTimeoutMilliseconds, [&] {
+        inspector = LocateHostWindow(host->Id(), L"WidgetRail.DeveloperInspector");
+        if (!inspector) return false;
+        const auto tree = FindWindowExW(inspector, nullptr, WC_TREEVIEWW, nullptr);
+        DWORD_PTR count{};
+        return tree && SendMessageTimeoutW(tree, TVM_GETCOUNT, 0, 0, SMTO_ABORTIFHUNG, 500, &count) && count > 0 &&
+            ReadUtf8(installation->ReadyPath()).find(kDevelopmentNonceUtf8) != std::string::npos &&
+            ReadUtf8(installation->ReadyPath()).find("inspector-v1\n") != std::string::npos;
+    });
+    if (!inspectorReady) {
+        wchar_t statusText[2048]{};
+        DWORD_PTR ignored{};
+        if (inspector) SendMessageTimeoutW(FindWindowExW(inspector, nullptr, L"STATIC", nullptr),
+            WM_GETTEXT, std::size(statusText), reinterpret_cast<LPARAM>(statusText), SMTO_ABORTIFHUNG, 500, &ignored);
+        auto log = ReadUtf8(installation->LocalAppData() / L"WidgetRail" / L"overlay.log");
+        if (log.size() > 20000) log.erase(0, log.size() - 20000);
+        Fail("Developer inspector did not publish authenticated host-rendered nodes; status=" +
+            WideToUtf8(statusText) + " ready=" + ReadUtf8(installation->ReadyPath()) + " log=" + log);
+    }
+    const auto window = LocateHostWindow(host->Id());
+    Require(window && IsWindowVisible(window), "Inspector replaced the ordinary widget window.");
+    const auto status = FindWindowExW(inspector, nullptr, L"STATIC", nullptr);
+    wchar_t text[2048]{};
+    DWORD_PTR textLength{};
+    Require(status && SendMessageTimeoutW(status, WM_GETTEXT, std::size(text),
+        reinterpret_cast<LPARAM>(text), SMTO_ABORTIFHUNG, 500, &textLength),
+        "Inspector status did not respond within the bounded read.");
+    Require(std::wstring_view(text).find(L"snapshot") != std::wstring_view::npos &&
+        std::wstring_view(text).find(L"audio-mixer") != std::wstring_view::npos &&
+        std::wstring_view(text).find(L"Renderer:") != std::wstring_view::npos,
+        "Inspector omitted committed snapshot identity or measured rendering.");
+    Require(PostMessageW(window, WM_HOTKEY, 1, 0) != FALSE, "Could not hide the inspected overlay.");
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        DWORD_PTR length{}, count{};
+        wchar_t hiddenStatus[2048]{};
+        const auto tree = FindWindowExW(inspector, nullptr, WC_TREEVIEWW, nullptr);
+        return !IsWindowVisible(window) && tree &&
+            SendMessageTimeoutW(status, WM_GETTEXT, std::size(hiddenStatus), reinterpret_cast<LPARAM>(hiddenStatus),
+                SMTO_ABORTIFHUNG, 500, &length) &&
+            std::wstring_view(hiddenStatus).find(L"INACTIVE") != std::wstring_view::npos &&
+            SendMessageTimeoutW(tree, TVM_GETCOUNT, 0, 0, SMTO_ABORTIFHUNG, 500, &count) && count > 0;
+    }), "Hiding the overlay discarded the inspector frame or left it marked live.");
+    Require(PostMessageW(window, WM_HOTKEY, 1, 0) != FALSE, "Could not reopen the inspected overlay.");
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        DWORD_PTR length{};
+        wchar_t liveStatus[2048]{};
+        return IsWindowVisible(window) &&
+            SendMessageTimeoutW(status, WM_GETTEXT, std::size(liveStatus), reinterpret_cast<LPARAM>(liveStatus),
+                SMTO_ABORTIFHUNG, 500, &length) &&
+            std::wstring_view(liveStatus).find(L"LIVE  |  audio-mixer") != std::wstring_view::npos;
+    }), "Reopening the overlay did not resume live development-widget inspection.");
+    PostMessageW(inspector, WM_CLOSE, 0, 0);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        return !LocateHostWindow(host->Id(), L"WidgetRail.DeveloperInspector");
+    }), "Inspector did not close independently.");
+    Require(ProcessIsRunning(host->Id()) && IsWindowVisible(window), "Closing the inspector stopped the development host.");
+    PostKey(window, VK_F12);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        const auto reopened = LocateHostWindow(host->Id(), L"WidgetRail.DeveloperInspector");
+        const auto tree = reopened ? FindWindowExW(reopened, nullptr, WC_TREEVIEWW, nullptr) : nullptr;
+        DWORD_PTR count{};
+        return tree && SendMessageTimeoutW(tree, TVM_GETCOUNT, 0, 0, SMTO_ABORTIFHUNG, 500, &count) && count > 0;
+    }), "F12 did not reopen the inspector with a current frame.");
+    std::cout << "Developer inspector production host integration passed\n";
+    host.reset();
+    installation.reset();
+}
+
 void RunPinnedSliderRouteScenario(const Arguments& arguments) {
     auto installation = std::make_unique<TemporaryInstallation>(
         arguments.installation, arguments.fixtureWorker, true);
@@ -5178,8 +5261,12 @@ int wmain(const int argc, wchar_t** argv) {
             RunFallbackCheckpointReplay(arguments);
         else if (arguments.pinnedSliderRouteOnly)
             RunPinnedSliderRouteScenario(arguments);
-        else
+        else if (arguments.inspectorOnly)
+            RunDeveloperInspectorScenario(arguments);
+        else {
             RunRetentionScenario(arguments);
+            if (!arguments.geometryOnly) RunDeveloperInspectorScenario(arguments);
+        }
         std::cout << "WidgetSwitchHostTests passed\n";
         CoUninitialize();
         return 0;

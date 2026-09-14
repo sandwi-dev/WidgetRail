@@ -22,12 +22,12 @@ internal static class DevCommand
         CancellationToken cancellationToken)
     {
         var parsed = new CommandArguments(
-            args, "--host", "--configuration", "--build-timeout-seconds", "--debounce-ms", "--log");
+            args, ["--host", "--configuration", "--build-timeout-seconds", "--debounce-ms", "--log"], ["--inspect"]);
         if (parsed.Positionals.Count != 1)
             throw new CliUsageException(
                 "Usage: wrail dev <widget-directory|widget.csproj|file.wrwidget> " +
                 "[--host <OverlayHost.exe>] [--configuration <name>] " +
-                "[--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>] [--log <new-file>]");
+                "[--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>] [--log <new-file>] [--inspect]");
 
         var configuration = parsed.Option("--configuration") ?? "Debug";
         if (configuration.Length is < 1 or > 64 ||
@@ -55,7 +55,7 @@ internal static class DevCommand
 
         await using var session = new DevSession(
             source, host, configuration, TimeSpan.FromSeconds(timeout),
-            TimeSpan.FromMilliseconds(debounce), output, error);
+            TimeSpan.FromMilliseconds(debounce), output, error, inspect: parsed.HasFlag("--inspect"));
         await session.RunAsync(cancellationToken).ConfigureAwait(false);
         return 0;
     }
@@ -209,6 +209,7 @@ internal sealed class DevSession : IAsyncDisposable
     private string? _activeGeneration;
     private DevWidgetIdentity? _activeIdentity;
     private int _generation;
+    private readonly bool _inspect;
 
     public DevSession(
         DevWidgetSource source,
@@ -218,9 +219,11 @@ internal sealed class DevSession : IAsyncDisposable
         TimeSpan debounce,
         TextWriter output,
         TextWriter error,
-        TimeSpan? readyTimeout = null)
+        TimeSpan? readyTimeout = null,
+        bool inspect = false)
     {
         _source = source;
+        _inspect = inspect;
         _host = host;
         _configuration = configuration;
         _buildTimeout = buildTimeout;
@@ -433,6 +436,7 @@ internal sealed class DevSession : IAsyncDisposable
         start.ArgumentList.Add("--development-widget-instance");
         start.ArgumentList.Add(handshake.Identity.InstanceId);
         if (probeOnly) start.ArgumentList.Add("--development-probe-only");
+        else if (_inspect) start.ArgumentList.Add("--development-inspector");
         return DevHostProcess.Start(start);
     }
 
@@ -443,7 +447,7 @@ internal sealed class DevSession : IAsyncDisposable
         bool probeOnly,
         CancellationToken cancellationToken)
     {
-        var handshake = DevReadyHandshake.Create(handshakeRoot, catalogRoot, identity);
+        var handshake = DevReadyHandshake.Create(handshakeRoot, catalogRoot, identity, _inspect && !probeOnly);
         var process = StartHost(catalogRoot, handshake, probeOnly);
         try
         {
@@ -804,7 +808,8 @@ internal sealed record DevReadyHandshake(
     public static DevReadyHandshake Create(
         string root,
         string catalogRoot,
-        DevWidgetIdentity identity)
+        DevWidgetIdentity identity,
+        bool inspect = false)
     {
         var directory = System.IO.Path.Combine(root, "ready");
         Directory.CreateDirectory(directory);
@@ -812,6 +817,7 @@ internal sealed record DevReadyHandshake(
         var path = System.IO.Path.Combine(directory, $"{nonce}.ready");
         var normalizedCatalog = System.IO.Path.GetFullPath(catalogRoot);
         var payload = $"wrail-dev-ready-v1\n{nonce}\n{normalizedCatalog}\n{identity.Id}\n{identity.InstanceId}\n";
+        if (inspect) payload += "inspector-v1\n";
         return new(path, nonce, payload, identity);
     }
 
@@ -842,6 +848,10 @@ internal sealed record DevReadyHandshake(
                     await Task.Delay(20, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
+                const string inspectorAcknowledgement = "inspector-v1\n";
+                if (ExpectedPayload.EndsWith(inspectorAcknowledgement, StringComparison.Ordinal) &&
+                    payload == ExpectedPayload[..^inspectorAcknowledgement.Length])
+                    throw new CliOperationException("OverlayHost does not acknowledge developer inspector support. Update the host or select a matching build with --host.");
                 if (!string.Equals(payload, ExpectedPayload, StringComparison.Ordinal))
                     throw new CliOperationException(
                         "OverlayHost readiness payload did not authenticate the exact development catalog generation.");

@@ -1995,6 +1995,8 @@ $hostArguments = $hostCompileArguments + @(
     (Join-Path $outputDirectory 'WidgetRailIcon.res'),
     '/DWRAIL_OVERLAY_PLATFORM_IMPORTS',
     (Join-Path $projectDirectory 'main.cpp'),
+    (Join-Path $projectDirectory 'DeveloperInspector.cpp'),
+    (Join-Path $projectDirectory 'DeveloperInspectorWindow.cpp'),
     (Join-Path $projectDirectory 'ControllerOpenShortcut.cpp'),
     (Join-Path $projectDirectory 'MediaSessionManager.cpp'),
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
@@ -2047,7 +2049,7 @@ $hostArguments = $hostCompileArguments + @(
     '/SUBSYSTEM:WINDOWS', '/Brepro', '/PDBALTPATH:%_PDB%',
     '/MANIFEST:EMBED',
     "/MANIFESTINPUT:$(Join-Path $projectDirectory 'app.manifest')",
-    'user32.lib', 'gdi32.lib', 'd2d1.lib', 'dwrite.lib', 'dwmapi.lib',
+    'user32.lib', 'gdi32.lib', 'comctl32.lib', 'd2d1.lib', 'dwrite.lib', 'dwmapi.lib',
     'd3d11.lib', 'dxgi.lib', 'dcomp.lib',
     'WebView2LoaderStatic.lib',
     'gameinput.lib', 'shcore.lib', 'xinput9_1_0.lib', 'windowsapp.lib',
@@ -2899,6 +2901,20 @@ if (-not $SkipTests) {
     if ($LASTEXITCODE -ne 0) {
         throw "HostAccessibilityTests failed with exit code $LASTEXITCODE."
     }
+
+    $inspectorTestDirectory = Join-Path $outputDirectory 'obj\developer-inspector-tests'
+    New-Item -ItemType Directory -Force -Path $inspectorTestDirectory | Out-Null
+    & $cl ($common + @(
+        (Join-Path $projectDirectory 'DeveloperInspectorTests.cpp'),
+        (Join-Path $projectDirectory 'DeveloperInspector.cpp'),
+        (Join-Path $projectDirectory 'DeveloperInspectorWindow.cpp'),
+        (Join-Path $projectDirectory 'NativeStyle.cpp'),
+        "/Fo:$inspectorTestDirectory\", "/Fe:$outputDirectory\DeveloperInspectorTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE', 'user32.lib', 'gdi32.lib', 'comctl32.lib'
+    ) + $libraryArguments)
+    if ($LASTEXITCODE -ne 0) { throw "DeveloperInspectorTests build failed with exit code $LASTEXITCODE." }
+    & (Join-Path $outputDirectory 'DeveloperInspectorTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw "DeveloperInspectorTests failed with exit code $LASTEXITCODE." }
 
     $accessibilityEventsTestArguments = $common + @(
         (Join-Path $projectDirectory 'AccessibilityEventsTests.cpp'),

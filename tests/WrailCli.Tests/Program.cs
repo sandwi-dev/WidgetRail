@@ -42,12 +42,17 @@ if (args is ["--dev-persistent-child", var descendantPath, ..])
 
 if (args.Contains("--development-catalog-root", StringComparer.Ordinal))
 {
+    if (args.Contains("--development-probe-only", StringComparer.Ordinal) &&
+        args.Contains("--development-inspector", StringComparer.Ordinal))
+        throw new InvalidOperationException("Hidden readiness probe must not open an inspector.");
     var readyPath = DevelopmentArgument(args, "--development-ready-path");
     var nonce = DevelopmentArgument(args, "--development-ready-nonce");
     var catalog = Path.GetFullPath(DevelopmentArgument(args, "--development-catalog-root"));
     var widgetId = DevelopmentArgument(args, "--development-widget-id");
     var instance = DevelopmentArgument(args, "--development-widget-instance");
     var installed = await new WidgetRail.WidgetCatalog.WidgetCatalog(catalog).DiscoverAsync();
+    if (args.Contains("--development-inspector", StringComparer.Ordinal))
+        await File.WriteAllTextAsync(Path.Combine(catalog, "inspector-enabled.flag"), "interactive");
     var expected = installed.Widgets.Single(widget => widget.Id == widgetId);
     var brokenProbe = args.Contains("--development-probe-only", StringComparer.Ordinal) &&
                       expected.ActiveVersion.Manifest.Entrypoint.Type == "Missing.Widget";
@@ -68,6 +73,7 @@ if (args.Contains("--development-catalog-root", StringComparer.Ordinal))
     {
         if (widgetId.EndsWith(".forged-ready", StringComparison.Ordinal)) nonce = new string('0', 64);
         var payload = $"wrail-dev-ready-v1\n{nonce}\n{catalog}\n{widgetId}\n{instance}\n";
+        if (args.Contains("--development-inspector", StringComparer.Ordinal)) payload += "inspector-v1\n";
         var temporary = readyPath + ".tmp";
         await File.WriteAllTextAsync(temporary, payload);
         File.Move(temporary, readyPath);
@@ -87,6 +93,7 @@ if (args.Contains("--embedded-media-template", StringComparer.Ordinal))
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Help describes the complete workflow", HelpWorks),
+    ("Inspector startup requires exact host capability acknowledgement", InspectorHandshake),
     ("GitHub discovery and published checksums install exact assets", GitHubDiscoveryWorkflow),
     ("GitHub widget updates require review and retain rollback versions", GitHubWidgetUpdateWorkflow),
     ("GitHub theme updates retain the current appearance selection", GitHubThemeUpdateWorkflow),
@@ -195,6 +202,26 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task InspectorHandshake()
+{
+    using var temp = new TemporaryDirectory();
+    var handshake = DevReadyHandshake.Create(temp.Path, Path.Combine(temp.Path, "catalog"),
+        new DevWidgetIdentity("dev.test.inspector", "dev.test.inspector.default"), inspect: true);
+    const string suffix = "inspector-v1\n";
+    Assert.True(handshake.ExpectedPayload.EndsWith(suffix, StringComparison.Ordinal), "Inspector request omitted its capability acknowledgement.");
+    await File.WriteAllTextAsync(handshake.Path, handshake.ExpectedPayload[..^suffix.Length]);
+    using var process = Process.GetCurrentProcess();
+    try
+    {
+        await handshake.WaitAsync(process, TimeSpan.FromSeconds(2), default);
+        throw new Exception("Older host was silently accepted for inspection.");
+    }
+    catch (CliOperationException exception) { Assert.Contains("inspector support", exception.Message); }
+    await File.WriteAllTextAsync(handshake.Path, handshake.ExpectedPayload);
+    await handshake.WaitAsync(process, TimeSpan.FromSeconds(2), default);
+    Assert.True(!File.Exists(handshake.Path), "Accepted inspector readiness was not consumed.");
+}
 
 static byte[] ReleaseMetadata(string tag, string assetName, byte[] payload, bool checksum = false, bool prerelease = false)
 {
@@ -1999,7 +2026,7 @@ static async Task DevRetainsAndCleans()
     var error = TextWriter.Synchronized(errorBuffer);
     var session = new DevSession(
         DevWidgetSource.Discover(packageRoot), Environment.ProcessPath!, "Release",
-        TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75), output, error);
+        TimeSpan.FromSeconds(90), TimeSpan.FromMilliseconds(75), output, error, inspect: true);
     var sessionRoot = session.SessionRoot;
     // Real isolated build behavior and the 90-second product deadline have
     // dedicated tests. This lifecycle fixture starts from one catalog-valid
@@ -2015,6 +2042,8 @@ static async Task DevRetainsAndCleans()
         var firstPid = session.ActiveHostProcessId;
         activePid = firstPid;
         Assert.True(firstPid.HasValue, "Dev host was not retained after the first good build.");
+        Assert.True(Directory.GetFiles(sessionRoot, "inspector-enabled.flag", SearchOption.AllDirectories).Length == 1,
+            "CLI did not request an inspector for the interactive generation only.");
         await File.WriteAllTextAsync(Path.Combine(packageRoot, "styles", "default.wrss"),
             "button { background: url(https://unsafe.example/x); }");
         await WaitUntilAsync(() => errorBuffer.ToString().Contains("Retained the last-good", StringComparison.Ordinal),
