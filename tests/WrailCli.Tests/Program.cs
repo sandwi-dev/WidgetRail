@@ -87,6 +87,11 @@ if (args.Contains("--embedded-media-template", StringComparer.Ordinal))
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Help describes the complete workflow", HelpWorks),
+    ("GitHub discovery and published checksums install exact assets", GitHubDiscoveryWorkflow),
+    ("GitHub widget updates require review and retain rollback versions", GitHubWidgetUpdateWorkflow),
+    ("GitHub theme updates retain the current appearance selection", GitHubThemeUpdateWorkflow),
+    ("GitHub metadata failures are bounded and actionable", GitHubMetadataSafety),
+    ("GitHub source metadata failure does not undo installation", GitHubSourceFailure),
     ("Doctor reports selected SDK and host failures without mutations", DoctorWorkflow),
     ("Doctor cancels and reclaims a stalled SDK probe", DoctorCancelsProbe),
     ("Widget inspection validates bytes without installing or executing", InspectWorkflow),
@@ -190,6 +195,210 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static byte[] ReleaseMetadata(string tag, string assetName, byte[] payload, bool checksum = false, bool prerelease = false)
+{
+    var assets = new List<object>
+    {
+        new { name = assetName, size = payload.Length, digest = checksum ? null : "sha256:" + Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant() },
+    };
+    if (checksum) assets.Add(new { name = "SHA256SUMS.txt", size = 120, digest = (string?)null });
+    return JsonSerializer.SerializeToUtf8Bytes(new { tag_name = tag, draft = false, prerelease, assets });
+}
+
+static async Task GitHubDiscoveryWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    var package = await CreatePackedPackageAsync(temp.Path, "dev.test.discovery", "1.0.0");
+    var payload = await File.ReadAllBytesAsync(package);
+    var metadata = ReleaseMetadata("v1", "sample.wrwidget", payload, checksum: true);
+    var urls = new List<string>();
+    using var handler = new StubHttpHandler((request, _) =>
+    {
+        var url = request.RequestUri!;
+        urls.Add(url.AbsoluteUri);
+        var bytes = url.Host == "api.github.com"
+            ? (url.Query.Length > 0 ? JsonSerializer.SerializeToUtf8Bytes(new[] { JsonSerializer.Deserialize<JsonElement>(metadata) }) : metadata)
+            : url.AbsolutePath.EndsWith("SHA256SUMS.txt", StringComparison.Ordinal)
+                ? Encoding.UTF8.GetBytes(Convert.ToHexString(SHA256.HashData(payload)) + "  sample.wrwidget\n") : payload;
+        return Task.FromResult(Response(HttpStatusCode.OK, bytes));
+    });
+    var list = await RunCliWithHandler(handler, "releases", "sample/repo", "--json");
+    Assert.Equal(0, list.Code);
+    Assert.Contains("sample.wrwidget", list.Output);
+    Assert.Equal(1, urls.Count);
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    var install = await RunCliWithHandler(handler, "install", "github:sample/repo@v1/sample.wrwidget", "--catalog", catalogRoot);
+    Assert.Equal(0, install.Code);
+    Assert.True(urls.Any(url => url.EndsWith("/v1/SHA256SUMS.txt", StringComparison.Ordinal)), "Published checksum was not fetched.");
+    var installed = (await new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot).DiscoverAsync()).Widgets.Single();
+    Assert.True(!installed.Enabled, "GitHub installation enabled a widget.");
+    Assert.Equal("github:sample/repo@v1/sample.wrwidget", PackageSources.Find(catalogRoot, "widget", installed.Id,
+        "1.0.0", installed.ActiveVersion.ContentDigest)!.Source);
+    Assert.True(PackageSources.Find(catalogRoot, "widget", installed.Id, "1.0.0", new string('a', 64)) is null,
+        "Source metadata matched different installed content.");
+    Assert.Equal(0, (await RunCli("uninstall", installed.Id, "--catalog", catalogRoot)).Code);
+    Assert.True(PackageSources.Find(catalogRoot, "widget", installed.Id, "1.0.0", installed.ActiveVersion.ContentDigest) is null,
+        "Uninstalled widget retained its GitHub source metadata.");
+}
+
+static async Task GitHubWidgetUpdateWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    const string id = "dev.test.manual-update";
+    var first = await File.ReadAllBytesAsync(await CreatePackedPackageAsync(temp.Path, id, "1.0.0"));
+    var secondRoot = CreatePackageSource(temp.Path, id, "dev.test", "2.0.0");
+    var nextManifest = BuildManifest(id, "dev.test", "2.0.0") with { Permissions = ["audio.read"] };
+    await File.WriteAllBytesAsync(Path.Combine(secondRoot, "manifest.json"), ManifestJson.Serialize(nextManifest));
+    var secondFile = Path.Combine(temp.Path, "second.wrwidget");
+    Assert.Equal(0, (await RunCli("pack", secondRoot, "--output", secondFile)).Code);
+    var second = await File.ReadAllBytesAsync(secondFile);
+    var sha = Convert.ToHexString(SHA256.HashData(second));
+    byte[] served = second;
+    var requests = 0;
+    var root = Path.Combine(temp.Path, "catalog with spaces");
+    var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(root);
+    var enableDuringDownload = false;
+    using var handler = new StubHttpHandler(async (request, _) =>
+    {
+        requests++;
+        var url = request.RequestUri!;
+        if (enableDuringDownload && url.Host == "github.com")
+        {
+            enableDuringDownload = false;
+            await catalog.SetEnabledAsync(id, true);
+        }
+        return Response(HttpStatusCode.OK, url.Host == "api.github.com"
+            ? ReleaseMetadata("v2", "sample.wrwidget", served)
+            : url.AbsolutePath.Contains("/v1/", StringComparison.Ordinal) ? first : served);
+    });
+    Assert.Equal(0, (await RunCliWithHandler(handler, "install", "github:sample/repo@v1/sample.wrwidget",
+        "--sha256", Convert.ToHexString(SHA256.HashData(first)), "--catalog", root)).Code);
+    var beforeBadApply = requests;
+    Assert.Equal(2, (await RunCliWithHandler(handler, "update", id, "--apply", "--catalog", root)).Code);
+    Assert.Equal(beforeBadApply, requests);
+    var preview = await RunCliWithHandler(handler, "update", id, "--catalog", root);
+    Assert.Equal(0, preview.Code);
+    Assert.Contains("Required permissions added: audio.read", preview.Output);
+    Assert.Contains(sha.ToLowerInvariant(), preview.Output);
+    Assert.Contains("--catalog '" + root + "'", preview.Output);
+    Assert.Equal(1, (await catalog.DiscoverAsync()).Widgets.Single().Versions.Count);
+    var apply = new[] { "update", id, "--tag", "v2", "--asset", "sample.wrwidget", "--sha256", sha, "--apply", "--catalog", root };
+    Assert.Equal(0, (await RunCli("enable", id, "--catalog", root)).Code);
+    Assert.Equal(1, (await RunCliWithHandler(handler, apply)).Code);
+    Assert.Equal("1.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
+    Assert.Equal(0, (await RunCli("disable", id, "--catalog", root)).Code);
+    enableDuringDownload = true;
+    var raced = await RunCliWithHandler(handler, apply);
+    Assert.Equal(1, raced.Code);
+    Assert.Contains("changed while", raced.Error);
+    var afterRace = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.True(afterRace.Enabled && afterRace.Versions.Count == 1, "Update overwrote a concurrent enable action.");
+    Assert.Equal(0, (await RunCli("disable", id, "--catalog", root)).Code);
+    served = await File.ReadAllBytesAsync(await CreatePackedPackageAsync(temp.Path, "dev.test.wrong-package", "3.0.0"));
+    Assert.Equal(1, (await RunCliWithHandler(handler, "update", id, "--catalog", root)).Code);
+    Assert.Equal(1, (await catalog.DiscoverAsync()).Widgets.Single().Versions.Count);
+    Assert.Equal(1, (await RunCliWithHandler(handler, apply)).Code); // Reviewed digest rejects changed bytes.
+    served = second;
+    Assert.Equal(0, (await RunCliWithHandler(handler, apply)).Code);
+    var updated = (await catalog.DiscoverAsync()).Widgets.Single();
+    Assert.Equal("2.0.0", updated.ActiveVersion.Version.ToString());
+    Assert.True(!updated.Enabled && updated.Versions.Count == 2, "Update activated the widget or removed rollback bytes.");
+    Assert.Equal(0, (await RunCli("version", "rollback", id, "--catalog", root)).Code);
+    Assert.Equal("1.0.0", (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version.ToString());
+}
+
+static async Task GitHubThemeUpdateWorkflow()
+{
+    using var temp = new TemporaryDirectory();
+    const string id = "dev.test.update-theme";
+    var payloads = new Dictionary<string, byte[]>();
+    foreach (var version in new[] { "1.0.0", "2.0.0" })
+    {
+        var source = await CreateThemeSourceAsync(temp.Path, id, "dev.test", version);
+        var package = Path.Combine(temp.Path, version + ".wrtheme");
+        Assert.Equal(0, (await RunCli("theme", "pack", source, "--output", package)).Code);
+        payloads[version] = await File.ReadAllBytesAsync(package);
+    }
+    using var handler = new StubHttpHandler((request, _) => Task.FromResult(Response(HttpStatusCode.OK,
+        request.RequestUri!.Host == "api.github.com" ? ReleaseMetadata("v2", "sample.wrtheme", payloads["2.0.0"])
+        : payloads[request.RequestUri.AbsolutePath.Contains("/v1/", StringComparison.Ordinal) ? "1.0.0" : "2.0.0"])));
+    var root = Path.Combine(temp.Path, "settings");
+    Assert.Equal(0, (await RunCliWithHandler(handler, "theme", "install", "github:sample/themes@v1/sample.wrtheme",
+        "--sha256", Convert.ToHexString(SHA256.HashData(payloads["1.0.0"])), "--settings-root", root)).Code);
+    var paths = new PlatformSettingsPaths(root);
+    var store = new PlatformSettingsStore(paths);
+    await store.UpdateAsync(settings => settings with { Appearance = settings.Appearance with { ThemeId = id, ThemeVersion = "1.0.0" } });
+    var selectionBytes = await File.ReadAllBytesAsync(paths.SettingsFile);
+    var before = Directory.GetFiles(root, "*", SearchOption.AllDirectories).Order().ToArray();
+    var check = await RunCliWithHandler(handler, "theme", "update", id, "--settings-root", root);
+    Assert.Equal(0, check.Code);
+    Assert.True(before.SequenceEqual(Directory.GetFiles(root, "*", SearchOption.AllDirectories).Order()), "Theme preview mutated installed state.");
+    Assert.Equal(0, (await RunCliWithHandler(handler, "theme", "update", id, "--tag", "v2", "--asset", "sample.wrtheme",
+        "--sha256", Convert.ToHexString(SHA256.HashData(payloads["2.0.0"])), "--apply", "--settings-root", root)).Code);
+    Assert.Equal(2, new ThemeCatalog(new PlatformSettingsPaths(root)).Discover().Themes.Count(theme => theme.Descriptor.Id == id));
+    Assert.True(selectionBytes.SequenceEqual(await File.ReadAllBytesAsync(paths.SettingsFile)), "Theme update changed the user's appearance selection.");
+    Assert.Equal("1.0.0", (await store.LoadAsync()).Appearance.ThemeVersion);
+    var newTheme = await ThemePackage.InspectSourceAsync(Path.Combine(root, "themes", id, "2.0.0"), default);
+    Assert.True(PackageSources.Find(root, "theme", id, "2.0.0", PackageSources.ThemeDigest(newTheme)) is not null, "New theme source was not recorded.");
+    Assert.Equal(0, (await RunCli("theme", "remove", id, "2.0.0", "--settings-root", root)).Code);
+    Assert.True(PackageSources.Find(root, "theme", id, "2.0.0", PackageSources.ThemeDigest(newTheme)) is null, "Removed theme retained its source record.");
+}
+
+static async Task GitHubMetadataSafety()
+{
+    foreach (var payload in new[] { "not json", "{}", "[]", "{\"draft\":false,\"tag_name\":\"v1\",\"prerelease\":false,\"assets\":[null]}" })
+    {
+        using var handler = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, Encoding.UTF8.GetBytes(payload))));
+        Assert.Equal(1, (await RunCliWithHandler(handler, "releases", "sample/repo", "--tag", "v1")).Code);
+    }
+    using var rateLimited = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.TooManyRequests, [])));
+    var rateResult = await RunCliWithHandler(rateLimited, "releases", "sample/repo");
+    Assert.Equal(1, rateResult.Code);
+    Assert.Contains("rate limit", rateResult.Error);
+    using var oversized = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, new byte[2 * 1024 * 1024 + 1])));
+    Assert.Equal(1, (await RunCliWithHandler(oversized, "releases", "sample/repo")).Code);
+    Assert.Equal(2, (await RunCliWithHandler(rateLimited, "releases", "owner/../escape")).Code);
+    var requests = 0;
+    using var missingDigest = new StubHttpHandler((request, _) =>
+    {
+        requests++;
+        return Task.FromResult(Response(HttpStatusCode.OK, Encoding.UTF8.GetBytes(
+            "{\"draft\":false,\"tag_name\":\"v1\",\"prerelease\":false,\"assets\":[{\"name\":\"test.wrwidget\",\"size\":12}]}")));
+    });
+    Assert.Equal(2, (await RunCliWithHandler(missingDigest, "install", "github:sample/repo@v1/test.wrwidget")).Code);
+    Assert.Equal(1, requests); // Never download/install a package without a checksum.
+    using var duplicateChecksums = new StubHttpHandler((request, _) => Task.FromResult(Response(HttpStatusCode.OK,
+        request.RequestUri!.Host == "api.github.com" ? ReleaseMetadata("v1", "test.wrwidget", [], checksum: true)
+        : Encoding.UTF8.GetBytes(new string('a', 64) + "  test.wrwidget\n" + new string('b', 64) + "  test.wrwidget\n"))));
+    Assert.Equal(1, (await RunCliWithHandler(duplicateChecksums, "install", "github:sample/repo@v1/test.wrwidget")).Code);
+    var prerelease = JsonSerializer.Deserialize<JsonElement>(ReleaseMetadata("preview", "preview.wrwidget", [], prerelease: true));
+    using var prereleases = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK,
+        JsonSerializer.SerializeToUtf8Bytes(new[] { prerelease }))));
+    Assert.True(!(await RunCliWithHandler(prereleases, "releases", "sample/repo")).Output.Contains("preview.wrwidget", StringComparison.Ordinal),
+        "Default release discovery included a prerelease.");
+    Assert.Contains("preview.wrwidget", (await RunCliWithHandler(prereleases, "releases", "sample/repo", "--include-prerelease")).Output);
+}
+
+static async Task GitHubSourceFailure()
+{
+    using var temp = new TemporaryDirectory();
+    var package = await CreatePackedPackageAsync(temp.Path, "dev.test.source-failure", "1.0.0");
+    var payload = await File.ReadAllBytesAsync(package);
+    var root = Path.Combine(temp.Path, "catalog");
+    Directory.CreateDirectory(root);
+    var blockedMetadata = Path.Combine(root, ".wrail-sources");
+    await File.WriteAllTextAsync(blockedMetadata, "existing file must be preserved");
+    using var handler = new StubHttpHandler((_, _) => Task.FromResult(Response(HttpStatusCode.OK, payload)));
+    var result = await RunCliWithHandler(handler, "install", "github:sample/repo@v1/test.wrwidget",
+        "--sha256", Convert.ToHexString(SHA256.HashData(payload)), "--catalog", root);
+    Assert.Equal(0, result.Code);
+    Assert.Contains("source could not be saved", result.Output);
+    Assert.Equal("existing file must be preserved", await File.ReadAllTextAsync(blockedMetadata));
+    var widget = (await new WidgetRail.WidgetCatalog.WidgetCatalog(root).DiscoverAsync()).Widgets.Single();
+    Assert.True(!widget.Enabled, "Source persistence failure enabled a widget.");
+    Assert.Equal("dev.test.source-failure", widget.Id);
+}
 
 static async Task DoctorWorkflow()
 {
@@ -337,7 +546,7 @@ static async Task HelpWorks()
 {
     var result = await RunCli("help");
     Assert.Equal(0, result.Code);
-    foreach (var command in new[] { "doctor", "inspect", "new", "validate", "dev", "preview", "render", "replay", "pack", "install", "uninstall", "repair", "authority-recovery", "list", "enable", "disable", "version" })
+    foreach (var command in new[] { "releases", "update", "doctor", "inspect", "new", "validate", "dev", "preview", "render", "replay", "pack", "install", "uninstall", "repair", "authority-recovery", "list", "enable", "disable", "version" })
         Assert.Contains(command, result.Output);
     Assert.Contains("repair manages quarantined installed-catalog generations", result.Output);
     Assert.Contains("no force-clear", result.Output);

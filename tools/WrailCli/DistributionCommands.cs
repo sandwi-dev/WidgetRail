@@ -195,14 +195,25 @@ internal static class InstallCommand
             return 0;
         }
 
-        if (expectedSha256 is null)
-            throw new CliUsageException("Remote widget installation requires --sha256 <64-hex>.");
+        var github = source.StartsWith("github:", StringComparison.OrdinalIgnoreCase)
+            ? GitHubPackageSource.Parse(source, ".wrwidget") : null;
+        if (expectedSha256 is null && github is not null)
+        {
+            using var releases = new GitHubReleaseClient(remoteHttpHandler);
+            expectedSha256 = await releases.ResolveDigestAsync(github, cancellationToken);
+            await output.WriteLineAsync("Using the published SHA-256 for this GitHub release asset.");
+        }
+        if (expectedSha256 is null) throw new CliUsageException("Remote widget installation requires --sha256 <64-hex>.");
         using var downloader = new RemotePackageDownloader(remoteHttpHandler);
         await using var downloaded = await downloader.DownloadAsync(remoteUri, expectedSha256, cancellationToken);
         var remoteApproval = await InspectTrustAsync(
             catalog, downloaded.PackageStream, parsed, output, cancellationToken);
         var remoteInstalled = await catalog.InstallAsync(
             downloaded.PackageStream, remoteApproval, cancellationToken);
+        if (github is not null)
+            await PackageSources.SaveAsync(CatalogPath.Resolve(parsed.Option("--catalog")), "widget",
+                new(remoteInstalled.Id, remoteInstalled.Version.ToString(), remoteInstalled.Manifest.Publisher,
+                    github.ToString(), Convert.ToHexString(downloaded.Sha256).ToLowerInvariant(), remoteInstalled.ContentDigest), output, cancellationToken);
         await output.WriteLineAsync(
             $"Installed {remoteInstalled.Id} {remoteInstalled.Version} to {remoteInstalled.InstallPath} (disabled)." +
             " Review it, then run wrail enable when ready.");
@@ -298,6 +309,7 @@ internal static class UninstallCommand
         try
         {
             var removed = await catalog.UninstallAsync(parsed.Positionals[0], cancellationToken);
+            await PackageSources.RemoveAsync(catalogRoot, "widget", removed.Id, null, output, cancellationToken);
             var versions = string.Join(", ", removed.RemovedVersions.Select(version => version.ToString()));
             await output.WriteLineAsync(
                 $"Uninstalled {removed.Id} ({removed.RemovedVersions.Count} version" +

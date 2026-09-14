@@ -31,6 +31,7 @@ internal static class ThemeCommand
             "preview" => ThemePreviewCommand.RunAsync(args[1..], output, cancellationToken),
             "install" => ThemeInstallCommand.RunAsync(
                 args[1..], output, remoteHttpHandler, cancellationToken),
+            "update" => PackageUpdateCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken, theme: true),
             "list" => ThemeListCommand.RunAsync(args[1..], output),
             "remove" => ThemeRemoveCommand.RunAsync(args[1..], output, cancellationToken),
             _ => throw Usage(),
@@ -38,7 +39,7 @@ internal static class ThemeCommand
     }
 
     private static CliUsageException Usage() => new(
-        "Usage: wrail theme <new|validate|pack|inspect|preview|install|list|remove> ...");
+        "Usage: wrail theme <new|validate|pack|inspect|preview|install|update|list|remove> ...");
 
     private const string HelpText = """
         wrail theme - safe data-only global theme tools
@@ -49,6 +50,7 @@ internal static class ThemeCommand
           wrail theme preview <theme-directory|file.wrtheme>
           wrail theme pack <theme-directory> [--output <file.wrtheme>]
           wrail theme inspect <file.wrtheme>
+          wrail theme update <theme-id> [--version <installed-version>] [--repo <owner/repository>] [--tag <tag>] [--asset <filename>] [--sha256 <64-hex>] [--apply] [--settings-root <root>]
           wrail theme install <file.wrtheme|https-url|github:owner/repository@tag/asset.wrtheme> [--sha256 <64-hex>] [--settings-root <root>]
           wrail theme list [--settings-root <root>]
           wrail theme remove <exact-id> <exact-version> [--settings-root <root>]
@@ -269,6 +271,8 @@ internal static class ThemeInstallCommand
         var expected = PackageIntegrity.ParseExpectedSha256(parsed.Option("--sha256"));
         var sourceText = parsed.Positionals[0];
         var remoteUri = RemotePackageSource.Resolve(sourceText, ".wrtheme");
+        var github = sourceText.StartsWith("github:", StringComparison.OrdinalIgnoreCase)
+            ? GitHubPackageSource.Parse(sourceText, ".wrtheme") : null;
         ThemePackageInspection inspection;
         string? downloadedHash = null;
         if (remoteUri is null)
@@ -288,6 +292,12 @@ internal static class ThemeInstallCommand
         }
         else
         {
+            if (expected is null && github is not null)
+            {
+                using var releases = new GitHubReleaseClient(remoteHttpHandler);
+                expected = await releases.ResolveDigestAsync(github, cancellationToken);
+                await output.WriteLineAsync("Using the published SHA-256 for this GitHub release asset.");
+            }
             if (expected is null)
                 throw new CliUsageException("Remote theme installation requires --sha256 <64-hex>.");
             using var downloader = new RemotePackageDownloader(remoteHttpHandler, new RemoteDownloadOptions
@@ -301,6 +311,10 @@ internal static class ThemeInstallCommand
         }
         var installed = await ThemePackage.InstallAsync(
             inspection, ThemeSettingsRoot.Resolve(parsed.Option("--settings-root")), cancellationToken);
+        if (github is not null && downloadedHash is not null)
+            await PackageSources.SaveAsync(ThemeSettingsRoot.Resolve(parsed.Option("--settings-root")), "theme",
+                new(inspection.Manifest.Id, inspection.Manifest.Version, inspection.Manifest.Publisher!,
+                    github.ToString(), downloadedHash, PackageSources.ThemeDigest(inspection)), output, cancellationToken);
         await output.WriteLineAsync(
             $"Installed {inspection.Manifest.Id} {inspection.Manifest.Version} to {installed}.");
         await output.WriteLineAsync("Select it from Settings > Appearance after reviewing the publisher and preview.");
@@ -352,6 +366,8 @@ internal static class ThemeRemoveCommand
         await output.WriteLineAsync(
             $"Removed {result.ThemeId} {result.Version}." +
             (result.CleanupPending ? " Retired files are pending cleanup." : string.Empty));
+        await PackageSources.RemoveAsync(ThemeSettingsRoot.Resolve(parsed.Option("--settings-root")), "theme",
+            result.ThemeId, result.Version.ToString(), output, cancellationToken);
         return 0;
     }
 }

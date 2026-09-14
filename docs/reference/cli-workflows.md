@@ -12,6 +12,7 @@ WidgetRail editions include the CLI; it is not automatically added to PATH.
 | Generate and build a widget | [Create a project](cli-projects.md) |
 | Run a named scenario, inspect a snapshot, replay input | [Scenarios and replay](cli-scenarios.md) |
 | Package, install, select versions, and remove | [Package operations](cli-packages.md) |
+| Browse GitHub releases and manually review updates | [GitHub packages](cli-packages.md#discover-packages-on-github) |
 | Repair a recorded worker-authority cleanup failure | [Authority recovery](../maintainers/authority-recovery.md) |
 
 The examples use a disposable `scratch/VolumeControl` project and package identity

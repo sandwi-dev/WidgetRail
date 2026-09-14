@@ -123,7 +123,7 @@ public sealed class WidgetCatalog
             cancellationToken).ConfigureAwait(false);
     }
 
-    // Called only by the trusted Settings update flow after its disclosure page.
+    // Called by trusted Settings/CLI update flows after explicit review.
     // Stage/validate first, pin the old version while publishing, then select
     // the new version disabled. Failed validation never stops the old widget.
     internal async Task<InstalledWidgetVersion> UpdateFromFileAsync(

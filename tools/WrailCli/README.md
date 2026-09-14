@@ -15,6 +15,7 @@ copying only the executable is unsupported.
 
 ```text
 wrail doctor
+wrail releases example/widgets
 wrail doctor .\\VolumeControl --json
 wrail new widget VolumeControl --id dev.example.volume-control --template basic
 dotnet build .\\VolumeControl\\VolumeControl.csproj -c Release
@@ -32,6 +33,8 @@ wrail pack .\\VolumeControl --configuration Release --output .\\VolumeControl-1.
 wrail install .\\VolumeControl-1.0.0.wrwidget
 wrail inspect .\\VolumeControl-1.0.0.wrwidget --json
 wrail install github:example/widgets@v1.0.0/volume-control.wrwidget --sha256 <64-hex-digest>
+wrail update dev.example.volume-control
+wrail theme update dev.example.ocean-night
 wrail list
 wrail disable dev.example.volume-control
 wrail version list dev.example.volume-control
@@ -64,6 +67,15 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
 
 ## Commands
 
+- `releases <owner/repository>` lists widget/theme assets from public GitHub
+  releases. Use `--page` (20 releases per page), `--include-prerelease`, `--tag`
+  or `--json`. No authentication, source cloning or background polling occurs.
+- `update <widget-id>` and `theme update <theme-id>` validate a candidate and
+  print a review plus an exact apply command. `--repo` supplies a source for
+  older/local installs; `--tag` and `--asset` select an explicit candidate.
+  `--apply` requires the reviewed tag, asset and SHA-256. Widget updates require
+  a disabled widget and preserve previous versions; theme updates preserve the
+  appearance selection. See [manual updates](../../docs/reference/cli-packages.md#review-and-apply-an-update).
 - `doctor [project-directory|widget.csproj]` checks the selected .NET SDK, CLI/SDK
   release pairing and packaged host discovery without building or launching a
   widget. Use `--host` for an explicit host and `--json` for a versioned report.
@@ -181,8 +193,10 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   deterministic GitHub shorthand
   `github:owner/repository@tag/asset.wrwidget`. The shorthand maps directly
   to that named GitHub Release asset; it does not query "latest," clone a
-  repository, build source, or execute downloaded code. Remote installs require
-  `--sha256` followed by the expected 64-character hexadecimal digest. Local
+  repository, build source, or execute downloaded code. HTTPS URL installs require
+  `--sha256` followed by the expected 64-character hexadecimal digest. GitHub
+  shorthand can resolve GitHub's asset digest or a standard release checksum
+  manifest when the flag is omitted. Local
   installs may also use the option. Every package is validated and extracted
   through the shared `WidgetCatalog` safety boundary. Installed
   `<id>/<version>` directories are immutable; installing the same version again
@@ -251,8 +265,9 @@ preview do not approximate WRSS with a browser or a second parser.
 - `theme inspect` reports the exact identity, publisher claim, version, entry,
   expanded size, and archive SHA-256 without executing anything.
 - `theme install` accepts a local package, an absolute HTTPS URL, or
-  `github:owner/repository@tag/asset.wrtheme`. Remote installation requires
-  `--sha256`. Installation validates through the same compiler, stages on the
+  `github:owner/repository@tag/asset.wrtheme`. HTTPS URL installation requires
+  `--sha256`; GitHub supports the same published checksum lookup as widgets.
+  Installation validates through the same compiler, stages on the
   settings volume under a random directory, holds a bounded cross-process
   lock, and atomically publishes a new immutable `<id>/<version>` directory.
   Existing versions are never overwritten, and installation stops at the

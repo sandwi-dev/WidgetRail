@@ -165,6 +165,36 @@ internal sealed class RemotePackageDownloader : IDisposable
         }
     }
 
+    // Checksum manifests are metadata, not executable packages. They use the
+    // same HTTPS/redirect rules but a much smaller independently bounded body.
+    internal async Task<string> ReadChecksumsAsync(Uri source, CancellationToken token)
+    {
+        ValidateRemoteUri(source, "Checksum manifest URL");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        try
+        {
+            using var response = await FollowRedirectsAsync(source, timeout.Token);
+            const int maximum = 256 * 1024;
+            if (response.Content.Headers.ContentLength > maximum || response.Content.Headers.ContentEncoding.Count != 0)
+                throw new CliOperationException("Checksum manifest is oversized or encoded.");
+            await using var input = await response.Content.ReadAsStreamAsync(timeout.Token);
+            using var result = new MemoryStream();
+            var buffer = new byte[4096];
+            int count;
+            while ((count = await input.ReadAsync(buffer, timeout.Token)) != 0)
+            {
+                if (result.Length + count > maximum) throw new CliOperationException("Checksum manifest exceeds 256 KiB.");
+                result.Write(buffer, 0, count);
+            }
+            return new System.Text.UTF8Encoding(false, true).GetString(result.ToArray());
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { throw new CliOperationException("Checksum manifest download timed out."); }
+        catch (System.Text.DecoderFallbackException)
+        { throw new CliOperationException("Checksum manifest is not valid UTF-8 text."); }
+    }
+
     public void Dispose() => _client.Dispose();
 
     private static bool IsRedirect(HttpStatusCode statusCode) => statusCode is

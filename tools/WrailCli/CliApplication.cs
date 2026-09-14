@@ -34,6 +34,8 @@ public static class CliApplication
             {
                 "doctor" => await DoctorCommand.RunAsync(args[1..], output, cancellationToken),
                 "inspect" => await InspectCommand.RunAsync(args[1..], output, cancellationToken),
+                "releases" => await ReleasesCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken),
+                "update" => await PackageUpdateCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken, theme: false),
                 "new" => await NewCommand.RunAsync(args[1..], output, cancellationToken),
                 "validate" => await ValidateCommand.RunAsync(args[1..], output, error),
                 "dev" => await DevCommand.RunAsync(args[1..], output, error, cancellationToken),
@@ -99,6 +101,8 @@ public static class CliApplication
         Usage:
           wrail doctor [project-directory|widget.csproj] [--host <OverlayHost.exe>] [--json]
           wrail inspect <file.wrwidget> [--json]
+          wrail releases <owner/repository> [--tag <tag>] [--page <1-100>] [--include-prerelease] [--json]
+          wrail update <widget-id> [--repo <owner/repository>] [--tag <tag>] [--asset <filename>] [--sha256 <64-hex>] [--apply] [--accept-full-trust] [--catalog <root>]
           wrail new widget <Name> [--output <directory>] [--id <reverse.dns.id>] [--publisher <reverse.dns.id>] [--template <basic|data|media|embedded-media|multipage>]
           wrail validate <widget-directory|manifest.json|style.wrss>
           wrail dev <widget-directory|widget.csproj|file.wrwidget> [--host <OverlayHost.exe>] [--configuration <name>] [--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>] [--log <new-file>]

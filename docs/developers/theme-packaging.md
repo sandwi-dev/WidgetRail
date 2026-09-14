@@ -129,8 +129,9 @@ exact tag and asset:
   --sha256 <64-hex-digest>
 ```
 
-An absolute HTTPS URL is also accepted. Every remote install requires
-`--sha256`; the GitHub shorthand never queries `latest`, clones source, builds
+An absolute HTTPS URL is also accepted and requires `--sha256`. GitHub shorthand
+can obtain a published asset digest or release checksum manifest when the flag
+is omitted. Exact-tag installation never queries `latest`, clones source, builds
 a repository, or executes downloaded content. The shared downloader permits
 HTTPS port 443, validates each bounded redirect, rejects credentials,
 fragments, localhost, obvious private/link-local IP literals, encoded
@@ -165,8 +166,14 @@ applied after the theme cascade, so theme rules cannot override it.
 The publisher field is not authenticated, and SHA-256 proves only exact bytes.
 Obtain remote digests through an independently trusted channel. Theme packages
 are not signed and there is no certificate chain, revocation service,
-automatic updater, remove/rollback command, theme gallery, graphical/screenshot
+automatic updater, theme gallery, graphical/screenshot
 preview, or asset broker yet.
+
+Use `wrail theme update <id>` to review the latest stable GitHub release on
+demand. Its printed apply command installs a new version without changing the
+selected theme. `wrail theme remove <id> <version>` removes an inactive version;
+select an older retained version in Settings to roll back. See the
+[GitHub CLI workflow](../reference/cli-packages.md#review-and-apply-an-update).
 
 Continue with [Settings and global themes](../reference/settings-and-themes.md) for the
 cascade, live reload, controller selection, and accessibility behavior, and

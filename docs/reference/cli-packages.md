@@ -67,10 +67,67 @@ credentials, and uninstalling the application are separate operations.
 ## Install a remote release
 
 The CLI supports an absolute HTTPS URL or
-`github:owner/repository@tag/asset.wrwidget`, with an explicit SHA-256 pin.
+`github:owner/repository@tag/asset.wrwidget`. An HTTPS URL requires an explicit
+`--sha256` pin. With GitHub shorthand, you can omit it when GitHub publishes an
+asset digest or the release includes a supported checksum manifest.
 The shorthand names an exact asset, not the latest release and not a repository
 to clone and execute.
 
 Hashes verify bytes, not publishers. Remote installation does not create an
 automatic update subscription. See [Publishing](../developers/publishing-and-installation.md)
 and [Package format](widget-packaging.md).
+
+## Discover packages on GitHub
+
+```powershell
+& $wrail releases example/widgets
+& $wrail releases example/widgets --include-prerelease --page 2
+& $wrail install github:example/widgets@v1.0.0/example.wrwidget
+```
+
+Discovery lists widget and theme assets from one page of up to 20 releases.
+Use `--tag` for an exact release or `--json` for structured results. Prereleases
+are omitted unless requested. Discovery supports public repositories; it does
+not read GitHub credentials or clone source.
+
+When `--sha256` is omitted, installation first uses GitHub's asset digest. If
+there is none, it reads `SHA256SUMS.txt`, `SHA256SUMS`, or `checksums.txt` from
+the same release, in that preference order. These use the standard
+`<64-hex-hash>  <exact-filename>` format. Missing or duplicate matching entries
+stop installation. An explicit hash always takes precedence. Checksums identify
+the downloaded bytes; they are not publisher signatures.
+
+## Review and apply an update
+
+```powershell
+& $wrail update dev.example.volume-control
+& $wrail theme update dev.example.ocean-night
+```
+
+These commands check GitHub's latest stable release and download one candidate
+for validation and review. Nothing is installed by a check. The widget report
+shows the version, required/optional permission changes, execution model and
+checksum. Use `--tag` to check a particular release, including a prerelease.
+
+GitHub installations remember their source, matched to the installed version
+and content. If no source was recorded, supply `--repo owner/repository`.
+When an asset cannot be identified unambiguously, choose `--asset filename`
+from `wrail releases`. Stable asset names or `<package-id>-<version>` names
+are easiest to discover.
+
+The report prints a PowerShell apply command containing the exact repository,
+tag, asset and SHA-256. Review it before running it. A widget must be disabled
+before apply; the update transaction checks identity, publisher, compatibility
+and current selection again, then selects the new version disabled. Changed
+execution models are rejected. Full-trust widgets still require explicit
+`--accept-full-trust`. Previous versions remain available for rollback.
+
+Theme updates add a version without changing the selected theme. By default,
+the check compares against the newest installed version of that theme; use
+`--version` to choose another installed version. Select the new version in
+Settings > Appearance when ready.
+
+Source records are bounded optional metadata under `.wrail-sources` in the
+chosen catalog/settings root. A metadata write failure warns without undoing
+an installation. CLI uninstall/removal clears the corresponding records.
+There is no periodic checking, automatic retry loop or background updater.

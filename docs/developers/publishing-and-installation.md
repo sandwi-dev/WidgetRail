@@ -37,12 +37,19 @@ publish its SHA-256 checksum through a channel users can trust.
 The CLI can install a pinned HTTPS or GitHub Release asset. A checksum detects
 different bytes; it does not authenticate the author. The current platform has
 no publisher-signing/revocation service or automatic marketplace updater.
+`wrail releases owner/repository` lists packages on public GitHub releases.
+GitHub asset digests and standard `SHA256SUMS.txt` files let users install
+without copying a hash manually. Use stable asset names or
+`<package-id>-<version>.wrwidget` to make later update discovery straightforward.
 
 ## Ship an update
 
 Increase the widget manifest version before distributing changed bytes. Users
 choose **Update from file** in the widget details, then review and enable the
 new version. Keep a useful description of changes and any new permissions.
+CLI users can run `wrail update <widget-id>` to review a GitHub update, then
+run the exact apply command printed by the report. Checking never installs or
+activates a package. See [GitHub package updates](../reference/cli-packages.md#review-and-apply-an-update).
 
 The old version remains installed until removed. Do not overwrite published
 bytes or promise that a new package can silently inherit previous consent.
