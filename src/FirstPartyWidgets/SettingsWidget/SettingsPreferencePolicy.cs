@@ -24,10 +24,21 @@ internal readonly record struct SettingsPreferenceMutation(
     SettingsPreferenceKind Kind,
     string SuccessStatus,
     string? ThemeId = null,
-    string? ThemeVersion = null)
+    string? ThemeVersion = null,
+    string? DisplayId = null)
 {
-    public PlatformSettingsDocument Apply(PlatformSettingsDocument current) =>
-        current with { Appearance = Apply(current.Appearance) };
+    public bool IsScale => Kind is SettingsPreferenceKind.TextDecrease or SettingsPreferenceKind.TextIncrease
+        or SettingsPreferenceKind.InterfaceDecrease or SettingsPreferenceKind.InterfaceIncrease;
+
+    public PlatformSettingsDocument Apply(PlatformSettingsDocument current)
+    {
+        if (!IsScale || DisplayId is null)
+            return current with { Appearance = Apply(current.Appearance) };
+        var scale = DisplayScalePolicy.Resolve(current.Appearance, DisplayId);
+        var changed = Apply(current.Appearance with { InterfaceScale = scale.InterfaceScale, TextScale = scale.TextScale });
+        return current with { Appearance = DisplayScalePolicy.Set(current.Appearance, DisplayId,
+            new(changed.InterfaceScale, changed.TextScale)) };
+    }
 
     private AppearanceSettings Apply(AppearanceSettings appearance) => Kind switch
     {
@@ -140,6 +151,14 @@ internal static class SettingsPreferencePolicy
 
     public static bool TryCreate(string actionId, out SettingsPreferenceMutation mutation)
     {
+        string? displayId = null;
+        var separator = actionId.IndexOf('@');
+        if (separator >= 0)
+        {
+            displayId = actionId[(separator + 1)..];
+            actionId = actionId[..separator];
+            if (!DisplayScalePolicy.IsValidId(displayId)) { mutation = default; return false; }
+        }
         mutation = actionId switch
         {
             "text.decrease" => new(SettingsPreferenceKind.TextDecrease, "Text size saved"),
@@ -170,6 +189,11 @@ internal static class SettingsPreferencePolicy
                 "Widget-switch animation preference saved"),
             _ => default,
         };
+        if (displayId is not null)
+        {
+            if (!mutation.IsScale || mutation.SuccessStatus is null) { mutation = default; return false; }
+            mutation = mutation with { DisplayId = displayId };
+        }
         return mutation.SuccessStatus is not null;
     }
 

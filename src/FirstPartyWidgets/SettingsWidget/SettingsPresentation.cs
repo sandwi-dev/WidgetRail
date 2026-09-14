@@ -21,7 +21,8 @@ internal sealed record SettingsPresentationState(
     bool Error,
     SettingsThemeSelection? SelectedTheme = null,
     string? ThemePickerFocusId = null,
-    StartupRegistrationStatus? Startup = null);
+    StartupRegistrationStatus? Startup = null,
+    OverlayDisplayContext? Display = null);
 
 /// <summary>Pure snapshot-only composition for Settings pages owned by DLV-036.</summary>
 internal static class SettingsPresentation
@@ -40,10 +41,10 @@ internal static class SettingsPresentation
             SettingsPage.ThemeVersion => RenderThemeVersion(header, state, confirmation: false),
             SettingsPage.ThemeRemoval => RenderThemeVersion(header, state, confirmation: true),
             SettingsPage.Accessibility => RenderAccessibility(
-                header, state.Settings, state.Busy),
+                header, state.Settings, state.Busy, state.Display),
             SettingsPage.AccessibilityVisual => RenderVisualAccessibility(
                 header, state.Settings, state.Busy),
-            SettingsPage.Overlay => RenderOverlay(header, state.Settings, state.Busy, state.Startup),
+            SettingsPage.Overlay => RenderOverlay(header, state.Settings, state.Busy, state.Startup, state.Display),
             SettingsPage.Controllers => ControllerSettingsPresentation.Render(state),
             SettingsPage.Diagnostics => RenderDiagnostics(header, state),
             SettingsPage.AuthorityRecovery => RenderAuthorityRecovery(header, state),
@@ -221,17 +222,19 @@ internal static class SettingsPresentation
     private static WidgetView RenderAccessibility(
         StackElement header,
         PlatformSettingsDocument settings,
-        bool busy)
+        bool busy,
+        OverlayDisplayContext? display)
     {
-        var appearance = settings.Appearance;
+        var scale = DisplayScalePolicy.Resolve(settings.Appearance, display?.Id);
+        var appearance = settings.Appearance with { TextScale = scale.TextScale };
         var text = LinkStepper(
             UI.Stepper("Text size", Percent(appearance.TextScale),
-                "text.decrease", "text.increase", "text.stepper",
+                ScaleAction("text.decrease", display), ScaleAction("text.increase", display), "text.stepper",
                 appearance.TextScale > AppearanceSettings.MinimumTextScale,
                 appearance.TextScale < AppearanceSettings.MaximumTextScale),
             up: null,
             down: "motion.system",
-            busy);
+            busy || string.IsNullOrEmpty(display?.Id));
         var system = UI.Switch(
                 "Follow Windows motion", appearance.Motion == MotionPreference.System,
                 "motion.system", "motion.system")
@@ -247,7 +250,7 @@ internal static class SettingsPresentation
             PageScope("accessibility.page",
                 UI.Text("Accessibility", "accessibility.heading", "Accessibility settings")
                     .Classes("page-heading"),
-                text, system, reduced, visual),
+                DisplayHint(display), text, system, reduced, visual),
             "text.stepper.decrement",
             "accessibility.page");
     }
@@ -286,21 +289,31 @@ internal static class SettingsPresentation
             "accessibility.visual.page");
     }
 
+    private static string ScaleAction(string action, OverlayDisplayContext? display) =>
+        action + "@" + (display?.Id ?? string.Empty);
+
+    private static WidgetElement DisplayHint(OverlayDisplayContext? display) =>
+        UI.Text(string.IsNullOrEmpty(display?.Id) ? "Display unavailable - sizing is temporarily unavailable." :
+            $"Sizes are saved for {display.Name}.", "settings.display", "Display for saved sizing")
+            .Classes("page-help");
+
     private static WidgetView RenderOverlay(
         StackElement header,
         PlatformSettingsDocument settings,
         bool busy,
-        StartupRegistrationStatus? startup)
+        StartupRegistrationStatus? startup,
+        OverlayDisplayContext? display)
     {
-        var appearance = settings.Appearance;
+        var scale = DisplayScalePolicy.Resolve(settings.Appearance, display?.Id);
+        var appearance = settings.Appearance with { InterfaceScale = scale.InterfaceScale };
         var interfaceScale = LinkStepper(
             UI.Stepper("Interface size", Percent(appearance.InterfaceScale),
-                "interface.decrease", "interface.increase", "interface.stepper",
+                ScaleAction("interface.decrease", display), ScaleAction("interface.increase", display), "interface.stepper",
                 appearance.InterfaceScale > AppearanceSettings.MinimumInterfaceScale,
                 appearance.InterfaceScale < AppearanceSettings.MaximumInterfaceScale),
             up: null,
             down: "opacity.stepper.decrement",
-            busy);
+            busy || string.IsNullOrEmpty(display?.Id));
         var opacity = LinkStepper(
             UI.Stepper("Backdrop darkness", Percent(appearance.BackdropOpacity),
                 "opacity.decrease", "opacity.increase", "opacity.stepper",
@@ -313,7 +326,7 @@ internal static class SettingsPresentation
             PageScope("overlay.page",
                 UI.Text("Overlay", "overlay.heading", "Overlay settings")
                     .Classes("page-heading"),
-                interfaceScale, opacity,
+                DisplayHint(display), interfaceScale, opacity,
                 UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
                     "startup.toggle", "overlay.startup").Busy(busy).Disabled(startup?.CanChange != true)
                     .AddClasses("setting-row"),

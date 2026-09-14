@@ -189,8 +189,16 @@ public sealed record PlatformWidgetPackageNotification(string Message, bool Fail
     public static PlatformWidgetPackageNotification Empty { get; } = new(string.Empty);
 }
 
+public sealed record OverlayDisplayContext(string Id, string Name)
+{
+    public static OverlayDisplayContext Unavailable { get; } = new("", "Display unavailable");
+}
+
 public interface IPlatformDiagnosticsService
 {
+    ValueTask<OverlayDisplayContext> GetOverlayDisplayAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(OverlayDisplayContext.Unavailable);
+
     ValueTask<PlatformWidgetPackageNotification> TakeWidgetPackageNotificationAsync(CancellationToken cancellationToken = default) =>
         ValueTask.FromResult(PlatformWidgetPackageNotification.Empty);
     ValueTask<ApplicationControlResult> RequestApplicationControlAsync(

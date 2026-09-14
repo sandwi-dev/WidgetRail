@@ -118,7 +118,10 @@ These are recommendations, not requirements. [Setup details](docs/users/getting-
 
 Open **Settings → Overlay → Interface size**. Decrease it if the overlay feels
 too large or its parts overlap; increase it if widgets and controls are too small.
-Adjust it until the overlay fits comfortably on your display.
+Adjust it until the overlay fits comfortably on your display. Interface size and
+**Settings → Accessibility → Text size** are remembered for each display.
+The controls show which display you are adjusting. A new display starts with your
+existing default sizes; Windows display scaling is unchanged.
 
 ### Why does the overlay open but fail to take focus or switch apps?
 

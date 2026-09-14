@@ -117,8 +117,7 @@ internal static class BridgeRequestClassifier
             {
                 BridgeMessageTypes.ListWidgets => Empty(
                     request.Payload, BridgeRequestKind.ListWidgets),
-                BridgeMessageTypes.GetPlatformAppearance => Empty(
-                    request.Payload, BridgeRequestKind.GetPlatformAppearance),
+                BridgeMessageTypes.GetPlatformAppearance => Appearance(request.Payload),
                 BridgeMessageTypes.ControllerControl => ControllerControl(request.Payload),
                 BridgeMessageTypes.WindowPreviewPermissions => WindowPreviewPermissions(request.Payload),
                 BridgeMessageTypes.ApplicationControl => BridgeRequestKey.Global(BridgeRequestKind.ApplicationControl),
@@ -161,6 +160,20 @@ internal static class BridgeRequestClassifier
         {
             return BridgeRequestKey.Global(BridgeRequestKind.Malformed);
         }
+    }
+
+    private static BridgeRequestKey Appearance(JsonElement payload)
+    {
+        if (payload.ValueKind != JsonValueKind.Object || payload.EnumerateObject().Any(p => p.Name != "display"))
+            return BridgeRequestKey.Global(BridgeRequestKind.Malformed);
+        if (payload.TryGetProperty("display", out var value))
+        {
+            var display = BridgeJson.FromElement<WidgetRail.PlatformDiagnostics.OverlayDisplayContext>(value);
+            try { WidgetRail.PlatformDiagnostics.PlatformDiagnosticsPipeServer.ValidateDisplayContext(display); }
+            catch (WidgetRail.PlatformDiagnostics.PlatformDiagnosticsException)
+            { return BridgeRequestKey.Global(BridgeRequestKind.Malformed); }
+        }
+        return BridgeRequestKey.Global(BridgeRequestKind.GetPlatformAppearance);
     }
 
     private static BridgeRequestKey Empty(JsonElement payload, BridgeRequestKind kind) =>

@@ -1,6 +1,7 @@
 #include "OverlayState.h"
 #include "ApplicationIcon.h"
 #include "TrayStatus.h"
+#include "DisplayScaleContext.h"
 #include "../OverlayPlatformInterop/OverlayPlatformInterop.h"
 #include "AccessibilityProvider.h"
 #include "AccessibilityProjection.h"
@@ -6403,7 +6404,9 @@ private:
     }
 
     void RefreshPlatformAppearance() {
-        auto appearance = bridge_.GetPlatformAppearance();
+        auto appearance = bridge_.GetPlatformAppearance(
+            displayScaleContext_ ? &displayScaleContext_->id : nullptr,
+            displayScaleContext_ ? &displayScaleContext_->name : nullptr);
         if (!appearance) {
             AppendDiagnostic(L"Platform appearance refresh failed; retaining last good state: " +
                              bridge_.lastError());
@@ -16095,6 +16098,20 @@ private:
             dpi == 0 || dpiY == 0) {
             dpi = 96;
         }
+        const auto display = widgetrail::ResolveDisplayScaleContext(monitor);
+        if (!displayScaleContext_ || *displayScaleContext_ != display) {
+            // Reporting is session-local. It never writes settings or asks Windows to change DPI.
+            const auto updated = bridge_.GetPlatformAppearance(&display.id, &display.name);
+            const bool published = updated && appearanceState_.Publish(*updated);
+            const bool scaled = appearanceState_.SelectDisplay(display.id);
+            if (updated) displayScaleContext_ = display; // Retry after a transient bridge failure.
+            // A new theme revision still invalidates widget style projections;
+            // selecting another monitor alone only changes native sizing.
+            if (published || scaled) ApplyPlatformAppearance(false, published);
+            AppendDiagnostic(L"Overlay display sizing display=" + display.name +
+                L" interface=" + std::to_wstring(appearanceState_.current() ? appearanceState_.current()->interfaceScale : 1.0) +
+                L" text=" + std::to_wstring(CurrentTextScale()));
+        }
         const auto& appearance = appearanceState_.current();
         FixedChromeAnchor anchor;
         anchor.monitor = monitor;
@@ -18721,6 +18738,7 @@ private:
     std::optional<widgetrail::LocalWidgetPackageInstallResult>
         lastLocalWidgetPackageInstallResult_;
     widgetrail::PlatformAppearanceState appearanceState_;
+    std::optional<widgetrail::DisplayScaleContext> displayScaleContext_;
     widgetrail::NativeRenderStyle canvasStyle_;
     widgetrail::NativeRenderStyle backdropStyle_;
     widgetrail::NativeRenderStyle panelStyle_;

@@ -747,12 +747,15 @@ enum class PlatformContrastPreference { System, Standard, High };
 enum class PlatformTransparencyPreference { Full, Reduced };
 enum class PlatformSurfaceAppearanceOverride { Widget, Theme, Transparent, Solid };
 
+struct PlatformDisplayScale final { double interfaceScale{1.0}; double textScale{1.0}; };
+
 struct PlatformAppearance final {
     long long revision{};
     std::wstring themeId;
     std::wstring themeVersion;
     double interfaceScale{1.0};
     double textScale{1.0};
+    std::unordered_map<std::wstring, PlatformDisplayScale> displayScales;
     double backdropOpacity{0.64};
     PlatformMotionPreference motion{PlatformMotionPreference::System};
     PlatformContrastPreference contrast{PlatformContrastPreference::System};
@@ -814,12 +817,15 @@ private:
 class PlatformAppearanceState final {
 public:
     [[nodiscard]] bool Publish(PlatformAppearance appearance);
+    bool SelectDisplay(std::wstring_view id);
     [[nodiscard]] const std::optional<PlatformAppearance>& current() const noexcept {
         return current_;
     }
 
 private:
     std::optional<PlatformAppearance> current_;
+    PlatformDisplayScale fallbackScale_;
+    std::wstring displayId_;
 };
 
 class StoppableRecursiveMutex final {
@@ -897,7 +903,8 @@ public:
     /// Enumerates public widget descriptors without starting widget workers.
     [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ListWidgets();
     /// Retrieves immutable platform appearance without launching a widget worker.
-    [[nodiscard]] std::optional<PlatformAppearance> GetPlatformAppearance();
+    [[nodiscard]] std::optional<PlatformAppearance> GetPlatformAppearance(
+        const std::wstring* displayId = nullptr, const std::wstring* displayName = nullptr);
     [[nodiscard]] std::optional<ControllerControlPreference> ExchangeControllerControl(
         std::uint32_t state, std::uint32_t prerequisites);
     [[nodiscard]] int TakeApplicationControl();

@@ -94,6 +94,10 @@ public sealed record AppearanceSettings
         WidgetSurfaceAppearanceOverrides { get; init; } =
             new Dictionary<string, WidgetSurfaceAppearanceOverride>(StringComparer.Ordinal);
 
+    /// <summary>Per-monitor sizing; the global pair remains the fallback for unseen displays.</summary>
+    public IReadOnlyDictionary<string, DisplayScaleSettings> DisplayScales { get; init; } =
+        new Dictionary<string, DisplayScaleSettings>(StringComparer.Ordinal);
+
     public static AppearanceSettings Default { get; } = new()
     {
         ThemeId = ThemeIdentity.BuiltInNeonCircuit,
@@ -223,6 +227,20 @@ public static class PlatformSettingsValidator
             AppearanceSettings.MaximumInterfaceScale, "$.appearance.interfaceScale");
         Range(appearance.TextScale, AppearanceSettings.MinimumTextScale,
             AppearanceSettings.MaximumTextScale, "$.appearance.textScale");
+        if (appearance.DisplayScales is null || appearance.DisplayScales.Count > DisplayScalePolicy.MaximumDisplays)
+            Add("$.appearance.displayScales", "invalid_display_scales", "Display sizes must be a bounded map.");
+        else foreach (var pair in appearance.DisplayScales)
+        {
+            if (!DisplayScalePolicy.IsValidId(pair.Key) || pair.Value is null)
+            {
+                Add("$.appearance.displayScales", "invalid_display_scales", "Invalid display size entry.");
+                continue;
+            }
+            Range(pair.Value.InterfaceScale, AppearanceSettings.MinimumInterfaceScale,
+                AppearanceSettings.MaximumInterfaceScale, "$.appearance.displayScales.interfaceScale");
+            Range(pair.Value.TextScale, AppearanceSettings.MinimumTextScale,
+                AppearanceSettings.MaximumTextScale, "$.appearance.displayScales.textScale");
+        }
         Range(appearance.BackdropOpacity, AppearanceSettings.MinimumBackdropOpacity,
             AppearanceSettings.MaximumBackdropOpacity, "$.appearance.backdropOpacity");
         if (!Enum.IsDefined(appearance.Motion))

@@ -826,7 +826,9 @@ std::optional<WidgetStyleValue> ParseShellStyleValue(
 std::optional<PlatformAppearance> ParsePlatformAppearance(
     const JsonObject& payload,
     std::wstring& error) {
-    if (!HasOnlyProperties(payload,
+    auto required = JsonObject::Parse(payload.Stringify());
+    if (required.HasKey(L"displayScales")) required.Remove(L"displayScales");
+    if (!HasOnlyProperties(required,
             {L"revision", L"themeId", L"themeVersion", L"interfaceScale", L"textScale",
              L"backdropOpacity", L"motion", L"contrast", L"boldText",
              L"transparency", L"animateWidgetSwitching", L"widgetSurfaceAppearance",
@@ -874,6 +876,33 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
         !IsIdentifier(appearance.themeId) || !IsCanonicalThemeVersion(appearance.themeVersion)) {
         error = L"Platform appearance scalar values are outside their safety bounds.";
         return std::nullopt;
+    }
+    if (payload.HasKey(L"displayScales")) {
+        if (payload.GetNamedValue(L"displayScales").ValueType() != JsonValueType::Object) {
+            error = L"Display scales must be an object."; return std::nullopt;
+        }
+        const auto scales = payload.GetNamedObject(L"displayScales");
+        if (scales.Size() > 32) { error = L"Too many display scales."; return std::nullopt; }
+        for (const auto& pair : scales) {
+            const std::wstring id(pair.Key());
+            if (id.empty() || id.size() > 256 ||
+                std::any_of(id.begin(), id.end(), [](wchar_t c) { return c < 32 || (c >= 127 && c <= 159); }) ||
+                pair.Value().ValueType() != JsonValueType::Object) {
+                error = L"Invalid display scale entry."; return std::nullopt;
+            }
+            const auto item = pair.Value().GetObject();
+            if (!HasOnlyProperties(item, {L"interfaceScale", L"textScale"}) ||
+                item.GetNamedValue(L"interfaceScale").ValueType() != JsonValueType::Number ||
+                item.GetNamedValue(L"textScale").ValueType() != JsonValueType::Number) {
+                error = L"Invalid display scale values."; return std::nullopt;
+            }
+            const PlatformDisplayScale scale{item.GetNamedNumber(L"interfaceScale"), item.GetNamedNumber(L"textScale")};
+            if (!std::isfinite(scale.interfaceScale) || scale.interfaceScale < 0.8 || scale.interfaceScale > 1.25 ||
+                !std::isfinite(scale.textScale) || scale.textScale < 0.85 || scale.textScale > 1.5) {
+                error = L"Display scale outside safety bounds."; return std::nullopt;
+            }
+            appearance.displayScales.emplace(id, scale);
+        }
     }
     appearance.revision = static_cast<long long>(revision);
     const std::wstring motion(std::wstring_view(payload.GetNamedString(L"motion")));
@@ -3887,8 +3916,21 @@ bool PlatformAppearanceState::Publish(PlatformAppearance appearance) {
         (current_ && appearance.revision <= current_->revision)) {
         return false;
     }
+    fallbackScale_ = {appearance.interfaceScale, appearance.textScale};
     current_ = std::move(appearance);
+    SelectDisplay(displayId_);
     return true;
+}
+
+bool PlatformAppearanceState::SelectDisplay(const std::wstring_view id) {
+    displayId_ = id;
+    if (!current_) return false;
+    const auto found = current_->displayScales.find(displayId_);
+    const auto scale = found == current_->displayScales.end() ? fallbackScale_ : found->second;
+    const bool changed = current_->interfaceScale != scale.interfaceScale || current_->textScale != scale.textScale;
+    current_->interfaceScale = scale.interfaceScale;
+    current_->textScale = scale.textScale;
+    return changed;
 }
 
 WidgetBridgeClient::~WidgetBridgeClient() {
@@ -4297,7 +4339,8 @@ std::optional<ControllerControlPreference> WidgetBridgeClient::ExchangeControlle
     return std::nullopt;
 }
 
-std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
+std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance(
+    const std::wstring* displayId, const std::wstring* displayName) {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
@@ -4306,7 +4349,14 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
         envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
         envelope.Insert(L"type", JsonValue::CreateStringValue(L"get-platform-appearance"));
         envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
-        envelope.Insert(L"payload", JsonObject{});
+        JsonObject payload;
+        if (displayId && displayName) {
+            JsonObject display;
+            display.Insert(L"id", JsonValue::CreateStringValue(*displayId));
+            display.Insert(L"name", JsonValue::CreateStringValue(*displayName));
+            payload.Insert(L"display", display);
+        }
+        envelope.Insert(L"payload", payload);
         if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
 
         while (const auto frame = ReadFrame()) {

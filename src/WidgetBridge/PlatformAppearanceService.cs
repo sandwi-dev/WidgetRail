@@ -12,6 +12,8 @@ public sealed record BridgePlatformAppearance
     public required string ThemeVersion { get; init; }
     public required double InterfaceScale { get; init; }
     public required double TextScale { get; init; }
+    public IReadOnlyDictionary<string, DisplayScaleSettings> DisplayScales { get; init; } =
+        new Dictionary<string, DisplayScaleSettings>();
     public required double BackdropOpacity { get; init; }
     public required MotionPreference Motion { get; init; }
     public required ContrastPreference Contrast { get; init; }
@@ -95,6 +97,15 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         return entry.Theme;
     }
 
+    private WidgetRail.PlatformDiagnostics.OverlayDisplayContext _display =
+        WidgetRail.PlatformDiagnostics.OverlayDisplayContext.Unavailable;
+    public WidgetRail.PlatformDiagnostics.OverlayDisplayContext Display => Volatile.Read(ref _display);
+    public void SetDisplay(WidgetRail.PlatformDiagnostics.OverlayDisplayContext display)
+    {
+        WidgetRail.PlatformDiagnostics.PlatformDiagnosticsPipeServer.ValidateDisplayContext(display);
+        Volatile.Write(ref _display, display);
+    }
+
     public BridgePlatformAppearance CreatePayload()
     {
         var current = Current;
@@ -106,6 +117,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             ThemeVersion = current.ActiveTheme.Version.ToString(),
             InterfaceScale = appearance.InterfaceScale,
             TextScale = appearance.TextScale,
+            DisplayScales = appearance.DisplayScales,
             BackdropOpacity = appearance.BackdropOpacity,
             Motion = appearance.Motion,
             Contrast = appearance.Contrast,

@@ -393,6 +393,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.GetPlatformAppearance:
             if (_appearance is null)
                 throw new BridgeProtocolException("Platform appearance service is unavailable.");
+            if (request.Payload.TryGetProperty("display", out var displayContext))
+                _appearance.SetDisplay(BridgeJson.FromElement<OverlayDisplayContext>(displayContext));
             await ReplyAsync(
                 BridgeMessageTypes.PlatformAppearance,
                 request.RequestId,
@@ -997,7 +999,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     context, _controllers.SetAsync, RequestApplicationControlAsync,
                     _ => ValueTask.FromResult(_localPackageImport?.TakeNotification(configured.PublicDescriptor().RuntimeGeneration)
                         ?? PlatformWidgetPackageNotification.Empty),
-                    _localData.InspectBuiltInAsync, _localData.ClearBuiltInAsync)
+                    _localData.InspectBuiltInAsync, _localData.ClearBuiltInAsync,
+                    () => _appearance?.Display ?? OverlayDisplayContext.Unavailable)
                 : _consentStore is null || _platformBackend is null
                     ? null
                     : CreateCompanionFactory(configured),

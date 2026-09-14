@@ -1,3 +1,4 @@
+#include "DisplayScaleContext.h"
 #include "WidgetBridgeClient.h"
 
 #include <algorithm>
@@ -1481,7 +1482,14 @@ void VerifyVirtualCollectionProtocol() {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--display-read") {
+        const auto display = widgetrail::ResolveDisplayScaleContext(
+            MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY));
+        if (display.id.empty()) { std::cerr << "Display identity unavailable\n"; return 1; }
+        std::wcout << L"Read-only display identity: " << display.id << L" name=" << display.name << L"\n";
+        return 0;
+    }
     CHECK(widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(L"stale_controller_input_authority"));
     CHECK(widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(L"stale_pinned_input_authority"));
     CHECK(!widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(L"request_failed"));
@@ -2768,6 +2776,47 @@ int main() {
     const auto malformed = widgetrail::testing::ParsePlatformAppearance("{}", error);
     CHECK(!malformed);
     CHECK(appearanceState.current()->themeId == L"midnight-blue");
+
+    std::string scaledJson(ValidAppearance);
+    scaledJson.insert(1, R"json("displayScales":{"monitor-a":{"interfaceScale":0.85,"textScale":1.4}},)json");
+    error.clear();
+    const auto parsedScales = widgetrail::testing::ParsePlatformAppearance(scaledJson, error);
+    CHECK(parsedScales && error.empty());
+    CHECK(parsedScales->displayScales.at(L"monitor-a").interfaceScale == 0.85);
+    scaledJson.replace(scaledJson.find("0.85"), 4, "0.01");
+    CHECK(!widgetrail::testing::ParsePlatformAppearance(scaledJson, error));
+
+    // Saved sizes must follow monitor identity, not the previous monitor's effective pair.
+    widgetrail::PlatformAppearance sized = *appearance;
+    sized.revision = 20;
+    sized.interfaceScale = 1.1;
+    sized.textScale = 1.15;
+    sized.displayScales[L"monitor-a"] = {0.8, 1.5};
+    sized.displayScales[L"monitor-b"] = {1.25, 0.85};
+    widgetrail::PlatformAppearanceState sizes;
+    CHECK(sizes.Publish(sized));
+    CHECK(sizes.SelectDisplay(L"monitor-a"));
+    CHECK(sizes.current()->interfaceScale == 0.8 && sizes.current()->textScale == 1.5);
+    CHECK(sizes.SelectDisplay(L"monitor-b"));
+    CHECK(sizes.current()->interfaceScale == 1.25 && sizes.current()->textScale == 0.85);
+    CHECK(sizes.SelectDisplay(L"unseen"));
+    CHECK(sizes.current()->interfaceScale == 1.1 && sizes.current()->textScale == 1.15);
+    CHECK(!sizes.SelectDisplay(L""));
+    CHECK(sizes.SelectDisplay(L"monitor-a"));
+    sized.revision++;
+    sized.displayScales[L"monitor-a"] = {0.9, 1.3};
+    CHECK(sizes.Publish(sized));
+    CHECK(sizes.current()->interfaceScale == 0.9 && sizes.current()->textScale == 1.3);
+    CHECK(!sizes.Publish(sized));
+    CHECK(sizes.SelectDisplay(L"unseen"));
+    CHECK(sizes.current()->interfaceScale == 1.1);
+
+    const auto single = widgetrail::MakeDisplayScaleContext({{L"path-a", L"Monitor A"}});
+    const auto clone = widgetrail::MakeDisplayScaleContext({{L"path-a", L"Monitor A"}, {L"path-b", L"Monitor B"}});
+    CHECK(single.id.size() == 64 && single.name == L"Monitor A");
+    CHECK(clone.id != single.id);
+    CHECK(clone == widgetrail::MakeDisplayScaleContext({{L"PATH-B", L"Monitor B"}, {L"PATH-A", L"Monitor A"}}));
+    CHECK(widgetrail::MakeDisplayScaleContext({}).id.empty());
 
     std::cout << "WidgetBridgeCatalogTests passed\n";
 }

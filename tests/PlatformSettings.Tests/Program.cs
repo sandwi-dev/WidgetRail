@@ -5,6 +5,7 @@ using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Display sizing preserves defaults and isolates persisted monitors", DisplayScaleTests.Run),
     ("Startup registration respects ownership Windows approval and failures", StartupRegistrationTests.Run),
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),
     ("Default paths use only the WidgetRail local state root", DefaultPathsUseWidgetRail),

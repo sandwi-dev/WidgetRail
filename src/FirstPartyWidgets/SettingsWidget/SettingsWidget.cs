@@ -59,6 +59,7 @@ public sealed class SettingsWidget : Widget
     private readonly string? _bundledWidgetRoot;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly object _stateLock = new();
+    private OverlayDisplayContext _display = OverlayDisplayContext.Unavailable;
     private PlatformSettingsDocument _settings = PlatformSettingsDocument.Default;
     private ThemeCatalogSnapshot _themes;
     private PlatformDiagnosticsSnapshot _diagnostics = PlatformDiagnosticsSnapshot.Unavailable();
@@ -169,9 +170,11 @@ public sealed class SettingsWidget : Widget
         string? selectedAuthorityRecoveryId;
         string status;
         StartupRegistrationStatus startupStatus;
+        OverlayDisplayContext display;
         lock (_stateLock)
         {
             startupStatus = _startupStatus;
+            display = _display;
             settings = _settings;
             themes = _themes;
             page = _page;
@@ -198,7 +201,7 @@ public sealed class SettingsWidget : Widget
             busy,
             error,
             selectedTheme,
-            themePickerFocusId, startupStatus);
+            themePickerFocusId, startupStatus, display);
         if (SettingsPresentation.TryRender(presentation, out var view)) return view;
         var header = SettingsPresentation.Header(presentation);
         return page switch
@@ -247,6 +250,7 @@ public sealed class SettingsWidget : Widget
         {
             try
             {
+                await ReadDisplayAsync(activeLifetime).ConfigureAwait(false);
                 await ReloadAsync(activeLifetime).ConfigureAwait(false);
                 EnsureSettingsStatusPolling();
             }
@@ -290,6 +294,8 @@ public sealed class SettingsWidget : Widget
                 try
                 {
                     await ReadPackageNotificationAsync(cancellationToken).ConfigureAwait(false);
+                    if (CurrentPage is SettingsPage.Overlay or SettingsPage.Accessibility)
+                        await ReadDisplayAsync(cancellationToken).ConfigureAwait(false);
                     if (CurrentPage != SettingsPage.Controllers) continue;
                     ControllerControlStatus status;
                     try { status = (await _diagnosticsService.GetSnapshotAsync(cancellationToken).ConfigureAwait(false)).Controllers; }
@@ -306,6 +312,16 @@ public sealed class SettingsWidget : Widget
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    private async Task ReadDisplayAsync(CancellationToken cancellationToken)
+    {
+        OverlayDisplayContext display;
+        try { display = await _readinessDiagnosticsService.GetOverlayDisplayAsync(cancellationToken).ConfigureAwait(false); }
+        catch (PlatformDiagnosticsException) { display = OverlayDisplayContext.Unavailable; }
+        bool changed;
+        lock (_stateLock) { changed = _display != display; _display = display; }
+        if (changed) Invalidate();
     }
 
     internal async Task ReadPackageNotificationAsync(CancellationToken cancellationToken)
@@ -360,6 +376,8 @@ public sealed class SettingsWidget : Widget
                     PackageCapabilitiesReturnPage(),
                     out var targetPage))
             {
+                if (targetPage is SettingsPage.Overlay or SettingsPage.Accessibility)
+                    await ReadDisplayAsync(cancellationToken).ConfigureAwait(false);
                 Navigate(targetPage);
                 return;
             }
@@ -732,6 +750,18 @@ public sealed class SettingsWidget : Widget
         SettingsPreferenceMutation mutation,
         CancellationToken cancellationToken)
     {
+        if (mutation.IsScale)
+        {
+            await ReadDisplayAsync(cancellationToken).ConfigureAwait(false);
+            OverlayDisplayContext currentDisplay;
+            lock (_stateLock) currentDisplay = _display;
+            if (currentDisplay.Id.Length == 0 || mutation.DisplayId != currentDisplay.Id)
+            {
+                SetOperation("The display changed or is unavailable. Check the display name and try again.", false, true);
+                return;
+            }
+            mutation = mutation with { DisplayId = currentDisplay.Id };
+        }
         SetOperation("Saving…", busy: true, error: false);
         try
         {

@@ -6,6 +6,7 @@ using WidgetRail.PlatformDiagnostics;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Overlay display context is authenticated bounded and session-local", DisplayContextRoundTrip),
     ("Package notifications use bounded authenticated one-shot delivery", PackageNotificationRoundTrip),
     ("Trusted application controls request quit and restart without OS actions", ApplicationControlRoundTrip),
     ("Exclusive controller control is authenticated and returns actual status", ControllerControlRoundTrip),
@@ -71,6 +72,24 @@ static async Task ApplicationControlRoundTrip()
     Assert.True(requests.SequenceEqual(new[] { false, true }));
     await using var unsupported = new DiagnosticsHarness(_ => ValueTask.FromResult(HealthySnapshot(1)));
     Assert.True(!(await unsupported.Client.RequestApplicationControlAsync(false)).Accepted);
+}
+
+static async Task DisplayContextRoundTrip()
+{
+    var current = new OverlayDisplayContext("monitor-a", "Monitor A");
+    await using var harness = new DiagnosticsHarness(_ => ValueTask.FromResult(HealthySnapshot(1)),
+        overlayDisplay: () => current);
+    Assert.Equal(current, await harness.Client.GetOverlayDisplayAsync());
+    current = new("monitor-b", "Monitor B");
+    Assert.Equal(current, await harness.Client.GetOverlayDisplayAsync());
+    await using var unsupported = new DiagnosticsHarness(_ => ValueTask.FromResult(HealthySnapshot(1)));
+    Assert.Equal(OverlayDisplayContext.Unavailable, await unsupported.Client.GetOverlayDisplayAsync());
+    foreach (var invalid in new[] { new OverlayDisplayContext("bad\nkey", "Monitor"),
+        new OverlayDisplayContext("id", new string('x', 257)) })
+    {
+        try { PlatformDiagnosticsPipeServer.ValidateDisplayContext(invalid); throw new Exception("Invalid display accepted"); }
+        catch (PlatformDiagnosticsException) { }
+    }
 }
 
 static async Task ControllerControlRoundTrip()
@@ -786,12 +805,13 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
         Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? applicationControl = null,
         Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null,
         Func<string, CancellationToken, ValueTask<PlatformWidgetLocalDataInspection>>? inspectBuiltIn = null,
-        Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? clearBuiltIn = null)
+        Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? clearBuiltIn = null,
+        Func<OverlayDisplayContext>? overlayDisplay = null)
     {
         PipeName = $"wrail-diagnostics-test-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
             PipeName, provider, serverTimeout, retry, inspect, clear,
-            uninstallInspect, uninstall, exclusiveControl, applicationControl, packageNotification, inspectBuiltIn, clearBuiltIn);
+            uninstallInspect, uninstall, exclusiveControl, applicationControl, packageNotification, inspectBuiltIn, clearBuiltIn, overlayDisplay);
         _server.BindExpectedClientProcess(Environment.ProcessId);
         Client = new PlatformDiagnosticsPipeClient(
             PipeName, _server.ChannelNonce, Environment.ProcessId,

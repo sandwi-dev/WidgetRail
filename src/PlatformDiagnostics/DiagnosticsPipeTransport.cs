@@ -23,6 +23,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private const string UninstallWidgetPackageOperation = "uninstall-widget-package";
     internal static readonly TimeSpan MaximumOperationTimeout = TimeSpan.FromSeconds(10);
     private readonly Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? _packageNotification;
+    private readonly Func<OverlayDisplayContext>? _overlayDisplay;
     private readonly string _pipeName;
     private readonly Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> _snapshotProvider;
     private readonly Func<bool, CancellationToken, ValueTask<ControllerControlResult>>? _exclusiveControl;
@@ -61,12 +62,14 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         Func<bool, CancellationToken, ValueTask<ApplicationControlResult>>? applicationControl = null,
         Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null,
         Func<string, CancellationToken, ValueTask<PlatformWidgetLocalDataInspection>>? builtInLocalDataInspection = null,
-        Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? builtInLocalDataClear = null)
+        Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? builtInLocalDataClear = null,
+        Func<OverlayDisplayContext>? overlayDisplay = null)
     {
         if (!IsToken(pipeName, 200))
             throw new ArgumentException("Diagnostics pipe name is invalid.", nameof(pipeName));
         _pipeName = pipeName;
         _snapshotProvider = snapshotProvider ?? throw new ArgumentNullException(nameof(snapshotProvider));
+        _overlayDisplay = overlayDisplay;
         _exclusiveControl = exclusiveControl;
         _applicationControl = applicationControl;
         _packageNotification = packageNotification;
@@ -90,6 +93,14 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly |
             (OperatingSystem.IsWindows() ? PipeOptions.FirstPipeInstance : PipeOptions.None),
             4096, 4096);
+    }
+
+    public static void ValidateDisplayContext(OverlayDisplayContext context)
+    {
+        if (context is null || context.Id is null || context.Id.Length > 256 ||
+            context.Id.Any(char.IsControl) || string.IsNullOrWhiteSpace(context.Name) ||
+            context.Name.Length > 256 || context.Name.Any(char.IsControl))
+            throw new PlatformDiagnosticsException("malformed_display_context");
     }
 
     public string ChannelNonce { get; }
@@ -179,6 +190,17 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
                 var result = _packageNotification is null ? PlatformWidgetPackageNotification.Empty :
                     await _packageNotification(cancellationToken).AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
                 ValidatePackageNotification(result);
+                await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
+                receiptOperation = request.Operation;
+                break;
+            }
+            case "overlay-display":
+            {
+                if (request.ConfirmationToken is not null || request.WidgetId is not null ||
+                    request.PublisherId is not null || request.ActiveVersion is not null || request.ExclusiveControl is not null)
+                    throw new PlatformDiagnosticsException("malformed_request");
+                var result = _overlayDisplay?.Invoke() ?? OverlayDisplayContext.Unavailable;
+                ValidateDisplayContext(result);
                 await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
                 receiptOperation = request.Operation;
                 break;
@@ -647,6 +669,11 @@ public sealed class PlatformDiagnosticsPipeClient(
             result => { if (result is null) throw new PlatformDiagnosticsException("malformed_response"); },
             cancellationToken).ConfigureAwait(false);
     }
+
+    public async ValueTask<OverlayDisplayContext> GetOverlayDisplayAsync(CancellationToken cancellationToken = default) =>
+        await ExecuteAsync<OverlayDisplayContext>(new DiagnosticsRequest("overlay-display"),
+            "overlay-display", PlatformDiagnosticsPipeServer.ValidateDisplayContext,
+            cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<ControllerControlResult> SetExclusiveControlAsync(
         bool enabled, CancellationToken cancellationToken = default) =>

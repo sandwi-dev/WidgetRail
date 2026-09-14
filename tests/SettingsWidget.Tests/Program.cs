@@ -42,6 +42,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Retired game-source actions cannot navigate or mutate Settings", GameSourceActionsAreRetired),
     ("Settings composites expose controller semantics", CompositeControls),
     ("Visual accessibility preferences persist through a nested controller scope", VisualAccessibilityPersistence),
+    ("Display sizing follows explicit host context and rejects stale display actions", DisplaySizingContext),
     ("Scale and opacity actions persist within bounds", BoundedPersistence),
     ("Theme picker scrolls every valid and invalid package", ThemePickerScroll),
     ("Theme selection atomically pins ID and version", ThemeSelection),
@@ -390,8 +391,8 @@ static async Task CompositeControls()
     Assert.SequenceEqual(
         ["wrail-stepper__button", "wrail-stepper__button--increment"],
         buttons["text.stepper.increment"].StyleClasses);
-    Assert.Equal("text.decrease", buttons["text.stepper.decrement"].ActionId);
-    Assert.Equal("text.increase", buttons["text.stepper.increment"].ActionId);
+    Assert.Equal("text.decrease@test-monitor", buttons["text.stepper.decrement"].ActionId);
+    Assert.Equal("text.increase@test-monitor", buttons["text.stepper.increment"].ActionId);
     Assert.Equal("Decrease Text size", buttons["text.stepper.decrement"].AccessibilityLabel);
     Assert.Equal("Increase Text size", buttons["text.stepper.increment"].AccessibilityLabel);
     Assert.Equal("Follow Windows motion  On", buttons["motion.system"].Text);
@@ -410,7 +411,12 @@ static async Task CompositeControls()
 static async Task VisualAccessibilityPersistence()
 {
     using var temp = new TemporaryDirectory();
+    await Store(temp.Path).ReplaceAsync(PlatformSettingsDocument.Default with
+    {
+        Appearance = AppearanceSettings.Default with { BoldText = false },
+    });
     var widget = Create(temp.Path);
+    await Activate(widget);
     await Action(widget, "open.accessibility");
     await Action(widget, "open.visual-accessibility");
 
@@ -445,6 +451,36 @@ static async Task VisualAccessibilityPersistence()
     Assert.Equal(SettingsPage.Accessibility, widget.CurrentPage);
 }
 
+static async Task DisplaySizingContext()
+{
+    using var temp = new TemporaryDirectory();
+    var service = new SizingDiagnostics();
+    var widget = new SettingsWidget(Store(temp.Path), diagnostics: service);
+    await Activate(widget);
+    await Action(widget, "open.overlay");
+    Assert.Contains("Test monitor", Text(Snapshot(widget).Root, "settings.display").Text!);
+    await Action(widget, "interface.increase");
+    service.Display = new("second-monitor", "Second monitor");
+    await Action(widget, "interface.increase"); // Snapshot still described the first monitor.
+    var saved = await Store(temp.Path).LoadAsync();
+    Assert.True(!saved.Appearance.DisplayScales.ContainsKey("second-monitor"), "Stale action changed a different display.");
+    Assert.Contains("Second monitor", Text(Snapshot(widget).Root, "settings.display").Text!);
+    await Action(widget, "interface.increase@test-monitor"); // Still stale after the model has adopted monitor B.
+    Assert.True(!(await Store(temp.Path).LoadAsync()).Appearance.DisplayScales.ContainsKey("second-monitor"),
+        "Old snapshot action changed the new display after context adoption.");
+    await Action(widget, "interface.increase@second-monitor");
+    await Action(widget, "text.increase@second-monitor");
+    saved = await Store(temp.Path).LoadAsync();
+    Assert.Equal(1.05d, saved.Appearance.DisplayScales["test-monitor"].InterfaceScale);
+    Assert.Equal(1d, saved.Appearance.DisplayScales["test-monitor"].TextScale);
+    Assert.Equal(1.05d, saved.Appearance.DisplayScales["second-monitor"].InterfaceScale);
+    Assert.Equal(1.05d, saved.Appearance.DisplayScales["second-monitor"].TextScale);
+    Assert.Equal(1d, saved.Appearance.InterfaceScale);
+    service.Display = OverlayDisplayContext.Unavailable;
+    await Action(widget, "interface.increase");
+    Assert.True(!(await Store(temp.Path).LoadAsync()).Appearance.DisplayScales.ContainsKey(""), "Unknown monitor saved.");
+}
+
 static async Task BoundedPersistence()
 {
     using var temp = new TemporaryDirectory();
@@ -472,8 +508,10 @@ static async Task BoundedPersistence()
     await Action(widget, "interface.increase");
     await Action(widget, "opacity.decrease");
     saved = await store.LoadAsync();
-    Assert.Equal(1.45D, saved.Appearance.TextScale);
-    Assert.Equal(0.85D, saved.Appearance.InterfaceScale);
+    Assert.Equal(AppearanceSettings.MaximumTextScale, saved.Appearance.TextScale);
+    Assert.Equal(1.45D, saved.Appearance.DisplayScales["test-monitor"].TextScale);
+    Assert.Equal(AppearanceSettings.MinimumInterfaceScale, saved.Appearance.InterfaceScale);
+    Assert.Equal(0.85D, saved.Appearance.DisplayScales["test-monitor"].InterfaceScale);
     Assert.Equal(0.75D, saved.Appearance.BackdropOpacity);
 }
 
@@ -2671,7 +2709,7 @@ static async Task ExportRendererFixture(string outputPath)
 static SettingsWidget Create(string root)
 {
     var paths = new PlatformSettingsPaths(root);
-    return new SettingsWidget(new PlatformSettingsStore(paths), new ThemeCatalog(paths));
+    return new SettingsWidget(new PlatformSettingsStore(paths), new ThemeCatalog(paths), diagnostics: new SizingDiagnostics());
 }
 
 static SettingsWidget CreateWithPermissions(
@@ -2704,7 +2742,8 @@ static async Task Activate(SettingsWidget widget)
 }
 
 static ValueTask Action(SettingsWidget widget, string action, string sourceElementId = "test") =>
-    widget.OnActionAsync(new WidgetActionEvent(action, sourceElementId));
+    widget.OnActionAsync(new WidgetActionEvent(action is "text.increase" or "text.decrease" or
+        "interface.increase" or "interface.decrease" ? action + "@test-monitor" : action, sourceElementId));
 
 static ViewSnapshot Snapshot(SettingsWidget widget)
 {
@@ -3135,4 +3174,13 @@ file static class Assert
         foreach (var descendant in Nodes(child))
             yield return descendant;
     }
+}
+
+file sealed class SizingDiagnostics : IPlatformDiagnosticsService
+{
+    public OverlayDisplayContext Display { get; set; } = new("test-monitor", "Test monitor");
+    public ValueTask<OverlayDisplayContext> GetOverlayDisplayAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Display);
+    public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(PlatformDiagnosticsSnapshot.Unavailable());
 }

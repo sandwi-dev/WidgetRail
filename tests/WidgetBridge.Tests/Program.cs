@@ -1683,6 +1683,19 @@ static async Task RequestDispatcherCleansTerminalPaths()
 
 static Task RequestClassificationIsClosed()
 {
+    foreach (var malformedDisplay in new[] { "{\"display\":null}", "{\"display\":{}}",
+        "{\"display\":{\"id\":\"monitor\",\"name\":\"Monitor\",\"unexpected\":true}}",
+        "{\"display\":{\"id\":\"monitor\",\"name\":\"Monitor\"},\"unexpected\":true}" })
+    {
+        using var document = JsonDocument.Parse(malformedDisplay);
+        var key = BridgeRequestClassifier.Classify(new BridgeEnvelope
+        {
+            Type = BridgeMessageTypes.GetPlatformAppearance, RequestId = 1,
+            Payload = document.RootElement.Clone(),
+        });
+        Assert.Equal(BridgeRequestKind.Malformed, key.Kind);
+    }
+
     var widget = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
         Type = BridgeMessageTypes.GetSnapshot,
@@ -4192,7 +4205,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides"],
+        ["animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
@@ -4208,6 +4221,18 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal(12, shellStyles.EnumerateObject().Count());
     Assert.True(shellStyles.GetProperty("tray-item:focused")
         .TryGetProperty("outline-color", out _), "Focused tray style was not resolved.");
+    Assert.Equal(0.9d, response.Payload.GetProperty("displayScales").GetProperty("monitor-a")
+        .GetProperty("interfaceScale").GetDouble());
+    var revision = response.Payload.GetProperty("revision").GetInt64();
+    var selected = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance,
+        new { display = new { id = "monitor-a", name = "Monitor A" } });
+    Assert.Equal(BridgeMessageTypes.PlatformAppearance, selected.Type);
+    Assert.Equal("monitor-a", harness.Appearance!.Service.Display.Id);
+    Assert.Equal(revision, selected.Payload.GetProperty("revision").GetInt64());
+    Assert.Equal(1.1d, selected.Payload.GetProperty("interfaceScale").GetDouble());
+    await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance,
+        new { display = new { id = "monitor-b", name = "Monitor B" } });
+    Assert.Equal("monitor-b", harness.Appearance.Service.Display.Id);
     Assert.Equal(0, harness.Server.RunningWorkerCount);
 }
 
@@ -7243,6 +7268,7 @@ file sealed class TemporaryAppearance : IAsyncDisposable
             {
                 ThemeId = "dev.example.bridge",
                 ThemeVersion = "1.0.0",
+                DisplayScales = new Dictionary<string, DisplayScaleSettings> { ["monitor-a"] = new(0.9, 1.4) },
                 InterfaceScale = 1.1,
                 TextScale = 1.2,
                 BackdropOpacity = 0.7,
