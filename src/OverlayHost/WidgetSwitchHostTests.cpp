@@ -4618,11 +4618,14 @@ void RunRetentionScenario(const Arguments& arguments) {
     const auto blockedCloseMilliseconds = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - closeStarted).count());
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+    const bool closeRejectedCompletion = WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 return ReadUtf8(logPath).find(
                     "Dropped stale widget session completion for settings",
                     closeWhileBlockedBoundary) != std::string::npos;
-            }), "Hide/close did not revoke the nonresponsive Settings request.");
+            });
+    Require(closeRejectedCompletion,
+            "Hide/close did not revoke the nonresponsive Settings request; " +
+                ReadUtf8(logPath).substr(rearmBefore));
     installation->ReleaseBlockedSnapshot(closeRevokedEpoch);
 
     const auto lateBoundary = ReadUtf8(logPath).size();
@@ -4972,7 +4975,7 @@ void RunRetentionScenario(const Arguments& arguments) {
         Require(systemAnimations ? recordedMotion : !recordedMotion,
                 "Composition motion did not respect the system animation preference.");
         if (!systemAnimations)
-            Require(log.find("order=commit-set-position") != std::string::npos,
+            Require(log.find("order=commit-place") != std::string::npos,
                     "Disabled system animations omitted immediate composition placement.");
         Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
                     log.find("Overlay render target resized in place") == std::string::npos,
