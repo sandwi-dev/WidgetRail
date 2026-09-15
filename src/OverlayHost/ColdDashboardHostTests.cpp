@@ -597,6 +597,26 @@ void Run(const Arguments& arguments, const bool startHidden) {
     RequireBottomAnchoredRecord(*reshowRecord, window, reshownContent);
     VerifyReshownSettingsFocus(automation.Get(), window);
 
+    // Inspect every applied frame, including the cold first open. Checking only
+    // the final re-show would miss a startup overlap that repairs itself later.
+    const auto geometryLog = ReadUtf8(profile.logPath());
+    std::size_t sampleCursor{};
+    std::size_t checkedSamples{};
+    while ((sampleCursor = geometryLog.find("Composition child sample", sampleCursor)) != std::string::npos) {
+        const auto end = geometryLog.find('\n', sampleCursor);
+        const auto record = geometryLog.substr(sampleCursor,
+            end == std::string::npos ? std::string::npos : end-sampleCursor);
+        sampleCursor = end == std::string::npos ? geometryLog.size() : end+1;
+        if (record.find("chrome-applied-exact=true") == std::string::npos) continue;
+        const auto guide = ParseBounds(record, "guide=");
+        const auto selected = ParseBounds(record, "selected=");
+        Require(guide && selected, "Applied chrome sample omitted guide or tray icon bounds.");
+        Require(selected->top >= guide->bottom,
+            "Tray icon overlaps the guide during cold startup or re-show.");
+        ++checkedSamples;
+    }
+    Require(checkedSamples > 0, "Cold startup omitted applied chrome geometry samples.");
+
     PostMessageW(window, WM_CLOSE, 0, 0);
     Require(WaitForSingleObject(host.Process(), kStepTimeoutMilliseconds) == WAIT_OBJECT_0,
             "Production OverlayHost did not stop after the cold dashboard scenario.");
