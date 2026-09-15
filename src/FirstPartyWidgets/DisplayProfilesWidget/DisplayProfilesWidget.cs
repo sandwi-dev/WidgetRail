@@ -283,7 +283,8 @@ public sealed class DisplayProfilesWidget : Widget
                 if (_state is { } state)
                 {
                     children.Add(UI.Stack("display.current",
-                        UI.Text($"Current setup · {state.Mode}", "display.current.title").Classes("display-section-title"),
+                        UI.Text($"Current setup · {state.Profiles.FirstOrDefault(profile => profile.MatchesCurrent)?.Name ?? state.Mode}",
+                            "display.current.title").Classes("display-section-title"),
                         MonitorStrip(state.Displays, "display.current.monitors"),
                         UI.Text(Summary(state.Displays), "display.current.summary").Classes("display-summary")).Classes("display-current"));
                     children.Add(state.Profiles.Count == 0
