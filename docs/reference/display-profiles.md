@@ -76,6 +76,18 @@ The installer's optional data removal also removes this directory.
 
 Display changes use Windows notifications, not periodic display polling.
 The widget's one-second timer updates only the visible confirmation countdown.
+During a restore transaction, a separate diagnostic worker also reads the active
+setup every 500 ms and logs changes to `display-profiles/restore.log` under the
+settings directory. It records UTC timestamps, native call flags/results,
+baseline and target modes, confirmation decisions and rollback outcomes.
+Readbacks include their own start time and duration: a read triggered by Keep
+can finish after the subsequent apply, so its trigger is not proof of ordering.
+Monitor connections are hashed; raw device paths, serials and profile names are
+excluded. The log retains up to 1 MiB plus one previous file, `restore.log.1`.
+Reads stop when the transaction ends. Diagnostic failures do not alter display
+decisions or block rollback; a stalled worker gets only a bounded final flush.
+These observations cannot identify which external process or driver changed
+the topology, and changes shorter than the sampling interval may be missed.
 Normal automated tests use a fake display backend for every apply and rollback.
 The optional test-runner argument `--native-read` reads and validates the
 current configuration. It is separate from the normal suite so CI does not

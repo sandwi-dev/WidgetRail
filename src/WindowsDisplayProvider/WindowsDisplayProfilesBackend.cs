@@ -25,7 +25,8 @@ public sealed class WindowsDisplayProfilesBackend : IDisplayProfilesPlatformBack
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
 
     public WindowsDisplayProfilesBackend(string settingsRoot, string bridgeExecutable)
-        : this(Path.Combine(settingsRoot, "display-profiles"), new WindowsDisplayNative(), new DisplayRestoreLauncher(bridgeExecutable)) { }
+        : this(Path.Combine(settingsRoot, "display-profiles"), new WindowsDisplayNative(),
+            new DisplayRestoreLauncher(bridgeExecutable, Path.GetFullPath(Path.Combine(settingsRoot, "display-profiles")))) { }
     internal WindowsDisplayProfilesBackend(string directory, IDisplayNative native, IDisplayRestoreLauncher launcher)
     { _directory = Path.GetFullPath(directory); _native = native; _launcher = launcher; }
 

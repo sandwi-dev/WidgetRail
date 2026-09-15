@@ -61,6 +61,8 @@ var checks = new (string Name, Func<Task> Run)[]
     ("Profile status agrees with remapped physical monitor identity", ProfileIdentityStatus),
     ("Profile writes are atomic and corrupt data is preserved", Storage),
     ("Guard reverts on timeout, parent EOF and partial apply failure", Guard),
+    ("Diagnostics observe preview drift without changing apply decisions", DiagnosticObservations),
+    ("Diagnostic failures and blocked readbacks cannot prevent rollback", DiagnosticFailures),
     ("Broker enforces consent, interactive state and closed request payloads", Authority),
     ("Widget supports naming, unavailable profile management and guarded focus", Widget),
     ("Packaged manifest, monitor glyph and theme styles validate", Assets),
@@ -203,12 +205,14 @@ static async Task Guard()
     var target = Fixture.Setup(1920);
     foreach (var decision in new[] { "keep", "revert", "eof", "timeout", "late" })
     {
+        using var temp = new TemporaryDirectory();
         var native = new FakeNative { Current = Fixture.Setup(1280) };
         var id = Guid.NewGuid().ToString("N");
         var reader = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(id, target)));
         var writer = new GuardWriter();
         var clock = new ManualClock();
-        var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, clock, TimeSpan.FromSeconds(15));
+        var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, clock, TimeSpan.FromSeconds(15),
+            request => new DisplayRestoreDiagnosticLog(temp.Path, request.Id, native.Capture));
         await writer.Applied.Task.WaitAsync(TimeSpan.FromSeconds(2));
         if (decision is "timeout" or "late") clock.Advance(TimeSpan.FromSeconds(16));
         if (decision != "timeout") reader.Decision.TrySetResult(decision == "eof" ? null :
@@ -217,12 +221,105 @@ static async Task Guard()
         Check(native.Applies.Count == 2);
         Check(native.Applies[0].Width == 1920 && !native.Applies[0].Persist);
         Check(native.Applies[1] == (decision == "keep" ? (1920, true) : (1280, false)), decision);
+        var log = File.ReadAllText(Path.Combine(temp.Path, "restore.log"));
+        Check(log.Contains(decision == "keep" ? "completed-kept" : "completed-reverted"), "Missing terminal guard diagnostic");
+        Check(log.Contains("decision-"), "Missing confirmation outcome");
     }
     var failed = new FakeNative { Current = Fixture.Setup(1280), FailApply = 1 };
     var request = JsonSerializer.Serialize(new GuardRequest(Guid.NewGuid().ToString("N"), target));
     Check(await DisplayRestoreGuard.RunCoreAsync(new StringReader(request + "\n"), new StringWriter(),
         failed, TimeProvider.System, TimeSpan.FromSeconds(15)) == 1);
     Check(failed.Applies.Count == 2 && failed.Applies[1].Width == 1280, "Partial apply did not roll back");
+}
+static async Task DiagnosticObservations()
+{
+    using var temp = new TemporaryDirectory();
+    var baseline = Fixture.Setup(1280);
+    var target = Fixture.Setup(1920);
+    var native = new FakeNative { Current = baseline };
+    var id = Guid.NewGuid().ToString("N");
+    var reader = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(id, target)));
+    var writer = new GuardWriter();
+    var path = Path.Combine(temp.Path, "restore.log");
+    var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, TimeProvider.System, TimeSpan.FromSeconds(15),
+        request => new DisplayRestoreDiagnosticLog(temp.Path, request.Id, native.Capture));
+    await writer.Applied.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    await Until(() => ReadLog().Contains("\"MatchesTarget\":true"));
+    native.Current = baseline; // Simulate the OS/driver changing the active setup during confirmation.
+    await Until(() => ReadLog().Contains("\"MatchesBaseline\":true,\"MatchesTarget\":false"));
+    Check(native.Applies.Count == 1 && !run.IsCompleted, "Observation changed display behavior");
+    reader.Decision.SetResult("keep:" + id);
+    Check(await run.WaitAsync(TimeSpan.FromSeconds(3)) == 0);
+    Check(native.Applies.SequenceEqual(new[] { (1920, false), (1920, true) }), "Diagnostics changed Keep semantics");
+    var log = ReadLog();
+    Check(log.Contains("\"Trigger\":\"sample\"") && log.Contains("decision-keep") && log.Contains("completed-kept"));
+    foreach (var line in log.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+    {
+        using var json = JsonDocument.Parse(line);
+        Check(json.RootElement.GetProperty("Transaction").GetString() == id);
+    }
+    Check(!log.Contains("monitor-0") && !log.Contains("Monitor 0") && !log.Contains("DevicePath"), "Diagnostic exposed raw identity");
+    string ReadLog() { try { return File.ReadAllText(path); } catch (IOException) { return ""; } }
+}
+static async Task DiagnosticFailures()
+{
+    using var temp = new TemporaryDirectory();
+    var blockedDirectory = Path.Combine(temp.Path, "file");
+    File.WriteAllText(blockedDirectory, "preserve");
+    foreach (var mode in new[] { "disk-failure", "capture-failure", "capture-blocked" })
+    {
+        var native = new FakeNative { Current = Fixture.Setup(1280) };
+        var reader = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(Guid.NewGuid().ToString("N"), Fixture.Setup(1920))));
+        var writer = new GuardWriter();
+        var clock = new ManualClock();
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        DisplayConfiguration Capture()
+        {
+            if (mode == "capture-failure") throw new Win32Exception(31, "private diagnostic message");
+            if (mode == "capture-blocked") { entered.TrySetResult(); release.Wait(); exited.TrySetResult(); }
+            return native.Capture();
+        }
+        var directory = mode == "disk-failure" ? blockedDirectory : Path.Combine(temp.Path, mode);
+        DisplayRestoreDiagnosticLog? diagnostics = null;
+        var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, clock, TimeSpan.FromSeconds(15),
+            request => diagnostics = new DisplayRestoreDiagnosticLog(directory, request.Id, Capture));
+        try
+        {
+            await writer.Applied.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            if (mode == "capture-blocked") await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            clock.Advance(TimeSpan.FromSeconds(16));
+            Check(await run.WaitAsync(TimeSpan.FromSeconds(3)) == 0, mode);
+            Check(native.Applies.SequenceEqual(new[] { (1920, false), (1280, false) }), "Diagnostics prevented timeout rollback");
+        }
+        finally
+        {
+            release.Set();
+            if (mode == "capture-blocked") await exited.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            if (diagnostics is not null) await diagnostics.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+        }
+        if (mode == "capture-failure")
+        {
+            var log = File.ReadAllText(Path.Combine(directory, "restore.log"));
+            Check(log.Contains("readback-failed") && log.Contains("\"NativeError\":31"));
+            Check(!log.Contains("private diagnostic message"));
+        }
+    }
+    Check(File.ReadAllText(blockedDirectory) == "preserve");
+    var rotation = Path.Combine(temp.Path, "rotation");
+    Directory.CreateDirectory(rotation);
+    var path = Path.Combine(rotation, "restore.log");
+    File.WriteAllText(path, new string('x', DisplayRestoreDiagnosticLog.MaximumFileBytes));
+    await using (var log = new DisplayRestoreDiagnosticLog(rotation, Guid.NewGuid().ToString("N"), () => Fixture.Setup()))
+        log.Record("rotation-check");
+    Check(new FileInfo(path + ".1").Length == DisplayRestoreDiagnosticLog.MaximumFileBytes);
+    Check(new FileInfo(path).Length < DisplayRestoreDiagnosticLog.MaximumFileBytes);
+}
+static async Task Until(Func<bool> condition)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+    while (!condition()) await Task.Delay(20, timeout.Token);
 }
 static async Task Authority()
 {
