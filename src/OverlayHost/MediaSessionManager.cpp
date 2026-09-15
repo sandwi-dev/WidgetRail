@@ -28,6 +28,23 @@ MediaSessionManager::MediaSessionManager(
     richmedia::RichMediaEnvironmentHandle environment)
     : environment_(std::move(environment)) {}
 
+void MediaSessionManager::InvalidateCompositionTargets() noexcept {
+    overlayOwner_.reset();
+    pinnedOwner_.reset();
+    for (auto& [key, session] : sessions_) {
+        session.parkingTarget.Reset();
+        session.committedGeometry.reset();
+        session.clientBounds.reset();
+        session.clientClip.reset();
+        session.deferralStreak = 0;
+        if (session.authority) {
+            session.authority->presentation = PresentationState::Parked;
+            session.authority->parkingReason = ParkingReason::EndpointUnavailable;
+            session.authority->pinnedFrameGeneration = 0;
+        }
+    }
+}
+
 TransitionPlan MediaSessionManager::PlanTransition(
     const SessionRecord& current,
     const TransitionInput& input) noexcept {

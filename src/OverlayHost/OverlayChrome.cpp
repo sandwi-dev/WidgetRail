@@ -92,14 +92,37 @@ bool InitializeProductionChromeTarget(
 
 } // namespace
 
+bool SetContentCompositionMode(const HWND content, const bool composition) noexcept {
+    if (!content || !IsWindow(content)) return false;
+    const auto current = static_cast<DWORD>(GetWindowLongPtrW(content, GWL_EXSTYLE));
+    if (!composition && (current & WS_EX_NOREDIRECTIONBITMAP)) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return false;
+    }
+    const auto desired = composition
+        ? current & ~WS_EX_LAYERED : current | WS_EX_LAYERED;
+    if (current != desired) {
+        SetLastError(ERROR_SUCCESS);
+        if (!SetWindowLongPtrW(content, GWL_EXSTYLE, static_cast<LONG_PTR>(desired)) &&
+            GetLastError() != ERROR_SUCCESS) return false;
+        if (!SetWindowPos(content, nullptr, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                    SWP_FRAMECHANGED | SWP_NOREDRAW)) return false;
+    }
+    constexpr DWORD renderingStyles = WS_EX_LAYERED | WS_EX_NOREDIRECTIONBITMAP;
+    return (static_cast<DWORD>(GetWindowLongPtrW(content, GWL_EXSTYLE)) & renderingStyles) ==
+        (desired & renderingStyles);
+}
+
 bool InitializeFixedChromeComposition(
     OverlayCompositionSurface& surface,
     const HWND content,
     const HWND chrome,
     ID2D1Factory1* factory,
     std::wstring& error,
-    FixedChromeTargetInitializer initializeChrome) {
-    if (!surface.Initialize(content, factory, error)) {
+    FixedChromeTargetInitializer initializeChrome,
+    const bool softwareDevice) {
+    if (!surface.Initialize(content, factory, error, softwareDevice)) {
         ResetFixedChromeComposition(surface, chrome);
         return false;
     }

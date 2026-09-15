@@ -98,6 +98,7 @@ constexpr UINT_PTR kPinnedSurfaceTimer = 7;
 constexpr UINT_PTR kBridgeControlPlaneTimer = 8;
 constexpr UINT_PTR kControllerSettingsTimer = 9;
 constexpr UINT_PTR kDeveloperInspectorTimer = 21;
+constexpr UINT_PTR kCompositionRecoveryTimer = 22;
 constexpr UINT_PTR kWindowPreviewTimer = 20;
 constexpr UINT_PTR kControllerOpenShortcutTimer = 10;
 constexpr UINT kVisibleControllerTimerMilliseconds = 15;
@@ -928,8 +929,10 @@ public:
         } else {
             EnableLegacyLayeredFallback();
             AppendDiagnostic(
-                L"DirectComposition unavailable; retaining HWND render-target fallback: " +
+                L"DirectComposition unavailable; scheduling graphics recovery: " +
                 compositionError);
+            compositionRecovery_.Request();
+            ScheduleCompositionRecovery();
         }
         const HRESULT dwriteResult = DWriteCreateFactory(
             DWRITE_FACTORY_TYPE_SHARED,
@@ -2461,6 +2464,10 @@ private:
                 static_cast<float>(static_cast<short>(HIWORD(lParam))), true);
             return 0;
         case WM_TIMER:
+            if (wParam == kCompositionRecoveryTimer) {
+                RecoverComposition();
+                return 0;
+            }
             if (wParam == kDeveloperInspectorTimer) {
                 PublishDeveloperInspection();
                 return 0;
@@ -4590,7 +4597,13 @@ private:
             widgetrail::media::ParkingReason::EndpointUnavailable,
         const std::optional<widgetrail::media::EndpointGeometry>&
             committedGeometryOverride = std::nullopt) {
+        GraphicsDrawGuard graphicsGuard(graphicsDrawDepth_);
         if (transferPending) *transferPending = false;
+        if (!compositionSurface_.available() &&
+            destination != EmbeddedMediaPresentationState::Parked) {
+            if (transferPending) *transferPending = true;
+            return E_PENDING;
+        }
         auto* session = mediaSessions_.Find(sessionKey);
         if (!session || !session->authority) return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
         const auto& authority = *session->authority;
@@ -5130,6 +5143,7 @@ private:
                 widgetId, L"declaration-removed");
             return;
         }
+        if (!compositionSurface_.available()) return;
         const auto& declaration = *snapshot.embeddedMediaSession;
         const auto declaresViewport = [](const auto& self,
                                          const widgetrail::WidgetNode& node) -> bool {
@@ -5656,7 +5670,7 @@ private:
 
     void ReconcileCommittedEmbeddedMediaSurface(
         const EmbeddedMediaSessionKey& sessionKey) {
-        if (richMediaProof_) return;
+        if (richMediaProof_ || !compositionSurface_.available()) return;
         const auto* session = mediaSessions_.Find(sessionKey);
         if (!session || !session->authority) return;
         const std::wstring widgetId{session->authority->widgetId};
@@ -5670,7 +5684,7 @@ private:
     }
 
     void ReconcileCommittedEmbeddedMediaSurface() {
-        if (richMediaProof_) return;
+        if (richMediaProof_ || !compositionSurface_.available()) return;
         std::vector<EmbeddedMediaSessionKey> reconciledSessionKeys;
         if (state_.surface() == widgetrail::Surface::Widget) {
             const std::wstring widgetId{state_.activeWidget()};
@@ -5693,11 +5707,24 @@ private:
             ReconcileCommittedEmbeddedMediaSurface(*sessionKey);
             reconciledSessionKeys.push_back(*sessionKey);
         };
+        // Device recovery clears endpoint ownership. Resolve pinned demand
+        // from the widget as well so hidden pinned video can reacquire a target.
+        if (pinnedSurfaceCoordinator_.pinned()) {
+            const auto pinnedKey = CurrentEmbeddedMediaSessionKey(
+                pinnedSurfaceCoordinator_.widgetId());
+            if (pinnedKey && std::find(reconciledSessionKeys.begin(),
+                    reconciledSessionKeys.end(), *pinnedKey) == reconciledSessionKeys.end()) {
+                ReconcileCommittedEmbeddedMediaSurface(*pinnedKey);
+                reconciledSessionKeys.push_back(*pinnedKey);
+            }
+        }
         reconcileEndpointOwner(widgetrail::media::Endpoint::Overlay);
         reconcileEndpointOwner(widgetrail::media::Endpoint::Pinned);
     }
 
     void Shutdown() {
+        graphicsRecoveryShutdown_ = true;
+        if (window_) KillTimer(window_, kCompositionRecoveryTimer);
         textEntryModal_.Close();
         (void)textEntryModal_.TakeResult();
         pendingTextEntry_.reset();
@@ -7235,10 +7262,14 @@ private:
                     applied = SUCCEEDED(compositionSurface_.CommitOpacity(
                         static_cast<float>(overlayOpacity) / 255.0F, timing));
                 }
-            } else {
+            } else if ((GetWindowLongPtrW(window_, GWL_EXSTYLE) & WS_EX_NOREDIRECTIONBITMAP) == 0) {
                 applied = SetLayeredWindowAttributes(
                     window_, RGB(1, 2, 3), overlayOpacity,
                     LWA_ALPHA | LWA_COLORKEY) != FALSE;
+            } else {
+                // A no-redirection HWND cannot use layered fallback. Recovery
+                // invalidates this cache before applying opacity to fresh targets.
+                applied = true;
             }
             if (applied) {
                 appliedOverlayOpacity_ = overlayOpacity;
@@ -7605,6 +7636,10 @@ private:
     }
 
     OverlayShowResult ShowOverlay(const bool atomicVisibleTransition = false) {
+        if (!compositionSurface_.available() && !IsWindowVisible(window_)) {
+            compositionRecovery_.Reopen();
+            ScheduleCompositionRecovery();
+        }
         trayStatus_ = trayStatusMonitor_.Read(true);
         if (!placementRefreshGate_.TryEnter()) return OverlayShowResult::Deferred;
         struct PlacementScope final {
@@ -17104,13 +17139,20 @@ private:
 
     void DisableCompositionFallback(const std::wstring_view reason) {
         const auto fallbackAnchor = fixedChromeAnchor_;
+        const auto removedReason = compositionSurface_.graphicsDevice()
+            ? compositionSurface_.graphicsDevice()->GetDeviceRemovedReason() : S_OK;
         AppendDiagnostic(
-            L"DirectComposition presentation disabled; using HWND fallback: " +
-            std::wstring(reason));
+            L"DirectComposition presentation unavailable; scheduling graphics recovery: " +
+            std::wstring(reason) + L" device-reason=" +
+            std::to_wstring(static_cast<unsigned long>(removedReason)));
+        ResetWindowPreviews();
         DiscardGraphicsResources();
         pendingWidgetPresentationImpact_.reset();
         widgetrail::shell::ResetFixedChromeComposition(
             compositionSurface_, chromeWindow_);
+        mediaSessions_.InvalidateCompositionTargets();
+        compositorShellTransition_ = false;
+        shellZoomNeedsSettlement_ = false;
         compositorBackgroundCoordinator_.Abandon();
         retainedPanelBackgroundKey_.clear();
         chromeAccessibilityProvider_.Clear();
@@ -17140,23 +17182,85 @@ private:
         }
         if (window_ && state_.surface() != widgetrail::Surface::Hidden)
             InvalidateRect(window_, nullptr, FALSE);
+        compositionRecovery_.Request();
+        ScheduleCompositionRecovery();
+    }
+
+    void ScheduleCompositionRecovery() {
+        if (!window_ || graphicsRecoveryShutdown_ || graphicsRecoveryInProgress_)
+            return;
+        if (const auto delay = compositionRecovery_.delay()) {
+            if (!SetTimer(window_, kCompositionRecoveryTimer, delay, nullptr))
+                AppendDiagnostic(L"DirectComposition recovery timer could not be armed");
+        }
+    }
+
+    void RecoverComposition() {
+        // COM/capture operations can pump messages. Never replace their device
+        // while a draw, placement or preview update still owns its resources.
+        if (!runtimeInitialized_ || graphicsRecoveryInProgress_ || graphicsDrawDepth_ ||
+            compositionPlacementInProgress_ || windowPreviewUpdating_) return;
+        KillTimer(window_, kCompositionRecoveryTimer);
+        if (graphicsRecoveryShutdown_ || !compositionRecovery_.BeginAttempt()) return;
+        graphicsRecoveryInProgress_ = true;
+        {
+            // Release capture textures before the replacement frame can query
+            // them. Capture teardown pumps messages, so keep its existing guard.
+            windowPreviewUpdating_ = true;
+            windowPreviews_.Reset();
+            windowPreviewUpdating_ = false;
+            windowPreviewResetPending_ = false;
+        }
+        DiscardGraphicsResources();
+        std::wstring error;
+        bool ready = widgetrail::shell::SetContentCompositionMode(window_, true);
+        if (!ready) error = L"content HWND style transition failed";
+        if (ready) ready = widgetrail::shell::InitializeFixedChromeComposition(
+            compositionSurface_, window_, chromeWindow_, d2dFactory_.Get(), error,
+            nullptr, compositionRecovery_.softwareAttempt());
+        if (ready) {
+            appliedOverlayOpacity_.reset();
+            compositorShellTransition_ = false;
+            shellZoomNeedsSettlement_ = false;
+            // Placement builds a complete frame from the accepted snapshot and
+            // restores the companion chrome; it is never run for a hidden host.
+            if (state_.surface() != widgetrail::Surface::Hidden && IsWindowVisible(window_)) {
+                ready = ShowOverlay(true) == OverlayShowResult::Shown &&
+                    compositionSurface_.available();
+                if (!ready) error = L"replacement frame could not be presented";
+            }
+            if (ready) {
+                ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
+                ReconcileCommittedEmbeddedMediaSurface();
+                ready = compositionSurface_.available();
+            }
+        }
+        if (ready) {
+            const bool software = compositionRecovery_.softwareAttempt();
+            compositionRecovery_.Complete();
+            AppendDiagnostic(L"DirectComposition recovery completed fresh-device=true visible=" +
+                std::wstring(IsWindowVisible(window_) ? L"true" : L"false") +
+                L" software-requested=" + (software ? L"true" : L"false"));
+        } else {
+            DisableCompositionFallback(L"device recovery failed: " + error);
+        }
+        graphicsRecoveryInProgress_ = false;
+        ScheduleCompositionRecovery();
+        if (!ready && !compositionRecovery_.delay())
+            AppendDiagnostic(L"DirectComposition recovery paused after three attempts; retry on next open");
     }
 
     void EnableLegacyLayeredFallback() {
         if (!window_) return;
-        const auto current = static_cast<DWORD>(GetWindowLongPtrW(window_, GWL_EXSTYLE));
-        const auto fallback =
-            (current & ~WS_EX_NOREDIRECTIONBITMAP) | WS_EX_LAYERED;
-        if (fallback != current) {
-            SetWindowLongPtrW(window_, GWL_EXSTYLE, static_cast<LONG_PTR>(fallback));
-            (void)SetWindowPos(
-                window_, nullptr, 0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
-                    SWP_FRAMECHANGED | SWP_NOREDRAW);
+        if (!widgetrail::shell::SetContentCompositionMode(window_, false)) {
+            AppendDiagnostic(L"HWND fallback unavailable for a no-redirection window; retaining composition mode");
+            return;
         }
-        (void)SetLayeredWindowAttributes(
+        if (!SetLayeredWindowAttributes(
             window_, RGB(1, 2, 3), targetOverlayOpacity_,
-            LWA_ALPHA | LWA_COLORKEY);
+            LWA_ALPHA | LWA_COLORKEY))
+            AppendDiagnostic(L"Fallback content alpha update failed error=" +
+                std::to_wstring(GetLastError()));
     }
 
     bool CommitCompositionRepaint(
@@ -17340,7 +17444,7 @@ private:
         GraphicsDrawGuard drawGuard(graphicsDrawDepth_);
         PAINTSTRUCT paint{};
         BeginPaint(window_, &paint);
-        if (state_.surface() == widgetrail::Surface::Hidden) {
+        if (state_.surface() == widgetrail::Surface::Hidden || graphicsRecoveryInProgress_) {
             declarativeMotionActive_ = false;
             EndPaint(window_, &paint);
             return;
@@ -17358,6 +17462,12 @@ private:
         const UINT windowDpi = GetDpiForWindow(window_);
         if (compositionSurface_.available()) {
             (void)CommitCompositionRepaint(width, height, windowDpi);
+            EndPaint(window_, &paint);
+            return;
+        }
+        if ((GetWindowLongPtrW(window_, GWL_EXSTYLE) & WS_EX_NOREDIRECTIONBITMAP) != 0) {
+            // Successful EndDraw on an HWND target would not make this window
+            // visible. Only the deferred device/target recovery can present it.
             EndPaint(window_, &paint);
             return;
         }
@@ -18999,6 +19109,9 @@ private:
     ComPtr<ID2D1Factory1> d2dFactory_;
     ComPtr<IDWriteFactory> writeFactory_;
     widgetrail::OverlayCompositionSurface compositionSurface_;
+    widgetrail::shell::CompositionRecoverySchedule compositionRecovery_;
+    bool graphicsRecoveryInProgress_{};
+    bool graphicsRecoveryShutdown_{};
     widgetrail::WindowPreviewCapture windowPreviews_;
     widgetrail::shell::TrayStatusMonitor trayStatusMonitor_;
     widgetrail::shell::TrayStatusSnapshot trayStatus_;

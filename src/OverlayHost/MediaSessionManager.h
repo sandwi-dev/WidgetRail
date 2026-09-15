@@ -195,6 +195,9 @@ public:
         PresentationState target,
         std::wstring_view presentationGeneration);
     void ClearPresentationRequest(const SessionKey& key);
+    // The graphics graph was discarded, but browser controllers and playback
+    // authority remain resident. Next presentation must attach a fresh target.
+    void InvalidateCompositionTargets() noexcept;
     [[nodiscard]] HRESULT Reconcile(
         const SessionKey& key,
         const TransitionInput& input,

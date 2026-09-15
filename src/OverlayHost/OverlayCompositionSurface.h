@@ -193,7 +193,8 @@ public:
         std::uint64_t panelBackground{};
     };
 
-    bool Initialize(HWND window, ID2D1Factory1* factory, std::wstring& error);
+    bool Initialize(HWND window, ID2D1Factory1* factory, std::wstring& error,
+        bool softwareDevice = false);
     // Adds the fixed chrome endpoint to the existing device. This deliberately
     // creates a second DirectComposition target, not another graphics owner.
     bool InitializeChromeTarget(HWND window, std::wstring& error);

@@ -671,6 +671,38 @@ void RunMediaSessionManagerContractCases() {
                     media::PresentationState::CompactPinned,
             "compact-pinned session survives an unrelated overlay presentation");
 
+    const auto retainedController = manager.Find(compactKey)->coordinator;
+    manager.InvalidateCompositionTargets();
+    Require(!manager.EndpointOwner(media::Endpoint::Overlay) &&
+                !manager.EndpointOwner(media::Endpoint::Pinned) &&
+                manager.Find(compactKey)->coordinator == retainedController &&
+                manager.Find(key)->presentationRequest,
+            "device loss invalidates endpoints while preserving controllers and fullscreen intent");
+    Require(!manager.Find(compactKey)->committedGeometry &&
+                !manager.Find(overlayKey)->committedGeometry,
+            "old device geometry cannot suppress replacement target attachment");
+    int reattachments = 0;
+    auto restore = neutral;
+    restore.present = [&](const auto&, auto&, auto, const auto&) {
+        ++reattachments;
+        return E_PENDING;
+    };
+    Require(manager.Reconcile(compactKey, compactInput, restore) == E_PENDING &&
+                manager.Find(compactKey)->coordinator == retainedController &&
+                !manager.EndpointOwner(media::Endpoint::Pinned),
+            "temporarily unavailable replacement target retains playback and can retry");
+    restore.present = [&](const auto&, auto&, auto, const auto&) {
+        ++reattachments;
+        return S_OK;
+    };
+    Require(SUCCEEDED(manager.Reconcile(compactKey, compactInput, restore)) &&
+                SUCCEEDED(manager.Reconcile(overlayKey, overlayInput, restore)) &&
+                reattachments == 3,
+            "both pinned and overlay media attach fresh targets even at identical geometry");
+    Require(manager.Reconcile(compactKey, compactInput, restore) == S_FALSE &&
+                reattachments == 3,
+            "successful restoration returns to unchanged-frame reuse");
+
     // WIDGE-178 review repro: a presentation side effect can fault the media
     // controller, and that fault synchronously retires the exact session
     // through the host invalidate callback before the effect returns. The

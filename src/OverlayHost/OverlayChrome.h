@@ -51,6 +51,33 @@ struct RadialChromePlacement final {
 using FixedChromeTargetInitializer = bool (*)(
     OverlayCompositionSurface&, HWND, std::wstring&);
 
+// A failed frame must not turn every subsequent paint into a device-creation
+// loop. Retry outside drawing, then wait for another explicit open if exhausted.
+class CompositionRecoverySchedule final {
+public:
+    void Request() noexcept { pending_ = true; }
+    void Reopen() noexcept { if (pending_ && attempts_ == 3) attempts_ = 0; }
+    [[nodiscard]] UINT delay() const noexcept {
+        constexpr UINT delays[]{250, 1000, 3000};
+        return pending_ && attempts_ < 3 ? delays[attempts_] : 0;
+    }
+    [[nodiscard]] bool BeginAttempt() noexcept {
+        if (!delay()) return false;
+        ++attempts_;
+        return true;
+    }
+    void Complete() noexcept { pending_ = false; attempts_ = 0; }
+    [[nodiscard]] bool softwareAttempt() const noexcept { return attempts_ == 3; }
+private:
+    bool pending_{};
+    unsigned attempts_{};
+};
+
+// WS_EX_NOREDIRECTIONBITMAP is fixed at window creation. Such windows must
+// recover their compositor, never enter the layered HWND render-target path.
+// Redirected test/legacy windows may still transition to/from layered drawing.
+[[nodiscard]] bool SetContentCompositionMode(HWND content, bool composition) noexcept;
+
 /// Initializes the content and chrome targets as one recoverable endpoint pair.
 /// The optional initializer is an internal policy seam used to deterministically
 /// exercise second-target failure; production passes the default.
@@ -60,7 +87,8 @@ using FixedChromeTargetInitializer = bool (*)(
     HWND chrome,
     ID2D1Factory1* factory,
     std::wstring& error,
-    FixedChromeTargetInitializer initializeChrome = nullptr);
+    FixedChromeTargetInitializer initializeChrome = nullptr,
+    bool softwareDevice = false);
 
 /// Atomically makes the paired composition endpoints unavailable to callers
 /// before hiding the companion chrome HWND during fallback/device recovery.

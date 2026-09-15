@@ -37,6 +37,24 @@ void Check(const bool condition, const char* message) {
 }
 
 void CheckCompositionCoordinatePolicies() {
+    widgetrail::shell::CompositionRecoverySchedule recovery;
+    Check(!recovery.delay() && !recovery.BeginAttempt(), "healthy composition schedules no work");
+    recovery.Request();
+    for (const UINT expected : {250U, 1000U, 3000U}) {
+        Check(recovery.delay() == expected && recovery.BeginAttempt(),
+              "device recovery backs off between bounded attempts");
+        recovery.Request();
+    }
+    Check(!recovery.delay() && !recovery.BeginAttempt(),
+          "repeated failed paints cannot restart an exhausted recovery loop");
+    Check(recovery.softwareAttempt(), "final recovery attempt uses the software compositor");
+    recovery.Reopen();
+    Check(recovery.delay() == 250 && recovery.BeginAttempt(),
+          "a later explicit open rearms exhausted recovery");
+    recovery.Complete();
+    Check(!recovery.delay(), "successful recovery cancels retries");
+    recovery.Request();
+    Check(recovery.delay() == 250, "a later device loss starts a new bounded recovery");
     const auto dpi120 = widgetrail::NormalizeCompositionUpdateOffset({5, -10}, 120);
     const auto dpi144 = widgetrail::NormalizeCompositionUpdateOffset({3, 9}, 144);
     const auto fallback = widgetrail::NormalizeCompositionUpdateOffset({7, -4}, 0);
@@ -916,7 +934,7 @@ void CheckFixedChromeWindowPolicy() {
     Check(RegisterClassW(&windowClass) != 0, "fixed chrome test class registers");
     FixedChromePointerTestContext pointerContext;
     HWND content = CreateWindowExW(
-        WS_EX_TOOLWINDOW, className, L"content", WS_POPUP,
+        WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP, className, L"content", WS_POPUP,
         640, 600, 1000, 500, nullptr, nullptr, windowClass.hInstance, nullptr);
     pointerContext.content = content;
     HWND chrome = CreateWindowExW(
@@ -1078,6 +1096,69 @@ void CheckFixedChromeWindowPolicy() {
     widgetrail::shell::ResetFixedChromeComposition(composition, chrome);
     Check(!composition.available() && !IsWindowVisible(chrome),
           "runtime composition or device failure resets and hides both endpoints");
+
+    // Exercise failure -> new device -> full content/chrome frames against
+    // real HWNDs. Keep an old-device reference to verify actual replacement.
+    for (int cycle = 0; cycle != 3; ++cycle) {
+        Check(!widgetrail::shell::SetContentCompositionMode(content, false) &&
+                  (GetWindowLongPtrW(content, GWL_EXSTYLE) & WS_EX_LAYERED) == 0,
+              "no-redirection HWND rejects unsupported fallback without poisoning its style");
+        const auto originalStyles = GetWindowLongPtrW(content, GWL_EXSTYLE);
+        SetWindowLongPtrW(content, GWL_EXSTYLE, originalStyles | WS_EX_LAYERED);
+        Check(SetLayeredWindowAttributes(content, RGB(1, 2, 3), 0,
+                  LWA_ALPHA | LWA_COLORKEY) != FALSE,
+              "fixture reproduces alpha-zero layered state from the old fallback");
+        Check(widgetrail::shell::SetContentCompositionMode(content, true),
+              "recovery preserves the window's original composition mode");
+        Check(!widgetrail::shell::InitializeFixedChromeComposition(
+                  composition, content, chrome, compositionFactory.Get(),
+                  compositionError, RejectChromeTarget) && !composition.available(),
+              "failed recovery releases the partially recreated device");
+        Check(widgetrail::shell::InitializeFixedChromeComposition(
+                  composition, content, chrome, compositionFactory.Get(), compositionError),
+              "paired endpoints recover after an initialization failure");
+        ComPtr<ID3D11Device> oldDevice = composition.graphicsDevice();
+        widgetrail::shell::ResetFixedChromeComposition(composition, chrome);
+        Check(widgetrail::shell::InitializeFixedChromeComposition(
+                  composition, content, chrome, compositionFactory.Get(), compositionError,
+                  nullptr, cycle == 2) &&
+                  composition.graphicsDevice() != oldDevice.Get(),
+              "recovery creates a new device rather than reusing the invalid one");
+        std::array<widgetrail::OverlayCompositionSurface::Frame, 3> restored;
+        std::array<widgetrail::OverlayCompositionSurface::Frame*, 3> restoredPointers{};
+        using Layer = widgetrail::OverlayCompositionSurface::Layer;
+        const std::array layers{Layer::Content, Layer::Guide, Layer::Tray};
+        for (std::size_t i = 0; i != layers.size(); ++i) {
+            Check(SUCCEEDED(composition.BeginFrame(layers[i], 200, 100, 0, 0,
+                      nullptr, restored[i])), "recreated device admits each presentation layer");
+            restored[i].target->Clear(D2D1::ColorF(0.3F, 0.6F, 0.9F, 1.0F));
+            Check(SUCCEEDED(composition.EndFrame(restored[i])),
+                  "recreated presentation layer completes drawing");
+            restoredPointers[i] = &restored[i];
+        }
+        Check(SUCCEEDED(composition.CommitFrames(restoredPointers, true, motionTiming)),
+              "recovered device commits widget, guide and tray together");
+        Check(widgetrail::shell::ApplyFixedChromeWindow(content, chrome, fixed, true) &&
+                  IsWindowVisible(chrome), "recovered chrome is visible at its restored bounds");
+        widgetrail::shell::ResetFixedChromeComposition(composition, chrome);
+    }
+
+    ShowWindow(content, SW_HIDE);
+    Check(widgetrail::shell::SetContentCompositionMode(content, true) &&
+              widgetrail::shell::InitializeFixedChromeComposition(
+                  composition, content, chrome, compositionFactory.Get(), compositionError) &&
+              !IsWindowVisible(content) && !IsWindowVisible(chrome),
+          "hidden device recovery never opens either endpoint");
+    widgetrail::shell::ResetFixedChromeComposition(composition, chrome);
+
+    HWND legacy = CreateWindowExW(WS_EX_TOOLWINDOW, className, L"legacy", WS_POPUP,
+        0, 0, 10, 10, nullptr, nullptr, windowClass.hInstance, nullptr);
+    Check(legacy && widgetrail::shell::SetContentCompositionMode(legacy, false) &&
+              SetLayeredWindowAttributes(legacy, RGB(1, 2, 3), 0, LWA_ALPHA | LWA_COLORKEY) &&
+              widgetrail::shell::SetContentCompositionMode(legacy, true) &&
+              (GetWindowLongPtrW(legacy, GWL_EXSTYLE) & WS_EX_LAYERED) == 0,
+          "redirected legacy windows can discard stale layered alpha on recovery");
+    DestroyWindow(legacy);
 
     DestroyWindow(content);
     Check(!IsWindow(content) && !IsWindow(chrome),

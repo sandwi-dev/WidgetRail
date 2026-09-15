@@ -37,7 +37,8 @@ HRESULT CreatePresentationAnimation(
 }
 
 bool OverlayCompositionSurface::Initialize(
-    const HWND window, ID2D1Factory1* factory, std::wstring& error) {
+    const HWND window, ID2D1Factory1* factory, std::wstring& error,
+    const bool softwareDevice) {
     Reset();
     if (!window || !factory) {
         error = L"DirectComposition initialization received an invalid host";
@@ -47,10 +48,11 @@ bool OverlayCompositionSurface::Initialize(
     UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
     D3D_FEATURE_LEVEL featureLevel{};
     HRESULT result = D3D11CreateDevice(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0,
+        nullptr, softwareDevice ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_HARDWARE,
+        nullptr, flags, nullptr, 0,
         D3D11_SDK_VERSION, d3dDevice_.ReleaseAndGetAddressOf(),
         &featureLevel, nullptr);
-    if (FAILED(result)) {
+    if (FAILED(result) && !softwareDevice) {
         result = D3D11CreateDevice(
             nullptr, D3D_DRIVER_TYPE_WARP, nullptr, flags, nullptr, 0,
             D3D11_SDK_VERSION, d3dDevice_.ReleaseAndGetAddressOf(),
