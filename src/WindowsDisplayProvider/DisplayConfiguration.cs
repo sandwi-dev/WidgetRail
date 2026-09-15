@@ -9,7 +9,7 @@ using WidgetRail.PlatformBroker;
 
 namespace WidgetRail.WindowsDisplayProvider;
 
-internal sealed record DisplayIdentity(string DevicePath, string Name);
+internal sealed record DisplayIdentity(string DevicePath, string Name, string? HardwareKey = null);
 internal sealed record DisplayConfiguration(byte[] Paths, byte[] Modes, DisplayIdentity[] Targets)
 {
     internal NativePath[] ReadPaths() => Read<NativePath>(Paths, 16);
@@ -27,7 +27,7 @@ internal sealed record DisplayConfiguration(byte[] Paths, byte[] Modes, DisplayI
         var modes = ReadModes();
         if (Targets is null || Targets.Length != paths.Length || Targets.Any(target => target is null ||
             string.IsNullOrWhiteSpace(target.DevicePath) || target.DevicePath.Length > 256 ||
-            string.IsNullOrWhiteSpace(target.Name) || target.Name.Length > 128) ||
+            string.IsNullOrWhiteSpace(target.Name) || target.Name.Length > 128 || !MonitorHardwareIdentity.IsValid(target.HardwareKey)) ||
             Targets.Select(target => target.DevicePath).Distinct(StringComparer.OrdinalIgnoreCase).Count() != Targets.Length)
             throw new BrokerException("display_profile_invalid", "This display profile has invalid monitors.");
         foreach (var path in paths)
@@ -119,14 +119,23 @@ internal static class DisplayProfileMatching
         foreach (var group in groups)
             foreach (var index in group)
             {
-                var candidates = connected.Where(candidate => candidate.Path.Target.Available != 0 &&
-                    candidate.Identity.DevicePath.Equals(saved.Targets[index].DevicePath, StringComparison.OrdinalIgnoreCase)).ToArray();
+                var identity = saved.Targets[index];
+                var available = connected.Where(candidate => candidate.Path.Target.Available != 0).ToArray();
+                var candidates = available.Where(candidate =>
+                    candidate.Identity.DevicePath.Equals(identity.DevicePath, StringComparison.OrdinalIgnoreCase) &&
+                    (identity.HardwareKey is null || candidate.Identity.HardwareKey is null ||
+                     identity.HardwareKey == candidate.Identity.HardwareKey)).ToArray();
+                if (candidates.Length == 0 && identity.HardwareKey is not null)
+                    candidates = available.Where(candidate => candidate.Identity.HardwareKey == identity.HardwareKey).ToArray();
                 if (candidates.Length == 0)
                     throw new BrokerException("display_monitor_missing", $"Connect {saved.Targets[index].Name} to use this profile.");
                 if (candidates.Select(candidate => (candidate.Path.Target.Adapter, candidate.Path.Target.Id)).Distinct().Count() != 1)
                     throw new BrokerException("display_monitor_ambiguous", "Windows reported an ambiguous monitor. Reconnect it and try again.");
                 choices[index] = candidates;
             }
+        if (choices.Values.Select(candidates => (candidates[0].Path.Target.Adapter, candidates[0].Path.Target.Id))
+            .Distinct().Count() != paths.Length)
+            throw new BrokerException("display_monitor_ambiguous", "The saved monitors cannot be matched uniquely. Save the setup again.");
         var used = new HashSet<(NativeLuid, uint)>();
         var selected = new DisplayPathTarget[paths.Length];
         var attempts = 0;
@@ -162,7 +171,7 @@ internal static class DisplayProfileMatching
             modes[path.Target.ModeIndex].Adapter = path.Target.Adapter;
             modes[path.Target.ModeIndex].Id = path.Target.Id;
         }
-        return DisplayConfiguration.Create(paths, modes, saved.Targets);
+        return DisplayConfiguration.Create(paths, modes, selected.Select(target => target.Identity).ToArray());
     }
 }
 
@@ -236,7 +245,7 @@ internal sealed unsafe partial class WindowsDisplayNative : IDisplayNative
         var name = ReadString(request.FriendlyName, 64).Trim();
         var path = ReadString(request.DevicePath, 128);
         if (string.IsNullOrWhiteSpace(path)) throw new Win32Exception(1168);
-        return new(path, string.IsNullOrWhiteSpace(name) ? "Display" : name);
+        return new(path, string.IsNullOrWhiteSpace(name) ? "Display" : name, MonitorHardwareIdentity.ReadCached(path));
     }
     private static void Check(int result) { if (result != 0) throw new Win32Exception(result); }
     private static string ReadString(char* value, int capacity)

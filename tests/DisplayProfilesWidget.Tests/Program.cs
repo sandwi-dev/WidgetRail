@@ -9,6 +9,20 @@ using WidgetRail.FirstPartyWidgets.DisplayProfiles;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetStyling;
 
+if (args is ["--identity-read"] && OperatingSystem.IsWindows())
+{
+    var native = new WindowsDisplayNative();
+    var current = native.Capture();
+    var connected = native.ConnectedPaths();
+    Check(DisplayProfileMatching.Remap(current, connected).Matches(current));
+    foreach (var target in current.Targets)
+        Console.WriteLine($"Monitor: {target.Name}; physical identity available={target.HardwareKey is not null}");
+    var scale = DisplayScaleIdentity.Resolve(current.Targets.Select(target => target.DevicePath).ToArray());
+    Check(scale is { Length: 64 }, "Shared display scale identity unavailable");
+    Console.WriteLine("PASS live identities resolve without changing displays or saving profiles.");
+    return;
+}
+
 if (args is ["--native-read"])
 {
     await NativeRead();
@@ -42,7 +56,9 @@ if (args is ["--guard-parent-exit", var bridgeExecutable])
 var checks = new (string Name, Func<Task> Run)[]
 {
     ("Native structures and configuration serialization preserve display modes", Layout),
+    ("VRR product changes use unique physical serial identities", HardwareIdentities),
     ("Monitor identities remap adapter IDs and preserve clone groups", Matching),
+    ("Profile status agrees with remapped physical monitor identity", ProfileIdentityStatus),
     ("Profile writes are atomic and corrupt data is preserved", Storage),
     ("Guard reverts on timeout, parent EOF and partial apply failure", Guard),
     ("Broker enforces consent, interactive state and closed request payloads", Authority),
@@ -68,6 +84,62 @@ static Task Layout()
     Check(copy.Matches(original));
     return Task.CompletedTask;
 }
+static Task HardwareIdentities()
+{
+    static byte[] Edid(ushort product, string serial, uint number = 543210)
+    {
+        var data = new byte[128];
+        new byte[] { 0,255,255,255,255,255,255,0 }.CopyTo(data, 0);
+        var manufacturer = (19 << 10) | (1 << 5) | 13; // SAM
+        data[8] = (byte)(manufacturer >> 8); data[9] = (byte)manufacturer;
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(10), product);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(12), number);
+        data[57] = 255;
+        System.Text.Encoding.ASCII.GetBytes(serial).CopyTo(data, 59);
+        data[127] = unchecked((byte)-data.Sum(value => (int)value));
+        return data;
+    }
+    var first = MonitorHardwareIdentity.FromEdid(Edid(0x749c, "ZX12345678"));
+    var vrr = MonitorHardwareIdentity.FromEdid(Edid(0x7454, "ZX12345678"));
+    var other = MonitorHardwareIdentity.FromEdid(Edid(0x7454, "ZX99999999"));
+    Check(first is { Length: 64 } && first == vrr && first != other, "Product mode change altered physical identity");
+    Check(MonitorHardwareIdentity.FromEdid(Edid(1, "00000000", 0)) is null);
+    Check(MonitorHardwareIdentity.FromEdid(Edid(1, "UNKNOWN", 0)) is null);
+    var corrupt = Edid(1, "ZX12345678"); corrupt[20]++;
+    Check(MonitorHardwareIdentity.FromEdid(corrupt) is null);
+
+    var saved = Fixture.Setup(1920, 1);
+    saved = saved with { Targets = [saved.Targets[0] with { DevicePath = "old-product", HardwareKey = first }] };
+    var current = saved with { Targets = [saved.Targets[0] with { DevicePath = "vrr-product" }] };
+    var connected = new[] { new DisplayPathTarget(current.ReadPaths()[0], current.Targets[0]) };
+    var remapped = DisplayProfileMatching.Remap(saved, connected);
+    Check(remapped.Targets[0].DevicePath == "vrr-product" && remapped.Matches(current));
+    var roundTrip = JsonSerializer.Deserialize<DisplayConfiguration>(JsonSerializer.Serialize(saved))!;
+    Check(roundTrip.Targets[0].HardwareKey == first);
+    Check(DisplayProfileMatching.Remap(roundTrip, connected).Matches(current));
+
+    var duplicatePath = connected[0].Path; duplicatePath.Target.Id++;
+    var duplicate = new DisplayPathTarget(duplicatePath, current.Targets[0] with { DevicePath = "another-monitor" });
+    try { DisplayProfileMatching.Remap(saved, [connected[0], duplicate]); throw new Exception("Duplicate serial matched"); }
+    catch (BrokerException error) { Check(error.Code == "display_monitor_ambiguous"); }
+    // Exact connections can still distinguish duplicated manufacturer serials.
+    Check(DisplayProfileMatching.Remap(current, [connected[0], duplicate]).Matches(current));
+    try { DisplayProfileMatching.Remap(saved, [connected[0] with { Identity = current.Targets[0] with { HardwareKey = other } }]); throw new Exception("Wrong physical monitor matched"); }
+    catch (BrokerException error) { Check(error.Code == "display_monitor_missing"); }
+    try { DisplayProfileMatching.Remap(saved with { Targets = [saved.Targets[0] with { HardwareKey = null }] }, connected); throw new Exception("Name-only monitor match accepted"); }
+    catch (BrokerException error) { Check(error.Code == "display_monitor_missing"); }
+
+    var oldScale = DisplayScaleIdentity.Resolve(["old-product"], saved.Targets);
+    var newScale = DisplayScaleIdentity.Resolve(["vrr-product"], current.Targets);
+    Check(oldScale is not null && oldScale == newScale, "Scale key did not survive VRR");
+    var pair = new[] { current.Targets[0], duplicate.Identity };
+    Check(DisplayScaleIdentity.Resolve(["vrr-product"], pair) != DisplayScaleIdentity.Resolve(["another-monitor"], pair),
+        "Duplicated serials shared a scale key");
+    Check(DisplayScaleIdentity.Resolve(["vrr-product", "another-monitor"], pair) ==
+        DisplayScaleIdentity.Resolve(["another-monitor", "vrr-product"], pair), "Clone key depended on order");
+    return Task.CompletedTask;
+}
+
 static Task Matching()
 {
     var saved = Fixture.Setup(1920, 2, clone: true);
@@ -85,6 +157,20 @@ static Task Matching()
     catch (BrokerException error) { Check(error.Code == "display_monitor_missing"); }
     return Task.CompletedTask;
 }
+static async Task ProfileIdentityStatus()
+{
+    using var temp = new TemporaryDirectory();
+    var native = new FakeNative();
+    native.Current = native.Current with { Targets = [native.Current.Targets[0] with { HardwareKey = new string('A', 64) }] };
+    await using var backend = new WindowsDisplayProfilesBackend(temp.Path, native, new FakeLauncher());
+    await backend.ChangeDisplayProfileAsync(DisplayProfileCommand.Save, new(Name: "Desk"), Fixture.Identity, default);
+    native.Current = native.Current with { Targets = [native.Current.Targets[0] with { DevicePath = "vrr-product" }] };
+    var profile = (await backend.GetDisplayProfilesAsync(default)).Profiles.Single();
+    Check(profile.MatchesCurrent && profile.Available && profile.UnavailableReason is null,
+        "VRR identity change left a false disconnected status");
+    Check(native.Applies.Count == 0);
+}
+
 static async Task Storage()
 {
     using var temp = new TemporaryDirectory();

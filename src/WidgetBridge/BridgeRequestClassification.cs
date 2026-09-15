@@ -168,10 +168,7 @@ internal static class BridgeRequestClassifier
             return BridgeRequestKey.Global(BridgeRequestKind.Malformed);
         if (payload.TryGetProperty("display", out var value))
         {
-            var display = BridgeJson.FromElement<WidgetRail.PlatformDiagnostics.OverlayDisplayContext>(value);
-            try { WidgetRail.PlatformDiagnostics.PlatformDiagnosticsPipeServer.ValidateDisplayContext(display); }
-            catch (WidgetRail.PlatformDiagnostics.PlatformDiagnosticsException)
-            { return BridgeRequestKey.Global(BridgeRequestKind.Malformed); }
+            BridgeJson.FromElement<BridgeDisplayContextRequest>(value).Validate();
         }
         return BridgeRequestKey.Global(BridgeRequestKind.GetPlatformAppearance);
     }

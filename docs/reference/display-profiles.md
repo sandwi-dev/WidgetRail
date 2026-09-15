@@ -24,10 +24,13 @@ Profiles preserve active monitors, extended or duplicated topology, resolution,
 refresh rate, orientation, desktop positions and the primary display.
 Windows UI scaling, HDR, brightness and color profiles are left unchanged.
 
-Monitors are matched by their Windows device identity rather than their display
-number. A missing or ambiguous monitor makes a profile unavailable. Moving a
-monitor to a different connector can change that identity; save the profile again
-if Windows no longer recognizes the connection.
+Profiles save a physical identity derived from the monitor's manufacturer and
+serial number when available. Exact connections are preferred; a unique serial
+match also recognizes the monitor after VRR changes its reported product ID or
+a connector changes. Missing or ambiguous matches make a profile unavailable.
+Monitors without usable serials rely on their connection identity, so changes to
+that identity require saving the setup again. Per-display overlay sizing uses
+the same identity resolver.
 
 Windows validates the saved modes before applying them. A monitor, driver or
 connection that no longer supports a saved mode can refuse it.

@@ -6406,19 +6406,28 @@ private:
     void RefreshPlatformAppearance() {
         auto appearance = bridge_.GetPlatformAppearance(
             displayScaleContext_ ? &displayScaleContext_->id : nullptr,
-            displayScaleContext_ ? &displayScaleContext_->name : nullptr);
+            displayScaleContext_ ? &displayScaleContext_->name : nullptr,
+            displayScaleContext_ ? &displayScaleContext_->devicePaths : nullptr);
         if (!appearance) {
             AppendDiagnostic(L"Platform appearance refresh failed; retaining last good state: " +
                              bridge_.lastError());
             return;
         }
         const long long revision = appearance->revision;
-        if (!appearanceState_.Publish(std::move(*appearance))) {
+        const auto activeDisplay = appearance->activeDisplayId.value_or(L"");
+        const auto previousScale = appearanceState_.current()
+            ? widgetrail::PlatformDisplayScale{appearanceState_.current()->interfaceScale, appearanceState_.current()->textScale}
+            : widgetrail::PlatformDisplayScale{};
+        const bool published = appearanceState_.Publish(std::move(*appearance));
+        const bool selected = appearanceState_.SelectDisplay(activeDisplay);
+        const bool scaled = selected || (appearanceState_.current() &&
+            (previousScale.interfaceScale != appearanceState_.current()->interfaceScale || previousScale.textScale != appearanceState_.current()->textScale));
+        if (!published && !scaled) {
             AppendDiagnostic(L"Ignored stale platform appearance revision " +
                              std::to_wstring(revision));
             return;
         }
-        ApplyPlatformAppearance();
+        ApplyPlatformAppearance(true, published);
     }
 
     void QueueDisplayEnvironmentRefresh(const widgetrail::DisplayEnvironmentChange change) {
@@ -16099,19 +16108,24 @@ private:
             dpi = 96;
         }
         const auto display = widgetrail::ResolveDisplayScaleContext(monitor);
-        if (!displayScaleContext_ || *displayScaleContext_ != display) {
-            // Reporting is session-local. It never writes settings or asks Windows to change DPI.
-            const auto updated = bridge_.GetPlatformAppearance(&display.id, &display.name);
-            const bool published = updated && appearanceState_.Publish(*updated);
-            const bool scaled = appearanceState_.SelectDisplay(display.id);
-            if (updated) displayScaleContext_ = display; // Retry after a transient bridge failure.
-            // A new theme revision still invalidates widget style projections;
-            // selecting another monitor alone only changes native sizing.
-            if (published || scaled) ApplyPlatformAppearance(false, published);
-            AppendDiagnostic(L"Overlay display sizing display=" + display.name +
-                L" interface=" + std::to_wstring(appearanceState_.current() ? appearanceState_.current()->interfaceScale : 1.0) +
-                L" text=" + std::to_wstring(CurrentTextScale()));
-        }
+        // Refresh identity on every new anchor: swapping identical monitor models
+        // can keep the same connection path while changing the physical serial.
+        const auto updated = bridge_.GetPlatformAppearance(&display.id, &display.name, &display.devicePaths);
+        const auto oldScale = appearanceState_.current()
+            ? widgetrail::PlatformDisplayScale{appearanceState_.current()->interfaceScale, appearanceState_.current()->textScale}
+            : widgetrail::PlatformDisplayScale{};
+        const bool published = updated && appearanceState_.Publish(*updated);
+        if (updated)
+            appearanceState_.SelectDisplay(updated->activeDisplayId.value_or(L""));
+        else if (!displayScaleContext_ || *displayScaleContext_ != display)
+            appearanceState_.SelectDisplay(L"");
+        const bool scaled = appearanceState_.current() &&
+            (oldScale.interfaceScale != appearanceState_.current()->interfaceScale || oldScale.textScale != appearanceState_.current()->textScale);
+        if (updated) displayScaleContext_ = display;
+        if (published || scaled) ApplyPlatformAppearance(false, published);
+        AppendDiagnostic(L"Overlay display sizing display=" + display.name +
+            L" interface=" + std::to_wstring(appearanceState_.current() ? appearanceState_.current()->interfaceScale : 1.0) +
+            L" text=" + std::to_wstring(CurrentTextScale()));
         const auto& appearance = appearanceState_.current();
         FixedChromeAnchor anchor;
         anchor.monitor = monitor;

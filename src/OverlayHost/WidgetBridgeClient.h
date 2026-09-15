@@ -750,6 +750,7 @@ enum class PlatformSurfaceAppearanceOverride { Widget, Theme, Transparent, Solid
 struct PlatformDisplayScale final { double interfaceScale{1.0}; double textScale{1.0}; };
 
 struct PlatformAppearance final {
+    std::optional<std::wstring> activeDisplayId;
     long long revision{};
     std::wstring themeId;
     std::wstring themeVersion;
@@ -904,7 +905,8 @@ public:
     [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ListWidgets();
     /// Retrieves immutable platform appearance without launching a widget worker.
     [[nodiscard]] std::optional<PlatformAppearance> GetPlatformAppearance(
-        const std::wstring* displayId = nullptr, const std::wstring* displayName = nullptr);
+        const std::wstring* displayId = nullptr, const std::wstring* displayName = nullptr,
+        const std::vector<std::wstring>* displayPaths = nullptr);
     [[nodiscard]] std::optional<ControllerControlPreference> ExchangeControllerControl(
         std::uint32_t state, std::uint32_t prerequisites);
     [[nodiscard]] int TakeApplicationControl();

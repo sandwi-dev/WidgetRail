@@ -828,6 +828,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     std::wstring& error) {
     auto required = JsonObject::Parse(payload.Stringify());
     if (required.HasKey(L"displayScales")) required.Remove(L"displayScales");
+    if (required.HasKey(L"activeDisplayId")) required.Remove(L"activeDisplayId");
     if (!HasOnlyProperties(required,
             {L"revision", L"themeId", L"themeVersion", L"interfaceScale", L"textScale",
              L"backdropOpacity", L"motion", L"contrast", L"boldText",
@@ -859,6 +860,15 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     }
 
     PlatformAppearance appearance;
+    if (payload.HasKey(L"activeDisplayId")) {
+        if (payload.GetNamedValue(L"activeDisplayId").ValueType() != JsonValueType::String) {
+            error = L"Invalid display identity."; return std::nullopt;
+        }
+        appearance.activeDisplayId = std::wstring(payload.GetNamedString(L"activeDisplayId"));
+        if (appearance.activeDisplayId->size() > 256) {
+            error = L"Invalid display identity."; return std::nullopt;
+        }
+    }
     const double revision = payload.GetNamedNumber(L"revision");
     appearance.interfaceScale = payload.GetNamedNumber(L"interfaceScale");
     appearance.textScale = payload.GetNamedNumber(L"textScale");
@@ -3918,7 +3928,7 @@ bool PlatformAppearanceState::Publish(PlatformAppearance appearance) {
     }
     fallbackScale_ = {appearance.interfaceScale, appearance.textScale};
     current_ = std::move(appearance);
-    SelectDisplay(displayId_);
+    SelectDisplay(current_->activeDisplayId.value_or(displayId_));
     return true;
 }
 
@@ -4340,7 +4350,8 @@ std::optional<ControllerControlPreference> WidgetBridgeClient::ExchangeControlle
 }
 
 std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance(
-    const std::wstring* displayId, const std::wstring* displayName) {
+    const std::wstring* displayId, const std::wstring* displayName,
+    const std::vector<std::wstring>* displayPaths) {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
@@ -4350,10 +4361,13 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance(
         envelope.Insert(L"type", JsonValue::CreateStringValue(L"get-platform-appearance"));
         envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
         JsonObject payload;
-        if (displayId && displayName) {
+        if (displayId && displayName && displayPaths) {
             JsonObject display;
             display.Insert(L"id", JsonValue::CreateStringValue(*displayId));
             display.Insert(L"name", JsonValue::CreateStringValue(*displayName));
+            JsonArray paths;
+            for (const auto& path : *displayPaths) paths.Append(JsonValue::CreateStringValue(path));
+            display.Insert(L"devicePaths", paths);
             payload.Insert(L"display", display);
         }
         envelope.Insert(L"payload", payload);

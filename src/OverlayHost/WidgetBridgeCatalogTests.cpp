@@ -2810,6 +2810,14 @@ int main(int argc, char** argv) {
     CHECK(!sizes.Publish(sized));
     CHECK(sizes.SelectDisplay(L"unseen"));
     CHECK(sizes.current()->interfaceScale == 1.1);
+    sized.revision++;
+    sized.activeDisplayId = L"monitor-b";
+    CHECK(sizes.Publish(sized));
+    CHECK(sizes.current()->interfaceScale == 1.25 && sizes.current()->textScale == 0.85);
+    sized.activeDisplayId = L"monitor-a"; // Display selection has no theme revision.
+    CHECK(!sizes.Publish(sized));
+    CHECK(sizes.SelectDisplay(*sized.activeDisplayId));
+    CHECK(sizes.current()->interfaceScale == 0.9 && sizes.current()->textScale == 1.3);
 
     const auto single = widgetrail::MakeDisplayScaleContext({{L"path-a", L"Monitor A"}});
     const auto clone = widgetrail::MakeDisplayScaleContext({{L"path-a", L"Monitor A"}, {L"path-b", L"Monitor B"}});

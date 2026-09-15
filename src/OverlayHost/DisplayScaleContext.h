@@ -9,11 +9,12 @@ namespace widgetrail {
 struct DisplayScaleContext final {
     std::wstring id;
     std::wstring name{L"Display unavailable"};
+    std::vector<std::wstring> devicePaths;
     bool operator==(const DisplayScaleContext&) const = default;
 };
 
-// A clone group owns a shared setting. Sorting device-interface paths makes
-// its identity independent of transient source IDs and enumeration order.
+// Build a deterministic connection token for host reporting. The shared
+// managed provider resolves the physical identity used for saved sizing.
 inline DisplayScaleContext MakeDisplayScaleContext(
     std::vector<std::pair<std::wstring, std::wstring>> targets) {
     if (targets.empty()) return {};
@@ -32,6 +33,7 @@ inline DisplayScaleContext MakeDisplayScaleContext(
             reinterpret_cast<PUCHAR>(identity.data()),
             static_cast<ULONG>(identity.size() * sizeof(wchar_t)), hash, sizeof(hash)) < 0) return {};
     DisplayScaleContext result;
+    for (const auto& target : targets) result.devicePaths.push_back(target.first);
     constexpr wchar_t hex[] = L"0123456789abcdef";
     for (const auto byte : hash) { result.id += hex[byte >> 4]; result.id += hex[byte & 15]; }
     result.name = targets.size() > 1 ? L"Duplicated displays: " : L"";

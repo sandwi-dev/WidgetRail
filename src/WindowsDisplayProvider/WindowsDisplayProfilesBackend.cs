@@ -120,10 +120,11 @@ public sealed class WindowsDisplayProfilesBackend : IDisplayProfilesPlatformBack
         var profiles = ReadProfiles().Select(profile =>
         {
             string? unavailable = null;
-            try { _ = DisplayProfileMatching.Remap(profile.Configuration, connected); }
+            DisplayConfiguration? remapped = null;
+            try { remapped = DisplayProfileMatching.Remap(profile.Configuration, connected); }
             catch (BrokerException error) { unavailable = error.Message; }
             return new DisplayProfileSummary(profile.Id, profile.Name, profile.Configuration.Mode,
-                profile.Configuration.Summaries(), profile.Configuration.Matches(current), unavailable is null, unavailable);
+                profile.Configuration.Summaries(), remapped?.Matches(current) == true, unavailable is null, unavailable);
         }).ToArray();
         return new(current.Mode, current.Summaries(), profiles,
             _restore is null ? null : new(_restore.Pending.Id, _restoreName!, _restore.Pending.Deadline), _outcome);

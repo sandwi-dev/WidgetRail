@@ -224,13 +224,17 @@ errors retain the last valid appearance and revision. A client retrieves the
 complete current value with `get-platform-appearance`; the response includes
 the exact theme ID/version, finite bounded interface/text scale and backdrop
 opacity, motion preference, and typed maps for 12 semantic shell states. This
-request never launches a widget worker. Its optional `display` object (`id`, `name`)
-reports the host-selected monitor to the private Settings channel. This context is
+request never launches a widget worker. Its optional `display` object (`id`, `name`,
+`devicePaths`) reports the host-selected monitor connections. The shared display
+provider resolves a physical serial identity and returns `activeDisplayId`; only
+that resolved ID and the label reach the private Settings channel. This context is
 session-local and never writes preferences. The response also carries an optional
 `displayScales` map, bounded to 32 monitor identities, with `interfaceScale` and
 `textScale` pairs. Native placement selects a saved pair or the global fallback
 before building its anchor. Display selection does not change the theme revision.
-Duplicated outputs use a stable identity for their shared display group.
+Duplicated outputs use a stable identity for their shared display group. Missing
+or duplicated hardware serials use connection-based sizing keys. Monitor identity
+is refreshed when selecting a new placement anchor, not during painting.
 
 For widget snapshots, the bridge compiles explicit platform → widget → user
 layers. Higher layer priority wins before selector specificity, so a user

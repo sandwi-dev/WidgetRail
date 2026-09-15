@@ -4205,7 +4205,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides"],
+        ["activeDisplayId", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
@@ -4225,13 +4225,14 @@ static async Task PlatformAppearanceIsLazy()
         .GetProperty("interfaceScale").GetDouble());
     var revision = response.Payload.GetProperty("revision").GetInt64();
     var selected = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance,
-        new { display = new { id = "monitor-a", name = "Monitor A" } });
+        new { display = new { id = "connection-a", name = "Monitor A", devicePaths = new[] { "monitor-a" } } });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, selected.Type);
     Assert.Equal("monitor-a", harness.Appearance!.Service.Display.Id);
+    Assert.Equal("monitor-a", selected.Payload.GetProperty("activeDisplayId").GetString());
     Assert.Equal(revision, selected.Payload.GetProperty("revision").GetInt64());
     Assert.Equal(1.1d, selected.Payload.GetProperty("interfaceScale").GetDouble());
     await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance,
-        new { display = new { id = "monitor-b", name = "Monitor B" } });
+        new { display = new { id = "connection-b", name = "Monitor B", devicePaths = new[] { "monitor-b" } } });
     Assert.Equal("monitor-b", harness.Appearance.Service.Display.Id);
     Assert.Equal(0, harness.Server.RunningWorkerCount);
 }
@@ -7279,7 +7280,7 @@ file sealed class TemporaryAppearance : IAsyncDisposable
                 AnimateWidgetSwitching = true,
             },
         });
-        var service = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)));
+        var service = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)), paths => paths[0]);
         var result = await service.ReloadNowAsync();
         Assert.True(result.Published, "Initial bridge appearance did not load.");
         return new TemporaryAppearance(directory, themeFile, service);

@@ -7,6 +7,7 @@ namespace WidgetRail.WidgetBridge;
 
 public sealed record BridgePlatformAppearance
 {
+    public string ActiveDisplayId { get; init; } = string.Empty;
     public required long Revision { get; init; }
     public required string ThemeId { get; init; }
     public required string ThemeVersion { get; init; }
@@ -29,6 +30,7 @@ public sealed record BridgePlatformAppearance
 public sealed class PlatformAppearanceService : IAsyncDisposable
 {
     private static readonly TimeSpan ReloadDebounce = TimeSpan.FromMilliseconds(200);
+    private readonly Func<IReadOnlyList<string>, string?> _displayResolver;
     private readonly PlatformSettingsPaths _paths;
     private readonly ThemeManager _themes;
     private readonly ConcurrentDictionary<string, WidgetThemeCacheEntry> _widgetThemes =
@@ -41,8 +43,10 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
     private bool _started;
     private bool _disposed;
 
-    public PlatformAppearanceService(PlatformSettingsPaths paths, ThemeManager themes)
+    public PlatformAppearanceService(PlatformSettingsPaths paths, ThemeManager themes,
+        Func<IReadOnlyList<string>, string?>? displayResolver = null)
     {
+        _displayResolver = displayResolver ?? WidgetRail.WindowsDisplayProvider.DisplayScaleIdentity.Resolve;
         _paths = paths ?? throw new ArgumentNullException(nameof(paths));
         _themes = themes ?? throw new ArgumentNullException(nameof(themes));
     }
@@ -100,9 +104,12 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
     private WidgetRail.PlatformDiagnostics.OverlayDisplayContext _display =
         WidgetRail.PlatformDiagnostics.OverlayDisplayContext.Unavailable;
     public WidgetRail.PlatformDiagnostics.OverlayDisplayContext Display => Volatile.Read(ref _display);
-    public void SetDisplay(WidgetRail.PlatformDiagnostics.OverlayDisplayContext display)
+    internal void SetDisplay(BridgeDisplayContextRequest request)
     {
-        WidgetRail.PlatformDiagnostics.PlatformDiagnosticsPipeServer.ValidateDisplayContext(display);
+        request.Validate();
+        var key = request.DevicePaths.Count == 0 ? null : _displayResolver(request.DevicePaths);
+        var display = key is null ? WidgetRail.PlatformDiagnostics.OverlayDisplayContext.Unavailable :
+            new WidgetRail.PlatformDiagnostics.OverlayDisplayContext(key, request.Name);
         Volatile.Write(ref _display, display);
     }
 
@@ -112,6 +119,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         var appearance = current.Appearance;
         return new BridgePlatformAppearance
         {
+            ActiveDisplayId = Display.Id,
             Revision = current.Revision,
             ThemeId = current.ActiveTheme.Id,
             ThemeVersion = current.ActiveTheme.Version.ToString(),
@@ -300,4 +308,18 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
     }
 
     private sealed record WidgetThemeCacheEntry(long Revision, WrssTheme Theme);
+}
+
+internal sealed record BridgeDisplayContextRequest(string Id, string Name, IReadOnlyList<string> DevicePaths)
+{
+    internal void Validate()
+    {
+        try { WidgetRail.PlatformDiagnostics.PlatformDiagnosticsPipeServer.ValidateDisplayContext(new(Id, Name)); }
+        catch (WidgetRail.PlatformDiagnostics.PlatformDiagnosticsException)
+        { throw new BridgeProtocolException("Invalid display context."); }
+        if (DevicePaths is null || DevicePaths.Count > 16 || (DevicePaths.Count == 0 && Id.Length != 0) ||
+            DevicePaths.Any(path => string.IsNullOrWhiteSpace(path) || path.Length > 256 || path.Any(char.IsControl)) ||
+            DevicePaths.Distinct(StringComparer.OrdinalIgnoreCase).Count() != DevicePaths.Count)
+            throw new BridgeProtocolException("Invalid display paths.");
+    }
 }
