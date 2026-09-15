@@ -64,7 +64,7 @@ Changes are saved to the
 Windows display database only after Keep is confirmed.
 
 The first temporary apply also wakes sleeping monitors. Before offering Keep,
-the guard requires the requested setup to remain stable for two seconds. If
+the guard requires the requested setup to remain stable for three seconds. If
 Windows settles on a different setup while the monitors wake, the guard resolves
 the display paths again and retries once. This stabilization phase has a
 12-second budget, checked between Windows calls; an in-progress native call
@@ -74,6 +74,7 @@ preview stabilizes. Keep reads the active setup again and refuses to save it if
 it has changed or if the confirmation expired during that read.
 The widget runs restore actions through the SDK's background-operation facility
 so the wake-up wait does not block controller requests.
+A themed loading indicator and status text remain visible during that wait.
 Transient enumeration failures do not end the widget's display-change
 subscription. At countdown expiry it also refreshes the transaction status;
 an already-ended confirmation clears the stale dialog and fetches current state.

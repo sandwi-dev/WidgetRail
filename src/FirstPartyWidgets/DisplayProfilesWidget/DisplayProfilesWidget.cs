@@ -347,7 +347,10 @@ public sealed class DisplayProfilesWidget : Widget
                         UI.ControllerHint(ControllerButton.Y, "Save current setup", "display.save.hint"))
                         .Busy(_busy).Disabled(_state is null).Classes("display-save")).Classes("display-header"));
                 if (Operations.IsBusy("display.restore"))
-                    children.Add(UI.Text("Applying display setup…", "display.applying").Classes("display-help"));
+                    children.Add(UI.Row("display.applying",
+                        UI.LoadingIndicator("display.applying.indicator", "Waking displays"),
+                        UI.Text("Waking displays and waiting for a stable setup…", "display.applying.text")
+                            .Classes("display-applying-label")).Classes("display-applying"));
                 if (_state is { } state)
                 {
                     children.Add(UI.Stack("display.current",

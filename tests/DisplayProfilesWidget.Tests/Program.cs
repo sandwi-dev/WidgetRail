@@ -254,7 +254,7 @@ static async Task WakeStabilization()
     };
     native.ConnectedOverride = () =>
     {
-        if (native.Applies.Count == 1 && clock.GetUtcNow() - DateTimeOffset.UnixEpoch < TimeSpan.FromSeconds(6))
+        if (native.Applies.Count == 1 && clock.GetUtcNow() - DateTimeOffset.UnixEpoch < TimeSpan.FromSeconds(7))
         { ++pathsNotReady; throw new BrokerException("display_monitor_missing", "Monitor still waking"); }
         var path = target.ReadPaths()[0];
         if (native.Applies.Count > 0) { path.Source.Id = 7; path.Target.Id = 40; }
@@ -270,7 +270,7 @@ static async Task WakeStabilization()
     Check(native.AppliedConfigurations[1].ReadPaths()[0].Target.Id == 40, "Retry used stale target IDs");
     var applied = JsonSerializer.Deserialize<GuardReply>(writer.ToString().Trim())!;
     Check(applied.Deadline - clock.GetUtcNow() >= TimeSpan.FromSeconds(14), "Wake time consumed confirmation countdown");
-    Check(clock.GetUtcNow() - DateTimeOffset.UnixEpoch >= TimeSpan.FromSeconds(7), "Preview did not settle after wake-up");
+    Check(clock.GetUtcNow() - DateTimeOffset.UnixEpoch >= TimeSpan.FromSeconds(10), "Preview did not settle for three seconds after wake-up");
     reader.Decision.SetResult("keep:" + id);
     Check(await run.WaitAsync(TimeSpan.FromSeconds(3)) == 0);
     Check(native.Applies.Count == 3 && native.Applies[2] == (1920, true));
@@ -332,7 +332,7 @@ static async Task DiagnosticObservations()
     var path = Path.Combine(temp.Path, "restore.log");
     var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, TimeProvider.System, TimeSpan.FromSeconds(15),
         request => new DisplayRestoreDiagnosticLog(temp.Path, request.Id, native.Capture));
-    await writer.Applied.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    await writer.Applied.Task.WaitAsync(TimeSpan.FromSeconds(5));
     await Until(() => ReadLog().Contains("\"MatchesTarget\":true"));
     native.Current = baseline; // Simulate the OS/driver changing the active setup during confirmation.
     await Until(() => ReadLog().Contains("\"MatchesBaseline\":true,\"MatchesTarget\":false"));
@@ -519,6 +519,10 @@ static async Task WidgetWakeOperation()
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
         await widget.OnActionAsync(action);
         Check(applies == 1 && !release.Task.IsCompleted, "Slow restore blocked input or admitted a duplicate");
+        IEnumerable<ViewNode> Nodes(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Nodes));
+        var waitingNodes = Nodes(widget.Render().CreateSnapshot("display.test", 1).Root).ToArray();
+        Check(waitingNodes.Any(node => node.Id == "display.applying.indicator" && node.Kind == ViewNodeKind.LoadingIndicator));
+        Check(waitingNodes.Any(node => node.Text == "Waking displays and waiting for a stable setup…"));
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive)
             .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500));

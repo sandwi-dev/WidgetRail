@@ -5,7 +5,7 @@ using WidgetRail.PlatformBroker;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
-    ("Display restore pipe deadlines allow wake-up on both ends", DisplayRestorePipeTests.RunAsync),
+    ("Display restore pipe deadlines and rollback events reach the client", DisplayRestorePipeTests.RunAsync),
     ("Task windows are permission gated and tokens stay broker scoped", TaskWindowBroker),
 
     ("Admitted launches retain completion across background but revoke and destroy cancel", AdmittedLaunchLifecycle),
@@ -75,7 +75,7 @@ var allTests = new (string Name, Func<Task> Run)[]
 var runningRegistrationOnly =
     args.Contains("--running-registration-only", StringComparer.Ordinal);
 var tests = args.Contains("--display-timeouts-only", StringComparer.Ordinal)
-    ? allTests.Where(test => test.Name == "Display restore pipe deadlines allow wake-up on both ends").ToArray()
+    ? allTests.Where(test => test.Name == "Display restore pipe deadlines and rollback events reach the client").ToArray()
     : runningRegistrationOnly
     ? allTests.Where(test => test.Name is
         "Capability vocabulary is closed and versioned" or

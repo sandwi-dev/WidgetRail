@@ -9,7 +9,7 @@ internal sealed class DisplayPreviewChangedException : Exception;
 internal static class DisplayPreviewStabilizer
 {
     internal static readonly TimeSpan MaximumWait = TimeSpan.FromSeconds(12);
-    internal static readonly TimeSpan StableWindow = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan StableWindow = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
     // The first temporary apply wakes the outputs. Wake-up can then cause Windows
@@ -74,8 +74,8 @@ internal static class DisplayPreviewStabilizer
                         diagnostics?.Record("stabilization-reapply-begin");
                         native.Apply(target, persist: false);
                         diagnostics?.Record("stabilization-reapply-complete", readback: true);
+                        previous = null;
                     }
-                    previous = null;
                 }
             }
             using var cancellation = new CancellationTokenSource();
