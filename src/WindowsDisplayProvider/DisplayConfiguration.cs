@@ -178,6 +178,7 @@ internal static class DisplayProfileMatching
 [SupportedOSPlatform("windows")]
 internal sealed unsafe partial class WindowsDisplayNative : IDisplayNative
 {
+    internal DisplayRestoreDiagnosticLog? Diagnostics { get; set; }
     public DisplayConfiguration Capture()
     {
         var (paths, modes) = Query(2); // Desktop compatibility view: no per-monitor DPI writes.
@@ -209,17 +210,24 @@ internal sealed unsafe partial class WindowsDisplayNative : IDisplayNative
         try { Apply(DisplayProfileMatching.Remap(configuration, ConnectedPaths()), persist: false); }
         catch (Exception error) when (error is Win32Exception or BrokerException)
         {
+            Diagnostics?.Record("rollback-fallback-database-begin", error: error);
             // A monitor may have been unplugged during confirmation. Ask Windows
             // for its last saved topology instead of leaving an unusable layout.
-            Check(SetDisplayConfig(0, null, 0, null, 0x80 | 0xF));
+            var result = SetDisplayConfig(0, null, 0, null, 0x80 | 0xF);
+            Diagnostics?.Record("set-0000008F-result", error: result == 0 ? null : new Win32Exception(result));
+            Check(result);
         }
     }
-    private static void Set(DisplayConfiguration configuration, uint flags)
+    private void Set(DisplayConfiguration configuration, uint flags)
     {
         configuration.Validate();
         var paths = configuration.ReadPaths(); var modes = configuration.ReadModes();
+        Diagnostics?.Record($"set-{flags:X8}-begin");
+        int result;
         fixed (NativePath* path = paths) fixed (NativeMode* mode = modes)
-            Check(SetDisplayConfig((uint)paths.Length, path, (uint)modes.Length, mode, flags));
+            result = SetDisplayConfig((uint)paths.Length, path, (uint)modes.Length, mode, flags);
+        Diagnostics?.Record($"set-{flags:X8}-result", error: result == 0 ? null : new Win32Exception(result));
+        Check(result);
     }
     private static (NativePath[], NativeMode[]) Query(uint flags)
     {

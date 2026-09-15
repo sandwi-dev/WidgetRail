@@ -63,6 +63,22 @@ A per-user guard lock prevents overlapping restores across bridge restarts.
 Changes are saved to the
 Windows display database only after Keep is confirmed.
 
+The first temporary apply also wakes sleeping monitors. Before offering Keep,
+the guard requires the requested setup to remain stable for three seconds. If
+Windows settles on a different setup while the monitors wake, the guard resolves
+the display paths again and retries once. This stabilization phase has a
+12-second budget, checked between Windows calls; an in-progress native call
+cannot be interrupted. Failure or loss of the bridge connection restores the
+previous setup. The full 15-second confirmation countdown starts after the
+preview stabilizes. Keep reads the active setup again and refuses to save it if
+it has changed or if the confirmation expired during that read.
+The widget runs restore actions through the SDK's background-operation facility
+so the wake-up wait does not block controller requests.
+A themed loading indicator and status text remain visible during that wait.
+Transient enumeration failures do not end the widget's display-change
+subscription. At countdown expiry it also refreshes the transaction status;
+an already-ended confirmation clears the stale dialog and fetches current state.
+
 If a monitor disappears during confirmation, rollback can fall back to Windows'
 last saved available topology.
 
@@ -76,6 +92,18 @@ The installer's optional data removal also removes this directory.
 
 Display changes use Windows notifications, not periodic display polling.
 The widget's one-second timer updates only the visible confirmation countdown.
+During a restore transaction, a separate diagnostic worker also reads the active
+setup every 500 ms and logs changes to `display-profiles/restore.log` under the
+settings directory. It records UTC timestamps, native call flags/results,
+baseline and target modes, confirmation decisions and rollback outcomes.
+Readbacks include their own start time and duration: a read triggered by Keep
+can finish after the subsequent apply, so its trigger is not proof of ordering.
+Monitor connections are hashed; raw device paths, serials and profile names are
+excluded. The log retains up to 1 MiB plus one previous file, `restore.log.1`.
+Reads stop when the transaction ends. Diagnostic failures do not alter display
+decisions or block rollback; a stalled worker gets only a bounded final flush.
+These observations cannot identify which external process or driver changed
+the topology, and changes shorter than the sampling interval may be missed.
 Normal automated tests use a fake display backend for every apply and rollback.
 The optional test-runner argument `--native-read` reads and validates the
 current configuration. It is separate from the normal suite so CI does not

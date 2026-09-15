@@ -61,8 +61,16 @@ var checks = new (string Name, Func<Task> Run)[]
     ("Profile status agrees with remapped physical monitor identity", ProfileIdentityStatus),
     ("Profile writes are atomic and corrupt data is preserved", Storage),
     ("Guard reverts on timeout, parent EOF and partial apply failure", Guard),
+    ("Sleeping displays stabilize and retry once with refreshed paths", WakeStabilization),
+    ("Unstable displays and parent loss revert without confirmation", WakeFailures),
+    ("Keep rechecks the deadline after reading the active setup", KeepReadDeadline),
+    ("Diagnostics observe preview drift and Keep rejects the changed setup", DiagnosticObservations),
+    ("Diagnostic failures and blocked readbacks cannot prevent rollback", DiagnosticFailures),
     ("Broker enforces consent, interactive state and closed request payloads", Authority),
     ("Widget supports naming, unavailable profile management and guarded focus", Widget),
+    ("Widget stays responsive across slow restore and reopen", WidgetWakeOperation),
+    ("Failed display reads preserve final rollback notifications", WidgetRestoreNotifications),
+    ("Expired confirmations refresh automatically and recover stale button races", WidgetExpiredConfirmation),
     ("Packaged manifest, monitor glyph and theme styles validate", Assets),
 };
 foreach (var (name, run) in checks) { await run(); Console.WriteLine("PASS " + name); }
@@ -203,13 +211,15 @@ static async Task Guard()
     var target = Fixture.Setup(1920);
     foreach (var decision in new[] { "keep", "revert", "eof", "timeout", "late" })
     {
+        using var temp = new TemporaryDirectory();
         var native = new FakeNative { Current = Fixture.Setup(1280) };
         var id = Guid.NewGuid().ToString("N");
         var reader = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(id, target)));
         var writer = new GuardWriter();
         var clock = new ManualClock();
-        var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, clock, TimeSpan.FromSeconds(15));
-        await writer.Applied.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, clock, TimeSpan.FromSeconds(15),
+            request => new DisplayRestoreDiagnosticLog(temp.Path, request.Id, native.Capture));
+        await AdvanceUntil(writer.Applied.Task, run, clock);
         if (decision is "timeout" or "late") clock.Advance(TimeSpan.FromSeconds(16));
         if (decision != "timeout") reader.Decision.TrySetResult(decision == "eof" ? null :
             (decision is "keep" or "late" ? "keep:" : "revert:") + id);
@@ -217,12 +227,198 @@ static async Task Guard()
         Check(native.Applies.Count == 2);
         Check(native.Applies[0].Width == 1920 && !native.Applies[0].Persist);
         Check(native.Applies[1] == (decision == "keep" ? (1920, true) : (1280, false)), decision);
+        var log = File.ReadAllText(Path.Combine(temp.Path, "restore.log"));
+        Check(log.Contains(decision == "keep" ? "completed-kept" : "completed-reverted"), "Missing terminal guard diagnostic");
+        Check(log.Contains("decision-"), "Missing confirmation outcome");
     }
     var failed = new FakeNative { Current = Fixture.Setup(1280), FailApply = 1 };
     var request = JsonSerializer.Serialize(new GuardRequest(Guid.NewGuid().ToString("N"), target));
-    Check(await DisplayRestoreGuard.RunCoreAsync(new StringReader(request + "\n"), new StringWriter(),
+    Check(await DisplayRestoreGuard.RunCoreAsync(new DecisionReader(request), new StringWriter(),
         failed, TimeProvider.System, TimeSpan.FromSeconds(15)) == 1);
     Check(failed.Applies.Count == 2 && failed.Applies[1].Width == 1280, "Partial apply did not roll back");
+}
+static async Task WakeStabilization()
+{
+    var clock = new ManualClock();
+    var baseline = Fixture.Setup(1280);
+    var target = Fixture.Setup(1920);
+    var native = new FakeNative { Current = baseline };
+    var pathsNotReady = 0;
+    native.CaptureOverride = () =>
+    {
+        if (native.Applies.Count != 1) return native.Current;
+        var elapsed = clock.GetUtcNow() - DateTimeOffset.UnixEpoch;
+        if (elapsed < TimeSpan.FromMilliseconds(500)) return target;
+        if (elapsed < TimeSpan.FromSeconds(3)) throw new Win32Exception(1168);
+        return baseline;
+    };
+    native.ConnectedOverride = () =>
+    {
+        if (native.Applies.Count == 1 && clock.GetUtcNow() - DateTimeOffset.UnixEpoch < TimeSpan.FromSeconds(7))
+        { ++pathsNotReady; throw new BrokerException("display_monitor_missing", "Monitor still waking"); }
+        var path = target.ReadPaths()[0];
+        if (native.Applies.Count > 0) { path.Source.Id = 7; path.Target.Id = 40; }
+        return [new DisplayPathTarget(path, target.Targets[0])];
+    };
+    var id = Guid.NewGuid().ToString("N");
+    var reader = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(id, target)));
+    var writer = new GuardWriter();
+    var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, clock, TimeSpan.FromSeconds(15));
+    await AdvanceUntil(writer.Applied.Task, run, clock);
+    Check(native.Applies.SequenceEqual(new[] { (1920, false), (1920, false) }));
+    Check(pathsNotReady > 0, "Wake path rediscovery was not exercised");
+    Check(native.AppliedConfigurations[1].ReadPaths()[0].Target.Id == 40, "Retry used stale target IDs");
+    var applied = JsonSerializer.Deserialize<GuardReply>(writer.ToString().Trim())!;
+    Check(applied.Deadline - clock.GetUtcNow() >= TimeSpan.FromSeconds(14), "Wake time consumed confirmation countdown");
+    Check(clock.GetUtcNow() - DateTimeOffset.UnixEpoch >= TimeSpan.FromSeconds(10), "Preview did not settle for three seconds after wake-up");
+    reader.Decision.SetResult("keep:" + id);
+    Check(await run.WaitAsync(TimeSpan.FromSeconds(3)) == 0);
+    Check(native.Applies.Count == 3 && native.Applies[2] == (1920, true));
+}
+static async Task WakeFailures()
+{
+    foreach (var mode in new[] { "never-ready", "second-revert", "parent-exit" })
+    {
+        var baseline = Fixture.Setup(1280);
+        var native = new FakeNative { Current = baseline };
+        native.CaptureOverride = () => native.Applies.Count == 0 ? baseline : mode == "never-ready"
+            ? throw new Win32Exception(1168) : baseline;
+        var reader = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(Guid.NewGuid().ToString("N"), Fixture.Setup(1920))));
+        var writer = new GuardWriter();
+        var clock = new ManualClock();
+        var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, clock, TimeSpan.FromSeconds(15));
+        if (mode == "parent-exit") reader.Decision.SetResult(null);
+        await AdvanceUntil(run, run, clock);
+        Check(await run == 1 && !writer.Applied.Task.IsCompleted, "Unstable/abandoned setup offered confirmation");
+        Check(native.Applies.All(apply => !apply.Persist) && native.Applies[^1].Width == 1280);
+        Check(native.Applies.Count == (mode == "second-revert" ? 3 : 2), "Unbounded retry or missing rollback");
+        Check(clock.GetUtcNow() - DateTimeOffset.UnixEpoch <= TimeSpan.FromSeconds(13), "Wake deadline exceeded");
+    }
+}
+static async Task KeepReadDeadline()
+{
+    var clock = new ManualClock();
+    var native = new FakeNative { Current = Fixture.Setup(1280) };
+    var id = Guid.NewGuid().ToString("N");
+    var reader = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(id, Fixture.Setup(1920))));
+    var writer = new GuardWriter();
+    var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, clock, TimeSpan.FromSeconds(15));
+    await AdvanceUntil(writer.Applied.Task, run, clock);
+    native.CaptureOverride = () => { clock.Advance(TimeSpan.FromSeconds(16)); return native.Current; };
+    reader.Decision.SetResult("keep:" + id);
+    Check(await run.WaitAsync(TimeSpan.FromSeconds(3)) == 0);
+    Check(native.Applies.SequenceEqual(new[] { (1920, false), (1280, false) }), "Expired read persisted an unconfirmed setup");
+}
+static async Task AdvanceUntil(Task awaited, Task run, ManualClock clock)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+    while (!awaited.IsCompleted && !run.IsCompleted)
+    {
+        clock.Advance(TimeSpan.FromMilliseconds(250));
+        await Task.Delay(2, timeout.Token);
+    }
+    Check(awaited.IsCompleted, "Guard completed before the expected phase");
+    await awaited;
+}
+static async Task DiagnosticObservations()
+{
+    using var temp = new TemporaryDirectory();
+    var baseline = Fixture.Setup(1280);
+    var target = Fixture.Setup(1920);
+    var native = new FakeNative { Current = baseline };
+    var id = Guid.NewGuid().ToString("N");
+    var reader = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(id, target)));
+    var writer = new GuardWriter();
+    var path = Path.Combine(temp.Path, "restore.log");
+    var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, TimeProvider.System, TimeSpan.FromSeconds(15),
+        request => new DisplayRestoreDiagnosticLog(temp.Path, request.Id, native.Capture));
+    await writer.Applied.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    await Until(() => ReadLog().Contains("\"MatchesTarget\":true"));
+    native.Current = baseline; // Simulate the OS/driver changing the active setup during confirmation.
+    await Until(() => ReadLog().Contains("\"MatchesBaseline\":true,\"MatchesTarget\":false"));
+    Check(native.Applies.Count == 1 && !run.IsCompleted, "Observation changed display behavior");
+    reader.Decision.SetResult("keep:" + id);
+    Check(await run.WaitAsync(TimeSpan.FromSeconds(3)) == 1);
+    Check(native.Applies.SequenceEqual(new[] { (1920, false), (1280, false) }), "Keep persisted a changed preview");
+    var log = ReadLog();
+    Check(log.Contains("\"Trigger\":\"sample\"") && log.Contains("decision-keep") && log.Contains("DisplayPreviewChangedException"));
+    Check(writer.ToString().Contains("preview-changed"));
+    foreach (var line in log.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+    {
+        using var json = JsonDocument.Parse(line);
+        Check(json.RootElement.GetProperty("Transaction").GetString() == id);
+    }
+    Check(!log.Contains("monitor-0") && !log.Contains("Monitor 0") && !log.Contains("DevicePath"), "Diagnostic exposed raw identity");
+    string ReadLog()
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var input = new StreamReader(stream);
+            return input.ReadToEnd();
+        }
+        catch (IOException) { return ""; }
+    }
+}
+static async Task DiagnosticFailures()
+{
+    using var temp = new TemporaryDirectory();
+    var blockedDirectory = Path.Combine(temp.Path, "file");
+    File.WriteAllText(blockedDirectory, "preserve");
+    foreach (var mode in new[] { "disk-failure", "capture-failure", "capture-blocked" })
+    {
+        var native = new FakeNative { Current = Fixture.Setup(1280) };
+        var reader = new DecisionReader(JsonSerializer.Serialize(new GuardRequest(Guid.NewGuid().ToString("N"), Fixture.Setup(1920))));
+        var writer = new GuardWriter();
+        var clock = new ManualClock();
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        DisplayConfiguration Capture()
+        {
+            if (mode == "capture-failure") throw new Win32Exception(31, "private diagnostic message");
+            if (mode == "capture-blocked") { entered.TrySetResult(); release.Wait(); exited.TrySetResult(); }
+            return native.Capture();
+        }
+        var directory = mode == "disk-failure" ? blockedDirectory : Path.Combine(temp.Path, mode);
+        DisplayRestoreDiagnosticLog? diagnostics = null;
+        var run = DisplayRestoreGuard.RunCoreAsync(reader, writer, native, clock, TimeSpan.FromSeconds(15),
+            request => diagnostics = new DisplayRestoreDiagnosticLog(directory, request.Id, Capture));
+        try
+        {
+            await AdvanceUntil(writer.Applied.Task, run, clock);
+            if (mode == "capture-blocked") await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            clock.Advance(TimeSpan.FromSeconds(16));
+            Check(await run.WaitAsync(TimeSpan.FromSeconds(3)) == 0, mode);
+            Check(native.Applies.SequenceEqual(new[] { (1920, false), (1280, false) }), "Diagnostics prevented timeout rollback");
+        }
+        finally
+        {
+            release.Set();
+            if (mode == "capture-blocked") await exited.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            if (diagnostics is not null) await diagnostics.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+        }
+        if (mode == "capture-failure")
+        {
+            var log = File.ReadAllText(Path.Combine(directory, "restore.log"));
+            Check(log.Contains("readback-failed") && log.Contains("\"NativeError\":31"));
+            Check(!log.Contains("private diagnostic message"));
+        }
+    }
+    Check(File.ReadAllText(blockedDirectory) == "preserve");
+    var rotation = Path.Combine(temp.Path, "rotation");
+    Directory.CreateDirectory(rotation);
+    var path = Path.Combine(rotation, "restore.log");
+    File.WriteAllText(path, new string('x', DisplayRestoreDiagnosticLog.MaximumFileBytes));
+    await using (var log = new DisplayRestoreDiagnosticLog(rotation, Guid.NewGuid().ToString("N"), () => Fixture.Setup()))
+        log.Record("rotation-check");
+    Check(new FileInfo(path + ".1").Length == DisplayRestoreDiagnosticLog.MaximumFileBytes);
+    Check(new FileInfo(path).Length < DisplayRestoreDiagnosticLog.MaximumFileBytes);
+}
+static async Task Until(Func<bool> condition)
+{
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+    while (!condition()) await Task.Delay(20, timeout.Token);
 }
 static async Task Authority()
 {
@@ -295,6 +491,113 @@ static async Task Widget()
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
     Check(state.PendingRestore is not null, "Widget hiding cancelled independent confirmation");
 }
+static async Task WidgetWakeOperation()
+{
+    var profileId = Guid.NewGuid().ToString("N");
+    var monitor = new WidgetDisplayProfileMonitor("one", "Monitor", 1920, 1080, 0, 0, 60, "Landscape", true);
+    var state = new WidgetDisplayProfilesState("Single display", [monitor],
+        [new(profileId, "Desk", "Single display", [monitor], false, true, null)], null, null);
+    var release = new TaskCompletionSource<WidgetDisplayProfilesState>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var gets = 0; var applies = 0;
+    var builder = new WidgetTestHostServicesBuilder()
+        .WithHandler(WidgetDisplayProfilesCapabilities.Get, async (_, token) =>
+            Interlocked.Increment(ref gets) == 1 ? state : await release.Task.WaitAsync(token))
+        .WithEvents(WidgetDisplayProfilesCapabilities.Changed, Array.Empty<WidgetCapabilityAcknowledgement>())
+        .WithHandler(WidgetDisplayProfilesCapabilities.Apply, async (_, token) =>
+        {
+            Interlocked.Increment(ref applies);
+            entered.TrySetResult();
+            return await release.Task.WaitAsync(token);
+        });
+    var widget = WidgetTestHost.Attach(new DisplayProfilesWidget(), builder.Build());
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    var action = new WidgetActionEvent("apply." + profileId, "display.profile." + profileId);
+    try
+    {
+        await widget.OnActionAsync(action).AsTask().WaitAsync(TimeSpan.FromMilliseconds(500));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await widget.OnActionAsync(action);
+        Check(applies == 1 && !release.Task.IsCompleted, "Slow restore blocked input or admitted a duplicate");
+        IEnumerable<ViewNode> Nodes(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Nodes));
+        var waitingNodes = Nodes(widget.Render().CreateSnapshot("display.test", 1).Root).ToArray();
+        Check(waitingNodes.Any(node => node.Id == "display.applying.indicator" && node.Kind == ViewNodeKind.LoadingIndicator));
+        Check(waitingNodes.Any(node => node.Text == "Waking displays and waiting for a stable setup…"));
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive)
+            .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500));
+        Check(JsonSerializer.Serialize(widget.Render().CreateSnapshot("display.test", 1)).Contains("display.applying"),
+            "Reopening abandoned the admitted restore");
+    }
+    finally
+    {
+        release.TrySetResult(state with { PendingRestore = new(Guid.NewGuid().ToString("N"), "Desk", DateTimeOffset.UtcNow.AddSeconds(15)) });
+    }
+    await Until(() => widget.Render().InitialFocusId == "display.revert");
+    Check(ViewSnapshotValidator.Validate(widget.Render().CreateSnapshot("display.test", 1)).Count == 0);
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+}
+static async Task WidgetRestoreNotifications()
+{
+    var events = System.Threading.Channels.Channel.CreateUnbounded<WidgetCapabilityAcknowledgement>();
+    var pending = new WidgetDisplayProfileRestore(Guid.NewGuid().ToString("N"), "Desk", DateTimeOffset.UtcNow.AddMinutes(1));
+    var state = new WidgetDisplayProfilesState("Single display", [], [], pending, null);
+    var failReads = false; var failures = 0;
+    var builder = new WidgetTestHostServicesBuilder()
+        .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) =>
+        {
+            if (failReads) { Interlocked.Increment(ref failures); throw new WidgetCapabilityException("display_mode_unavailable", "Display waking"); }
+            return ValueTask.FromResult(state);
+        })
+        .WithEventStream(WidgetDisplayProfilesCapabilities.Changed, token => events.Reader.ReadAllAsync(token));
+    var widget = WidgetTestHost.Attach(new DisplayProfilesWidget(), builder.Build());
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    try
+    {
+        failReads = true;
+        events.Writer.TryWrite(new(true));
+        await Until(() => Volatile.Read(ref failures) >= 3);
+        failReads = false;
+        state = state with { PendingRestore = null, Outcome = "reverted" };
+        events.Writer.TryWrite(new(true));
+        await Until(() => !ConfirmationVisible(widget));
+        Check(widget.Render().InitialFocusId == "display.save", "Focus stayed in the retired confirmation");
+    }
+    finally { await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background); }
+}
+static async Task WidgetExpiredConfirmation()
+{
+    foreach (var mode in new[] { "deadline", "expired-button", "expired-button-read-failed" })
+    {
+        var pending = new WidgetDisplayProfileRestore(Guid.NewGuid().ToString("N"), "Desk",
+            DateTimeOffset.UtcNow.AddSeconds(mode == "deadline" ? -1 : 60));
+        var state = new WidgetDisplayProfilesState("Single display", [], [], pending, null);
+        var gets = 0; var reverts = 0;
+        var builder = new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) =>
+            {
+                if (Interlocked.Increment(ref gets) == 1) return ValueTask.FromResult(state);
+                if (mode == "expired-button-read-failed") throw new WidgetCapabilityException("display_mode_unavailable", "Display changing");
+                return ValueTask.FromResult(state with { PendingRestore = null, Outcome = "reverted" });
+            })
+            .WithHandler(WidgetDisplayProfilesCapabilities.Revert, (_, _) =>
+            { ++reverts; throw new WidgetCapabilityException("display_restore_expired", "This display confirmation has already ended"); })
+            .WithEvents(WidgetDisplayProfilesCapabilities.Changed, Array.Empty<WidgetCapabilityAcknowledgement>());
+        var widget = WidgetTestHost.Attach(new DisplayProfilesWidget(), builder.Build());
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+        try
+        {
+            if (mode != "deadline") await widget.OnActionAsync(new("revert", "display.revert"));
+            await Until(() => !ConfirmationVisible(widget) && Volatile.Read(ref gets) >= 2);
+            Check(reverts == (mode == "deadline" ? 0 : 1));
+            Check(!JsonSerializer.Serialize(widget.Render().CreateSnapshot("display.test", 1)).Contains("confirmation has ended"));
+            Check(ViewSnapshotValidator.Validate(widget.Render().CreateSnapshot("display.test", 1)).Count == 0);
+        }
+        finally { await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background); }
+    }
+}
+static bool ConfirmationVisible(DisplayProfilesWidget widget) =>
+    JsonSerializer.Serialize(widget.Render().CreateSnapshot("display.test", 1)).Contains("display.confirmation");
 static Task NativeRead()
 {
     var native = new WindowsDisplayNative();
@@ -343,13 +646,17 @@ file sealed class FakeNative : IDisplayNative
 {
     public DisplayConfiguration Current = Fixture.Setup();
     public List<(int Width, bool Persist)> Applies = [];
+    public List<DisplayConfiguration> AppliedConfigurations = [];
+    public Func<DisplayConfiguration>? CaptureOverride;
+    public Func<IReadOnlyList<DisplayPathTarget>>? ConnectedOverride;
     public int FailApply;
-    public DisplayConfiguration Capture() => Current;
-    public IReadOnlyList<DisplayPathTarget> ConnectedPaths() => Current.ReadPaths().Select((path, index) => new DisplayPathTarget(path, Current.Targets[index])).ToArray();
+    public DisplayConfiguration Capture() => CaptureOverride?.Invoke() ?? Current;
+    public IReadOnlyList<DisplayPathTarget> ConnectedPaths() => ConnectedOverride?.Invoke() ?? Current.ReadPaths().Select((path, index) => new DisplayPathTarget(path, Current.Targets[index])).ToArray();
     public void Validate(DisplayConfiguration configuration) => configuration.Validate();
     public void Apply(DisplayConfiguration configuration, bool persist)
     {
         Applies.Add((configuration.Summaries()[0].Width, persist));
+        AppliedConfigurations.Add(configuration);
         if (Applies.Count == FailApply) throw new Win32Exception(31);
         Current = configuration;
     }
@@ -381,22 +688,28 @@ file sealed class GuardWriter : StringWriter
 }
 file sealed class ManualClock : TimeProvider
 {
+    private readonly object _gate = new();
     private long _ticks;
     private readonly List<Timer> _timers = [];
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-    public override long GetTimestamp() => _ticks;
-    public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(_ticks);
+    public override long GetTimestamp() => Interlocked.Read(ref _ticks);
+    public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(GetTimestamp());
     public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
     {
-        var timer = new Timer(callback, state, _ticks + dueTime.Ticks); _timers.Add(timer); return timer;
+        lock (_gate) { var timer = new Timer(callback, state, _ticks + dueTime.Ticks); _timers.Add(timer); return timer; }
     }
-    public void Advance(TimeSpan duration) { _ticks += duration.Ticks; foreach (var timer in _timers.ToArray()) timer.Fire(_ticks); }
+    public void Advance(TimeSpan duration)
+    {
+        Timer[] timers; long now;
+        lock (_gate) { now = Interlocked.Add(ref _ticks, duration.Ticks); timers = _timers.ToArray(); }
+        foreach (var timer in timers) timer.Fire(now);
+    }
     private sealed class Timer(TimerCallback callback, object? state, long due) : ITimer
     {
-        private bool _disposed;
-        public void Fire(long now) { if (!_disposed && now >= due) { _disposed = true; callback(state); } }
+        private int _disposed;
+        public void Fire(long now) { if (now >= due && Interlocked.Exchange(ref _disposed, 1) == 0) callback(state); }
         public bool Change(TimeSpan dueTime, TimeSpan period) => throw new NotSupportedException();
-        public void Dispose() => _disposed = true;
+        public void Dispose() => Interlocked.Exchange(ref _disposed, 1);
         public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
     }
 }

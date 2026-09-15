@@ -9,7 +9,7 @@ using WidgetRail.PlatformBroker;
 
 namespace WidgetRail.WindowsDisplayProvider;
 
-internal sealed record GuardRequest(string Id, DisplayConfiguration Configuration);
+internal sealed record GuardRequest(string Id, DisplayConfiguration Configuration, string? DiagnosticDirectory = null);
 internal sealed record GuardReply(string State, DateTimeOffset? Deadline = null, uint? JobFlags = null);
 
 /// <summary>Private bridge entry point. The helper owns apply and rollback, not the widget.</summary>
@@ -47,14 +47,18 @@ public static partial class DisplayRestoreGuard
         {
             output.WriteLine(JsonSerializer.Serialize(new GuardReply("ready", JobFlags: inheritedJobFlags)));
             return RunCoreAsync(input, output, new WindowsDisplayNative(),
-            TimeProvider.System, TimeSpan.FromSeconds(15)).GetAwaiter().GetResult(); }
+            TimeProvider.System, TimeSpan.FromSeconds(15), request => request.DiagnosticDirectory is null ? null :
+                new DisplayRestoreDiagnosticLog(request.DiagnosticDirectory, request.Id,
+                    new WindowsDisplayNative().Capture)).GetAwaiter().GetResult(); }
         finally { mutex.ReleaseMutex(); }
     });
 
     internal static async Task<int> RunCoreAsync(TextReader input, TextWriter output,
-        IDisplayNative native, TimeProvider time, TimeSpan confirmationTimeout)
+        IDisplayNative native, TimeProvider time, TimeSpan confirmationTimeout,
+        Func<GuardRequest, DisplayRestoreDiagnosticLog?>? createDiagnostics = null)
     {
         DisplayConfiguration? baseline = null;
+        DisplayRestoreDiagnosticLog? diagnostics = null;
         var needsRollback = false;
         try
         {
@@ -64,47 +68,102 @@ public static partial class DisplayRestoreGuard
                 ?? throw new InvalidDataException();
             if (!Guid.TryParseExact(request.Id, "N", out _)) return 2;
             request.Configuration.Validate();
+            try { diagnostics = createDiagnostics?.Invoke(request); }
+            catch (Exception error) when (error is not OutOfMemoryException) { }
+            if (native is WindowsDisplayNative windows) windows.Diagnostics = diagnostics;
+            diagnostics?.Record("capture-baseline-begin");
             baseline = native.Capture();
+            diagnostics?.Record("baseline", baseline);
             var target = DisplayProfileMatching.Remap(request.Configuration, native.ConnectedPaths());
+            diagnostics?.Record("target", target);
+            diagnostics?.Record("validate-begin");
             native.Validate(target);
+            diagnostics?.Record("validate-complete");
+            var decision = input.ReadLineAsync(); // Watch parent loss while the monitors wake as well.
+            if (decision.IsCompleted) throw new OperationCanceledException();
             needsRollback = true; // Apply can partially change topology before reporting failure.
+            var stabilizationStarted = time.GetTimestamp();
+            diagnostics?.Record("preview-apply-begin");
             native.Apply(target, persist: false);
+            diagnostics?.Record("preview-apply-complete", readback: true);
+            target = await DisplayPreviewStabilizer.WaitAsync(native, target, decision, time,
+                stabilizationStarted, diagnostics).ConfigureAwait(false);
             var started = time.GetTimestamp();
             using var timeoutCancellation = new CancellationTokenSource();
             var timeout = Task.Delay(confirmationTimeout, time, timeoutCancellation.Token);
+            var deadline = time.GetUtcNow() + confirmationTimeout;
+            diagnostics?.Record("confirmation-started", deadline: deadline);
             await output.WriteLineAsync(JsonSerializer.Serialize(
-                new GuardReply("applied", time.GetUtcNow() + confirmationTimeout))).ConfigureAwait(false);
+                new GuardReply("applied", deadline))).ConfigureAwait(false);
             await output.FlushAsync().ConfigureAwait(false);
-            var decision = input.ReadLineAsync(); // EOF means the parent exited: revert immediately.
             var completed = await Task.WhenAny(decision, timeout).ConfigureAwait(false);
-            var keep = completed == decision && await decision.ConfigureAwait(false) == "keep:" + request.Id &&
+            var response = completed == decision ? await decision.ConfigureAwait(false) : null;
+            var keep = completed == decision && response == "keep:" + request.Id &&
                 time.GetElapsedTime(started) < confirmationTimeout;
+            diagnostics?.Record(keep ? "decision-keep" : completed != decision ? "decision-timeout" :
+                response is null ? "decision-parent-eof" : time.GetElapsedTime(started) >= confirmationTimeout ? "decision-expired" :
+                response == "revert:" + request.Id ? "decision-revert" : "decision-invalid", readback: true);
             if (keep)
             {
-                native.Apply(target, persist: true);
-                needsRollback = false;
+                var current = native.Capture();
+                diagnostics?.Record("keep-current", current);
+                if (!target.Matches(current)) throw new DisplayPreviewChangedException();
+                // Capture can take time while Windows re-enumerates a display.
+                // A confirmation that expired during that read must still revert.
+                if (time.GetElapsedTime(started) >= confirmationTimeout)
+                {
+                    keep = false;
+                    diagnostics?.Record("decision-expired-during-read");
+                }
+                else
+                {
+                    diagnostics?.Record("keep-apply-begin");
+                    native.Apply(current, persist: true);
+                    needsRollback = false;
+                    diagnostics?.Record("keep-apply-complete", readback: true);
+                }
             }
-            else
+            if (!keep)
             {
+                diagnostics?.Record("rollback-begin", baseline);
                 native.Restore(baseline);
                 needsRollback = false;
+                diagnostics?.Record("rollback-complete", readback: true);
             }
             timeoutCancellation.Cancel();
             await output.WriteLineAsync(JsonSerializer.Serialize(new GuardReply(keep ? "kept" : "reverted"))).ConfigureAwait(false);
             await output.FlushAsync().ConfigureAwait(false);
+            diagnostics?.Record(keep ? "completed-kept" : "completed-reverted");
             return 0;
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
-            var state = "restore-failed";
+            diagnostics?.Record("guard-failed", error: error);
+            var state = error switch
+            {
+                DisplayPreviewUnstableException => "restore-unstable",
+                DisplayPreviewChangedException => "preview-changed",
+                _ => "restore-failed"
+            };
             if (needsRollback && baseline is not null)
             {
-                try { native.Restore(baseline); }
-                catch (Exception rollback) when (rollback is not OutOfMemoryException) { state = "rollback-failed"; }
+                try
+                {
+                    diagnostics?.Record("error-rollback-begin", baseline);
+                    native.Restore(baseline);
+                    diagnostics?.Record("error-rollback-complete", readback: true);
+                }
+                catch (Exception rollback) when (rollback is not OutOfMemoryException)
+                { state = "rollback-failed"; diagnostics?.Record(state, error: rollback); }
             }
             try { await output.WriteLineAsync(JsonSerializer.Serialize(new GuardReply(state))).ConfigureAwait(false); }
             catch (IOException) { }
             return 1;
+        }
+        finally
+        {
+            if (native is WindowsDisplayNative windows) windows.Diagnostics = null;
+            if (diagnostics is not null) await diagnostics.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -141,7 +200,7 @@ internal interface IDisplayRestoreLauncher
     Task<IDisplayRestoreSession> StartAsync(DisplayConfiguration configuration, CancellationToken token);
 }
 
-internal sealed class DisplayRestoreLauncher(string executable) : IDisplayRestoreLauncher
+internal sealed class DisplayRestoreLauncher(string executable, string? diagnosticDirectory = null) : IDisplayRestoreLauncher
 {
     public async Task<IDisplayRestoreSession> StartAsync(DisplayConfiguration configuration, CancellationToken token)
     {
@@ -149,7 +208,7 @@ internal sealed class DisplayRestoreLauncher(string executable) : IDisplayRestor
         var connection = await DisplayGuardConnection.StartAsync(executable, token).ConfigureAwait(false);
         try
         {
-            await connection.Writer.WriteLineAsync(JsonSerializer.Serialize(new GuardRequest(id, configuration))).ConfigureAwait(false);
+            await connection.Writer.WriteLineAsync(JsonSerializer.Serialize(new GuardRequest(id, configuration, diagnosticDirectory))).ConfigureAwait(false);
             await connection.Writer.FlushAsync(token).ConfigureAwait(false);
             var line = await connection.Reader.ReadLineAsync(token).AsTask()
                 .WaitAsync(TimeSpan.FromSeconds(20), token).ConfigureAwait(false);
@@ -158,6 +217,8 @@ internal sealed class DisplayRestoreLauncher(string executable) : IDisplayRestor
                 throw new BrokerException("display_busy", "Another display change is still finishing. Try again shortly.");
             if (reply?.State == "rollback-failed")
                 throw new BrokerException("display_rollback_failed", "Windows couldn't restore the previous display setup.");
+            if (reply?.State == "restore-unstable")
+                throw new BrokerException("display_restore_unstable", "The displays didn't finish waking up. The previous setup was restored. Try again once the monitors are awake.");
             if (reply?.State != "applied" || reply.Deadline is null)
                 throw new BrokerException(reply?.State == "guard-unavailable" ? "display_guard_unavailable" : "display_restore_failed",
                     reply?.State == "guard-unavailable"

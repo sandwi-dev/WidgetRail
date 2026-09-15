@@ -17,6 +17,7 @@ public sealed class DisplayProfilesWidget : Widget
     private bool _busy;
     private long _generation;
     private Task _watch = Task.CompletedTask;
+    private string? _deadlineRefreshId;
 
     public DisplayProfilesWidget()
     {
@@ -27,9 +28,12 @@ public sealed class DisplayProfilesWidget : Widget
     protected override async ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
         long generation;
-        lock (_gate) { generation = ++_generation; _editor = _confirm = null; _busy = false; }
+        lock (_gate) { generation = ++_generation; _editor = _confirm = null; _busy = Operations.IsBusy("display.restore"); }
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _watch = WatchAsync(generation, activeLifetime, ready);
+        // Reopening during an admitted restore may await the provider's transaction
+        // lock. Retain the last view while the subscription fetches the result.
+        lock (_gate) if (_state is not null) ready.TrySetResult();
         await ready.Task.WaitAsync(activeLifetime).ConfigureAwait(false);
     }
     private async Task WatchAsync(long generation, CancellationToken token, TaskCompletionSource ready)
@@ -38,10 +42,10 @@ public sealed class DisplayProfilesWidget : Widget
         {
             await using var subscription = await HostServices.Capabilities.OpenSubscriptionAsync(
                 WidgetDisplayProfilesCapabilities.Changed, token).ConfigureAwait(false);
-            await LoadAsync(generation, token).ConfigureAwait(false);
+            await LoadObservedAsync(generation, token).ConfigureAwait(false);
             ready.TrySetResult();
             await foreach (var _ in subscription.ReadAllAsync(token).ConfigureAwait(false))
-                await LoadAsync(generation, token).ConfigureAwait(false);
+                await LoadObservedAsync(generation, token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -50,6 +54,26 @@ public sealed class DisplayProfilesWidget : Widget
             Invalidate();
         }
         finally { ready.TrySetResult(); }
+    }
+    private async Task LoadObservedAsync(long generation, CancellationToken token)
+    {
+        // Display enumeration can briefly fail during a mode switch. A failed
+        // read must not dispose the subscription that delivers the final outcome.
+        for (var attempt = 0; ; ++attempt)
+        {
+            try { await LoadAsync(generation, token).ConfigureAwait(false); return; }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                if (attempt < 2 && error is WidgetCapabilityException capability && capability.ErrorCode is
+                    "display_mode_unavailable" or "display_changing" or "request_timeout")
+                { await Task.Delay(250, token).ConfigureAwait(false); continue; }
+                lock (_gate) if (generation == _generation)
+                { _error = Message(error); if (_state is null) _focus = "display.retry"; }
+                Invalidate();
+                return;
+            }
+        }
     }
     private async Task LoadAsync(long generation, CancellationToken token)
     {
@@ -85,6 +109,7 @@ public sealed class DisplayProfilesWidget : Widget
             {
                 "kept" => "Display setup kept.",
                 "reverted" => "Previous display setup restored.",
+                "preview-changed" => "The display setup changed before it could be kept. The previous setup was restored. Try again.",
                 "rollback-failed" => "Windows couldn't restore the previous setup. Open Windows Display settings.",
                 _ => "Windows couldn't finish the display change.",
             }, outcome is "kept" or "reverted" ? ToastTone.Info : ToastTone.Danger);
@@ -96,7 +121,14 @@ public sealed class DisplayProfilesWidget : Widget
         {
             lock (_gate)
             {
-                if (_state?.PendingRestore is null) return;
+                if (_state?.PendingRestore is not { } pending) return;
+                if (pending.Deadline <= DateTimeOffset.UtcNow && _deadlineRefreshId != pending.Id)
+                {
+                    var generation = _generation;
+                    var operation = Operations.RunSingleFlight("display.confirmation-refresh",
+                        context => new ValueTask(LoadObservedAsync(generation, context.CancellationToken)));
+                    if (operation.IsAccepted) _deadlineRefreshId = pending.Id;
+                }
                 TickCountdown();
             }
             Invalidate();
@@ -118,7 +150,7 @@ public sealed class DisplayProfilesWidget : Widget
         long generation;
         lock (_gate)
         {
-            if (_busy) return;
+            if (_busy || Operations.IsBusy("display.restore")) return;
             generation = _generation;
             if (action.FocusedElementId is { } focused && focused.StartsWith("display.profile.", StringComparison.Ordinal))
                 _selected = focused["display.profile.".Length..];
@@ -148,6 +180,24 @@ public sealed class DisplayProfilesWidget : Widget
             _busy = true;
         }
         Invalidate();
+        if (action.ActionId.StartsWith("apply.", StringComparison.Ordinal) || action.ActionId is "keep" or "revert")
+        {
+            var operation = Operations.RunSingleFlight("display.restore",
+                context => ExecuteActionAsync(action, id, editor, confirmation, generation, context.CancellationToken),
+                WidgetOperationLifetime.Widget);
+            if (!operation.IsAccepted)
+            {
+                lock (_gate) { _busy = false; Toast("The display change couldn't start. Try again.", ToastTone.Danger); }
+                Invalidate();
+            }
+            return;
+        }
+        await ExecuteActionAsync(action, id, editor, confirmation, generation, cancellationToken);
+    }
+    private async ValueTask ExecuteActionAsync(WidgetActionEvent action, string? id, string? editor,
+        string? confirmation, long generation, CancellationToken cancellationToken)
+    {
+        string? restoreRequested = null;
         try
         {
             WidgetDisplayProfilesState state;
@@ -174,12 +224,15 @@ public sealed class DisplayProfilesWidget : Widget
                 state = await HostServices.DisplayProfiles.ApplyAsync(id!, cancellationToken);
             else if (action.ActionId is "keep" or "revert")
             {
-                string? restore;
-                lock (_gate) restore = _state?.PendingRestore?.Id;
-                if (restore is null) return;
-                state = action.ActionId == "keep"
-                    ? await HostServices.DisplayProfiles.KeepAsync(restore, cancellationToken)
-                    : await HostServices.DisplayProfiles.RevertAsync(restore, cancellationToken);
+                WidgetDisplayProfileRestore? pending;
+                lock (_gate) pending = _state?.PendingRestore;
+                if (pending is null) return;
+                restoreRequested = pending.Id;
+                state = pending.Deadline <= DateTimeOffset.UtcNow
+                    ? await HostServices.DisplayProfiles.GetAsync(cancellationToken)
+                    : action.ActionId == "keep"
+                        ? await HostServices.DisplayProfiles.KeepAsync(pending.Id, cancellationToken)
+                        : await HostServices.DisplayProfiles.RevertAsync(pending.Id, cancellationToken);
             }
             else return;
             lock (_gate)
@@ -197,11 +250,21 @@ public sealed class DisplayProfilesWidget : Widget
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (WidgetCapabilityException error) when (error.ErrorCode == "display_restore_expired" &&
+            action.ActionId is "keep" or "revert")
+        {
+            // The guard can finish between rendering a button and pressing it.
+            // Its expired reply is authoritative; discard that dialog even if
+            // the fresh display read is briefly unavailable.
+            lock (_gate) if (generation == _generation && _state is { } current && current.PendingRestore?.Id == restoreRequested)
+                Adopt(current with { PendingRestore = null });
+            await LoadObservedAsync(generation, cancellationToken).ConfigureAwait(false);
+        }
         catch (Exception error) when (error is not OutOfMemoryException)
         { lock (_gate) if (generation == _generation) Toast(Message(error), ToastTone.Danger); }
         finally
         {
-            lock (_gate) if (generation == _generation) _busy = false;
+            lock (_gate) _busy = false;
             Invalidate();
         }
     }
@@ -228,6 +291,7 @@ public sealed class DisplayProfilesWidget : Widget
         "display_restore_expired" => "This display confirmation has ended.",
         "display_guard_unavailable" => "Windows couldn't start the restore safety check. Start WidgetRail normally and try again.",
         "display_restore_failed" => "Windows couldn't complete the display change. Check your setup and try again.",
+        "display_restore_unstable" => "The displays didn't finish waking up. The previous setup was restored. Try again once the monitors are awake.",
         "display_rollback_failed" => "Windows couldn't restore the previous setup. Open Windows Display settings.",
         "display_profile_invalid" or "display_profile_store_invalid" =>
             "Saved display profiles could not be read. Your existing data has been kept.",
@@ -254,6 +318,8 @@ public sealed class DisplayProfilesWidget : Widget
                     UI.Row("display.pending.actions",
                         UI.Button("Keep changes", "keep", "display.keep").Busy(_busy).Disabled(seconds == 0),
                         UI.Button("Revert", "revert", "display.revert").Busy(_busy)).Classes("display-actions")).Classes("display-dialog"));
+                if (_error is not null)
+                    children.Add(UI.Button("Refresh status", "retry", "display.retry").Busy(_busy));
             }
             else if (_editor is not null)
             {
@@ -280,6 +346,11 @@ public sealed class DisplayProfilesWidget : Widget
                     UI.ActionSurface("name-new", "display.save", "Save current display setup", ActionSurfaceOrientation.Horizontal,
                         UI.ControllerHint(ControllerButton.Y, "Save current setup", "display.save.hint"))
                         .Busy(_busy).Disabled(_state is null).Classes("display-save")).Classes("display-header"));
+                if (Operations.IsBusy("display.restore"))
+                    children.Add(UI.Row("display.applying",
+                        UI.LoadingIndicator("display.applying.indicator", "Waking displays"),
+                        UI.Text("Waking displays and waiting for a stable setup…", "display.applying.text")
+                            .Classes("display-applying-label")).Classes("display-applying"));
                 if (_state is { } state)
                 {
                     children.Add(UI.Stack("display.current",

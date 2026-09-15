@@ -769,6 +769,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 BrokerCapabilityDomain.Media =>
                     MediaCapabilityDomain.ProjectEvent(
                         platformEvent.EventType, platformEvent.Payload),
+                BrokerCapabilityDomain.Displays =>
+                    DisplayProfilesCapabilityDomain.ProjectEvent(platformEvent.EventType),
                 _ => throw new BrokerException(
                     "invalid_backend_data", "Broker event payload is invalid."),
             };

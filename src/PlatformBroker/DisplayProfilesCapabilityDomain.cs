@@ -23,6 +23,14 @@ public interface IDisplayProfilesPlatformBackend : IPlatformBrokerEventSource
 
 internal sealed class DisplayProfilesCapabilityDomain(IPlatformBrokerBackend backend)
 {
+    internal static JsonElement ProjectEvent(string eventType) => eventType switch
+    {
+        // Invalidation only: display names, paths and native structures must
+        // never be forwarded from a provider event into a widget subscription.
+        PlatformCapabilities.DisplayProfilesChanged => BrokerJson.ToElement(new { acknowledged = true }),
+        _ => throw new BrokerException("invalid_backend_data", "Display event type is invalid.")
+    };
+
     internal async Task<JsonElement> ExecuteAsync(string operation, JsonElement payload,
         BrokerWidgetIdentity identity, CancellationToken token)
     {
