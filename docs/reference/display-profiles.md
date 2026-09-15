@@ -34,6 +34,10 @@ the same identity resolver.
 
 Windows validates the saved modes before applying them. A monitor, driver or
 connection that no longer supports a saved mode can refuse it.
+Monitor VRR controls can change the reported refresh rate and signal timings.
+Keep VRR consistent when saving and restoring a profile. Summaries show refresh
+rates to three decimal places when needed (for example, 240 Hz and 239.997 Hz);
+the matching check still compares the exact reported rate.
 
 ## SDK access
 

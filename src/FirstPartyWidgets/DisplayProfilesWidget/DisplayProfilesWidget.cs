@@ -294,6 +294,8 @@ public sealed class DisplayProfilesWidget : Widget
                 else children.Add(UI.Text(_error ?? "Reading your displays…", "display.loading").Classes("display-summary"));
                 if (_error is not null) children.Add(UI.Button("Try again", "retry", "display.retry").Busy(_busy));
                 children.Add(UI.Text("Scaling stays managed by Windows.", "display.scaling").Classes("display-help"));
+                children.Add(UI.Text("Changing VRR in your monitor's menu can change refresh rates and make saved profiles incompatible. Keep VRR consistent when saving and restoring.",
+                    "display.vrr-warning").Classes("display-help", "display-warning"));
             }
             if (_toast is not null) children.Add(UI.Toast("Display Profiles", _toast, _tone, "display.toast"));
             var root = UI.Stack("display.root", children.ToArray()).InputScope(scope).Classes("display-widget");
@@ -326,5 +328,5 @@ public sealed class DisplayProfilesWidget : Widget
                 UI.Text(display.IsPrimary ? "Primary" : display.Orientation, id + "." + index + ".label").Classes("display-monitor-label"))
                 .Classes("display-monitor")).ToArray()).Classes("display-monitor-strip");
     private static string Summary(IReadOnlyList<WidgetDisplayProfileMonitor> displays) => string.Join(" · ",
-        displays.Select(display => $"{display.Name} {display.Width}×{display.Height} {display.RefreshRate:0.##} Hz"));
+        displays.Select(display => $"{display.Name} {display.Width}×{display.Height} {display.RefreshRate:0.###} Hz"));
 }
