@@ -16262,37 +16262,14 @@ private:
         };
         session.windowBounds = widgetrail::shell::ComputeFixedChromeWindowBounds(
             workArea, chromeWidth, chromeHeight);
-        if (state_.surface() == widgetrail::Surface::Widget) {
-            const float guideHeightDip = static_cast<float>(guideHeight) /
-                session.pixelsPerDip;
-            session.renderedGuideContentBottom =
-                session.guideClientBounds.top + static_cast<LONG>(std::lround(
-                    WidgetGuideContentBottomDip(guideHeightDip) *
-                    session.pixelsPerDip));
-        } else {
-            const auto dashboardPlacement = ComputePlatformPlacement(
-                workArea, effectiveDpi,
-                static_cast<float>(kPanelWidth) * interfaceScale,
-                static_cast<float>(kDashboardHeight) * interfaceScale);
-            if (!dashboardPlacement) return false;
-            const int panelToGuideGap = static_cast<int>(std::lround(
-                kPanelToGuideGapDip * session.pixelsPerDip));
-            const auto dashboardBounds =
-                widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
-                    workArea,
-                    session.windowBounds.top + session.guideClientBounds.top,
-                    dashboardPlacement->width, dashboardPlacement->height,
-                    panelToGuideGap);
-            if (!dashboardBounds) return false;
-            const float dashboardHeightDip =
-                static_cast<float>(dashboardPlacement->height) /
-                session.pixelsPerDip;
-            session.renderedGuideContentBottom =
-                dashboardBounds->top - session.windowBounds.top +
-                static_cast<LONG>(std::lround(
-                    DashboardGuideContentBottomDip(dashboardHeightDip) *
-                    session.pixelsPerDip));
-        }
+        // Fixed chrome outlives content-mode changes. Reserve the actual guide
+        // area even when the empty-catalog dashboard has no footer to paint.
+        const float guideHeightDip = static_cast<float>(guideHeight) /
+            session.pixelsPerDip;
+        session.renderedGuideContentBottom =
+            session.guideClientBounds.top + static_cast<LONG>(std::lround(
+                WidgetGuideContentBottomDip(guideHeightDip) *
+                session.pixelsPerDip));
         session.renderedGuideContentBottom = std::clamp(
             session.renderedGuideContentBottom, 0L, chromeHeight);
         const auto localTrayLayout = ComputeCompositionTrayLayout(session);
