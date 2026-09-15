@@ -611,7 +611,8 @@ void Run(const Arguments& arguments, const bool startHidden) {
         const auto guide = ParseBounds(record, "guide=");
         const auto selected = ParseBounds(record, "selected=");
         Require(guide && selected, "Applied chrome sample omitted guide or tray icon bounds.");
-        Require(selected->top >= guide->bottom,
+        Require(selected->bottom <= guide->top || selected->top >= guide->bottom ||
+                selected->right <= guide->left || selected->left >= guide->right,
             "Tray icon overlaps the guide during cold startup or re-show.");
         ++checkedSamples;
     }
