@@ -4,6 +4,9 @@ using WidgetRail.WindowsAppLibraryProvider;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Packaged activation continues when foreground transfer is unavailable", PackagedActivationScenarios.ForegroundTransferIsOptional),
+    ("Packaged activation reports the real activation failure", PackagedActivationScenarios.ActivationFailureIsAuthoritative),
+    ("Packaged activation cancellation never opens an app", PackagedActivationScenarios.CancellationPreventsActivation),
     ("Task window control preserves distinct windows and revalidates identity", TaskWindowScenarios.Run),
     ("Running icons are lazy unregistered and observation scoped", PortableRegistrationScenarios.RunningArtworkDoesNotRegisterAndRetires),
     ("Production composition automatically admits installed Epic and GOG sources",
@@ -178,7 +181,13 @@ var installedSourceTests = new HashSet<string>(StringComparer.Ordinal)
     "Installed sources share one normalized exact-authority contract",
     "Source failure preserves another source and its own last-good records",
 };
-var tests = installedSourcePolicyOnly
+var tests = args.Contains("--packaged-launch-only", StringComparer.Ordinal)
+    ? allTests.Where(test => test.Name.StartsWith("Packaged activation", StringComparison.Ordinal) || test.Name is
+        "Packaged launch exactly revalidates AUMID before activation" or
+        "AppsFolder rejects malformed launch identifiers" or
+        "Shell failures expose only sanitized broker errors" or
+        "Windows package launch revalidates exact current registration").ToArray()
+    : installedSourcePolicyOnly
     ? allTests.Where(test => installedSourceTests.Contains(test.Name)).ToArray()
     : runningRegistrationOnly
         ? allTests.Where(test => test.Name.Contains(

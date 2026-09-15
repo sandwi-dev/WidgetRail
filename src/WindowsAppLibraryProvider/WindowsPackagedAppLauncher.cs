@@ -28,12 +28,10 @@ internal sealed class WindowsPackagedAppLauncher : IWindowsPackagedAppLauncher
             cancellationToken.ThrowIfCancellationRequested();
             var manager = (IApplicationActivationManager)activationObject;
             activationUnknown = Marshal.GetIUnknownForObject(activationObject);
-            var foregroundResult = CoAllowSetForegroundWindow(activationUnknown, 0);
-            if (foregroundResult < 0) Marshal.ThrowExceptionForHR(foregroundResult);
-            cancellationToken.ThrowIfCancellationRequested();
-            var result = manager.ActivateApplication(
-                exactAumid, null, ActivateOptions.None, out _);
-            if (result < 0) Marshal.ThrowExceptionForHR(result);
+            ActivateWithForegroundOffer(
+                () => CoAllowSetForegroundWindow(activationUnknown, 0),
+                () => manager.ActivateApplication(exactAumid, null, ActivateOptions.None, out _),
+                cancellationToken);
         }
         finally
         {
@@ -41,6 +39,19 @@ internal sealed class WindowsPackagedAppLauncher : IWindowsPackagedAppLauncher
             if (Marshal.IsComObject(activationObject))
                 Marshal.FinalReleaseComObject(activationObject);
         }
+    }
+
+    internal static void ActivateWithForegroundOffer(Func<int> offerForeground,
+        Func<int> activate, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // Foreground delegation is optional. The activation object can lack
+        // IForegroundTransfer, or this background broker may lack foreground
+        // privilege. Neither result tells us whether the application can open.
+        _ = offerForeground();
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = activate();
+        if (result < 0) Marshal.ThrowExceptionForHR(result);
     }
 
     [ComImport]
