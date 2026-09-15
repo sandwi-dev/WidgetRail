@@ -36,7 +36,8 @@
   ],
   "residencyPolicy": {
     "schemaVersion": 1,
-    "mode": "suspend-when-hidden"
+    "mode": "unload-after-idle",
+    "idleSeconds": 120
   },
   "resourceRequest": {
     "memoryMb": 64,

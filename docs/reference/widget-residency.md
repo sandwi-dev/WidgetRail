@@ -16,7 +16,8 @@ The host alone moves a widget through `Created`, `Background`, `Visible`,
 and `ActiveCancellationToken`.
 
 Every policy enters `Background` when the overlay hides or another widget is
-selected. Background denies ordinary manifest-declared broker capabilities.
+selected, unless a pinned surface still needs it Visible or Interactive.
+Background denies ordinary manifest-declared broker capabilities.
 The bounded host-granted `HostServices.PrivateState` service is the explicit
 persistence exception; it does not authorize provider polling, UI refresh, or
 lifecycle promotion. Widgets cannot promote their own lifecycle or override
@@ -39,6 +40,11 @@ Omitting `residencyPolicy` means keep-alive.
 | `keep-alive` | Resident after first launch | Background callback/tokens; explicitly authored widget-lifetime work may continue | No inferred eviction |
 | `suspend-when-hidden` | Resident | Background callback/tokens; visible/state work must stop | Suppresses hidden snapshots, invalidations, input, and broker access |
 | `unload-after-idle` | Resident until the explicit idle bound, then destroyed | Background first; `Destroying` if the bound expires | Caches last validated snapshot, bounded teardown, lazy recreation on visibility |
+
+The idle duration measures time in Background, not time since the last input.
+Unexpected failures of the bridge's idle-unload task record a widget lifetime
+diagnostic with `failure=idle-unload-failed`. Normal cancellation when a widget
+becomes visible or is retired does not produce that failure diagnostic.
 
 The bridge also owns host-wide worker accounting. Application-worker count has
 no framework limit by default. Admission is atomic and happens before launch.

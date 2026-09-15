@@ -1042,6 +1042,49 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(2, fixture.Invalidations.Count);
     }
 
+    internal static async Task IdleUnloadFailuresAreDiagnosticOnly()
+    {
+        foreach (var failure in new Exception[]
+                 { new IOException("private-path-and-token"), new OperationCanceledException("unexpected") })
+        {
+            var delay = new ManualRegistryDelay();
+            var diagnostic = new TaskCompletionSource<BridgeClientLifetimeDiagnostic>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var configured = Widget("idle-failure", worker: 'd', catalog: 'd',
+                residency: new WidgetResidencyPolicy
+                {
+                    Mode = WidgetResidencyPolicies.UnloadAfterIdle,
+                    IdleSeconds = WidgetResidencyPolicies.MinimumIdleSeconds,
+                });
+            await using var fixture = new RegistryFixture(Catalog(configured),
+                configure: (_, client) => client.UnloadFailure = failure,
+                delay: delay.InvokeAsync,
+                lifetimeDiagnostic: item =>
+                {
+                    if (item.Process.FailureCode != "idle-unload-failed") return;
+                    diagnostic.TrySetResult(item);
+                    throw new IOException("Diagnostic sink unavailable");
+                });
+            await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+            await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
+            (await delay.NextAsync()).Release();
+            var observed = await diagnostic.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            RegistryAssert.Equal(configured.Id, observed.WidgetId);
+            RegistryAssert.Equal(WidgetResidencyMode.UnloadAfterIdle, observed.ResidencyMode);
+            RegistryAssert.Equal(WidgetProcessLifetimeEventKind.LifecycleFailed, observed.Process.Kind);
+            RegistryAssert.Equal("idle-unload-failed", observed.Process.FailureCode);
+            RegistryAssert.Equal(1, fixture.Registry.RunningWorkerCount);
+            RegistryAssert.Equal(0, fixture.Failures.Count);
+
+            fixture.Clients[0].UnloadFailure = null;
+            await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+            await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
+            (await delay.NextAsync()).Release();
+            await fixture.Clients[0].Unloaded.WaitAsync(TimeSpan.FromSeconds(2));
+            RegistryAssert.Equal(0, fixture.Registry.RunningWorkerCount);
+        }
+    }
+
     internal static async Task IdleUnloadCancellationAndReplacementAreOwned()
     {
         var delay = new ManualRegistryDelay();
@@ -1054,7 +1097,12 @@ internal static class BridgeClientRegistryScenarios
                 Mode = WidgetResidencyPolicies.UnloadAfterIdle,
                 IdleSeconds = WidgetResidencyPolicies.MinimumIdleSeconds,
             });
-        await using var fixture = new RegistryFixture(Catalog(initial), delay: delay.InvokeAsync);
+        var failures = 0;
+        await using var fixture = new RegistryFixture(Catalog(initial), delay: delay.InvokeAsync,
+            lifetimeDiagnostic: item =>
+            {
+                if (item.Process.FailureCode == "idle-unload-failed") Interlocked.Increment(ref failures);
+            });
 
         await fixture.SetLifecycleAsync(initial.Id, WidgetLifecycleState.Visible);
         _ = await fixture.GetSnapshotAsync(initial.Id);
@@ -1082,6 +1130,7 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(0, fixture.Clients[0].UnloadCount);
         RegistryAssert.Equal(1, fixture.Clients[0].DisposeCount);
         RegistryAssert.Equal(0, fixture.Registry.ResidencyBudget.ApplicationWorkers);
+        RegistryAssert.Equal(0, Volatile.Read(ref failures));
     }
 
     internal static async Task FreshGenericWorkersRequireTypedRecoveryFromRetainedBases()
@@ -2274,7 +2323,8 @@ internal sealed class RegistryFixture : IAsyncDisposable
         BridgeCatalog catalog,
         WorkerResidencyBudgetOptions? options = null,
         Action<ConfiguredWidget, RegistryTestClient>? configure = null,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        Action<BridgeClientLifetimeDiagnostic>? lifetimeDiagnostic = null)
     {
         _configure = configure;
         Registry = new BridgeClientRegistry(
@@ -2315,7 +2365,7 @@ internal sealed class RegistryFixture : IAsyncDisposable
                 Failures.Add(item);
                 return Task.CompletedTask;
             },
-            delay);
+            delay, lifetimeDiagnostic);
     }
 
     internal BridgeClientRegistry Registry { get; }
@@ -2420,6 +2470,7 @@ internal sealed class RegistryTestClient(
     internal bool BlockSnapshots { get; set; }
     internal bool BlockDispose { get; set; }
     internal Exception? DisposeFailure { get; set; }
+    internal Exception? UnloadFailure { get; set; }
     internal int FailStartsAfterReservation { get; set; }
     internal int FailLifecycleTransitions { get; set; }
     internal int FailSnapshots { get; set; }
@@ -2578,6 +2629,7 @@ internal sealed class RegistryTestClient(
     {
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _unloadCount);
+        if (UnloadFailure is { } failure) throw failure;
         Stop();
         _unloaded.TrySetResult();
         return Task.CompletedTask;

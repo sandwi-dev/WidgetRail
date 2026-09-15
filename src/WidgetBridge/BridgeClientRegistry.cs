@@ -2003,11 +2003,17 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 registration.OperationGate.Release();
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
+            RecordLifetime(registration, new WidgetProcessLifetimeDiagnostic(
+                WidgetProcessLifetimeEventKind.LifecycleFailed,
+                registration.Client.Starts,
+                null,
+                WidgetLifecycleState.Background,
+                FailureCode: "idle-unload-failed"));
         }
     }
 

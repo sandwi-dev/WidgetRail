@@ -20,7 +20,8 @@
   "optionalPermissions": [],
   "residencyPolicy": {
     "schemaVersion": 1,
-    "mode": "keep-alive"
+    "mode": "unload-after-idle",
+    "idleSeconds": 300
   },
   "resourceRequest": { "memoryMb": 48, "updateHz": 4 },
   "architectures": [ "x64" ]

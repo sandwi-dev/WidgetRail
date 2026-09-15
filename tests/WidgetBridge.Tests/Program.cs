@@ -86,6 +86,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry owns compatible replacement removal and stale generations", BridgeClientRegistryScenarios.CatalogReplacementAndRemovalOwnGenerations),
     ("Client registry isolates typed widget runtime failures", BridgeClientRegistryScenarios.WidgetRuntimeFailuresAreTypedAndRegistrationLocal),
     ("Client registry owns idle unload cancellation and replacement drain", BridgeClientRegistryScenarios.IdleUnloadCancellationAndReplacementAreOwned),
+    ("Client registry reports idle unload failures without blocking recovery", BridgeClientRegistryScenarios.IdleUnloadFailuresAreDiagnosticOnly),
     ("Fresh generic workers require typed recovery from retained presentation bases", BridgeClientRegistryScenarios.FreshGenericWorkersRequireTypedRecoveryFromRetainedBases),
     ("Client registry restart restores lifecycle and resets generation", BridgeClientRegistryScenarios.RestartRestoresLifecycleAndResetsGeneration),
     ("Client registry restart reserves one generation and cleans failed restore", BridgeClientRegistryScenarios.RestartReservationAndRestoreFailureAreClosed),

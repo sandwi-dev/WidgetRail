@@ -35,7 +35,11 @@ there are no LB/RB page-jump shortcuts. Home fetches 16 games per page; Browse f
 once whenever it becomes active, including reopening the overlay and returning from another
 route. A successful refresh starts the rail at the beginning.
 Visible-to-interactive transitions do not trigger a second refresh.
-Browse reuses its loaded pages, stable scroll container, and position on reopening.
+Browse reuses its loaded pages, stable scroll container, and position on reopening
+while the widget remains loaded. After five minutes hidden, WidgetRail unloads
+the widget application to release memory. Reopening then starts a fresh instance;
+in-memory pages and navigation reset, while saved settings remain. This does not
+close Playnite itself or its Bridge extension.
 Refresh and query changes request fresh data explicitly. The retention target is 48 items for Home and 60 for Browse, with a hard maximum
 of 192; visible pages remain protected by the shared cursor policy.
 
