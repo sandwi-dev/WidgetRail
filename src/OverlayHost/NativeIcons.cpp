@@ -278,16 +278,44 @@ template <std::size_t Count>
 [[nodiscard]] bool DrawSettings(
     ID2D1RenderTarget* target, ID2D1Brush* brush, const Canvas& c, const float stroke) noexcept {
     constexpr float pi = 3.14159265358979323846F;
-    const auto center = c.Point(0.5F, 0.5F);
-    target->DrawEllipse(D2D1::Ellipse(center, c.size * 0.30F, c.size * 0.30F), brush, stroke);
-    target->DrawEllipse(D2D1::Ellipse(center, c.size * 0.12F, c.size * 0.12F), brush, stroke);
-    for (int index = 0; index < 8; ++index) {
-        const float angle = static_cast<float>(index) * pi / 4.0F;
-        const auto inner = c.Point(0.5F + std::cos(angle) * 0.29F, 0.5F + std::sin(angle) * 0.29F);
-        const auto outer = c.Point(0.5F + std::cos(angle) * 0.42F, 0.5F + std::sin(angle) * 0.42F);
-        DrawRoundLine(target, brush, inner, outer, stroke * 1.35F);
+    // One continuous outline avoids the dark seams and heavy intersections
+    // produced by overlapping a ring with eight round-ended spokes.
+    std::array<D2D1_POINT_2F, 32> outline;
+    constexpr std::array offsets{-0.29F, -0.13F, 0.13F, 0.29F};
+    constexpr std::array radii{0.33F, 0.44F, 0.44F, 0.33F};
+    for (std::size_t tooth = 0; tooth < 8; ++tooth) {
+        for (std::size_t corner = 0; corner < 4; ++corner) {
+            const float angle = static_cast<float>(tooth) * pi / 4.0F + offsets[corner];
+            outline[tooth * 4 + corner] = c.Point(
+                0.5F + std::cos(angle) * radii[corner],
+                0.5F + std::sin(angle) * radii[corner]);
+        }
     }
-    return true;
+    const bool result = PaintPath(target, brush, stroke, PathPaint::Stroke,
+        [&outline](ID2D1GeometrySink* sink) {
+            const auto between = [](const D2D1_POINT_2F a, const D2D1_POINT_2F b,
+                                    const float amount) {
+                return D2D1::Point2F(a.x + (b.x - a.x) * amount,
+                                    a.y + (b.y - a.y) * amount);
+            };
+            sink->BeginFigure(between(outline[0], outline.back(), 0.20F),
+                D2D1_FIGURE_BEGIN_HOLLOW);
+            for (std::size_t index = 0; index < outline.size(); ++index) {
+                const auto point = outline[index];
+                const auto before = between(point,
+                    outline[(index + outline.size() - 1) % outline.size()], 0.20F);
+                const auto after = between(point,
+                    outline[(index + 1) % outline.size()], 0.20F);
+                sink->AddLine(before);
+                sink->AddBezier(D2D1::BezierSegment(
+                    between(before, point, 2.0F / 3.0F),
+                    between(after, point, 2.0F / 3.0F), after));
+            }
+            sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+        });
+    target->DrawEllipse(D2D1::Ellipse(c.Point(0.5F, 0.5F),
+        c.size * 0.15F, c.size * 0.15F), brush, stroke);
+    return result;
 }
 
 [[nodiscard]] bool DrawWarning(
