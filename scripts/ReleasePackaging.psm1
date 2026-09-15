@@ -99,6 +99,12 @@ function Test-ReleaseInventory {
             throw "Release inventory differs at $($actual[$i].path)."
         }
     }
+    foreach ($desktop in @($manifest.requirements | Where-Object name -CEQ '.NET Desktop')) {
+        foreach ($file in @('System.Windows.Forms.dll', 'PresentationFramework.dll', 'Microsoft.WindowsDesktop.App.deps.json')) {
+            $path = Assert-ReleasePath (Join-Path $Root "dotnet/shared/Microsoft.WindowsDesktop.App/$($desktop.version)/$file") -Within $Root
+            if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw "Release is missing the declared Desktop runtime: $file" }
+        }
+    }
     $catalog = Get-Content -LiteralPath (Join-Path $Root 'widget-catalog.json') -Raw | ConvertFrom-Json
     foreach ($path in @($catalog.genericWorkerExecutable) + @($catalog.widgets | ForEach-Object workerExecutable)) {
         if ([IO.Path]::IsPathRooted($path)) { throw 'Catalog runtime path must be relative.' }
