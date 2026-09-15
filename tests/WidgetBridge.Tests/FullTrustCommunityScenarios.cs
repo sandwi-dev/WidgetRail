@@ -384,7 +384,7 @@ internal static class FullTrustCommunityScenarios
         var runtimeRoot = Path.Combine(hostOutput, "runtime");
         var expectedDirectories = new[]
         {
-            "AudioMixer", "Bridge", "EmbeddedMediaSample", "GamesApps", "MediaSessions",
+            "AudioMixer", "Bridge", "DisplayProfiles", "EmbeddedMediaSample", "GamesApps", "MediaSessions",
             "NetworkControls", "Power", "Settings", "TaskSwitcher", "WidgetWorkerHost",
         };
         var actualDirectories = Directory.EnumerateDirectories(runtimeRoot)
@@ -406,6 +406,7 @@ internal static class FullTrustCommunityScenarios
         foreach (var (runtime, project, assembly) in new[]
                  {
                      ("AudioMixer", "AudioMixerWidget", "AudioMixerWidget.dll"),
+                     ("DisplayProfiles", "DisplayProfilesWidget", "DisplayProfilesWidget.dll"),
                      ("NetworkControls", "NetworkControlsWidget", "NetworkControlsWidget.dll"),
                      ("GamesApps", "GamesAppsWidget", "GamesAppsWidget.dll"),
                      ("MediaSessions", "MediaSessionsWidget", "MediaSessionsWidget.dll"),
