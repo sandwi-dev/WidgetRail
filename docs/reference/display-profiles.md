@@ -63,6 +63,18 @@ A per-user guard lock prevents overlapping restores across bridge restarts.
 Changes are saved to the
 Windows display database only after Keep is confirmed.
 
+The first temporary apply also wakes sleeping monitors. Before offering Keep,
+the guard requires the requested setup to remain stable for two seconds. If
+Windows settles on a different setup while the monitors wake, the guard resolves
+the display paths again and retries once. This stabilization phase has a
+12-second budget, checked between Windows calls; an in-progress native call
+cannot be interrupted. Failure or loss of the bridge connection restores the
+previous setup. The full 15-second confirmation countdown starts after the
+preview stabilizes. Keep reads the active setup again and refuses to save it if
+it has changed or if the confirmation expired during that read.
+The widget runs restore actions through the SDK's background-operation facility
+so the wake-up wait does not block controller requests.
+
 If a monitor disappears during confirmation, rollback can fall back to Windows'
 last saved available topology.
 

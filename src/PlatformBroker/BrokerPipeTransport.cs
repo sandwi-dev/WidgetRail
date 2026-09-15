@@ -53,6 +53,16 @@ internal static class BrokerPipeRequestTimeoutPolicy
     internal static TimeSpan Resolve(
         BrokerPipeTransportOptions options, BrokerRequestEnvelope request)
     {
+        // Display restore owns a bounded wake-up phase in a separate guard.
+        // Reads can wait behind that transaction; unrelated display edits and
+        // other capabilities keep their ordinary deadline on both pipe ends.
+        if ((request.CapabilityId == PlatformCapabilities.DisplaysControlV1 &&
+             request.Operation is PlatformCapabilities.DisplayProfilesApply or
+                 PlatformCapabilities.DisplayProfilesKeep or PlatformCapabilities.DisplayProfilesRevert) ||
+            (request.CapabilityId == PlatformCapabilities.DisplaysReadV1 &&
+             request.Operation == PlatformCapabilities.DisplayProfilesGet))
+            return options.RequestTimeout > TimeSpan.FromSeconds(30) ? options.RequestTimeout : TimeSpan.FromSeconds(30);
+
         if (!PlatformCapabilities.TryGetLoopbackPort(request.CapabilityId, out _) ||
             request.Operation is not (PlatformCapabilities.LoopbackHttpGetJson or
                 PlatformCapabilities.LoopbackHttpPostJson) ||
@@ -63,7 +73,7 @@ internal static class BrokerPipeRequestTimeoutPolicy
             return options.RequestTimeout;
 
         // Provider timeout plus a small, fixed IPC completion budget. Only the
-        // exact-port loopback operations can extend the normal broker deadline.
+        // exact-port loopback operations can request a payload-defined deadline.
         return TimeSpan.FromMilliseconds(timeoutMilliseconds + 2_000);
     }
 }

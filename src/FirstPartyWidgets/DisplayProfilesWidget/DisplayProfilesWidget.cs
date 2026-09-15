@@ -27,9 +27,12 @@ public sealed class DisplayProfilesWidget : Widget
     protected override async ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
         long generation;
-        lock (_gate) { generation = ++_generation; _editor = _confirm = null; _busy = false; }
+        lock (_gate) { generation = ++_generation; _editor = _confirm = null; _busy = Operations.IsBusy("display.restore"); }
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _watch = WatchAsync(generation, activeLifetime, ready);
+        // Reopening during an admitted restore may await the provider's transaction
+        // lock. Retain the last view while the subscription fetches the result.
+        lock (_gate) if (_state is not null) ready.TrySetResult();
         await ready.Task.WaitAsync(activeLifetime).ConfigureAwait(false);
     }
     private async Task WatchAsync(long generation, CancellationToken token, TaskCompletionSource ready)
@@ -85,6 +88,7 @@ public sealed class DisplayProfilesWidget : Widget
             {
                 "kept" => "Display setup kept.",
                 "reverted" => "Previous display setup restored.",
+                "preview-changed" => "The display setup changed before it could be kept. The previous setup was restored. Try again.",
                 "rollback-failed" => "Windows couldn't restore the previous setup. Open Windows Display settings.",
                 _ => "Windows couldn't finish the display change.",
             }, outcome is "kept" or "reverted" ? ToastTone.Info : ToastTone.Danger);
@@ -118,7 +122,7 @@ public sealed class DisplayProfilesWidget : Widget
         long generation;
         lock (_gate)
         {
-            if (_busy) return;
+            if (_busy || Operations.IsBusy("display.restore")) return;
             generation = _generation;
             if (action.FocusedElementId is { } focused && focused.StartsWith("display.profile.", StringComparison.Ordinal))
                 _selected = focused["display.profile.".Length..];
@@ -148,6 +152,23 @@ public sealed class DisplayProfilesWidget : Widget
             _busy = true;
         }
         Invalidate();
+        if (action.ActionId.StartsWith("apply.", StringComparison.Ordinal) || action.ActionId is "keep" or "revert")
+        {
+            var operation = Operations.RunSingleFlight("display.restore",
+                context => ExecuteActionAsync(action, id, editor, confirmation, generation, context.CancellationToken),
+                WidgetOperationLifetime.Widget);
+            if (!operation.IsAccepted)
+            {
+                lock (_gate) { _busy = false; Toast("The display change couldn't start. Try again.", ToastTone.Danger); }
+                Invalidate();
+            }
+            return;
+        }
+        await ExecuteActionAsync(action, id, editor, confirmation, generation, cancellationToken);
+    }
+    private async ValueTask ExecuteActionAsync(WidgetActionEvent action, string? id, string? editor,
+        string? confirmation, long generation, CancellationToken cancellationToken)
+    {
         try
         {
             WidgetDisplayProfilesState state;
@@ -201,7 +222,7 @@ public sealed class DisplayProfilesWidget : Widget
         { lock (_gate) if (generation == _generation) Toast(Message(error), ToastTone.Danger); }
         finally
         {
-            lock (_gate) if (generation == _generation) _busy = false;
+            lock (_gate) _busy = false;
             Invalidate();
         }
     }
@@ -228,6 +249,7 @@ public sealed class DisplayProfilesWidget : Widget
         "display_restore_expired" => "This display confirmation has ended.",
         "display_guard_unavailable" => "Windows couldn't start the restore safety check. Start WidgetRail normally and try again.",
         "display_restore_failed" => "Windows couldn't complete the display change. Check your setup and try again.",
+        "display_restore_unstable" => "The displays didn't finish waking up. The previous setup was restored. Try again once the monitors are awake.",
         "display_rollback_failed" => "Windows couldn't restore the previous setup. Open Windows Display settings.",
         "display_profile_invalid" or "display_profile_store_invalid" =>
             "Saved display profiles could not be read. Your existing data has been kept.",
@@ -280,6 +302,8 @@ public sealed class DisplayProfilesWidget : Widget
                     UI.ActionSurface("name-new", "display.save", "Save current display setup", ActionSurfaceOrientation.Horizontal,
                         UI.ControllerHint(ControllerButton.Y, "Save current setup", "display.save.hint"))
                         .Busy(_busy).Disabled(_state is null).Classes("display-save")).Classes("display-header"));
+                if (Operations.IsBusy("display.restore"))
+                    children.Add(UI.Text("Applying display setup…", "display.applying").Classes("display-help"));
                 if (_state is { } state)
                 {
                     children.Add(UI.Stack("display.current",

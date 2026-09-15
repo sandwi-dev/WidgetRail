@@ -79,19 +79,23 @@ public static partial class DisplayRestoreGuard
             diagnostics?.Record("validate-begin");
             native.Validate(target);
             diagnostics?.Record("validate-complete");
+            var decision = input.ReadLineAsync(); // Watch parent loss while the monitors wake as well.
+            if (decision.IsCompleted) throw new OperationCanceledException();
             needsRollback = true; // Apply can partially change topology before reporting failure.
+            var stabilizationStarted = time.GetTimestamp();
             diagnostics?.Record("preview-apply-begin");
             native.Apply(target, persist: false);
+            diagnostics?.Record("preview-apply-complete", readback: true);
+            target = await DisplayPreviewStabilizer.WaitAsync(native, target, decision, time,
+                stabilizationStarted, diagnostics).ConfigureAwait(false);
             var started = time.GetTimestamp();
             using var timeoutCancellation = new CancellationTokenSource();
             var timeout = Task.Delay(confirmationTimeout, time, timeoutCancellation.Token);
-            diagnostics?.Record("preview-apply-complete", readback: true);
             var deadline = time.GetUtcNow() + confirmationTimeout;
             diagnostics?.Record("confirmation-started", deadline: deadline);
             await output.WriteLineAsync(JsonSerializer.Serialize(
                 new GuardReply("applied", deadline))).ConfigureAwait(false);
             await output.FlushAsync().ConfigureAwait(false);
-            var decision = input.ReadLineAsync(); // EOF means the parent exited: revert immediately.
             var completed = await Task.WhenAny(decision, timeout).ConfigureAwait(false);
             var response = completed == decision ? await decision.ConfigureAwait(false) : null;
             var keep = completed == decision && response == "keep:" + request.Id &&
@@ -101,12 +105,25 @@ public static partial class DisplayRestoreGuard
                 response == "revert:" + request.Id ? "decision-revert" : "decision-invalid", readback: true);
             if (keep)
             {
-                diagnostics?.Record("keep-apply-begin");
-                native.Apply(target, persist: true);
-                needsRollback = false;
-                diagnostics?.Record("keep-apply-complete", readback: true);
+                var current = native.Capture();
+                diagnostics?.Record("keep-current", current);
+                if (!target.Matches(current)) throw new DisplayPreviewChangedException();
+                // Capture can take time while Windows re-enumerates a display.
+                // A confirmation that expired during that read must still revert.
+                if (time.GetElapsedTime(started) >= confirmationTimeout)
+                {
+                    keep = false;
+                    diagnostics?.Record("decision-expired-during-read");
+                }
+                else
+                {
+                    diagnostics?.Record("keep-apply-begin");
+                    native.Apply(current, persist: true);
+                    needsRollback = false;
+                    diagnostics?.Record("keep-apply-complete", readback: true);
+                }
             }
-            else
+            if (!keep)
             {
                 diagnostics?.Record("rollback-begin", baseline);
                 native.Restore(baseline);
@@ -122,7 +139,12 @@ public static partial class DisplayRestoreGuard
         catch (Exception error) when (error is not OutOfMemoryException)
         {
             diagnostics?.Record("guard-failed", error: error);
-            var state = "restore-failed";
+            var state = error switch
+            {
+                DisplayPreviewUnstableException => "restore-unstable",
+                DisplayPreviewChangedException => "preview-changed",
+                _ => "restore-failed"
+            };
             if (needsRollback && baseline is not null)
             {
                 try
@@ -195,6 +217,8 @@ internal sealed class DisplayRestoreLauncher(string executable, string? diagnost
                 throw new BrokerException("display_busy", "Another display change is still finishing. Try again shortly.");
             if (reply?.State == "rollback-failed")
                 throw new BrokerException("display_rollback_failed", "Windows couldn't restore the previous display setup.");
+            if (reply?.State == "restore-unstable")
+                throw new BrokerException("display_restore_unstable", "The displays didn't finish waking up. The previous setup was restored. Try again once the monitors are awake.");
             if (reply?.State != "applied" || reply.Deadline is null)
                 throw new BrokerException(reply?.State == "guard-unavailable" ? "display_guard_unavailable" : "display_restore_failed",
                     reply?.State == "guard-unavailable"
