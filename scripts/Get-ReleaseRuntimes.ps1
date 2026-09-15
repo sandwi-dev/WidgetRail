@@ -7,6 +7,7 @@ $lock = Get-Content (Join-Path $repository 'eng/runtime-dependencies.json') -Raw
 $native = [xml](Get-Content (Join-Path $repository 'src/OverlayHost/NativeDependencies.csproj') -Raw)
 $nativeGameInput = @($native.Project.ItemGroup.PackageReference | Where-Object Include -EQ 'Microsoft.GameInput')[0]
 if ($nativeGameInput.Version -ne $lock.gameInput.version) { throw 'GameInput build and redistributable versions differ.' }
+if ($lock.dotnet.version -cne $lock.windowsDesktop.version) { throw 'Base and Desktop .NET runtime versions differ.' }
 $Destination = [IO.Path]::GetFullPath($Destination)
 $runtime = Join-Path $Destination 'dotnet'
 $redist = Join-Path $Destination 'prerequisites'
@@ -17,6 +18,15 @@ Invoke-WebRequest $lock.dotnet.url -OutFile $archive
 if ((Get-FileHash $archive -Algorithm SHA512).Hash -ine $lock.dotnet.sha512) { throw '.NET archive checksum mismatch.' }
 Expand-Archive -LiteralPath $archive -DestinationPath $runtime
 Remove-Item -LiteralPath $archive
+$desktopArchive = Join-Path $Destination 'windowsdesktop-runtime.zip'
+Invoke-WebRequest $lock.windowsDesktop.url -OutFile $desktopArchive
+if ((Get-FileHash $desktopArchive -Algorithm SHA512).Hash -ine $lock.windowsDesktop.sha512) { throw '.NET Desktop archive checksum mismatch.' }
+Expand-Archive -LiteralPath $desktopArchive -DestinationPath $runtime
+Remove-Item -LiteralPath $desktopArchive
+$desktopRoot = Join-Path $runtime "shared/Microsoft.WindowsDesktop.App/$($lock.windowsDesktop.version)"
+foreach ($required in @('System.Windows.Forms.dll', 'PresentationFramework.dll', 'Microsoft.WindowsDesktop.App.deps.json')) {
+    if (!(Test-Path -LiteralPath (Join-Path $desktopRoot $required) -PathType Leaf)) { throw "Incomplete Desktop runtime: $required" }
+}
 $nuget = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE '.nuget/packages' }
 $gameInput = Join-Path $nuget "microsoft.gameinput/$($lock.gameInput.version)/redist/GameInputRedist.msi"
 if ((Get-FileHash $gameInput).Hash -ine $lock.gameInput.sha256) { throw 'GameInput redistributable checksum mismatch.' }
@@ -24,11 +34,11 @@ Copy-Item -LiteralPath $gameInput -Destination $redist
 $webView = Join-Path $redist 'MicrosoftEdgeWebview2Setup.exe'
 Invoke-WebRequest $lock.webView2.url -OutFile $webView
 if ((Get-FileHash $webView).Hash -ine $lock.webView2.sha256) { throw 'WebView2 bootstrapper checksum mismatch.' }
-foreach ($file in @((Join-Path $runtime 'dotnet.exe'), (Join-Path $redist 'GameInputRedist.msi'), $webView)) {
+foreach ($file in @((Join-Path $runtime 'dotnet.exe'), (Join-Path $desktopRoot 'System.Windows.Forms.dll'), (Join-Path $redist 'GameInputRedist.msi'), $webView)) {
     $signature = Get-AuthenticodeSignature -LiteralPath $file
     if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
         throw "Microsoft runtime signature is invalid: $file"
     }
 }
 Copy-Item -LiteralPath (Join-Path $repository 'eng/runtime-dependencies.json') -Destination (Join-Path $redist 'runtime-dependencies.json')
-Write-Output "Verified private .NET $($lock.dotnet.version), GameInput $($lock.gameInput.version), and WebView2 bootstrapper. Nothing was installed."
+Write-Output "Verified private .NET and Desktop $($lock.dotnet.version), GameInput $($lock.gameInput.version), and WebView2 bootstrapper. Nothing was installed."

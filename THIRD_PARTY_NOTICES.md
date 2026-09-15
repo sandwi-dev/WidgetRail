@@ -3,6 +3,15 @@
 WidgetRail includes or uses the third-party components below. These retain
 their own licenses; the project license does not replace these terms.
 
+## Microsoft .NET 8 base and Windows Desktop runtimes
+
+Projects: https://github.com/dotnet/runtime and https://github.com/dotnet/windowsdesktop
+
+Copyright (c) .NET Foundation and Contributors. License: MIT.
+The private runtime distribution retains Microsoft's `dotnet/LICENSE.txt` and
+`dotnet/ThirdPartyNotices.txt`. Runtime versions and archive checksums are pinned
+in `eng/runtime-dependencies.json`.
+
 ## ViGEmClient 1.16.18.0
 
 Project: https://github.com/nefarius/ViGEmClient

@@ -23,7 +23,8 @@ the active edition; it does not create an independent setup.
 4. Review the startup option. It is off by default; enabling it starts WidgetRail quietly when you sign in.
 5. Open WidgetRail from the Start menu.
 
-You do not need the .NET SDK to use the app. Setup includes its own .NET runtime.
+You do not need the .NET SDK to use the app. Setup includes private .NET base and
+Windows Desktop runtimes, including support for Spotify's local playback helper.
 It checks GameInput and WebView2 and installs them if needed. GameInput may ask
 for administrator approval. A missing WebView2 runtime requires an internet download.
 

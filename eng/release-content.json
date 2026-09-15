@@ -52,6 +52,12 @@
       "bundled": true
     },
     {
+      "name": ".NET Desktop",
+      "version": "8.0.31",
+      "scope": "Windows Forms and WPF helpers, including Spotify local playback",
+      "bundled": true
+    },
+    {
       "name": "Microsoft GameInput",
       "version": "3.5.262",
       "scope": "setup installs the signed redistributable if a compatible version is missing",

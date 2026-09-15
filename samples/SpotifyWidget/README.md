@@ -7,6 +7,12 @@ playback policy, and the isolated Web Playback child process. It uses only the
 generic application bootstrap and overlay protocol; no Spotify-specific product
 capability or product-owned Spotify assembly is required.
 
+Local playback uses a hidden Windows Forms/WebView2 helper. WidgetRail includes
+the .NET 8 Windows Desktop runtime for it in the application's private runtime
+folder. Older installers that contain only base .NET need an application update
+before **Play here** can start this helper. Updating the Spotify widget alone
+does not supply that missing runtime.
+
 Full trust is explicit: the application runs with ordinary current-user file,
 network, registry, database, and child-process authority outside AppContainer.
 Review the package before accepting that trust. The application never requires
