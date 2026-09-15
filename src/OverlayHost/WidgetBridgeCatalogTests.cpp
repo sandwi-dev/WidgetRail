@@ -2609,6 +2609,21 @@ int main(int argc, char** argv) {
     CHECK(appearance->boldText);
     CHECK(appearance->transparency == widgetrail::PlatformTransparencyPreference::Reduced);
     CHECK(!appearance->animateWidgetSwitching);
+    CHECK(!appearance->radialWidgetSwitcher);
+    for (const auto value : {"\"Radial\"", "\"radial\"", "\"Rail\"", "\"rail\"", "false", "\"unknown\""}) {
+        std::string source(ValidAppearance);
+        source.insert(1, std::string("\"widgetSwitcher\":") + value + ",");
+        error.clear();
+        const auto parsed = widgetrail::testing::ParsePlatformAppearance(source, error);
+        const std::string_view option(value);
+        if (option == "false" || option == "\"unknown\"") {
+            CHECK(!parsed && !error.empty());
+        } else {
+            CHECK(parsed && error.empty());
+            CHECK(parsed->radialWidgetSwitcher == (option == "\"Radial\"" || option == "\"radial\""));
+        }
+    }
+    error.clear();
     CHECK(appearance->shellStyles.size() == 3);
     CHECK(appearance->shellStyles.at(L"panel").at(L"corner-radius").number == 18.0);
     CHECK(appearance->shellStyles.at(L"title").at(L"font-family").text ==

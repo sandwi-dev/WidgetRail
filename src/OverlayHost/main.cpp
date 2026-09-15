@@ -44,6 +44,7 @@
 #include "TextEntryModal.h"
 #include "TextEntryActionAdmission.h"
 #include "TrayLayout.h"
+#include "RadialInput.h"
 
 #include <Windows.h>
 #include <d2d1_1.h>
@@ -2009,6 +2010,7 @@ private:
                 pinnedSurfaceCoordinator_.pinned() &&
                 pinnedSurfaceCoordinator_.widgetId() == invalidatedWidget;
             if ((state_.surface() != widgetrail::Surface::Hidden &&
+                 (state_.surface() == widgetrail::Surface::Widget || !RadialSwitcherEnabled()) &&
                  currentWidget == invalidatedWidget) || pinnedInvalidation) {
                 RefreshAndApplyPresentation([&] {
                     RefreshWidgetSnapshot(invalidatedWidget);
@@ -5799,7 +5801,7 @@ private:
                 *priorPendingAuthority);
         const auto priorDesiredLifecycle = widgetrail::DesiredWidgetLifecycle(
             priorSurface, priorFocusRegion, priorSelected, priorActive,
-            IsBridgeWidget(priorSelected), IsBridgeWidget(priorActive));
+            IsBridgeWidget(priorSelected), IsBridgeWidget(priorActive), !RadialSwitcherEnabled());
         if (priorSurface == widgetrail::Surface::Widget)
             CommitAdmittedWidgetPresentation(priorActive);
         if (priorSurface == widgetrail::Surface::Widget && IsBridgeWidget(priorActive)) {
@@ -5809,6 +5811,7 @@ private:
         if (!mutation()) {
             return;
         }
+        if (RadialSwitcherEnabled()) retainedTrayPaintState_.reset();
         // A held authored action never crosses an accepted shell transition.
         // A still-physical press must be released and pressed again under the
         // new focus/selection/lifecycle authority.
@@ -5903,7 +5906,7 @@ private:
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
             IsBridgeWidget(state_.selectedWidget()),
-            IsBridgeWidget(state_.activeWidget()));
+            IsBridgeWidget(state_.activeWidget()), !RadialSwitcherEnabled());
         if (command == widgetrail::Command::Activate && correlationId != 0 &&
             priorDesiredLifecycle && nextDesiredLifecycle &&
             priorDesiredLifecycle->widgetId == nextDesiredLifecycle->widgetId) {
@@ -5983,7 +5986,7 @@ private:
                 state_.surface() == widgetrail::Surface::Widget && IsBridgeWidget(state_.activeWidget()) &&
                 (priorSurface != widgetrail::Surface::Widget || priorActive != state_.activeWidget());
             const bool hoveredBridgeWidget =
-                state_.surface() == widgetrail::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
+                !RadialSwitcherEnabled() && state_.surface() == widgetrail::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
                 (priorSurface != widgetrail::Surface::Dashboard || priorSelected != state_.selectedWidget());
             const bool startupFailureBlocksSnapshot =
                 (enteredBridgeWidget && sessions_.Failure(state_.activeWidget())) ||
@@ -6090,7 +6093,7 @@ private:
 
     void Dispatch(const widgetrail::Command command) {
         ApplyStateTransition(
-            [&] { return state_.Dispatch(command); }, command);
+            [&] { return state_.Dispatch(command, !RadialSwitcherEnabled()); }, command);
         if (textEntryModal_.active() && state_.surface() == widgetrail::Surface::Hidden) {
             textEntryModal_.UpdateControllerRepeat({}, GetTickCount64());
             textEntryControllerPhase_ = TextEntryControllerPhase::AwaitingEntryNeutral;
@@ -6098,13 +6101,33 @@ private:
     }
 
     bool SelectTrayWidget(const std::wstring_view widgetId) {
+        if (widgetId == state_.selectedWidget()) return true;
         bool accepted = false;
         ApplyStateTransition([&] {
             const auto priorSelected = state_.selectedWidget();
-            accepted = state_.TrySelectTrayWidget(widgetId);
+            accepted = state_.TrySelectTrayWidget(widgetId, !RadialSwitcherEnabled());
             return accepted && priorSelected != state_.selectedWidget();
         });
         return accepted;
+    }
+
+    bool RadialSwitcherEnabled() const noexcept {
+        // The legacy HWND fallback cannot layer a wheel over retained content.
+        // Use the rail for both input and paint until composition recovers.
+        return compositionSurface_.available() && appearanceState_.current() &&
+            appearanceState_.current()->radialWidgetSwitcher;
+    }
+    bool RadialSwitcherOpen() const noexcept {
+        return RadialSwitcherEnabled() && state_.surface() != widgetrail::Surface::Hidden &&
+            state_.focusRegion() == widgetrail::FocusRegion::Tray && !pinnedSurfaceCoordinator_.controllerFocused();
+    }
+    void StepRadialSelection(int delta) {
+        if (state_.order().empty()) return;
+        if (state_.reorderMode()) { Dispatch(delta < 0 ? widgetrail::Command::NavigateLeft : widgetrail::Command::NavigateRight); return; }
+        const auto first = state_.selectedSlot()/8*8;
+        const auto count = std::min<std::size_t>(8, state_.order().size()-first);
+        const auto target = first + static_cast<std::size_t>((static_cast<int>(state_.selectedSlot()-first)+delta+static_cast<int>(count))%static_cast<int>(count));
+        (void)SelectTrayWidget(state_.order()[target]);
     }
 
     const widgetrail::WidgetComputedStyle& ShellComputedStyle(
@@ -6613,7 +6636,7 @@ private:
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
             IsBridgeWidget(state_.selectedWidget()),
-            IsBridgeWidget(state_.activeWidget()));
+            IsBridgeWidget(state_.activeWidget()), !RadialSwitcherEnabled());
         if (overlayDesired) {
             desiredStates.insert_or_assign(overlayDesired->widgetId, overlayDesired->state);
         }
@@ -9485,8 +9508,9 @@ private:
         const float left = std::clamp(
             tile->bounds.x + tile->bounds.width * 0.5F - menuWidth * 0.5F,
             8.0F, std::max(8.0F, width - menuWidth - 8.0F));
-        const float top =
-            tray.stripBounds.y - kTrayContextMenuGapDip - menuHeight;
+        const float top = tray.radialBounds
+            ? tray.radialBounds->y + std::max(0.0F,(tray.radialBounds->height-menuHeight)/2)
+            : tray.stripBounds.y - kTrayContextMenuGapDip - menuHeight;
         TrayContextMenuLayout result;
         result.bounds = {left, top, menuWidth, menuHeight};
         result.semantics.targetId = trayContextMenu_->widgetId;
@@ -9805,7 +9829,7 @@ private:
             return;
         }
 
-        if (state_.surface() == widgetrail::Surface::Widget) {
+        if (state_.surface() == widgetrail::Surface::Widget && !RadialSwitcherOpen()) {
             const std::wstring widget{state_.activeWidget()};
             const auto* snapshot = InteractionSnapshotFor(widget);
             if (snapshot) {
@@ -9855,6 +9879,7 @@ private:
         if (state_.surface() == widgetrail::Surface::Widget &&
             state_.focusRegion() == widgetrail::FocusRegion::Widget) {
             Dispatch(widgetrail::Command::SampleWidgetBack);
+            if (RadialSwitcherEnabled() && !openContext) return;
         }
         if (state_.reorderMode()) Dispatch(widgetrail::Command::Cancel);
         const std::wstring targetWidget = state_.order()[trayTarget->slot];
@@ -10671,6 +10696,7 @@ private:
         }
         switch (widgetrail::input::ResolveBasicKeyboardAction(key)) {
         case widgetrail::input::BasicKeyboardAction::NavigateLeft:
+            if (RadialSwitcherOpen()) { StepRadialSelection(-1); break; }
             if (state_.surface() == widgetrail::Surface::Widget &&
                 state_.focusRegion() == widgetrail::FocusRegion::Widget) {
                 HandleWidgetDirection(widgetrail::input::NavigationDirection::Left, phase, false);
@@ -10679,6 +10705,7 @@ private:
             }
             break;
         case widgetrail::input::BasicKeyboardAction::NavigateRight:
+            if (RadialSwitcherOpen()) { StepRadialSelection(1); break; }
             if (state_.surface() == widgetrail::Surface::Widget &&
                 state_.focusRegion() == widgetrail::FocusRegion::Widget) {
                 HandleWidgetDirection(widgetrail::input::NavigationDirection::Right, phase, false);
@@ -10687,6 +10714,7 @@ private:
             }
             break;
         case widgetrail::input::BasicKeyboardAction::NavigateUp:
+            if (RadialSwitcherOpen()) { StepRadialSelection(-1); break; }
             if (!repeated && state_.surface() == widgetrail::Surface::Widget) {
                 if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
                     Dispatch(widgetrail::Command::Activate);
@@ -10697,6 +10725,7 @@ private:
             }
             break;
         case widgetrail::input::BasicKeyboardAction::NavigateDown:
+            if (RadialSwitcherOpen()) { StepRadialSelection(1); break; }
             if (!repeated && state_.surface() == widgetrail::Surface::Widget &&
                 state_.focusRegion() == widgetrail::FocusRegion::Widget) {
                 HandleWidgetDirection(
@@ -11337,6 +11366,10 @@ private:
             return;
         }
         if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
+            if (RadialSwitcherOpen()) {
+                StepRadialSelection(direction == NavigationDirection::Left || direction == NavigationDirection::Up ? -1 : 1);
+                return;
+            }
             if (direction == NavigationDirection::Left) {
                 Dispatch(widgetrail::Command::NavigateLeft);
             } else if (direction == NavigationDirection::Right) {
@@ -11400,6 +11433,10 @@ private:
         const WORD buttons = frame.state.buttons;
         const WORD pressed = frame.pressedButtons;
         const WORD released = frame.releasedButtons;
+        const bool radialInput = connected && foregroundOwned && RadialSwitcherOpen() &&
+            !trayContextMenu_ && !widgetContextMenu_ && !textEntryModal_.active();
+        radialRightStick_.UpdateOwner(radialInput, frame.state.rightThumbX, frame.state.rightThumbY);
+        if (!radialInput) radialLeftArmed_ = false;
         constexpr WORD repeatRecoveryChord =
             XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
         if (!connected || !foregroundOwned ||
@@ -11911,8 +11948,9 @@ private:
                 InvalidateRect(window_, nullptr, FALSE);
                 return;
             }
-            (void)pinnedSurfaceCoordinator_.ScrollFocusedProjection(
-                frame.state.rightThumbX, frame.state.rightThumbY, now);
+            if (radialRightStick_.allowScroll())
+                (void)pinnedSurfaceCoordinator_.ScrollFocusedProjection(
+                    frame.state.rightThumbX, frame.state.rightThumbY, now);
             // The left stick and the D-pad are one directional owner on the
             // pinned surface, exactly as they are in the full widget, so both
             // adjust a selected activation-first slider.
@@ -12028,13 +12066,29 @@ private:
 
         const auto stickDirection = DecodeNavigation(frame.stickNavigation);
         const auto dpadDirection = DecodeNavigation(frame.dpadNavigation);
+        if (radialInput && !recoveryChordDown) {
+            const float lx = static_cast<float>(frame.state.leftThumbX), ly = static_cast<float>(frame.state.leftThumbY);
+            if (lx*lx+ly*ly < 7849.0F*7849.0F) radialLeftArmed_ = true;
+            if (radialLeftArmed_ && !state_.reorderMode()) {
+                if (const auto sector = widgetrail::shell::RadialSector(lx,ly,16000.0F)) {
+                    const auto target = state_.selectedSlot()/8*8 + *sector;
+                    if (target < state_.order().size()) (void)SelectTrayWidget(state_.order()[target]);
+                }
+            } else if (state_.reorderMode() && stickDirection) DispatchStickNavigation(*stickDirection);
+            if (dpadDirection) DispatchStickNavigation(*dpadDirection);
+            if (!state_.reorderMode()) if (const auto page = radialRightStick_.Page(frame.state.rightThumbX,now)) {
+                const auto target = widgetrail::shell::RadialPageTarget(state_.order().size(),state_.selectedSlot(),
+                    page->direction == widgetrail::input::NavigationDirection::Left ? -1 : 1);
+                if (target < state_.order().size()) (void)SelectTrayWidget(state_.order()[target]);
+            }
+        }
         // An action uses the settled visible target; do not scroll again on
         // the same sample before dispatching it.
-        const bool rightStickMoving = !focusActionPressed && HandleRightStickFreeScroll(frame, now);
+        const bool rightStickMoving = !focusActionPressed && radialRightStick_.allowScroll() && HandleRightStickFreeScroll(frame, now);
         const auto reentryDirection = stickDirection ? stickDirection : dpadDirection;
         const bool reentryConsumed = !rightStickMoving && reentryDirection &&
             ConsumeFreeScrollReentry(*reentryDirection);
-        if (!rightStickMoving && !reentryConsumed) {
+        if (!radialInput && !rightStickMoving && !reentryConsumed) {
             if (stickDirection) DispatchStickNavigation(*stickDirection);
             if (dpadDirection) DispatchStickNavigation(*dpadDirection);
         }
@@ -13731,6 +13785,7 @@ private:
     }
 
     void RefreshCurrentBridgeSnapshot(const std::uint64_t correlationId = 0) {
+        if (RadialSwitcherEnabled() && state_.surface() == widgetrail::Surface::Dashboard) return;
         if (state_.surface() == widgetrail::Surface::Hidden &&
             !pinnedSurfaceCoordinator_.pinned()) return;
         const std::wstring_view widgetId = state_.surface() == widgetrail::Surface::Hidden
@@ -14053,7 +14108,7 @@ private:
         return modalDecision.disposition ==
                 widgetrail::input::AuthoredHeldActionDisposition::Dispatch &&
             state_.surface() != widgetrail::Surface::Hidden &&
-            !textEntryModal_.active() && !trayContextMenu_ &&
+            !textEntryModal_.active() && !trayContextMenu_ && !RadialSwitcherOpen() &&
             !widgetContextMenu_ &&
             !OverlayFullscreenMediaRequested() &&
             !pinnedSurfaceCoordinator_.controllerFocused() &&
@@ -14603,7 +14658,9 @@ private:
         if (HandleOverlayMediaBackButton(button)) return;
         using widgetrail::input::ControllerActionContext;
         using widgetrail::input::ControllerActionRoute;
-        const auto context = state_.focusRegion() == widgetrail::FocusRegion::Tray
+        const auto context = RadialSwitcherOpen()
+            ? ControllerActionContext::RadialSwitcher
+            : state_.focusRegion() == widgetrail::FocusRegion::Tray
             ? ControllerActionContext::Tray
             : ControllerActionContext::RootWidgetScope;
         switch (widgetrail::input::RouteControllerAction(context, button)) {
@@ -14614,6 +14671,10 @@ private:
             Dispatch(widgetrail::Command::ToggleReorder);
             return;
         case ControllerActionRoute::HostCloseOverlay:
+            if (RadialSwitcherOpen() && !state_.reorderMode() && !state_.activeWidget().empty()) {
+                ApplyStateTransition([&]{return state_.ReturnToActiveWidget();});
+                return;
+            }
             Dispatch(widgetrail::Command::ToggleOverlay);
             return;
         case ControllerActionRoute::Widget:
@@ -14715,6 +14776,7 @@ private:
             exactActionRequest = std::nullopt,
         const bool physicalPress = false,
         const HeldActionAuthority* exactHeldAction = nullptr) {
+        if (RadialSwitcherOpen()) return;
         if (state_.surface() == widgetrail::Surface::Hidden) {
             if (exactActionRequest) {
                 RejectWidgetActionRequest(
@@ -15832,6 +15894,8 @@ private:
     };
 
     struct CompositionChromeSession final {
+        std::optional<widgetrail::declarative::Rect> radialBounds;
+        float radialRailOffsetDip{};
         unsigned int canvasWidth{};
         unsigned int canvasHeight{};
         unsigned int guideWidth{};
@@ -16262,37 +16326,12 @@ private:
         };
         session.windowBounds = widgetrail::shell::ComputeFixedChromeWindowBounds(
             workArea, chromeWidth, chromeHeight);
-        if (state_.surface() == widgetrail::Surface::Widget) {
-            const float guideHeightDip = static_cast<float>(guideHeight) /
-                session.pixelsPerDip;
-            session.renderedGuideContentBottom =
-                session.guideClientBounds.top + static_cast<LONG>(std::lround(
-                    WidgetGuideContentBottomDip(guideHeightDip) *
-                    session.pixelsPerDip));
-        } else {
-            const auto dashboardPlacement = ComputePlatformPlacement(
-                workArea, effectiveDpi,
-                static_cast<float>(kPanelWidth) * interfaceScale,
-                static_cast<float>(kDashboardHeight) * interfaceScale);
-            if (!dashboardPlacement) return false;
-            const int panelToGuideGap = static_cast<int>(std::lround(
-                kPanelToGuideGapDip * session.pixelsPerDip));
-            const auto dashboardBounds =
-                widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
-                    workArea,
-                    session.windowBounds.top + session.guideClientBounds.top,
-                    dashboardPlacement->width, dashboardPlacement->height,
-                    panelToGuideGap);
-            if (!dashboardBounds) return false;
-            const float dashboardHeightDip =
-                static_cast<float>(dashboardPlacement->height) /
-                session.pixelsPerDip;
-            session.renderedGuideContentBottom =
-                dashboardBounds->top - session.windowBounds.top +
-                static_cast<LONG>(std::lround(
-                    DashboardGuideContentBottomDip(dashboardHeightDip) *
-                    session.pixelsPerDip));
-        }
+        // Fixed chrome outlives content-mode changes. Reserve the actual guide
+        // area even when the startup dashboard has no footer to paint yet.
+        const float guideHeightDip = static_cast<float>(guideHeight) / session.pixelsPerDip;
+        session.renderedGuideContentBottom =
+            session.guideClientBounds.top + static_cast<LONG>(std::lround(
+                WidgetGuideContentBottomDip(guideHeightDip) * session.pixelsPerDip));
         session.renderedGuideContentBottom = std::clamp(
             session.renderedGuideContentBottom, 0L, chromeHeight);
         const auto localTrayLayout = ComputeCompositionTrayLayout(session);
@@ -16347,6 +16386,26 @@ private:
             static_cast<float>(guideWidth) / session.pixelsPerDip,
             static_cast<float>(guideHeight) / session.pixelsPerDip,
         };
+        if (RadialSwitcherEnabled()) {
+            // The wheel overlays content. Grow only the transparent chrome
+            // canvas upward; keep the guide and the ordinary rail screen anchors.
+            const auto radial = widgetrail::shell::ComputeRadialChromePlacement(
+                workArea, session.windowBounds, session.guideClientBounds,
+                session.trayClientBounds, session.pixelsPerDip);
+            chromeHeight += radial.expansion;
+            session.canvasHeight = static_cast<unsigned int>(chromeHeight);
+            session.windowBounds = radial.windowBounds;
+            session.guideClientBounds = radial.guideClientBounds;
+            session.renderedGuideContentBottom += radial.expansion;
+            session.trayClientBounds = radial.trayClientBounds;
+            session.trayHeight = static_cast<unsigned int>(
+                radial.trayClientBounds.bottom - radial.trayClientBounds.top);
+            session.radialRailOffsetDip = static_cast<float>(radial.railOffset) / session.pixelsPerDip;
+            const float sizeDip = static_cast<float>(radial.wheelSize) / session.pixelsPerDip;
+            if (radial.wheelSize > 0) session.radialBounds = widgetrail::declarative::Rect{
+                (static_cast<float>(session.trayWidth) / session.pixelsPerDip - sizeDip) / 2,
+                0, sizeDip, sizeDip};
+        }
         if (!widgetrail::shell::ApplyFixedChromeWindow(
                 window_, chromeWindow_, session.windowBounds, true)) {
             AppendDiagnostic(L"Fixed chrome placement failed error=" +
@@ -16468,7 +16527,7 @@ private:
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
             widgetrail::shell::TrayBand{
-                menuHeadroom, metrics->viewportHeightDip},
+                menuHeadroom + session.radialRailOffsetDip, metrics->viewportHeightDip},
             widgetrail::shell::TrayWidthBasis::ExactCapacity,
             session.trayCapacityWidthDip);
         if (!layout) return std::nullopt;
@@ -16481,6 +16540,28 @@ private:
         if (layout->previousOverflow) offset(layout->previousOverflow->bounds);
         if (layout->nextOverflow) offset(layout->nextOverflow->bounds);
         if (layout->statusBounds) offset(*layout->statusBounds);
+        if (session.radialBounds) {
+            if (RadialSwitcherOpen()) {
+                auto radial = widgetrail::shell::ComputeRadialTrayLayout(*session.radialBounds,
+                    state_.order().size(),state_.selectedSlot());
+                if (!radial) return std::nullopt;
+                radial->statusBounds = layout->statusBounds;
+                if (radial->statusBounds) {
+                    const auto& status = *radial->statusBounds;
+                    const float right = std::max(radial->stripBounds.x+radial->stripBounds.width,status.x+status.width);
+                    const float bottom = std::max(radial->stripBounds.y+radial->stripBounds.height,status.y+status.height);
+                    radial->stripBounds.x = std::min(radial->stripBounds.x,status.x);
+                    radial->stripBounds.width = right-radial->stripBounds.x;
+                    radial->stripBounds.height = bottom-radial->stripBounds.y;
+                }
+                return radial;
+            }
+            const auto active = std::find_if(layout->tiles.begin(),layout->tiles.end(),
+                [&](const auto& tile){return tile.slot==state_.selectedSlot();});
+            if (active != layout->tiles.end()) { const auto tile=*active; layout->tiles={tile}; }
+            else layout->tiles.clear();
+            layout->previousOverflow.reset(); layout->nextOverflow.reset();
+        }
         return layout;
     }
 
@@ -17265,6 +17346,55 @@ private:
             ? frameLayout
             : computedLayout ? &*computedLayout : nullptr;
         if (!layout) return;
+        Microsoft::WRL::ComPtr<IDWriteTextFormat> radialFormat;
+        if (layout->radialBounds) {
+            const auto& bounds = *layout->radialBounds;
+            const float cx=bounds.x+bounds.width/2, cy=bounds.y+bounds.height/2;
+            const float outer=std::min(bounds.width,bounds.height)*.49F, inner=outer*.45F;
+            constexpr float pi=3.14159265358979323846F;
+            // Tray items may intentionally have a transparent background. A
+            // wheel overlays widget content, so it needs the opaque themed
+            // panel foundation before applying the ordinary tray state colors.
+            renderTarget_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx,cy),outer,outer),solidCardBrush_.Get());
+            renderTarget_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx,cy),outer,outer),trayItemBrush_.Get());
+            Microsoft::WRL::ComPtr<ID2D1Factory> factory;
+            renderTarget_->GetFactory(factory.GetAddressOf());
+            const auto point=[&](float a,float r){return D2D1::Point2F(cx+std::sin(a)*r,cy-std::cos(a)*r);};
+            for (const auto& tile : layout->tiles) {
+                const float start=static_cast<float>(tile.slot%8)*pi/4-pi/8, end=start+pi/4;
+                if (tile.slot==state_.selectedSlot()) {
+                    Microsoft::WRL::ComPtr<ID2D1PathGeometry> path;
+                    Microsoft::WRL::ComPtr<ID2D1GeometrySink> sink;
+                    if (SUCCEEDED(factory->CreatePathGeometry(path.GetAddressOf())) && SUCCEEDED(path->Open(sink.GetAddressOf()))) {
+                        sink->BeginFigure(point(start,inner),D2D1_FIGURE_BEGIN_FILLED);
+                        sink->AddLine(point(start,outer));
+                        sink->AddArc(D2D1::ArcSegment(point(end,outer),D2D1::SizeF(outer,outer),0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL));
+                        sink->AddLine(point(end,inner));
+                        sink->AddArc(D2D1::ArcSegment(point(start,inner),D2D1::SizeF(inner,inner),0,D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,D2D1_ARC_SIZE_SMALL));
+                        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+                        if (SUCCEEDED(sink->Close())) { renderTarget_->FillGeometry(path.Get(),traySelectedBrush_.Get()); renderTarget_->DrawGeometry(path.Get(),focusBrush_.Get(),focusOutlineWidth_); }
+                    }
+                }
+                renderTarget_->DrawLine(point(start,inner),point(start,outer),backgroundBrush_.Get(),1.0F);
+            }
+            renderTarget_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx,cy),inner,inner),backgroundBrush_.Get());
+            wchar_t family[128]{L'S',L'e',L'g',L'o',L'e',L' ',L'U',L'I',0};
+            (void)hintFormat_->GetFontFamilyName(family,128);
+            if (SUCCEEDED(writeFactory_->CreateTextFormat(family,nullptr,hintFormat_->GetFontWeight(),
+                    DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,14.0F*CurrentTextScale(),L"",radialFormat.GetAddressOf()))) {
+                radialFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+                radialFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+                DrawTextLine(DisplayWidgetName(state_.selectedWidget()),radialFormat.Get(),
+                    D2D1::RectF(cx-inner+8,cy-50,cx+inner-8,cy-8),traySelectedTextBrush_.Get());
+                if (layout->pageCount > 1) {
+                    widgetrail::guide::DrawControl(renderTarget_.Get(), radialFormat.Get(),
+                        widgetrail::guide::Control::RightStick,
+                        D2D1::RectF(cx-14,cy+4,cx+14,cy+32),trayItemTextBrush_.Get());
+                    DrawTextLine(std::to_wstring(layout->page+1)+L" / "+std::to_wstring(layout->pageCount),radialFormat.Get(),
+                        D2D1::RectF(cx-32,cy+34,cx+32,cy+56),dashboardSecondaryBrush_.Get());
+                }
+            }
+        }
         // The fallback HWND path has no retained tray-state pass.
         if (layout->statusBounds)
             widgetrail::shell::DrawTrayStatus(renderTarget_.Get(), writeFactory_.Get(),
@@ -17310,10 +17440,10 @@ private:
             const D2D1_ROUNDED_RECT tile{
                 D2D1::RectF(x, top, x + tileSize, top + tileSize),
                 trayItemCornerRadius_, trayItemCornerRadius_};
-            renderTarget_->FillRoundedRectangle(
+            if (!layout->radialBounds) renderTarget_->FillRoundedRectangle(
                 tile, slot == state_.selectedSlot() ? traySelectedBrush_.Get()
                                                     : trayItemBrush_.Get());
-            if (slot == state_.selectedSlot()) {
+            if (!layout->radialBounds && slot == state_.selectedSlot()) {
                 const float indicatorInset = std::min(18.0F, tileSize * 0.28F);
                 const float indicatorHeight = std::min(4.0F, tileSize * 0.12F);
                 const D2D1_ROUNDED_RECT indicator{
@@ -17452,6 +17582,10 @@ private:
                 L" — " +
                 std::to_wstring(trayYGesture_.progressPercent(GetTickCount64())) +
                 L"%";
+        }
+        if (RadialSwitcherOpen() && !state_.reorderMode()) {
+            if (hints) *hints={{L"left-stick-move",L"Choose"},{L"right-stick-move",L"Page"},{L"A",L"Open"},{L"B",L"Back"},{L"Menu",L"Options"},{L"Y",L"Reorder / hold to reload"}};
+            return L"Left stick Choose    Right stick Page    A Open    B Back    Menu Options    Y Reorder / hold to reload";
         }
         std::vector<widgetrail::ControllerGuideAction> quickActions;
         const auto* snapshot = GuideSnapshotFor(state_.selectedWidget());
@@ -18704,6 +18838,8 @@ private:
     widgetrail::OverlayState state_;
     widgetrail::input::TrayYGesture trayYGesture_;
     widgetrail::input::HeldButtonActionRepeat heldActionRepeat_;
+    widgetrail::input::RadialRightStick radialRightStick_;
+    bool radialLeftArmed_{};
     std::optional<HeldActionAuthority> heldActionAuthority_;
     int lastHeldRepeatVerdict_{-1};
     widgetrail::input::WidgetInteractionSession interactionSession_;

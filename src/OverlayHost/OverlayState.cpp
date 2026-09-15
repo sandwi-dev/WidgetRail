@@ -19,7 +19,7 @@ OverlayState::OverlayState(
     if (persistent_.lastWidget) selectedSlot_ = FindSlot(*persistent_.lastWidget);
 }
 
-bool OverlayState::Dispatch(const Command command) noexcept {
+bool OverlayState::Dispatch(const Command command, const bool previewTraySelection) noexcept {
     const auto before = persistent_;
     const auto priorSurface = surface_;
     const auto priorFocusRegion = focusRegion_;
@@ -57,7 +57,7 @@ bool OverlayState::Dispatch(const Command command) noexcept {
                 MoveCard(-1);
             } else {
                 MoveSelection(-1);
-                PresentSelectedWidget(FocusRegion::Tray);
+                if (previewTraySelection) PresentSelectedWidget(FocusRegion::Tray);
             }
             break;
         case Command::NavigateRight:
@@ -65,7 +65,7 @@ bool OverlayState::Dispatch(const Command command) noexcept {
                 MoveCard(1);
             } else {
                 MoveSelection(1);
-                PresentSelectedWidget(FocusRegion::Tray);
+                if (previewTraySelection) PresentSelectedWidget(FocusRegion::Tray);
             }
             break;
         case Command::Activate:
@@ -91,11 +91,11 @@ bool OverlayState::Dispatch(const Command command) noexcept {
         switch (command) {
         case Command::NavigateLeft:
             reorderMode_ ? MoveCard(-1) : MoveSelection(-1);
-            PresentSelectedWidget(FocusRegion::Tray);
+            if (previewTraySelection) PresentSelectedWidget(FocusRegion::Tray);
             break;
         case Command::NavigateRight:
             reorderMode_ ? MoveCard(1) : MoveSelection(1);
-            PresentSelectedWidget(FocusRegion::Tray);
+            if (previewTraySelection) PresentSelectedWidget(FocusRegion::Tray);
             break;
         case Command::Activate:
             if (reorderMode_) {
@@ -160,7 +160,7 @@ bool OverlayState::OpenWidgetWithTrayFocus(
     return true;
 }
 
-bool OverlayState::TrySelectTrayWidget(const std::wstring_view widgetId) noexcept {
+bool OverlayState::TrySelectTrayWidget(const std::wstring_view widgetId, const bool preview) noexcept {
     if (surface_ == Surface::Hidden ||
         (surface_ == Surface::Widget && focusRegion_ != FocusRegion::Tray) ||
         reorderMode_) {
@@ -172,7 +172,15 @@ bool OverlayState::TrySelectTrayWidget(const std::wstring_view widgetId) noexcep
         std::distance(persistent_.order.begin(), found));
     if (targetSlot == selectedSlot_) return true;
     selectedSlot_ = targetSlot;
-    PresentSelectedWidget(FocusRegion::Tray);
+    if (preview) PresentSelectedWidget(FocusRegion::Tray);
+    return true;
+}
+
+bool OverlayState::ReturnToActiveWidget() noexcept {
+    if (surface_ != Surface::Widget || focusRegion_ != FocusRegion::Tray || !activeWidget_) return false;
+    selectedSlot_ = FindSlot(*activeWidget_);
+    focusRegion_ = FocusRegion::Widget;
+    reorderMode_ = false;
     return true;
 }
 

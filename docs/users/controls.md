@@ -16,6 +16,25 @@ current focus. A widget can provide its own shortcuts.
 With a keyboard, use arrows, Enter and Escape to navigate. F1 toggles the overlay.
 Text fields can use the built-in controller keyboard.
 
+## Choose a widget switcher
+
+In **Settings → Overlay → Widget switcher**, choose **Rail** (the default) or
+**Radial**. With Radial, returning to the tray opens a wheel over the widget.
+Point the left stick toward a widget, then press A to open it. D-pad or keyboard
+arrows move between slots. B returns to the current widget.
+
+The wheel holds eight widget icons per page, with the selected widget's name in
+the center. Its preferred diameter is 400 logical pixels, scaled by your display
+and interface settings and reduced when screen space is limited.
+Hold the right stick left or right to
+change pages with the same repeat timing as ordinary navigation. Browsing the
+wheel does not open each highlighted widget. Menu and Y retain their tray actions.
+Widget-specific shortcuts become available after you open the widget with A.
+
+View keeps its pinned-view focus shortcut. Inside a widget, the right stick
+still scrolls; release it to neutral when moving between the wheel and a widget.
+If Windows composition is unavailable, WidgetRail uses the rail as a fallback.
+
 ## Set it up for you
 
 Settings controls appearance, scale, themes, widget order and enablement,

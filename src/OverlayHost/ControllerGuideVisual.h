@@ -65,6 +65,7 @@ inline void DrawControl(ID2D1RenderTarget* target, IDWriteTextFormat* format,
     };
     const auto ring=[&](float radius) { target->DrawEllipse({{cx,cy},radius,radius},brush,stroke); };
     std::wstring_view label;
+    auto labelBounds = bounds;
     switch(control) {
     case Control::A: label=L"A"; ring(h*.43F); break;
     case Control::B: label=L"B"; ring(h*.43F); break;
@@ -84,6 +85,7 @@ inline void DrawControl(ID2D1RenderTarget* target, IDWriteTextFormat* format,
         target->DrawEllipse({{cx,y+h*.78F},w*.38F,h*.12F},brush,stroke);
         line(.5F,.45F,.5F,.78F);
         target->DrawEllipse({{cx,y+h*.32F},w*.28F,h*.24F},brush,stroke);
+        labelBounds = {x+w*.22F,y+h*.08F,x+w*.78F,y+h*.56F};
         label=control==Control::LeftStick?L"L":L"R"; break;
     case Control::View:
         target->DrawRectangle({x+w*.12F,y+h*.15F,x+w*.65F,y+h*.65F},brush,stroke);
@@ -108,7 +110,12 @@ inline void DrawControl(ID2D1RenderTarget* target, IDWriteTextFormat* format,
     }
     if(!label.empty()) {
         const auto prior=format->GetTextAlignment(); format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-        target->DrawTextW(label.data(),static_cast<UINT32>(label.size()),format,bounds,brush,D2D1_DRAW_TEXT_OPTIONS_CLIP);
+        const auto priorParagraph = format->GetParagraphAlignment();
+        format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        target->DrawTextW(label.data(),static_cast<UINT32>(label.size()),format,labelBounds,brush,
+            control==Control::LeftStick || control==Control::RightStick
+                ? D2D1_DRAW_TEXT_OPTIONS_NONE : D2D1_DRAW_TEXT_OPTIONS_CLIP);
+        format->SetParagraphAlignment(priorParagraph);
         format->SetTextAlignment(prior);
     }
     if(progress>=0) {

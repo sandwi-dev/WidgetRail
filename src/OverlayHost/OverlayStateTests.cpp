@@ -242,6 +242,25 @@ int main() {
     Check(empty.surface() == Surface::Dashboard && empty.selectedWidget().empty(),
           "empty catalogs remain controller-safe");
 
+    OverlayState radial;
+    Send(radial, Command::ToggleOverlay);
+    Send(radial, Command::Activate);
+    const auto originalWidget = std::wstring(radial.activeWidget());
+    Send(radial, Command::SampleWidgetBack);
+    (void)radial.Dispatch(Command::NavigateRight, false);
+    Check(radial.activeWidget() == originalWidget && radial.selectedWidget() != originalWidget &&
+          radial.focusRegion() == FocusRegion::Tray,
+          "radial highlight leaves the active widget and its input scope untouched");
+    Check(radial.ReturnToActiveWidget() && radial.selectedWidget() == originalWidget &&
+          radial.focusRegion() == FocusRegion::Widget,
+          "canceling the wheel returns to the original widget without activation");
+    Send(radial, Command::SampleWidgetBack);
+    const auto targetWidget = radial.order()[1];
+    Check(radial.TrySelectTrayWidget(targetWidget, false) && radial.activeWidget() == originalWidget,
+          "direct radial selection does not load or activate the target");
+    (void)radial.Dispatch(Command::Activate, false);
+    Check(radial.activeWidget() == targetWidget && radial.focusRegion() == FocusRegion::Widget,
+          "A commits exactly the highlighted radial target");
     std::cout << "OverlayStateTests passed\n";
     return EXIT_SUCCESS;
 }

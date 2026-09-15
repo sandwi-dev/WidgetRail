@@ -18,8 +18,9 @@ std::optional<WidgetLifecycleTarget> DesiredWidgetLifecycle(
     const std::wstring_view selectedWidget,
     const std::wstring_view activeWidget,
     const bool selectedWidgetIsBridge,
-    const bool activeWidgetIsBridge) {
-    if (surface == Surface::Dashboard && selectedWidgetIsBridge &&
+    const bool activeWidgetIsBridge,
+    const bool previewTraySelection) {
+    if (previewTraySelection && surface == Surface::Dashboard && selectedWidgetIsBridge &&
         !selectedWidget.empty()) {
         return WidgetLifecycleTarget{
             std::wstring(selectedWidget), WidgetLifecycleState::Visible};

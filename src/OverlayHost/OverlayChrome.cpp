@@ -3,6 +3,7 @@
 #include "OverlayCompositionSurface.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace widgetrail::shell {
 
@@ -13,6 +14,29 @@ RECT ComputeFixedChromeWindowBounds(
     const LONG availableWidth = workArea.right - workArea.left;
     const LONG left = workArea.left + (availableWidth - width) / 2;
     return {left, workArea.bottom - height, left + width, workArea.bottom};
+}
+
+RadialChromePlacement ComputeRadialChromePlacement(
+    const RECT& workArea, const RECT& windowBounds,
+    const RECT& guideClientBounds, const RECT& trayClientBounds,
+    const float pixelsPerDip) noexcept {
+    RadialChromePlacement result{windowBounds, guideClientBounds, trayClientBounds};
+    if (!std::isfinite(pixelsPerDip) || pixelsPerDip <= 0.0F) return result;
+    const LONG gap = static_cast<LONG>(std::ceil(12.0F * pixelsPerDip));
+    const LONG available = windowBounds.top + guideClientBounds.top - workArea.top - gap;
+    result.wheelSize = std::max(0L, std::min({
+        static_cast<LONG>(std::floor(400.0F * pixelsPerDip)),
+        trayClientBounds.right - trayClientBounds.left - 2 * gap, available}));
+    if (result.wheelSize == 0) return result;
+    const LONG wheelTop = guideClientBounds.top - gap - result.wheelSize;
+    result.expansion = std::max(0L, -wheelTop);
+    result.windowBounds.top -= result.expansion;
+    result.guideClientBounds.top += result.expansion;
+    result.guideClientBounds.bottom += result.expansion;
+    result.trayClientBounds.top = wheelTop + result.expansion;
+    result.trayClientBounds.bottom += result.expansion;
+    result.railOffset = trayClientBounds.top - wheelTop;
+    return result;
 }
 
 std::optional<RECT> ComputeContentWindowBoundsAboveGuide(

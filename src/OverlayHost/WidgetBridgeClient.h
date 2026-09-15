@@ -763,6 +763,7 @@ struct PlatformAppearance final {
     bool boldText{};
     PlatformTransparencyPreference transparency{PlatformTransparencyPreference::Full};
     bool animateWidgetSwitching{};
+    bool radialWidgetSwitcher{};
     PlatformSurfaceAppearanceOverride widgetSurfaceAppearance{
         PlatformSurfaceAppearanceOverride::Widget};
     std::unordered_map<std::wstring, PlatformSurfaceAppearanceOverride>

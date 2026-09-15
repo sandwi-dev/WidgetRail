@@ -35,6 +35,9 @@ public enum WidgetSurfaceAppearanceOverride
     Solid,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetSwitcherLayout>))]
+public enum WidgetSwitcherLayout { Rail, Radial }
+
 public sealed record AppearanceSettings
 {
     public const double MinimumInterfaceScale = 0.8;
@@ -84,6 +87,7 @@ public sealed record AppearanceSettings
     /// Fresh installations use the explicit value in Default.
     /// </summary>
     public bool AnimateWidgetSwitching { get; init; }
+    public WidgetSwitcherLayout WidgetSwitcher { get; init; } = WidgetSwitcherLayout.Rail;
 
     /// <summary>Global host-owned override; Widget preserves each declaration.</summary>
     public WidgetSurfaceAppearanceOverride WidgetSurfaceAppearance { get; init; } =
@@ -245,6 +249,8 @@ public static class PlatformSettingsValidator
             AppearanceSettings.MaximumBackdropOpacity, "$.appearance.backdropOpacity");
         if (!Enum.IsDefined(appearance.Motion))
             Add("$.appearance.motion", "invalid_enum", "Motion preference is invalid.");
+        if (!Enum.IsDefined(appearance.WidgetSwitcher))
+            Add("$.appearance.widgetSwitcher", "invalid_enum", "Widget switcher layout is invalid.");
         if (!Enum.IsDefined(appearance.Contrast))
             Add("$.appearance.contrast", "invalid_enum", "Contrast preference is invalid.");
         if (!Enum.IsDefined(appearance.Transparency))

@@ -48,7 +48,7 @@ public:
         std::vector<std::wstring> availableWidgetIds = {
             L"audio-mixer", L"yt-music", L"performance"});
 
-    [[nodiscard]] bool Dispatch(Command command) noexcept;
+    [[nodiscard]] bool Dispatch(Command command, bool previewTraySelection = true) noexcept;
     /// Reconciles persisted presentation state with a newly discovered catalog.
     /// Existing relative order is preserved and new IDs are appended.
     [[nodiscard]] bool SetAvailableWidgets(
@@ -59,7 +59,8 @@ public:
         std::wstring_view widgetId) noexcept;
     /// Selects a tray item by stable widget ID without replaying directional input.
     /// Returns false when the ID is unavailable or the tray does not own input.
-    [[nodiscard]] bool TrySelectTrayWidget(std::wstring_view widgetId) noexcept;
+    [[nodiscard]] bool TrySelectTrayWidget(std::wstring_view widgetId, bool preview = true) noexcept;
+    [[nodiscard]] bool ReturnToActiveWidget() noexcept;
     [[nodiscard]] Surface surface() const noexcept { return surface_; }
     [[nodiscard]] FocusRegion focusRegion() const noexcept { return focusRegion_; }
     [[nodiscard]] std::size_t selectedSlot() const noexcept { return selectedSlot_; }

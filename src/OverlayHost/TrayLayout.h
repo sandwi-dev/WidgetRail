@@ -46,7 +46,16 @@ struct TrayLayout final {
     std::optional<declarative::Rect> statusBounds;
     std::wstring statusDescription;
     std::size_t totalCount{};
+    std::optional<declarative::Rect> radialBounds;
+    std::size_t page{};
+    std::size_t pageCount{1};
 };
+
+inline constexpr std::size_t kRadialPageSize = 8;
+[[nodiscard]] std::optional<TrayLayout> ComputeRadialTrayLayout(
+    const declarative::Rect& bounds, std::size_t widgetCount, std::size_t selectedSlot);
+[[nodiscard]] std::size_t RadialPageTarget(std::size_t count, std::size_t slot, int delta) noexcept;
+[[nodiscard]] std::optional<std::size_t> RadialSector(float x, float y, float deadZone = 0.0F) noexcept;
 
 /// Computes the single authoritative tray geometry used by paint, pointer
 /// hit-testing, and Windows accessibility projection.

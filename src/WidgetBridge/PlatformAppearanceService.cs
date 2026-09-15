@@ -21,6 +21,7 @@ public sealed record BridgePlatformAppearance
     public required bool BoldText { get; init; }
     public required TransparencyPreference Transparency { get; init; }
     public required bool AnimateWidgetSwitching { get; init; }
+    public WidgetSwitcherLayout WidgetSwitcher { get; init; } = WidgetSwitcherLayout.Rail;
     public required WidgetSurfaceAppearanceOverride WidgetSurfaceAppearance { get; init; }
     public required IReadOnlyDictionary<string, WidgetSurfaceAppearanceOverride>
         WidgetSurfaceAppearanceOverrides { get; init; }
@@ -132,6 +133,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             BoldText = appearance.BoldText,
             Transparency = appearance.Transparency,
             AnimateWidgetSwitching = appearance.AnimateWidgetSwitching,
+            WidgetSwitcher = appearance.WidgetSwitcher,
             WidgetSurfaceAppearance = appearance.WidgetSurfaceAppearance,
             WidgetSurfaceAppearanceOverrides = appearance.WidgetSurfaceAppearanceOverrides,
             ShellStyles = ResolveShellStyles(current.Theme),

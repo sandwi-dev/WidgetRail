@@ -829,6 +829,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     auto required = JsonObject::Parse(payload.Stringify());
     if (required.HasKey(L"displayScales")) required.Remove(L"displayScales");
     if (required.HasKey(L"activeDisplayId")) required.Remove(L"activeDisplayId");
+    if (required.HasKey(L"widgetSwitcher")) required.Remove(L"widgetSwitcher");
     if (!HasOnlyProperties(required,
             {L"revision", L"themeId", L"themeVersion", L"interfaceScale", L"textScale",
              L"backdropOpacity", L"motion", L"contrast", L"boldText",
@@ -860,6 +861,16 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     }
 
     PlatformAppearance appearance;
+    if (payload.HasKey(L"widgetSwitcher")) {
+        if (payload.GetNamedValue(L"widgetSwitcher").ValueType() != JsonValueType::String) {
+            error = L"Invalid widget switcher layout."; return std::nullopt;
+        }
+        const auto layout = payload.GetNamedString(L"widgetSwitcher");
+        if (layout != L"rail" && layout != L"radial" && layout != L"Rail" && layout != L"Radial") {
+            error = L"Invalid widget switcher layout."; return std::nullopt;
+        }
+        appearance.radialWidgetSwitcher = layout == L"radial" || layout == L"Radial";
+    }
     if (payload.HasKey(L"activeDisplayId")) {
         if (payload.GetNamedValue(L"activeDisplayId").ValueType() != JsonValueType::String) {
             error = L"Invalid display identity."; return std::nullopt;

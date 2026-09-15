@@ -33,6 +33,7 @@ struct WidgetLifecycleTarget final {
     std::wstring_view selectedWidget,
     std::wstring_view activeWidget,
     bool selectedWidgetIsBridge,
-    bool activeWidgetIsBridge);
+    bool activeWidgetIsBridge,
+    bool previewTraySelection = true);
 
 } // namespace widgetrail

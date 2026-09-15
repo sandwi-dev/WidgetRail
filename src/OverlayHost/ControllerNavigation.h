@@ -149,6 +149,7 @@ enum class ControllerActionContext {
     Tray,
     RootWidgetScope,
     NestedWidgetScope,
+    RadialSwitcher,
 };
 
 enum class ControllerActionRoute {
@@ -212,12 +213,15 @@ enum class FocusedSliderButtonRoute {
 [[nodiscard]] constexpr ControllerActionRoute RouteControllerAction(
     const ControllerActionContext context,
     const std::wstring_view button) noexcept {
-    if (context != ControllerActionContext::Tray) {
+    if (context != ControllerActionContext::Tray &&
+        context != ControllerActionContext::RadialSwitcher) {
         return ControllerActionRoute::Widget;
     }
     if (button == L"A") return ControllerActionRoute::HostActivate;
     if (button == L"Y") return ControllerActionRoute::HostToggleReorder;
     if (button == L"B") return ControllerActionRoute::HostCloseOverlay;
+    // A chooser has no widget shortcut authority until its target is opened.
+    if (context == ControllerActionContext::RadialSwitcher) return ControllerActionRoute::None;
     return ControllerActionRoute::Widget;
 }
 

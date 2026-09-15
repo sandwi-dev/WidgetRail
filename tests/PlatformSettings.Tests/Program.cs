@@ -77,6 +77,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(true, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
         Assert.Equal(true, settings.Appearance.AnimateWidgetSwitching);
+        Assert.Equal(WidgetSwitcherLayout.Rail, settings.Appearance.WidgetSwitcher);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
 
         using var manager = new ThemeManager(store, Catalog(temp.Path));
@@ -109,6 +110,7 @@ static async Task SettingsRoundTrip()
             BoldText = true,
             Transparency = TransparencyPreference.Reduced,
             AnimateWidgetSwitching = true,
+            WidgetSwitcher = WidgetSwitcherLayout.Radial,
         },
     });
     Assert.Equal("dev.example.slate", updated.Appearance.ThemeId);
@@ -117,6 +119,7 @@ static async Task SettingsRoundTrip()
     var reloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
     Assert.DocumentEqual(updated, reloaded);
     Assert.Equal(true, reloaded.Appearance.AnimateWidgetSwitching);
+    Assert.Equal(WidgetSwitcherLayout.Radial, reloaded.Appearance.WidgetSwitcher);
     var source = await File.ReadAllTextAsync(store.Paths.SettingsFile);
     Assert.Contains("\"schemaVersion\": 3", source);
     Assert.Contains("\"motion\": \"reduced\"", source);

@@ -21,6 +21,22 @@ constexpr DWORD FixedChromeWindowExStyle() noexcept {
 
 [[nodiscard]] RECT ComputeFixedChromeWindowBounds(
     const RECT& workArea, LONG width, LONG height) noexcept;
+
+struct RadialChromePlacement final {
+    RECT windowBounds{};
+    RECT guideClientBounds{};
+    RECT trayClientBounds{};
+    LONG expansion{};
+    LONG railOffset{};
+    LONG wheelSize{};
+};
+
+// Extends only the transparent chrome canvas. Existing guide and rail screen
+// anchors remain fixed, so content placement and available height are unchanged.
+[[nodiscard]] RadialChromePlacement ComputeRadialChromePlacement(
+    const RECT& workArea, const RECT& windowBounds,
+    const RECT& guideClientBounds, const RECT& trayClientBounds,
+    float pixelsPerDip) noexcept;
 [[nodiscard]] std::optional<RECT> ComputeContentWindowBoundsAboveGuide(
     const RECT& workArea,
     LONG guideTop,

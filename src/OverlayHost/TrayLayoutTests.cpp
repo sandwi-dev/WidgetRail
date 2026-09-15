@@ -378,6 +378,37 @@ int main() {
     const auto wideStatus = widgetrail::shell::ComputeTrayStatusLayout(1920, 160, 40, 0);
     Check(wideStatus && wideStatus->statusBounds && wideStatus->statusBounds->width == 188,
         "wide surfaces retain clock and connectivity indicators");
+    using widgetrail::shell::RadialSector;
+    using widgetrail::shell::RadialPageTarget;
+    constexpr float pi = 3.14159265358979323846F;
+    Check(!RadialSector(0, 0) && !RadialSector(1000, 1000, 16000),
+          "neutral and small stick drift cannot select a radial slot");
+    for (std::size_t slot = 0; slot < 8; ++slot) {
+        const float angle = static_cast<float>(slot) * pi / 4;
+        Check(RadialSector(std::sin(angle)*32000, std::cos(angle)*32000, 16000) == slot,
+              "left stick maps all eight clockwise sectors from north");
+    }
+    Check(RadialPageTarget(19, 7, 1) == 15 && RadialPageTarget(19, 15, 1) == 18 &&
+          RadialPageTarget(19, 16, 1) == 0 && RadialPageTarget(19, 0, -1) == 16 &&
+          RadialPageTarget(19, 0, -4) == 16,
+          "page navigation wraps and clamps partial pages without crossing identities");
+    const widgetrail::declarative::Rect wheelBounds{20, 10, 340, 340};
+    for (const std::size_t selected : {0U, 8U, 18U}) {
+        const auto wheel = widgetrail::shell::ComputeRadialTrayLayout(wheelBounds, 19, selected);
+        Check(wheel && wheel->page == selected/8 && wheel->pageCount == 3,
+              "radial layout contains only the selected page");
+        for (const auto& tile : wheel->tiles) {
+            const auto* hit = widgetrail::shell::HitTestTray(*wheel,
+                tile.bounds.x + tile.bounds.width/2, tile.bounds.y + tile.bounds.height/2);
+            Check(hit && hit->slot == tile.slot, "radial pointer and stick select the same tile");
+        }
+        Check(!widgetrail::shell::HitTestTray(*wheel, 190, 180) &&
+              !widgetrail::shell::HitTestTray(*wheel, 20, 10),
+              "wheel center and transparent corners do not activate widgets");
+        const auto& next = *wheel->nextOverflow;
+        Check(widgetrail::shell::HitTestTrayOverflow(*wheel, next.bounds.x+12, next.bounds.y+12),
+              "page arrows retain their own pointer action");
+    }
     std::cout << "TrayLayoutTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

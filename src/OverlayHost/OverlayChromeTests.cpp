@@ -2,6 +2,8 @@
 #include "OverlayCompositionSurface.h"
 #include "OverlayState.h"
 #include "TrayLayout.h"
+#include "ControllerGuideVisual.h"
+#pragma comment(lib, "dwrite.lib")
 
 #include <Windows.h>
 #include <d2d1.h>
@@ -332,13 +334,13 @@ void CheckRenderedGuideContentCentering() {
         source.data() + ensureBegin, ensureEnd - ensureBegin};
     Check(ensureOwner.find("WidgetGuideContentBottomDip(guideHeightDip)") !=
               std::string_view::npos &&
-          ensureOwner.find("DashboardGuideContentBottomDip(dashboardHeightDip)") !=
+          ensureOwner.find("DashboardGuideContentBottomDip") ==
               std::string_view::npos &&
           ensureOwner.find("chromeHeight - session.renderedGuideContentBottom") !=
               std::string_view::npos &&
           ensureOwner.find("centeredStripTop = session.renderedGuideContentBottom") !=
               std::string_view::npos,
-          "fixed chrome centers from the exact rendered dashboard or widget guide-content bottom");
+          "fixed chrome always reserves its own guide independently of startup content mode");
     Check(ensureOwner.find("session.guideClientBounds.top += topExpansion") !=
               std::string_view::npos &&
           ensureOwner.find("session.renderedGuideContentBottom += topExpansion") !=
@@ -491,6 +493,56 @@ void CheckRenderedGuideContentCentering() {
               frameOwner.find("nullptr, nullptr, trayLayout, false") !=
                   std::string_view::npos,
           "the current frame tray branch paints the exact forwarded layout once");
+}
+
+void CheckStickGlyphLabels(ID2D1Factory* d2d, IWICImagingFactory* wic) {
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
+        __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf()))),
+        "glyph test creates DirectWrite factory");
+    for (const auto [size, fontSize] : {std::pair{24.0F,14.0F}, {28.0F,14.0F}, {36.0F,21.0F}}) {
+        const auto render = [&](widgetrail::guide::Control control) {
+            constexpr UINT side = 48;
+            ComPtr<IWICBitmap> bitmap;
+            Check(SUCCEEDED(wic->CreateBitmap(side, side, GUID_WICPixelFormat32bppPBGRA,
+                WICBitmapCacheOnLoad, bitmap.GetAddressOf())), "glyph bitmap is created");
+            ComPtr<ID2D1RenderTarget> target;
+            Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(bitmap.Get(),
+                D2D1::RenderTargetProperties(), target.GetAddressOf())), "glyph target is created");
+            ComPtr<IDWriteTextFormat> format;
+            Check(SUCCEEDED(write->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize, L"",
+                format.GetAddressOf())), "glyph format is created");
+            format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+            format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            ComPtr<ID2D1SolidColorBrush> brush;
+            Check(SUCCEEDED(target->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White),
+                brush.GetAddressOf())), "glyph brush is created");
+            target->BeginDraw();
+            target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+            target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            widgetrail::guide::DrawControl(target.Get(), format.Get(), control,
+                {4,4,4+size,4+size}, brush.Get());
+            Check(SUCCEEDED(target->EndDraw()), "glyph drawing completes");
+            Check(format->GetTextAlignment() == DWRITE_TEXT_ALIGNMENT_LEADING &&
+                format->GetParagraphAlignment() == DWRITE_PARAGRAPH_ALIGNMENT_CENTER,
+                "glyph drawing restores shared text alignment");
+            std::array<BYTE, side*side*4> pixels{};
+            Check(SUCCEEDED(bitmap->CopyPixels(nullptr, side*4,
+                static_cast<UINT>(pixels.size()), pixels.data())), "glyph pixels are readable");
+            return pixels;
+        };
+        const auto left = render(widgetrail::guide::Control::LeftStick);
+        const auto right = render(widgetrail::guide::Control::RightStick);
+        bool differentCaps{};
+        bool differentStems{};
+        for (std::size_t i=0; i<left.size(); ++i) if (left[i] != right[i]) {
+            if (i/(48*4) >= static_cast<std::size_t>(std::ceil(4+size*.60F))) differentStems=true;
+            else differentCaps=true;
+        }
+        Check(differentCaps && !differentStems,
+            "left and right letters differ only in the stick cap, never over the stem or base");
+    }
 }
 
 void CheckFrame(
@@ -1021,6 +1073,31 @@ void CheckFixedChromeWindowPolicy() {
 } // namespace
 
 int main() {
+    for (const float scale : {0.75F, 1.0F, 1.25F, 1.5F, 2.0F}) {
+        const RECT work{-1920, -100, 0, 980};
+        const RECT window{-1500, 650, -420, 980};
+        const RECT guide{0, 100, 1080, 158};
+        const RECT tray{0, 0, 1080, 330};
+        const auto radial = widgetrail::shell::ComputeRadialChromePlacement(
+            work, window, guide, tray, scale);
+        Check(radial.wheelSize == static_cast<LONG>(std::floor(400.0F * scale)),
+              "wheel uses a preferred diameter of 400 logical pixels at each scale");
+        Check(radial.windowBounds.top + radial.guideClientBounds.top == window.top + guide.top &&
+              radial.windowBounds.top + radial.guideClientBounds.bottom == window.top + guide.bottom,
+              "radial canvas expansion preserves both guide screen edges at every scale");
+        Check(radial.windowBounds.top + radial.trayClientBounds.top + radial.railOffset == window.top + tray.top &&
+              radial.windowBounds.top + radial.trayClientBounds.bottom == window.top + tray.bottom,
+              "radial canvas expansion preserves the original rail screen anchors");
+        const auto before = widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
+            work, window.top + guide.top, 700, 500, 12);
+        const auto after = widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
+            work, radial.windowBounds.top + radial.guideClientBounds.top, 700, 500, 12);
+        Check(before && after && EqualRect(&*before, &*after),
+              "radial overlay cannot change widget screen bounds or available height");
+        Check(radial.windowBounds.top >= work.top && radial.wheelSize > 0 &&
+              radial.trayClientBounds.top + radial.wheelSize < radial.guideClientBounds.top,
+              "wheel fits on the monitor above the stationary guide");
+    }
     const HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     Check(SUCCEEDED(initialized), "COM initializes for WIC");
     ComPtr<ID2D1Factory> d2d;
@@ -1035,6 +1112,7 @@ int main() {
           "WIC factory is created");
 
     CheckFrame(d2d.Get(), wic.Get(), 1.0F);
+    CheckStickGlyphLabels(d2d.Get(), wic.Get());
     CheckFrame(d2d.Get(), wic.Get(), 1.5F);
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.5F);

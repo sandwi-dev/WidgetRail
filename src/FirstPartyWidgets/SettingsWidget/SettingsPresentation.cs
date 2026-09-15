@@ -330,6 +330,8 @@ internal static class SettingsPresentation
                 UI.Text("Overlay", "overlay.heading", "Overlay settings")
                     .Classes("page-heading"),
                 DisplayHint(display), interfaceScale, opacity,
+                UI.Button($"Widget switcher: {settings.Appearance.WidgetSwitcher}",
+                    "widget-switcher.toggle", "overlay.widget-switcher").Busy(busy).Classes("setting-row"),
                 UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
                     "startup.toggle", "overlay.startup").Busy(busy).Disabled(startup?.CanChange != true)
                     .AddClasses("setting-row"),

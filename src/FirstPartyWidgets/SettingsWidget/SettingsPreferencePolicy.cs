@@ -17,6 +17,7 @@ internal enum SettingsPreferenceKind
     BoldText,
     ReducedTransparency,
     AnimateWidgetSwitching,
+    WidgetSwitcher,
     Theme,
 }
 
@@ -128,6 +129,11 @@ internal readonly record struct SettingsPreferenceMutation(
         {
             AnimateWidgetSwitching = !appearance.AnimateWidgetSwitching,
         },
+        SettingsPreferenceKind.WidgetSwitcher => appearance with
+        {
+            WidgetSwitcher = appearance.WidgetSwitcher == WidgetSwitcherLayout.Rail
+                ? WidgetSwitcherLayout.Radial : WidgetSwitcherLayout.Rail,
+        },
         SettingsPreferenceKind.Theme when ThemeId is not null && ThemeVersion is not null =>
             appearance with { ThemeId = ThemeId, ThemeVersion = ThemeVersion },
         _ => appearance,
@@ -184,6 +190,7 @@ internal static class SettingsPreferencePolicy
             "transparency.reduced" => new(
                 SettingsPreferenceKind.ReducedTransparency,
                 "Transparency preference saved"),
+            "widget-switcher.toggle" => new(SettingsPreferenceKind.WidgetSwitcher, "Widget switcher layout saved"),
             "widget-switch-animation.toggle" => new(
                 SettingsPreferenceKind.AnimateWidgetSwitching,
                 "Widget-switch animation preference saved"),

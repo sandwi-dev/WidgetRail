@@ -36,5 +36,10 @@ int main() {
     assert((visiblePanel == widgetrail::WidgetLifecycleTarget{
         L"music", WidgetLifecycleState::Visible}));
 
+    assert(!DesiredWidgetLifecycle(
+        Surface::Dashboard, FocusRegion::Tray, L"music", L"", true, false, false));
+    assert((DesiredWidgetLifecycle(
+        Surface::Widget, FocusRegion::Tray, L"other", L"music", true, true, false) ==
+        widgetrail::WidgetLifecycleTarget{L"music", WidgetLifecycleState::Visible}));
     std::cout << "WidgetLifecycleTests passed\n";
 }

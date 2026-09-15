@@ -1,4 +1,5 @@
 #include "ControllerNavigation.h"
+#include "RadialInput.h"
 #include "ControllerShortcutResolver.h"
 
 #include <array>
@@ -552,6 +553,15 @@ int main() {
     using widgetrail::input::RouteControllerAction;
     using widgetrail::input::RouteFailedWidgetAction;
     using widgetrail::input::RouteUnhandledControllerAction;
+    for (const auto button : {L"X", L"LB", L"RB", L"LT", L"RT", L"LS", L"RS"}) {
+        Check(RouteControllerAction(ControllerActionContext::RadialSwitcher, button) ==
+                  ControllerActionRoute::None,
+              "wheel shortcuts cannot request a hidden highlighted widget snapshot");
+    }
+    Check(RouteControllerAction(ControllerActionContext::RadialSwitcher, L"A") == ControllerActionRoute::HostActivate &&
+          RouteControllerAction(ControllerActionContext::RadialSwitcher, L"B") == ControllerActionRoute::HostCloseOverlay &&
+          RouteControllerAction(ControllerActionContext::RadialSwitcher, L"Y") == ControllerActionRoute::HostToggleReorder,
+          "wheel continues to route its explicit host controls");
     Check(RouteControllerAction(ControllerActionContext::Tray, L"A") ==
               ControllerActionRoute::HostActivate,
           "dashboard A remains the host open action");
@@ -819,6 +829,24 @@ int main() {
               "the clamped interval still emits");
     }
 
+    {
+        widgetrail::input::RadialRightStick stick;
+        stick.UpdateOwner(false, 32767, 0);
+        Check(stick.allowScroll(), "rail never gates existing widget scroll");
+        stick.UpdateOwner(true, 32767, 0);
+        Check(!stick.allowScroll() && !stick.Page(32767, 0),
+              "held widget scroll cannot spill into radial paging");
+        stick.UpdateOwner(true, 0, 0);
+        Check(stick.Page(32767, 100).has_value(), "fresh radial deflection pages immediately");
+        Check(!stick.Page(32767, 459) && stick.Page(32767, 460).has_value() &&
+              !stick.Page(32767, 584) && stick.Page(32767, 585).has_value(),
+              "radial paging uses the ordinary 360ms initial and 125ms repeat cadence");
+        stick.UpdateOwner(false, 32767, 0);
+        Check(!stick.allowScroll() && !stick.Page(32767, 600),
+              "held wheel paging cannot spill into widget or pinned scrolling");
+        stick.UpdateOwner(false, 0, 0);
+        Check(stick.allowScroll(), "neutral restores existing free scroll ownership");
+    }
     std::cout << "ControllerNavigationTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

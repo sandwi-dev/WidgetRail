@@ -5,6 +5,50 @@
 
 namespace widgetrail::shell {
 
+std::optional<std::size_t> RadialSector(float x, float y, float deadZone) noexcept {
+    if (!std::isfinite(x) || !std::isfinite(y) || x*x + y*y <= deadZone*deadZone) return std::nullopt;
+    constexpr float pi = 3.14159265358979323846F;
+    float angle = std::atan2(x, y);
+    if (angle < 0) angle += 2*pi;
+    return static_cast<std::size_t>(std::floor((angle + pi/8) / (pi/4))) % kRadialPageSize;
+}
+
+std::size_t RadialPageTarget(std::size_t count, std::size_t slot, int delta) noexcept {
+    if (count == 0) return 0;
+    slot = std::min(slot, count-1);
+    const auto pages = (count + kRadialPageSize-1) / kRadialPageSize;
+    const auto signedPages = static_cast<long long>(pages);
+    const auto requested = static_cast<long long>(slot/kRadialPageSize) + delta;
+    const auto page = static_cast<std::size_t>((requested % signedPages + signedPages) % signedPages);
+    return std::min(page*kRadialPageSize + slot%kRadialPageSize, count-1);
+}
+
+std::optional<TrayLayout> ComputeRadialTrayLayout(const declarative::Rect& bounds,
+    std::size_t count, std::size_t selected) {
+    if (!count || !std::isfinite(bounds.width) || !std::isfinite(bounds.height) ||
+        bounds.width <= 0 || bounds.height <= 0) return std::nullopt;
+    constexpr float pi = 3.14159265358979323846F;
+    TrayLayout layout;
+    layout.radialBounds = bounds; layout.stripBounds = bounds; layout.totalCount = count;
+    layout.pageCount = (count + kRadialPageSize-1)/kRadialPageSize;
+    layout.page = std::min(selected, count-1)/kRadialPageSize;
+    const float size = std::min(bounds.width, bounds.height);
+    const float tile = size*.17F, radius = size*.355F;
+    const float cx = bounds.x + bounds.width*.5F, cy = bounds.y + bounds.height*.5F;
+    for (std::size_t i=0; i<kRadialPageSize && layout.page*kRadialPageSize+i<count; ++i) {
+        const float angle = static_cast<float>(i)*pi/4;
+        layout.tiles.push_back({layout.page*kRadialPageSize+i,
+            {cx + std::sin(angle)*radius - tile/2, cy - std::cos(angle)*radius - tile/2, tile, tile}});
+    }
+    if (layout.pageCount > 1) {
+        layout.previousOverflow = TrayOverflowLayout{TrayOverflowDirection::Previous, 0,
+            RadialPageTarget(count, selected, -1), {cx-48, cy+6, 24, 24}};
+        layout.nextOverflow = TrayOverflowLayout{TrayOverflowDirection::Next, 0,
+            RadialPageTarget(count, selected, 1), {cx+24, cy+6, 24, 24}};
+    }
+    return layout;
+}
+
 namespace {
 
 constexpr float kPreferredTileSize = 64.0F;
@@ -204,6 +248,15 @@ std::optional<TrayLayout> ComputeTrayLayout(
 
 const TrayTileLayout* HitTestTray(
     const TrayLayout& layout, const float x, const float y) noexcept {
+    if (layout.radialBounds) {
+        const auto& bounds = *layout.radialBounds;
+        const float dx = x-bounds.x-bounds.width/2, dy = bounds.y+bounds.height/2-y;
+        const float radius = std::min(bounds.width, bounds.height)/2;
+        if (dx*dx+dy*dy > radius*radius) return nullptr;
+        const auto sector = RadialSector(dx,dy,radius*.44F);
+        if (!sector || *sector >= layout.tiles.size()) return nullptr;
+        return &layout.tiles[*sector];
+    }
     const auto found = std::find_if(
         layout.tiles.begin(), layout.tiles.end(),
         [&](const TrayTileLayout& tile) {
