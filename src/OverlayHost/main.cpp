@@ -17411,7 +17411,8 @@ private:
             widgetrail::shell::DrawRadialTray(renderTarget_.Get(), writeFactory_.Get(), hintFormat_.Get(),
                 *layout, state_.selectedSlot(), DisplayWidgetName(state_.selectedWidget()),
                 {solidCardBrush_->GetColor(), traySelectedBrush_->GetColor(), trayItemTextBrush_->GetColor(),
-                 traySelectedTextBrush_->GetColor(), dashboardSecondaryBrush_->GetColor(), focusBrush_->GetColor()},
+                 traySelectedTextBrush_->GetColor(), dashboardSecondaryBrush_->GetColor(), focusBrush_->GetColor(),
+                 HighContrastSurfacePolicy()},
                 CurrentTextScale(), focusOutlineWidth_);
         }
         // The fallback HWND path has no retained tray-state pass.

@@ -13,6 +13,7 @@ namespace widgetrail::shell {
 
 struct RadialTrayColors final {
     D2D1_COLOR_F surface, selected, text, selectedText, muted, focus;
+    bool highContrast{};
 };
 
 // Presentation only. TrayLayout remains the authority for pointer, controller,
@@ -25,7 +26,9 @@ inline void DrawRadialTray(
     const auto& bounds = *layout.radialBounds;
     const float size = std::min(bounds.width, bounds.height);
     const float cx = bounds.x + bounds.width / 2, cy = bounds.y + bounds.height / 2;
-    const float outer = size * .475F, inner = size * .275F, hub = size * .245F;
+    // Reserve the outer margin for the shadow, inside the existing wheel bounds.
+    const float face = size * .46F;
+    const float outer = size * .4475F, inner = size * .275F, hub = size * .245F;
     const float ui = std::min(1.0F, size / 400.0F);
     constexpr float pi = 3.14159265358979323846F;
     const auto blend = [](D2D1_COLOR_F a, D2D1_COLOR_F b, float amount) {
@@ -39,11 +42,42 @@ inline void DrawRadialTray(
     const auto ellipse = [&](float radius) {
         return D2D1::Ellipse(D2D1::Point2F(cx, cy), radius, radius);
     };
+    Microsoft::WRL::ComPtr<ID2D1LinearGradientBrush> lighting, bevel;
+    if (!colors.highContrast) {
+        const auto gradient = [&](const D2D1_GRADIENT_STOP* stops, UINT32 count,
+                                  ID2D1LinearGradientBrush** result) {
+            Microsoft::WRL::ComPtr<ID2D1GradientStopCollection> collection;
+            if (SUCCEEDED(target->CreateGradientStopCollection(stops, count, collection.GetAddressOf()))) {
+                (void)target->CreateLinearGradientBrush(
+                    D2D1::LinearGradientBrushProperties({cx - face, cy - face}, {cx + face, cy + face}),
+                    collection.Get(), result);
+            }
+        };
+        const D2D1_GRADIENT_STOP lightStops[]{
+            {0, D2D1::ColorF(0xFFFFFF, .11F)}, {.45F, D2D1::ColorF(0xFFFFFF, 0)},
+            {1, D2D1::ColorF(0x000000, .22F)}};
+        const D2D1_GRADIENT_STOP edgeStops[]{
+            {0, D2D1::ColorF(0xFFFFFF, .32F)}, {.48F, D2D1::ColorF(0xFFFFFF, .04F)},
+            {1, D2D1::ColorF(0x000000, .44F)}};
+        gradient(lightStops, 3, lighting.GetAddressOf());
+        gradient(edgeStops, 3, bevel.GetAddressOf());
+        // Bounded concentric layers approximate a soft shadow without blur
+        // surfaces, capture, animation timers, or any extra layout footprint.
+        for (int layer = 8; layer >= 1; --layer) {
+            brush->SetColor(D2D1::ColorF(0x000000, .025F));
+            const float radius = face + size * .004F * layer;
+            target->FillEllipse(D2D1::Ellipse({cx, cy + size * .006F}, radius, radius), brush.Get());
+        }
+        brush->SetColor(blend(base, D2D1::ColorF(0x000000), .3F));
+        target->FillEllipse(D2D1::Ellipse({cx, cy + 3 * ui}, face, face), brush.Get());
+    }
     // An opaque foundation keeps artwork and text behind the wheel from showing
     // through themes whose ordinary tray items are transparent.
-    target->FillEllipse(ellipse(size * .49F), brush.Get());
+    brush->SetColor(base);
+    target->FillEllipse(ellipse(face), brush.Get());
+    if (lighting) target->FillEllipse(ellipse(face), lighting.Get());
     brush->SetColor(blend(base, colors.text, .12F));
-    target->DrawEllipse(ellipse(size * .49F), brush.Get(), 1.0F);
+    target->DrawEllipse(ellipse(face), bevel ? static_cast<ID2D1Brush*>(bevel.Get()) : brush.Get(), 1.5F * ui);
 
     Microsoft::WRL::ComPtr<ID2D1Factory> factory;
     target->GetFactory(factory.GetAddressOf());
@@ -69,8 +103,20 @@ inline void DrawRadialTray(
         sink->AddArc(arc(start, inner, D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE));
         sink->EndFigure(D2D1_FIGURE_END_CLOSED);
         if (FAILED(sink->Close())) continue;
+        if (selectedTile && !colors.highContrast) {
+            D2D1_MATRIX_3X2_F transform;
+            target->GetTransform(&transform);
+            target->SetTransform(D2D1::Matrix3x2F::Translation(0, 3 * ui) * transform);
+            brush->SetColor(D2D1::ColorF(0x000000, .18F));
+            target->DrawGeometry(segment.Get(), brush.Get(), 5 * ui);
+            brush->SetColor(D2D1::ColorF(0x000000, .4F));
+            target->FillGeometry(segment.Get(), brush.Get());
+            target->SetTransform(transform);
+        }
         brush->SetColor(selectedTile ? selected : blend(base, colors.text, .055F));
         target->FillGeometry(segment.Get(), brush.Get());
+        if (lighting) target->FillGeometry(segment.Get(), lighting.Get());
+        if (bevel) target->DrawGeometry(segment.Get(), bevel.Get(), (selectedTile ? 1.5F : .8F) * ui);
         // Only the outside arc is accented, avoiding a bright wedge through the
         // center. High-contrast focus widths still apply to the selected segment.
         if (selectedTile) {
@@ -88,10 +134,28 @@ inline void DrawRadialTray(
             }
         }
     }
-    brush->SetColor(blend(base, colors.text, .025F));
+    if (!colors.highContrast) {
+        for (int layer = 4; layer >= 1; --layer) {
+            brush->SetColor(D2D1::ColorF(0x000000, .075F));
+            const float radius = hub + layer * 1.5F * ui;
+            target->FillEllipse(D2D1::Ellipse({cx, cy + 3 * ui}, radius, radius), brush.Get());
+        }
+        brush->SetColor(blend(base, D2D1::ColorF(0x000000), .3F));
+        target->FillEllipse(D2D1::Ellipse({cx, cy + 3 * ui}, hub, hub), brush.Get());
+    }
+    brush->SetColor(blend(base, colors.text, .045F));
     target->FillEllipse(ellipse(hub), brush.Get());
+    if (lighting) {
+        lighting->SetStartPoint({cx - hub, cy - hub});
+        lighting->SetEndPoint({cx + hub, cy + hub});
+        target->FillEllipse(ellipse(hub), lighting.Get());
+    }
     brush->SetColor(blend(base, colors.text, .1F));
-    target->DrawEllipse(ellipse(hub), brush.Get(), 1.0F);
+    if (bevel) {
+        bevel->SetStartPoint({cx - hub, cy - hub});
+        bevel->SetEndPoint({cx + hub, cy + hub});
+    }
+    target->DrawEllipse(ellipse(hub), bevel ? static_cast<ID2D1Brush*>(bevel.Get()) : brush.Get(), 1.5F * ui);
 
     wchar_t family[128]{};
     if (FAILED(font->GetFontFamilyName(family, 128))) return;
