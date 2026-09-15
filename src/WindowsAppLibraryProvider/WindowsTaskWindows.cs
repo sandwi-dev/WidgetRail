@@ -5,7 +5,7 @@ namespace WidgetRail.WindowsAppLibraryProvider;
 
 internal interface IWindowsTaskWindowControl
 {
-    void Switch(WindowsRunningAppObservation expected, CancellationToken cancellationToken);
+    void PrepareSwitch(WindowsRunningAppObservation expected, CancellationToken cancellationToken);
     void Close(WindowsRunningAppObservation expected, CancellationToken cancellationToken);
 }
 
@@ -69,7 +69,7 @@ public sealed partial class WindowsAppLibraryProvider
                 if (live is null) throw WindowUnavailable();
                 token.ThrowIfCancellationRequested();
                 if (close) TaskWindowControl.Close(live, token);
-                else TaskWindowControl.Switch(live, token);
+                else TaskWindowControl.PrepareSwitch(live, token);
                 return true;
             }, operation.Token).ConfigureAwait(false);
         }
@@ -98,21 +98,11 @@ public sealed partial class WindowsAppLibraryProvider
 
 internal sealed class WindowsTaskWindowControl : IWindowsTaskWindowControl
 {
-    public void Switch(WindowsRunningAppObservation expected, CancellationToken cancellationToken)
+    public void PrepareSwitch(WindowsRunningAppObservation expected, CancellationToken cancellationToken)
     {
-        var handle = Revalidate(expected, cancellationToken);
-        if (IsIconic(handle) && !ShowWindowAsync(handle, 9))
-            throw new BrokerException("window_switch_denied", "Windows could not restore this window.");
-        cancellationToken.ThrowIfCancellationRequested();
-        _ = SetForegroundWindow(handle);
-        // Restoration can be asynchronous; this only observes the one switch request.
-        for (var attempt = 0; attempt < 25; ++attempt)
-        {
-            if (GetForegroundWindow() == handle) return;
-            cancellationToken.ThrowIfCancellationRequested();
-            Thread.Sleep(10);
-        }
-        throw new BrokerException("window_switch_denied", "Windows did not allow this window to become active.");
+        // The authenticated host effect performs activation after hiding the
+        // overlay. The provider only verifies that this is still the same window.
+        _ = Revalidate(expected, cancellationToken);
     }
 
     public void Close(WindowsRunningAppObservation expected, CancellationToken cancellationToken)
@@ -132,17 +122,6 @@ internal sealed class WindowsTaskWindowControl : IWindowsTaskWindowControl
         return current.Window!.Handle;
     }
 
-    [DllImport("user32.dll", ExactSpelling = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsIconic(nint window);
-    [DllImport("user32.dll", ExactSpelling = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ShowWindowAsync(nint window, int command);
-    [DllImport("user32.dll", ExactSpelling = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindow(nint window);
-    [DllImport("user32.dll", ExactSpelling = true)]
-    private static extern nint GetForegroundWindow();
     [DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessageW(nint window, uint message, nuint wParam, nint lParam);

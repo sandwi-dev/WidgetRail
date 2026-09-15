@@ -214,6 +214,7 @@ struct WidgetBridgeRuntimeFailure final {
 
 enum class WidgetHostEffectKind {
     CloseOverlayAfterAppLaunch,
+    ActivateTaskWindow,
 };
 
 enum class ControllerInputOrigin {
@@ -230,6 +231,7 @@ struct WidgetHostEffect final {
     std::wstring runtimeGeneration;
     WidgetHostEffectKind kind{WidgetHostEffectKind::CloseOverlayAfterAppLaunch};
     std::uint64_t initiatedAtMilliseconds{};
+    std::optional<WindowPreviewSource> windowTarget;
 };
 
 // Environment.TickCount64 and GetTickCount64 share Windows uptime. Equal ticks

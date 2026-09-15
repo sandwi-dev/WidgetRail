@@ -7,6 +7,7 @@ var allTests = new (string Name, Func<Task> Run)[]
 {
     ("Display restore pipe deadlines and rollback events reach the client", DisplayRestorePipeTests.RunAsync),
     ("Task windows are permission gated and tokens stay broker scoped", TaskWindowBroker),
+    ("Host activation effects require a successful authorized switch", HostActivationAuthorization),
 
     ("Admitted launches retain completion across background but revoke and destroy cancel", AdmittedLaunchLifecycle),
     ("Capability vocabulary is closed and versioned", CapabilityVocabularyIsClosed),
@@ -1684,6 +1685,62 @@ static async Task AdmittedLaunchLifecycle()
         Assert.Equal(boundary == "background", result.Succeeded);
         if (boundary != "background") Assert.Equal(boundary == "revoke" ? "capability_revoked" : "lifecycle_denied", result.ErrorCode);
     }
+}
+
+static async Task HostActivationAuthorization()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var read = PlatformCapabilities.TaskWindowsReadV1;
+    var control = PlatformCapabilities.TaskWindowsSwitchV1;
+    await store.SetDecisionAsync(identity, read, ConsentDecision.Grant);
+    await store.SetDecisionAsync(identity, control, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend
+    { TaskWindows = [new("native-target", "Editor", "Document", false)
+        { PreviewTarget = new("1234", 42, "12345678", "EditorClass") }] };
+    var reject = false;
+    backend.TaskWindowSwitch = (id, _) =>
+    {
+        Assert.Equal("native-target", id);
+        if (reject) throw new BrokerException("window_switch_denied", "denied");
+        return Task.CompletedTask;
+    };
+    var published = new TaskCompletionSource<BrokerHostEffect>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var effects = 0;
+    var options = new BrokerPipeTransportOptions();
+    var pipeName = $"wrail-host-activation-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(pipeName, identity,
+        [read, control], store, backend, options: options, hostEffectSink: effect =>
+        { Interlocked.Increment(ref effects); published.TrySetResult(effect); });
+    server.SetLifecycle(BrokerLifecycleState.Interactive);
+    var serving = server.RunAsync();
+    await using var client = new BrokerPipeClient(pipeName, identity, server.ChannelNonce, options);
+    await client.ConnectAsync();
+    var list = await client.RequestAsync(read, PlatformCapabilities.TaskWindowsList, new { });
+    var id = list.Payload!.Value.Deserialize<TaskWindowSummary[]>(BrokerJson.StrictOptions)![0].WindowId;
+    var switched = await client.RequestAsync(control, PlatformCapabilities.TaskWindowsSwitch, new TaskWindowRequest(id));
+    Assert.True(switched.Succeeded);
+    var effect = await published.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(BrokerHostEffectKind.ActivateTaskWindow, effect.Kind);
+    Assert.Equal(id, effect.WindowId);
+    Assert.Equal("1234", effect.WindowTarget!.Handle);
+    Assert.Equal(42U, effect.WindowTarget.ProcessId);
+    Assert.True(effect.InitiatedAtMilliseconds > 0);
+    reject = true;
+    Assert.True(!(await client.RequestAsync(control, PlatformCapabilities.TaskWindowsSwitch, new TaskWindowRequest(id))).Succeeded);
+    reject = false;
+    Assert.True(!(await client.RequestAsync(control, PlatformCapabilities.TaskWindowsSwitch, new TaskWindowRequest("window-unknown"))).Succeeded);
+    server.SetLifecycle(BrokerLifecycleState.Visible);
+    Assert.True(!(await client.RequestAsync(control, PlatformCapabilities.TaskWindowsSwitch, new TaskWindowRequest(id))).Succeeded);
+    server.SetLifecycle(BrokerLifecycleState.Interactive);
+    await store.SetDecisionAsync(identity, control, ConsentDecision.Deny);
+    Assert.True(!(await client.RequestAsync(control, PlatformCapabilities.TaskWindowsSwitch, new TaskWindowRequest(id))).Succeeded);
+    Assert.Equal(1, Volatile.Read(ref effects));
+    await client.DisposeAsync();
+    await server.DisposeAsync();
+    await serving;
+
 }
 
 static async Task AppLaunchHostEffectIsSuccessBound()

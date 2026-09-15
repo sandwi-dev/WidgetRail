@@ -2067,6 +2067,10 @@ private:
                     effect.widgetId);
                 continue;
             }
+            if (effect.kind == widgetrail::WidgetHostEffectKind::ActivateTaskWindow) {
+                ActivateTaskWindow(effect);
+                continue;
+            }
             if (effect.kind ==
                 widgetrail::WidgetHostEffectKind::CloseOverlayAfterAppLaunch) {
                 if (!widgetrail::IsAppLaunchCloseCurrent(effect, visibleSessionStartedAt_)) {
@@ -2081,6 +2085,37 @@ private:
             }
         }
         RecordPinnedSurfaceWorkCounters();
+    }
+
+    static bool IsTaskWindowTargetCurrent(const widgetrail::WindowPreviewSource& target) {
+        DWORD processId{};
+        (void)GetWindowThreadProcessId(target.window, &processId);
+        wchar_t className[256]{};
+        const bool valid = target.window && IsWindow(target.window) &&
+            GetAncestor(target.window, GA_ROOT) == target.window && processId == target.processId &&
+            processId != GetCurrentProcessId() &&
+            GetClassNameW(target.window, className, 256) && target.className == className;
+        HANDLE process = valid ? OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId) : nullptr;
+        if (!process) return false;
+        FILETIME created{}, exited{}, kernel{}, user{};
+        const bool current = GetProcessTimes(process, &created, &exited, &kernel, &user) &&
+            ((static_cast<ULONGLONG>(created.dwHighDateTime) << 32) | created.dwLowDateTime) == target.processCreated;
+        CloseHandle(process);
+        return current;
+    }
+
+    void ActivateTaskWindow(const widgetrail::WidgetHostEffect& effect) {
+        const auto now = GetTickCount64();
+        if (!effect.windowTarget ||
+            !widgetrail::IsAppLaunchCloseCurrent(effect, visibleSessionStartedAt_) ||
+            effect.initiatedAtMilliseconds > now || now - effect.initiatedAtMilliseconds > 2000 ||
+            !IsOverlayProcessForeground() || !IsTaskWindowTargetCurrent(*effect.windowTarget)) {
+            return;
+        }
+        // Use the normal close path before activating another process. Activating
+        // while our windows are visible can be denied after foreground fallback.
+        pendingTaskWindowActivation_ = effect;
+        Dispatch(widgetrail::Command::CloseOverlay);
     }
 
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
@@ -5811,6 +5846,9 @@ private:
         if (!mutation()) {
             return;
         }
+        if (priorSurface == widgetrail::Surface::Hidden && state_.surface() != widgetrail::Surface::Hidden) {
+            pendingTaskWindowActivation_.reset();
+        }
         if (RadialSwitcherEnabled()) retainedTrayPaintState_.reset();
         // A held authored action never crosses an accepted shell transition.
         // A still-physical press must be released and pressed again under the
@@ -8037,10 +8075,32 @@ private:
         SetWindowPos(chromeWindow_, HWND_NOTOPMOST, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         DiscardGraphicsResources();
-        const HWND restoreTarget = reinterpret_cast<HWND>(
+        HWND restoreTarget = reinterpret_cast<HWND>(
             WidgetRailOverlayPlatformRememberedForegroundTarget(platform_));
+        const auto activation = std::exchange(pendingTaskWindowActivation_, std::nullopt);
+        if (activation) {
+            const auto* descriptor = sessions_.FindDescriptor(activation->widgetId);
+            const auto now = GetTickCount64();
+            const bool current = activation->windowTarget && descriptor &&
+                descriptor->runtimeGeneration == activation->runtimeGeneration &&
+                activation->initiatedAtMilliseconds <= now && now - activation->initiatedAtMilliseconds <= 2000 &&
+                IsTaskWindowTargetCurrent(*activation->windowTarget);
+            restoreTarget = current ? activation->windowTarget->window : nullptr;
+        }
         if (restoreTarget && IsWindow(restoreTarget)) {
-            SetForegroundWindow(restoreTarget);
+            const BOOL restored = activation && IsIconic(restoreTarget)
+                ? ShowWindowAsync(restoreTarget, SW_RESTORE) : TRUE;
+            const BOOL activated = restored ? SetForegroundWindow(restoreTarget) : FALSE;
+            // Cross-thread activation can complete after this call. Never reopen
+            // the overlay based on an immediate foreground sample: that steals
+            // activation back from the selected application.
+            if (activation && !activated) {
+                AppendDiagnostic(L"Task window activation request was not accepted by Windows.");
+            }
+            if (activation && GetForegroundWindow() == restoreTarget) {
+                (void)WidgetRailOverlayPlatformObserveForegroundTarget(platform_,
+                    reinterpret_cast<std::uintptr_t>(restoreTarget), WRAIL_OVERLAY_PLATFORM_TRUE);
+            }
         }
     }
 
@@ -18846,6 +18906,7 @@ private:
     std::wstring rightStickDropSignature_;
     std::uint64_t rightStickDropCount_{};
     std::optional<bool> lastForegroundOwnership_;
+    std::optional<widgetrail::WidgetHostEffect> pendingTaskWindowActivation_;
     widgetrail::input::ForegroundAcquisitionFeedback foregroundAcquisitionFeedback_;
     long long controllerSequence_{};
     std::wstring lastActionMessage_;

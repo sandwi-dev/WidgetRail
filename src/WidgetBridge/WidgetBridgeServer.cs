@@ -1160,14 +1160,14 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         string expectedWorkerFingerprint,
         BrokerHostEffect effect)
     {
-        if (effect.Kind != BrokerHostEffectKind.CloseOverlayAfterAppLaunch) return;
-        _ = PublishHostEffectAsync(widgetId, expectedWorkerFingerprint, effect.InitiatedAtMilliseconds);
+        if (effect.Kind is not (BrokerHostEffectKind.CloseOverlayAfterAppLaunch or BrokerHostEffectKind.ActivateTaskWindow)) return;
+        _ = PublishHostEffectAsync(widgetId, expectedWorkerFingerprint, effect);
     }
 
     private async Task PublishHostEffectAsync(
         string widgetId,
         string expectedWorkerFingerprint,
-        long initiatedAtMilliseconds)
+        BrokerHostEffect effect)
     {
         using var publication = _registry.TryAdmitHostEffect(
             widgetId, expectedWorkerFingerprint);
@@ -1178,8 +1178,10 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             new BridgeHostEffect(
                 widgetId,
                 descriptor.RuntimeGeneration,
-                "closeOverlayAfterAppLaunch",
-                Interlocked.Increment(ref _hostEffectSequence), initiatedAtMilliseconds)).ConfigureAwait(false);
+                effect.Kind == BrokerHostEffectKind.ActivateTaskWindow ? "activateTaskWindow" : "closeOverlayAfterAppLaunch",
+                Interlocked.Increment(ref _hostEffectSequence), effect.InitiatedAtMilliseconds,
+                effect.Kind == BrokerHostEffectKind.ActivateTaskWindow && effect.WindowId is { } id && effect.WindowTarget is { } target
+                    ? new Dictionary<string, NativeWindowPreviewTarget> { [id] = target } : null)).ConfigureAwait(false);
     }
 
     private async Task SendEventAsync<T>(string type, T payload)

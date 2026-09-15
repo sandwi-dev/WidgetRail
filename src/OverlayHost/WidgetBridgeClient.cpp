@@ -2909,8 +2909,10 @@ bool HandleAsyncEvent(
         return true;
     }
     if (type == L"widget-host-effect") {
+        auto required = JsonObject::Parse(payload.Stringify());
+        if (required.HasKey(L"windowPreviews")) required.Remove(L"windowPreviews");
         if (!HasOnlyProperties(
-                payload,
+                required,
                 {L"widgetId", L"runtimeGeneration", L"effect", L"sequence", L"initiatedAtMilliseconds"}) ||
             payload.GetNamedValue(L"initiatedAtMilliseconds").ValueType() != JsonValueType::Number ||
             payload.GetNamedValue(L"runtimeGeneration").ValueType() != JsonValueType::String ||
@@ -2923,8 +2925,11 @@ bool HandleAsyncEvent(
         const auto effect = OptionalString(payload, L"effect");
         const double sequence = payload.GetNamedNumber(L"sequence");
         const double initiatedAt = payload.GetNamedNumber(L"initiatedAtMilliseconds", 0);
+        const bool activation = effect == L"activateTaskWindow";
+        const auto targets = ParseWindowPreviews(payload);
         if (!IsIdentifier(runtimeGeneration) ||
-            effect != L"closeOverlayAfterAppLaunch" ||
+            (!activation && effect != L"closeOverlayAfterAppLaunch") ||
+            (activation ? targets.size() != 1 : payload.HasKey(L"windowPreviews")) ||
             !std::isfinite(sequence) || sequence <= 0 ||
             sequence > 9'007'199'254'740'991.0 || std::floor(sequence) != sequence ||
             !std::isfinite(initiatedAt) || initiatedAt < 0 || initiatedAt > 9'007'199'254'740'991.0 || std::floor(initiatedAt) != initiatedAt ||
@@ -2932,7 +2937,9 @@ bool HandleAsyncEvent(
                 static_cast<long long>(sequence),
                 widgetId,
                 runtimeGeneration,
-                WidgetHostEffectKind::CloseOverlayAfterAppLaunch, static_cast<std::uint64_t>(initiatedAt)})) {
+                activation ? WidgetHostEffectKind::ActivateTaskWindow : WidgetHostEffectKind::CloseOverlayAfterAppLaunch,
+                static_cast<std::uint64_t>(initiatedAt),
+                activation ? std::optional<WindowPreviewSource>{targets.front()} : std::nullopt})) {
             status = L"WidgetBridge host effect is invalid.";
             return false;
         }
@@ -3789,7 +3796,13 @@ std::vector<WidgetActionFailure> WidgetActionFailureQueue::Take() noexcept {
 bool WidgetHostEffectQueue::Push(WidgetHostEffect effect) {
     if (effect.sequence <= 0 || !IsIdentifier(effect.widgetId) ||
         !IsIdentifier(effect.runtimeGeneration) ||
-        effect.kind != WidgetHostEffectKind::CloseOverlayAfterAppLaunch) {
+        (effect.kind != WidgetHostEffectKind::CloseOverlayAfterAppLaunch &&
+         effect.kind != WidgetHostEffectKind::ActivateTaskWindow) ||
+        (effect.kind == WidgetHostEffectKind::ActivateTaskWindow &&
+         (!effect.windowTarget || !IsIdentifier(effect.windowTarget->windowId) ||
+          !effect.windowTarget->window || !effect.windowTarget->processId ||
+          !effect.windowTarget->processCreated || effect.windowTarget->className.empty() ||
+          effect.windowTarget->className.size() > 256))) {
         return false;
     }
     if (effect.sequence <= lastSequence_) return true;

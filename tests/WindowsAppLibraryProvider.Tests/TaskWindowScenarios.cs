@@ -31,12 +31,23 @@ internal static class TaskWindowScenarios
             provider.CloseTaskWindowAsync(list[0].WindowId, CancellationToken.None));
         Assert.Equal("window_unavailable", stale.Code);
         Assert.Equal((nint)0, control.Closed);
+        control.Switched = 0;
+        await Assert.ThrowsAsync<BrokerException>(() =>
+            provider.SwitchTaskWindowAsync(list[0].WindowId, CancellationToken.None));
+        Assert.Equal((nint)0, control.Switched);
+        observer.Items = [first with { Window = first.Window! with { ClassName = "ReusedWindow" } }, second];
+        await Assert.ThrowsAsync<BrokerException>(() =>
+            provider.SwitchTaskWindowAsync(list[0].WindowId, CancellationToken.None));
+        Assert.Equal((nint)0, control.Switched);
         observer.Items = [second];
         await provider.GetTaskWindowsAsync(CancellationToken.None);
         await Assert.ThrowsAsync<BrokerException>(() =>
             provider.SwitchTaskWindowAsync(list[0].WindowId, CancellationToken.None));
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            provider.SwitchTaskWindowAsync(list[1].WindowId, canceled.Token));
+        Assert.Equal((nint)0, control.Switched);
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             provider.CloseTaskWindowAsync(list[1].WindowId, canceled.Token));
     }
@@ -51,7 +62,7 @@ internal static class TaskWindowScenarios
     {
         internal nint Switched;
         internal nint Closed;
-        public void Switch(WindowsRunningAppObservation expected, CancellationToken cancellationToken) => Switched = expected.Window!.Handle;
+        public void PrepareSwitch(WindowsRunningAppObservation expected, CancellationToken cancellationToken) => Switched = expected.Window!.Handle;
         public void Close(WindowsRunningAppObservation expected, CancellationToken cancellationToken) => Closed = expected.Window!.Handle;
     }
 }

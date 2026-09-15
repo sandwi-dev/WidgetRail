@@ -173,7 +173,9 @@ internal sealed record BridgeHostEffect(
     string RuntimeGeneration,
     string Effect,
     long Sequence,
-    long InitiatedAtMilliseconds = 0);
+    long InitiatedAtMilliseconds = 0,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyDictionary<string, WidgetRail.PlatformBroker.NativeWindowPreviewTarget>? WindowPreviews = null);
 internal sealed record BridgeAppearanceChanged(long Revision);
 internal sealed record BridgeCatalogChangedEvent(long Revision);
 internal sealed record BridgeError(string Code, string Message);

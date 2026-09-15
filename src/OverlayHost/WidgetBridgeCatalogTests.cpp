@@ -2407,6 +2407,35 @@ int main(int argc, char** argv) {
     CHECK(hostEffects.size() == 0);
 
     error.clear();
+    const auto activation = widgetrail::testing::ParseWidgetHostEffectEvent(R"json({
+        "protocolVersion":1,"type":"widget-host-effect","requestId":0,
+        "payload":{"widgetId":"task-switcher","runtimeGeneration":"runtime-1","effect":"activateTaskWindow","sequence":8,"initiatedAtMilliseconds":250,
+        "windowPreviews":{"window-test":{"handle":"1234","processId":42,"processCreated":"12345678","className":"EditorClass"}}}
+    })json", error);
+    CHECK(activation && error.empty());
+    CHECK(activation->kind == widgetrail::WidgetHostEffectKind::ActivateTaskWindow);
+    CHECK(activation->windowTarget && activation->windowTarget->processId == 42);
+    CHECK(activation->windowTarget->processCreated == 0x12345678ULL);
+    CHECK(widgetrail::IsAppLaunchCloseCurrent(*activation, 200));
+    CHECK(!widgetrail::IsAppLaunchCloseCurrent(*activation, 250));
+    CHECK(!widgetrail::IsAppLaunchCloseCurrent(*activation, 0));
+    CHECK(!widgetrail::IsAppLaunchCloseCurrent(*activation, 300));
+    CHECK(hostEffects.Push(*activation));
+    CHECK(hostEffects.Push(*activation));
+    CHECK(hostEffects.size() == 1);
+    for (const auto body : {
+        R"json({"widgetId":"task-switcher","runtimeGeneration":"runtime-1","effect":"activateTaskWindow","sequence":9,"initiatedAtMilliseconds":250})json",
+        R"json({"widgetId":"task-switcher","runtimeGeneration":"runtime-1","effect":"activateTaskWindow","sequence":9,"initiatedAtMilliseconds":250,"windowPreviews":{}})json",
+        R"json({"widgetId":"task-switcher","runtimeGeneration":"runtime-1","effect":"activateTaskWindow","sequence":9,"initiatedAtMilliseconds":250,"windowPreviews":{"a":{"handle":"1","processId":42,"processCreated":"1","className":"Editor"},"b":{"handle":"2","processId":42,"processCreated":"1","className":"Editor"}}})json",
+        R"json({"widgetId":"task-switcher","runtimeGeneration":"runtime-1","effect":"activateTaskWindow","sequence":9,"initiatedAtMilliseconds":250,"windowPreviews":{"a":{"handle":"0","processId":42,"processCreated":"1","className":"Editor"}}})json",
+        R"json({"widgetId":"task-switcher","runtimeGeneration":"runtime-1","effect":"closeOverlayAfterAppLaunch","sequence":9,"initiatedAtMilliseconds":250,"windowPreviews":{}})json"}) {
+        error.clear();
+        const auto envelope = std::string(R"({"protocolVersion":1,"type":"widget-host-effect","requestId":0,"payload":)") + body + "}";
+        CHECK(!widgetrail::testing::ParseWidgetHostEffectEvent(envelope, error));
+        CHECK(!error.empty());
+    }
+
+    error.clear();
     CHECK(!widgetrail::testing::ParseWidgetHostEffectEvent(R"json({
         "protocolVersion":1,"type":"widget-host-effect","requestId":0,
         "payload":{"widgetId":"games-apps","runtimeGeneration":"runtime-1","effect":"closeOverlayAfterAppLaunch","sequence":7,"extra":true}

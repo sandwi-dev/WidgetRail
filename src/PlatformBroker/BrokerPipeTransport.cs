@@ -41,11 +41,14 @@ public sealed record BrokerPipeTransportOptions
 public enum BrokerHostEffectKind
 {
     CloseOverlayAfterAppLaunch,
+    ActivateTaskWindow,
 }
 
 public sealed record BrokerHostEffect(BrokerHostEffectKind Kind)
 {
     public long InitiatedAtMilliseconds { get; init; }
+    public string? WindowId { get; init; }
+    public NativeWindowPreviewTarget? WindowTarget { get; init; }
 }
 
 internal static class BrokerPipeRequestTimeoutPolicy
@@ -606,6 +609,17 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         BrokerResponseEnvelope response)
     {
         var request = BrokerJson.ParseRequest(requestBytes);
+        if (request.CapabilityId == PlatformCapabilities.TaskWindowsSwitchV1 &&
+            request.Operation == PlatformCapabilities.TaskWindowsSwitch)
+        {
+            var window = BrokerJson.ParsePayload<TaskWindowRequest>(request.Payload);
+            var target = WindowPreviewRegistry.Resolve(_identity, window.WindowId);
+            return target is null ? null : new BrokerHostEffect(BrokerHostEffectKind.ActivateTaskWindow)
+            {
+                WindowId = window.WindowId,
+                WindowTarget = target,
+            };
+        }
         if (request.Operation is not (PlatformCapabilities.AppLibraryLaunch or
             PlatformCapabilities.AppLibraryLaunchObserved)) return null;
         var launch = BrokerJson.ParsePayload<LaunchAppLibraryItemRequest>(request.Payload);
