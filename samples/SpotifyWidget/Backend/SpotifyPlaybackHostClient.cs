@@ -463,6 +463,9 @@ internal sealed class SpotifyPlaybackHostProcessFactory : ISpotifyPlaybackHostPr
             WorkingDirectory = Path.GetDirectoryName(executablePath) ??
                 Environment.CurrentDirectory,
         };
+        // ErrorDialog only controls Process.Start errors. The .NET apphost has
+        // its own runtime-error dialog, which must not steal overlay focus.
+        startInfo.Environment["DOTNET_DISABLE_GUI_ERRORS"] = "1";
         startInfo.ArgumentList.Add("--parent-pid");
         startInfo.ArgumentList.Add(parentProcessId.ToString(
             System.Globalization.CultureInfo.InvariantCulture));

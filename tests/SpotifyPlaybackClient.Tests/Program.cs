@@ -3,11 +3,18 @@ using System.Threading.Channels;
 using WidgetRail.SpotifyPlayback;
 using WidgetRail.WindowsSpotifyProvider;
 
+if (args is ["--private-runtime", var runtimeRoot, "--playback-host", var playbackHost])
+{
+    await PrivateRuntimeBootstrap(runtimeRoot, playbackHost);
+    return;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Process launch is redirected and parent bounded", PlaybackHostStartInfo),
     ("Client correlates commands without leaking tokens", PlaybackHostClientProtocol),
     ("Startup SDK errors fail immediately with their exact code", StartupSdkError),
+    ("Exited playback helper fails promptly without forwarding private diagnostics", StartupHostExit),
 };
 
 var failures = 0;
@@ -23,6 +30,35 @@ foreach (var (name, run) in tests)
 if (failures != 0) Environment.Exit(1);
 Console.WriteLine($"SpotifyPlaybackClient.Tests passed ({tests.Length} tests)");
 
+static async Task PrivateRuntimeBootstrap(string runtimeRoot, string playbackHost)
+{
+    var start = SpotifyPlaybackHostProcessFactory.CreateStartInfo(
+        Path.GetFullPath(playbackHost), Environment.ProcessId);
+    start.Environment["DOTNET_ROOT"] = Path.GetFullPath(runtimeRoot);
+    start.Environment["DOTNET_ROOT_X64"] = Path.GetFullPath(runtimeRoot);
+    using var process = System.Diagnostics.Process.Start(start)!;
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    var errorDrain = process.StandardError.ReadToEndAsync(timeout.Token);
+    try
+    {
+        var line = await process.StandardOutput.ReadLineAsync(timeout.Token);
+        if (line is null)
+            throw new InvalidOperationException("Playback helper exited before initializing under the private runtime.");
+        var initialized = SpotifyPlaybackProtocolCodec.DecodeEvent(line);
+        Assert.Equal("host_initialized", initialized.Type);
+        // No connect or token command is sent: this probes runtime and WebView2 startup only.
+        process.StandardInput.Close();
+        await process.WaitForExitAsync(timeout.Token);
+        Assert.Equal(0, process.ExitCode);
+        await errorDrain;
+        Console.WriteLine("PASS private Desktop runtime bootstraps the playback helper and closes cleanly without a Spotify account.");
+    }
+    finally
+    {
+        if (!process.HasExited) process.Kill(entireProcessTree: true);
+    }
+}
+
 static Task PlaybackHostStartInfo()
 {
     var executable = Path.GetFullPath("SpotifyPlaybackHost.exe");
@@ -31,6 +67,7 @@ static Task PlaybackHostStartInfo()
     Assert.True(!start.UseShellExecute && start.CreateNoWindow && !start.ErrorDialog);
     Assert.True(start.RedirectStandardInput && start.RedirectStandardOutput &&
         start.RedirectStandardError);
+    Assert.Equal("1", start.Environment["DOTNET_DISABLE_GUI_ERRORS"]);
     Assert.SequenceEqual(["--parent-pid", "321"], start.ArgumentList);
     return Task.CompletedTask;
 }
@@ -86,6 +123,25 @@ static async Task PlaybackHostClientProtocol()
     {
         Assert.Equal("authentication_error", exception.Code);
         Assert.True(!exception.ToString().Contains(accessToken, StringComparison.Ordinal));
+    }
+}
+
+static async Task StartupHostExit()
+{
+    var process = new FakePlaybackHostProcess();
+    process.OutputChannel.Complete();
+    var options = new SpotifyPlaybackHostClientOptions(
+        Environment.ProcessPath!, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(2));
+    await using var client = new SpotifyPlaybackHostClient(options, new FakePlaybackHostProcessFactory(process));
+    try
+    {
+        await client.StartAsync(default);
+        throw new InvalidOperationException("Expected exited playback host to fail startup.");
+    }
+    catch (SpotifyPlaybackHostClientException exception)
+    {
+        Assert.Equal("host_exited", exception.Code);
+        Assert.True(!client.IsRunning);
     }
 }
 

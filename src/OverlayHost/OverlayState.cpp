@@ -47,6 +47,7 @@ bool OverlayState::Dispatch(const Command command, const bool previewTraySelecti
         } else {
             surface_ = Surface::Dashboard;
             focusRegion_ = FocusRegion::Tray;
+            PresentSelectedWidget(FocusRegion::Tray);
         }
     } else if (surface_ == Surface::Hidden) {
         // Hidden means dormant: no navigation input changes host state.
@@ -148,6 +149,8 @@ bool OverlayState::SetAvailableWidgets(
             focusRegion_ = FocusRegion::Tray;
         }
     }
+    if (priorSelected.empty() && surface_ == Surface::Dashboard)
+        PresentSelectedWidget(FocusRegion::Tray);
     return before != persistent_ || priorSurface != surface_ ||
            priorActive != activeWidget_ || priorSelected != selectedWidget();
 }

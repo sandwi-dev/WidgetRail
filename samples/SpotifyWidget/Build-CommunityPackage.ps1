@@ -80,6 +80,8 @@ function Assert-NoReparsePoint {
 }
 
 New-Item -ItemType Directory -Force -Path $artifactsRoot | Out-Null
+$buildLogRoot = Join-Path $artifactsRoot 'logs'
+New-Item -ItemType Directory -Force -Path $buildLogRoot | Out-Null
 Assert-NoReparsePoint -Path $artifactsRoot
 Assert-ChildPath -Parent $artifactsRoot -Child $stagingRoot
 Assert-ChildPath -Parent $artifactsRoot -Child $buildGraphRoot
@@ -100,6 +102,7 @@ Assert-NoReparsePoint -Path $applicationPublishRoot
 Assert-NoReparsePoint -Path $playbackHostPublishRoot
 
 & dotnet publish $applicationProject `
+    "-bl:$buildLogRoot/application-{}.binlog" `
     --configuration $Configuration `
     --no-self-contained `
     --nologo `
@@ -114,6 +117,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 & dotnet publish $playbackHostProject `
+    "-bl:$buildLogRoot/playback-{}.binlog" `
     --configuration $Configuration `
     --no-self-contained `
     --nologo `
@@ -230,12 +234,14 @@ if (Test-Path -LiteralPath $packagePath) {
 }
 
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
+    "-bl:$buildLogRoot/validate-{}.binlog" `
     --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
     validate $stagingRoot
 if ($LASTEXITCODE -ne 0) {
     throw "wrail validate rejected the staged Spotify addon."
 }
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
+    "-bl:$buildLogRoot/pack-{}.binlog" `
     --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
     pack $stagingRoot --output $packagePath
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
@@ -257,6 +263,7 @@ if ($Install) {
     $installedPackageRoot = Join-Path (Join-Path $catalogRoot 'packages') $manifest.id
     if (Test-Path -LiteralPath $installedPackageRoot -PathType Container) {
         & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
+            "-bl:$buildLogRoot/disable-{}.binlog" `
             --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
             disable $manifest.id @catalogArguments
         if ($LASTEXITCODE -ne 0) {
@@ -264,18 +271,21 @@ if ($Install) {
         }
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
+        "-bl:$buildLogRoot/install-{}.binlog" `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
         install $packagePath --accept-full-trust @catalogArguments
     if ($LASTEXITCODE -ne 0) {
         throw "wrail install failed. Installed versions are immutable; bump manifest.json when replacing an existing version."
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
+        "-bl:$buildLogRoot/select-{}.binlog" `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
         version select $manifest.id $manifest.version @catalogArguments
     if ($LASTEXITCODE -ne 0) {
         throw "wrail version select failed for $($manifest.id) $($manifest.version)."
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
+        "-bl:$buildLogRoot/enable-{}.binlog" `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
         enable $manifest.id --accept-full-trust @catalogArguments
     if ($LASTEXITCODE -ne 0) {

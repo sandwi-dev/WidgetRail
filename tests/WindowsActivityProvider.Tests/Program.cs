@@ -142,8 +142,15 @@ static async Task PayloadIsSanitized()
     native.Publish(NativeActivityEventKind.Foreground, 0x1234);
     await WaitUntil(() => Task.FromResult(observed is not null));
     var json = JsonSerializer.Serialize(observed);
-    Assert.False(json.Contains("8675309", StringComparison.Ordinal));
-    Assert.False(json.Contains("4660", StringComparison.Ordinal));
+    var activity = observed!.Activities.Single();
+    Assert.True(activity.ActivityId.StartsWith("activity-", StringComparison.Ordinal) &&
+        Guid.TryParseExact(activity.ActivityId.AsSpan(9), "N", out _));
+    var payload = JsonSerializer.SerializeToElement(observed);
+    Assert.True(payload.EnumerateObject().Select(property => property.Name)
+        .SequenceEqual(new[] { "Activities" }));
+    Assert.True(payload.GetProperty("Activities")[0].EnumerateObject()
+        .Select(property => property.Name).Order(StringComparer.Ordinal)
+        .SequenceEqual(new[] { "ActivityId", "DisplayName", "IsMostRecent", "IsRunning", "Kind" }));
     Assert.False(json.Contains("PrivateProcess", StringComparison.Ordinal));
     Assert.True(json.Contains("Safe App", StringComparison.Ordinal));
 }

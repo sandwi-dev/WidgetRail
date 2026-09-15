@@ -34,7 +34,8 @@ int main() {
     Send(firstRun, Command::NavigateRight);
     Check(firstRun.selectedSlot() == 0, "hidden state ignores navigation");
     Send(firstRun, Command::ToggleOverlay);
-    Check(firstRun.surface() == Surface::Dashboard, "first open shows dashboard");
+    Check(firstRun.surface() == Surface::Widget && firstRun.activeWidget() == L"audio-mixer",
+          "first toggle presents the selected widget without requiring tray navigation");
     Check(firstRun.focusRegion() == FocusRegion::Tray, "first open focuses the icon tray");
     Send(firstRun, Command::NavigateRight);
     Check(firstRun.surface() == Surface::Widget,
@@ -113,22 +114,25 @@ int main() {
           "reorder swaps stable IDs");
     Check(reorder.selectedWidget() == L"audio-mixer", "focus follows reordered widget");
     Send(reorder, Command::Activate);
-    Check(!reorder.reorderMode() && reorder.surface() == Surface::Dashboard,
-          "activate confirms reorder without opening widget");
+    Check(!reorder.reorderMode() && reorder.surface() == Surface::Widget &&
+              reorder.focusRegion() == FocusRegion::Tray,
+          "activate confirms reorder while preserving the visible widget and tray focus");
 
     PersistentState corrupted{{L"yt-music", L"yt-music", L"missing"}, L"missing", true};
     OverlayState repaired(corrupted);
     Check(repaired.order() == std::vector<std::wstring>{L"yt-music", L"audio-mixer", L"performance"},
           "duplicates and unavailable IDs are repaired while order is preserved");
     Send(repaired, Command::ToggleOverlay);
-    Check(repaired.surface() == Surface::Dashboard, "unavailable last widget is discarded");
+    Check(repaired.surface() == Surface::Widget && repaired.activeWidget() == repaired.selectedWidget(),
+          "unavailable last widget falls back to the first available widget");
 
     PersistentState homeState{{L"performance", L"audio-mixer", L"yt-music"}, L"performance", false};
     OverlayState persistedHome(homeState);
     Send(persistedHome, Command::ToggleOverlay);
-    Check(persistedHome.surface() == Surface::Dashboard &&
-          persistedHome.selectedWidget() == L"performance",
-          "persisted home order and selection restore by stable identity");
+    Check(persistedHome.surface() == Surface::Widget &&
+          persistedHome.activeWidget() == L"performance" &&
+          persistedHome.focusRegion() == FocusRegion::Tray,
+          "saved dashboard preference still presents the selected widget on first toggle");
 
     OverlayState catalogChanges({}, {L"one", L"two"});
     Send(catalogChanges, Command::ToggleOverlay);
@@ -241,6 +245,17 @@ int main() {
     Send(empty, Command::Activate);
     Check(empty.surface() == Surface::Dashboard && empty.selectedWidget().empty(),
           "empty catalogs remain controller-safe");
+    (void)empty.SetAvailableWidgets({L"settings"});
+    Check(empty.surface() == Surface::Widget && empty.activeWidget() == L"settings" &&
+              empty.focusRegion() == FocusRegion::Tray,
+          "catalog arriving after first toggle replaces the empty dashboard without another input");
+    OverlayState hiddenCatalog({}, {});
+    (void)hiddenCatalog.SetAvailableWidgets({L"settings"});
+    Check(hiddenCatalog.surface() == Surface::Hidden,
+          "catalog arrival never opens a hidden overlay by itself");
+    Send(hiddenCatalog, Command::ToggleOverlay);
+    Check(hiddenCatalog.surface() == Surface::Widget && hiddenCatalog.activeWidget() == L"settings",
+          "hidden startup presents its ready catalog on the first toggle");
 
     OverlayState radial;
     Send(radial, Command::ToggleOverlay);

@@ -29,7 +29,7 @@ outputs cannot be replaced. Build metadata records application and packaging
 source revisions separately. Temporary build evidence is retained.
 
 Setup requires Windows 10 build 19041 or later and x64 app compatibility. Each
-edition contains one private .NET 8 runtime, selected through process-local
+edition contains private .NET 8 base and Windows Desktop runtimes, selected through process-local
 DOTNET_ROOT/DOTNET_ROOT_X64 by the native host. Isolated workers inherit that
 selection and receive read/execute access only to the private runtime actually
 hosting the bridge. Global .NET permissions and environment variables are not
@@ -131,6 +131,12 @@ a disposable Windows profile or VM; do not automate those against a live profile
 the runtime and built WidgetRuntime tests into a temporary packaged layout and
 checks host startup and real AppContainer worker isolation using the private
 runtime. It does not install prerequisites or change startup configuration.
+
+After building `SpotifyPlaybackClient.Tests`, its `--private-runtime <dotnet-folder>
+--playback-host <SpotifyPlaybackHost.exe>` probe starts the packaged playback helper
+with that private runtime, waits for WebView2 initialization, and closes it. It
+sends no account credentials or playback command. This catches a missing Desktop
+framework that a base-runtime worker check cannot detect.
 
 Release folders record their compiled source and packaging revisions separately.
 Packaging-only changes can reuse verified build inputs when the native/managed

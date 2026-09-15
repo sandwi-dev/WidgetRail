@@ -1017,7 +1017,7 @@ void TestPinnedViewReturnsToPriorOverlayFocusContract() {
     persisted.order = {L"fixture.widget"};
     widgetrail::OverlayState overlay(persisted, {L"fixture.widget"});
     Check(overlay.Dispatch(widgetrail::Command::ToggleOverlay) &&
-              overlay.surface() == widgetrail::Surface::Dashboard &&
+              overlay.surface() == widgetrail::Surface::Widget &&
               overlay.focusRegion() == widgetrail::FocusRegion::Tray &&
               overlay.selectedWidget() == L"fixture.widget",
           "tray-to-pin ownership begins at the exact selected tray item");

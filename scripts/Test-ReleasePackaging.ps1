@@ -33,6 +33,11 @@ function Make-Package([string]$Root, [string]$Id, [string]$Runtime) {
     return [ordered]@{ id = $Id; packageId = "widgetrail.test.$Id"; instanceId = "$Id.default"; packageRoot = "runtime/$Runtime"; icon = 'settings'; quickActions = @() }
 }
 foreach ($name in $content.sharedRuntimeDirectories) { Put (Join-Path $developer "$name/fixture.txt") 'runtime fixture' }
+$desktop = @($content.runtimeRequirements | Where-Object name -CEQ '.NET Desktop')[0]
+$desktopRoot = Join-Path $developer "dotnet/shared/Microsoft.WindowsDesktop.App/$($desktop.version)"
+foreach ($file in @('System.Windows.Forms.dll', 'PresentationFramework.dll', 'Microsoft.WindowsDesktop.App.deps.json')) {
+    Put (Join-Path $desktopRoot $file) 'desktop runtime fixture'
+}
 foreach ($file in $content.rootFiles) { Put (Join-Path $build $file) "fixture $file" }
 Put (Join-Path $build 'DoNotShipTests.exe') 'test only'
 Put (Join-Path $build 'developer-machine.env') 'must not ship'
@@ -114,6 +119,12 @@ Check (!(Test-Path (Join-Path $fixture 'missing/0.1.0-preview.1'))) 'Failed rele
 [IO.File]::WriteAllBytes($nativeInput, $original)
 Write-Output 'PASS missing input cannot publish a partial release'
 
+$desktopInput = Join-Path $desktopRoot 'System.Windows.Forms.dll'
+Remove-Item -LiteralPath $desktopInput
+Fails { Assemble (Join-Path $fixture 'missing-desktop') } 'Release without its declared Desktop runtime was accepted.'
+Put $desktopInput 'desktop runtime fixture'
+Write-Output 'PASS missing Desktop runtime cannot publish a release'
+
 $originalRoots = $content.rootFiles
 $content.rootFiles = @('../outside.dll')
 Put (Join-Path $fixture 'outside.dll') 'outside'
@@ -132,4 +143,4 @@ New-Item -ItemType Directory -Path $target | Out-Null
 New-Item -ItemType Junction -Path $junction -Target $target | Out-Null
 Fails { Assemble (Join-Path $fixture 'junction') } 'Reparse point was followed.'
 Write-Output 'PASS reparse-point rejection'
-Write-Output 'Release packaging self-test passed (8 scenarios).'
+Write-Output 'Release packaging self-test passed (9 scenarios).'

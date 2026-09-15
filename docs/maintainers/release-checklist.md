@@ -27,7 +27,7 @@ $env:RUSTUP_TOOLCHAIN = '1.97.1'
 pwsh -NoProfile -File .\scripts\Build-Release.ps1
 pwsh -NoProfile -File .\scripts\Get-InstallerCompiler.ps1
 pwsh -NoProfile -File .\scripts\Build-Installer.ps1 `
-  -ReleaseRoot .\artifacts\releases\0.1.0-preview.5 `
+  -ReleaseRoot .\artifacts\releases\0.1.0-preview.6 `
   -CompilerPath .\artifacts\tools\installer-compiler\package\tools\ISCC.exe
 ```
 
