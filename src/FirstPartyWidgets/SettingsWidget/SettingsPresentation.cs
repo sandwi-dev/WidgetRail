@@ -87,6 +87,7 @@ internal static class SettingsPresentation
         string? FirstButton(WidgetElement element) => element switch
         {
             ButtonElement button when button.IsDisabled is not true || button.Id == initialFocus => button.Id,
+            ActionSurfaceElement surface when surface.IsDisabled is not true || surface.Id == initialFocus => surface.Id,
             ContainerElement group => group.Children.Select(FirstButton).FirstOrDefault(id => id is not null),
             _ => null,
         };
@@ -99,6 +100,8 @@ internal static class SettingsPresentation
                     return button.FocusDown(initialFocus);
                 if (element.Id == headerEntry && button.FocusNeighbors?.Up is null) return button.FocusUp("settings.restart");
             }
+            if (element is ActionSurfaceElement surface && element.Id == headerEntry && surface.FocusNeighbors?.Up is null)
+                return surface.FocusUp("settings.restart");
             if (element is ContainerElement group) return group with { Children = group.Children.Select(Link).ToArray() };
             return element;
         }
@@ -529,39 +532,28 @@ internal static class SettingsPresentation
     {
         var children = new List<WidgetElement>
         {
-            UI.Text("Theme versions", "theme.heading", "Installed theme versions")
+            UI.Text("Themes", "theme.heading", "Installed themes")
                 .Classes("page-heading"),
-            UI.Text("Choose an exact version to select or manage. Versions are grouped by theme ID.",
+            UI.Text("Choose a theme to use or manage.",
                 "theme.help", "Theme version management help").Classes("page-help"),
         };
-        string? lastId = null;
         var initialFocus = themes.Themes.Count > 0 ? "theme.item.0.action" : null;
         for (var index = 0; index < themes.Themes.Count; index++)
         {
             var entry = themes.Themes[index];
-            if (!string.Equals(lastId, entry.CatalogId, StringComparison.Ordinal))
-            {
-                children.Add(UI.Text(
-                    entry.CatalogId,
-                    $"theme.group.{index}",
-                    $"Theme {entry.CatalogId}").Classes("section-heading"));
-                lastId = entry.CatalogId;
-            }
             var selected = entry.IsValid &&
                 entry.Descriptor.Id == settings.Appearance.ThemeId &&
                 entry.Descriptor.Version.ToString() == settings.Appearance.ThemeVersion;
-            var diagnostic = entry.Diagnostics.FirstOrDefault()?.Code;
-            var row = UI.SettingsRow(
-                entry.Descriptor.Name,
-                new ComponentAction("Review", $"theme.open.{index}"),
-                $"theme.item.{index}",
-                description: entry.IsValid
-                    ? entry.Descriptor.Publisher ?? (entry.Descriptor.IsBuiltIn ? "Platform" : "Legacy package")
-                    : diagnostic ?? "Validation error",
-                value: entry.Descriptor.Version.ToString(),
-                status: selected ? "Active" : entry.IsValid ? "Installed" : "Invalid",
-                statusTone: entry.IsValid ? StatusTone.Neutral : StatusTone.Danger,
-                isBusy: busy);
+            var id = $"theme.item.{index}";
+            var status = selected ? "Active" : entry.IsValid ? "Installed" : "Invalid";
+            var row = UI.ActionSurface($"theme.open.{index}", id + ".action",
+                $"{entry.Descriptor.Name}, {entry.CatalogVersion}, {status}. Review theme.",
+                ActionSurfaceOrientation.Horizontal,
+                UI.Text(entry.Descriptor.Name, id + ".label").Classes("theme-name"),
+                UI.Text(entry.CatalogVersion, id + ".version").Classes("theme-version"),
+                UI.StatusBadge(status, selected ? StatusTone.Success : entry.IsValid ? StatusTone.Neutral : StatusTone.Danger,
+                    id + ".status").AddClasses("theme-status"))
+                .Selected(selected).Busy(busy).Classes("theme-row");
             children.Add(row);
             if (selected && requestedFocus is null) initialFocus = $"theme.item.{index}.action";
         }
@@ -606,10 +598,13 @@ internal static class SettingsPresentation
                     .Classes("page-heading"),
                 UI.Text($"{entry.CatalogId} · {entry.CatalogVersion}",
                     "theme.version.identity", "Exact theme identity").Classes("page-help"),
-                UI.Text(status, "theme.version.status", status),
-                UI.Button("Select this version", "theme.select", "theme.version.select")
+                UI.Text(entry.Descriptor.Publisher ?? (entry.Descriptor.IsBuiltIn ? "Platform" : "Legacy package"),
+                    "theme.version.publisher", "Theme publisher").Classes("page-help"),
+                UI.Text(entry.IsValid ? status : entry.Diagnostics.FirstOrDefault()?.Code ?? "Validation error",
+                    "theme.version.status", status).Classes(entry.IsValid ? "page-help" : "diagnostic-error"),
+                UI.Button("Use theme", "theme.select", "theme.version.select")
                     .Busy(state.Busy).Disabled(!entry.IsValid || active)
-                    .FocusDown("theme.version.remove"),
+                    .FocusDown("theme.version.remove").Classes("primary-button"),
                 UI.Button("Remove this version", "theme.remove.request", "theme.version.remove")
                     .Busy(state.Busy).Disabled(!removable)
                     .FocusUp("theme.version.select").FocusDown("theme.version.back")

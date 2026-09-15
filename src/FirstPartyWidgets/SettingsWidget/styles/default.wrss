@@ -11,6 +11,35 @@
 .theme-picker { gap: 8px; }
 
 .settings-header { flex-shrink: 0; }
+.theme-row {
+  min-height: 52px;
+  min-width: 0;
+  flex-shrink: 0;
+  padding: 10px 14px;
+  gap: 12px;
+  align: center;
+  background: var(--surface-raised);
+  border-width: 1px;
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  corner-radius: 8px;
+}
+.theme-row:selected { border-color: var(--accent); }
+.theme-row:focused {
+  background: var(--surface-active, rgba(48, 47, 43, 0.98));
+  outline-color: var(--focus);
+  outline-width: 2px;
+  outline-offset: -2px;
+}
+.theme-name {
+  flex-grow: 1;
+  flex-shrink: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  max-lines: 2;
+}
+.theme-version { color: var(--text-muted); font-size: 13px; flex-shrink: 0; max-lines: 1; }
+.theme-status { flex-shrink: 0; padding: 3px 8px; }
 .settings-toast { flex-shrink: 0; }
 .settings-header-row { gap: 8px; }
 .header-title { flex-grow: 1; min-width: 0; }

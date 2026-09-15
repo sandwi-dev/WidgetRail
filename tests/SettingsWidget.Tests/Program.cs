@@ -46,7 +46,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Scale and opacity actions persist within bounds", BoundedPersistence),
     ("Theme picker scrolls every valid and invalid package", ThemePickerScroll),
     ("Theme selection atomically pins ID and version", ThemeSelection),
-    ("Theme versions group select and confirm exact inactive removal", ThemeVersionManagement),
+    ("Theme rows distinguish versions and confirm exact inactive removal", ThemeVersionManagement),
     ("Reset requires confirmation and restores defaults", ResetConfirmation),
     ("Malformed settings recover through safe defaults", InvalidSettingsRecovery),
     ("Saving exposes busy and completion feedback", BusyFeedback),
@@ -526,7 +526,8 @@ static async Task ThemePickerScroll()
     await Action(widget, "open.appearance");
     await Action(widget, "open.themes");
     var snapshot = Snapshot(widget);
-    var options = Buttons(snapshot.Root)
+    var options = Nodes(snapshot.Root)
+        .Where(node => node.Kind == ViewNodeKind.ActionSurface)
         .Where(button => button.Id.StartsWith("theme.item.", StringComparison.Ordinal) &&
                          button.Id.EndsWith(".action", StringComparison.Ordinal))
         .ToArray();
@@ -558,8 +559,8 @@ static async Task ThemePickerScroll()
     await Action(widget, "back");
     var restored = Snapshot(widget);
     Assert.Equal(options[^1].Id, restored.InitialFocusId);
-    Assert.Equal(null, Button(restored.Root, options[^1].Id).Focus?.Up);
-    Assert.Equal("settings.restart", Button(restored.Root, options[0].Id).Focus!.Up);
+    Assert.Equal(null, Nodes(restored.Root).Single(node => node.Id == options[^1].Id).Focus?.Up);
+    Assert.Equal("settings.restart", Nodes(restored.Root).Single(node => node.Id == options[0].Id).Focus!.Up);
     Assert.Valid(restored);
 
     await Action(widget, $"theme.open.{ThemeIndex(widget, "Theme 5")}");
@@ -569,7 +570,9 @@ static async Task ThemePickerScroll()
     var selected = Snapshot(widget);
     var selectedIndex = ThemeIndex(widget, "Theme 5");
     Assert.Equal($"theme.item.{selectedIndex}.action", selected.InitialFocusId);
-    Assert.Equal(null, Button(selected.Root, selected.InitialFocusId!).Focus?.Up);
+    var selectedRow = Nodes(selected.Root).Single(node => node.Id == selected.InitialFocusId);
+    Assert.Equal(null, selectedRow.Focus?.Up);
+    Assert.Equal(true, selectedRow.IsSelected);
     Assert.Valid(selected);
 }
 
@@ -604,8 +607,14 @@ static async Task ThemeVersionManagement()
     await Action(widget, "open.appearance");
     await Action(widget, "open.themes");
     var picker = Snapshot(widget);
-    Assert.True(Nodes(picker.Root).Count(node => node.Text == "dev.test.family") == 1,
-        "Theme family was not grouped under one ID heading.");
+    var familyRows = Nodes(picker.Root).Where(node => node.Kind == ViewNodeKind.ActionSurface &&
+        node.Children.Any(child => child.Text == "Family")).ToArray();
+    Assert.Equal(2, familyRows.Length);
+    Assert.True(familyRows[0].Children.Any(child => child.Text == "1.0.0") &&
+                familyRows[1].Children.Any(child => child.Text == "2.0.0"),
+        "Theme rows must distinguish installed versions in catalog order.");
+    Assert.True(familyRows.All(row => !row.Children.Any(child => child.Kind == ViewNodeKind.Button)),
+        "The theme row must be the only action target.");
 
     // Built-ins are reviewable/selectable but their removal action is protected.
     await Action(widget, "theme.open.0");
