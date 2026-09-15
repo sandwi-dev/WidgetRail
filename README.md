@@ -68,6 +68,39 @@ can add artwork and animated background transitions that fit their content.
 
 [Personalize WidgetRail](docs/users/customization.md)
 
+## Performance and memory
+
+WidgetRail reuses work where it can, so browsing and playback updates stay
+responsive. Its standard interface uses native rendering, with no browser
+needed to draw widget controls.
+
+- **Less work per update.** The renderer reuses unchanged styles, text layouts,
+  and prepared content, and repaints affected areas instead of rebuilding
+  everything for each update.
+- **Artwork loads as you browse.** Long lists load in pages. Images are decoded
+  at the size needed on screen, with bounded memory caches and a disk cache for
+  reusable web artwork to reduce repeat downloads.
+- **Hidden widgets do less work.** Built-in widgets stop their active polling
+  and subscriptions when hidden. Utility widgets such as Audio Mixer unload after two
+  minutes hidden; Playnite Library unloads after five. Pinned widgets remain
+  active, and media widgets can stay loaded to preserve playback.
+
+Memory usage depends on what you open and how you use it. In local testing,
+continuous scrolling through a large Playnite library showed around **300 MB
+for the overlay process** in Task Manager. After launching a game, observed
+figures were around **150 MB for the overlay** and **125 MB for the Bridge**.
+These are observations from one PC; display size, artwork, active widgets,
+video playback, and available RAM all affect the result. Widget and media helper
+processes use additional memory, so the overlay's number alone is not the total.
+
+Windows can trim a process's working set when memory is needed elsewhere.
+Task Manager's default process memory reading can therefore fall under pressure
+while the application still retains state and cached data. The amount reclaimed
+varies with the workload and Windows' memory management.
+
+For the implementation details, see [widget lifecycle](docs/reference/widget-residency.md)
+and [artwork caching](docs/reference/artwork-disk-cache.md).
+
 ## Build something for your setup
 
 WidgetRail is also an **open-source C# widget framework**. Describe your interface
