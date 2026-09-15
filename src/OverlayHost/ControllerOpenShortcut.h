@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <span>
 
 namespace widgetrail::input {
@@ -33,7 +34,7 @@ public:
     ControllerOpenShortcut& operator=(const ControllerOpenShortcut&) = delete;
     void Start();
     void Stop() noexcept;
-    [[nodiscard]] bool Poll();
+    [[nodiscard]] bool Poll(std::optional<std::uint16_t> nativeButtons = std::nullopt);
     [[nodiscard]] bool consumed() const noexcept;
 private:
     struct Impl;

@@ -76,8 +76,14 @@ void ControllerOpenShortcut::Stop() noexcept {
     impl_->active = false;
 }
 bool ControllerOpenShortcut::consumed() const noexcept { return impl_->tracker.consumed(); }
-bool ControllerOpenShortcut::Poll() {
+bool ControllerOpenShortcut::Poll(std::optional<std::uint16_t> nativeButtons) {
     if (!impl_->active) return false;
+    if (nativeButtons) {
+        const OpenShortcutSample native{static_cast<std::uintptr_t>(-1), static_cast<std::uint8_t>(
+            ((*nativeButtons & XINPUT_GAMEPAD_BACK) ? 1 : 0) |
+            ((*nativeButtons & XINPUT_GAMEPAD_START) ? 2 : 0))};
+        return impl_->tracker.Update(std::span(&native, 1));
+    }
     std::array<OpenShortcutSample, 20> samples{};
     std::size_t count{};
     for (DWORD slot = 0; slot < XUSER_MAX_COUNT; ++slot) {

@@ -500,6 +500,10 @@ void CheckControllerGlyphs(ID2D1Factory* d2d, IWICImagingFactory* wic) {
     Check(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
         __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf()))),
         "glyph test creates DirectWrite factory");
+    for (const bool playStation : {false, true}) {
+    (void)widgetrail::guide::SetPlayStationControls(playStation);
+    Check(widgetrail::guide::PromptCharacter(widgetrail::guide::Control::A) == (playStation ? 0x21E3U : 0x21D3U),
+        "active controller changes Cross versus A glyph");
     for (const auto [size, fontSize] : {std::pair{24.0F,14.0F}, {28.0F,14.0F}, {36.0F,21.0F}}) {
         const auto render = [&](widgetrail::guide::Control control) {
             constexpr UINT side = 48;
@@ -552,6 +556,8 @@ void CheckControllerGlyphs(ID2D1Factory* d2d, IWICImagingFactory* wic) {
             Check(visible, "controller glyph paints visible ink at each guide size");
         }
     }
+    }
+    (void)widgetrail::guide::SetPlayStationControls(false);
 }
 
 void CheckFrame(

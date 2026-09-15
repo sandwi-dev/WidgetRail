@@ -6,11 +6,34 @@
 #include <wrl/client.h>
 #include <algorithm>
 #include <cmath>
+#include <atomic>
 
 namespace widgetrail::guide {
 enum class Control { Unknown, A, B, X, Y, LB, RB, LT, RT, L3, R3, LeftStick, RightStick,
     DPad, Horizontal, Vertical, Up, Down, Left, Right, View, Menu, Guide };
+inline std::atomic_bool playStationControls{};
+inline bool SetPlayStationControls(bool enabled) noexcept {
+    return playStationControls.exchange(enabled, std::memory_order_relaxed) != enabled;
+}
 inline UINT32 PromptCharacter(Control control) noexcept {
+    if (playStationControls.load(std::memory_order_relaxed)) {
+        switch (control) {
+        case Control::A: return 0x21E3;
+        case Control::B: return 0x21E2;
+        case Control::X: return 0x21E0;
+        case Control::Y: return 0x21E1;
+        case Control::LB: return 0x21B0;
+        case Control::RB: return 0x21B1;
+        case Control::LT: return 0x21B2;
+        case Control::RT: return 0x21B3;
+        case Control::L3: return 0x21EF;
+        case Control::R3: return 0x21F0;
+        case Control::View: return 0x2206;
+        case Control::Menu: return 0x2208;
+        case Control::Guide: return 0xE000;
+        default: break;
+        }
+    }
     switch (control) {
     case Control::A: return 0x21D3;
     case Control::B: return 0x21D2;

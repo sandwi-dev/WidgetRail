@@ -1,4 +1,5 @@
 #include "ControllerIsolationReader.h"
+#include "DualSenseHidReader.h"
 
 #if defined(WRAIL_GAMEINPUT_ISOLATION_READER)
 
@@ -582,11 +583,48 @@ SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(
     descriptor = {};
     if (enrollmentToken == 0)
         return SelectedControllerDiscoveryStatus::UnknownIdentity;
+    DualSenseDevice native;
+    const auto nativeStatus = DiscoverDualSenseController(enrollmentToken, native);
+    if (nativeStatus == SelectedControllerDiscoveryStatus::Ready) {
+        descriptor = native.descriptor;
+        return nativeStatus;
+    }
     ComPtr<IGameInput> gameInput;
     if (FAILED(GameInputCreate(gameInput.ReleaseAndGetAddressOf())) ||
         !gameInput) return SelectedControllerDiscoveryStatus::Unavailable;
     return DiscoverCurrentPhysicalController(
         *gameInput.Get(), enrollmentToken, descriptor, nullptr, nullptr, ownedOutput);
+}
+
+bool BuildNativeHidDescriptor(std::wstring_view path, std::uint64_t token,
+    std::uint16_t vendor, std::uint16_t product, SelectedControllerDescriptor& descriptor) noexcept {
+    descriptor = {};
+    try {
+        if (!token || !IsDualSenseProduct(vendor, product)) return false;
+        std::wstring normalized(path);
+        std::ranges::transform(normalized, normalized.begin(), [](wchar_t c) {
+            return static_cast<wchar_t>(std::towupper(c));
+        });
+        CfgMgrDeviceAncestryBackend backend;
+        ControllerDeviceNodeToken node{};
+        if (ClassifyControllerDeviceAncestry(normalized, backend) != ControllerDeviceAncestry::Physical ||
+            !backend.ResolveInterfaceInstanceId(normalized, descriptor.deviceInstanceId) ||
+            !backend.LocateNode(descriptor.deviceInstanceId, node)) return false;
+        auto& enrollment = descriptor.enrollment;
+        GUID container{}; DEVPROPTYPE type{}; ULONG bytes = sizeof(container);
+        if (CM_Get_DevNode_PropertyW(static_cast<DEVINST>(node), &DEVPKEY_Device_ContainerId,
+                &type, reinterpret_cast<PBYTE>(&container), &bytes, 0) != CR_SUCCESS ||
+            type != DEVPROP_TYPE_GUID || bytes != sizeof(container) ||
+            !HashPnpPath(normalized, enrollment.normalizedPnpPathDigest)) return false;
+        std::memcpy(enrollment.containerId.data(), &container, sizeof(container));
+        enrollment.deviceId = enrollment.normalizedPnpPathDigest;
+        if (!HashPnpPath(std::wstring(descriptor.deviceInstanceId.view()), enrollment.deviceRootId)) return false;
+        enrollment.enrollmentToken = token;
+        enrollment.vendorId = vendor; enrollment.productId = product;
+        enrollment.deviceFamily = NativeDualSenseFamily;
+        enrollment.gamepadSupported = true; enrollment.connected = true;
+        return descriptor.valid();
+    } catch (...) { descriptor = {}; return false; }
 }
 
 bool ResolveViGEmOwnedTarget(const std::uint32_t targetIndex,

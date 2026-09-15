@@ -40,6 +40,7 @@ struct ControllerIsolationHostReading final {
     std::uint64_t guideEvent{};
     std::uint32_t remainingInputStates{};
     bool queuedInput{};
+    bool dualSense{};
 };
 
 // Application-lifetime controller owner. Its private routing thread is the only
@@ -61,6 +62,7 @@ public:
     [[nodiscard]] bool Poll(ControllerIsolationHostReading&, std::wstring&) noexcept;
     [[nodiscard]] bool PollGuide(std::uint64_t&, std::wstring&) noexcept;
     [[nodiscard]] bool active() const noexcept;
+    [[nodiscard]] bool NativeShortcutButtons(std::uint16_t& buttons) const noexcept;
     void Stop() noexcept;
     void Reset() noexcept;
     [[nodiscard]] LocalControllerProgress progress() const noexcept;

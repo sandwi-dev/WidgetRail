@@ -37,6 +37,7 @@ enum class ControllerReadPath {
     None,
     GameInputVisibleLease,
     XInputCompatibility,
+    DualSenseHid,
 };
 
 struct ControllerInputOwnershipDecision final {

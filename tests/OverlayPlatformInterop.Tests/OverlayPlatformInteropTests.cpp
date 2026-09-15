@@ -141,6 +141,11 @@ int main() {
     Check(WidgetRailOverlayPlatformControllerControlState(nullptr) == 0 &&
           WidgetRailOverlayPlatformSetExclusiveControl(nullptr, 1) == WidgetRailOverlayPlatformStatus::InvalidArgument,
           "controller settings reject missing owner without driver mutation");
+    std::uint16_t nativeButtons = 0xFFFF;
+    Check(GetProcAddress(importedModule, "WidgetRailOverlayPlatformNativeShortcutButtons") != nullptr &&
+          WidgetRailOverlayPlatformNativeShortcutButtons(nullptr, &nativeButtons) == WRAIL_OVERLAY_PLATFORM_FALSE &&
+          nativeButtons == 0 && WidgetRailOverlayPlatformNativeShortcutButtons(nullptr, nullptr) == WRAIL_OVERLAY_PLATFORM_FALSE,
+          "native shortcuts are exported and invalid reads clear output safely");
     Check(sizeof(WidgetRailOverlayPlatformControllerFrame) == 80 &&
               offsetof(WidgetRailOverlayPlatformControllerFrame, state) == 20 &&
               offsetof(
@@ -164,10 +169,10 @@ int main() {
     widgetrail::OverlayState overlay({}, {L"widget"});
     Check(guide.Accept(1'000) &&
               overlay.Dispatch(widgetrail::Command::ToggleOverlay) &&
-              overlay.surface() == widgetrail::Surface::Dashboard,
-          "the first Guide edge shows the hidden overlay");
+              overlay.surface() == widgetrail::Surface::Widget && overlay.activeWidget() == L"widget",
+          "the first Guide edge presents the selected widget");
     Check(!guide.Accept(1'149) &&
-              overlay.surface() == widgetrail::Surface::Dashboard,
+              overlay.surface() == widgetrail::Surface::Widget && overlay.activeWidget() == L"widget",
           "a duplicate Guide source inside the debounce window cannot double toggle");
     Check(guide.Accept(1'150) &&
               overlay.Dispatch(widgetrail::Command::ToggleOverlay) &&

@@ -49,6 +49,10 @@ struct FakeSource final : SelectedControllerSource {
     int prepareCalls{};
     int sampleCalls{};
     int stopCalls{};
+    bool rumbleSupported{true};
+    int rumbleCalls{};
+    bool SupportsRumble() const noexcept override { return rumbleSupported; }
+    bool ApplyRumble(const ControllerRumbleState&) noexcept override { ++rumbleCalls; return false; }
     std::function<void()> duringSample;
 
     SelectedControllerPrepareStatus Prepare(
@@ -96,6 +100,11 @@ struct FakeOutput final : ControllerIsolationOutput {
     int opens{};
     int removals{};
     std::vector<GamepadState> reports;
+    bool feedbackPending{};
+    bool TakeLatestFeedback(ControllerRumbleState& feedback) noexcept override {
+        if (!feedbackPending) return false;
+        feedbackPending = false; feedback.lowFrequency = .5F; return true;
+    }
 
     bool OpenOwnedTarget() noexcept override {
         ++opens;
@@ -626,6 +635,18 @@ void ContainedInputPreservesTapAndSustainedAnalogOrder() {
 } // namespace
 
 int main() {
+    {
+        FakeSource source; source.rumbleSupported = false;
+        FakeOutput output; FakeGuideSink guide;
+        ControllerIsolationRoutingSession session{source, output, guide};
+        Prepare(session, Authority(), Enrollment(), source, output);
+        output.feedbackPending = true;
+        Check(session.Pump(1) != ControllerIsolationRoutingResult::Faulted && source.rumbleCalls == 0 && !output.feedbackPending,
+            "input-only controllers discard unsupported feedback without breaking isolation");
+        source.rumbleSupported = true; output.feedbackPending = true;
+        Check(session.Pump(2) == ControllerIsolationRoutingResult::Faulted && source.rumbleCalls == 1,
+            "an actual supported-feedback failure remains a routing fault");
+    }
     PumpCannotActivateDormantRouting();
     PreparationFailsBeforeOutputForUntrustedDevice();
     SampleFenceContainsOnlyPreFenceHistory();

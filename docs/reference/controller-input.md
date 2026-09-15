@@ -15,6 +15,24 @@ meaningful actions for the currently active view.
 F1 is the desktop toggle fallback. Settings lets the user choose one controller
 opening shortcut at a time; View + Menu is the default.
 
+## DualSense controllers
+
+DualSense input is read directly over USB or Bluetooth. Cross activates the
+same action as A, Circle goes Back, and Square/Triangle map to X/Y. Create +
+Options is the View + Menu opening shortcut; the PS button works when the Guide
+shortcut is selected. The guide and shared controller hints automatically use
+PlayStation glyphs while a DualSense supplies input.
+
+The native reader supports ordinary navigation and the existing Exclusive
+control routing. A connected native DualSense takes precedence over translated
+GameInput/XInput readings, so its inputs are not delivered twice. Disconnects
+clear the current reading; reconnecting requires fresh input before shortcuts
+can fire. Widgets keep using the same semantic actions and controller bindings.
+
+This initial support covers buttons, D-pad, sticks, and triggers. Rumble,
+adaptive triggers, touchpad gestures, and motion controls are not implemented;
+unsupported vibration feedback does not interrupt input.
+
 ## Actions before raw buttons
 
 For a normal button, handle its action ID in `OnActionAsync`. A shortcut can

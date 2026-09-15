@@ -1,4 +1,5 @@
 #include "ControllerIsolationHostSession.h"
+#include "DualSenseHidReader.h"
 
 #include "ControllerIsolationInputTransport.h"
 #include "ControllerIsolationReader.h"
@@ -176,6 +177,7 @@ struct ControllerIsolationHostSession::Impl final {
     bool startupDone{}, desiredOverlay{};
     bool retryDiscovery{};
     bool preparingInput{};
+    bool dualSense{};
     std::uint64_t sessionGeneration{};
     std::uint64_t desiredGeneration{}, appliedGeneration{};
 
@@ -276,6 +278,7 @@ struct ControllerIsolationHostSession::Impl final {
             }
             FinishStartup(L"No eligible physical controller could be selected safely."); return;
         }
+        { std::scoped_lock lock(mutex); dualSense = descriptor.enrollment.deviceFamily == NativeDualSenseFamily; }
         HidHideSnapshot before; std::uint32_t error{}; std::wstring executableDevicePath;
         const bool pathResolved =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
@@ -310,13 +313,15 @@ struct ControllerIsolationHostSession::Impl final {
             test && test->pollGuideCompatibility;
 #else
         widgetrail::input::XInputGuideCompatibility guideCompatibility;
-        const bool guideCompatibilityAvailable = guideCompatibility.Initialize();
+        const bool guideCompatibilityAvailable = descriptor.enrollment.deviceFamily != NativeDualSenseFamily &&
+            guideCompatibility.Initialize();
 #endif
         auto ownedSource =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
             test ? std::unique_ptr<SelectedControllerSource>{} :
 #endif
-            CreateGameInputSelectedControllerReader();
+            descriptor.enrollment.deviceFamily == NativeDualSenseFamily
+                ? CreateDualSenseSelectedControllerReader() : CreateGameInputSelectedControllerReader();
         auto* source =
 #if defined(WRAIL_LOCAL_CONTROLLER_TESTING)
             test ? test->source :
@@ -537,6 +542,7 @@ bool ControllerIsolationHostSession::Poll(ControllerIsolationHostReading& readin
     if (!impl_) return false;
     std::scoped_lock lock(impl_->mutex);
     reading.progress = impl_->progress; reading.state = impl_->latest;
+    reading.dualSense = impl_->dualSense;
     reading.queuedInput = impl_->queues.Pop(reading.state, reading.remainingInputStates);
     reading.guideEvent = impl_->queues.TakeGuide();
     diagnostic = impl_->TakeDiagnosticLocked();
@@ -557,6 +563,16 @@ bool ControllerIsolationHostSession::active() const noexcept {
     if (!impl_) return false;
     std::scoped_lock lock(impl_->mutex);
     return LocalControllerIsolationConfigured(impl_->progress);
+}
+
+bool ControllerIsolationHostSession::NativeShortcutButtons(std::uint16_t& buttons) const noexcept {
+    buttons = 0;
+    if (!impl_) return false;
+    std::scoped_lock lock(impl_->mutex);
+    if (!impl_->dualSense || (impl_->progress != LocalControllerProgress::Playing &&
+        impl_->progress != LocalControllerProgress::Contained && impl_->progress != LocalControllerProgress::AwaitingNeutral)) return false;
+    buttons = impl_->latest.buttons;
+    return true;
 }
 
 void ControllerIsolationHostSession::Stop() noexcept {

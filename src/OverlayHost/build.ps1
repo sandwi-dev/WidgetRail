@@ -470,6 +470,7 @@ function Invoke-OverlayPlatformInteropBuild {
         (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationRoutingSession.cpp'),
         (Join-Path $platformDirectory 'GameInputSelectedControllerReader.cpp'),
+        (Join-Path $platformDirectory 'DualSenseHidReader.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationHostSession.cpp'),
         (Join-Path $platformDirectory 'LocalControllerPolicy.cpp'),
         (Join-Path $platformDirectory 'HidHideConfigurationAdapter.cpp'),
@@ -498,6 +499,15 @@ function Invoke-OverlayPlatformInteropBuild {
 
 
 function Invoke-LocalControllerOwnerTests {
+    $decoderArguments = $common + @(
+        (Join-Path $platformTestDirectory 'DualSenseReportTests.cpp'),
+        "/Fo:$controllerIsolationTestObjectDirectory\",
+        "/Fe:$outputDirectory\DualSenseReportTests.exe", '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $decoderArguments
+    if ($LASTEXITCODE -ne 0) { throw 'DualSenseReportTests compile failed.' }
+    & (Join-Path $outputDirectory 'DualSenseReportTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'DualSenseReportTests failed.' }
     $arguments = $common + @(
         '/DWRAIL_LOCAL_CONTROLLER_TESTING', '/DWRAIL_GAMEINPUT_ISOLATION_READER',
         '/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING',

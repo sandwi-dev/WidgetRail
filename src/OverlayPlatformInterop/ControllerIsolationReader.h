@@ -301,6 +301,7 @@ public:
         SelectedControllerCurrent& current) noexcept = 0;
     [[nodiscard]] virtual bool ApplyRumble(
         const ControllerRumbleState&) noexcept { return false; }
+    [[nodiscard]] virtual bool SupportsRumble() const noexcept { return true; }
     virtual void Stop() noexcept = 0;
 };
 

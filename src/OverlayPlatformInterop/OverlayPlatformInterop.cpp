@@ -2,6 +2,7 @@
 
 #include "OverlayPlatformPolicy.h"
 #include "ControllerIsolationHostSession.h"
+#include "DualSenseHidReader.h"
 #include "LocalControllerPolicy.h"
 #include "ViGEmOutputAdapter.h"
 #include "../OverlayHost/ControllerInputOwnership.h"
@@ -62,6 +63,8 @@ constexpr std::uint32_t ToAbiBoolean(const bool value) noexcept {
         return WidgetRailOverlayPlatformReadPath::GameInputVisibleLease;
     case widgetrail::input::ControllerReadPath::XInputCompatibility:
         return WidgetRailOverlayPlatformReadPath::XInputCompatibility;
+    case widgetrail::input::ControllerReadPath::DualSenseHid:
+        return WidgetRailOverlayPlatformReadPath::DualSenseHid;
     case widgetrail::input::ControllerReadPath::None:
     default:
         return WidgetRailOverlayPlatformReadPath::None;
@@ -130,6 +133,7 @@ struct WidgetRailOverlayPlatformHandle final {
     widgetrail::platform::GuideToggleDebouncer guideDebouncer;
     widgetrail::platform::ControllerFrameTracker controllerTracker;
     widgetrail::isolation::ControllerIsolationHostSession controllerIsolation;
+    widgetrail::isolation::DualSenseHidReader dualSense;
     widgetrail::ForegroundTargetTracker foregroundTarget;
     std::optional<widgetrail::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
@@ -222,6 +226,7 @@ struct WidgetRailOverlayPlatformHandle final {
     }
 
     void RetireLocalControllerOwners() noexcept {
+        dualSense.Stop();
         if (gameInput && guideCallback != 0) {
             gameInput->StopCallback(guideCallback);
             gameInput->UnregisterCallback(guideCallback);
@@ -260,6 +265,14 @@ struct WidgetRailOverlayPlatformHandle final {
                 !gameInputReadFallback);
         };
         decision = decide();
+        widgetrail::isolation::SelectedControllerCurrent native;
+        if (visible && dualSense.Sample(native)) {
+            decision = {widgetrail::input::ControllerReadPath::DualSenseHid, false};
+            const auto& input = native.state;
+            state = {input.buttons, input.leftTrigger, input.rightTrigger, input.leftThumbX,
+                input.leftThumbY, input.rightThumbX, input.rightThumbY};
+            connected = true;
+        }
         if (decision.readPath == widgetrail::input::ControllerReadPath::GameInputVisibleLease) {
             const auto result = TryReadGameInput(state);
             connected = SUCCEEDED(result);
@@ -299,6 +312,9 @@ struct WidgetRailOverlayPlatformHandle final {
                 break;
             case widgetrail::input::ControllerReadPath::XInputCompatibility:
                 Diagnostic(L"Controller read path: XInput compatibility (not exclusive)");
+                break;
+            case widgetrail::input::ControllerReadPath::DualSenseHid:
+                Diagnostic(L"Controller read path: native DualSense HID (shared)");
                 break;
             case widgetrail::input::ControllerReadPath::None:
                 Diagnostic(L"Controller read path dormant: visible lease is inactive");
@@ -630,6 +646,9 @@ WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noe
         handle->Diagnostic(L"Exclusive control setup failed; owned hiding restored and ordinary input resumed.");
     }
 
+    if (!handle->dualSense.Start(nullptr, nullptr, [handle] {
+            handle->Queue({RawEventKind::GuidePressed, WidgetRailOverlayPlatformGuideSource::DualSenseHid});
+        })) handle->Diagnostic(L"Native DualSense HID reader could not start.");
     const HRESULT createResult = GameInputCreate(
         handle->gameInput.ReleaseAndGetAddressOf());
     if (FAILED(createResult)) {
@@ -933,6 +952,22 @@ WidgetRailOverlayPlatformPrimeController(
     return WidgetRailOverlayPlatformStatus::Ok;
 }
 
+std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformNativeShortcutButtons(
+    WidgetRailOverlayPlatformHandle* handle, std::uint16_t* buttons) noexcept {
+    if (!buttons) return WRAIL_OVERLAY_PLATFORM_FALSE;
+    *buttons = 0;
+    if (ValidateHandle(handle) != WidgetRailOverlayPlatformStatus::Ok) return WRAIL_OVERLAY_PLATFORM_FALSE;
+    if (handle->controllerIsolation.active()) {
+        // Poll is the bounded host queue consumer, so do not drain it for a
+        // shortcut. The isolation owner exposes only its latest sampled buttons.
+        return handle->controllerIsolation.NativeShortcutButtons(*buttons) ? WRAIL_OVERLAY_PLATFORM_TRUE : WRAIL_OVERLAY_PLATFORM_FALSE;
+    }
+    widgetrail::isolation::SelectedControllerCurrent sample;
+    if (!handle->dualSense.Sample(sample)) return WRAIL_OVERLAY_PLATFORM_FALSE;
+    *buttons = sample.state.buttons;
+    return WRAIL_OVERLAY_PLATFORM_TRUE;
+}
+
 WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformReadController(
     WidgetRailOverlayPlatformHandle* handle,
@@ -973,7 +1008,8 @@ WidgetRailOverlayPlatformReadController(
         frame->structSize = structSize;
         frame->abiVersion = abiVersion;
         frame->foregroundExclusive = ToAbiBoolean(connected);
-        frame->readPath = WidgetRailOverlayPlatformReadPath::ControllerIsolation;
+        frame->readPath = reading.dualSense ? WidgetRailOverlayPlatformReadPath::DualSenseIsolation :
+            WidgetRailOverlayPlatformReadPath::ControllerIsolation;
         // History preserves transitions, but cannot prove a control is still
         // held after a UI stall. Finish with a current-state read for repeats.
         frame->remainingFrames = reading.remainingInputStates +

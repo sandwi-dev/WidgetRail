@@ -97,6 +97,7 @@ add_executable(OverlayHost WIN32
     ../OverlayPlatformInterop/ControllerIsolationReader.cpp
     ../OverlayPlatformInterop/ControllerIsolationRoutingSession.cpp
     ../OverlayPlatformInterop/GameInputSelectedControllerReader.cpp
+    ../OverlayPlatformInterop/DualSenseHidReader.cpp
     ../OverlayPlatformInterop/ControllerIsolationHostSession.cpp
     ../OverlayPlatformInterop/LocalControllerPolicy.cpp
     ../OverlayPlatformInterop/HidHideConfigurationAdapter.cpp
@@ -328,6 +329,10 @@ if(WRAIL_BUILD_TESTS)
     target_compile_definitions(ControllerIsolationCoreTests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME ControllerIsolationCoreTests COMMAND ControllerIsolationCoreTests)
+
+    add_executable(DualSenseReportTests ../../tests/OverlayPlatformInterop.Tests/DualSenseReportTests.cpp)
+    target_compile_features(DualSenseReportTests PRIVATE cxx_std_20)
+    add_test(NAME DualSenseReportTests COMMAND DualSenseReportTests)
 
     add_executable(LocalControllerOwnerTests
         ../../tests/OverlayPlatformInterop.Tests/LocalControllerOwnerTests.cpp

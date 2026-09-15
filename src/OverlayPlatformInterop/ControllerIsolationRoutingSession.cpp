@@ -510,6 +510,7 @@ bool ControllerIsolationRoutingSession::DrainCore(
 bool ControllerIsolationRoutingSession::DrainFeedback() noexcept {
     ControllerRumbleState feedback;
     if (!output_.TakeLatestFeedback(feedback)) return true;
+    if (!source_.SupportsRumble()) return true;
     if (source_.ApplyRumble(feedback)) return true;
     Fail();
     return false;

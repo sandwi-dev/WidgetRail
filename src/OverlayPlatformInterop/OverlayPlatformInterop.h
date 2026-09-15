@@ -32,6 +32,7 @@ enum class WidgetRailOverlayPlatformGuideSource : std::uint32_t {
     None = 0,
     GameInput = 1,
     LegacyCompatibility = 2,
+    DualSenseHid = 3,
 };
 
 enum class WidgetRailOverlayPlatformNavigationDirection : std::uint32_t {
@@ -53,6 +54,8 @@ enum class WidgetRailOverlayPlatformReadPath : std::uint32_t {
     GameInputVisibleLease = 1,
     XInputCompatibility = 2,
     ControllerIsolation = 3,
+    DualSenseHid = 4,
+    DualSenseIsolation = 5,
 };
 
 
@@ -152,6 +155,12 @@ WidgetRailOverlayPlatformGetAbiVersion() noexcept;
 // native owner. It intentionally does not widen the stable create-options ABI.
 WRAIL_OVERLAY_PLATFORM_API void WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformConfigureControllerIsolation(std::uint32_t enabled) noexcept;
+
+// Host-only shortcut sampling from the same native physical reader as navigation.
+// Returns false when no live DualSense is selected; buttons use the existing ABI mask.
+WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformNativeShortcutButtons(WidgetRailOverlayPlatformHandle* handle,
+    std::uint16_t* buttons) noexcept;
 
 // Read-only readiness: bit 0 HidHide, bit 1 ViGEmBus, bit 2 GameInput/Guide.
 WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL

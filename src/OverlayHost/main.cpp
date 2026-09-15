@@ -6459,7 +6459,10 @@ private:
     }
 
     bool PollOpenShortcut() {
-        if (!viewMenuShortcutEnabled_ || !openShortcut_.Poll()) return false;
+        if (!viewMenuShortcutEnabled_) return false;
+        std::uint16_t buttons{};
+        const bool native = WidgetRailOverlayPlatformNativeShortcutButtons(platform_, &buttons) != WRAIL_OVERLAY_PLATFORM_FALSE;
+        if (!openShortcut_.Poll(native ? std::optional<std::uint16_t>{buttons} : std::nullopt)) return false;
         AppendDiagnostic(L"View + Menu shortcut dispatched on window thread");
         Dispatch(widgetrail::Command::ToggleOverlay);
         return true;
@@ -11491,6 +11494,16 @@ private:
         const auto processFrame = [&]() {
         const bool connected =
             frame.connected != WRAIL_OVERLAY_PLATFORM_FALSE;
+        if (connected && widgetrail::guide::SetPlayStationControls(
+                frame.readPath == WidgetRailOverlayPlatformReadPath::DualSenseHid ||
+                frame.readPath == WidgetRailOverlayPlatformReadPath::DualSenseIsolation)) {
+            retainedGuidePaintKey_.clear();
+            retainedTrayPaintState_.reset();
+            pendingWidgetPresentationImpact_.reset();
+            pendingContentRenderPlan_.reset();
+            if (declarativeRenderer_) declarativeRenderer_->CancelPresentationUpdatePlan();
+            InvalidateRect(window_, nullptr, FALSE);
+        }
         const WORD buttons = frame.state.buttons;
         const WORD pressed = frame.pressedButtons;
         const WORD released = frame.releasedButtons;
