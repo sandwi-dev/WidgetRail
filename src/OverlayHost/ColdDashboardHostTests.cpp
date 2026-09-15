@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cwctype>
 #include <filesystem>
+#include <exception>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -50,6 +51,10 @@ public:
     }
 
     ~TemporaryProfile() {
+        if (std::uncaught_exceptions() != 0) {
+            std::cerr << "Retained failed startup evidence: " << logPath().string() << '\n';
+            return;
+        }
         std::error_code ignored;
         fs::remove_all(root_, ignored);
     }
@@ -390,15 +395,27 @@ void VerifyReshownSettingsFocus(
             "Re-shown production widget Settings bounds escaped the current content client.");
 }
 
-void Run(const Arguments& arguments) {
+void Run(const Arguments& arguments, const bool startHidden) {
+    std::cout << "Cold startup route=" << (startHidden ? "hidden-toggle" : "show") << std::endl;
     Require(fs::is_regular_file(arguments.installation / L"OverlayHost.exe"),
             "--installation does not contain OverlayHost.exe");
     TemporaryProfile profile;
     const std::wstring hostArguments =
         L"--show --process-profile " + profile.profile();
-    HostProcess host(arguments.installation, profile.localAppData(), hostArguments);
+    HostProcess host(arguments.installation, profile.localAppData(), startHidden
+        ? L"--process-profile " + profile.profile() : hostArguments);
     HWND window{};
     HWND chromeWindow{};
+    if (startHidden) {
+        Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
+            window = LocateHostWindow(host.Id());
+            return window != nullptr;
+        }), "Hidden startup did not create its host window.");
+        Require(IsWindowVisible(window) == FALSE,
+                "Sign-in style startup must remain hidden before the first toggle.");
+        Require(PostMessageW(window, WM_HOTKEY, 1, 0) != FALSE,
+                Win32Error("PostMessageW(first startup toggle)"));
+    }
     Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
         window = LocateHostWindow(host.Id());
         chromeWindow = LocateHostWindow(host.Id(), L"WidgetRail.Chrome");
@@ -421,6 +438,18 @@ void Run(const Arguments& arguments) {
             "Windows UI Automation client is unavailable.");
     const auto settingsAuthority = VerifyStartupSettingsUia(
         automation.Get(), window, chromeWindow);
+    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+        const auto log = ReadUtf8(profile.logPath());
+        const auto sampleStart = log.rfind("Composition child sample step=");
+        if (sampleStart == std::string::npos) return false;
+        const auto sampleEnd = log.find('\n', sampleStart);
+        const auto sample = log.substr(sampleStart, sampleEnd - sampleStart);
+        const auto guide = ParseBounds(sample, "guide=");
+        const auto selected = ParseBounds(sample, "selected=");
+        return log.find("content=admitted rendered=settings") != std::string::npos &&
+            log.find("surface=dashboard") == std::string::npos &&
+            guide && selected && selected->top >= guide->bottom;
+    }), "First opening must paint Settings with the selected tray icon below the guide.");
 
     const auto beforeWidget = ReadUtf8(profile.logPath()).size();
     ComPtr<IUIAutomationInvokePattern> settingsTrayInvoke;
@@ -601,7 +630,9 @@ int wmain(const int argc, wchar_t** argv) {
         return EXIT_FAILURE;
     }
     try {
-        Run(ParseArguments(argc, argv));
+        const auto arguments = ParseArguments(argc, argv);
+        Run(arguments, false);
+        Run(arguments, true);
         CoUninitialize();
         return EXIT_SUCCESS;
     } catch (const std::exception& exception) {

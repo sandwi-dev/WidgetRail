@@ -332,13 +332,13 @@ void CheckRenderedGuideContentCentering() {
         source.data() + ensureBegin, ensureEnd - ensureBegin};
     Check(ensureOwner.find("WidgetGuideContentBottomDip(guideHeightDip)") !=
               std::string_view::npos &&
-          ensureOwner.find("DashboardGuideContentBottomDip(dashboardHeightDip)") !=
+          ensureOwner.find("DashboardGuideContentBottomDip") ==
               std::string_view::npos &&
           ensureOwner.find("chromeHeight - session.renderedGuideContentBottom") !=
               std::string_view::npos &&
           ensureOwner.find("centeredStripTop = session.renderedGuideContentBottom") !=
               std::string_view::npos,
-          "fixed chrome centers from the exact rendered dashboard or widget guide-content bottom");
+          "fixed chrome always centers below its own guide, independent of the content mode");
     Check(ensureOwner.find("session.guideClientBounds.top += topExpansion") !=
               std::string_view::npos &&
           ensureOwner.find("session.renderedGuideContentBottom += topExpansion") !=
