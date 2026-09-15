@@ -45,7 +45,9 @@ internal static class SteamArtworkScenarios
         Assert.Equal(0, resolver.FileProbeCalls);
         Assert.True(item.ArtworkRevision.Length == 64);
         var serialized = System.Text.Json.JsonSerializer.Serialize(page);
-        Assert.False(serialized.Contains("730", StringComparison.Ordinal));
+        Assert.PublicAppProjection(item);
+        Assert.False(serialized.Contains("appmanifest_730.acf", StringComparison.Ordinal));
+        Assert.False(serialized.Contains("steam://", StringComparison.OrdinalIgnoreCase));
         Assert.False(serialized.Contains("librarycache", StringComparison.OrdinalIgnoreCase));
         Assert.False(serialized.Contains("_icon", StringComparison.OrdinalIgnoreCase));
 

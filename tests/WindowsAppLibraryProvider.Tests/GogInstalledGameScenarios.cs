@@ -44,11 +44,11 @@ internal static class GogInstalledGameScenarios
             "Distinct same-title GOG registrations collapsed.");
         True(candidate.Registrations.Select(item => item.IdentityKey).Distinct().Count() == 2,
             "Distinct GOG product IDs did not receive distinct identities.");
-        var serialized = JsonSerializer.Serialize(candidate.Registrations.Select(
-            item => item.IdentityKey));
-        True(!serialized.Contains(fixture.Root, StringComparison.OrdinalIgnoreCase) &&
-            !serialized.Contains("100", StringComparison.Ordinal),
-            "Projected GOG identity exposed trusted registration evidence.");
+        True(candidate.Registrations.All(item =>
+                item.IdentityKey.StartsWith("gog-", StringComparison.Ordinal) &&
+                item.IdentityKey.Length == 68 &&
+                item.IdentityKey.AsSpan(4).ToString().All(Uri.IsHexDigit)),
+            "GOG identity must be an opaque digest, without raw product IDs or paths.");
 
         var registry = new FakeRegistry(fixture.Records);
         await using var provider = new WindowsAppLibraryProvider(

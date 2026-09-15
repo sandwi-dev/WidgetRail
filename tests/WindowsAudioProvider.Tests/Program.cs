@@ -234,7 +234,7 @@ static async Task SessionsAreSafeAndStable()
     Assert.True(initial[0].IsActive);
     var privateSession = initial.Single(session => session.DisplayName == "Application audio");
     Assert.True(privateSession.SessionId.StartsWith("audio_", StringComparison.Ordinal));
-    Assert.False(privateSession.SessionId.Contains("4242", StringComparison.Ordinal));
+    Assert.True(Guid.TryParseExact(privateSession.SessionId.AsSpan(6), "N", out _));
     Assert.False(privateSession.SessionId.Contains("endpoint", StringComparison.OrdinalIgnoreCase));
     Assert.False(initial.Any(session => session.DisplayName.Contains("private", StringComparison.OrdinalIgnoreCase)));
     Assert.True(initial.All(session => session.DisplayName.Length <= 160));

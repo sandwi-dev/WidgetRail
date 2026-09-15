@@ -367,12 +367,14 @@ static async Task SteamCatalogIsOpaque()
     var item = (await provider.GetAppsAsync()).Single();
     Assert.Equal("Team Fortress 2", item.DisplayName);
     Assert.Equal(WindowsAppLibraryKind.Game, item.Kind);
-    Assert.False(item.AppId.Contains("440", StringComparison.Ordinal));
+    // Random opaque IDs may contain the same digits as a launcher ID by chance.
+    Assert.True(item.AppId.StartsWith("app-", StringComparison.Ordinal) &&
+        Guid.TryParseExact(item.AppId.AsSpan(4), "N", out _));
 
     var broker = ((IAppLibraryPlatformBrokerBackend)provider);
     var projected = (await QueryFirst(broker)).Single();
     var json = JsonSerializer.Serialize(projected);
-    Assert.False(json.Contains("440", StringComparison.Ordinal));
+    Assert.PublicAppProjection(projected);
     Assert.False(json.Contains("appmanifest", StringComparison.OrdinalIgnoreCase));
     Assert.Equal(AppLibraryKind.Game, projected.Kind);
     Assert.True(projected.ArtworkRevision is { Length: 64 });
@@ -1271,6 +1273,14 @@ internal static class ProviderTestIdentity
 
 internal static class Assert
 {
+    internal static void PublicAppProjection(AppLibraryBackendItemSummary item)
+    {
+        var json = JsonSerializer.SerializeToElement(item);
+        var names = json.EnumerateObject().Select(property => property.Name)
+            .Order(StringComparer.Ordinal).ToArray();
+        True(names.SequenceEqual(new[] { "DisplayName", "Kind", "SourceAttribution" }));
+    }
+
     public static void True(bool condition)
     {
         if (!condition) throw new InvalidOperationException("Expected true.");
