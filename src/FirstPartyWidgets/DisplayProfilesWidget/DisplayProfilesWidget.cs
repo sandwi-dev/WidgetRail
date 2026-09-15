@@ -17,6 +17,7 @@ public sealed class DisplayProfilesWidget : Widget
     private bool _busy;
     private long _generation;
     private Task _watch = Task.CompletedTask;
+    private string? _deadlineRefreshId;
 
     public DisplayProfilesWidget()
     {
@@ -41,10 +42,10 @@ public sealed class DisplayProfilesWidget : Widget
         {
             await using var subscription = await HostServices.Capabilities.OpenSubscriptionAsync(
                 WidgetDisplayProfilesCapabilities.Changed, token).ConfigureAwait(false);
-            await LoadAsync(generation, token).ConfigureAwait(false);
+            await LoadObservedAsync(generation, token).ConfigureAwait(false);
             ready.TrySetResult();
             await foreach (var _ in subscription.ReadAllAsync(token).ConfigureAwait(false))
-                await LoadAsync(generation, token).ConfigureAwait(false);
+                await LoadObservedAsync(generation, token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -53,6 +54,26 @@ public sealed class DisplayProfilesWidget : Widget
             Invalidate();
         }
         finally { ready.TrySetResult(); }
+    }
+    private async Task LoadObservedAsync(long generation, CancellationToken token)
+    {
+        // Display enumeration can briefly fail during a mode switch. A failed
+        // read must not dispose the subscription that delivers the final outcome.
+        for (var attempt = 0; ; ++attempt)
+        {
+            try { await LoadAsync(generation, token).ConfigureAwait(false); return; }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                if (attempt < 2 && error is WidgetCapabilityException capability && capability.ErrorCode is
+                    "display_mode_unavailable" or "display_changing" or "request_timeout")
+                { await Task.Delay(250, token).ConfigureAwait(false); continue; }
+                lock (_gate) if (generation == _generation)
+                { _error = Message(error); if (_state is null) _focus = "display.retry"; }
+                Invalidate();
+                return;
+            }
+        }
     }
     private async Task LoadAsync(long generation, CancellationToken token)
     {
@@ -100,7 +121,14 @@ public sealed class DisplayProfilesWidget : Widget
         {
             lock (_gate)
             {
-                if (_state?.PendingRestore is null) return;
+                if (_state?.PendingRestore is not { } pending) return;
+                if (pending.Deadline <= DateTimeOffset.UtcNow && _deadlineRefreshId != pending.Id)
+                {
+                    var generation = _generation;
+                    var operation = Operations.RunSingleFlight("display.confirmation-refresh",
+                        context => new ValueTask(LoadObservedAsync(generation, context.CancellationToken)));
+                    if (operation.IsAccepted) _deadlineRefreshId = pending.Id;
+                }
                 TickCountdown();
             }
             Invalidate();
@@ -169,6 +197,7 @@ public sealed class DisplayProfilesWidget : Widget
     private async ValueTask ExecuteActionAsync(WidgetActionEvent action, string? id, string? editor,
         string? confirmation, long generation, CancellationToken cancellationToken)
     {
+        string? restoreRequested = null;
         try
         {
             WidgetDisplayProfilesState state;
@@ -195,12 +224,15 @@ public sealed class DisplayProfilesWidget : Widget
                 state = await HostServices.DisplayProfiles.ApplyAsync(id!, cancellationToken);
             else if (action.ActionId is "keep" or "revert")
             {
-                string? restore;
-                lock (_gate) restore = _state?.PendingRestore?.Id;
-                if (restore is null) return;
-                state = action.ActionId == "keep"
-                    ? await HostServices.DisplayProfiles.KeepAsync(restore, cancellationToken)
-                    : await HostServices.DisplayProfiles.RevertAsync(restore, cancellationToken);
+                WidgetDisplayProfileRestore? pending;
+                lock (_gate) pending = _state?.PendingRestore;
+                if (pending is null) return;
+                restoreRequested = pending.Id;
+                state = pending.Deadline <= DateTimeOffset.UtcNow
+                    ? await HostServices.DisplayProfiles.GetAsync(cancellationToken)
+                    : action.ActionId == "keep"
+                        ? await HostServices.DisplayProfiles.KeepAsync(pending.Id, cancellationToken)
+                        : await HostServices.DisplayProfiles.RevertAsync(pending.Id, cancellationToken);
             }
             else return;
             lock (_gate)
@@ -218,6 +250,16 @@ public sealed class DisplayProfilesWidget : Widget
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (WidgetCapabilityException error) when (error.ErrorCode == "display_restore_expired" &&
+            action.ActionId is "keep" or "revert")
+        {
+            // The guard can finish between rendering a button and pressing it.
+            // Its expired reply is authoritative; discard that dialog even if
+            // the fresh display read is briefly unavailable.
+            lock (_gate) if (generation == _generation && _state is { } current && current.PendingRestore?.Id == restoreRequested)
+                Adopt(current with { PendingRestore = null });
+            await LoadObservedAsync(generation, cancellationToken).ConfigureAwait(false);
+        }
         catch (Exception error) when (error is not OutOfMemoryException)
         { lock (_gate) if (generation == _generation) Toast(Message(error), ToastTone.Danger); }
         finally
@@ -276,6 +318,8 @@ public sealed class DisplayProfilesWidget : Widget
                     UI.Row("display.pending.actions",
                         UI.Button("Keep changes", "keep", "display.keep").Busy(_busy).Disabled(seconds == 0),
                         UI.Button("Revert", "revert", "display.revert").Busy(_busy)).Classes("display-actions")).Classes("display-dialog"));
+                if (_error is not null)
+                    children.Add(UI.Button("Refresh status", "retry", "display.retry").Busy(_busy));
             }
             else if (_editor is not null)
             {

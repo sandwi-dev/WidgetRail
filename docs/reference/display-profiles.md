@@ -74,6 +74,9 @@ preview stabilizes. Keep reads the active setup again and refuses to save it if
 it has changed or if the confirmation expired during that read.
 The widget runs restore actions through the SDK's background-operation facility
 so the wake-up wait does not block controller requests.
+Transient enumeration failures do not end the widget's display-change
+subscription. At countdown expiry it also refreshes the transaction status;
+an already-ended confirmation clears the stale dialog and fetches current state.
 
 If a monitor disappears during confirmation, rollback can fall back to Windows'
 last saved available topology.

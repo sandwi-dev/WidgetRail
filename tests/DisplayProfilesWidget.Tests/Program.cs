@@ -69,6 +69,8 @@ var checks = new (string Name, Func<Task> Run)[]
     ("Broker enforces consent, interactive state and closed request payloads", Authority),
     ("Widget supports naming, unavailable profile management and guarded focus", Widget),
     ("Widget stays responsive across slow restore and reopen", WidgetWakeOperation),
+    ("Failed display reads preserve final rollback notifications", WidgetRestoreNotifications),
+    ("Expired confirmations refresh automatically and recover stale button races", WidgetExpiredConfirmation),
     ("Packaged manifest, monitor glyph and theme styles validate", Assets),
 };
 foreach (var (name, run) in checks) { await run(); Console.WriteLine("PASS " + name); }
@@ -531,6 +533,67 @@ static async Task WidgetWakeOperation()
     Check(ViewSnapshotValidator.Validate(widget.Render().CreateSnapshot("display.test", 1)).Count == 0);
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
 }
+static async Task WidgetRestoreNotifications()
+{
+    var events = System.Threading.Channels.Channel.CreateUnbounded<WidgetCapabilityAcknowledgement>();
+    var pending = new WidgetDisplayProfileRestore(Guid.NewGuid().ToString("N"), "Desk", DateTimeOffset.UtcNow.AddMinutes(1));
+    var state = new WidgetDisplayProfilesState("Single display", [], [], pending, null);
+    var failReads = false; var failures = 0;
+    var builder = new WidgetTestHostServicesBuilder()
+        .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) =>
+        {
+            if (failReads) { Interlocked.Increment(ref failures); throw new WidgetCapabilityException("display_mode_unavailable", "Display waking"); }
+            return ValueTask.FromResult(state);
+        })
+        .WithEventStream(WidgetDisplayProfilesCapabilities.Changed, token => events.Reader.ReadAllAsync(token));
+    var widget = WidgetTestHost.Attach(new DisplayProfilesWidget(), builder.Build());
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    try
+    {
+        failReads = true;
+        events.Writer.TryWrite(new(true));
+        await Until(() => Volatile.Read(ref failures) >= 3);
+        failReads = false;
+        state = state with { PendingRestore = null, Outcome = "reverted" };
+        events.Writer.TryWrite(new(true));
+        await Until(() => !ConfirmationVisible(widget));
+        Check(widget.Render().InitialFocusId == "display.save", "Focus stayed in the retired confirmation");
+    }
+    finally { await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background); }
+}
+static async Task WidgetExpiredConfirmation()
+{
+    foreach (var mode in new[] { "deadline", "expired-button", "expired-button-read-failed" })
+    {
+        var pending = new WidgetDisplayProfileRestore(Guid.NewGuid().ToString("N"), "Desk",
+            DateTimeOffset.UtcNow.AddSeconds(mode == "deadline" ? -1 : 60));
+        var state = new WidgetDisplayProfilesState("Single display", [], [], pending, null);
+        var gets = 0; var reverts = 0;
+        var builder = new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetDisplayProfilesCapabilities.Get, (_, _) =>
+            {
+                if (Interlocked.Increment(ref gets) == 1) return ValueTask.FromResult(state);
+                if (mode == "expired-button-read-failed") throw new WidgetCapabilityException("display_mode_unavailable", "Display changing");
+                return ValueTask.FromResult(state with { PendingRestore = null, Outcome = "reverted" });
+            })
+            .WithHandler(WidgetDisplayProfilesCapabilities.Revert, (_, _) =>
+            { ++reverts; throw new WidgetCapabilityException("display_restore_expired", "This display confirmation has already ended"); })
+            .WithEvents(WidgetDisplayProfilesCapabilities.Changed, Array.Empty<WidgetCapabilityAcknowledgement>());
+        var widget = WidgetTestHost.Attach(new DisplayProfilesWidget(), builder.Build());
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+        try
+        {
+            if (mode != "deadline") await widget.OnActionAsync(new("revert", "display.revert"));
+            await Until(() => !ConfirmationVisible(widget) && Volatile.Read(ref gets) >= 2);
+            Check(reverts == (mode == "deadline" ? 0 : 1));
+            Check(!JsonSerializer.Serialize(widget.Render().CreateSnapshot("display.test", 1)).Contains("confirmation has ended"));
+            Check(ViewSnapshotValidator.Validate(widget.Render().CreateSnapshot("display.test", 1)).Count == 0);
+        }
+        finally { await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background); }
+    }
+}
+static bool ConfirmationVisible(DisplayProfilesWidget widget) =>
+    JsonSerializer.Serialize(widget.Render().CreateSnapshot("display.test", 1)).Contains("display.confirmation");
 static Task NativeRead()
 {
     var native = new WindowsDisplayNative();
