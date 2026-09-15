@@ -1,0 +1,5 @@
+PromptFont by Shinmera (Yukari Hafner), available at https://shinmera.com/promptfont
+License: SIL Open Font License 1.1 (see LICENSE.txt).
+Unmodified source: https://shinmera.com/docs/promptfont/promptfont.ttf
+Retrieved: 2026-09-15
+SHA256: A5FE3498ACDA95C12694DDB5C1B6ECCD56A73826977BDDA85756B24C7CF0EEB3

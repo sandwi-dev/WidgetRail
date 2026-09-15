@@ -3,6 +3,14 @@
 WidgetRail includes or uses the third-party components below. These retain
 their own licenses; the project license does not replace these terms.
 
+## PromptFont
+
+PromptFont by Shinmera (Yukari Hafner), available at https://shinmera.com/promptfont
+
+License: SIL Open Font License 1.1. The unmodified font and its complete license
+are bundled in `assets/fonts/promptfont`. WidgetRail loads it privately for
+controller hints; it is not installed as a system font.
+
 ## Microsoft .NET 8 base and Windows Desktop runtimes
 
 Projects: https://github.com/dotnet/runtime and https://github.com/dotnet/windowsdesktop

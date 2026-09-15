@@ -84,6 +84,9 @@ Check (@($prodCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').C
        @($devCatalog.bundledWidgets | Where-Object id -EQ 'display-profiles').Count -eq 1) 'Display Profiles is missing from an edition.'
 Check (!(Test-Path (Join-Path $production 'runtime/embedded-media-sample'))) 'Developer content leaked into Production.'
 foreach ($editionRoot in @($production, $dev)) {
+    foreach ($fontFile in @('promptfont.ttf', 'LICENSE.txt', 'NOTICE.txt')) {
+        Check (Test-Path (Join-Path $editionRoot "assets/fonts/promptfont/$fontFile")) 'Controller font or attribution missing.'
+    }
     Check ((Test-Path (Join-Path $editionRoot 'tools/wrail/templates/ControllerWidget/template.json')) -and (Test-Path (Join-Path $editionRoot 'wrail.cmd'))) 'Shared CLI or launcher missing.'
 }
 Check (!(Test-Path (Join-Path $production 'DoNotShipTests.exe')) -and !(Test-Path (Join-Path $production 'developer-machine.env')) -and

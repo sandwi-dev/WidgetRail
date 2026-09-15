@@ -1,5 +1,6 @@
 #pragma once
 #include "OverlayPlacement.h"
+#include "ControllerPromptFont.h"
 #include <d2d1.h>
 #include <dwrite.h>
 #include <wrl/client.h>
@@ -9,6 +10,33 @@
 namespace widgetrail::guide {
 enum class Control { Unknown, A, B, X, Y, LB, RB, LT, RT, L3, R3, LeftStick, RightStick,
     DPad, Horizontal, Vertical, Up, Down, Left, Right, View, Menu, Guide };
+inline UINT32 PromptCharacter(Control control) noexcept {
+    switch (control) {
+    case Control::A: return 0x21D3;
+    case Control::B: return 0x21D2;
+    case Control::X: return 0x21D0;
+    case Control::Y: return 0x21D1;
+    case Control::LB: return 0x2198;
+    case Control::RB: return 0x2199;
+    case Control::LT: return 0x2196;
+    case Control::RT: return 0x2197;
+    case Control::L3: return 0x21BA;
+    case Control::R3: return 0x21BB;
+    case Control::LeftStick: return 0x21CB;
+    case Control::RightStick: return 0x21CC;
+    case Control::DPad: return 0x21CE;
+    case Control::Horizontal: return 0x21A2;
+    case Control::Vertical: return 0x21A3;
+    case Control::Up: return 0x219F;
+    case Control::Down: return 0x21A1;
+    case Control::Left: return 0x219E;
+    case Control::Right: return 0x21A0;
+    case Control::View: return 0x21FA;
+    case Control::Menu: return 0x21FB;
+    case Control::Guide: return 0x21F9;
+    default: return 0;
+    }
+}
 inline Control ResolveControl(std::wstring_view value) noexcept {
     if(value==L"a"||value==L"A") return Control::A;
     if(value==L"b"||value==L"B") return Control::B;
@@ -66,6 +94,7 @@ inline void DrawControl(ID2D1RenderTarget* target, IDWriteTextFormat* format,
     const auto ring=[&](float radius) { target->DrawEllipse({{cx,cy},radius,radius},brush,stroke); };
     std::wstring_view label;
     auto labelBounds = bounds;
+    if (!PromptFont().Draw(target, PromptCharacter(control), bounds, brush)) {
     switch(control) {
     case Control::A: label=L"A"; ring(h*.43F); break;
     case Control::B: label=L"B"; ring(h*.43F); break;
@@ -117,6 +146,7 @@ inline void DrawControl(ID2D1RenderTarget* target, IDWriteTextFormat* format,
                 ? D2D1_DRAW_TEXT_OPTIONS_NONE : D2D1_DRAW_TEXT_OPTIONS_CLIP);
         format->SetParagraphAlignment(priorParagraph);
         format->SetTextAlignment(prior);
+    }
     }
     if(progress>=0) {
         const int segments=static_cast<int>(std::clamp(progress,0.0F,1.0F)*48);

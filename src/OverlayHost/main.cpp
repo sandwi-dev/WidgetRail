@@ -45,6 +45,7 @@
 #include "TextEntryActionAdmission.h"
 #include "TrayLayout.h"
 #include "RadialInput.h"
+#include "RadialTrayVisual.h"
 
 #include <Windows.h>
 #include <d2d1_1.h>
@@ -17406,54 +17407,12 @@ private:
             ? frameLayout
             : computedLayout ? &*computedLayout : nullptr;
         if (!layout) return;
-        Microsoft::WRL::ComPtr<IDWriteTextFormat> radialFormat;
         if (layout->radialBounds) {
-            const auto& bounds = *layout->radialBounds;
-            const float cx=bounds.x+bounds.width/2, cy=bounds.y+bounds.height/2;
-            const float outer=std::min(bounds.width,bounds.height)*.49F, inner=outer*.45F;
-            constexpr float pi=3.14159265358979323846F;
-            // Tray items may intentionally have a transparent background. A
-            // wheel overlays widget content, so it needs the opaque themed
-            // panel foundation before applying the ordinary tray state colors.
-            renderTarget_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx,cy),outer,outer),solidCardBrush_.Get());
-            renderTarget_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx,cy),outer,outer),trayItemBrush_.Get());
-            Microsoft::WRL::ComPtr<ID2D1Factory> factory;
-            renderTarget_->GetFactory(factory.GetAddressOf());
-            const auto point=[&](float a,float r){return D2D1::Point2F(cx+std::sin(a)*r,cy-std::cos(a)*r);};
-            for (const auto& tile : layout->tiles) {
-                const float start=static_cast<float>(tile.slot%8)*pi/4-pi/8, end=start+pi/4;
-                if (tile.slot==state_.selectedSlot()) {
-                    Microsoft::WRL::ComPtr<ID2D1PathGeometry> path;
-                    Microsoft::WRL::ComPtr<ID2D1GeometrySink> sink;
-                    if (SUCCEEDED(factory->CreatePathGeometry(path.GetAddressOf())) && SUCCEEDED(path->Open(sink.GetAddressOf()))) {
-                        sink->BeginFigure(point(start,inner),D2D1_FIGURE_BEGIN_FILLED);
-                        sink->AddLine(point(start,outer));
-                        sink->AddArc(D2D1::ArcSegment(point(end,outer),D2D1::SizeF(outer,outer),0,D2D1_SWEEP_DIRECTION_CLOCKWISE,D2D1_ARC_SIZE_SMALL));
-                        sink->AddLine(point(end,inner));
-                        sink->AddArc(D2D1::ArcSegment(point(start,inner),D2D1::SizeF(inner,inner),0,D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,D2D1_ARC_SIZE_SMALL));
-                        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
-                        if (SUCCEEDED(sink->Close())) { renderTarget_->FillGeometry(path.Get(),traySelectedBrush_.Get()); renderTarget_->DrawGeometry(path.Get(),focusBrush_.Get(),focusOutlineWidth_); }
-                    }
-                }
-                renderTarget_->DrawLine(point(start,inner),point(start,outer),backgroundBrush_.Get(),1.0F);
-            }
-            renderTarget_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx,cy),inner,inner),backgroundBrush_.Get());
-            wchar_t family[128]{L'S',L'e',L'g',L'o',L'e',L' ',L'U',L'I',0};
-            (void)hintFormat_->GetFontFamilyName(family,128);
-            if (SUCCEEDED(writeFactory_->CreateTextFormat(family,nullptr,hintFormat_->GetFontWeight(),
-                    DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,14.0F*CurrentTextScale(),L"",radialFormat.GetAddressOf()))) {
-                radialFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-                radialFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-                DrawTextLine(DisplayWidgetName(state_.selectedWidget()),radialFormat.Get(),
-                    D2D1::RectF(cx-inner+8,cy-50,cx+inner-8,cy-8),traySelectedTextBrush_.Get());
-                if (layout->pageCount > 1) {
-                    widgetrail::guide::DrawControl(renderTarget_.Get(), radialFormat.Get(),
-                        widgetrail::guide::Control::RightStick,
-                        D2D1::RectF(cx-14,cy+4,cx+14,cy+32),trayItemTextBrush_.Get());
-                    DrawTextLine(std::to_wstring(layout->page+1)+L" / "+std::to_wstring(layout->pageCount),radialFormat.Get(),
-                        D2D1::RectF(cx-32,cy+34,cx+32,cy+56),dashboardSecondaryBrush_.Get());
-                }
-            }
+            widgetrail::shell::DrawRadialTray(renderTarget_.Get(), writeFactory_.Get(), hintFormat_.Get(),
+                *layout, state_.selectedSlot(), DisplayWidgetName(state_.selectedWidget()),
+                {solidCardBrush_->GetColor(), traySelectedBrush_->GetColor(), trayItemTextBrush_->GetColor(),
+                 traySelectedTextBrush_->GetColor(), dashboardSecondaryBrush_->GetColor(), focusBrush_->GetColor()},
+                CurrentTextScale(), focusOutlineWidth_);
         }
         // The fallback HWND path has no retained tray-state pass.
         if (layout->statusBounds)
@@ -17490,7 +17449,7 @@ private:
                     bounds.y + bounds.height - inset),
                 trayItemTextBrush_.Get(), 1.8F);
         };
-        if (layout->previousOverflow) drawOverflow(*layout->previousOverflow);
+        if (!layout->radialBounds && layout->previousOverflow) drawOverflow(*layout->previousOverflow);
 
         for (const auto& tileLayout : layout->tiles) {
             const std::size_t slot = tileLayout.slot;
@@ -17550,7 +17509,7 @@ private:
                     2.35F);
             }
         }
-        if (layout->nextOverflow) drawOverflow(*layout->nextOverflow);
+        if (!layout->radialBounds && layout->nextOverflow) drawOverflow(*layout->nextOverflow);
         if (const auto menu = CurrentTrayContextMenuLayout(
                 *layout, CurrentTrayViewportWidthDip(width))) {
             const D2D1_ROUNDED_RECT panel{

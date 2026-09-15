@@ -495,7 +495,7 @@ void CheckRenderedGuideContentCentering() {
           "the current frame tray branch paints the exact forwarded layout once");
 }
 
-void CheckStickGlyphLabels(ID2D1Factory* d2d, IWICImagingFactory* wic) {
+void CheckControllerGlyphs(ID2D1Factory* d2d, IWICImagingFactory* wic) {
     ComPtr<IDWriteFactory> write;
     Check(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
         __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf()))),
@@ -521,6 +521,9 @@ void CheckStickGlyphLabels(ID2D1Factory* d2d, IWICImagingFactory* wic) {
             target->BeginDraw();
             target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
             target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            Check(widgetrail::guide::PromptFont().Draw(target.Get(), widgetrail::guide::PromptCharacter(control),
+                {4,4,4+size,4+size}, brush.Get()), "bundled font contains the controller glyph");
+            target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
             widgetrail::guide::DrawControl(target.Get(), format.Get(), control,
                 {4,4,4+size,4+size}, brush.Get());
             Check(SUCCEEDED(target->EndDraw()), "glyph drawing completes");
@@ -534,14 +537,20 @@ void CheckStickGlyphLabels(ID2D1Factory* d2d, IWICImagingFactory* wic) {
         };
         const auto left = render(widgetrail::guide::Control::LeftStick);
         const auto right = render(widgetrail::guide::Control::RightStick);
-        bool differentCaps{};
-        bool differentStems{};
-        for (std::size_t i=0; i<left.size(); ++i) if (left[i] != right[i]) {
-            if (i/(48*4) >= static_cast<std::size_t>(std::ceil(4+size*.60F))) differentStems=true;
-            else differentCaps=true;
+        Check(left != right, "left and right movement glyphs remain distinguishable");
+        Check(right != render(widgetrail::guide::Control::R3), "stick movement differs from stick click");
+        for (int value = static_cast<int>(widgetrail::guide::Control::A);
+             value <= static_cast<int>(widgetrail::guide::Control::Guide); ++value) {
+            const auto pixels = render(static_cast<widgetrail::guide::Control>(value));
+            bool visible{};
+            for (UINT y = 0; y < 48; ++y) for (UINT x = 0; x < 48; ++x) {
+                if (!pixels[(y * 48 + x) * 4]) continue;
+                visible = true;
+                Check(x >= 3 && y >= 3 && x <= 5 + size && y <= 5 + size,
+                    "controller glyph ink fits its allocated bounds");
+            }
+            Check(visible, "controller glyph paints visible ink at each guide size");
         }
-        Check(differentCaps && !differentStems,
-            "left and right letters differ only in the stick cap, never over the stem or base");
     }
 }
 
@@ -1112,7 +1121,7 @@ int main() {
           "WIC factory is created");
 
     CheckFrame(d2d.Get(), wic.Get(), 1.0F);
-    CheckStickGlyphLabels(d2d.Get(), wic.Get());
+    CheckControllerGlyphs(d2d.Get(), wic.Get());
     CheckFrame(d2d.Get(), wic.Get(), 1.5F);
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.5F);

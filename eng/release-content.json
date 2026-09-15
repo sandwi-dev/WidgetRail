@@ -5,7 +5,10 @@
     "OverlayHost.exe",
     "OverlayPlatformInterop.dll",
     "ArtworkDecoderHost.exe",
-    "public_suffix_list.dat"
+    "public_suffix_list.dat",
+    "assets/fonts/promptfont/promptfont.ttf",
+    "assets/fonts/promptfont/LICENSE.txt",
+    "assets/fonts/promptfont/NOTICE.txt"
   ],
   "hostRuntimeDirectories": [
     "Bridge",
