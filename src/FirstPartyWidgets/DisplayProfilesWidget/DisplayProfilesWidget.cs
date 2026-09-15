@@ -293,9 +293,8 @@ public sealed class DisplayProfilesWidget : Widget
                 }
                 else children.Add(UI.Text(_error ?? "Reading your displays…", "display.loading").Classes("display-summary"));
                 if (_error is not null) children.Add(UI.Button("Try again", "retry", "display.retry").Busy(_busy));
-                children.Add(UI.Text("Scaling stays managed by Windows.", "display.scaling").Classes("display-help"));
-                children.Add(UI.Text("Changing VRR in your monitor's menu can change refresh rates and make saved profiles incompatible. Keep VRR consistent when saving and restoring.",
-                    "display.vrr-warning").Classes("display-help", "display-warning"));
+                children.Add(UI.Text("Windows manages scaling. Monitor VRR changes can make saved profiles incompatible.",
+                    "display.warning").Classes("display-help", "display-warning"));
             }
             if (_toast is not null) children.Add(UI.Toast("Display Profiles", _toast, _tone, "display.toast"));
             var root = UI.Stack("display.root", children.ToArray()).InputScope(scope).Classes("display-widget");
@@ -303,7 +302,7 @@ public sealed class DisplayProfilesWidget : Widget
             else if (_editor is not null || _confirm is not null) root = root.Shortcut(ControllerButton.B, "cancel", "Cancel");
             else if (_state is not null) root = root.Shortcut(ControllerButton.Y, "name-new", "Save current setup");
             return new(root, _focus, ActiveInputScopeId: scope, Surface: new WidgetSurfaceHints
-            { PreferredWidth = 780, PreferredHeight = 560, MinimumWidth = 640, MinimumHeight = 420 });
+            { HeightMode = WidgetSurfaceAxisMode.Content, PreferredWidth = 780, PreferredHeight = 700, MinimumWidth = 640, MinimumHeight = 420 });
         }
     }
     private WidgetElement ProfileCard(WidgetDisplayProfileSummary profile)
