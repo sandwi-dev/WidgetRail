@@ -298,6 +298,15 @@ int main() {
     const auto contextualGuide = BuildTrayControllerGuide(
         ControllerGuideDensity::Compact, false, true, 200.0F,
         measureGuide, quickActions);
+    ControllerGuideHints radialHints;
+    const auto radialGuide = BuildTrayControllerGuide(
+        ControllerGuideDensity::Full, false, true, 4000.0F,
+        measureGuide, quickActions, &radialHints, {}, true);
+    Check(radialGuide.find(L"X Play or pause") != std::wstring::npos &&
+          radialGuide.find(L"B Back") != std::wstring::npos &&
+          radialGuide.find(L"A Open") != std::wstring::npos &&
+          radialGuide.find(L"↑/A Enter") == std::wstring::npos,
+          "radial guide exposes declared actions with wheel-specific navigation");
     Check(contextualGuide.find(L"X Play or pause") != std::wstring::npos &&
               contextualGuide.find(L"LT Seek backward") != std::wstring::npos &&
               contextualGuide.find(L"RT Seek forward") != std::wstring::npos,

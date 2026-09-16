@@ -71,7 +71,8 @@ The full policy is documented in
 
 The host publishes one stable lifecycle state for the tracked bridge widget:
 
-- selected dashboard card: `Visible`;
+- selected horizontal dashboard card: `Visible`;
+- highlighting another widget in the radial keeps its existing lifecycle;
 - opened widget surface: `Interactive`; and
 - hidden overlay, selection change, or another surface: `Background`.
 

@@ -396,6 +396,9 @@ public abstract partial class Widget
             await DrainTimedMutationsAsync(endingLifetimes, shutdownToken)
                 .ConfigureAwait(false);
             DisposeTimedMutations();
+            if (stateLifetime is not null)
+                await DrainActionQueueAsync(stateLifetime.Token, shutdownToken)
+                    .ConfigureAwait(false);
             if (activeLifetime is not null)
                 await DrainActionQueueAsync(activeLifetime.Token, shutdownToken)
                     .ConfigureAwait(false);
@@ -476,6 +479,9 @@ public abstract partial class Widget
                 .ConfigureAwait(false);
             await DrainTimedMutationsAsync(endingLifetimes, transitionToken)
                 .ConfigureAwait(false);
+            if (previousStateLifetime is not null)
+                await DrainActionQueueAsync(previousStateLifetime.Token, transitionToken)
+                    .ConfigureAwait(false);
             if (endedActiveLifetime is not null)
                 await DrainActionQueueAsync(endedActiveLifetime.Token, transitionToken)
                     .ConfigureAwait(false);
@@ -694,7 +700,7 @@ public abstract partial class Widget
                 input.Phase,
                 input.Sequence,
                 input.MonotonicTimestampMicroseconds),
-                gestureContext));
+                gestureContext, dashboardAction: true));
         }
 
         if (input.Context is ControllerInputContext.OpenWidget or

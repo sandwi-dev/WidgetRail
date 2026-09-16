@@ -216,7 +216,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
 
     /// <summary>
     /// Installs a trusted-host-only, single-use authority for one exact control
-    /// operation while the widget remains Visible. Workers cannot reach this
+    /// operation while the widget is Visible or Background. Workers cannot reach this
     /// method through broker IPC.
     /// </summary>
     public void GrantDashboardGestureAuthority(
@@ -243,9 +243,9 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (_lifecycle != BrokerLifecycleState.Visible)
+            if (_lifecycle is not (BrokerLifecycleState.Visible or BrokerLifecycleState.Background))
                 throw new BrokerException(
-                    "lifecycle_denied", "Dashboard authority is available only while Visible.");
+                    "lifecycle_denied", "Dashboard authority requires Visible or Background lifecycle.");
             if (inputSequence <= _lastDashboardGestureSequence)
                 throw new BrokerException("gesture_replayed", "Dashboard gesture sequence was replayed.");
             _lastDashboardGestureSequence = inputSequence;
@@ -518,13 +518,15 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive
             : lease.Kind == BrokerCapabilityKind.Control
             ? lifecycle == BrokerLifecycleState.Interactive ||
-                lease.DashboardGestureAuthorized && lifecycle == BrokerLifecycleState.Visible
+                lease.DashboardGestureAuthorized && lifecycle is
+                    BrokerLifecycleState.Visible or BrokerLifecycleState.Background
             : lifecycle is BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive;
 
     private RequestLease CreateRequestLease(
         BrokerCapabilityDefinition capability,
         BrokerRequestEnvelope request,
-        CancellationToken callerCancellation)
+        CancellationToken callerCancellation,
+        RequestLease? dashboardParent = null)
     {
         lock (_gate)
         {
@@ -532,10 +534,18 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             if (_revokedCapabilities.Contains(capability.Id))
                 throw new BrokerException("capability_revoked", "Capability permission was revoked.");
             var dashboardGestureAuthorized = false;
+            // A declared authenticated loopback POST may read its bearer secret
+            // only as a dependency of that exact already-authorized request.
+            var dashboardSecretDependency = dashboardParent is { DashboardGestureAuthorized: true } &&
+                _requestLeases.Contains(dashboardParent) && !dashboardParent.Token.IsCancellationRequested &&
+                IsLifecycleAllowed(dashboardParent, _lifecycle) &&
+                capability.Id == PlatformCapabilities.PrivateSecretsV1 &&
+                request.Operation == PlatformCapabilities.PrivateSecretMetadata;
             var operationKind = capability.KindForOperation(request.Operation);
             if (operationKind == BrokerCapabilityKind.Control &&
                 capability.AllowsDashboardGestureForOperation(request.Operation) &&
-                _lifecycle == BrokerLifecycleState.Visible)
+                (_lifecycle == BrokerLifecycleState.Visible ||
+                 (_lifecycle == BrokerLifecycleState.Background && !capability.AllowsBackground)))
             {
                 if (request.GestureInputSequence is not { } inputSequence ||
                     request.GestureSnapshotSequence is not { } snapshotSequence)
@@ -555,12 +565,12 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 dashboardGestureAuthorized = true;
                 RemoveDashboardGestureAuthorityLocked(key);
             }
-            else
+            else if (!dashboardSecretDependency)
             {
                 DemandLifecycle(capability, operationKind, _lifecycle);
             }
             var lease = new RequestLease(
-                this, capability.Id, operationKind, capability.AllowsBackground,
+                this, capability.Id, operationKind, capability.AllowsBackground || dashboardSecretDependency,
                 capability.AllowsInFlightContinuationForOperation(request.Operation),
                 dashboardGestureAuthorized,
                 callerCancellation);
@@ -725,7 +735,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 GestureSnapshotSequence = null,
             };
             using var secretLease = CreateRequestLease(
-                secretCapability, secretLeaseRequest, primaryLease.Token);
+                secretCapability, secretLeaseRequest, primaryLease.Token, primaryLease);
             try
             {
                 return BrokerJson.ToElement(LoopbackCapabilityPolicy.ValidateResponse(

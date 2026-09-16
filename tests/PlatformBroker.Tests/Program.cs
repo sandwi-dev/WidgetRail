@@ -46,6 +46,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Private secrets are write-only and revocation cancels dependent loopback work", PrivateSecretContracts),
     ("Private state is host-granted consentless identity-bound and active-lifecycle safe", PrivateStateHostGrantContracts),
     ("Dashboard gesture authority is exact sequence-bound expiring and single-use", DashboardGestureAuthorityIsBounded),
+    ("Background dashboard control requires an exact granted gesture and permission", BackgroundDashboardGestureIsBounded),
     ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
     ("Bluetooth read and radio control are opaque granular and lifecycle-gated", BluetoothContracts),
     ("Consent updates are atomic across store instances", ConsentUpdatesAreAtomic),
@@ -725,6 +726,10 @@ static async Task PrivateSecretContracts()
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(new LoopbackJsonResponse(401, "{}", []));
     };
+    broker.SetLifecycle(BrokerLifecycleState.Background);
+    Assert.Equal("lifecycle_denied", (await broker.HandleAsync(Request(identity,
+        PlatformCapabilities.PrivateSecretsV1, PlatformCapabilities.PrivateSecretMetadata,
+        new { slot = "ytm.token" }))).ErrorCode);
     broker.GrantDashboardGestureAuthority(
         loopbackCapability,
         PlatformCapabilities.LoopbackHttpPostJson,
@@ -749,6 +754,7 @@ static async Task PrivateSecretContracts()
     Assert.True(rejected.Succeeded, rejected.ErrorCode);
     Assert.Equal(401, rejected.Payload!.Value.GetProperty("statusCode").GetInt32());
     Assert.Equal(1, backend.PrivateSecretDeleteCalls);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
     var invalidated = await broker.HandleAsync(Request(identity,
         PlatformCapabilities.PrivateSecretsV1,
         PlatformCapabilities.PrivateSecretMetadata,
@@ -2304,6 +2310,29 @@ static async Task DashboardGestureAuthorityIsBounded()
         PlatformCapabilities.MediaSessionsControlV1,
         PlatformCapabilities.MediaSessionControl, 17, 10, TimeSpan.FromSeconds(1)),
         "lifecycle_denied");
+}
+
+static async Task BackgroundDashboardGestureIsBounded()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var capability = PlatformCapabilities.AudioOutputControlV1;
+    var operation = PlatformCapabilities.AudioOutputSetMuted;
+    await store.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    var backend = AudioBackend();
+    await using var broker = Broker(identity, store, backend, capability);
+    broker.SetLifecycle(BrokerLifecycleState.Background);
+    var request = GestureRequest(identity, capability, operation, new { isMuted = true }, 1, 5);
+    Assert.Equal("lifecycle_denied", (await broker.HandleAsync(request)).ErrorCode);
+    broker.GrantDashboardGestureAuthority(capability, operation, 1, 5, TimeSpan.FromSeconds(2));
+    Assert.True((await broker.HandleAsync(request)).Succeeded);
+    Assert.Equal("lifecycle_denied", (await broker.HandleAsync(request)).ErrorCode);
+    broker.GrantDashboardGestureAuthority(capability, operation, 2, 5, TimeSpan.FromSeconds(2));
+    await store.SetDecisionAsync(identity, capability, ConsentDecision.Deny);
+    Assert.Equal("permission_denied", (await broker.HandleAsync(
+        GestureRequest(identity, capability, operation, new { isMuted = false }, 2, 5))).ErrorCode);
+    Assert.Equal(1, backend.AudioControlCalls);
 }
 
 static async Task IdentityMismatchIsDenied()

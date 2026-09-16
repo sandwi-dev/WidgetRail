@@ -24,7 +24,10 @@ messages, choose pipe identities, or call native APIs as a workaround for denial
 
 Reads commonly require Visible or Interactive state. Writes generally require
 Interactive state. Some contracts permit one exact declared dashboard gesture
-while Visible; this does not permit arbitrary background writes.
+while Visible, or while an eligible widget is already running in Background.
+Each gesture authorizes only its declared operation; it does not permit arbitrary
+background writes. See [Residency](widget-residency.md) for shortcut eligibility
+and idle timer behavior.
 
 Check the service's table for exceptions. A worker remaining resident does not
 extend permission beyond the current lifecycle.

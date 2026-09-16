@@ -253,16 +253,14 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
     bool IsRunning { get; }
     int Starts { get; }
     Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken);
-    async Task<WidgetRuntimePresentation> GetPresentationAsync(
+    Task<WidgetRuntimePresentation> GetPresentationAsync(
         PresentationUpdateCapabilities capabilities,
         string presentationGeneration,
         long baseSequence,
         WidgetPresentationTransactionKind transactionKind,
         long recoveryOriginSequence,
-        CancellationToken cancellationToken) =>
-        new(
-            transactionKind, baseSequence, recoveryOriginSequence,
-            await GetSnapshotAsync(cancellationToken).ConfigureAwait(false), null);
+        CancellationToken cancellationToken,
+        bool existingWorkerOnly = false);
     Task SetLifecycleStateAsync(WidgetLifecycleState state, CancellationToken cancellationToken);
     Task<bool> TryRestoreLifecycleStateAsync(
         WidgetLifecycleState state,
@@ -329,10 +327,11 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         long baseSequence,
         WidgetPresentationTransactionKind transactionKind,
         long recoveryOriginSequence,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        bool existingWorkerOnly = false) =>
         client.GetPresentationAsync(
             capabilities, presentationGeneration, baseSequence,
-            transactionKind, recoveryOriginSequence, cancellationToken);
+            transactionKind, recoveryOriginSequence, cancellationToken, existingWorkerOnly);
     public Task SetLifecycleStateAsync(
         WidgetLifecycleState state,
         CancellationToken cancellationToken) =>
@@ -509,10 +508,12 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             DemandCurrent(registration);
             var residencyMode = WidgetResidencyPolicies.Resolve(
                 registration.Configured.ResidencyPolicy).Mode;
+            var backgroundIdle = registration.HostLifecycle == WidgetLifecycleState.Background &&
+                residencyMode == WidgetResidencyMode.UnloadAfterIdle;
             var hiddenAndRestricted =
                 registration.HostLifecycle == WidgetLifecycleState.Background &&
-                residencyMode is WidgetResidencyMode.SuspendWhenHidden or
-                    WidgetResidencyMode.UnloadAfterIdle;
+                (residencyMode == WidgetResidencyMode.SuspendWhenHidden ||
+                 (backgroundIdle && !registration.HasCurrentInputWorker));
             var incremental = transactionKind ==
                 WidgetPresentationTransactionKind.IncrementalUpdate;
             if (incremental && registration.CachedSnapshot?.Sequence != baseSequence)
@@ -533,7 +534,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 retainedWorkerStart = incremental
                     ? registration.DemandCurrentPresentationBase(baseSequence)
                     : 0;
-                registration.CancelIdleUnload();
+                // Passive repainting must not keep an idle worker resident.
+                if (!backgroundIdle) registration.CancelIdleUnload();
                 var generation = registration.Configured.PublicDescriptor().PresentationGeneration;
                 presentation = await ExecuteClientOperationAsync(
                         registration,
@@ -543,7 +545,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                             incremental ? baseSequence : 0,
                             transactionKind,
                             recoveryOriginSequence,
-                            token),
+                            token, existingWorkerOnly: backgroundIdle),
                         cancellationToken)
                     .ConfigureAwait(false);
                 DemandCurrent(registration);
@@ -558,7 +560,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 DemandPackageIconAuthority(
                     registration.Configured, presentation.Snapshot);
                 registration.CommitCachedSnapshot(presentation.Snapshot);
-                ScheduleIdleUnload(registration, sessionCancellation);
+                if (!backgroundIdle) ScheduleIdleUnload(registration, sessionCancellation);
             }
             return AdmitPublication(
                 registration,
@@ -891,7 +893,17 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         string? expectedActionId = null,
         string? expectedSelectOptionActionId = null)
     {
-        var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
+        ClientRegistration registration;
+        if (input.Context == ControllerInputContext.DashboardQuickAction)
+        {
+            lock (_gate)
+            {
+                DemandNotDisposed();
+                if (!_clients.TryGetValue(widgetId, out registration!))
+                    throw ControllerInputAuthorityException(input, "Dashboard widget is not running.");
+            }
+        }
+        else registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -916,7 +928,15 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 (!registration.Configured.PinningSupported || !registration.Configured.FullWidgetPinningSupported))
                 throw new BridgeStalePinnedInputAuthorityException(
                     "The widget does not support full-widget pinning.");
-            if (input.Context != ControllerInputContext.PinnedLayoutSelection)
+            if (input.Context == ControllerInputContext.DashboardQuickAction &&
+                (!registration.HasCurrentInputWorker ||
+                 (registration.HostLifecycle == WidgetLifecycleState.Background &&
+                  (!registration.Configured.PublicDescriptor().BackgroundDashboardActionsSupported ||
+                   string.IsNullOrWhiteSpace(expectedRuntimeGeneration)))))
+                throw ControllerInputAuthorityException(input,
+                    "Dashboard worker is unavailable or suspended.");
+            if (input.Context is not (ControllerInputContext.PinnedLayoutSelection or
+                ControllerInputContext.DashboardQuickAction))
                 DemandInteractionAllowed(registration);
             if (input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.PinnedSurface &&
                 !registration.HasCurrentInputWorker)
@@ -948,7 +968,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             var revalidated = admitted.SnapshotSequence != input.SnapshotSequence &&
                 input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.PinnedSurface;
             input = admitted;
-            registration.CancelIdleUnload();
+            var dashboard = input.Context == ControllerInputContext.DashboardQuickAction;
+            if (!dashboard) registration.CancelIdleUnload();
             if (revalidated)
             {
                 // Adopt the already-published snapshot under the render gate.
@@ -975,7 +996,11 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrent(registration);
-            ScheduleIdleUnload(registration, sessionCancellation);
+            if (!dashboard || handled)
+            {
+                registration.CancelIdleUnload();
+                ScheduleIdleUnload(registration, sessionCancellation);
+            }
             return AdmitPublication(registration, handled);
         }
         finally
@@ -2116,16 +2141,16 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         ControllerInputEvent input)
     {
         if (input.Context != ControllerInputContext.DashboardQuickAction) return null;
-        if (registration.HostLifecycle != WidgetLifecycleState.Visible)
-            throw new BridgeProtocolException(
-                "Dashboard quick actions require the widget to remain Visible.");
-        var snapshot = registration.CachedSnapshot ?? throw new BridgeProtocolException(
+        if (registration.HostLifecycle is not (WidgetLifecycleState.Visible or WidgetLifecycleState.Background))
+            throw ControllerInputAuthorityException(input,
+                "Dashboard quick actions require a visible or eligible background widget.");
+        var snapshot = registration.CachedSnapshot ?? throw ControllerInputAuthorityException(input,
             "Dashboard quick action has no cached rendered snapshot.");
         if (snapshot.Sequence != input.SnapshotSequence)
-            throw new BridgeProtocolException(
+            throw ControllerInputAuthorityException(input,
                 "Dashboard quick action targets a stale snapshot sequence.");
         var quickAction = snapshot.QuickActions.SingleOrDefault(
-            action => action.Button == input.Button) ?? throw new BridgeProtocolException(
+            action => action.Button == input.Button) ?? throw ControllerInputAuthorityException(input,
                 "Dashboard button is not exposed by the cached snapshot.");
         if (input.Phase == ControllerEventPhase.Repeated &&
             quickAction.RepeatPolicy != ControllerActionRepeatPolicy.WhileHeld)
@@ -2403,7 +2428,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         ControllerInputEvent input,
         string message) => input.Context == ControllerInputContext.PinnedSurface
             ? new BridgeStalePinnedInputAuthorityException(message)
-            : input.Context == ControllerInputContext.OpenWidget
+            : input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.DashboardQuickAction
                 ? new BridgeStaleControllerInputAuthorityException(message)
                 : new BridgeProtocolException(message);
 
@@ -2498,7 +2523,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         internal bool MayPublishInvalidation =>
             HostLifecycle != WidgetLifecycleState.Background ||
             WidgetResidencyPolicies.Resolve(Configured.ResidencyPolicy).Mode ==
-                WidgetResidencyMode.KeepAlive;
+                WidgetResidencyMode.KeepAlive ||
+            (WidgetResidencyPolicies.Resolve(Configured.ResidencyPolicy).Mode ==
+                WidgetResidencyMode.UnloadAfterIdle && HasCurrentInputWorker);
         // Owned by the registry gate; bounded to one activation transition.
         internal bool BufferActivationInvalidations { get; set; }
         internal long ActivationInvalidationRevision { get; set; }

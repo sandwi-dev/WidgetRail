@@ -141,11 +141,13 @@ struct WidgetSessionPresentation final {
 
     /// One admitted checkpoint remains the coherent presentation and
     /// Interactive input/UIA owner while an ordinary replacement is in flight.
-    /// Dashboard actions retain their existing exact Current + Visible rule.
+    /// Dashboard actions require Current authority; background admission also
+    /// requires a descriptor whose residency policy admits background actions.
     /// Failure and transition-retained content remain outside this policy.
     [[nodiscard]] bool HasCommittedViewAuthority(
         const WidgetCommittedViewUse use =
-            WidgetCommittedViewUse::Presentation) const noexcept {
+            WidgetCommittedViewUse::Presentation,
+        const bool allowBackgroundDashboard = false) const noexcept {
         if (!snapshot) return false;
         switch (use) {
         case WidgetCommittedViewUse::Presentation:
@@ -157,7 +159,8 @@ struct WidgetSessionPresentation final {
                 lifecycle == WidgetLifecycleState::Interactive;
         case WidgetCommittedViewUse::DashboardQuickAction:
             return authority == WidgetPresentationAuthority::Current &&
-                lifecycle == WidgetLifecycleState::Visible;
+                (lifecycle == WidgetLifecycleState::Visible ||
+                 (allowBackgroundDashboard && lifecycle == WidgetLifecycleState::Background));
         }
         return false;
     }

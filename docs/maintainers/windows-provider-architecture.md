@@ -33,7 +33,7 @@ Reading a list does not authorize changing it. Use separate capabilities for
 operations such as switching windows, setting a device, or controlling power.
 Most provider writes require the widget to be Interactive.
 
-Some contracts allow one exact dashboard action while Visible. That is a narrow
+Some contracts allow one exact dashboard action while Visible or in an eligible running Background widget. That is a narrow
 user gesture, not general permission for background writes. See
 [Capabilities](../reference/capabilities.md).
 

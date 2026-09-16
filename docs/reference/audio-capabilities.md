@@ -8,7 +8,7 @@ service. See [Capabilities](capabilities.md) for consent, lifecycle, and error b
 | `system.audio.sessions.read.v1` | `HostServices.Audio.GetSessionsAsync`, `OpenSessionsSubscriptionAsync`, and `WatchSessionsAsync` | Visible or Interactive |
 | `system.audio.sessions.control.v1` | `SetSessionVolumeAsync` and `SetSessionMutedAsync` | Interactive only |
 | `system.audio.output.read.v1` | `HostServices.Audio.GetOutputAsync`, `OpenOutputSubscriptionAsync`, and `WatchOutputAsync` | Visible or Interactive |
-| `system.audio.output.control.v1` | `SetOutputVolumeAsync` and `SetOutputMutedAsync` | Interactive, or one exact declared dashboard gesture while Visible |
+| `system.audio.output.control.v1` | `SetOutputVolumeAsync` and `SetOutputMutedAsync` | Interactive, or one exact declared dashboard gesture while Visible or in an eligible running Background widget |
 | `system.audio.devices.read.v1` | `GetDevicesAsync`, `OpenDevicesSubscriptionAsync`, and `WatchDevicesAsync`; sanitized input/output names and default markers only | Visible or Interactive |
 | `system.audio.devices.control.v1` | `SetDefaultOutputDeviceAsync` and `SetDefaultInputDeviceAsync`; choose a currently enumerated opaque device for normal Console/Multimedia roles, preserving communications | Interactive only |
 | `system.audio.spatial.read.v1` | `GetSpatialAsync`, `OpenSpatialSubscriptionAsync`; confirmed default/active formats and supported choices for current output | Visible or Interactive |

@@ -92,11 +92,11 @@ never render, log, cache, serialize, or place it in widget state.
 | Operation | Normal lifecycle | Dashboard gesture |
 | --- | --- | --- |
 | Loopback GET | Visible or Interactive | No |
-| Loopback POST | Interactive | One exact declared action while Visible |
+| Loopback POST | Interactive | One exact declared action while Visible or in an eligible running Background widget |
 | Secret exists/metadata | Visible or Interactive | No |
 | Secret save/delete | Interactive | No |
 
-A dashboard POST is not ambient Visible control. The host reserves one input
+A dashboard POST does not grant ambient control. The host reserves one input
 sequence for one declared quick action and activates a short single-use lease
 only when the worker invokes that exact operation. A queued callback cannot use
 the lease for another port or operation.

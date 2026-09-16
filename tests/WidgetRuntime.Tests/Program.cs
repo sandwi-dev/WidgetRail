@@ -2415,15 +2415,16 @@ static async Task RapidControllerInputsAreQueued()
 static async Task RapidDashboardActionsAreQueued()
 {
     await using var client = CreateClient();
-    var rendered = await client.GetSnapshotAsync();
     Assert.True(!await client.SendControllerInputAsync(new ControllerInputEvent(
         ControllerButton.X,
         ControllerEventPhase.Pressed,
         ControllerInputContext.DashboardQuickAction,
         Sequence: 1,
-        SnapshotSequence: rendered.Sequence)),
-        "An inactive dashboard widget must not accept queued work.");
-    await client.SetActiveAsync(true);
+        SnapshotSequence: 1)),
+        "Dashboard input must not cold-start a widget.");
+    Assert.Equal(0, client.Starts);
+    var rendered = await client.GetSnapshotAsync();
+    // Exercise real worker admission while Background, without activation.
     var invalidations = System.Threading.Channels.Channel.CreateUnbounded<long>();
     client.Invalidated += (_, revision) => invalidations.Writer.TryWrite(revision);
 
@@ -2445,6 +2446,15 @@ static async Task RapidDashboardActionsAreQueued()
     for (var expected = 1L; expected <= 3L; expected++)
         Assert.Equal(expected, await invalidations.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(3)));
     Assert.Equal("1,2,3", Find((await client.GetSnapshotAsync()).Root, "controller-history").Text);
+    await client.StopAsync();
+    Assert.True(!await client.SendControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.X, ControllerEventPhase.Pressed, ControllerInputContext.DashboardQuickAction,
+        Sequence: 4, SnapshotSequence: rendered.Sequence)), "Dashboard input restarted a stopped worker.");
+    await Assert.ThrowsAsync<IOException>(() => client.GetPresentationAsync(
+        PresentationUpdateCapabilities.None, null, 0,
+        WidgetPresentationTransactionKind.OrdinaryCheckpoint, 0,
+        CancellationToken.None, existingWorkerOnly: true));
+    Assert.Equal(1, client.Starts);
 }
 
 static async Task DashboardAuthorityUsesCompanion()

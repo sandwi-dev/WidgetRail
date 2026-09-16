@@ -63,15 +63,17 @@ public abstract partial class Widget
     /// </summary>
     internal WidgetOperationAdmission AdmitAction(
         WidgetActionEvent action,
-        WidgetCapabilityGestureContext? gestureContext = null)
+        WidgetCapabilityGestureContext? gestureContext = null,
+        bool dashboardAction = false)
     {
         ArgumentNullException.ThrowIfNull(action);
-        if (!IsActive)
+        var backgroundDashboard = dashboardAction && LifecycleState == WidgetLifecycleState.Background;
+        if (!IsActive && !backgroundDashboard)
         {
             ObserveActionDiagnostic(action, "admission", "rejected-inactive");
             return WidgetOperationAdmission.RejectedInactive;
         }
-        var lifetime = ActiveCancellationToken;
+        var lifetime = backgroundDashboard ? StateLifetimeToken : ActiveCancellationToken;
         if (lifetime.IsCancellationRequested)
         {
             ObserveActionDiagnostic(action, "admission", "rejected-inactive");
@@ -83,7 +85,8 @@ public abstract partial class Widget
         WidgetActionEvent? replacedAction = null;
         lock (_actionQueueLock)
         {
-            if (!IsActive || lifetime.IsCancellationRequested)
+            if ((!IsActive && !(backgroundDashboard && LifecycleState == WidgetLifecycleState.Background)) ||
+                lifetime.IsCancellationRequested)
                 admission = WidgetOperationAdmission.RejectedInactive;
             else
             {
@@ -132,8 +135,9 @@ public abstract partial class Widget
 
     private bool TryQueueControllerAction(
         WidgetActionEvent action,
-        WidgetCapabilityGestureContext? gestureContext = null) =>
-        IsAccepted(AdmitAction(action, gestureContext));
+        WidgetCapabilityGestureContext? gestureContext = null,
+        bool dashboardAction = false) =>
+        IsAccepted(AdmitAction(action, gestureContext, dashboardAction));
 
     private static bool IsAccepted(WidgetOperationAdmission admission) => admission is not (
         WidgetOperationAdmission.RejectedInactive or WidgetOperationAdmission.RejectedCapacity);

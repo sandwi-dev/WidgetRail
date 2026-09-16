@@ -433,7 +433,8 @@ std::wstring BuildTrayControllerGuide(
     const MeasureControllerGuideText& measureText,
     const std::span<const ControllerGuideAction> quickActions,
     ControllerGuideHints* hints,
-    const MeasureControllerGuideHints& measureHints) {
+    const MeasureControllerGuideHints& measureHints,
+    const bool radial) {
     if (hints) hints->clear();
     if (reorderMode) {
         if (hints) {
@@ -447,7 +448,9 @@ std::wstring BuildTrayControllerGuide(
 
     const std::size_t actionBudget =
         density == ControllerGuideDensity::Minimal ? 1U : 3U;
-    const std::wstring required = selectedBridgeWidget
+    const std::wstring required = radial
+        ? L"Y Reorder / Hold restart   B Back   Menu Options"
+        : selectedBridgeWidget
         ? density == ControllerGuideDensity::Full
             ? L"Y Tap reorder / Hold restart   B Close   Menu Options"
             : L"Y Tap/Hold   B Close   Menu Options"
@@ -472,7 +475,7 @@ std::wstring BuildTrayControllerGuide(
         return result;
     };
 
-    const ControllerGuideHints requiredHints{{L"Y",L"Reorder"},{L"B",L"Close"},{L"Menu",L"Options"}};
+    const ControllerGuideHints requiredHints{{L"Y",L"Reorder"},{L"B",radial ? L"Back" : L"Close"},{L"Menu",L"Options"}};
     ControllerGuideHints contextualHints;
     ControllerGuideHints candidateHints;
     const auto join = [&](const std::vector<std::wstring>& contextual,
@@ -485,14 +488,18 @@ std::wstring BuildTrayControllerGuide(
             result += segment;
         };
         candidateHints.clear();
-        if (includeSwitch) candidateHints.push_back({L"dpad-horizontal",L"Switch widget"});
+        if (includeSwitch) {
+            candidateHints.push_back({radial ? L"left-stick-move" : L"dpad-horizontal",
+                radial ? L"Choose" : L"Switch widget"});
+            if (radial) candidateHints.push_back({L"right-stick-move",L"Page"});
+        }
         candidateHints.insert(candidateHints.end(),contextualHints.begin(),contextualHints.begin()+contextual.size());
         if (includeEnter) candidateHints.push_back({L"A",L"Open"});
         candidateHints.insert(candidateHints.end(),requiredHints.begin(),requiredHints.end());
         if (hints) *hints=candidateHints;
-        if (includeSwitch) append(L"←→ Switch");
+        if (includeSwitch) append(radial ? L"Left stick Choose   Right stick Page" : L"←→ Switch");
         for (const auto& segment : contextual) append(segment);
-        if (includeEnter) append(L"↑/A Enter");
+        if (includeEnter) append(radial ? L"A Open" : L"↑/A Enter");
         append(required);
         return result;
     };
