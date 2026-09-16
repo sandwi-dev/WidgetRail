@@ -3225,44 +3225,54 @@ static async Task ExerciseNetworkControlsUnpairAsync(
         node.Id == "network.tab.bluetooth");
     await client.SendActionAsync(new WidgetActionEvent(
         "network.tab.select", bluetoothTab.Id));
-    snapshot = await WaitForSnapshotAsync(client, "Conformance Controller");
-    var target = Nodes(snapshot.Root).Single(node =>
-        node.ActionId == "bluetooth.device.unpair.open" &&
-        string.Equals(node.Text, "Conformance Controller", StringComparison.Ordinal));
-
-    await client.SendActionAsync(new WidgetActionEvent(
-        "bluetooth.device.unpair.open", target.Id));
-    var confirmation = await WaitForActionSnapshotAsync(
-        client, "bluetooth.device.unpair.confirm", "Remove device");
+    snapshot = await WaitForActionSnapshotAsync(
+        client, "bluetooth.device.details", "Conformance Controller", requireEnabled: true);
+    var (confirmation, removalElementId) = await OpenRemovalConfirmationAsync(snapshot);
     var cancel = Nodes(confirmation.Root).Single(node =>
         node.ActionId == "bluetooth.device.unpair.cancel");
     await client.SendActionAsync(new WidgetActionEvent(
         "bluetooth.device.unpair.cancel", cancel.Id));
-    snapshot = await WaitForSnapshotAsync(client, "Conformance Controller");
+    snapshot = await WaitForActionSnapshotAsync(
+        client, "bluetooth.device.details", "Conformance Controller", requireEnabled: true);
     Assert.Equal(2, (await backend.GetBluetoothAsync(CancellationToken.None)).Devices.Count);
 
-    target = Nodes(snapshot.Root).Single(node =>
-        node.ActionId == "bluetooth.device.unpair.open" &&
-        string.Equals(node.Text, "Conformance Controller", StringComparison.Ordinal));
-    await client.SendActionAsync(new WidgetActionEvent(
-        "bluetooth.device.unpair.open", target.Id));
-    confirmation = await WaitForActionSnapshotAsync(
-        client, "bluetooth.device.unpair.confirm", "Remove device");
+    (confirmation, removalElementId) = await OpenRemovalConfirmationAsync(snapshot);
     var remove = Nodes(confirmation.Root).Single(node =>
         node.ActionId == "bluetooth.device.unpair.confirm");
     await client.SendActionAsync(new WidgetActionEvent(
         "bluetooth.device.unpair.confirm", remove.Id));
-    snapshot = await WaitForSnapshotAsync(client, "Conformance Headset");
+    snapshot = await WaitForSnapshotAsync(client, "Removed Conformance Controller");
     var authoritative = await backend.GetBluetoothAsync(CancellationToken.None);
     Assert.Equal(1, authoritative.Devices.Count);
     Assert.Equal("Conformance Headset", authoritative.Devices.Single().DisplayName);
+    Assert.Equal("bt-one", backend.LastBluetoothDeviceId);
 
     await client.SendActionAsync(new WidgetActionEvent(
-        "bluetooth.device.unpair.open", target.Id));
+        "bluetooth.device.unpair.open", removalElementId));
     Assert.Equal(1, (await backend.GetBluetoothAsync(CancellationToken.None)).Devices.Count);
     Assert.True(!Nodes(snapshot.Root).Any(node =>
             node.Text?.Contains("bt-one", StringComparison.Ordinal) == true),
         "The generic worker exposed the broker's opaque Bluetooth identity as text.");
+
+    async Task<(ViewSnapshot Confirmation, string RemovalElementId)> OpenRemovalConfirmationAsync(ViewSnapshot devices)
+    {
+        var target = Nodes(devices.Root).Single(node =>
+            node.ActionId == "bluetooth.device.details" &&
+            string.Equals(node.Text, "Conformance Controller", StringComparison.Ordinal));
+        var previousDeviceId = backend.LastBluetoothDeviceId;
+        await client.SendActionAsync(new WidgetActionEvent(target.ActionId!, target.Id));
+        var options = await WaitForActionSnapshotAsync(
+            client, "bluetooth.device.unpair.open", "Remove device", requireEnabled: true);
+        Assert.Equal(2, (await backend.GetBluetoothAsync(CancellationToken.None)).Devices.Count);
+        Assert.Equal(previousDeviceId, backend.LastBluetoothDeviceId);
+        var removal = Nodes(options.Root).Single(node => node.ActionId == "bluetooth.device.unpair.open");
+        await client.SendActionAsync(new WidgetActionEvent(removal.ActionId!, removal.Id));
+        var pending = await WaitForActionSnapshotAsync(
+            client, "bluetooth.device.unpair.confirm", "Remove device", requireEnabled: true);
+        Assert.Equal(2, (await backend.GetBluetoothAsync(CancellationToken.None)).Devices.Count);
+        Assert.Equal(previousDeviceId, backend.LastBluetoothDeviceId);
+        return (pending, removal.Id);
+    }
 }
 
 static async Task ExerciseAudioDashboardControlsAsync(
