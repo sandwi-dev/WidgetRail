@@ -49,6 +49,7 @@ jobs:
           retention-days: 30
 
   native:
+    name: ${{ inputs.scope == 'widget-switch' && 'native-widget-switch-diagnostic' || 'native' }}
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
