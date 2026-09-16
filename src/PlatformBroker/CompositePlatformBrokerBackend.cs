@@ -164,6 +164,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     public Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken) =>
         _network.SetWifiRadioAsync(enabled, cancellationToken);
 
+    public Task RequestBluetoothScanAsync(CancellationToken cancellationToken) => _bluetooth.RequestBluetoothScanAsync(cancellationToken);
     public Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken) =>
         _bluetooth.GetBluetoothAsync(cancellationToken);
 

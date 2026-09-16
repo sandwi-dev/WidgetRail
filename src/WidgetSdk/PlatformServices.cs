@@ -864,6 +864,9 @@ public static class WidgetNetworkCapabilities
         WidgetCapabilityAcknowledgement> SetBluetoothRadio { get; } =
             new("system.network.bluetooth.radio.control.v1", "network.bluetooth.radio.set");
 
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery, WidgetCapabilityAcknowledgement>
+        RequestBluetoothScan { get; } = new("system.network.bluetooth.pair.v1", "network.bluetooth.scan");
+
     public static WidgetCapabilityOperation<PairWidgetBluetoothDeviceRequest,
         WidgetBluetoothPairingResult> PairBluetoothDevice { get; } =
             new("system.network.bluetooth.pair.v1", "network.bluetooth.device.pair");
@@ -1277,6 +1280,14 @@ public sealed class WidgetNetworkService
         OpenWifiRadioSubscriptionAsync(CancellationToken cancellationToken = default) =>
         _client.OpenSubscriptionAsync(
             WidgetNetworkCapabilities.WifiRadioChanged, cancellationToken);
+
+    public async ValueTask RequestBluetoothScanAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await _client.InvokeAsync(WidgetNetworkCapabilities.RequestBluetoothScan,
+            new WidgetCapabilityQuery(), cancellationToken).ConfigureAwait(false);
+        if (result is null || !result.Acknowledged)
+            throw new WidgetCapabilityException("malformed_response", "Bluetooth discovery returned an invalid acknowledgement.");
+    }
 
     public ValueTask<WidgetBluetoothSnapshot> GetBluetoothAsync(
         CancellationToken cancellationToken = default) =>

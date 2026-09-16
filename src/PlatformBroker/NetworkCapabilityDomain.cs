@@ -82,6 +82,10 @@ internal sealed class NetworkCapabilityDomain(IPlatformBrokerBackend backend)
                     .ConfigureAwait(false);
                 return BrokerCapabilityDomains.Acknowledged();
             }
+            case PlatformCapabilities.NetworkBluetoothScan:
+                BrokerCapabilityDomains.DemandEmptyPayload(payload);
+                await backend.RequestBluetoothScanAsync(cancellationToken).ConfigureAwait(false);
+                return BrokerCapabilityDomains.Acknowledged();
             case PlatformCapabilities.NetworkBluetoothGet:
                 BrokerCapabilityDomains.DemandEmptyPayload(payload);
                 return BrokerJson.ToElement(ValidateBluetooth(

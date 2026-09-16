@@ -498,7 +498,7 @@ internal static class NetworkControlsPresentation
             .FocusRight("network.bluetooth.radio")
             .AddClasses("network-radio-toggle", "network-bluetooth-toggle",
                 isOn ? "is-on" : "is-off");
-        if (firstDeviceId is not null) toggle = toggle.FocusDown(firstDeviceId);
+        toggle = toggle.FocusDown("network.bluetooth.scan");
 
         yield return UI.Row("network.bluetooth.heading",
                 UI.Stack("network.bluetooth.heading.copy",
@@ -511,6 +511,12 @@ internal static class NetworkControlsPresentation
                     .Classes("network-section-copy"),
                 toggle)
             .Classes("network-radio-row", "network-bluetooth-row");
+
+        var scan = UI.Button(state.BluetoothScanBusy ? "Scanning…" : "Scan for devices", "bluetooth.scan", "network.bluetooth.scan")
+            .Busy(state.BluetoothScanBusy).Disabled(!state.Interactive || state.BluetoothBusy || state.BluetoothScanBusy || !isOn)
+            .FocusUp("network.bluetooth.radio").Classes("network-secondary-action");
+        if (firstDeviceId is not null) scan = scan.FocusDown(firstDeviceId);
+        yield return scan;
 
         if (snapshot is null || snapshot.DiscoveryState != WidgetBluetoothDiscoveryState.Ready)
         {
@@ -565,7 +571,7 @@ internal static class NetworkControlsPresentation
                     $"{device.DisplayName}. {deviceState}. {detail}. {actionLabel}")
                 .Shortcut(ControllerButton.X, actionId: "bluetooth.device.manage", label: "Manage device")
                 .Busy(isPending)
-                .FocusUp(index == 0 ? "network.bluetooth.radio" : ids[index - 1])
+                .FocusUp(index == 0 ? "network.bluetooth.scan" : ids[index - 1])
                 .FocusLeft(id)
                 .FocusRight(id)
                 .Classes("network-profile-button", "network-bluetooth-device",

@@ -629,8 +629,10 @@ static Task ProtectedWifiHostAdmissionIsExact()
         .PublicDescriptor().ProtectedWifiPromptSupported,
         "A capability-free worker received trusted prompt admission.");
 
-    Assert.True(NetworkControlsHostPolicy.TryParseNetworkId(
-        "network.wifi.item.wifi_0123456789ABCDEF", out var networkId),
+    var available = new AvailableWifiNetworksSummary(WifiScanState.Ready,
+        [new("wifi_0123456789ABCDEF", "Protected", 70, WifiSecurityKind.Personal, true, false, false)]);
+    var tileId = "network.wifi.item." + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("wifi_0123456789ABCDEF"))).ToLowerInvariant();
+    Assert.True(NetworkControlsHostPolicy.TryResolveNetworkId(tileId, available, out var networkId),
         "A bounded opaque Wi-Fi source was rejected.");
     Assert.Equal("wifi_0123456789ABCDEF", networkId);
     foreach (var source in new[]
@@ -641,7 +643,7 @@ static Task ProtectedWifiHostAdmissionIsExact()
         "network.wifi.item.",
         "network.wifi.item.wifi_" + new string('A', 129),
     })
-        Assert.False(NetworkControlsHostPolicy.TryParseNetworkId(source, out _),
+        Assert.False(NetworkControlsHostPolicy.TryResolveNetworkId(source, available, out _),
             $"Unsafe protected Wi-Fi source was admitted: {source}");
 
     var metadata = BridgeJson.FromElement<BridgeProtectedWifiRequest>(BridgeJson.ToElement(new
@@ -698,7 +700,7 @@ static async Task ProtectedWifiProductionDispatchIsZeroed()
             new BridgeProtectedWifiRequest(
                 "network-controls",
                 descriptor.RuntimeGeneration,
-                "network.wifi.item.wifi_0123456789ABCDEF",
+                "network.wifi.item." + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("wifi_0123456789ABCDEF"))).ToLowerInvariant(),
                 secret.Length),
             secret);
         Assert.Equal(BridgeMessageTypes.Acknowledged, response.Type);
@@ -7512,7 +7514,8 @@ file sealed class ProtectedWifiNetworkBackend :
         _inner.SwitchSavedNetworkProfileAsync(profileId, cancellationToken);
     public Task<AvailableWifiNetworksSummary> GetAvailableWifiNetworksAsync(
         CancellationToken cancellationToken) =>
-        _inner.GetAvailableWifiNetworksAsync(cancellationToken);
+        Task.FromResult(new AvailableWifiNetworksSummary(WifiScanState.Ready,
+            [new("wifi_0123456789ABCDEF", "Protected", 70, WifiSecurityKind.Personal, true, false, false)]));
     public Task RequestWifiScanAsync(CancellationToken cancellationToken) =>
         _inner.RequestWifiScanAsync(cancellationToken);
     public Task ConnectAvailableWifiNetworkAsync(

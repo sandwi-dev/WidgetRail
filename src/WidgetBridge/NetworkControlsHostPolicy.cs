@@ -1,20 +1,27 @@
+using System.Security.Cryptography;
+using System.Text;
+using WidgetRail.PlatformBroker;
+
 namespace WidgetRail.WidgetBridge;
 
 internal static class NetworkControlsHostPolicy
 {
-    private const string Prefix = "network.wifi.item.";
-
-    internal static bool TryParseNetworkId(string sourceElementId, out string networkId)
+    internal static bool TryResolveNetworkId(string sourceElementId,
+        AvailableWifiNetworksSummary snapshot, out string networkId)
     {
         networkId = string.Empty;
-        if (sourceElementId is null ||
-            !sourceElementId.StartsWith(Prefix, StringComparison.Ordinal)) return false;
-        var candidate = sourceElementId[Prefix.Length..];
-        if (candidate.Length is <= 0 or > 128 ||
-            !candidate.StartsWith("wifi_", StringComparison.Ordinal) ||
-            candidate.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '_'))
-            return false;
-        networkId = candidate;
-        return true;
+        const string prefix = "network.wifi.item.";
+        if (sourceElementId is null || sourceElementId.Length != prefix.Length + 64 ||
+            !sourceElementId.StartsWith(prefix, StringComparison.Ordinal) ||
+            snapshot.ScanState != WifiScanState.Ready || snapshot.Networks.Count > 128) return false;
+        foreach (var network in snapshot.Networks)
+        {
+            if (network.Security != WifiSecurityKind.Personal || !network.CredentialRequired || network.IsConnected) continue;
+            var digest = SHA256.HashData(Encoding.UTF8.GetBytes(network.NetworkId));
+            if (sourceElementId != prefix + Convert.ToHexString(digest).ToLowerInvariant()) continue;
+            networkId = network.NetworkId;
+            return true;
+        }
+        return false;
     }
 }

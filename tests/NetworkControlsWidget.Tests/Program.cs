@@ -20,6 +20,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Explicit scan is controller initiated and reconciles provider events", ExplicitScan),
     ("Wi-Fi management requires confirmation and reconciles real state", WifiManagement),
     ("Late saved-network reads cannot reopen a retired widget view", SavedNetworkLifetime),
+    ("Bluetooth scanning is explicit and canceled on leaving interactive", BluetoothScanning),
     ("Bluetooth primary action opens options without removing the pairing", BluetoothOptions),
     ("Connection details use scrollable full-width wrapping values", ConnectionDetailsLayout),
     ("Only current scan results render with honest connection metadata", AvailableNetworksRender),
@@ -315,6 +316,27 @@ static async Task SavedNetworkLifetime()
     await Background(widget);
 }
 
+static async Task BluetoothScanning()
+{
+    var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
+    var widget = Create(fake);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.Bluetooth is not null);
+    Assert.Equal(0, fake.BluetoothScanCalls);
+    await widget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
+    await widget.OnActionAsync(new("bluetooth.scan", "network.bluetooth.scan"));
+    await fake.BluetoothScanStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.True(Button(Snapshot(widget, 1).Root, "network.bluetooth.scan").IsBusy is true);
+    await widget.OnActionAsync(new("bluetooth.scan", "network.bluetooth.scan"));
+    Assert.Equal(1, fake.BluetoothScanCalls);
+    await Background(widget);
+    await WaitUntil(() => fake.BluetoothScanCanceled);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.Bluetooth is not null);
+    Assert.True(Button(Snapshot(widget, 2).Root, "network.bluetooth.scan").IsBusy is not true);
+    await Background(widget);
+}
+
 static async Task BluetoothOptions()
 {
     var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
@@ -573,6 +595,15 @@ static async Task CredentialsStayOutOfWorker()
     var protectedEntry = NetworkButton(snapshot.Root, "Locked");
     Assert.Equal(ViewNodeKind.TextEntry, protectedEntry.Kind);
     Assert.Equal("wifi.connect.protected", protectedEntry.ActionId);
+    var trustedScan = new WidgetRail.PlatformBroker.AvailableWifiNetworksSummary(WidgetRail.PlatformBroker.WifiScanState.Ready,
+        [new("locked", "Locked", 70, WidgetRail.PlatformBroker.WifiSecurityKind.Personal, true, false, false)]);
+    Assert.True(NetworkControlsHostPolicy.TryResolveNetworkId(protectedEntry.Id, trustedScan, out var resolved),
+        "The real rendered password-entry ID cannot be resolved by the trusted host.");
+    Assert.Equal("locked", resolved);
+    Assert.True(!NetworkControlsHostPolicy.TryResolveNetworkId(protectedEntry.Id, trustedScan with { Networks = [] }, out _),
+        "An expired scan entry was accepted.");
+    Assert.True(!NetworkControlsHostPolicy.TryResolveNetworkId(protectedEntry.Id,
+        trustedScan with { Networks = [trustedScan.Networks[0] with { Security = WidgetRail.PlatformBroker.WifiSecurityKind.Enterprise }] }, out _));
     Assert.Equal(string.Empty, protectedEntry.TextEntryValue);
     Assert.Equal(63, protectedEntry.TextEntryMaximumLength);
     await widget.OnActionAsync(new WidgetActionEvent(
@@ -739,8 +770,9 @@ static async Task BluetoothDeviceListing()
         "Remembered Bluetooth focus was exposed as a connected checkmark.");
     Assert.True(devices.All(device => device.Glyph == WidgetGlyph.Connection),
         "Bluetooth focus or activation was visually confused with authoritative connection state.");
-    Assert.Equal(devices[0].Id, radio.Focus!.Down);
-    Assert.Equal("network.bluetooth.radio", devices[0].Focus!.Up);
+    Assert.Equal("network.bluetooth.scan", radio.Focus!.Down);
+    Assert.Equal(devices[0].Id, Button(snapshot.Root, "network.bluetooth.scan").Focus!.Down);
+    Assert.Equal("network.bluetooth.scan", devices[0].Focus!.Up);
     Assert.Equal(devices[1].Id, devices[0].Focus!.Down);
     Assert.Equal(devices[2].Id, devices[1].Focus!.Down);
     Assert.True(devices[2].Focus!.Down is null,
@@ -1221,7 +1253,8 @@ static async Task ResponsibilityBoundariesAreSingular()
     Assert.Equal(1, CountOccurrences(widget, "private readonly object _stateLock"));
     Assert.Equal(1, CountOccurrences(widget, "private readonly SemaphoreSlim _commandGate"));
     Assert.Equal(1, CountOccurrences(widget, "private long _runGeneration"));
-    Assert.Equal(2, CountOccurrences(widget, "Operations.RunLatest("));
+    // Provider observation, connection-details refresh, and explicit Bluetooth inquiry share the existing operation owner.
+    Assert.Equal(3, CountOccurrences(widget, "Operations.RunLatest("));
     Assert.Equal(0, CountOccurrences(widget, "_runLifetime"));
     Assert.Equal(0, CountOccurrences(widget, "_ = Observe"));
     Assert.Contains("NetworkControlsPresentation.Render(CapturePresentationState())", widget);
@@ -1513,6 +1546,17 @@ file sealed class FakeNetworkHost
     public Exception? ManagementFailure { get; set; }
     public string? LastManagedNetwork { get; set; }
     public int ForgetCalls { get; set; }
+    public int BluetoothScanCalls { get; private set; }
+    public bool BluetoothScanCanceled { get; private set; }
+    public TaskCompletionSource BluetoothScanStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private async ValueTask<WidgetCapabilityAcknowledgement> ScanBluetoothAsync(WidgetCapabilityQuery request, CancellationToken token)
+    {
+        BluetoothScanCalls++;
+        BluetoothScanStarted.TrySetResult();
+        try { await Task.Delay(Timeout.Infinite, token); }
+        catch (OperationCanceledException) { BluetoothScanCanceled = true; throw; }
+        return new(true);
+    }
     public TaskCompletionSource<IReadOnlyList<WidgetSavedNetworkProfile>>? SavedResponse { get; set; }
     public TaskCompletionSource SavedReadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private async ValueTask<IReadOnlyList<WidgetSavedNetworkProfile>> ReadSavedAsync(WidgetCapabilityQuery request, CancellationToken token)
@@ -1646,6 +1690,7 @@ file sealed class FakeNetworkHost
         .WithHandler(WidgetNetworkCapabilities.ConnectAvailableWifi, ConnectAsync)
         .WithHandler(WidgetNetworkCapabilities.GetWifiRadio, GetRadioAsync)
         .WithHandler(WidgetNetworkCapabilities.SetWifiRadio, SetRadioAsync)
+        .WithHandler(WidgetNetworkCapabilities.RequestBluetoothScan, ScanBluetoothAsync)
         .WithHandler(WidgetNetworkCapabilities.GetBluetooth, GetBluetoothAsync)
         .WithHandler(WidgetNetworkCapabilities.SetBluetoothRadio, SetBluetoothRadioAsync)
         .WithHandler(WidgetNetworkCapabilities.PairBluetoothDevice, PairBluetoothDeviceAsync)

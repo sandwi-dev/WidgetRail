@@ -93,7 +93,7 @@ internal static class Program
                 new WindowsAudioPlatformBackend(),
                 new WindowsNetworkPlatformBackend(),
                 new WindowsActivityPlatformBackend(),
-                new WindowsBluetoothPlatformBackend(),
+                new WindowsBluetoothPlatformBackend(pairingDiagnostic: mediaDiagnostics.RecordBluetoothPairing),
                 new WindowsMediaPlatformBackend(),
                 new WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider(
                     installedCatalogRoot),

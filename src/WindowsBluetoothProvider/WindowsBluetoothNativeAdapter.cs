@@ -1,11 +1,15 @@
+using System.Diagnostics;
 using Windows.Devices.Enumeration;
+using Windows.Devices.Bluetooth;
+using WidgetRail.PlatformBroker;
 using Windows.Devices.Radios;
 
 namespace WidgetRail.WindowsBluetoothProvider;
 
-internal sealed class WindowsBluetoothNativeAdapterFactory : IWindowsBluetoothNativeAdapterFactory
+internal sealed class WindowsBluetoothNativeAdapterFactory(
+    Action<BluetoothPairingDiagnostic>? diagnostic = null) : IWindowsBluetoothNativeAdapterFactory
 {
-    public IWindowsBluetoothNativeAdapter Create() => new WindowsBluetoothNativeAdapter();
+    public IWindowsBluetoothNativeAdapter Create() => new WindowsBluetoothNativeAdapter(diagnostic);
 }
 
 /// <summary>
@@ -14,6 +18,9 @@ internal sealed class WindowsBluetoothNativeAdapterFactory : IWindowsBluetoothNa
 /// </summary>
 internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAdapter
 {
+    private readonly Action<BluetoothPairingDiagnostic>? _diagnostic;
+    internal WindowsBluetoothNativeAdapter(Action<BluetoothPairingDiagnostic>? diagnostic = null) => _diagnostic = diagnostic;
+
     private const string BluetoothProtocolQuery =
         "System.Devices.Aep.ProtocolId:=\"{e0cbf06c-cd8b-4647-bb8a-263b43f0f974}\" OR " +
         "System.Devices.Aep.ProtocolId:=\"{bb7bb05e-5972-42b5-94fc-76eaa7084d49}\"";
@@ -31,6 +38,7 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
         new(StringComparer.Ordinal);
     private readonly List<Radio> _radios = [];
     private DeviceWatcher? _watcher;
+    private DeviceWatcher? _scanWatcher;
     private CancellationTokenSource? _enumerationDeadline;
     private NativeBluetoothDiscoveryState _discoveryState = NativeBluetoothDiscoveryState.Enumerating;
     private bool _started;
@@ -83,6 +91,47 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
                 if (!_disposed) _discoveryState = NativeBluetoothDiscoveryState.Unavailable;
             RaiseChanged();
         }
+    }
+
+    public async Task ScanAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var query = "(" + BluetoothDevice.GetDeviceSelectorFromPairingState(false) + ") OR (" +
+            BluetoothLEDevice.GetDeviceSelectorFromPairingState(false) + ")";
+        var watcher = DeviceInformation.CreateWatcher(query, RequestedProperties, DeviceInformationKind.AssociationEndpoint);
+        try
+        {
+            lock (_gate)
+            {
+                ThrowIfDisposed();
+                if (AggregateRadioState(_radios) != NativeBluetoothRadioState.On)
+                    throw new BrokerException("no_adapter", "Turn Bluetooth on before scanning.");
+                if (_scanWatcher is not null)
+                    throw new BrokerException("provider_busy", "Bluetooth discovery is already running.");
+                _scanWatcher = watcher;
+                watcher.Added += OnDeviceAdded;
+                watcher.Updated += OnDeviceUpdated;
+                watcher.Start();
+            }
+            await Task.Delay(TimeSpan.FromSeconds(12), cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_gate) { if (ReferenceEquals(_scanWatcher, watcher)) _scanWatcher = null; }
+            StopScanWatcher(watcher);
+        }
+    }
+
+    private void StopScanWatcher(DeviceWatcher? watcher)
+    {
+        if (watcher is null) return;
+        watcher.Added -= OnDeviceAdded;
+        watcher.Updated -= OnDeviceUpdated;
+        try
+        {
+            if (watcher.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted) watcher.Stop();
+        }
+        catch { }
     }
 
     public NativeBluetoothSnapshot ReadSnapshot()
@@ -168,14 +217,24 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
         string nativeDeviceId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(nativeDeviceId);
+        var started = Stopwatch.GetTimestamp();
+        var stage = BluetoothPairingStage.Discovery;
+        BluetoothPairingOutcome Complete(BluetoothPairingOutcome outcome, int? windowsStatus = null, int? hresult = null)
+        {
+            try { _diagnostic?.Invoke(new(stage, outcome, windowsStatus, hresult,
+                (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds)); }
+            catch { } // Diagnostic failures never change a pairing result.
+            return outcome;
+        }
         lock (_gate)
         {
             ThrowIfDisposed();
             if (!_devices.TryGetValue(nativeDeviceId, out var known) || !known.IsPresent)
-                return BluetoothPairingOutcome.DeviceUnavailable;
-            if (known.IsPaired) return BluetoothPairingOutcome.AlreadyPaired;
+                return Complete(BluetoothPairingOutcome.DeviceUnavailable);
+            if (known.IsPaired) return Complete(BluetoothPairingOutcome.AlreadyPaired);
         }
 
+        stage = BluetoothPairingStage.ResolveDevice;
         DeviceInformation information;
         try
         {
@@ -184,38 +243,46 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
                 .AsTask(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
-        catch (UnauthorizedAccessException) { return BluetoothPairingOutcome.AccessDenied; }
-        catch (Exception) { return BluetoothPairingOutcome.DeviceUnavailable; }
+        catch (UnauthorizedAccessException exception) { return Complete(BluetoothPairingOutcome.AccessDenied, hresult: exception.HResult); }
+        catch (Exception exception) { return Complete(BluetoothPairingOutcome.DeviceUnavailable, hresult: exception.HResult); }
 
         // Discovery yields association endpoint IDs, not device-interface IDs.
         // A vanished endpoint can also return null without throwing.
-        if (information is null) return BluetoothPairingOutcome.DeviceUnavailable;
+        if (information is null) return Complete(BluetoothPairingOutcome.DeviceUnavailable);
+        stage = BluetoothPairingStage.Readiness;
         if (information.Pairing.IsPaired)
         {
             MarkPaired(nativeDeviceId);
-            return BluetoothPairingOutcome.AlreadyPaired;
+            return Complete(BluetoothPairingOutcome.AlreadyPaired);
         }
-        if (!information.Pairing.CanPair) return BluetoothPairingOutcome.NotReady;
+        if (!information.Pairing.CanPair) return Complete(BluetoothPairingOutcome.NotReady);
 
+        stage = BluetoothPairingStage.Pair;
         DevicePairingResult result;
+        var custom = information.Pairing.Custom;
+        var unsupportedCeremony = 0;
+        void Confirm(DeviceInformationCustomPairing sender, DevicePairingRequestedEventArgs request)
+        {
+            if (CanAcceptPairingKind(request.PairingKind) && !cancellationToken.IsCancellationRequested) request.Accept();
+            else Interlocked.Exchange(ref unsupportedCeremony, 1);
+        }
+        custom.PairingRequested += Confirm;
         try
         {
-            // Basic PairAsync delegates supported consent/authentication UI to
-            // Windows. Ceremonies that require an app-owned handler are
-            // reported as UserInteractionRequired; this headless provider must
-            // never invent a PIN UI or silently accept a confirmation value.
-            result = await information.Pairing.PairAsync()
+            result = await custom.PairAsync(DevicePairingKinds.ConfirmOnly)
                 .AsTask(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
-        catch (UnauthorizedAccessException) { return BluetoothPairingOutcome.AccessDenied; }
-        catch (Exception) { return BluetoothPairingOutcome.Failed; }
+        catch (UnauthorizedAccessException exception) { return Complete(BluetoothPairingOutcome.AccessDenied, hresult: exception.HResult); }
+        catch (Exception exception) { return Complete(BluetoothPairingOutcome.Failed, hresult: exception.HResult); }
 
-        var outcome = MapPairingStatus(result.Status);
+        finally { custom.PairingRequested -= Confirm; }
+
+        var outcome = Volatile.Read(ref unsupportedCeremony) != 0 ? BluetoothPairingOutcome.UserInteractionRequired : MapPairingStatus(result.Status);
         if (outcome is BluetoothPairingOutcome.Paired or
             BluetoothPairingOutcome.AlreadyPaired)
             MarkPaired(nativeDeviceId);
-        return outcome;
+        return Complete(outcome, (int)result.Status);
     }
 
     public async Task<BluetoothUnpairingOutcome> UnpairAsync(
@@ -254,6 +321,8 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
         catch (UnauthorizedAccessException) { return BluetoothUnpairingOutcome.AccessDenied; }
         catch (Exception) { return BluetoothUnpairingOutcome.Failed; }
     }
+
+    internal static bool CanAcceptPairingKind(DevicePairingKinds kind) => kind == DevicePairingKinds.ConfirmOnly;
 
     internal static BluetoothPairingOutcome MapPairingStatus(
         DevicePairingResultStatus status) => status switch
@@ -343,7 +412,11 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
         var device = ReadDevice(information.Id, information.Name, information.Properties,
             information.Pairing.IsPaired);
         lock (_gate)
-            if (!_disposed && device is not null) _devices[information.Id] = device;
+        {
+            if (_disposed || device is null || !ReferenceEquals(sender, _watcher) && !ReferenceEquals(sender, _scanWatcher)) return;
+            if (_devices.TryGetValue(information.Id, out var prior) && prior == device) return;
+            _devices[information.Id] = device;
+        }
         RaiseChanged();
     }
 
@@ -351,9 +424,11 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
     {
         lock (_gate)
         {
-            if (_disposed || !_devices.TryGetValue(update.Id, out var prior)) return;
-            _devices[update.Id] = ReadDevice(update.Id, prior.DisplayName, update.Properties,
-                prior.IsPaired, prior) ?? prior;
+            if (_disposed || !ReferenceEquals(sender, _watcher) && !ReferenceEquals(sender, _scanWatcher) ||
+                !_devices.TryGetValue(update.Id, out var prior)) return;
+            var updated = ReadDevice(update.Id, prior.DisplayName, update.Properties, prior.IsPaired, prior) ?? prior;
+            if (updated == prior) return;
+            _devices[update.Id] = updated;
         }
         RaiseChanged();
     }
@@ -447,6 +522,7 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
     public ValueTask DisposeAsync()
     {
         DeviceWatcher? watcher;
+        DeviceWatcher? scanWatcher;
         Radio[] radios;
         CancellationTokenSource? enumerationDeadline;
         lock (_gate)
@@ -455,12 +531,15 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
             _disposed = true;
             watcher = _watcher;
             _watcher = null;
+            scanWatcher = _scanWatcher;
+            _scanWatcher = null;
             enumerationDeadline = _enumerationDeadline;
             _enumerationDeadline = null;
             radios = _radios.ToArray();
             _radios.Clear();
             _devices.Clear();
         }
+        StopScanWatcher(scanWatcher);
         foreach (var radio in radios) radio.StateChanged -= OnRadioStateChanged;
         enumerationDeadline?.Cancel();
         enumerationDeadline?.Dispose();

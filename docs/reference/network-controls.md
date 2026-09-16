@@ -33,8 +33,14 @@ Bluetooth has its own page and focus state. Available operations depend on the
 radio and device. Readable status should remain available when a particular
 operation cannot be performed.
 
+Choose **Scan for devices** after putting the device into pairing mode. This requests
+an active Windows Bluetooth inquiry for up to 12 seconds and stops when you leave
+the interactive widget. Ordinary status updates do not continuously scan.
+
 Press A on a nearby unpaired device to pair. On a paired device, A opens its
-options; removal is a secondary action with confirmation. X opens Windows
+options; removal is a secondary action with confirmation. Confirmation-only
+pairing uses your explicit Pair action. PIN display, PIN entry, and numeric
+comparison ceremonies remain in Windows Settings. X opens Windows
 Bluetooth Settings. Pairing does not guarantee connection, and the widget does
 not claim a universal Bluetooth Connect/Disconnect control.
 

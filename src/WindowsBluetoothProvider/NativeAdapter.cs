@@ -83,6 +83,7 @@ public interface IWindowsBluetoothNativeAdapter : IAsyncDisposable
     event EventHandler? StateChanged;
     Task StartAsync(CancellationToken cancellationToken);
     NativeBluetoothSnapshot ReadSnapshot();
+    Task ScanAsync(CancellationToken cancellationToken) => Task.FromException(new NotSupportedException());
     Task<NativeBluetoothRadioSetResult> SetRadioAsync(
         bool enabled, CancellationToken cancellationToken);
     Task<BluetoothPairingOutcome> PairAsync(
@@ -105,3 +106,9 @@ public interface IWindowsBluetoothSettingsLauncher
 {
     Task<bool> OpenAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>Bounded pairing diagnostics; never includes a device ID, name, or PIN.</summary>
+public enum BluetoothPairingStage { Discovery, ResolveDevice, Readiness, Pair }
+public sealed record BluetoothPairingDiagnostic(
+    BluetoothPairingStage Stage, BluetoothPairingOutcome Outcome,
+    int? WindowsStatus, int? HResult, long ElapsedMilliseconds);

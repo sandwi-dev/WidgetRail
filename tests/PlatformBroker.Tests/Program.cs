@@ -46,6 +46,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Private secrets are write-only and revocation cancels dependent loopback work", PrivateSecretContracts),
     ("Private state is host-granted consentless identity-bound and active-lifecycle safe", PrivateStateHostGrantContracts),
     ("Dashboard gesture authority is exact sequence-bound expiring and single-use", DashboardGestureAuthorityIsBounded),
+    ("Active Bluetooth inquiry requires pairing consent and interactive lifecycle", BluetoothScanContracts),
     ("Wi-Fi management validates consent lifecycle payload and exact routing", WifiManagementContracts),
     ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
     ("Bluetooth read and radio control are opaque granular and lifecycle-gated", BluetoothContracts),
@@ -2762,6 +2763,29 @@ static async Task AvailableWifiContracts()
     Assert.True(connected.Succeeded);
     Assert.Equal(1, backend.WifiConnectCalls);
     await subscription.DisposeAsync();
+}
+
+static async Task BluetoothScanContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var backend = new SimulatedPlatformBrokerBackend();
+    await using var broker = Broker(identity, store, backend, PlatformCapabilities.NetworkBluetoothPairV1);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var denied = await broker.HandleAsync(Request(identity, PlatformCapabilities.NetworkBluetoothPairV1,
+        PlatformCapabilities.NetworkBluetoothScan, new { }));
+    Assert.True(!denied.Succeeded);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkBluetoothPairV1, ConsentDecision.Grant);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var background = await broker.HandleAsync(Request(identity, PlatformCapabilities.NetworkBluetoothPairV1,
+        PlatformCapabilities.NetworkBluetoothScan, new { }));
+    Assert.Equal("lifecycle_denied", background.ErrorCode);
+    Assert.Equal(0, backend.BluetoothScanCalls);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    Assert.True((await broker.HandleAsync(Request(identity, PlatformCapabilities.NetworkBluetoothPairV1,
+        PlatformCapabilities.NetworkBluetoothScan, new { }))).Succeeded);
+    Assert.Equal(1, backend.BluetoothScanCalls);
 }
 
 static async Task WifiManagementContracts()

@@ -5,6 +5,8 @@ using Windows.Devices.Enumeration;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Active discovery is explicit cancellable and independent of passive reads", ExplicitDiscovery),
+    ("Only confirmation-only pairing can be accepted without a PIN ceremony", ConfirmationOnlyPairing),
     ("Provider is lazy and starts one event-driven adapter", LazyStart),
     ("Native Bluetooth identifiers are replaced with stable opaque tokens", OpaqueIdentity),
     ("Device snapshots are bounded sanitized and consistently ordered", SanitizedBoundedSnapshot),
@@ -41,6 +43,32 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task ExplicitDiscovery()
+{
+    var adapter = ReadyAdapter();
+    await using var backend = new WindowsBluetoothPlatformBackend(new FakeFactory(adapter));
+    _ = await backend.GetBluetoothAsync(CancellationToken.None);
+    Assert.Equal(0, adapter.ScanCalls);
+    using var cancel = new CancellationTokenSource();
+    var scan = backend.RequestBluetoothScanAsync(cancel.Token);
+    await adapter.ScanStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    cancel.Cancel();
+    try { await scan; throw new InvalidOperationException("Expected cancellation"); }
+    catch (OperationCanceledException) { }
+    Assert.True(adapter.ScanCanceled);
+    Assert.Equal(1, adapter.ScanCalls);
+    _ = await backend.GetBluetoothAsync(CancellationToken.None);
+    Assert.Equal(1, adapter.ScanCalls);
+}
+
+static Task ConfirmationOnlyPairing()
+{
+    foreach (var kind in Enum.GetValues<DevicePairingKinds>())
+        Assert.Equal(kind == DevicePairingKinds.ConfirmOnly, WindowsBluetoothNativeAdapter.CanAcceptPairingKind(kind));
+    Assert.True(!WindowsBluetoothNativeAdapter.CanAcceptPairingKind(DevicePairingKinds.ConfirmOnly | DevicePairingKinds.ConfirmPinMatch));
+    return Task.CompletedTask;
+}
 
 static async Task LazyStart()
 {
@@ -464,6 +492,16 @@ file sealed class FakeAdapter : IWindowsBluetoothNativeAdapter
     public int StartCalls { get; private set; }
     public int SetCalls { get; private set; }
     public int PairCalls { get; private set; }
+    public int ScanCalls { get; private set; }
+    public bool ScanCanceled { get; private set; }
+    public TaskCompletionSource ScanStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public async Task ScanAsync(CancellationToken token)
+    {
+        ScanCalls++;
+        ScanStarted.TrySetResult();
+        try { await Task.Delay(Timeout.Infinite, token); }
+        catch (OperationCanceledException) { ScanCanceled = true; throw; }
+    }
     public int UnpairCalls { get; private set; }
     public int DisposeCalls { get; private set; }
     public bool? LastEnabled { get; private set; }

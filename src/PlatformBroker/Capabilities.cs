@@ -137,6 +137,7 @@ public static class PlatformCapabilities
     public const string NetworkAvailableWifiConnect = "network.wifi.connect";
     public const string NetworkWifiRadioGet = "network.wifi.radio.get";
     public const string NetworkWifiRadioSet = "network.wifi.radio.set";
+    public const string NetworkBluetoothScan = "network.bluetooth.scan";
     public const string NetworkBluetoothGet = "network.bluetooth.get";
     public const string NetworkBluetoothRadioSet = "network.bluetooth.radio.set";
     public const string NetworkBluetoothDevicePair = "network.bluetooth.device.pair";
@@ -230,7 +231,7 @@ public static class PlatformCapabilities
             [NetworkBluetoothRadioControlV1] = new(NetworkBluetoothRadioControlV1, 1,
                 BrokerCapabilityKind.Control, Set(NetworkBluetoothRadioSet), Set()),
             [NetworkBluetoothPairV1] = new(NetworkBluetoothPairV1, 1,
-                BrokerCapabilityKind.Control, Set(NetworkBluetoothDevicePair), Set()),
+                BrokerCapabilityKind.Control, Set(NetworkBluetoothDevicePair, NetworkBluetoothScan), Set()),
             [NetworkBluetoothUnpairV1] = new(NetworkBluetoothUnpairV1, 1,
                 BrokerCapabilityKind.Control, Set(NetworkBluetoothDeviceUnpair), Set()),
             [NetworkBluetoothManageV1] = new(NetworkBluetoothManageV1, 1,

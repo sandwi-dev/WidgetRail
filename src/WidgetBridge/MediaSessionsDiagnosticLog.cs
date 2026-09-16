@@ -49,6 +49,17 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
         _writer = WriteAsync();
     }
 
+    internal void RecordBluetoothPairing(WidgetRail.WindowsBluetoothProvider.BluetoothPairingDiagnostic diagnostic)
+    {
+        if (Volatile.Read(ref _disposed) != 0 || !Enum.IsDefined(diagnostic.Stage) || !Enum.IsDefined(diagnostic.Outcome)) return;
+        _lines.Writer.TryWrite(
+            $"{DateTimeOffset.UtcNow:O} Bluetooth pairing bridge-session={_bridgeSessionGeneration} " +
+            $"stage={diagnostic.Stage} outcome={diagnostic.Outcome} " +
+            $"windows-status={diagnostic.WindowsStatus?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"} " +
+            $"hresult={(diagnostic.HResult is { } code ? $"0x{code:X8}" : "none")} " +
+            $"elapsed-ms={Math.Clamp(diagnostic.ElapsedMilliseconds, 0, 300_000)}{Environment.NewLine}");
+    }
+
     internal void RecordBridgeSessionStarted(int processId)
     {
         if (Volatile.Read(ref _disposed) != 0 || processId <= 0) return;

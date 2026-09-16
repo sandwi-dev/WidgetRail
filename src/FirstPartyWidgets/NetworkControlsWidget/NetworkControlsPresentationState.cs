@@ -28,6 +28,7 @@ internal sealed record NetworkControlsPresentationState(
     WidgetBluetoothDevice? UnpairConfirmationDevice)
 {
     public NetworkWifiManagementState Management { get; init; } = new();
+    public bool BluetoothScanBusy { get; init; }
     public WidgetBluetoothDevice? BluetoothDetails { get; init; }
 }
 

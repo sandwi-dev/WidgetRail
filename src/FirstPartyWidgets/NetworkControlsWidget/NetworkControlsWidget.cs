@@ -55,6 +55,7 @@ public sealed class NetworkControlsWidget : Widget
     private string _bluetoothMessage = "Bluetooth loads when this widget becomes visible";
     private bool _bluetoothIsError;
     private bool _bluetoothBusy;
+    private bool _bluetoothScanBusy;
     private WidgetBluetoothDevice? _bluetoothGuidanceDevice;
     private WidgetBluetoothDevice? _unpairConfirmationDevice;
     private string? _pendingBluetoothDeviceId;
@@ -201,6 +202,7 @@ public sealed class NetworkControlsWidget : Widget
                 _unpairConfirmationDevice)
             {
                 Management = _management,
+                BluetoothScanBusy = _bluetoothScanBusy,
                 BluetoothDetails = _bluetooth?.Devices.FirstOrDefault(device => device.DeviceId == _bluetoothDetailsId),
             };
     }
@@ -270,6 +272,9 @@ public sealed class NetworkControlsWidget : Widget
                 break;
             case NetworkControlsAction.ToggleWifiRadio:
                 await ToggleWifiRadioAsync(cancellationToken).ConfigureAwait(false);
+                break;
+            case NetworkControlsAction.ScanBluetooth:
+                StartBluetoothScan();
                 break;
             case NetworkControlsAction.ToggleBluetoothRadio:
                 await ToggleBluetoothRadioAsync(cancellationToken).ConfigureAwait(false);
@@ -711,7 +716,7 @@ public sealed class NetworkControlsWidget : Widget
                 snapshot.Devices.FirstOrDefault(device => string.Equals(
                     device.DeviceId, guidance.DeviceId, StringComparison.Ordinal)) is { } current &&
                 current == guidance;
-            var preserveOperationMessage = _pendingBluetoothDeviceId is not null;
+            var preserveOperationMessage = _pendingBluetoothDeviceId is not null || _bluetoothScanBusy;
             _authoritativeBluetooth = snapshot;
             _bluetooth = snapshot;
             if (_unpairConfirmationDevice is { } confirmation &&
@@ -957,6 +962,55 @@ public sealed class NetworkControlsWidget : Widget
             }
         }
         finally { _commandGate.Release(); }
+    }
+
+    private void StartBluetoothScan()
+    {
+        long generation;
+        lock (_stateLock)
+        {
+            if (LifecycleState != WidgetLifecycleState.Interactive || _bluetoothBusy || _bluetoothScanBusy ||
+                _bluetooth?.RadioState != WidgetBluetoothRadioState.On) return;
+            generation = _runGeneration;
+            _bluetoothScanBusy = true;
+            _bluetoothMessage = "Scanning… put your device in pairing mode";
+            _bluetoothIsError = false;
+        }
+        Invalidate();
+        var scan = Operations.RunLatest("bluetooth.scan", async operation =>
+        {
+            string? error = null;
+            try { await HostServices.Network.RequestBluetoothScanAsync(operation.CancellationToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (operation.CancellationToken.IsCancellationRequested) { }
+            catch (WidgetCapabilityException exception)
+            {
+                error = exception.ErrorCode is "permission_denied" or "capability_not_declared" or "capability_revoked"
+                    ? "Allow Bluetooth pairing in Settings → Permissions to scan for devices."
+                    : "Bluetooth scan could not complete. Try again.";
+            }
+            catch (Exception) { error = "Bluetooth scan could not complete. Try again."; }
+            finally
+            {
+                lock (_stateLock)
+                {
+                    if (_runGeneration == generation)
+                    {
+                        _bluetoothScanBusy = false;
+                        if (_pendingBluetoothDeviceId is null && _bluetoothGuidanceDevice is null)
+                        {
+                            _bluetoothIsError = error is not null;
+                            _bluetoothMessage = error ?? $"{_bluetooth?.Devices.Count ?? 0} paired or nearby · scan again if your device is missing";
+                        }
+                    }
+                }
+                Invalidate();
+            }
+        }, WidgetOperationLifetime.State);
+        if (scan.Admission is WidgetOperationAdmission.RejectedCapacity or WidgetOperationAdmission.RejectedInactive)
+        {
+            lock (_stateLock) if (_runGeneration == generation) _bluetoothScanBusy = false;
+            Invalidate();
+        }
     }
 
     private async ValueTask ToggleBluetoothRadioAsync(CancellationToken cancellationToken)
@@ -1536,6 +1590,7 @@ public sealed class NetworkControlsWidget : Widget
 
     private void RestoreAuthoritativeLocked()
     {
+        _bluetoothScanBusy = false;
         _management = new();
         _bluetoothDetailsId = null;
         _networkStatus = _authoritativeStatus;

@@ -27,13 +27,26 @@ public sealed class WindowsBluetoothPlatformBackend : IBluetoothPlatformBrokerBa
 
     public WindowsBluetoothPlatformBackend(
         IWindowsBluetoothNativeAdapterFactory? factory = null,
-        IWindowsBluetoothSettingsLauncher? settingsLauncher = null)
+        IWindowsBluetoothSettingsLauncher? settingsLauncher = null,
+        Action<BluetoothPairingDiagnostic>? pairingDiagnostic = null)
     {
-        _factory = factory ?? new WindowsBluetoothNativeAdapterFactory();
+        _factory = factory ?? new WindowsBluetoothNativeAdapterFactory(pairingDiagnostic);
         _settingsLauncher = settingsLauncher ?? new WindowsBluetoothSettingsLauncher();
     }
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
+
+    public async Task RequestBluetoothScanAsync(CancellationToken cancellationToken)
+    {
+        await EnsureStartedAsync(cancellationToken).ConfigureAwait(false);
+        IWindowsBluetoothNativeAdapter adapter;
+        lock (_stateGate) { ThrowIfDisposed(); adapter = _adapter!; }
+        try { await adapter.ScanAsync(cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) { throw; }
+        catch (BrokerException) { throw; }
+        catch (Exception) { throw new BrokerException("platform_unavailable", "Bluetooth discovery could not complete."); }
+        finally { RefreshAndPublish(adapter); }
+    }
 
     public async Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken)
     {

@@ -1018,6 +1018,8 @@ public interface IAppLibraryPlatformBrokerBackend
 public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource
 {
     Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken);
+    Task RequestBluetoothScanAsync(CancellationToken cancellationToken) =>
+        Task.FromException(new BrokerException("platform_unavailable", "Bluetooth discovery is unavailable."));
     Task SetBluetoothRadioAsync(bool enabled, CancellationToken cancellationToken);
     Task<BluetoothPairingResultSummary> PairBluetoothDeviceAsync(
         string deviceId, CancellationToken cancellationToken) =>

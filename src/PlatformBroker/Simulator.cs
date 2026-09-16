@@ -61,6 +61,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int WifiRadioControlCalls { get; private set; }
     public int BluetoothRadioControlCalls { get; private set; }
     public int BluetoothPairCalls { get; private set; }
+    public int BluetoothScanCalls { get; private set; }
     public int BluetoothManageCalls { get; private set; }
     public int MediaControlCalls { get; private set; }
     public int AppLibraryLaunchCalls { get; private set; }
@@ -379,6 +380,13 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
             PlatformCapabilities.NetworkBluetoothReadV1,
             PlatformCapabilities.NetworkBluetoothChanged,
             new BluetoothChangedEvent(snapshot)));
+        return Task.CompletedTask;
+    }
+
+    public Task RequestBluetoothScanAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        BluetoothScanCalls++;
         return Task.CompletedTask;
     }
 

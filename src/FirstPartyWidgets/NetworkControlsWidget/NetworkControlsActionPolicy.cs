@@ -8,6 +8,7 @@ internal enum NetworkControlsAction
     SelectTab,
     ToggleTab,
     Scan,
+    ScanBluetooth,
     ConnectWifi,
     ToggleWifiRadio,
     ToggleBluetoothRadio,
@@ -32,6 +33,7 @@ internal static class NetworkControlsActionPolicy
             "wifi.disconnect" or "wifi.auto.toggle" or "wifi.forget.open" or "wifi.forget.confirm" or
             "wifi.forget.cancel" or "wifi.saved.connect" => NetworkControlsAction.ManageWifi,
         "bluetooth.details.close" => NetworkControlsAction.CloseBluetoothDetails,
+        "bluetooth.scan" => NetworkControlsAction.ScanBluetooth,
         "wifi.scan" => NetworkControlsAction.Scan,
         "wifi.connect.item" => NetworkControlsAction.ConnectWifi,
         "wifi.radio.toggle" => NetworkControlsAction.ToggleWifiRadio,
