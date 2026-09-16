@@ -5,12 +5,21 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Verification scope (full is required before integration)
+        type: choice
+        default: full
+        options:
+          - full
+          - widget-switch
 
 permissions:
   contents: read
 
 jobs:
   managed:
+    if: ${{ inputs.scope != 'widget-switch' }}
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
@@ -67,7 +76,14 @@ jobs:
           "RUSTUP_TOOLCHAIN=$toolchain" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Run bounded native verification
         shell: pwsh
-        run: ./scripts/Verify.ps1 -Configuration Release -Lane native -OverallTimeoutSeconds 1800
+        env:
+          VERIFY_SCOPE: ${{ inputs.scope }}
+        run: |
+          if ($env:VERIFY_SCOPE -eq 'widget-switch') {
+            ./scripts/Verify.ps1 -Configuration Release -StepId overlay-widget-switch-tests -OverallTimeoutSeconds 1800
+          } else {
+            ./scripts/Verify.ps1 -Configuration Release -Lane native -OverallTimeoutSeconds 1800
+          }
       - name: Retain native verification evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

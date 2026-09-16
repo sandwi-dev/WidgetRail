@@ -3747,6 +3747,7 @@ void RunRetentionScenario(const Arguments& arguments) {
 
     const auto ordinaryRefreshBefore = ReadUtf8(logPath).size();
     const auto ordinaryRefreshEpoch = blockSnapshot();
+    const auto blockedSnapshotObservedAt = GetTickCount64();
     const auto ordinaryBlockedRenderSequence =
         installation->BlockedSnapshotSequence(ordinaryRefreshEpoch);
     const auto handshakeLog = ReadUtf8(logPath).substr(ordinaryRefreshBefore);
@@ -3883,7 +3884,9 @@ void RunRetentionScenario(const Arguments& arguments) {
     }
     FenceWindow(window);
     std::string retainedInteractiveUiDiagnostic{"not-observed"};
+    std::string firstRetainedUiDiagnostic;
     const bool retainedInteractiveUiReady = WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto queryStartedAt = GetTickCount64();
                 ComPtr<IUIAutomationElement> contentRoot;
                 const bool contentRootReady = SUCCEEDED(automation->ElementFromHandle(
                     window, contentRoot.GetAddressOf())) && contentRoot;
@@ -3904,6 +3907,11 @@ void RunRetentionScenario(const Arguments& arguments) {
                     "/" + (readyFocused ? "focused" : "unfocused") +
                     " focused-id=" + (focusedReady
                         ? AutomationIdOf(focused.Get()) : "unavailable");
+                if (firstRetainedUiDiagnostic.empty()) {
+                    firstRetainedUiDiagnostic = retainedInteractiveUiDiagnostic +
+                        " elapsed-since-block-ms=" + std::to_string(queryStartedAt - blockedSnapshotObservedAt) +
+                        " query-ms=" + std::to_string(GetTickCount64() - queryStartedAt);
+                }
                 return contentRootReady && readyPresent && readyEnabled &&
                     readyFocused && focusedReady &&
                     AutomationIdOf(focused.Get()) == "widget:settings-ready";
@@ -3914,6 +3922,7 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(retainedInteractiveUiReady,
             "Stable RefreshRetained did not preserve exact Interactive Settings "
             "UIA/action authority; ui=" + retainedInteractiveUiDiagnostic +
+                "; first-ui=" + firstRetainedUiDiagnostic +
                 "; host-log=" + retainedUiLog.substr(retainedUiLogStart));
     const auto readyActionCurrentSequence = ParsePositiveSequence(
         TextField(readyActionCurrent, "sequence="));
