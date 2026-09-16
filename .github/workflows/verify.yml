@@ -13,13 +13,14 @@ on:
         options:
           - full
           - widget-switch
+          - audio-scroll
 
 permissions:
   contents: read
 
 jobs:
   managed:
-    if: ${{ inputs.scope != 'widget-switch' }}
+    if: ${{ inputs.scope != 'widget-switch' && inputs.scope != 'audio-scroll' }}
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
@@ -49,7 +50,7 @@ jobs:
           retention-days: 30
 
   native:
-    name: ${{ inputs.scope == 'widget-switch' && 'native-widget-switch-diagnostic' || 'native' }}
+    name: ${{ inputs.scope && inputs.scope != 'full' && format('native-{0}-diagnostic', inputs.scope) || 'native' }}
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
@@ -82,6 +83,8 @@ jobs:
         run: |
           if ($env:VERIFY_SCOPE -eq 'widget-switch') {
             ./scripts/Verify.ps1 -Configuration Release -StepId overlay-widget-switch-tests -OverallTimeoutSeconds 1800
+          } elseif ($env:VERIFY_SCOPE -eq 'audio-scroll') {
+            ./scripts/Verify.ps1 -Configuration Release -StepId overlay-audio-mixer-scroll-host-tests -OverallTimeoutSeconds 1800
           } else {
             ./scripts/Verify.ps1 -Configuration Release -Lane native -OverallTimeoutSeconds 1800
           }
