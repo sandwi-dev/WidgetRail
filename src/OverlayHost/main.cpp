@@ -12205,7 +12205,7 @@ private:
             const float lx = static_cast<float>(frame.state.leftThumbX), ly = static_cast<float>(frame.state.leftThumbY);
             if (lx*lx+ly*ly < 7849.0F*7849.0F) radialLeftArmed_ = true;
             if (radialLeftArmed_ && !state_.reorderMode()) {
-                if (const auto sector = widgetrail::shell::RadialSector(lx,ly,16000.0F)) {
+                if (const auto sector = widgetrail::shell::RadialSector(lx,ly,20000.0F)) {
                     const auto target = RadialBrowsedPage()*widgetrail::shell::kRadialPageSize + *sector;
                     if (target < state_.order().size()) (void)SelectTrayWidget(state_.order()[target]);
                 }
