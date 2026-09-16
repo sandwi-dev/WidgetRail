@@ -264,6 +264,59 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
         await command.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public Task DisconnectWifiAsync(string networkId, CancellationToken cancellationToken) =>
+        ManageWifiAsync(new(networkId, true, null, cancellationToken));
+    public Task ForgetWifiProfileAsync(string profileId, CancellationToken cancellationToken) =>
+        ManageWifiAsync(new(profileId, false, null, cancellationToken));
+    public Task SetWifiAutoConnectAsync(string profileId, bool enabled, CancellationToken cancellationToken) =>
+        ManageWifiAsync(new(profileId, false, enabled, cancellationToken));
+
+    private async Task ManageWifiAsync(ManageWifiCommand command)
+    {
+        if (!(command.Disconnect ? WindowsNetworkCommandPolicy.IsValidAvailableWifiId(command.TargetId)
+                : WindowsNetworkCommandPolicy.IsValidSavedProfileId(command.TargetId)))
+            throw new BrokerException("invalid_payload", "The Wi-Fi identifier is invalid.");
+        await EnsureReadableAsync(command.CancellationToken).ConfigureAwait(false);
+        if (_ownerUnavailable)
+            throw new BrokerException("platform_unavailable", "Windows networking is temporarily unavailable.");
+        EnqueueCommand(command);
+        await command.Completion.Task.WaitAsync(command.CancellationToken).ConfigureAwait(false);
+    }
+
+    private void ExecuteManageWifi(IWindowsNetworkNativeAdapter adapter, ManageWifiCommand command)
+    {
+        Exception? failure = null;
+        try
+        {
+            command.CancellationToken.ThrowIfCancellationRequested();
+            string key;
+            lock (_stateGate)
+            {
+                _operations.EnsureConnectionCanStart();
+                var targets = command.Disconnect ? _wifiNativeKeysByOpaqueId : _nativeKeysByOpaqueId;
+                if (!targets.TryGetValue(command.TargetId, out key!))
+                    throw new BrokerException("resource_not_found", "That Wi-Fi entry has changed. Refresh the list.");
+            }
+            command.CancellationToken.ThrowIfCancellationRequested();
+            if (command.Disconnect) adapter.DisconnectWifi(key);
+            else adapter.ManageWifiProfile(key, command.AutoConnect);
+        }
+        catch (OperationCanceledException exception) { failure = exception; }
+        catch (Exception exception)
+        {
+            failure = exception is BrokerException ? exception :
+                new BrokerException("platform_unavailable", "Windows could not change the Wi-Fi connection.");
+        }
+        finally
+        {
+            Refresh(adapter, publish: true);
+            RefreshAvailableWifi(adapter, publish: true);
+        }
+        if (failure is OperationCanceledException) command.Completion.TrySetCanceled(command.CancellationToken);
+        else if (failure is not null) command.Completion.TrySetException(failure);
+        else command.Completion.TrySetResult();
+    }
+
     private void EnqueueCommand(NetworkCommand command)
     {
         try
@@ -382,6 +435,9 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                     case ConnectProtectedWifiCommand protectedWifi:
                         ExecuteConnectProtectedWifi(adapter, protectedWifi);
                         break;
+                    case ManageWifiCommand manage:
+                        ExecuteManageWifi(adapter, manage);
+                        break;
                     case SetWifiRadioCommand radio:
                         ExecuteSetWifiRadio(adapter, radio);
                         break;
@@ -430,6 +486,9 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
                         protectedWifi.Completion.TrySetException(
                             new ObjectDisposedException(nameof(WindowsNetworkPlatformBackend)));
                         protectedWifi.Dispose();
+                        break;
+                    case ManageWifiCommand manage:
+                        manage.Completion.TrySetException(new ObjectDisposedException(nameof(WindowsNetworkPlatformBackend)));
                         break;
                     case SetWifiRadioCommand radio:
                         radio.Completion.TrySetException(

@@ -257,3 +257,48 @@
 
 .network-scan-action { min-width: 132px; flex-shrink: 0; font-size: 12px; }
 .network-state-card { min-height: 88px; }
+
+/* Full-width cards keep long IPv6 and DNS values within the available width. */
+.network-details-scroll { gap: 8px; }
+.network-details-row {
+  min-width: 0px;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--surface-subtle, rgba(39, 39, 36, 0.92));
+  corner-radius: 8px;
+}
+.network-details-label {
+  max-lines: 2;
+  min-width: 0px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.network-details-value {
+  max-lines: 8;
+  min-width: 0px;
+  color: var(--text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.network-details-message {
+  max-lines: 3;
+  min-width: 0px;
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.network-secondary-action {
+  min-width: 0px;
+  min-height: 40px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  background: var(--surface-subtle, rgba(39, 39, 36, 0.92));
+  color: var(--text);
+  corner-radius: 8px;
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+.network-secondary-action:focused { background: var(--accent); color: var(--accent-contrast, #ffffff); }
+.network-secondary-action:disabled { opacity: 0.55; }

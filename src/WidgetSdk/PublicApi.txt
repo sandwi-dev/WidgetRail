@@ -9,6 +9,7 @@ ctor WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest(string SessionId, Wid
 ctor WidgetRail.WidgetSdk.ControllerInputEvent(WidgetRail.WidgetProtocol.ControllerButton Button, WidgetRail.WidgetProtocol.ControllerEventPhase Phase, WidgetRail.WidgetSdk.ControllerInputContext Context, string? FocusedElementId = null, long Sequence = 0, long MonotonicTimestampMicroseconds = 0, string? ActiveInputScopeId = null, long SnapshotSequence = 0, double? RequestedValue = null, WidgetRail.WidgetSdk.ControllerInputOrigin Origin = WidgetRail.WidgetSdk.ControllerInputOrigin.PhysicalController)
 ctor WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest(string SavedId)
 ctor WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest(string AppId)
+ctor WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest(string ProfileId)
 ctor WidgetRail.WidgetSdk.NavigationShellDestination(string Id, string Label, string ActionId, WidgetRail.WidgetProtocol.WidgetGlyph Glyph, string? AccessibilityLabel = null, bool IsDisabled = false)
 ctor WidgetRail.WidgetSdk.NavigationShellParts(WidgetRail.WidgetSdk.WidgetElement CompactNavigation, WidgetRail.WidgetSdk.WidgetElement Body)
 ctor WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest(string DeviceId)
@@ -30,6 +31,7 @@ ctor WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest(string SessionId, bo
 ctor WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest(string SessionId, double Volume)
 ctor WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest(string DeviceId, string FormatId)
 ctor WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest(bool Enabled)
+ctor WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest(string ProfileId, bool Enabled)
 ctor WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest(bool Enabled)
 ctor WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest(string ProfileId)
 ctor WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest(string DeviceId)
@@ -586,6 +588,11 @@ method WidgetRail.WidgetSdk.LoadingIndicatorElement.Equals(WidgetRail.WidgetSdk.
 method WidgetRail.WidgetSdk.LoadingIndicatorElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.LoadingIndicatorElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.LoadingIndicatorElement.ToString() -> string
+method WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.<Clone>$() -> WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest
+method WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.Deconstruct(out string ProfileId) -> void
+method WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.GetHashCode() -> int
+method WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.ToString() -> string
 method WidgetRail.WidgetSdk.MediaViewportElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.MediaViewportElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.MediaViewportElement.GetHashCode() -> int
@@ -745,6 +752,11 @@ method WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.Deconstruct(out bool 
 method WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.GetHashCode() -> int
 method WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.ToString() -> string
+method WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.<Clone>$() -> WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest
+method WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.Deconstruct(out string ProfileId, out bool Enabled) -> void
+method WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.GetHashCode() -> int
+method WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.ToString() -> string
 method WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest.<Clone>$() -> WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest
 method WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest.Deconstruct(out bool Enabled) -> void
 method WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest.Equals(object? obj) -> bool
@@ -1235,6 +1247,8 @@ method WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsChanged.Equals(object?
 method WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsChanged.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsChanged.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetNetworkService.ConnectAvailableWifiAsync(string networkId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetNetworkService.DisconnectWifiAsync(string networkId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetNetworkService.ForgetWifiProfileAsync(string profileId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetNetworkService.GetAvailableWifiAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks>
 method WidgetRail.WidgetSdk.WidgetNetworkService.GetBluetoothAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetBluetoothSnapshot>
 method WidgetRail.WidgetSdk.WidgetNetworkService.GetConnectionDetailsAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails>
@@ -1250,6 +1264,7 @@ method WidgetRail.WidgetSdk.WidgetNetworkService.OpenWifiRadioSubscriptionAsync(
 method WidgetRail.WidgetSdk.WidgetNetworkService.PairBluetoothDeviceAsync(string deviceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetBluetoothPairingResult>
 method WidgetRail.WidgetSdk.WidgetNetworkService.RequestWifiScanAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetNetworkService.SetBluetoothRadioAsync(bool enabled, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetNetworkService.SetWifiAutoConnectAsync(string profileId, bool enabled, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetNetworkService.SetWifiRadioAsync(bool enabled, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetNetworkService.SwitchSavedProfileAsync(string profileId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetNetworkService.UnpairBluetoothDeviceAsync(string deviceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetBluetoothUnpairingResult>
@@ -1564,6 +1579,8 @@ method static WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.op_Equality
 method static WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.op_Inequality(WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? left, WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? right) -> bool
 method static WidgetRail.WidgetSdk.LoadingIndicatorElement.op_Equality(WidgetRail.WidgetSdk.LoadingIndicatorElement? left, WidgetRail.WidgetSdk.LoadingIndicatorElement? right) -> bool
 method static WidgetRail.WidgetSdk.LoadingIndicatorElement.op_Inequality(WidgetRail.WidgetSdk.LoadingIndicatorElement? left, WidgetRail.WidgetSdk.LoadingIndicatorElement? right) -> bool
+method static WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.op_Equality(WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest? left, WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest? right) -> bool
+method static WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.op_Inequality(WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest? left, WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest? right) -> bool
 method static WidgetRail.WidgetSdk.MediaViewportElement.op_Equality(WidgetRail.WidgetSdk.MediaViewportElement? left, WidgetRail.WidgetSdk.MediaViewportElement? right) -> bool
 method static WidgetRail.WidgetSdk.MediaViewportElement.op_Inequality(WidgetRail.WidgetSdk.MediaViewportElement? left, WidgetRail.WidgetSdk.MediaViewportElement? right) -> bool
 method static WidgetRail.WidgetSdk.NavigationShellContentEntry.Available(string focusId) -> WidgetRail.WidgetSdk.NavigationShellContentEntry
@@ -1621,6 +1638,8 @@ method static WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.op_Equalit
 method static WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.op_Inequality(WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest? left, WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest? left, WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.op_Inequality(WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest? left, WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest? right) -> bool
+method static WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest? left, WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest? right) -> bool
+method static WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.op_Inequality(WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest? left, WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest.op_Equality(WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest? left, WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest.op_Inequality(WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest? left, WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest? right) -> bool
 method static WidgetRail.WidgetSdk.SliderElement.op_Equality(WidgetRail.WidgetSdk.SliderElement? left, WidgetRail.WidgetSdk.SliderElement? right) -> bool
@@ -1980,6 +1999,7 @@ method virtual WidgetRail.WidgetSdk.ImageElement.Equals(WidgetRail.WidgetSdk.Ima
 method virtual WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.Equals(WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.LoadingIndicatorElement.<Clone>$() -> WidgetRail.WidgetSdk.LoadingIndicatorElement
 method virtual WidgetRail.WidgetSdk.LoadingIndicatorElement.Equals(WidgetRail.WidgetSdk.LoadingIndicatorElement? other) -> bool
+method virtual WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.Equals(WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.MediaViewportElement.<Clone>$() -> WidgetRail.WidgetSdk.MediaViewportElement
 method virtual WidgetRail.WidgetSdk.MediaViewportElement.Equals(WidgetRail.WidgetSdk.MediaViewportElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.NavigationShellDestination.Equals(WidgetRail.WidgetSdk.NavigationShellDestination? other) -> bool
@@ -2015,6 +2035,7 @@ method virtual WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.Equals(Wid
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.Equals(WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.Equals(WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest? other) -> bool
+method virtual WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.Equals(WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest.Equals(WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.SliderElement.<Clone>$() -> WidgetRail.WidgetSdk.SliderElement
 method virtual WidgetRail.WidgetSdk.SliderElement.Equals(WidgetRail.WidgetSdk.SliderElement? other) -> bool
@@ -2448,6 +2469,7 @@ property bool WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.IsMuted { get
 property bool WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest.IsMuted { get; set; }
 property bool WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.IsMuted { get; set; }
 property bool WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.Enabled { get; set; }
+property bool WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.Enabled { get; set; }
 property bool WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest.Enabled { get; set; }
 property bool WidgetRail.WidgetSdk.TextEntryElement.IsDisabled { get; set; }
 property bool WidgetRail.WidgetSdk.Widget.IsActive { get; }
@@ -2518,6 +2540,7 @@ property bool WidgetRail.WidgetSdk.WidgetRecentActivity.IsRunning { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetResource<TValue>.IsBusy { get; }
 property bool WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.RetainLastGoodValue { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.HasValue { get; }
+property bool WidgetRail.WidgetSdk.WidgetSavedNetworkProfile.CanManage { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetSavedNetworkProfile.IsConnected { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetScenarioRunResult.Passed { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetScenarioStepResult.Passed { get; set; }
@@ -2537,6 +2560,7 @@ property bool? WidgetRail.WidgetSdk.SelectElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.SelectElement.IsDisabled { get; set; }
 property bool? WidgetRail.WidgetSdk.SliderElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.SliderElement.IsDisabled { get; set; }
+property bool? WidgetRail.WidgetSdk.WidgetSavedNetworkProfile.AutoConnect { get; set; }
 property double WidgetRail.WidgetSdk.GridElement.MinimumColumnWidth { get; set; }
 property double WidgetRail.WidgetSdk.ProgressElement.Maximum { get; set; }
 property double WidgetRail.WidgetSdk.ProgressElement.Value { get; set; }
@@ -2649,9 +2673,11 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetWifiRadioChanged> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.WifiRadioChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ConfirmWidgetRunningAppRequest,WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.ConfirmRunning { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.ConnectAvailableWifi { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.DisconnectWifi { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetMediaCapabilities.Control { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ForgetWidgetRunningAppRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.ForgetRunning { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.Launch { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.ForgetWifiProfile { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.OpenBluetoothDeviceSettings { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest,WidgetRail.WidgetSdk.WidgetBluetoothPairingResult> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.PairBluetoothDevice { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.RegisterWidgetRunningAppRequest,WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities.RegisterRunning { get; }
@@ -2667,6 +2693,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetSessionVolume { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetAudioCapabilities.SetSpatialFormat { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.SetBluetoothRadio { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.SetWifiAutoConnect { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.SetWifiRadio { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.SwitchSavedProfile { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest,WidgetRail.WidgetSdk.WidgetBluetoothUnpairingResult> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.UnpairBluetoothDevice { get; }
@@ -2726,6 +2753,7 @@ property string WidgetRail.WidgetSdk.ImageElement.AccessibilityLabel { get; set;
 property string WidgetRail.WidgetSdk.ImageElement.Source { get; set; }
 property string WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.AppId { get; set; }
 property string WidgetRail.WidgetSdk.LoadingIndicatorElement.AccessibilityLabel { get; set; }
+property string WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.ProfileId { get; set; }
 property string WidgetRail.WidgetSdk.NavigationShellDestination.ActionId { get; set; }
 property string WidgetRail.WidgetSdk.NavigationShellDestination.Id { get; set; }
 property string WidgetRail.WidgetSdk.NavigationShellDestination.Label { get; set; }
@@ -2755,6 +2783,7 @@ property string WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.SessionId
 property string WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest.SessionId { get; set; }
 property string WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.DeviceId { get; set; }
 property string WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest.FormatId { get; set; }
+property string WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.ProfileId { get; set; }
 property string WidgetRail.WidgetSdk.SliderElement.AccessibilityLabel { get; set; }
 property string WidgetRail.WidgetSdk.SliderElement.AccessibilityValue { get; set; }
 property string WidgetRail.WidgetSdk.SliderElement.ValueChangedActionId { get; set; }
@@ -3006,6 +3035,7 @@ type sealed class WidgetRail.WidgetSdk.IconElement : System.IEquatable<WidgetRai
 type sealed class WidgetRail.WidgetSdk.ImageElement : System.IEquatable<WidgetRail.WidgetSdk.ImageElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest : System.IEquatable<WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest>
 type sealed class WidgetRail.WidgetSdk.LoadingIndicatorElement : System.IEquatable<WidgetRail.WidgetSdk.LoadingIndicatorElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest : System.IEquatable<WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest>
 type sealed class WidgetRail.WidgetSdk.MediaViewportElement : System.IEquatable<WidgetRail.WidgetSdk.MediaViewportElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.NavigationShellDestination : System.IEquatable<WidgetRail.WidgetSdk.NavigationShellDestination>
 type sealed class WidgetRail.WidgetSdk.NavigationShellParts : System.IEquatable<WidgetRail.WidgetSdk.NavigationShellParts>
@@ -3035,6 +3065,7 @@ type sealed class WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest : Syste
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioSessionVolumeRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetAudioSpatialFormatRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest>
+type sealed class WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest>
 type sealed class WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest : System.IEquatable<WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest>
 type sealed class WidgetRail.WidgetSdk.SliderElement : System.IEquatable<WidgetRail.WidgetSdk.SliderElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.SpacerElement : System.IEquatable<WidgetRail.WidgetSdk.SpacerElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement

@@ -3,6 +3,8 @@ namespace WidgetRail.FirstPartyWidgets.NetworkControls;
 internal enum NetworkControlsAction
 {
     None,
+    ManageWifi,
+    CloseBluetoothDetails,
     SelectTab,
     ToggleTab,
     Scan,
@@ -26,6 +28,10 @@ internal static class NetworkControlsActionPolicy
     {
         "network.tab.select" => NetworkControlsAction.SelectTab,
         "network.tab.previous" or "network.tab.next" => NetworkControlsAction.ToggleTab,
+        "wifi.saved.open" or "wifi.saved.refresh" or "wifi.profile.open" or "wifi.manage.close" or
+            "wifi.disconnect" or "wifi.auto.toggle" or "wifi.forget.open" or "wifi.forget.confirm" or
+            "wifi.forget.cancel" or "wifi.saved.connect" => NetworkControlsAction.ManageWifi,
+        "bluetooth.details.close" => NetworkControlsAction.CloseBluetoothDetails,
         "wifi.scan" => NetworkControlsAction.Scan,
         "wifi.connect.item" => NetworkControlsAction.ConnectWifi,
         "wifi.radio.toggle" => NetworkControlsAction.ToggleWifiRadio,

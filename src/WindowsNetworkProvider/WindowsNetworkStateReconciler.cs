@@ -58,7 +58,8 @@ internal sealed class WindowsNetworkStateReconciler
                 opaqueId,
                 SanitizeDisplayName(profile.DisplayName, "Saved Wi-Fi network"),
                 isConnected,
-                ClampPercent(profile.SignalPercent)));
+                ClampPercent(profile.SignalPercent))
+            { AutoConnect = profile.AutoConnect, CanManage = profile.CanManage });
         }
         foreach (var missing in _profileOpaqueIds.Keys
                      .Where(key => !seenNativeKeys.Contains(key)).ToArray())

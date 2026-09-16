@@ -142,6 +142,24 @@ internal sealed class WindowsNetworkNativeAdapter : IWindowsNetworkNativeAdapter
         }
     }
 
+    public void DisconnectWifi(string nativeNetworkKey)
+    {
+        lock (_lifetimeGate)
+        {
+            ThrowIfDisposed();
+            _wlan.DisconnectWifi(_calls, _wlanHandle, nativeNetworkKey);
+        }
+    }
+
+    public void ManageWifiProfile(string nativeProfileKey, bool? autoConnect)
+    {
+        lock (_lifetimeGate)
+        {
+            ThrowIfDisposed();
+            _wlan.ManageWifiProfile(_calls, _wlanHandle, nativeProfileKey, autoConnect);
+        }
+    }
+
     public bool TryConnectSavedProfile(string nativeProfileKey)
     {
         ThrowIfDisposed();

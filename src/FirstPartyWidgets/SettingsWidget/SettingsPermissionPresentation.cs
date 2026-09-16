@@ -419,6 +419,7 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.NetworkSavedProfileSwitchV1 => "Switch saved network profile",
         PlatformCapabilities.NetworkWifiReadV1 => "Find nearby Wi-Fi networks",
         PlatformCapabilities.NetworkWifiConnectV1 => "Connect to visible Wi-Fi",
+        PlatformCapabilities.NetworkWifiManageV1 => "Manage Wi-Fi connections and saved networks",
         PlatformCapabilities.NetworkWifiRadioReadV1 => "Read Wi-Fi radio state",
         PlatformCapabilities.NetworkWifiRadioControlV1 => "Turn Wi-Fi on or off",
         PlatformCapabilities.NetworkBluetoothReadV1 => "See Bluetooth devices",
@@ -485,6 +486,8 @@ internal static class SettingsPermissionPresentation
             "Let Network Controls run a short scan and show nearby network names, signal strength, " +
             "security, and connection state. Windows precise-location permission must also be enabled; " +
             "the overlay cannot bypass that Windows setting.",
+        PlatformCapabilities.NetworkWifiManageV1 =>
+            "Disconnect Wi-Fi, forget saved networks, and change automatic connection settings.",
         PlatformCapabilities.NetworkWifiConnectV1 =>
             "Let Network Controls connect to a visible saved or open network while you are using it. " +
             "It cannot read saved passwords. Password entry and enterprise sign-in remain in Windows.",

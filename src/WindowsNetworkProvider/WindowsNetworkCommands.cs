@@ -55,6 +55,12 @@ internal sealed record ConnectProtectedWifiCommand(
     public void Dispose() => Array.Clear(Secret);
 }
 
+internal sealed record ManageWifiCommand(
+    string TargetId, bool Disconnect, bool? AutoConnect, CancellationToken CancellationToken) : NetworkCommand
+{
+    public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+}
+
 internal sealed record SetWifiRadioCommand(bool Enabled, CancellationToken CancellationToken)
     : NetworkCommand
 {

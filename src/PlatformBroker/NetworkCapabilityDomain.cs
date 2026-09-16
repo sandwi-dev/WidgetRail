@@ -50,6 +50,27 @@ internal sealed class NetworkCapabilityDomain(IPlatformBrokerBackend backend)
                     request.NetworkId, cancellationToken).ConfigureAwait(false);
                 return BrokerCapabilityDomains.Acknowledged();
             }
+            case PlatformCapabilities.NetworkWifiDisconnect:
+            {
+                var request = BrokerJson.ParsePayload<ConnectAvailableWifiNetworkRequest>(payload);
+                ContractValidation.OpaqueId(request.NetworkId);
+                await backend.DisconnectWifiAsync(request.NetworkId, cancellationToken).ConfigureAwait(false);
+                return BrokerCapabilityDomains.Acknowledged();
+            }
+            case PlatformCapabilities.NetworkWifiProfileForget:
+            {
+                var request = BrokerJson.ParsePayload<ManageWifiProfileRequest>(payload);
+                ContractValidation.OpaqueId(request.ProfileId);
+                await backend.ForgetWifiProfileAsync(request.ProfileId, cancellationToken).ConfigureAwait(false);
+                return BrokerCapabilityDomains.Acknowledged();
+            }
+            case PlatformCapabilities.NetworkWifiAutoConnectSet:
+            {
+                var request = BrokerJson.ParsePayload<SetWifiAutoConnectRequest>(payload);
+                ContractValidation.OpaqueId(request.ProfileId);
+                await backend.SetWifiAutoConnectAsync(request.ProfileId, request.Enabled, cancellationToken).ConfigureAwait(false);
+                return BrokerCapabilityDomains.Acknowledged();
+            }
             case PlatformCapabilities.NetworkWifiRadioGet:
                 BrokerCapabilityDomains.DemandEmptyPayload(payload);
                 return BrokerJson.ToElement(ValidateWifiRadio(

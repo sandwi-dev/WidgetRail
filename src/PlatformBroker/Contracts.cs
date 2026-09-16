@@ -171,10 +171,18 @@ public sealed record SavedNetworkProfileSummary(
     string ProfileId,
     string DisplayName,
     bool IsConnected,
-    int? SignalPercent);
+    int? SignalPercent)
+{
+    public bool? AutoConnect { get; init; }
+    public bool CanManage { get; init; }
+}
 
 public sealed record SwitchSavedNetworkProfileRequest(
     [property: JsonRequired] string ProfileId);
+
+public sealed record ManageWifiProfileRequest([property: JsonRequired] string ProfileId);
+public sealed record SetWifiAutoConnectRequest(
+    [property: JsonRequired] string ProfileId, [property: JsonRequired] bool Enabled);
 
 public enum WifiScanState
 {
@@ -894,6 +902,13 @@ public interface INetworkPlatformBrokerBackend : IPlatformBrokerEventSource
     Task ConnectAvailableWifiNetworkAsync(string networkId, CancellationToken cancellationToken);
     Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken);
     Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken);
+    Task DisconnectWifiAsync(string networkId, CancellationToken cancellationToken) =>
+        Task.FromException(new BrokerException("platform_unavailable", "Wi-Fi disconnect is unavailable."));
+    Task ForgetWifiProfileAsync(string profileId, CancellationToken cancellationToken) =>
+        Task.FromException(new BrokerException("platform_unavailable", "Wi-Fi profile management is unavailable."));
+    Task SetWifiAutoConnectAsync(string profileId, bool enabled, CancellationToken cancellationToken) =>
+        Task.FromException(new BrokerException("platform_unavailable", "Wi-Fi profile management is unavailable."));
+
 }
 
 /// <summary>

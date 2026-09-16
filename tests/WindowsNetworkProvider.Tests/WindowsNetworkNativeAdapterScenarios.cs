@@ -627,6 +627,21 @@ internal sealed class ControlledNetworkNativeCalls : IWindowsNetworkNativeCalls,
     public IpInterfaceChangeCallback? IpCallback { get; private set; }
     public NetworkConnectivityHintChangeCallback? ConnectivityCallback { get; private set; }
 
+    public int ProfileReads { get; private set; }
+    public string? ProfileXml { get; set; }
+    public uint ProfileFlags { get; set; }
+    public uint ProfileAccess { get; set; } = 0x00070023;
+    public uint ProfileReadResult { get; set; }
+    public uint ProfileUpdateResult { get; set; }
+    public List<(Guid Adapter, string Xml, uint Flags)> ProfileUpdates { get; } = [];
+    public List<Guid> Disconnects { get; } = [];
+    public uint DisconnectWlan(IntPtr handle, Guid interfaceId)
+    { Disconnects.Add(interfaceId); return 0; }
+    public uint ReadWlanProfile(IntPtr handle, Guid interfaceId, string name, out string xml, out uint flags, out uint access)
+    { ProfileReads++; xml = ProfileXml ?? string.Empty; flags = ProfileFlags; access = ProfileAccess; return ProfileXml is null ? 50 : ProfileReadResult; }
+    public uint UpdateWlanProfile(IntPtr handle, Guid interfaceId, string xml, uint flags)
+    { ProfileUpdates.Add((interfaceId, xml, flags)); if (ProfileUpdateResult == 0) ProfileXml = xml; return ProfileUpdateResult; }
+
     public static ControlledNetworkNativeCalls CreateDefault()
     {
         var calls = new ControlledNetworkNativeCalls();

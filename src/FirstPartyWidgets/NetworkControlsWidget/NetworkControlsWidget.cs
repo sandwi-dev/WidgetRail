@@ -80,6 +80,8 @@ public sealed class NetworkControlsWidget : Widget
     private int _bluetoothPairCount;
     private int _bluetoothManageCount;
     private NetworkControlsTab _activeTab;
+    private NetworkWifiManagementState _management = new();
+    private string? _bluetoothDetailsId;
 
     public NetworkControlsViewState ViewState
     {
@@ -196,7 +198,11 @@ public sealed class NetworkControlsWidget : Widget
                 _selectedNetworkId,
                 _activeTab,
                 LifecycleState == WidgetLifecycleState.Interactive,
-                _unpairConfirmationDevice);
+                _unpairConfirmationDevice)
+            {
+                Management = _management,
+                BluetoothDetails = _bluetooth?.Devices.FirstOrDefault(device => device.DeviceId == _bluetoothDetailsId),
+            };
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -242,12 +248,25 @@ public sealed class NetworkControlsWidget : Widget
             case NetworkControlsAction.ToggleTab:
                 ToggleTab();
                 break;
+            case NetworkControlsAction.ManageWifi:
+                await HandleWifiManagementAsync(action, cancellationToken).ConfigureAwait(false);
+                break;
+            case NetworkControlsAction.CloseBluetoothDetails:
+                lock (_stateLock) _bluetoothDetailsId = null;
+                Invalidate();
+                break;
             case NetworkControlsAction.Scan:
                 await RequestScanAsync(cancellationToken).ConfigureAwait(false);
                 break;
             case NetworkControlsAction.ConnectWifi:
                 if (SelectNetworkFromElementId(action.SourceElementId))
-                    await ConnectSelectedNetworkAsync(cancellationToken).ConfigureAwait(false);
+                {
+                    lock (_stateLock)
+                        if (SelectedNetworkLocked() is { IsConnected: true } connected)
+                            _management = new() { Open = true, Network = connected };
+                    if (_management.Open) Invalidate();
+                    else await ConnectSelectedNetworkAsync(cancellationToken).ConfigureAwait(false);
+                }
                 break;
             case NetworkControlsAction.ToggleWifiRadio:
                 await ToggleWifiRadioAsync(cancellationToken).ConfigureAwait(false);
@@ -275,7 +294,10 @@ public sealed class NetworkControlsWidget : Widget
                     action.SourceElementId, cancellationToken).ConfigureAwait(false);
                 break;
             case NetworkControlsAction.OpenUnpairBluetooth:
-                OpenBluetoothUnpairConfirmation(action.SourceElementId);
+                string removalId;
+                lock (_stateLock) removalId = _bluetoothDetailsId is { } id
+                    ? NetworkControlsElementIds.Bluetooth(id) : action.SourceElementId;
+                OpenBluetoothUnpairConfirmation(removalId);
                 break;
             case NetworkControlsAction.ConfirmUnpairBluetooth:
                 await UnpairBluetoothDeviceAsync(cancellationToken).ConfigureAwait(false);
@@ -306,6 +328,121 @@ public sealed class NetworkControlsWidget : Widget
                 SelectBluetoothFromElementId(focusedId);
         }
         return base.OnControllerInputAsync(input, cancellationToken);
+    }
+
+    private async ValueTask HandleWifiManagementAsync(WidgetActionEvent action, CancellationToken cancellationToken)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive) return;
+        lock (_stateLock)
+        {
+            if (_management.Busy || _controlBusy || _radioBusy) return;
+            if (!_management.Open && action.ActionId != "wifi.saved.open") return;
+            var selectedProfile = _management.Profiles.FirstOrDefault(item => item.ProfileId == _management.ProfileId);
+            if (action.ActionId == "wifi.forget.confirm" && (!_management.ConfirmForget || selectedProfile is not { CanManage: true }) ||
+                action.ActionId == "wifi.auto.toggle" && selectedProfile is not { CanManage: true, AutoConnect: not null } ||
+                action.ActionId == "wifi.saved.connect" && selectedProfile is null ||
+                action.ActionId == "wifi.disconnect" && _management.Network is null) return;
+            switch (action.ActionId)
+            {
+                case "wifi.manage.close":
+                    _management = _management with { Open = _management.ProfileId is not null, ProfileId = null, Network = null, ConfirmForget = false, IsError = false, Message = "Saved networks are remembered by Windows." };
+                    Invalidate(); return;
+                case "wifi.profile.open":
+                    if (!_management.Open || _management.Network is not null) return;
+                    var profile = _management.Profiles.FirstOrDefault(item => NetworkControlsElementIds.SavedProfile(item.ProfileId) == action.SourceElementId);
+                    if (profile is null) return;
+                    _management = _management with { ProfileId = profile.ProfileId, ConfirmForget = false, IsError = false,
+                        Message = "Choose how Windows connects to this network." };
+                    Invalidate(); return;
+                case "wifi.forget.open":
+                    if (!_management.Profiles.Any(item => item.ProfileId == _management.ProfileId && item.CanManage)) return;
+                    _management = _management with { ConfirmForget = true };
+                    Invalidate(); return;
+                case "wifi.forget.cancel":
+                    _management = _management with { ConfirmForget = false };
+                    Invalidate(); return;
+            }
+        }
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ActiveCancellationToken);
+        if (!await _commandGate.WaitAsync(0, linked.Token).ConfigureAwait(false)) return;
+        long generation;
+        NetworkWifiManagementState state;
+        lock (_stateLock)
+        {
+            generation = _runGeneration;
+            state = _management;
+            _management = state with { Open = true, Busy = true, IsError = false, Message = "Updating Wi-Fi…" };
+        }
+        Invalidate();
+        try
+        {
+            var selected = state.Profiles.FirstOrDefault(item => item.ProfileId == state.ProfileId);
+            var message = "Saved networks are remembered by Windows.";
+            switch (action.ActionId)
+            {
+                case "wifi.saved.open":
+                case "wifi.saved.refresh": break;
+                case "wifi.disconnect":
+                    if (state.Network is null) return;
+                    await HostServices.Network.DisconnectWifiAsync(state.Network.NetworkId, linked.Token).ConfigureAwait(false);
+                    message = "Disconnect requested. Wi-Fi remains on.";
+                    break;
+                case "wifi.auto.toggle":
+                    if (selected is not { CanManage: true, AutoConnect: not null }) return;
+                    await HostServices.Network.SetWifiAutoConnectAsync(selected.ProfileId, !selected.AutoConnect.Value, linked.Token).ConfigureAwait(false);
+                    message = "Automatic connection preference updated.";
+                    break;
+                case "wifi.forget.confirm":
+                    if (!state.ConfirmForget || selected is not { CanManage: true }) return;
+                    await HostServices.Network.ForgetWifiProfileAsync(selected.ProfileId, linked.Token).ConfigureAwait(false);
+                    message = "Saved network forgotten. Connecting again may require a password.";
+                    break;
+                case "wifi.saved.connect":
+                    if (selected is null) return;
+                    await HostServices.Network.SwitchSavedProfileAsync(selected.ProfileId, linked.Token).ConfigureAwait(false);
+                    message = "Connection requested. The network must be nearby.";
+                    break;
+                default: return;
+            }
+            var profiles = await HostServices.Network.GetSavedProfilesAsync(linked.Token).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                if (generation != _runGeneration || linked.IsCancellationRequested) return;
+                _management = _management with
+                {
+                    Profiles = profiles.Take(128).ToArray(), Message = message, IsError = false,
+                    ProfileId = profiles.Any(item => item.ProfileId == state.ProfileId) ? state.ProfileId : null,
+                    ConfirmForget = false,
+                    Open = action.ActionId != "wifi.disconnect",
+                    Network = action.ActionId == "wifi.disconnect" ? null : _management.Network,
+                };
+                if (action.ActionId == "wifi.disconnect") { _status = message; _statusIsError = false; }
+            }
+        }
+        catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            var message = exception is WidgetCapabilityException failure ? failure.ErrorCode switch
+            {
+                "permission_denied" or "capability_revoked" or "capability_not_declared" =>
+                    "Allow Wi-Fi management or saved-network connection in Settings → Permissions.",
+                "wifi_profile_policy_denied" => "Windows policy prevents changing this network.",
+                "resource_not_found" => "That network has changed. Go back and refresh the list.",
+                "provider_busy" => "A connection is already in progress. Try again when it finishes.",
+                "lifecycle_denied" => "Open Network Controls before changing Wi-Fi.",
+                _ => "Windows could not complete the Wi-Fi action. Try again.",
+            } : "Windows could not complete the Wi-Fi action. Try again.";
+            lock (_stateLock)
+                if (generation == _runGeneration)
+                    _management = _management with { Message = message, IsError = true, ConfirmForget = false };
+        }
+        finally
+        {
+            lock (_stateLock)
+                if (generation == _runGeneration) _management = _management with { Busy = false };
+            _commandGate.Release();
+            Invalidate();
+        }
     }
 
     private void SelectTab(string sourceElementId)
@@ -1015,6 +1152,7 @@ public sealed class NetworkControlsWidget : Widget
             if (device is not { IsPaired: true }) return;
             _selectedBluetoothDeviceId = device.DeviceId;
             _unpairConfirmationDevice = device;
+            _bluetoothDetailsId = null;
         }
         Invalidate();
     }
@@ -1327,6 +1465,7 @@ public sealed class NetworkControlsWidget : Widget
             _selectedBluetoothDeviceId = devices[index].DeviceId;
             var device = devices[index];
             _bluetoothGuidanceDevice = device;
+            _bluetoothDetailsId = device.DeviceId;
             _bluetoothMessage = device.IsConnected
                 ? $"{device.DisplayName} is connected · press A to manage it in Windows Settings"
                 : device.IsPaired && device.IsPresent
@@ -1397,6 +1536,8 @@ public sealed class NetworkControlsWidget : Widget
 
     private void RestoreAuthoritativeLocked()
     {
+        _management = new();
+        _bluetoothDetailsId = null;
         _networkStatus = _authoritativeStatus;
         _connectionDetails = _authoritativeConnectionDetails is null
             ? null : CloneDetails(_authoritativeConnectionDetails);

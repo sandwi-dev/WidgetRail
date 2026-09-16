@@ -62,6 +62,11 @@ internal static class NetworkControlsPresentation
                 sheet, "network.bluetooth.unpair.cancel", Surface: CompactSurface);
         }
 
+        if (state.Management.Open)
+            return NetworkManagementPresentation.RenderWifi(state.Management, state.Interactive, CompactSurface);
+        if (state.BluetoothDetails is { } deviceDetails)
+            return NetworkManagementPresentation.RenderBluetooth(deviceDetails, state.BluetoothBusy, state.Interactive, CompactSurface);
+
         var status = state.NetworkStatus;
         var wifi = state.Wifi;
         var radio = state.WifiRadio;
@@ -145,6 +150,10 @@ internal static class NetworkControlsPresentation
             var wifiHeadingIndex = wifiContent.Count;
             wifiContent.Add(RenderWifiHeading(wifi, scanButton));
 
+            wifiContent.Add(UI.Button("Saved networks", "wifi.saved.open", "network.wifi.saved")
+                .FocusUp("network.wifi.scan")
+                .FocusDown(networks.Count == 0 ? "network.wifi.saved" : NetworkControlsElementIds.Wifi(networks[0].NetworkId))
+                .Classes("network-secondary-action"));
             if (networks.Count == 0)
                 wifiContent.Add(RenderWifiState(wifi.ScanState));
             else
@@ -152,8 +161,7 @@ internal static class NetworkControlsPresentation
                     networks, state.ControlBusy, state.PendingNetworkId, state.Interactive));
 
             if (networks.Count > 0)
-                scanButton = scanButton.FocusDown(
-                    NetworkControlsElementIds.Wifi(networks[0].NetworkId));
+                scanButton = scanButton.FocusDown("network.wifi.saved");
             wifiContent[wifiHeadingIndex] = RenderWifiHeading(wifi, scanButton);
 
             content.Add(UI.VerticalScroll("network.wifi.body.scroll", wifiContent.ToArray())
@@ -233,7 +241,7 @@ internal static class NetworkControlsPresentation
             .Classes("network-details-back");
         var content = new List<WidgetElement>
         {
-            header,
+            UI.Text("Connection details", "network.details.title", "Connection details").Classes("network-title"),
             back,
             UI.Text(message, "network.details.message", message)
                 .Classes("network-details-message"),
@@ -254,9 +262,9 @@ internal static class NetworkControlsPresentation
                 WidgetNetworkConnectionDetailsConnectivity.Local => "Local only",
                 _ => "Offline",
             }, "connectivity"));
-            content.Add(DetailRow("IP addresses", Join(details.IpAddresses), "addresses"));
-            content.Add(DetailRow("Default gateway", Join(details.DefaultGateways), "gateway"));
-            content.Add(DetailRow("DNS servers", Join(details.DnsServers), "dns"));
+            content.Add(DetailRow("IP addresses", details.IpAddresses, "addresses"));
+            content.Add(DetailRow("Default gateway", details.DefaultGateways, "gateway"));
+            content.Add(DetailRow("DNS servers", details.DnsServers, "dns"));
         }
         else
         {
@@ -266,23 +274,34 @@ internal static class NetworkControlsPresentation
                     "No sensitive adapter details are exposed")
                 .Classes("network-details-privacy"));
         }
-        var root = UI.Stack("network.details.root", content.ToArray())
+        var root = UI.Stack("network.details.root",
+                UI.VerticalScroll("network.details.scroll", content.ToArray()).Classes("network-view-scroll", "network-details-scroll"))
             .InputScope("network-controls-details")
             .Shortcut(ControllerButton.B, "network.details.close")
             .Classes("network-controls-widget", "network-details-view");
         return new WidgetView(root, "network.details.back", Surface: CompactSurface);
     }
 
-    private static RowElement DetailRow(string label, string value, string suffix) =>
-        UI.Row($"network.details.{suffix}.row",
+    private static StackElement DetailRow(string label, string value, string suffix) =>
+        UI.Stack($"network.details.{suffix}.row",
                 UI.Text(label, $"network.details.{suffix}.label", label)
                     .Classes("network-details-label"),
                 UI.Text(value, $"network.details.{suffix}.value", $"{label}: {value}")
                     .Classes("network-details-value"))
             .Classes("network-details-row");
 
-    private static string Join(IReadOnlyList<string> values) =>
-        values.Count == 0 ? "Unavailable" : string.Join(" · ", values);
+    private static StackElement DetailRow(string label, IReadOnlyList<string> values, string suffix)
+    {
+        var rows = new List<WidgetElement>
+        {
+            UI.Text(label, $"network.details.{suffix}.label", label).Classes("network-details-label"),
+        };
+        var entries = values.Count == 0 ? new[] { "Unavailable" } : values;
+        for (var index = 0; index < entries.Count; index++)
+            rows.Add(UI.Text(entries[index], $"network.details.{suffix}.value" + (index == 0 ? "" : $".{index}"),
+                $"{label}: {entries[index]}").Classes("network-details-value"));
+        return UI.Stack($"network.details.{suffix}.row", rows.ToArray()).Classes("network-details-row");
+    }
 
     private static RowElement RenderRadioControl(
         WidgetWifiRadio radio, bool busy, bool interactive)
@@ -410,8 +429,8 @@ internal static class NetworkControlsPresentation
                     ],
                 };
                 protectedEntry = protectedEntry
-                    .Disabled(!interactive || controlBusy || network.IsConnected)
-                    .FocusUp(index == 0 ? "network.wifi.scan" : ids[index - 1])
+                    .Disabled(!interactive || controlBusy)
+                    .FocusUp(index == 0 ? "network.wifi.saved" : ids[index - 1])
                     .FocusLeft(id)
                     .FocusRight(id);
                 if (index < networks.Count - 1)
@@ -423,9 +442,9 @@ internal static class NetworkControlsPresentation
                 var ordinary = UI.Button(network.DisplayName, "wifi.connect.item", id)
                     .Icon(network.IsConnected ? WidgetGlyph.Check : WidgetGlyph.Wifi,
                         $"{network.DisplayName}. {state}. Signal {network.SignalPercent} percent. {actionLabel}")
-                    .Disabled(!interactive || controlBusy || network.IsConnected)
-                    .Shortcut(ControllerButton.X, actionId: "wifi.connect.item", label: "Connect")
-                    .FocusUp(index == 0 ? "network.wifi.scan" : ids[index - 1])
+                    .Disabled(!interactive || controlBusy)
+                    .Shortcut(ControllerButton.X, actionId: "wifi.connect.item", label: network.IsConnected ? "Connection options" : "Connect")
+                    .FocusUp(index == 0 ? "network.wifi.saved" : ids[index - 1])
                     .FocusLeft(id)
                     .FocusRight(id)
                     .Classes("network-profile-button",
@@ -537,9 +556,9 @@ internal static class NetworkControlsPresentation
             var isPending = string.Equals(
                 device.DeviceId, state.PendingBluetoothDeviceId, StringComparison.Ordinal);
             var actionId = device.IsPaired
-                ? "bluetooth.device.unpair.open" : "bluetooth.device.pair";
+                ? "bluetooth.device.details" : "bluetooth.device.pair";
             var actionLabel = device.IsPaired
-                ? "Press A to remove. Press X to manage in Windows Bluetooth Settings"
+                ? "Press A for device options. Press X to manage in Windows Bluetooth Settings"
                 : "Press A to pair. Press X if Windows interaction is required";
             var button = UI.Button(device.DisplayName, actionId, id)
                 .Icon(WidgetGlyph.Connection,
@@ -582,7 +601,7 @@ internal static class NetworkControlsPresentation
 
     private static string NetworkActionLabel(WidgetAvailableWifiNetwork network)
     {
-        if (network.IsConnected) return "Connected";
+        if (network.IsConnected) return "Press A for connection options";
         if (network.CredentialRequired)
             return network.Security == WidgetWifiSecurityKind.Personal
                 ? "Press A to enter the password securely"
@@ -595,11 +614,11 @@ internal static class NetworkControlsPresentation
 
     private static string BluetoothDeviceDetail(WidgetBluetoothDevice device) =>
         device.IsConnected
-            ? "Connected · press A to manage in Windows Settings"
+            ? "Connected · press A for device options"
             : device.IsPaired
                 ? device.IsPresent
-                    ? "Paired · press A to manage in Windows Settings"
-                    : "Paired · not currently nearby · press A to manage"
+                    ? "Paired · press A for device options"
+                    : "Paired · not currently nearby · press A for device options"
                 : "Nearby · press A to pair";
 
     private static string ScanSummary(WidgetAvailableWifiNetworks wifi) =>

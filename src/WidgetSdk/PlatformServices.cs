@@ -258,10 +258,18 @@ public sealed record WidgetSavedNetworkProfile(
     [property: JsonRequired] string ProfileId,
     [property: JsonRequired] string DisplayName,
     [property: JsonRequired] bool IsConnected,
-    [property: JsonRequired] int? SignalPercent);
+    [property: JsonRequired] int? SignalPercent)
+{
+    public bool? AutoConnect { get; init; }
+    public bool CanManage { get; init; }
+}
 
 public sealed record SwitchWidgetSavedNetworkProfileRequest(
     [property: JsonRequired] string ProfileId);
+
+public sealed record ManageWidgetWifiProfileRequest([property: JsonRequired] string ProfileId);
+public sealed record SetWidgetWifiAutoConnectRequest(
+    [property: JsonRequired] string ProfileId, [property: JsonRequired] bool Enabled);
 
 public enum WidgetWifiScanState
 {
@@ -807,6 +815,13 @@ public static class WidgetNetworkCapabilities
     public static WidgetCapabilityOperation<WidgetCapabilityQuery, IReadOnlyList<WidgetSavedNetworkProfile>>
         GetSavedProfiles { get; } = new("system.network.read.v1", "network.saved-profiles.list");
 
+    public static WidgetCapabilityOperation<ConnectWidgetAvailableWifiNetworkRequest, WidgetCapabilityAcknowledgement>
+        DisconnectWifi { get; } = new("system.network.wifi.manage.v1", "network.wifi.disconnect");
+    public static WidgetCapabilityOperation<ManageWidgetWifiProfileRequest, WidgetCapabilityAcknowledgement>
+        ForgetWifiProfile { get; } = new("system.network.wifi.manage.v1", "network.wifi.profile.forget");
+    public static WidgetCapabilityOperation<SetWidgetWifiAutoConnectRequest, WidgetCapabilityAcknowledgement>
+        SetWifiAutoConnect { get; } = new("system.network.wifi.manage.v1", "network.wifi.profile.auto-connect.set");
+
     public static WidgetCapabilityOperation<SwitchWidgetSavedNetworkProfileRequest, WidgetCapabilityAcknowledgement>
         SwitchSavedProfile { get; } =
             new("system.network.saved-profile.switch.v1", "network.saved-profile.switch");
@@ -1156,6 +1171,33 @@ public sealed class WidgetNetworkService
     public ValueTask<IReadOnlyList<WidgetSavedNetworkProfile>> GetSavedProfilesAsync(
         CancellationToken cancellationToken = default) =>
         _client.InvokeAsync(WidgetNetworkCapabilities.GetSavedProfiles, new WidgetCapabilityQuery(), cancellationToken);
+
+    public async ValueTask DisconnectWifiAsync(string networkId, CancellationToken cancellationToken = default)
+    {
+        var result = await _client.InvokeAsync(WidgetNetworkCapabilities.DisconnectWifi,
+            new ConnectWidgetAvailableWifiNetworkRequest(networkId), cancellationToken).ConfigureAwait(false);
+        DemandWifiAcknowledgement(result);
+    }
+
+    public async ValueTask ForgetWifiProfileAsync(string profileId, CancellationToken cancellationToken = default)
+    {
+        var result = await _client.InvokeAsync(WidgetNetworkCapabilities.ForgetWifiProfile,
+            new ManageWidgetWifiProfileRequest(profileId), cancellationToken).ConfigureAwait(false);
+        DemandWifiAcknowledgement(result);
+    }
+
+    public async ValueTask SetWifiAutoConnectAsync(string profileId, bool enabled, CancellationToken cancellationToken = default)
+    {
+        var result = await _client.InvokeAsync(WidgetNetworkCapabilities.SetWifiAutoConnect,
+            new SetWidgetWifiAutoConnectRequest(profileId, enabled), cancellationToken).ConfigureAwait(false);
+        DemandWifiAcknowledgement(result);
+    }
+
+    private static void DemandWifiAcknowledgement(WidgetCapabilityAcknowledgement? result)
+    {
+        if (result is null || !result.Acknowledged)
+            throw new WidgetCapabilityException("malformed_response", "The network provider returned an invalid acknowledgement.");
+    }
 
     public async ValueTask SwitchSavedProfileAsync(
         string profileId, CancellationToken cancellationToken = default)

@@ -34,6 +34,7 @@ internal sealed class WindowsNetworkWlanPolicy
     private const uint WlanAvailableNetworkConnected = 0x00000001;
     private const uint WlanAvailableNetworkHasProfile = 0x00000002;
 
+    private readonly Dictionary<string, WifiProfileOptions> _profileOptions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, NativeProfileTarget> _connectableProfiles =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, NativeAvailableNetworkTarget> _connectableNetworks =
@@ -91,11 +92,47 @@ internal sealed class WindowsNetworkWlanPolicy
                 if (!_connectableProfiles.TryAdd(
                         nativeKey,
                         new(wireless.InterfaceId, profileName))) continue;
-                profiles.Add(new(nativeKey, profileName, false, null));
+                if (!_profileOptions.TryGetValue(nativeKey, out var options))
+                {
+                    options = WindowsWifiProfilePolicy.Read(calls, handle, wireless.InterfaceId, profileName);
+                    _profileOptions[nativeKey] = options;
+                }
+                profiles.Add(new(nativeKey, profileName, false, null)
+                { AutoConnect = options.AutoConnect, CanManage = options.CanManage });
             }
             if (profiles.Count >= MaximumProfiles) break;
         }
+        foreach (var missing in _profileOptions.Keys.Where(key => !_connectableProfiles.ContainsKey(key)).ToArray())
+            _profileOptions.Remove(missing);
         return profiles;
+    }
+
+    public void ManageWifiProfile(IWindowsNetworkNativeCalls calls, IntPtr handle,
+        string nativeKey, bool? autoConnect)
+    {
+        if (handle == IntPtr.Zero || !_connectableProfiles.TryGetValue(nativeKey, out var target))
+            throw new BrokerException("resource_not_found", "That saved network is no longer available.");
+        try { WindowsWifiProfilePolicy.Change(calls, handle, target.InterfaceId, target.ProfileName, autoConnect); }
+        finally { _profileOptions.Remove(nativeKey); }
+        // Invalidate cached HasSavedProfile flags without initiating a radio scan.
+        _cachedAvailableGeneration = -1;
+    }
+
+    public void DisconnectWifi(IWindowsNetworkNativeCalls calls, IntPtr handle, string nativeKey)
+    {
+        if (handle == IntPtr.Zero || !_connectableNetworks.TryGetValue(nativeKey, out var target))
+            throw new BrokerException("resource_not_found", "That Wi-Fi connection is no longer available.");
+        // Validate the selected connection again. Never disconnect a different network
+        // that Windows may have connected to since the widget snapshot was captured.
+        var current = EnumerateAvailableNetworks(calls, handle, target.InterfaceId).Networks
+            .Any(item => (item.Flags & WlanAvailableNetworkConnected) != 0 &&
+                item.Ssid.AsSpan().SequenceEqual(target.Ssid) &&
+                item.AuthenticationAlgorithm == target.AuthenticationAlgorithm &&
+                item.CipherAlgorithm == target.CipherAlgorithm);
+        if (!current)
+            throw new BrokerException("resource_not_found", "The selected network is no longer connected.");
+        WindowsWifiProfilePolicy.DemandSuccess(calls.DisconnectWlan(handle, target.InterfaceId));
+        _cachedAvailableGeneration = -1;
     }
 
     public bool TryConnectSavedProfile(
@@ -378,6 +415,14 @@ internal sealed class WindowsNetworkWlanPolicy
             if (scanOutcome is not null) return new(null, scanOutcome);
         }
 
+        if (data.NotificationSource == WlanNotificationSourceAcm && data.NotificationCode == 15)
+            _profileOptions.Clear();
+
+        // WlanDisconnect acknowledges the request before Windows disconnects.
+        // Re-read on the completion event rather than keeping the pre-disconnect cache.
+        if (data.NotificationSource == WlanNotificationSourceAcm && data.NotificationCode is 15 or 21)
+            _cachedAvailableGeneration = -1; // profile change / disconnected
+
         NativeNetworkConnectionOutcome? outcome = null;
         NativeProtectedWifiRollbackResult? rollbackResult = null;
         if (data.NotificationSource == WlanNotificationSourceAcm &&
@@ -448,6 +493,7 @@ internal sealed class WindowsNetworkWlanPolicy
 
     public void Clear()
     {
+        _profileOptions.Clear();
         _connectableProfiles.Clear();
         _connectableNetworks.Clear();
         _pendingScanInterfaces.Clear();

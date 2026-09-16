@@ -83,6 +83,7 @@ public static class PlatformCapabilities
     public const string NetworkDetailsReadV1 = "system.network.details.read.v1";
     public const string NetworkSavedProfileSwitchV1 = "system.network.saved-profile.switch.v1";
     public const string NetworkWifiReadV1 = "system.network.wifi.read.v1";
+    public const string NetworkWifiManageV1 = "system.network.wifi.manage.v1";
     public const string NetworkWifiConnectV1 = "system.network.wifi.connect.v1";
     public const string NetworkWifiRadioReadV1 = "system.network.wifi.radio.read.v1";
     public const string NetworkWifiRadioControlV1 = "system.network.wifi.radio.control.v1";
@@ -130,6 +131,9 @@ public static class PlatformCapabilities
     public const string NetworkSavedProfileSwitch = "network.saved-profile.switch";
     public const string NetworkAvailableWifiGet = "network.wifi.available.get";
     public const string NetworkWifiScan = "network.wifi.scan";
+    public const string NetworkWifiDisconnect = "network.wifi.disconnect";
+    public const string NetworkWifiProfileForget = "network.wifi.profile.forget";
+    public const string NetworkWifiAutoConnectSet = "network.wifi.profile.auto-connect.set";
     public const string NetworkAvailableWifiConnect = "network.wifi.connect";
     public const string NetworkWifiRadioGet = "network.wifi.radio.get";
     public const string NetworkWifiRadioSet = "network.wifi.radio.set";
@@ -214,6 +218,9 @@ public static class PlatformCapabilities
                 Set(NetworkAvailableWifiGet, NetworkWifiScan), Set(NetworkAvailableWifiChanged)),
             [NetworkWifiConnectV1] = new(NetworkWifiConnectV1, 1,
                 BrokerCapabilityKind.Control, Set(NetworkAvailableWifiConnect), Set()),
+            [NetworkWifiManageV1] = new(NetworkWifiManageV1, 1,
+                BrokerCapabilityKind.Control,
+                Set(NetworkWifiDisconnect, NetworkWifiProfileForget, NetworkWifiAutoConnectSet), Set()),
             [NetworkWifiRadioReadV1] = new(NetworkWifiRadioReadV1, 1,
                 BrokerCapabilityKind.Read, Set(NetworkWifiRadioGet), Set(NetworkWifiRadioChanged)),
             [NetworkWifiRadioControlV1] = new(NetworkWifiRadioControlV1, 1,

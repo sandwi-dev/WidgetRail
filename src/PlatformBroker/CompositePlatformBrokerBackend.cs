@@ -154,6 +154,13 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     public Task<WifiRadioSummary> GetWifiRadioAsync(CancellationToken cancellationToken) =>
         _network.GetWifiRadioAsync(cancellationToken);
 
+    public Task DisconnectWifiAsync(string networkId, CancellationToken cancellationToken) =>
+        _network.DisconnectWifiAsync(networkId, cancellationToken);
+    public Task ForgetWifiProfileAsync(string profileId, CancellationToken cancellationToken) =>
+        _network.ForgetWifiProfileAsync(profileId, cancellationToken);
+    public Task SetWifiAutoConnectAsync(string profileId, bool enabled, CancellationToken cancellationToken) =>
+        _network.SetWifiAutoConnectAsync(profileId, enabled, cancellationToken);
+
     public Task SetWifiRadioAsync(bool enabled, CancellationToken cancellationToken) =>
         _network.SetWifiRadioAsync(enabled, cancellationToken);
 

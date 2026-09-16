@@ -67,6 +67,10 @@ internal interface IWindowsNetworkNativeCalls
         reasonCode = 0;
         return 50;
     }
+    uint DisconnectWlan(IntPtr handle, Guid interfaceId) => 50;
+    uint ReadWlanProfile(IntPtr handle, Guid interfaceId, string name, out string xml, out uint flags, out uint access)
+    { xml = string.Empty; flags = access = 0; return 50; }
+    uint UpdateWlanProfile(IntPtr handle, Guid interfaceId, string xml, uint flags) => 50;
     uint DeleteWlanProfile(IntPtr handle, Guid interfaceId, string profileName) => 50;
     uint SetWlanProfileCustomUserData(
         IntPtr handle,
@@ -223,6 +227,41 @@ internal sealed class WindowsNetworkNativeCalls : IWindowsNetworkNativeCalls
         {
             pinned.Free();
         }
+    }
+
+    public uint DisconnectWlan(IntPtr handle, Guid interfaceId) =>
+        NativeMethods.WlanDisconnect(handle, ref interfaceId, IntPtr.Zero);
+
+    public uint ReadWlanProfile(IntPtr handle, Guid interfaceId, string name,
+        out string xml, out uint flags, out uint access)
+    {
+        xml = string.Empty;
+        flags = 0; // Never request WLAN_PROFILE_GET_PLAINTEXT_KEY.
+        var result = NativeMethods.WlanGetProfile(handle, ref interfaceId, name, IntPtr.Zero,
+            out var pointer, ref flags, out access);
+        try
+        {
+            if (result != 0 || pointer == IntPtr.Zero) return result == 0 ? 13u : result;
+            const int maximumCharacters = 65536;
+            var length = 0;
+            while (length < maximumCharacters && Marshal.ReadInt16(pointer, length * 2) != 0) length++;
+            if (length == maximumCharacters) return 13;
+            xml = Marshal.PtrToStringUni(pointer, length) ?? string.Empty;
+            return 0;
+        }
+        finally { if (pointer != IntPtr.Zero) NativeMethods.WlanFreeMemory(pointer); }
+    }
+
+    public uint UpdateWlanProfile(IntPtr handle, Guid interfaceId, string xml, uint flags)
+    {
+        var chars = (xml + '\0').ToCharArray();
+        var pinned = GCHandle.Alloc(chars, GCHandleType.Pinned);
+        try
+        {
+            return NativeMethods.WlanSetProfile(handle, ref interfaceId, flags,
+                pinned.AddrOfPinnedObject(), IntPtr.Zero, true, IntPtr.Zero, out _);
+        }
+        finally { pinned.Free(); Array.Clear(chars); }
     }
 
     public uint DeleteWlanProfile(IntPtr handle, Guid interfaceId, string profileName) =>
@@ -493,6 +532,14 @@ internal sealed class WindowsNetworkNativeCalls : IWindowsNetworkNativeCalls
             [MarshalAs(UnmanagedType.Bool)] bool overwrite,
             IntPtr reserved,
             out uint reasonCode);
+
+        [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
+        internal static extern uint WlanGetProfile(
+            IntPtr clientHandle, ref Guid interfaceId, string profileName, IntPtr reserved,
+            out IntPtr profileXml, ref uint flags, out uint grantedAccess);
+
+        [DllImport("wlanapi.dll")]
+        internal static extern uint WlanDisconnect(IntPtr clientHandle, ref Guid interfaceId, IntPtr reserved);
 
         [DllImport("wlanapi.dll", CharSet = CharSet.Unicode)]
         internal static extern uint WlanDeleteProfile(

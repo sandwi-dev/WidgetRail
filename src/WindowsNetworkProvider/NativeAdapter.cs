@@ -14,7 +14,11 @@ public sealed record NativeSavedNetworkProfile(
     string NativeProfileKey,
     string DisplayName,
     bool IsConnected,
-    int? SignalPercent);
+    int? SignalPercent)
+{
+    public bool? AutoConnect { get; init; }
+    public bool CanManage { get; init; }
+}
 
 public sealed record NativeAvailableWifiNetwork(
     string NativeNetworkKey,
@@ -162,6 +166,10 @@ public interface IWindowsNetworkNativeAdapter : IDisposable
         ReadOnlySpan<char> secret) => NativeProtectedWifiConnectStartResult.Unavailable;
     NativeProtectedWifiRollbackResult RollbackProtectedWifiConnection(string nativeNetworkKey) =>
         NativeProtectedWifiRollbackResult.NothingToRollback;
+    void DisconnectWifi(string nativeNetworkKey) =>
+        throw new BrokerException("platform_unavailable", "Wi-Fi disconnect is unavailable.");
+    void ManageWifiProfile(string nativeProfileKey, bool? autoConnect) =>
+        throw new BrokerException("platform_unavailable", "Wi-Fi profile management is unavailable.");
     NativeWifiRadioSnapshot ReadWifiRadio();
     NativeWifiRadioSetResult TrySetWifiRadio(bool enabled);
 }

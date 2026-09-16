@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.network-controls",
   "publisher": "widgetrail.firstparty",
   "name": "Network Controls",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -27,6 +27,8 @@
   ],
   "optionalPermissions": [
     "system.network.details.read.v1",
+    "system.network.wifi.manage.v1",
+    "system.network.saved-profile.switch.v1",
     "system.network.wifi.connect.v1",
     "system.network.wifi.radio.control.v1",
     "system.network.bluetooth.read.v1",

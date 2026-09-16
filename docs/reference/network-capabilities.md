@@ -10,6 +10,7 @@ service. See [Capabilities](capabilities.md) for consent, lifecycle, and error b
 | `system.network.saved-profile.switch.v1` | `SwitchSavedProfileAsync` | Interactive only |
 | `system.network.wifi.read.v1` | `GetAvailableWifiAsync`, `RequestWifiScanAsync`, `OpenAvailableWifiSubscriptionAsync`, and `WatchAvailableWifiAsync` | Read/events while Visible or Interactive; scan Interactive only |
 | `system.network.wifi.connect.v1` | `ConnectAvailableWifiAsync` for a current saved/open scan result | Interactive only |
+| `system.network.wifi.manage.v1` | `DisconnectWifiAsync(networkId)`, `ForgetWifiProfileAsync(profileId)`, and `SetWifiAutoConnectAsync(profileId, enabled)`; current opaque IDs only | Interactive only |
 | `system.network.wifi.radio.read.v1` | `GetWifiRadioAsync`, `OpenWifiRadioSubscriptionAsync`, and `WatchWifiRadioAsync` | Visible or Interactive |
 | `system.network.wifi.radio.control.v1` | `SetWifiRadioAsync`; software state only | Interactive only |
 | `system.network.bluetooth.read.v1` | `GetBluetoothAsync`, `OpenBluetoothSubscriptionAsync`, and `WatchBluetoothAsync`; sanitized radio/discovery/device state | Visible or Interactive |
@@ -24,3 +25,10 @@ A scan is an explicit action. Bluetooth pairing establishes association; it
 does not promise a connection for every device profile. Protected Wi-Fi credentials
 use the separate host-owned prompt flow rather than entering the widget worker.
 Generic sockets and profile-specific GATT/RFCOMM access are not granted by discovery.
+
+Saved profiles include nullable `AutoConnect` and `CanManage` properties. An unknown
+preference is not the same as Off. Windows policy and granted profile access are
+checked again before each mutation. Automatic-connection changes preserve the
+profile scope and its existing authentication settings; profile XML and passwords
+are never returned to widgets. A disconnect rechecks that the selected Wi-Fi
+network is still connected on its original adapter.

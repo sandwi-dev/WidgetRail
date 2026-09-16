@@ -46,6 +46,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Private secrets are write-only and revocation cancels dependent loopback work", PrivateSecretContracts),
     ("Private state is host-granted consentless identity-bound and active-lifecycle safe", PrivateStateHostGrantContracts),
     ("Dashboard gesture authority is exact sequence-bound expiring and single-use", DashboardGestureAuthorityIsBounded),
+    ("Wi-Fi management validates consent lifecycle payload and exact routing", WifiManagementContracts),
     ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
     ("Bluetooth read and radio control are opaque granular and lifecycle-gated", BluetoothContracts),
     ("Consent updates are atomic across store instances", ConsentUpdatesAreAtomic),
@@ -426,7 +427,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(39, PlatformCapabilities.All.Count);
+    Assert.Equal(40, PlatformCapabilities.All.Count);
     foreach (var capability in PlatformCapabilities.All)
     {
         Assert.True(capability.Id.EndsWith($".v{capability.Version}", StringComparison.Ordinal));
@@ -2763,6 +2764,47 @@ static async Task AvailableWifiContracts()
     await subscription.DisposeAsync();
 }
 
+static async Task WifiManagementContracts()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var network = new SplitNetworkBackend();
+    await using var backend = new CompositePlatformBrokerBackend(new SimulatedPlatformBrokerBackend(), network);
+    await using var broker = Broker(identity, store, backend, PlatformCapabilities.NetworkWifiManageV1);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var denied = await broker.HandleAsync(Request(identity, PlatformCapabilities.NetworkWifiManageV1,
+        PlatformCapabilities.NetworkWifiProfileForget, new { profileId = "network_home" }));
+    Assert.True(!denied.Succeeded);
+    Assert.Equal(0, network.ManagementCalls.Count);
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkWifiManageV1, ConsentDecision.Grant);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var hidden = await broker.HandleAsync(Request(identity, PlatformCapabilities.NetworkWifiManageV1,
+        PlatformCapabilities.NetworkWifiDisconnect, new { networkId = "wifi_home" }));
+    Assert.Equal("lifecycle_denied", hidden.ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    var malformed = await broker.HandleAsync(Request(identity, PlatformCapabilities.NetworkWifiManageV1,
+        PlatformCapabilities.NetworkWifiAutoConnectSet, new { profileId = "network_home", enabled = false, force = true }));
+    Assert.Equal("invalid_payload", malformed.ErrorCode);
+    var missingBoolean = await broker.HandleAsync(Request(identity, PlatformCapabilities.NetworkWifiManageV1,
+        PlatformCapabilities.NetworkWifiAutoConnectSet, new { profileId = "network_home" }));
+    Assert.Equal("invalid_payload", missingBoolean.ErrorCode);
+    Assert.Equal(0, network.ManagementCalls.Count);
+    foreach (var (operation, payload) in new (string, object)[]
+    {
+        (PlatformCapabilities.NetworkWifiDisconnect, new { networkId = "wifi_home" }),
+        (PlatformCapabilities.NetworkWifiAutoConnectSet, new { profileId = "network_home", enabled = false }),
+        (PlatformCapabilities.NetworkWifiProfileForget, new { profileId = "network_home" }),
+    })
+        Assert.True((await broker.HandleAsync(Request(identity, PlatformCapabilities.NetworkWifiManageV1, operation, payload))).Succeeded);
+    Assert.True(network.ManagementCalls.SequenceEqual(["disconnect:wifi_home", "auto:network_home:False", "forget:network_home"]));
+    await store.SetDecisionAsync(identity, PlatformCapabilities.NetworkWifiManageV1, ConsentDecision.Deny);
+    var revoked = await broker.HandleAsync(Request(identity, PlatformCapabilities.NetworkWifiManageV1,
+        PlatformCapabilities.NetworkWifiProfileForget, new { profileId = "network_home" }));
+    Assert.True(!revoked.Succeeded);
+    Assert.Equal(3, network.ManagementCalls.Count);
+}
+
 static async Task WifiRadioContracts()
 {
     using var temp = new TemporaryDirectory();
@@ -3948,6 +3990,14 @@ sealed class SplitAudioBackend : IAudioPlatformBrokerBackend
 
 sealed class SplitNetworkBackend : INetworkPlatformBrokerBackend
 {
+    public List<string> ManagementCalls { get; } = [];
+    public Task DisconnectWifiAsync(string id, CancellationToken token)
+    { token.ThrowIfCancellationRequested(); ManagementCalls.Add("disconnect:" + id); return Task.CompletedTask; }
+    public Task ForgetWifiProfileAsync(string id, CancellationToken token)
+    { token.ThrowIfCancellationRequested(); ManagementCalls.Add("forget:" + id); return Task.CompletedTask; }
+    public Task SetWifiAutoConnectAsync(string id, bool enabled, CancellationToken token)
+    { token.ThrowIfCancellationRequested(); ManagementCalls.Add($"auto:{id}:{enabled}"); return Task.CompletedTask; }
+
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
     public Task<NetworkStatusSummary> GetNetworkStatusAsync(CancellationToken cancellationToken) =>
         Task.FromResult(TestNetwork.Disconnected());

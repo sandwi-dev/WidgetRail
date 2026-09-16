@@ -25,4 +25,20 @@ internal sealed record NetworkControlsPresentationState(
     string? SelectedNetworkId,
     NetworkControlsTab ActiveTab,
     bool Interactive,
-    WidgetBluetoothDevice? UnpairConfirmationDevice);
+    WidgetBluetoothDevice? UnpairConfirmationDevice)
+{
+    public NetworkWifiManagementState Management { get; init; } = new();
+    public WidgetBluetoothDevice? BluetoothDetails { get; init; }
+}
+
+internal sealed record NetworkWifiManagementState
+{
+    public bool Open { get; init; }
+    public IReadOnlyList<WidgetSavedNetworkProfile> Profiles { get; init; } = [];
+    public string? ProfileId { get; init; }
+    public WidgetAvailableWifiNetwork? Network { get; init; }
+    public bool ConfirmForget { get; init; }
+    public bool Busy { get; init; }
+    public string Message { get; init; } = "Saved networks are remembered by Windows.";
+    public bool IsError { get; init; }
+}

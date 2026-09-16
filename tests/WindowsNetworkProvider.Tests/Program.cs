@@ -4,6 +4,7 @@ using WidgetRail.WindowsNetworkProvider;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Wi-Fi management preserves profiles and rejects stale or protected targets", WifiManagementScenarios.Run),
     ("Construction and subscription are inert", ConstructionIsLazy),
     ("Native interop boundaries retain one lifetime owner", WindowsNetworkNativeAdapterScenarios.NativeLifetimeOwnerIsSingular),
     ("Injected native lifetime recovery and disposal stay singular", WindowsNetworkNativeAdapterScenarios.LifetimeRecoveryAndDisposalAreSingular),
