@@ -7,7 +7,7 @@ community package.
 ## The version a user installs
 
 The **application version** identifies a complete WidgetRail release. Its source
-is `eng/WidgetRailRelease.props`; the current preview is `0.1.0-preview.6`.
+is `eng/WidgetRailRelease.props`; the current preview is `0.1.0-preview.7`.
 Both Production and Developer use this version. Their contents differ, not
 their stability channel.
 
@@ -16,7 +16,7 @@ together. Native and managed product metadata, artifact names, and release
 manifests use the application release settings. Users update by running a newer
 installer; there is no automatic updater.
 
-The Windows numeric file version is `0.1.0.5` for this preview. A source commit
+The Windows numeric file version is `0.1.0.6` for this preview. A source commit
 distinguishes local candidates with the same preview label. Never replace a
 published release's bytes: advance its version before distributing a correction.
 
