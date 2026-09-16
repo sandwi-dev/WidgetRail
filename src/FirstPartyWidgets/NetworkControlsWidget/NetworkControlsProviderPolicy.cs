@@ -77,6 +77,25 @@ internal static class NetworkControlsProviderPolicy
         return snapshot with { CanControlRadio = canControl, Devices = devices };
     }
 
+    internal static WidgetBluetoothSnapshot ReconcileBluetoothResults(
+        WidgetBluetoothSnapshot? previous, WidgetBluetoothSnapshot incoming, bool refreshResults = false)
+    {
+        if (refreshResults || previous is null || previous.DiscoveryState != WidgetBluetoothDiscoveryState.Ready ||
+            incoming.DiscoveryState != WidgetBluetoothDiscoveryState.Ready) return incoming;
+        var current = incoming.Devices.ToDictionary(device => device.DeviceId, StringComparer.Ordinal);
+        var visible = new List<WidgetBluetoothDevice>();
+        foreach (var prior in previous.Devices)
+        {
+            if (current.Remove(prior.DeviceId, out var updated)) visible.Add(updated);
+            else if (!prior.IsPaired)
+                visible.Add(prior with { IsConnected = false, IsPresent = false });
+        }
+        // Paired-device additions/removals are meaningful system changes. Nearby
+        // discovery never inserts or reorders rows outside an explicit scan result.
+        visible.AddRange(incoming.Devices.Where(device => device.IsPaired && current.ContainsKey(device.DeviceId)));
+        return incoming with { Devices = visible.Take(64).ToArray() };
+    }
+
     internal static NetworkControlsSelection ReconcileWifiSelection(
         WidgetAvailableWifiNetworks? wifi,
         WidgetNetworkStatus? status,

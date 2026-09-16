@@ -358,6 +358,49 @@ internal static class WindowsNetworkNativeAdapterScenarios
         return Task.CompletedTask;
     }
 
+    public static Task ProtectedPasswordConnectsAndKeepsItsTarget()
+    {
+        foreach (var refreshProfile in new[] { false, true })
+        {
+            using var calls = ControlledNetworkNativeCalls.CreateDefault();
+            using var adapter = new WindowsNetworkNativeAdapter(91, calls);
+            var ssid = Encoding.UTF8.GetBytes("New network");
+            calls.AvailableNetworks = [ControlledNetworkNativeCalls.AvailableNetwork("", ssid, (uint)ssid.Length,
+                securityEnabled: true, authentication: 7, cipher: 4)];
+            adapter.TryStartWifiScan();
+            calls.FireScanComplete(calls.InterfaceId);
+            var initial = Assert.Single(adapter.ReadAvailableWifiSnapshot().Networks);
+            var secret = Secret(12, 2);
+            Assert.Equal(NativeProtectedWifiConnectStartResult.Started,
+                adapter.TryConnectProtectedWifiNetwork(initial.NativeNetworkKey, secret));
+            Array.Clear(secret);
+            Assert.Equal(1, calls.ConnectRequests.Count);
+            var createdProfile = calls.SetProfileRequests.Single().ProfileName;
+            Assert.Equal(createdProfile, calls.ConnectRequests.Single().Request.Profile);
+            if (refreshProfile)
+            {
+                var saved = ControlledNetworkNativeCalls.AvailableNetwork(createdProfile, ssid, (uint)ssid.Length,
+                    securityEnabled: true, authentication: 7, cipher: 4);
+                saved.Flags = 2; // Profile was saved; connection is still completing.
+                calls.AvailableNetworks = [saved];
+                var changed = new WlanNotificationData { NotificationSource = 8, NotificationCode = 15, InterfaceGuid = calls.InterfaceId };
+                calls.WlanCallback!(ref changed, IntPtr.Zero);
+                Assert.Equal(initial.NativeNetworkKey, Assert.Single(adapter.ReadAvailableWifiSnapshot().Networks).NativeNetworkKey);
+            }
+            calls.FireConnectionComplete(calls.InterfaceId, createdProfile, ssid);
+            var connected = Assert.Single(adapter.ReadAvailableWifiSnapshot().Networks);
+            Assert.Equal(initial.NativeNetworkKey, connected.NativeNetworkKey);
+            if (!connected.IsConnected || !connected.HasSavedProfile || connected.CredentialRequired)
+                throw new InvalidOperationException("A completed password connection was left as merely saved or still requiring credentials.");
+            Assert.Equal(1, calls.ConnectRequests.Count);
+            adapter.TryStartWifiScan();
+            calls.FireScanComplete(calls.InterfaceId);
+            if (Assert.Single(adapter.ReadAvailableWifiSnapshot().Networks).NativeNetworkKey == initial.NativeNetworkKey)
+                throw new InvalidOperationException("A new scan reused a retired target.");
+        }
+        return Task.CompletedTask;
+    }
+
     public static Task ProtectedProfileRollbackIsExact()
     {
         using var calls = ControlledNetworkNativeCalls.CreateDefault();

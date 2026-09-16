@@ -20,6 +20,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Explicit scan is controller initiated and reconciles provider events", ExplicitScan),
     ("Wi-Fi management requires confirmation and reconciles real state", WifiManagement),
     ("Late saved-network reads cannot reopen a retired widget view", SavedNetworkLifetime),
+    ("Bluetooth view publishes discovered arrivals only after explicit scan completion", BluetoothScanPublishesOnce),
+    ("Nearby Bluetooth results stay stable while known status changes stay live", StableBluetoothResults),
     ("Bluetooth scanning is explicit and canceled on leaving interactive", BluetoothScanning),
     ("Bluetooth primary action opens options without removing the pairing", BluetoothOptions),
     ("Connection details use scrollable full-width wrapping values", ConnectionDetailsLayout),
@@ -314,6 +316,46 @@ static async Task SavedNetworkLifetime()
     Assert.True(!Nodes(Snapshot(widget, 4).Root).Any(node => node.Id == "network.manage.root"),
         "A stale read reopened the management page after lifecycle changed.");
     await Background(widget);
+}
+
+static async Task BluetoothScanPublishesOnce()
+{
+    var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
+    fake.Bluetooth = new(WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready,
+        [new("b", "Headset", true, false, true), new("c", "Controller", false, false, true)]);
+    var widget = Create(fake);
+    await ActivateInteractive(widget);
+    await WaitUntil(() => widget.Bluetooth?.Devices.Count == 2);
+    var arrived = fake.Bluetooth with { Devices = [new("a", "Arrival", false, false, true),
+        new("c", "Controller", true, true, true), new("b", "Headset", true, false, true)] };
+    fake.EmitBluetooth(arrived);
+    await WaitUntil(() => widget.Bluetooth!.Devices.Any(device => device.DeviceId == "c" && device.IsConnected));
+    Assert.SequenceEqual(new[] { "b", "c" }, widget.Bluetooth!.Devices.Select(device => device.DeviceId));
+    Assert.Equal(0, fake.BluetoothScanCalls);
+    await widget.OnActionAsync(new("bluetooth.scan", "network.bluetooth.scan"));
+    await fake.BluetoothScanStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(2, widget.Bluetooth.Devices.Count);
+    fake.BluetoothScanRelease.TrySetResult();
+    await WaitUntil(() => widget.Bluetooth!.Devices.Count == 3);
+    Assert.SequenceEqual(new[] { "a", "c", "b" }, widget.Bluetooth!.Devices.Select(device => device.DeviceId));
+    await Background(widget);
+}
+
+static Task StableBluetoothResults()
+{
+    var first = new WidgetBluetoothSnapshot(WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready,
+        [new("b", "Headset", true, false, true), new("c", "Controller", false, false, true)]);
+    var latest = first with { Devices = [new("a", "New arrival", false, false, true),
+        new("c", "Controller", true, true, true), new("b", "Headset", true, false, true)] };
+    var retained = NetworkControlsProviderPolicy.ReconcileBluetoothResults(first, latest);
+    Assert.SequenceEqual(new[] { "b", "c" }, retained.Devices.Select(device => device.DeviceId));
+    Assert.True(retained.Devices[1].IsPaired && retained.Devices[1].IsConnected);
+    var refresh = NetworkControlsProviderPolicy.ReconcileBluetoothResults(retained, latest, refreshResults: true);
+    Assert.SequenceEqual(new[] { "a", "c", "b" }, refresh.Devices.Select(device => device.DeviceId));
+    var departed = NetworkControlsProviderPolicy.ReconcileBluetoothResults(first, first with { Devices = [] });
+    Assert.Equal("c", departed.Devices.Single().DeviceId);
+    Assert.True(!departed.Devices.Single().IsPresent);
+    return Task.CompletedTask;
 }
 
 static async Task BluetoothScanning()
@@ -1549,11 +1591,12 @@ file sealed class FakeNetworkHost
     public int BluetoothScanCalls { get; private set; }
     public bool BluetoothScanCanceled { get; private set; }
     public TaskCompletionSource BluetoothScanStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource BluetoothScanRelease { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private async ValueTask<WidgetCapabilityAcknowledgement> ScanBluetoothAsync(WidgetCapabilityQuery request, CancellationToken token)
     {
         BluetoothScanCalls++;
         BluetoothScanStarted.TrySetResult();
-        try { await Task.Delay(Timeout.Infinite, token); }
+        try { await BluetoothScanRelease.Task.WaitAsync(token); }
         catch (OperationCanceledException) { BluetoothScanCanceled = true; throw; }
         return new(true);
     }

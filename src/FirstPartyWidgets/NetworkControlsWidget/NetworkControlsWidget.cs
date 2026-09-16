@@ -706,7 +706,7 @@ public sealed class NetworkControlsWidget : Widget
         }
     }
 
-    private void ApplyBluetooth(WidgetBluetoothSnapshot incoming, long generation)
+    private void ApplyBluetooth(WidgetBluetoothSnapshot incoming, long generation, bool refreshResults = false)
     {
         var snapshot = NetworkControlsProviderPolicy.Normalize(incoming);
         lock (_stateLock)
@@ -718,7 +718,7 @@ public sealed class NetworkControlsWidget : Widget
                 current == guidance;
             var preserveOperationMessage = _pendingBluetoothDeviceId is not null || _bluetoothScanBusy;
             _authoritativeBluetooth = snapshot;
-            _bluetooth = snapshot;
+            _bluetooth = NetworkControlsProviderPolicy.ReconcileBluetoothResults(_bluetooth, snapshot, refreshResults);
             if (_unpairConfirmationDevice is { } confirmation &&
                 snapshot.Devices.FirstOrDefault(device => string.Equals(
                     device.DeviceId, confirmation.DeviceId, StringComparison.Ordinal)) is not
@@ -734,7 +734,7 @@ public sealed class NetworkControlsWidget : Widget
                     WidgetBluetoothDiscoveryState.Enumerating => "Discovering devices…",
                     WidgetBluetoothDiscoveryState.Unavailable => "Device discovery unavailable",
                     _ when snapshot.Devices.Count == 0 => "No paired or nearby devices",
-                    _ => $"{snapshot.Devices.Count} paired or nearby",
+                    _ => $"{_bluetooth.Devices.Count} paired or nearby",
                 };
             }
             ReconcileBluetoothSelectionLocked();
@@ -980,7 +980,13 @@ public sealed class NetworkControlsWidget : Widget
         var scan = Operations.RunLatest("bluetooth.scan", async operation =>
         {
             string? error = null;
-            try { await HostServices.Network.RequestBluetoothScanAsync(operation.CancellationToken).ConfigureAwait(false); }
+            try
+            {
+                await HostServices.Network.RequestBluetoothScanAsync(operation.CancellationToken).ConfigureAwait(false);
+                Interlocked.Increment(ref _bluetoothFetchCount);
+                var results = await HostServices.Network.GetBluetoothAsync(operation.CancellationToken).ConfigureAwait(false);
+                if (operation.IsCurrent) ApplyBluetooth(results, generation, refreshResults: true);
+            }
             catch (OperationCanceledException) when (operation.CancellationToken.IsCancellationRequested) { }
             catch (WidgetCapabilityException exception)
             {
@@ -1086,7 +1092,7 @@ public sealed class NetworkControlsWidget : Widget
             lock (_stateLock)
             {
                 device = BluetoothDeviceFromElementIdLocked(sourceElementId);
-                if (device is null || device.IsPaired || _bluetoothBusy) return;
+                if (device is null || device.IsPaired || !device.IsPresent || _bluetoothBusy) return;
                 generation = _runGeneration;
                 _selectedBluetoothDeviceId = device.DeviceId;
                 _selectedBluetoothIndex = NetworkControlsProviderPolicy.IndexOf(
@@ -1361,7 +1367,8 @@ public sealed class NetworkControlsWidget : Widget
         lock (_stateLock)
         {
             if (_runGeneration != generation) return;
-            _bluetooth = _authoritativeBluetooth;
+            _bluetooth = _authoritativeBluetooth is null ? null :
+            NetworkControlsProviderPolicy.ReconcileBluetoothResults(_bluetooth, _authoritativeBluetooth);
             _bluetoothBusy = false;
             _pendingBluetoothDeviceId = null;
             _bluetoothGuidanceDevice = null;
@@ -1377,7 +1384,8 @@ public sealed class NetworkControlsWidget : Widget
             if (_runGeneration != generation) return;
             _bluetoothBusy = false;
             _pendingBluetoothDeviceId = null;
-            _bluetooth = _authoritativeBluetooth;
+            _bluetooth = _authoritativeBluetooth is null ? null :
+            NetworkControlsProviderPolicy.ReconcileBluetoothResults(_bluetooth, _authoritativeBluetooth);
             _bluetoothMessage = message;
             _bluetoothIsError = true;
         }
@@ -1598,7 +1606,8 @@ public sealed class NetworkControlsWidget : Widget
             ? null : CloneDetails(_authoritativeConnectionDetails);
         _wifiSnapshot = _authoritativeWifiSnapshot;
         _wifiRadio = _authoritativeWifiRadio;
-        _bluetooth = _authoritativeBluetooth;
+        _bluetooth = _authoritativeBluetooth is null ? null :
+            NetworkControlsProviderPolicy.ReconcileBluetoothResults(_bluetooth, _authoritativeBluetooth);
         _pendingNetworkId = null;
         _controlBusy = false;
         _scanBusy = _wifiSnapshot?.ScanState == WidgetWifiScanState.Scanning;

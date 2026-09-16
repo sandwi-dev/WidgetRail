@@ -557,7 +557,7 @@ internal static class NetworkControlsPresentation
             var device = devices[index];
             var id = ids[index];
             var deviceState = device.IsConnected
-                ? "CONNECTED" : device.IsPaired ? "PAIRED" : "NEARBY";
+                ? "CONNECTED" : device.IsPaired ? "PAIRED" : device.IsPresent ? "NEARBY" : "UNAVAILABLE";
             var detail = BluetoothDeviceDetail(device);
             var isPending = string.Equals(
                 device.DeviceId, state.PendingBluetoothDeviceId, StringComparison.Ordinal);
@@ -565,12 +565,13 @@ internal static class NetworkControlsPresentation
                 ? "bluetooth.device.details" : "bluetooth.device.pair";
             var actionLabel = device.IsPaired
                 ? "Press A for device options. Press X to manage in Windows Bluetooth Settings"
-                : "Press A to pair. Press X if Windows interaction is required";
+                : device.IsPresent ? "Press A to pair. Press X if Windows interaction is required" : "Scan again to find this device";
             var button = UI.Button(device.DisplayName, actionId, id)
                 .Icon(WidgetGlyph.Connection,
                     $"{device.DisplayName}. {deviceState}. {detail}. {actionLabel}")
                 .Shortcut(ControllerButton.X, actionId: "bluetooth.device.manage", label: "Manage device")
                 .Busy(isPending)
+                .Disabled(!device.IsPaired && !device.IsPresent)
                 .FocusUp(index == 0 ? "network.bluetooth.scan" : ids[index - 1])
                 .FocusLeft(id)
                 .FocusRight(id)
@@ -625,7 +626,7 @@ internal static class NetworkControlsPresentation
                 ? device.IsPresent
                     ? "Paired · press A for device options"
                     : "Paired · not currently nearby · press A for device options"
-                : "Nearby · press A to pair";
+                : device.IsPresent ? "Nearby · press A to pair" : "Not currently nearby · scan again";
 
     private static string ScanSummary(WidgetAvailableWifiNetworks wifi) =>
         wifi.ScanState switch

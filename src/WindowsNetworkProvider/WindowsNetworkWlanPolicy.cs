@@ -171,6 +171,13 @@ internal sealed class WindowsNetworkWlanPolicy
             return new(generation, state, _cachedAvailableNetworks.ToArray());
         if (state != NativeWifiScanState.Ready) return new(generation, state, []);
 
+        // Profile notifications may refresh the saved/credential flags while a
+        // connection is in flight. Keep its target stable until the next scan;
+        // StartScan clears this map before admitting new scan results.
+        var previousTargets = _connectableNetworks.ToDictionary(
+            entry => AvailableNetworkDeduplicationKey(entry.Value.InterfaceId, entry.Value.Ssid,
+                entry.Value.AuthenticationAlgorithm, entry.Value.CipherAlgorithm),
+            entry => entry.Key, StringComparer.Ordinal);
         var networks = new List<NativeAvailableWifiNetwork>();
         var targets = new Dictionary<string, NativeAvailableNetworkTarget>(StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -203,7 +210,8 @@ internal sealed class WindowsNetworkWlanPolicy
                     item.AuthenticationAlgorithm,
                     item.CipherAlgorithm);
                 if (!seen.Add(deduplicationKey)) continue;
-                var nativeKey = $"wifi_native_{Guid.NewGuid():N}";
+                var nativeKey = previousTargets.TryGetValue(deduplicationKey, out var retainedKey)
+                    ? retainedKey : $"wifi_native_{Guid.NewGuid():N}";
                 var security = ClassifySecurity(item.SecurityEnabled, item.AuthenticationAlgorithm);
                 var credentialRequired = !connected && !hasProfile && item.SecurityEnabled;
                 targets.Add(nativeKey, new(
@@ -448,15 +456,21 @@ internal sealed class WindowsNetworkWlanPolicy
             }
             if (matchedPending is not null &&
                 data.NotificationCode == WlanNotificationAcmConnectionComplete)
-                _cachedAvailableNetworks = _cachedAvailableNetworks
-                    .Select(network => network with
+            {
+                _cachedAvailableNetworks = _cachedAvailableNetworks.Select(network =>
+                {
+                    var connected = network.NativeNetworkKey == matchedPending.NativeKey;
+                    return network with
                     {
-                        IsConnected = string.Equals(
-                            network.NativeNetworkKey,
-                            matchedPending.NativeKey,
-                            StringComparison.Ordinal),
-                    })
-                    .ToArray();
+                        IsConnected = connected,
+                        CredentialRequired = connected ? false : network.CredentialRequired,
+                        HasSavedProfile = network.HasSavedProfile || connected && !string.IsNullOrEmpty(matchedPending.ProfileName),
+                    };
+                }).ToArray();
+                if (_connectableNetworks.TryGetValue(matchedPending.NativeKey, out var target))
+                    _connectableNetworks[matchedPending.NativeKey] = target with
+                    { CredentialRequired = false, ProfileName = matchedPending.ProfileName ?? target.ProfileName };
+            }
             if (matchedPending is not null)
             {
                 if (matchedPending is { CreatedProfile: true } &&

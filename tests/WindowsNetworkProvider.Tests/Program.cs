@@ -15,6 +15,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Connectivity and native buffers remain bounded", WindowsNetworkNativeAdapterScenarios.ConnectivityAndNativeBuffersAreBounded),
     ("Preferred connection details are bounded and ambiguity is explicit", WindowsNetworkNativeAdapterScenarios.ConnectionDetailsArePrivacyBounded),
     ("Scan and connect callbacks retain the adapter generation", WindowsNetworkNativeAdapterScenarios.ScanAndConnectCallbacksAreGenerationBound),
+    ("Password submission connects once and survives profile-change notifications", WindowsNetworkNativeAdapterScenarios.ProtectedPasswordConnectsAndKeepsItsTarget),
     ("Protected native profile creation rolls back only its failed generation", WindowsNetworkNativeAdapterScenarios.ProtectedProfileRollbackIsExact),
     ("Radio rollback uses one injected native transaction", WindowsNetworkNativeAdapterScenarios.RadioRollbackUsesOneInjectedTransaction),
     ("Command policy owns typed native operation results", WindowsNetworkPolicyScenarios.CommandResultsAreClosed),
