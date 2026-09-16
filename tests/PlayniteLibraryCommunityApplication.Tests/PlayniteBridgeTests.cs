@@ -297,7 +297,8 @@ public sealed class PlayniteBridgeTests
         var value = manifest.RootElement;
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("0.2.74", value.GetProperty("version").GetString());
+        Assert.IsTrue(Version.TryParse(value.GetProperty("version").GetString(), out _),
+            "The package must declare a valid version; its patch number is not a trust boundary.");
         var presentation = value.GetProperty("presentation");
         Assert.AreEqual("play", presentation.GetProperty("icon").GetString());
         var packageIcon = presentation.GetProperty("packageIcon");

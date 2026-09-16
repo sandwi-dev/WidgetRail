@@ -112,8 +112,9 @@ public sealed class PlayniteLibraryTests
         Assert.IsFalse(Nodes(header).Any(node => node.IsFocusable));
         Assert.IsTrue(Nodes(snapshot.Root).Any(node => node.Id == snapshot.InitialFocusId && node.ActionId == PlayniteLibraryActions.Launch));
         var before = host.Queries.Count;
+        host.NextQueryStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Assert.IsTrue(await Route(widget, snapshot, ControllerButton.Y, snapshot.InitialFocusId!));
-        await WaitUntil(() => host.Queries.Count > before);
+        await Bounded(host.NextQueryStarted.Task, "Y refresh provider query");
         await Bounded(widget.WhenLibraryIdleAsync(), "Y refresh");
         Assert.AreEqual(before + 1, host.Queries.Count);
         await Background(widget);
@@ -4082,16 +4083,6 @@ public sealed class PlayniteLibraryTests
             "playnite-library-browse-surface", StringComparer.Ordinal);
     }
 
-    private static async Task WaitUntil(Func<bool> predicate)
-    {
-        for (var attempt = 0; attempt < 20_000; attempt++)
-        {
-            if (predicate()) return;
-            await Task.Yield();
-        }
-        Assert.Fail("Condition did not become true.");
-    }
-
     private static ValueTask<bool> Route(
         LauncherWidget widget,
         ViewSnapshot snapshot,
@@ -4421,6 +4412,7 @@ public sealed class PlayniteLibraryTests
         internal List<ConfirmWidgetRunningAppRequest> RunningConfirmations { get; } = [];
         internal TaskCompletionSource FirstQueryStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource? NextQueryStarted { get; set; }
 
         internal FakeHost(int count, WidgetTestPrivateState? state = null)
         {
@@ -4459,6 +4451,7 @@ public sealed class PlayniteLibraryTests
 
             FirstQueryStarted.TrySetResult();
             Queries.Add(request);
+            NextQueryStarted?.TrySetResult();
             var source = Enumerable.Range(0, _count)
                 .Select(index => (Index: index, Item: ItemFactory(index)));
             var authority = _authority.Value;
@@ -4688,6 +4681,7 @@ public sealed class PlayniteLibraryTests
             token.ThrowIfCancellationRequested();
             FirstQueryStarted.TrySetResult();
             Queries.Add(request);
+            NextQueryStarted?.TrySetResult();
             if (QueryHandler is not null) return QueryHandler(request, token);
             var offset = request.Cursor is null ? 0 : int.Parse(
                 request.Cursor.AsSpan(request.Cursor.LastIndexOf('.') + 1),

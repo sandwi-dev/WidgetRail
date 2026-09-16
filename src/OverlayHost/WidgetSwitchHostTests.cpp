@@ -130,6 +130,18 @@ public:
                  fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         localAppData_ = root_ / L"local-app-data";
         fs::create_directories(localAppData_ / L"WidgetRail");
+        // These scenarios exercise rail preview and Back-to-tray retention.
+        // Keep their layout explicit when the new-install default changes.
+        WriteUtf8(localAppData_ / L"WidgetRail" / L"platform-settings.json", R"json({
+            "schemaVersion": 3,
+            "appearance": {
+                "themeId": "widgetrail.builtin.neon-circuit", "themeVersion": "1.0.0",
+                "interfaceScale": 1, "textScale": 1, "backdropOpacity": 0.64,
+                "motion": "system", "contrast": "system", "boldText": true,
+                "transparency": "full", "animateWidgetSwitching": true,
+                "widgetSwitcher": "rail"
+            }
+        })json");
         readyPath_ = root_ / L"host-ready.txt";
         startupSignalRoot_ = root_ / L"startup-signals";
         fs::create_directories(startupSignalRoot_);
@@ -3734,12 +3746,8 @@ void RunRetentionScenario(const Arguments& arguments) {
     FenceWindow(window);
 
     const auto ordinaryRefreshBefore = ReadUtf8(logPath).size();
-    const auto ordinaryRefreshEpoch = blockSnapshot();
-    const auto ordinaryBlockedRenderSequence =
-        installation->BlockedSnapshotSequence(ordinaryRefreshEpoch);
-    const auto handshakeLog = ReadUtf8(logPath).substr(ordinaryRefreshBefore);
-    Require(handshakeLog.find("kind=lifecycle") == std::string::npos,
-            "Ready-action block handshake introduced a lifecycle transition; log=" + handshakeLog);
+    // Establish the accepted frame and geometry before starting the bounded
+    // blocked request. Log/geometry waits here must not consume its deadline.
     const auto settingsAfterEnterSequence = ParsePositiveSequence(
         TextField(settingsAfterEnter, "sequence="));
     std::string readyActionCurrent;
@@ -3778,9 +3786,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                 return false;
             });
     Require(readyActionCurrentObserved,
-            "Blocked refresh did not retain its exact accepted Current paint; "
-            "blocked-render-sequence=" +
-                std::to_string(ordinaryBlockedRenderSequence) + " log=" +
+            "Refresh precondition did not retain its exact accepted Current paint; log=" +
                 ReadUtf8(logPath).substr(ordinaryRefreshBefore));
     requireCurrentPresentationCompletion(
         enterFromTrayBefore, readyActionCurrent, kTargets.back().id,
@@ -3795,11 +3801,6 @@ void RunRetentionScenario(const Arguments& arguments) {
             L"Ready-triggered Current before stable retained interval");
     }
     FenceWindow(window);
-    {
-        std::error_code ignored;
-        Require(!fs::exists(installation->BlockedSnapshotComplete(), ignored),
-                "Stable retained boundary waited for the blocked replacement to complete");
-    }
     auto blockedRefreshBefore = ReadUtf8(logPath).size();
     std::string fallbackBlockedCheckpoint;
     if (!*interactiveMode) {
@@ -3870,8 +3871,16 @@ void RunRetentionScenario(const Arguments& arguments) {
         blockedRefreshBefore = ReadUtf8(logPath).size();
     }
     FenceWindow(window);
+    const auto ordinaryRefreshEpoch = blockSnapshot();
+    const auto blockedSnapshotObservedAt = GetTickCount64();
+    const auto handshakeLog = ReadUtf8(logPath).substr(ordinaryRefreshBefore);
+    Require(handshakeLog.find("kind=lifecycle") == std::string::npos,
+            "Ready-action block handshake introduced a lifecycle transition; log=" + handshakeLog);
+    blockedRefreshBefore = ReadUtf8(logPath).size();
     std::string retainedInteractiveUiDiagnostic{"not-observed"};
+    std::string firstRetainedUiDiagnostic;
     const bool retainedInteractiveUiReady = WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto queryStartedAt = GetTickCount64();
                 ComPtr<IUIAutomationElement> contentRoot;
                 const bool contentRootReady = SUCCEEDED(automation->ElementFromHandle(
                     window, contentRoot.GetAddressOf())) && contentRoot;
@@ -3892,6 +3901,11 @@ void RunRetentionScenario(const Arguments& arguments) {
                     "/" + (readyFocused ? "focused" : "unfocused") +
                     " focused-id=" + (focusedReady
                         ? AutomationIdOf(focused.Get()) : "unavailable");
+                if (firstRetainedUiDiagnostic.empty()) {
+                    firstRetainedUiDiagnostic = retainedInteractiveUiDiagnostic +
+                        " elapsed-since-block-ms=" + std::to_string(queryStartedAt - blockedSnapshotObservedAt) +
+                        " query-ms=" + std::to_string(GetTickCount64() - queryStartedAt);
+                }
                 return contentRootReady && readyPresent && readyEnabled &&
                     readyFocused && focusedReady &&
                     AutomationIdOf(focused.Get()) == "widget:settings-ready";
@@ -3902,6 +3916,7 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(retainedInteractiveUiReady,
             "Stable RefreshRetained did not preserve exact Interactive Settings "
             "UIA/action authority; ui=" + retainedInteractiveUiDiagnostic +
+                "; first-ui=" + firstRetainedUiDiagnostic +
                 "; host-log=" + retainedUiLog.substr(retainedUiLogStart));
     const auto readyActionCurrentSequence = ParsePositiveSequence(
         TextField(readyActionCurrent, "sequence="));
@@ -4248,109 +4263,16 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(bridgeBeforeSelection.size() == 1,
             "Slow-worker scenario did not begin with one authoritative bridge process");
 
-    {
-        ComPtr<IUIAutomationElement> contentRoot;
-        Require(SUCCEEDED(automation->ElementFromHandle(
-                    window, contentRoot.GetAddressOf())) && contentRoot,
-                "Blocked Settings route lacked a current content root before Back");
-        const auto back = FindAutomationElement(
-            automation.Get(), contentRoot.Get(), L"host:host.open.back");
-        Require(back && IsEnabled(back.Get()),
-                "Blocked Settings route lacked exact enabled host Back authority");
-        ComPtr<IUIAutomationInvokePattern> invoke;
-        Require(SUCCEEDED(back->GetCurrentPatternAs(
-                    UIA_InvokePatternId, IID_PPV_ARGS(invoke.GetAddressOf()))) && invoke,
-                "Blocked Settings host Back authority lacked InvokePattern");
-        Require(SUCCEEDED(invoke->Invoke()),
-                "Blocked Settings exact host Back invocation failed");
-    }
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                ComPtr<IUIAutomationElement> contentRoot;
-                if (FAILED(automation->ElementFromHandle(
-                        window, contentRoot.GetAddressOf())) || !contentRoot) return false;
-                const auto tray = FindAutomationElement(
-                    automation.Get(), contentRoot.Get(), L"tray:tray.settings");
-                const auto ready = FindAutomationElement(
-                    automation.Get(), contentRoot.Get(), L"widget:settings-ready");
-                return tray && IsSelectionItemSelected(tray.Get()) &&
-                    IsKeyboardFocused(tray.Get()) &&
-                    (!ready || !IsKeyboardFocused(ready.Get()));
-            }), "Blocked Settings route did not return to exact selected/focused tray authority before selection-away");
-    {
-        const HWND trayWindow = *interactiveMode
-            ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
-            : window;
-        Require(trayWindow && IsWindow(trayWindow) != FALSE,
-                "Blocked Settings setup lacked its mode-authoritative tray HWND");
-        ComPtr<IUIAutomationElement> trayRoot;
-        Require(SUCCEEDED(automation->ElementFromHandle(
-                    trayWindow, trayRoot.GetAddressOf())) && trayRoot,
-                "Blocked Settings setup lacked its mode-authoritative tray root");
-        const auto settingsTray = FindAutomationElement(
-            automation.Get(), trayRoot.Get(), L"tray:tray.settings");
-        Require(settingsTray && IsSelectionItemSelected(settingsTray.Get()) &&
-                    IsKeyboardFocused(settingsTray.Get()) && IsEnabled(settingsTray.Get()),
-                "Blocked Settings setup lost exact selected/focused Settings tray authority");
-        ComPtr<IUIAutomationInvokePattern> invoke;
-        Require(SUCCEEDED(settingsTray->GetCurrentPatternAs(
-                    UIA_InvokePatternId, IID_PPV_ARGS(invoke.GetAddressOf()))) && invoke,
-                "Blocked Settings setup tray authority lacked InvokePattern");
-        Require(SUCCEEDED(invoke->Invoke()),
-                "Blocked Settings setup exact tray invocation failed");
-    }
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                ComPtr<IUIAutomationElement> contentRoot;
-                if (FAILED(automation->ElementFromHandle(
-                        window, contentRoot.GetAddressOf())) || !contentRoot) return false;
-                const auto ready = FindAutomationElement(
-                    automation.Get(), contentRoot.Get(), L"widget:settings-ready");
-                return ready && IsEnabled(ready.Get()) && IsKeyboardFocused(ready.Get());
-            }), "Blocked Settings setup did not restore exact Ready widget focus");
     const auto selectionRevokedEpoch = blockSnapshot();
     const auto selectionRevokedSequence = installation->BlockedSnapshotSequence(selectionRevokedEpoch);
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                ComPtr<IUIAutomationElement> contentRoot;
-                if (FAILED(automation->ElementFromHandle(
-                        window, contentRoot.GetAddressOf())) || !contentRoot) return false;
-                const auto back = FindAutomationElement(
-                    automation.Get(), contentRoot.Get(), L"host:host.open.back");
-                return back && IsEnabled(back.Get());
-            }), "Blocked Settings route did not publish exact non-current host Back authority");
-    {
-        ComPtr<IUIAutomationElement> contentRoot;
-        Require(SUCCEEDED(automation->ElementFromHandle(
-                    window, contentRoot.GetAddressOf())) && contentRoot,
-                "Blocked Settings route lost its content root before host Back");
-        const auto back = FindAutomationElement(
-            automation.Get(), contentRoot.Get(), L"host:host.open.back");
-        Require(back && IsEnabled(back.Get()),
-                "Blocked Settings route lost exact non-current host Back authority");
-        ComPtr<IUIAutomationInvokePattern> invoke;
-        Require(SUCCEEDED(back->GetCurrentPatternAs(
-                    UIA_InvokePatternId, IID_PPV_ARGS(invoke.GetAddressOf()))) && invoke,
-                "Blocked Settings non-current host Back lacked InvokePattern");
-        Require(SUCCEEDED(invoke->Invoke()),
-                "Blocked Settings exact non-current host Back invocation failed");
-    }
+    // Select the successor through the host-owned tray action directly. Back
+    // changes Interactive to Visible and would revoke this snapshot before the
+    // selection-away observation boundary, making the later check race it.
     const HWND blockedTrayWindow = *interactiveMode
         ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
         : window;
     Require(blockedTrayWindow && IsWindow(blockedTrayWindow) != FALSE,
             "Blocked Settings route lacked its mode-authoritative tray HWND");
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                const HWND trayWindow = *interactiveMode
-                    ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
-                    : window;
-                if (!trayWindow || trayWindow != blockedTrayWindow ||
-                    IsWindow(trayWindow) == FALSE) return false;
-                ComPtr<IUIAutomationElement> trayRoot;
-                if (FAILED(automation->ElementFromHandle(
-                        trayWindow, trayRoot.GetAddressOf())) || !trayRoot) return false;
-                const auto tray = FindAutomationElement(
-                    automation.Get(), trayRoot.Get(), L"tray:tray.settings");
-                return tray && IsSelectionItemSelected(tray.Get()) &&
-                    IsKeyboardFocused(tray.Get());
-            }), "Blocked Settings request disturbed exact selected/focused mode-authoritative tray authority");
     const auto blockedBefore = ReadUtf8(logPath).size();
     const auto blockedNavigationStarted = std::chrono::steady_clock::now();
     {

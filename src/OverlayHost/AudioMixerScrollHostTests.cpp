@@ -801,6 +801,11 @@ void RunScenario(
             installation.SnapshotPath(),
             installation.ScrollEvidencePath(), evidence);
     } catch (...) {
+        const auto scrollFailure = ReadUtf8(installation.ScrollEvidencePath());
+        const auto hostFailure = ReadUtf8(installation.LocalAppData() / L"WidgetRail" / L"overlay.log");
+        std::cerr << "AudioMixerScroll failure scroll evidence: " << scrollFailure << '\n'
+            << "AudioMixerScroll failure host tail: "
+            << hostFailure.substr(hostFailure.size() > 12000 ? hostFailure.size()-12000 : 0) << '\n';
         evidence.Diagnostic(
             L"live-four-scroll", ReadUtf8(installation.ScrollEvidencePath()));
         evidence.Diagnostic(

@@ -199,17 +199,46 @@ public:
                  fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         localAppData_ = root_ / L"local-app-data";
         fs::create_directories(localAppData_);
+        // This scenario tests rail feedback, including Back-to-tray then
+        // Back-to-hide. Select that mode explicitly instead of depending on
+        // the first-install default (which now includes the radial chooser).
+        fs::create_directories(localAppData_ / L"WidgetRail");
+        WriteUtf8(localAppData_ / L"WidgetRail" / L"platform-settings.json", R"json({
+            "schemaVersion": 3,
+            "appearance": {
+                "themeId": "widgetrail.builtin.neon-circuit", "themeVersion": "1.0.0",
+                "interfaceScale": 1, "textScale": 1, "backdropOpacity": 0.64,
+                "motion": "system", "contrast": "system", "boldText": true,
+                "transparency": "full", "animateWidgetSwitching": true,
+                "widgetSwitcher": "rail"
+            }
+        })json");
 
         const fs::path style = root_ / L"runtime" / L"action-failure-fixture.wrss";
         WriteUtf8(style,
                   ".ytmusic-fixture { padding: 16px; gap: 8px; }\n"
                   "button:focused { outline-width: 3px; }\n");
 
+        // Start on Settings so the failure fixture starts only when selected.
         const std::string catalog =
             "{\n"
             "  \"catalogVersion\": 1,\n"
             "  \"genericWorkerExecutable\": \"runtime/WidgetWorkerHost/WidgetWorkerHost.exe\",\n"
             "  \"widgets\": [{\n"
+            "    \"id\": \"settings\",\n"
+            "    \"packageId\": \"widgetrail.firstparty.settings\",\n"
+            "    \"publisherId\": \"widgetrail.firstparty\",\n"
+            "    \"name\": \"Settings\",\n"
+            "    \"instanceId\": \"settings.default\",\n"
+            "    \"icon\": \"settings\",\n"
+            "    \"workerExecutable\": \"runtime/Settings/SettingsWidget.Worker.exe\",\n"
+            "    \"styleFile\": \"runtime/Settings/styles/default.wrss\",\n"
+            "    \"memoryLimitMb\": 48,\n"
+            "    \"residencyPolicy\": { \"schemaVersion\": 1, \"mode\": \"suspend-when-hidden\" },\n"
+            "    \"workerArguments\": [\"--bundled-widget-root\", \"..\"],\n"
+            "    \"declaredCapabilities\": [],\n"
+            "    \"quickActions\": []\n"
+            "  }, {\n"
             "    \"id\": \"ytmusic-fixture\",\n"
             "    \"packageId\": \"widgetrail.tests.ytmusic-fixture\",\n"
             "    \"publisherId\": \"widgetrail.tests\",\n"
@@ -222,20 +251,6 @@ public:
             "    \"residencyPolicy\": { \"schemaVersion\": 1, \"mode\": \"keep-alive\" },\n"
             "    \"workerArguments\": [\"--fail-once\", \"" +
                 JsonEscape((root_ / L"worker-failed-once.marker").wstring()) + "\"],\n"
-            "    \"declaredCapabilities\": [],\n"
-            "    \"quickActions\": []\n"
-            "  }, {\n"
-            "    \"id\": \"settings\",\n"
-            "    \"packageId\": \"widgetrail.firstparty.settings\",\n"
-            "    \"publisherId\": \"widgetrail.firstparty\",\n"
-            "    \"name\": \"Settings\",\n"
-            "    \"instanceId\": \"settings.default\",\n"
-            "    \"icon\": \"settings\",\n"
-            "    \"workerExecutable\": \"runtime/Settings/SettingsWidget.Worker.exe\",\n"
-            "    \"styleFile\": \"runtime/Settings/styles/default.wrss\",\n"
-            "    \"memoryLimitMb\": 48,\n"
-            "    \"residencyPolicy\": { \"schemaVersion\": 1, \"mode\": \"suspend-when-hidden\" },\n"
-            "    \"workerArguments\": [\"--bundled-widget-root\", \"..\"],\n"
             "    \"declaredCapabilities\": [],\n"
             "    \"quickActions\": []\n"
             "  }],\n"
@@ -293,7 +308,10 @@ public:
                 const std::wstring_view processProfile) {
         const fs::path executable = installation / L"OverlayHost.exe";
         std::wstring command = QuoteArgument(executable.wstring()) +
-            L" --show --process-profile " + std::wstring(processProfile);
+            L" --show --process-profile " + std::wstring(processProfile) +
+            // This also passes the private settings root to the managed Bridge;
+            // overriding LOCALAPPDATA alone does not redirect Known Folder APIs.
+            L" --development-catalog-root " + QuoteArgument(installation.wstring());
         std::vector<wchar_t> mutableCommand(command.begin(), command.end());
         mutableCommand.push_back(L'\0');
         auto environment = ChildEnvironment(localAppData);
@@ -1263,12 +1281,14 @@ void Run(const Arguments& arguments) {
         PostKey(window, VK_ESCAPE);
         Require(WaitUntil(3000, [&] {
                     auto currentRoot = RootForWindow(automation.Get(), chromeWindow);
-                    return currentRoot && FindByAutomationId(
-                        automation.Get(), currentRoot.Get(), kTrayAutomationId);
-                }), "First Escape did not return the real host to its dashboard.");
+                    auto tray = currentRoot ? FindByAutomationId(
+                        automation.Get(), currentRoot.Get(), kTrayAutomationId)
+                        : ComPtr<IUIAutomationElement>{};
+                    return IsFocused(tray.Get());
+                }), "First Escape did not focus the horizontal tray.");
         PostKey(window, VK_ESCAPE);
         Require(WaitUntil(3000, [&] { return !IsWindowVisible(window); }),
-                "Second Escape did not hide the production overlay.");
+                "Escape from the horizontal tray did not hide the production overlay.");
         const auto reopenLogBoundary = ReadLog(logPath).size();
         Require(PostMessageW(window, WM_HOTKEY, 1, MAKELPARAM(MOD_NOREPEAT, VK_F1)),
                 Win32Error("PostMessageW(WM_HOTKEY)"));

@@ -446,10 +446,14 @@ void Run(const Arguments& arguments, const bool startHidden) {
         const auto sample = log.substr(sampleStart, sampleEnd - sampleStart);
         const auto guide = ParseBounds(sample, "guide=");
         const auto selected = ParseBounds(sample, "selected=");
+        // The selected radial sector can sit above or beside the guide; the
+        // startup contract is visible Settings and non-overlapping chrome.
         return log.find("content=admitted rendered=settings") != std::string::npos &&
             log.find("surface=dashboard") == std::string::npos &&
-            guide && selected && selected->top >= guide->bottom;
-    }), "First opening must paint Settings with the selected tray icon below the guide.");
+            guide && selected &&
+            (selected->bottom <= guide->top || selected->top >= guide->bottom ||
+             selected->right <= guide->left || selected->left >= guide->right);
+    }), "First opening must paint Settings without guide/selected-icon overlap.");
 
     const auto beforeWidget = ReadUtf8(profile.logPath()).size();
     ComPtr<IUIAutomationInvokePattern> settingsTrayInvoke;
@@ -602,6 +606,9 @@ void Run(const Arguments& arguments, const bool startHidden) {
     const auto geometryLog = ReadUtf8(profile.logPath());
     std::size_t sampleCursor{};
     std::size_t checkedSamples{};
+    std::optional<RECT> paintedSelection;
+    std::optional<RECT> paintedTray;
+    std::string trayPaintCounter;
     while ((sampleCursor = geometryLog.find("Composition child sample", sampleCursor)) != std::string::npos) {
         const auto end = geometryLog.find('\n', sampleCursor);
         const auto record = geometryLog.substr(sampleCursor,
@@ -609,11 +616,28 @@ void Run(const Arguments& arguments, const bool startHidden) {
         sampleCursor = end == std::string::npos ? geometryLog.size() : end+1;
         if (record.find("chrome-applied-exact=true") == std::string::npos) continue;
         const auto guide = ParseBounds(record, "guide=");
-        const auto selected = ParseBounds(record, "selected=");
+        const auto tray = ParseBounds(record, "tray=");
+        auto selected = ParseBounds(record, "selected=");
+        const auto counterAt = record.rfind(",tray:");
+        Require(tray && counterAt != std::string::npos,
+                "Applied chrome sample omitted tray placement or paint counter.");
+        const auto counter = record.substr(counterAt + 6);
+        if (!selected) {
+            // Entering a widget clears the radial layout cache before repaint.
+            // Existing pixels still have the last exact bounds, but only while
+            // neither the tray placement nor its paint counter has changed.
+            Require(paintedSelection && paintedTray && counter == trayPaintCounter &&
+                    EqualRect(&*tray, &*paintedTray),
+                    "Applied tray repaint omitted selected icon geometry.");
+            selected = paintedSelection;
+        }
         Require(guide && selected, "Applied chrome sample omitted guide or tray icon bounds.");
         Require(selected->bottom <= guide->top || selected->top >= guide->bottom ||
                 selected->right <= guide->left || selected->left >= guide->right,
             "Tray icon overlaps the guide during cold startup or re-show.");
+        paintedSelection = selected;
+        paintedTray = tray;
+        trayPaintCounter = counter;
         ++checkedSamples;
     }
     Require(checkedSamples > 0, "Cold startup omitted applied chrome geometry samples.");
