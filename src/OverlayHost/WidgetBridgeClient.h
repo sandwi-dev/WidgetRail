@@ -125,7 +125,6 @@ struct WidgetDescriptor final {
     std::vector<WidgetPackageIconAsset> iconAssets;
     bool pinningSupported{};
     bool fullWidgetPinningSupported{};
-    bool backgroundDashboardActionsSupported{};
     bool protectedWifiPromptSupported{};
     std::vector<WidgetDescriptorQuickAction> quickActions;
 };

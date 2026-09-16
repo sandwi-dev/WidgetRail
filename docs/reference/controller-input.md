@@ -15,24 +15,6 @@ meaningful actions for the currently active view.
 F1 is the desktop toggle fallback. Settings lets the user choose one controller
 opening shortcut at a time; View + Menu is the default.
 
-## Dashboard shortcuts from the radial
-
-Highlighting a widget in the radial does not open it. If it is already running
-and its latest snapshot declares dashboard quick actions, the guide offers those
-actions without requiring A first. A, B, Y, Menu, and View keep their shell roles.
-The right stick continues to change radial pages, and selecting another widget
-cancels any held shortcut.
-
-`keep-alive` widgets support this in Background. An `unload-after-idle` widget
-also supports it until it unloads; an accepted action restarts its idle timer.
-Suspended or unloaded widgets must be opened first. See
-[Lifecycle and residency](widget-residency.md).
-
-Authors use the existing `WidgetQuickAction` declarations and `OnActionAsync`.
-Honor the callback's cancellation token: a background action uses the current
-Background state lifetime, while `ActiveCancellationToken` remains canceled.
-No visibility callback or ordinary focused input is synthesized.
-
 ## DualSense controllers
 
 DualSense input is read directly over USB or Bluetooth. Cross activates the

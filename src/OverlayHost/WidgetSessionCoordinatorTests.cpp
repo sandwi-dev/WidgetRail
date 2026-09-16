@@ -1037,10 +1037,6 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
                WidgetCommittedViewUse::Interaction) &&
            !backgroundCurrent.HasCommittedViewAuthority(
                WidgetCommittedViewUse::DashboardQuickAction));
-    assert(backgroundCurrent.HasCommittedViewAuthority(
-        WidgetCommittedViewUse::DashboardQuickAction, true));
-    assert(!interactiveCurrent.HasCommittedViewAuthority(
-        WidgetCommittedViewUse::DashboardQuickAction, true));
 
     bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 2, 760.0, 385.0);
     bridge.stalledWidget = L"alpha";
@@ -1056,15 +1052,6 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
            !retained.HasCommittedViewAuthority(
                WidgetCommittedViewUse::DashboardQuickAction) &&
            retained.RefreshPending());
-    assert(!retained.HasCommittedViewAuthority(
-        WidgetCommittedViewUse::DashboardQuickAction, true));
-    const WidgetSessionPresentation backgroundRetained{
-        current.snapshot, WidgetPresentationAuthority::RefreshRetained,
-        WidgetLifecycleState::Background};
-    assert(backgroundRetained.HasCommittedViewAuthority(
-        WidgetCommittedViewUse::DashboardQuickAction, true));
-    assert(!backgroundRetained.HasCommittedViewAuthority(
-        WidgetCommittedViewUse::DashboardQuickAction, false));
     const WidgetSessionPresentation interactiveRetained{
         retained.snapshot,
         WidgetPresentationAuthority::RefreshRetained,

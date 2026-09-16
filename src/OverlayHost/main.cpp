@@ -12361,10 +12361,8 @@ private:
     const widgetrail::WidgetSnapshot* DashboardActionSnapshotFor(
         const std::wstring_view widgetId) const noexcept {
         const auto presentation = sessions_.Presentation(widgetId);
-        const auto* descriptor = sessions_.FindDescriptor(widgetId);
         return presentation.HasCommittedViewAuthority(
-                   widgetrail::WidgetCommittedViewUse::DashboardQuickAction,
-                   descriptor && descriptor->backgroundDashboardActionsSupported)
+                   widgetrail::WidgetCommittedViewUse::DashboardQuickAction)
             ? presentation.snapshot
             : nullptr;
     }
@@ -14218,7 +14216,7 @@ private:
         return modalDecision.disposition ==
                 widgetrail::input::AuthoredHeldActionDisposition::Dispatch &&
             state_.surface() != widgetrail::Surface::Hidden &&
-            !textEntryModal_.active() && !trayContextMenu_ && !state_.reorderMode() &&
+            !textEntryModal_.active() && !trayContextMenu_ && !RadialSwitcherOpen() &&
             !widgetContextMenu_ &&
             !OverlayFullscreenMediaRequested() &&
             !pinnedSurfaceCoordinator_.controllerFocused() &&
@@ -14886,6 +14884,7 @@ private:
             exactActionRequest = std::nullopt,
         const bool physicalPress = false,
         const HeldActionAuthority* exactHeldAction = nullptr) {
+        if (RadialSwitcherOpen()) return;
         if (state_.surface() == widgetrail::Surface::Hidden) {
             if (exactActionRequest) {
                 RejectWidgetActionRequest(
@@ -14945,7 +14944,7 @@ private:
                     *exactActionRequest, L"admitted snapshot unavailable");
                 return;
             }
-            if (!SnapshotFor(widget) && isOpen) {
+            if (!SnapshotFor(widget)) {
                 RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
             }
             const auto protocolButton = ProtocolButton(button);
@@ -14957,9 +14956,6 @@ private:
                 }
                 return;
             }
-            if (!isOpen && (state_.reorderMode() ||
-                std::none_of(snapshot->quickActions.begin(), snapshot->quickActions.end(),
-                    [&](const auto& action) { return action.button == protocolButton; }))) return;
             if (!exactHeldAction && interactiveWidget &&
                 phase == widgetrail::input::NavigationEventPhase::Pressed) {
                 RetirePendingFocusGroupEntryForUserIntent(
@@ -15125,7 +15121,7 @@ private:
                 if (widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(replyCode)) {
                     // Revalidation already ran under the bridge's render gate.
                     // Retire this event without a toast, host fallback, or replay.
-                    if (isOpen) RefreshWidgetSnapshot(widget);
+                    RefreshWidgetSnapshot(widget);
                     return;
                 }
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
@@ -17724,15 +17720,18 @@ private:
                 std::to_wstring(trayYGesture_.progressPercent(GetTickCount64())) +
                 L"%";
         }
+        if (RadialSwitcherOpen() && !state_.reorderMode()) {
+            if (hints) *hints={{L"left-stick-move",L"Choose"},{L"right-stick-move",L"Page"},{L"A",L"Open"},{L"B",L"Back"},{L"Menu",L"Options"},{L"Y",L"Reorder / hold to reload"}};
+            return L"Left stick Choose    Right stick Page    A Open    B Back    Menu Options    Y Reorder / hold to reload";
+        }
         std::vector<widgetrail::ControllerGuideAction> quickActions;
-        const auto* snapshot = DashboardActionSnapshotFor(state_.selectedWidget());
+        const auto* snapshot = GuideSnapshotFor(state_.selectedWidget());
         if (IsBridgeWidget(state_.selectedWidget()) && snapshot) {
             quickActions.reserve(snapshot->quickActions.size());
             for (const auto& action : snapshot->quickActions) {
                 // A/Y/B remain shell navigation while focus is on the tray.
                 if (action.button == L"a" || action.button == L"y" ||
-                    action.button == L"b" || action.button == L"menu" ||
-                    action.button == L"view") continue;
+                    action.button == L"b") continue;
                 quickActions.push_back({DisplayButton(action.button), action.label});
             }
         }
@@ -17743,8 +17742,7 @@ private:
             [this](const std::wstring_view text) {
                 return MeasureGuideTextWidth(text);
             },
-            quickActions, hints, [this](auto items) { return MeasureGuideHints(items); },
-            RadialSwitcherOpen());
+            quickActions, hints, [this](auto items) { return MeasureGuideHints(items); });
         return guide;
     }
 

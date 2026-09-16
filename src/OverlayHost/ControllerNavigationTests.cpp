@@ -555,8 +555,8 @@ int main() {
     using widgetrail::input::RouteUnhandledControllerAction;
     for (const auto button : {L"X", L"LB", L"RB", L"LT", L"RT", L"LS", L"RS"}) {
         Check(RouteControllerAction(ControllerActionContext::RadialSwitcher, button) ==
-                  ControllerActionRoute::Widget,
-              "wheel shortcuts reach guarded declared dashboard action dispatch");
+                  ControllerActionRoute::None,
+              "wheel shortcuts cannot request a hidden highlighted widget snapshot");
     }
     Check(RouteControllerAction(ControllerActionContext::RadialSwitcher, L"A") == ControllerActionRoute::HostActivate &&
           RouteControllerAction(ControllerActionContext::RadialSwitcher, L"B") == ControllerActionRoute::HostCloseOverlay &&

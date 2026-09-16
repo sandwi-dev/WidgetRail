@@ -704,15 +704,6 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
                 return std::nullopt;
             }
         }
-        if (source.HasKey(L"backgroundDashboardActionsSupported")) {
-            if (source.GetNamedValue(L"backgroundDashboardActionsSupported").ValueType() !=
-                JsonValueType::Boolean) {
-                error = L"Widget descriptor property 'backgroundDashboardActionsSupported' must be a boolean.";
-                return std::nullopt;
-            }
-            descriptor.backgroundDashboardActionsSupported =
-                source.GetNamedBoolean(L"backgroundDashboardActionsSupported");
-        }
         if (source.HasKey(L"protectedWifiPromptSupported")) {
             if (source.GetNamedValue(L"protectedWifiPromptSupported").ValueType() !=
                 JsonValueType::Boolean) {

@@ -141,9 +141,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Force reload rejects unknown widget IDs", ForceReloadRejectsUnknownWidget),
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
-    ("Background dashboard actions require a current eligible worker", BridgeClientRegistryScenarios.BackgroundDashboardRequiresResidentAuthority),
-    ("Only accepted dashboard activity restarts idle unload", BridgeClientRegistryScenarios.DashboardActivityResetsIdleUnloadOnlyWhenAccepted),
-    ("Dashboard input revalidates unchanged bindings without replay", BridgeClientRegistryScenarios.DashboardBindingRevalidatesWithoutReplay),
     ("Select option authority crosses the managed server wire exactly", SelectAuthorityCrossesServerWire),
     ("Exact-base divergence converges through one full checkpoint", ExactBaseDivergenceConvergesThroughCheckpoint),
     ("Committed text crosses bridge and worker action execution", CommittedTextCrossesBridgeAndWorker),
@@ -1367,11 +1364,9 @@ static async Task EnumerationIsLazy()
     var widgets = response.Payload.GetProperty("widgets");
     Assert.Equal(1, widgets.GetArrayLength());
     var descriptor = widgets[0];
-    Assert.SequenceEqual(["backgroundDashboardActionsSupported", "fullWidgetPinningSupported", "icon", "iconAssets", "id", "instanceId", "name", "packageContentDigest", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "quickActions", "runtimeGeneration"],
+    Assert.SequenceEqual(["fullWidgetPinningSupported", "icon", "iconAssets", "id", "instanceId", "name", "packageContentDigest", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "quickActions", "runtimeGeneration"],
         descriptor.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("test-widget", descriptor.GetProperty("id").GetString());
-    Assert.True(descriptor.GetProperty("backgroundDashboardActionsSupported").GetBoolean(),
-        "Default keep-alive policy must advertise background dashboard support without launching a worker.");
     Assert.Equal("Test Widget", descriptor.GetProperty("name").GetString());
     Assert.Equal("test.instance", descriptor.GetProperty("instanceId").GetString());
     Assert.Equal(32, descriptor.GetProperty("runtimeGeneration").GetString()!.Length);

@@ -10,7 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Compact UI exposes honest focusable transport capability states", HonestTransportStates),
     ("X and bumpers route through the selected session from any focused control", ControllerShortcutsRoute),
     ("An in-flight play command does not flash or disable sibling transports", PendingToggleKeepsSiblingControlsStable),
-    ("Quick actions control media while visible and during Background residency", DashboardQuickActions),
+    ("Quick actions expose exact media control authority while visible", DashboardQuickActions),
     ("Dynamic session selector keeps one remembered scroll at one or many sessions", DynamicSelectorKeepsOneRememberedScroll),
     ("Session pills keep hashed focus identity and honest metadata through churn", SessionPillsKeepStableFocusIdentity),
     ("Removed remembered selection falls back to the current session pill", RemovedRememberedSelectionFallsBack),
@@ -228,19 +228,6 @@ static async Task DashboardQuickActions()
     await WaitUntil(() => fake.Commands.Count == 1);
     Assert.Equal(WidgetMediaSessionCommand.Next, fake.Commands[0].Command);
     await Background(widget);
-    var reads = fake.GetCalls;
-    var subscriptions = fake.SubscriptionCalls;
-    snapshot = widget.RenderSnapshot("media.test", 3);
-    Assert.True(await widget.OnControllerInputAsync(new ControllerInputEvent(
-        ControllerButton.RightBumper, ControllerEventPhase.Pressed,
-        ControllerInputContext.DashboardQuickAction,
-        Sequence: 2, SnapshotSequence: snapshot.Sequence)));
-    await WaitUntil(() => fake.Commands.Count == 2);
-    Assert.Equal(WidgetMediaSessionCommand.Next, fake.Commands[1].Command);
-    Assert.False(widget.IsActive);
-    Assert.Equal(reads, fake.GetCalls);
-    Assert.Equal(subscriptions, fake.SubscriptionCalls);
-    await WidgetTestHost.DestroyAsync(widget);
 }
 
 static async Task DynamicSelectorKeepsOneRememberedScroll()

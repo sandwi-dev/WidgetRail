@@ -89,8 +89,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         long baseSequence,
         WidgetPresentationTransactionKind transactionKind,
         long recoveryOriginSequence,
-        CancellationToken cancellationToken = default,
-        bool existingWorkerOnly = false)
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
         await _presentationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -128,7 +127,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         ? presentationGeneration : null,
                     RequireCheckpoint = !incrementalCurrent,
                 },
-                cancellationToken, existingWorkerOnly).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
             var response = request.Response;
             try
             {
@@ -365,11 +364,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             throw new ArgumentOutOfRangeException(
                 nameof(input), input.Origin, "Controller input origin is invalid.");
         ObjectDisposedException.ThrowIf(_disposed, this);
-        // Dashboard input may use an existing worker, never start or replace one.
-        if (input.Context != ControllerInputContext.DashboardQuickAction)
-            await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
-        var session = Volatile.Read(ref _session);
-        if (session is null || session.IsTerminal) return false;
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+        var session = Volatile.Read(ref _session) ??
+            throw new IOException("Widget pipe disconnected.");
         var authorityMayRemain = false;
         if (authority is not null) session.GestureReservations.Reserve(input, authority);
         try
@@ -536,15 +533,12 @@ public sealed class WidgetProcessClient : IAsyncDisposable
 
     private async Task<(WidgetProcessSession Session, RuntimeEnvelope Response)>
         RequestWithSessionAsync<T>(
-            string type, T payload, CancellationToken cancellationToken,
-            bool existingWorkerOnly = false)
+            string type, T payload, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!existingWorkerOnly)
-            await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
         var session = Volatile.Read(ref _session) ??
             throw new IOException("Widget pipe disconnected.");
-        if (session.IsTerminal) throw new IOException("Widget pipe disconnected.");
         var response = await RequestConnectedAsync(session, type, payload, cancellationToken)
             .ConfigureAwait(false);
         return (session, response);

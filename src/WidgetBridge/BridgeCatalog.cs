@@ -41,7 +41,6 @@ public sealed record BridgeWidgetDescriptor
     public IReadOnlyList<BridgePackageIconAssetDescriptor> IconAssets { get; init; } = [];
     public bool PinningSupported { get; init; }
     public bool FullWidgetPinningSupported { get; init; }
-    public bool BackgroundDashboardActionsSupported { get; init; }
     /// <summary>
     /// Trusted host policy for the bundled Network Controls credential prompt.
     /// This is derived by the bridge and cannot be declared by a widget package.
@@ -154,8 +153,6 @@ internal sealed record ConfiguredWidget
             .ToArray(),
         PinningSupported = PinningSupported,
         FullWidgetPinningSupported = FullWidgetPinningSupported,
-        BackgroundDashboardActionsSupported =
-            WidgetResidencyPolicies.Resolve(ResidencyPolicy).Mode != WidgetResidencyMode.SuspendWhenHidden,
         ProtectedWifiPromptSupported =
             string.Equals(PackageId, "widgetrail.firstparty.network-controls", StringComparison.Ordinal) &&
             string.Equals(PublisherId, "widgetrail.firstparty", StringComparison.Ordinal) &&

@@ -20,10 +20,7 @@ selected, unless a pinned surface still needs it Visible or Interactive.
 Background denies ordinary manifest-declared broker capabilities.
 The bounded host-granted `HostServices.PrivateState` service is the explicit
 persistence exception; it does not authorize provider polling, UI refresh, or
-lifecycle promotion. A user-triggered declared dashboard action is another
-bounded exception for an already-running `keep-alive` or `unload-after-idle`
-widget. It keeps the widget in Background and still requires consent for any
-capability it uses. Widgets cannot promote their own lifecycle or override
+lifecycle promotion. Widgets cannot promote their own lifecycle or override
 host residency over IPC.
 
 ## Manifest schema
@@ -44,10 +41,7 @@ Omitting `residencyPolicy` means keep-alive.
 | `suspend-when-hidden` | Resident | Background callback/tokens; visible/state work must stop | Suppresses hidden snapshots, invalidations, input, and broker access |
 | `unload-after-idle` | Resident until the explicit idle bound, then destroyed | Background first; `Destroying` if the bound expires | Caches last validated snapshot, bounded teardown, lazy recreation on visibility |
 
-The idle duration starts on entering Background. An accepted declared dashboard
-shortcut restarts it. Rejected input, highlighting a radial entry, and passive
-snapshot refreshes do not. An unloaded widget requires opening with A again;
-shortcuts never start a worker. `suspend-when-hidden` continues to block them.
+The idle duration measures time in Background, not time since the last input.
 Unexpected failures of the bridge's idle-unload task record a widget lifetime
 diagnostic with `failure=idle-unload-failed`. Normal cancellation when a widget
 becomes visible or is retired does not produce that failure diagnostic.
@@ -90,8 +84,8 @@ uncooperative author code correct.
 1. The native host publishes `Background`.
 2. The bridge caches every last-good validated declarative snapshot and starts
    the manifest's exact idle delay only after a running worker is Background.
-3. Visibility cancels the delay. An accepted dashboard action cancels that
-   generation and starts a fresh delay. Cancellation is not a worker failure.
+3. Visibility, input, or another allowed operation cancels that generation of
+   the delay. Cancellation is not a worker failure.
 4. At expiry, the bridge serializes against worker operations, publishes
    `Destroying` to the capability companion, asks the runtime to stop, and
    terminates the Job Object process tree if bounded cleanup does not finish.

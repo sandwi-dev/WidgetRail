@@ -1558,7 +1558,6 @@ int main(int argc, char** argv) {
             "icon": "music",
             "pinningSupported": true,
             "fullWidgetPinningSupported": true,
-            "backgroundDashboardActionsSupported": true,
             "protectedWifiPromptSupported": true,
             "quickActions": [{
                 "id": "refresh",
@@ -1585,7 +1584,6 @@ int main(int argc, char** argv) {
     CHECK((*valid)[0].icon == L"music");
     CHECK((*valid)[0].pinningSupported);
     CHECK((*valid)[0].fullWidgetPinningSupported);
-    CHECK((*valid)[0].backgroundDashboardActionsSupported);
     CHECK((*valid)[0].protectedWifiPromptSupported);
     CHECK((*valid)[0].quickActions.size() == 2);
     CHECK((*valid)[0].quickActions[0].controllerButton == L"x");
@@ -1609,7 +1607,6 @@ int main(int argc, char** argv) {
     })json", error);
     CHECK(defaultPinning && !(*defaultPinning)[0].pinningSupported);
     CHECK(!(*defaultPinning)[0].fullWidgetPinningSupported);
-    CHECK(!(*defaultPinning)[0].backgroundDashboardActionsSupported);
     const std::string customOnlyJson = R"json({"widgets":[{
         "id":"dev.test.custom", "name":"Custom", "instanceId":"custom.instance",
         "runtimeGeneration":"runtime-1", "presentationGeneration":"presentation-1",

@@ -11,7 +11,7 @@ service. See [Capabilities](capabilities.md) for consent, lifecycle, and error b
 | `system.apps.running.register.v1` | `RegisterRunningAsync(savedId, revision)` and `ForgetRunningAsync(savedId)` for explicit package-owned portable-app registration and removal | Interactive only; never dashboard gesture authority |
 | `system.apps.library.launch.v1` | `HostServices.AppLibrary.LaunchAsync(appId)` for one current broker-issued app ID | Interactive only; never dashboard gesture authority |
 | `system.media.sessions.read.v1` | `HostServices.Media.GetSessionsAsync`, `OpenSubscriptionAsync`, and `WatchAsync` | Visible or Interactive |
-| `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible or in an eligible running Background widget |
+| `system.media.sessions.control.v1` | `HostServices.Media.ControlAsync` for one broker-issued session ID | Interactive, or one exact declared dashboard gesture while Visible |
 | `system.apps.windows.read.v1` | `HostServices.TaskSwitcher.GetWindowsAsync` | Visible or Interactive |
 | `system.apps.windows.preview.v1` | Host-rendered `UI.WindowPreview` | A current window and preview permission |
 | `system.apps.windows.switch.v1` | `HostServices.TaskSwitcher.SwitchAsync` | Interactive |

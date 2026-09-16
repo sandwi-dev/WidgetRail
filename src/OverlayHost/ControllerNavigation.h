@@ -220,7 +220,8 @@ enum class FocusedSliderButtonRoute {
     if (button == L"A") return ControllerActionRoute::HostActivate;
     if (button == L"Y") return ControllerActionRoute::HostToggleReorder;
     if (button == L"B") return ControllerActionRoute::HostCloseOverlay;
-    // Widget dispatch separately requires an existing admitted dashboard action.
+    // A chooser has no widget shortcut authority until its target is opened.
+    if (context == ControllerActionContext::RadialSwitcher) return ControllerActionRoute::None;
     return ControllerActionRoute::Widget;
 }
 

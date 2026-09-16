@@ -154,7 +154,7 @@ Lifecycle state is host-authoritative and separate from process lifetime:
 | `WidgetLifecycleState` | Contract |
 | --- | --- |
 | `Created` | Runtime-owned initialization state. `OnCreatedAsync` runs exactly once, then the runtime transitions to `Background`. |
-| `Background` | Default resident state after launch. Visible UI work and ordinary controller input stop. Declared dashboard actions may run in an existing eligible worker without changing lifecycle. |
+| `Background` | Default resident state after launch. The widget is not selected/open; visible UI work and controller-action admission stop, while explicitly permitted widget-lifetime background work may continue. |
 | `Visible` | The widget's dashboard card is selected and may expose quick actions. It is visible but not the open input surface. |
 | `Interactive` | The widget is open and owns its scoped non-Guide controller actions. |
 | `Destroying` | Runtime-owned terminal shutdown. Widget-owned tokens are canceled before bounded cleanup hooks run. |

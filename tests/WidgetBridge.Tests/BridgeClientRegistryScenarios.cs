@@ -8,164 +8,6 @@ using WidgetRail.PlatformDiagnostics;
 
 internal static class BridgeClientRegistryScenarios
 {
-    internal static async Task DashboardBindingRevalidatesWithoutReplay()
-    {
-        var configured = Widget("dashboard-binding", 'b', 'b');
-        var actionId = "play";
-        WidgetQuickActionCapability? capability = null;
-        await using var fixture = new RegistryFixture(Catalog(configured),
-            configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
-            {
-                Sequence = sequence, WidgetInstanceId = configured.InstanceId, ActiveInputScopeId = "root",
-                Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack },
-                QuickActions = [new WidgetQuickAction(ControllerButton.X, actionId, "Play", capability)],
-            });
-        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
-        var original = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
-        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
-        var current = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
-        var input = new ControllerInputEvent(ControllerButton.X, ControllerEventPhase.Pressed,
-            ControllerInputContext.DashboardQuickAction, Sequence: 1, SnapshotSequence: original.Sequence);
-        Task<BridgeClientPublication<bool>> Send(ControllerInputEvent value) =>
-            fixture.Registry.SendControllerInputAsync(configured.Id, value,
-                configured.PublicDescriptor().RuntimeGeneration, CancellationToken.None, CancellationToken.None);
-        using (var accepted = await Send(input)) RegistryAssert.True(accepted.Value);
-        var client = fixture.Clients.Single();
-        RegistryAssert.Equal(current.Sequence, client.ControllerInputs.Single().SnapshotSequence);
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Send(input));
-        actionId = "different";
-        _ = await fixture.GetSnapshotAsync(configured.Id);
-        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() => Send(input with { Sequence = 2 }));
-        actionId = "play";
-        capability = new WidgetQuickActionCapability(PlatformCapabilities.MediaSessionsControlV1,
-            PlatformCapabilities.MediaSessionControl);
-        _ = await fixture.GetSnapshotAsync(configured.Id);
-        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() => Send(input with { Sequence = 3 }));
-        RegistryAssert.Equal(1, client.ControllerInputs.Count);
-    }
-
-    internal static async Task DashboardActivityResetsIdleUnloadOnlyWhenAccepted()
-    {
-        var delays = new ManualRegistryDelay();
-        var configured = Widget("idle-dashboard", 'e', 'e', new WidgetResidencyPolicy
-        { Mode = WidgetResidencyPolicies.UnloadAfterIdle, IdleSeconds = 120 });
-        await using var fixture = new RegistryFixture(Catalog(configured), delay: delays.InvokeAsync,
-            configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
-            {
-                Sequence = sequence, WidgetInstanceId = configured.InstanceId, ActiveInputScopeId = "root",
-                Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack },
-                QuickActions = [new WidgetQuickAction(ControllerButton.X, "play", "Play")],
-            });
-        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
-        var snapshot = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
-        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
-        var first = await delays.NextAsync();
-        ManualRegistryDelayCall? second = null;
-        try
-        {
-            var client = fixture.Clients.Single();
-            var generation = configured.PublicDescriptor().RuntimeGeneration;
-            var input = new ControllerInputEvent(ControllerButton.X, ControllerEventPhase.Pressed,
-                ControllerInputContext.DashboardQuickAction, Sequence: 1, SnapshotSequence: snapshot.Sequence);
-            Task<BridgeClientPublication<bool>> Send(ControllerInputEvent value) =>
-                fixture.Registry.SendControllerInputAsync(configured.Id, value, generation,
-                    CancellationToken.None, CancellationToken.None);
-            await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
-                Send(input with { Button = ControllerButton.RightTrigger }));
-            client.ControllerInputHandled = false;
-            using (var rejected = await Send(input)) RegistryAssert.True(!rejected.Value);
-            RegistryAssert.True(!first.CancellationObserved.Task.IsCompleted,
-                "Rejected input reset the idle timer.");
-            client.ControllerInputHandled = true;
-            using (var accepted = await Send(input with { Sequence = 2 })) RegistryAssert.True(accepted.Value);
-            await first.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
-            second = await delays.NextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
-            first.Release();
-            client.RaiseInvalidated(1);
-            await fixture.Registry.DrainNotificationsAsync(configured.Id);
-            RegistryAssert.Equal(1, fixture.Invalidations.Count);
-            var refreshed = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
-            RegistryAssert.True(refreshed.Sequence > snapshot.Sequence);
-            RegistryAssert.True(!second.CancellationObserved.Task.IsCompleted,
-                "Passive snapshot work reset the idle timer.");
-            second.Release();
-            await client.Unloaded.WaitAsync(TimeSpan.FromSeconds(2));
-            await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
-                Send(input with { Sequence = 3, SnapshotSequence = refreshed.Sequence }));
-            RegistryAssert.Equal(refreshed.Sequence, (await fixture.GetSnapshotAsync(configured.Id)).Snapshot.Sequence);
-            RegistryAssert.Equal(1, client.Starts);
-            RegistryAssert.True(!client.IsRunning);
-        }
-        finally { first.Release(); second?.Release(); }
-    }
-
-    internal static async Task BackgroundDashboardRequiresResidentAuthority()
-    {
-        foreach (var mode in new[] { WidgetResidencyPolicies.KeepAlive,
-                     WidgetResidencyPolicies.SuspendWhenHidden, WidgetResidencyPolicies.UnloadAfterIdle })
-        {
-            var configured = Widget("background-dashboard", 'd', 'd', new WidgetResidencyPolicy
-            {
-                Mode = mode,
-                IdleSeconds = mode == WidgetResidencyPolicies.UnloadAfterIdle ? 120 : null,
-            });
-            await using var fixture = new RegistryFixture(Catalog(configured),
-                configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
-                {
-                    Sequence = sequence,
-                    WidgetInstanceId = configured.InstanceId,
-                    ActiveInputScopeId = "root",
-                    Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack },
-                    QuickActions = [new WidgetQuickAction(ControllerButton.X, "play", "Play")],
-                });
-            var generation = configured.PublicDescriptor().RuntimeGeneration;
-            var input = new ControllerInputEvent(ControllerButton.X, ControllerEventPhase.Pressed,
-                ControllerInputContext.DashboardQuickAction, Sequence: 1, SnapshotSequence: 1);
-            await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
-                fixture.Registry.SendControllerInputAsync(configured.Id, input, generation,
-                    CancellationToken.None, CancellationToken.None));
-            RegistryAssert.Equal(0, fixture.Clients.Count);
-            await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
-            var snapshot = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
-            input = input with { SnapshotSequence = snapshot.Sequence };
-            await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
-            var client = fixture.Clients.Single();
-            var starts = client.Starts;
-            if (mode != WidgetResidencyPolicies.SuspendWhenHidden)
-            {
-                using var admitted = await fixture.Registry.SendControllerInputAsync(configured.Id,
-                    input, generation, CancellationToken.None, CancellationToken.None);
-                RegistryAssert.True(admitted.Value);
-                RegistryAssert.Equal(1, client.ControllerInputs.Count);
-                RegistryAssert.Equal(WidgetLifecycleState.Background, client.LifecycleStates.Last());
-                foreach (var invalid in new[] { input with { SnapshotSequence = snapshot.Sequence + 1 },
-                             input with { Button = ControllerButton.RightTrigger } })
-                    await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
-                        fixture.Registry.SendControllerInputAsync(configured.Id, invalid, generation,
-                            CancellationToken.None, CancellationToken.None));
-                await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
-                    fixture.Registry.SendControllerInputAsync(configured.Id, input, new string('f', 32),
-                        CancellationToken.None, CancellationToken.None));
-                await client.UnloadAsync(CancellationToken.None);
-                await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
-                    fixture.Registry.SendControllerInputAsync(configured.Id, input, generation,
-                        CancellationToken.None, CancellationToken.None));
-                RegistryAssert.Equal(1, client.ControllerInputs.Count);
-                RegistryAssert.Equal(snapshot.Sequence,
-                    (await fixture.GetSnapshotAsync(configured.Id)).Snapshot.Sequence);
-                RegistryAssert.True(!client.IsRunning, "Retained dashboard refresh restarted the worker.");
-            }
-            else
-            {
-                await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() =>
-                    fixture.Registry.SendControllerInputAsync(configured.Id, input, generation,
-                        CancellationToken.None, CancellationToken.None));
-                RegistryAssert.Equal(0, client.ControllerInputs.Count);
-            }
-            RegistryAssert.Equal(starts, client.Starts);
-        }
-    }
-
     internal static async Task VisibleRegistrationPublishesInvalidationExactlyOnce()
     {
         var configured = Widget("notification-registry", worker: 'r', catalog: 'r');
@@ -2645,7 +2487,6 @@ internal sealed class RegistryTestClient(
     internal List<(WidgetPresentationTransactionKind TransactionKind,
         long BaseSequence, long RecoveryOriginSequence)> PresentationRequests { get; } = [];
     internal List<ControllerInputEvent> ControllerInputs { get; } = [];
-    internal bool ControllerInputHandled { get; set; } = true;
     internal bool? RevalidatedHandled { get; set; } = true;
     internal int RevalidatedAttempts { get; private set; }
     public Task<bool?> SendRevalidatedControllerInputAsync(
@@ -2704,10 +2545,8 @@ internal sealed class RegistryTestClient(
         long baseSequence,
         WidgetPresentationTransactionKind transactionKind,
         long recoveryOriginSequence,
-        CancellationToken cancellationToken,
-        bool existingWorkerOnly = false)
+        CancellationToken cancellationToken)
     {
-        if (existingWorkerOnly && !IsRunning) throw new IOException("No current worker.");
         PresentationRequests.Add((transactionKind, baseSequence, recoveryOriginSequence));
         var snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         AfterSnapshot?.Invoke();
@@ -2773,7 +2612,7 @@ internal sealed class RegistryTestClient(
         cancellationToken.ThrowIfCancellationRequested();
         EnsureStarted();
         ControllerInputs.Add(input);
-        return Task.FromResult(ControllerInputHandled);
+        return Task.FromResult(true);
     }
 
     public Task SendEmbeddedMediaPlaybackEventAsync(

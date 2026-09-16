@@ -117,8 +117,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Navigation shells reject ambiguous or unbounded destinations", NavigationShellTests.ValidatesAuthoringBounds),
     ("Focus persistence negotiates v13 without changing legacy snapshots", NavigationShellTests.FocusPersistenceIsOptionalAndVersioned),
     ("Default controller routing resolves dashboard quick actions", DashboardInputResolves),
-    ("Background dashboard actions retain exact snapshot authority", BackgroundDashboardInputResolves),
-    ("Background dashboard work drains before activation", BackgroundDashboardWorkDrains),
     ("Default controller routing resolves focused shortcuts", FocusedShortcutResolves),
     ("Repeated row shortcuts resolve by exact focus and ambiguous fallback fails closed", FocusedRowShortcutsResolve),
     ("Default controller routing activates focused buttons with A", FocusedButtonActivates),
@@ -3530,39 +3528,6 @@ static async Task DashboardInputResolves()
         Origin: (ControllerInputOrigin)99)), "Unknown origins must fail closed.");
 }
 
-static async Task BackgroundDashboardInputResolves()
-{
-    var widget = new RoutingWidget();
-    await widget.InitializeAsync(CancellationToken.None);
-    _ = widget.RenderSnapshot("routing.instance", 1);
-    var input = new ControllerInputEvent(ControllerButton.X, ControllerEventPhase.Pressed,
-        ControllerInputContext.DashboardQuickAction, Sequence: 1, SnapshotSequence: 1);
-    Assert.True(!widget.IsActive, "Background action must not promote visibility.");
-    Assert.True(await widget.OnControllerInputAsync(input), "Declared background action was rejected.");
-    Assert.Equal("quick-refresh", (await widget.NextActionAsync()).ActionId);
-    Assert.True(!widget.IsActive, "Background action changed lifecycle.");
-    Assert.True(!await widget.OnControllerInputAsync(input with { SnapshotSequence = 2 }), "Stale action admitted.");
-    Assert.True(!await widget.OnControllerInputAsync(input with { Button = ControllerButton.RightTrigger }), "Undeclared action admitted.");
-    Assert.True(!await widget.OnControllerInputAsync(OpenInput(ControllerButton.RightBumper, "play", 1, "root")),
-        "Ordinary focused input must remain inactive in Background.");
-    await widget.DestroyAsync(CancellationToken.None);
-    Assert.True(!await widget.OnControllerInputAsync(input), "Destroyed widget admitted dashboard input.");
-}
-
-static async Task BackgroundDashboardWorkDrains()
-{
-    var widget = new BackgroundActionLifetimeWidget();
-    await widget.InitializeAsync(CancellationToken.None);
-    _ = widget.RenderSnapshot("background.instance", 1);
-    Assert.True(await widget.OnControllerInputAsync(new ControllerInputEvent(
-        ControllerButton.X, ControllerEventPhase.Pressed, ControllerInputContext.DashboardQuickAction,
-        Sequence: 1, SnapshotSequence: 1)), "Background action was not admitted.");
-    await widget.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
-    await widget.SetActiveAsync(true, CancellationToken.None);
-    Assert.True(widget.CanceledBeforeActivation, "Background action overlapped activation.");
-    await widget.DestroyAsync(CancellationToken.None);
-}
-
 static async Task FocusedShortcutResolves()
 {
     var widget = new RoutingWidget();
@@ -3953,26 +3918,6 @@ file sealed class FixedTimeProvider(DateTimeOffset value) : TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => value;
     public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
-}
-
-file sealed class BackgroundActionLifetimeWidget : Widget
-{
-    public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public bool Canceled { get; private set; }
-    public bool CanceledBeforeActivation { get; private set; }
-    public override WidgetView Render() => new(UI.Text("Ready", "root"),
-        QuickActions: [new WidgetQuickAction(ControllerButton.X, "wait", "Wait")]);
-    public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
-    {
-        Started.TrySetResult();
-        try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
-        finally { Canceled = cancellationToken.IsCancellationRequested; }
-    }
-    protected override ValueTask OnActivatedAsync(CancellationToken cancellationToken)
-    {
-        CanceledBeforeActivation = Canceled;
-        return ValueTask.CompletedTask;
-    }
 }
 
 file sealed class RoutingWidget : Widget
