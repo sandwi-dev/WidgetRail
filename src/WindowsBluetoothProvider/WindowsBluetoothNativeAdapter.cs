@@ -179,13 +179,17 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
         DeviceInformation information;
         try
         {
-            information = await DeviceInformation.CreateFromIdAsync(nativeDeviceId)
+            information = await DeviceInformation.CreateFromIdAsync(
+                    nativeDeviceId, RequestedProperties, DeviceInformationKind.AssociationEndpoint)
                 .AsTask(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
         catch (UnauthorizedAccessException) { return BluetoothPairingOutcome.AccessDenied; }
         catch (Exception) { return BluetoothPairingOutcome.DeviceUnavailable; }
 
+        // Discovery yields association endpoint IDs, not device-interface IDs.
+        // A vanished endpoint can also return null without throwing.
+        if (information is null) return BluetoothPairingOutcome.DeviceUnavailable;
         if (information.Pairing.IsPaired)
         {
             MarkPaired(nativeDeviceId);
@@ -229,13 +233,15 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
         DeviceInformation information;
         try
         {
-            information = await DeviceInformation.CreateFromIdAsync(nativeDeviceId)
+            information = await DeviceInformation.CreateFromIdAsync(
+                    nativeDeviceId, RequestedProperties, DeviceInformationKind.AssociationEndpoint)
                 .AsTask(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
         catch (UnauthorizedAccessException) { return BluetoothUnpairingOutcome.AccessDenied; }
         catch (Exception) { return BluetoothUnpairingOutcome.DeviceUnavailable; }
 
+        if (information is null) return BluetoothUnpairingOutcome.DeviceUnavailable;
         if (!information.Pairing.IsPaired)
             return BluetoothUnpairingOutcome.AlreadyUnpaired;
         try
