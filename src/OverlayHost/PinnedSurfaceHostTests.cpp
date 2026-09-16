@@ -1452,7 +1452,9 @@ void TestAcceptedMediaBackOwnershipHostContract() {
               genericRoute != std::string::npos && helperDispatch < genericRoute,
           "media Back resolves through the shared route owner before generic controller routing");
     Check(dispatch.find(
-              "const auto context = state_.focusRegion() == widgetrail::FocusRegion::Tray") !=
+              "ControllerActionContext::Tray") !=
+              std::string::npos &&
+              dispatch.find("RouteControllerAction(context, button)") !=
               std::string::npos &&
               dispatch.find("case ControllerActionRoute::HostCloseOverlay:") !=
               std::string::npos &&

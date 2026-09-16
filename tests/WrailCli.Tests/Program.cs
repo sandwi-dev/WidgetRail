@@ -19,7 +19,11 @@ using WidgetRail.EmbeddedMediaAdapterConformance;
 
 if (args is ["--doctor-stalled-probe", var probeMarker])
 {
-    await File.WriteAllTextAsync(probeMarker, Environment.ProcessId.ToString());
+    // Publish readiness only after the writer has closed. Seeing a nonempty
+    // file did not guarantee ReadAllText could open it on a Windows runner.
+    var stagedMarker = probeMarker + ".tmp";
+    await File.WriteAllTextAsync(stagedMarker, Environment.ProcessId.ToString());
+    File.Move(stagedMarker, probeMarker);
     await Task.Delay(Timeout.InfiniteTimeSpan);
     return 0;
 }
