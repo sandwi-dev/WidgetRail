@@ -24,10 +24,13 @@ shortcut is selected. The guide and shared controller hints automatically use
 PlayStation glyphs while a DualSense supplies input.
 
 The native reader supports ordinary navigation and the existing Exclusive
-control routing. A connected native DualSense takes precedence over translated
-GameInput/XInput readings, so its inputs are not delivered twice. Disconnects
-clear the current reading; reconnecting requires fresh input before shortcuts
-can fire. Widgets keep using the same semantic actions and controller bindings.
+control routing. Ordinary navigation checks activity in GameInput, XInput, then
+native DualSense order. An idle connected controller does not block another
+backend. The active source keeps its held input through release, so merely
+connecting a DualSense does not take control away. Exclusive control retains
+its existing selected-controller routing. See [input selection](controller-read-fallback.md).
+Disconnects clear the current reading; reconnecting requires fresh input before
+shortcuts can fire. Widgets keep using the same semantic actions and bindings.
 
 This initial support covers buttons, D-pad, sticks, and triggers. Rumble,
 adaptive triggers, touchpad gestures, and motion controls are not implemented;

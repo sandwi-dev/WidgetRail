@@ -81,6 +81,7 @@ struct DualSenseHidReader::Impl final {
     std::jthread thread;
     Handle stopEvent{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
     SelectedControllerCurrent current{};
+    std::uint64_t connectionGeneration{};
     std::optional<SelectedControllerEnrollment> expected;
     ControllerIsolationReaderIngress* ingress{};
     std::function<void()> guidePressed;
@@ -125,6 +126,7 @@ struct DualSenseHidReader::Impl final {
             const auto timestamp = Timestamp(), now = GetTickCount64();
             {
                 std::scoped_lock lock(mutex);
+                if (first) ++connectionGeneration;
                 current = {timestamp, now, report.state, true};
                 if (ingress) {
                     (void)ingress->Publish(ControllerReaderEventKind::Reading, timestamp, now, report.state);
@@ -169,12 +171,13 @@ bool DualSenseHidReader::Start(const SelectedControllerEnrollment* expected,
         return true;
     } catch (...) { Stop(); return false; }
 }
-bool DualSenseHidReader::Sample(SelectedControllerCurrent& current) const noexcept {
+bool DualSenseHidReader::Sample(SelectedControllerCurrent& current, std::uint64_t* connectionGeneration) const noexcept {
     current = {};
     if (!impl_) return false;
     std::scoped_lock lock(impl_->mutex);
     if (!impl_->current.connected || GetTickCount64() - impl_->current.observedAtMilliseconds > 250) return false;
     current = impl_->current;
+    if (connectionGeneration) *connectionGeneration = impl_->connectionGeneration;
     return true;
 }
 bool DualSenseHidReader::WaitForReading(std::uint32_t milliseconds) noexcept {

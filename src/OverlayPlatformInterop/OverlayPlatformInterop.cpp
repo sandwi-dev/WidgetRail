@@ -1,6 +1,7 @@
 #include "OverlayPlatformInterop.h"
 
 #include "OverlayPlatformPolicy.h"
+#include "ControllerActivitySelection.h"
 #include "ControllerIsolationHostSession.h"
 #include "DualSenseHidReader.h"
 #include "LocalControllerPolicy.h"
@@ -137,7 +138,8 @@ struct WidgetRailOverlayPlatformHandle final {
     widgetrail::ForegroundTargetTracker foregroundTarget;
     std::optional<widgetrail::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
-    bool gameInputReadFallback{};
+    widgetrail::platform::ControllerActivitySelection controllerSelection;
+    ComPtr<IGameInputDevice> sampledGameInputDevice;
     std::optional<HRESULT> lastGamepadReadResult;
     std::uintptr_t lastGamepadReadDevice{};
     GameInputDeviceStatus lastGamepadReadStatus{};
@@ -259,49 +261,22 @@ struct WidgetRailOverlayPlatformHandle final {
         widgetrail::input::ControllerInputOwnershipDecision& decision) noexcept {
         state = {};
         connected = false;
-        const auto decide = [&] {
-            return widgetrail::input::DecideControllerInputOwnership(
-                visible, visible, foregroundConfirmed, gameInput.Get() != nullptr,
-                !gameInputReadFallback);
-        };
-        decision = decide();
-        widgetrail::isolation::SelectedControllerCurrent native;
-        if (visible && dualSense.Sample(native)) {
-            decision = {widgetrail::input::ControllerReadPath::DualSenseHid, false};
-            const auto& input = native.state;
-            state = {input.buttons, input.leftTrigger, input.rightTrigger, input.leftThumbX,
-                input.leftThumbY, input.rightThumbX, input.rightThumbY};
-            connected = true;
-        }
-        if (decision.readPath == widgetrail::input::ControllerReadPath::GameInputVisibleLease) {
-            const auto result = TryReadGameInput(state);
-            connected = SUCCEEDED(result);
-            if (result == GAMEINPUT_E_READING_NOT_FOUND) {
-                // Keep one reader for this visible session; retry GameInput on
-                // the next open instead of alternating sources during a hold.
-                gameInputReadFallback = true;
-                decision = decide();
-            }
-        }
-        if (decision.readPath == widgetrail::input::ControllerReadPath::XInputCompatibility) {
-            for (DWORD index = 0; index < XUSER_MAX_COUNT; ++index) {
-                XINPUT_STATE input{};
-                if (XInputGetState(index, &input) != ERROR_SUCCESS) continue;
-                state.buttons = input.Gamepad.wButtons;
-                state.leftTrigger = input.Gamepad.bLeftTrigger;
-                state.rightTrigger = input.Gamepad.bRightTrigger;
-                state.leftThumbX = input.Gamepad.sThumbLX;
-                state.leftThumbY = input.Gamepad.sThumbLY;
-                state.rightThumbX = input.Gamepad.sThumbRX;
-                state.rightThumbY = input.Gamepad.sThumbRY;
-                connected = true;
-                break;
+        decision = widgetrail::input::DecideControllerInputOwnership(
+            visible, visible, foregroundConfirmed, gameInput.Get() != nullptr);
+        if (visible) {
+            const auto sample = controllerSelection.Poll([&](widgetrail::platform::ControllerSource source) {
+                return ReadControllerSource(source);
+            });
+            connected = sample.connected;
+            state = sample.state;
+            if (sample.source.path != widgetrail::input::ControllerReadPath::None) {
+                decision = {sample.source.path, foregroundConfirmed &&
+                    sample.source.path == widgetrail::input::ControllerReadPath::GameInputVisibleLease};
             }
         }
         if (!lastReadPath || *lastReadPath != decision.readPath ||
             !lastForegroundExclusive ||
             *lastForegroundExclusive != decision.foregroundExclusive) {
-            if (lastReadPath && *lastReadPath != decision.readPath) controllerTracker.Reset();
             lastReadPath = decision.readPath;
             lastForegroundExclusive = decision.foregroundExclusive;
             switch (decision.readPath) {
@@ -325,16 +300,56 @@ struct WidgetRailOverlayPlatformHandle final {
         return connected;
     }
 
-    [[nodiscard]] HRESULT TryReadGameInput(WidgetRailOverlayPlatformRawControllerState& state) noexcept {
+    [[nodiscard]] widgetrail::platform::ControllerActivitySample ReadControllerSource(
+        const widgetrail::platform::ControllerSource requested) noexcept {
+        using Path = widgetrail::input::ControllerReadPath;
+        widgetrail::platform::ControllerActivitySample sample{requested};
+        if (requested.path == Path::GameInputVisibleLease) {
+            if (!gameInput) return sample;
+            auto* device = requested.device ? sampledGameInputDevice.Get() : nullptr;
+            if (requested.device && (!device ||
+                reinterpret_cast<std::uintptr_t>(device) != requested.device)) return sample;
+            sample.connected = SUCCEEDED(TryReadGameInput(sample.state, device));
+            if (sample.connected)
+                sample.source.device = reinterpret_cast<std::uintptr_t>(sampledGameInputDevice.Get());
+        } else if (requested.path == Path::XInputCompatibility) {
+            XINPUT_STATE input{};
+            if (XInputGetState(static_cast<DWORD>(requested.device), &input) == ERROR_SUCCESS) {
+                const auto& pad = input.Gamepad;
+                sample.state = {pad.wButtons, pad.bLeftTrigger, pad.bRightTrigger,
+                    pad.sThumbLX, pad.sThumbLY, pad.sThumbRX, pad.sThumbRY};
+                sample.connected = true;
+            }
+        } else if (requested.path == Path::DualSenseHid) {
+            widgetrail::isolation::SelectedControllerCurrent native;
+            std::uint64_t generation{};
+            if (dualSense.Sample(native, &generation) && (!requested.device || requested.device == generation)) {
+                const auto& pad = native.state;
+                sample.source.device = generation;
+                sample.state = {pad.buttons, pad.leftTrigger, pad.rightTrigger,
+                    pad.leftThumbX, pad.leftThumbY, pad.rightThumbX, pad.rightThumbY};
+                sample.connected = true;
+            }
+        }
+        return sample;
+    }
+
+    [[nodiscard]] HRESULT TryReadGameInput(WidgetRailOverlayPlatformRawControllerState& state,
+        IGameInputDevice* selectedDevice) noexcept {
         ComPtr<IGameInputReading> reading;
         const HRESULT result = gameInput->GetCurrentReading(
-            GameInputKindGamepad, nullptr, reading.ReleaseAndGetAddressOf());
+            GameInputKindGamepad, selectedDevice, reading.ReleaseAndGetAddressOf());
         if (FAILED(result) || !reading) {
             ObserveGamepadRead(FAILED(result) ? result : E_UNEXPECTED, nullptr);
             return FAILED(result) ? result : E_UNEXPECTED;
         }
         ComPtr<IGameInputDevice> device;
         reading->GetDevice(device.GetAddressOf());
+        if (!device || (device->GetDeviceStatus() & GameInputDeviceConnected) == GameInputDeviceNoStatus) {
+            ObserveGamepadRead(GAMEINPUT_E_READING_NOT_FOUND, device.Get());
+            return GAMEINPUT_E_READING_NOT_FOUND;
+        }
+        sampledGameInputDevice = device;
         GameInputGamepadState input{};
         if (!reading->GetGamepadState(&input)) {
             ObserveGamepadRead(E_FAIL, device.Get());
@@ -777,7 +792,10 @@ WidgetRailOverlayPlatformSetWindowState(
         event.value = focused;
         handle->Queue(std::move(event));
     }
-    if (!visible) handle->gameInputReadFallback = false;
+    if (!visible) {
+        handle->controllerSelection.Reset();
+        handle->sampledGameInputDevice.Reset();
+    }
     if (!visible || !focused) handle->controllerTracker.Reset();
     if (!visible && handle->controllerIsolation.active())
         handle->controllerIsolation.CloseOverlay();

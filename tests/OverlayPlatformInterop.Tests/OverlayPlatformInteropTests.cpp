@@ -1,5 +1,8 @@
 #include "../../src/OverlayPlatformInterop/OverlayPlatformInterop.h"
 #include "../../src/OverlayPlatformInterop/OverlayPlatformPolicy.h"
+#include "../../src/OverlayPlatformInterop/ControllerActivitySelection.h"
+
+#include <vector>
 #include "../../src/OverlayHost/OverlayState.h"
 
 #include <Windows.h>
@@ -67,6 +70,148 @@ void Check(const bool condition, const char* message) {
     }
 }
 
+void ControllerActivitySelectionKeepsHoldsAndReleases() {
+    using namespace widgetrail::platform;
+    using Path = widgetrail::input::ControllerReadPath;
+    ControllerActivitySelection selection;
+    std::vector<ControllerActivitySample> devices{
+        {{Path::GameInputVisibleLease, 101}, {}, true},
+        {{Path::XInputCompatibility, 0}, {}, true},
+        {{Path::XInputCompatibility, 2}, {}, true},
+        {{Path::DualSenseHid, 1}, {}, true},
+        {{Path::GameInputVisibleLease, 102}, {}, true}};
+    std::vector<ControllerSource> reads;
+    std::uint64_t latestGameInput = 101;
+    const auto read = [&](ControllerSource requested) {
+        reads.push_back(requested);
+        if (requested.path == Path::GameInputVisibleLease && requested.device == 0)
+            requested.device = latestGameInput;
+        if (requested.path == Path::DualSenseHid && requested.device == 0)
+            requested.device = devices[3].source.device;
+        for (const auto& device : devices) if (device.source == requested) return device;
+        return ControllerActivitySample{requested};
+    };
+    ControllerFrameTracker tracker;
+    tracker.Prime(true, {}, 0);
+    std::uint64_t now{};
+    const auto poll = [&] {
+        reads.clear();
+        const auto sample = selection.Poll(read);
+        now += 15;
+        return tracker.Update(sample.connected, sample.state, now);
+    };
+    devices[3].state.buttons = XINPUT_GAMEPAD_A;
+    auto frame = poll();
+    Check(frame.pressedButtons == XINPUT_GAMEPAD_A && reads.front().path == Path::GameInputVisibleLease &&
+        reads.back().path == Path::DualSenseHid, "idle connected GameInput and XInput do not block DualSense activity");
+    devices[0].state.buttons = XINPUT_GAMEPAD_B;
+    frame = poll();
+    Check(reads.size() == 1 && reads.front() == devices[3].source && frame.pressedButtons == 0 &&
+        frame.state.buttons == XINPUT_GAMEPAD_A, "higher priority activity cannot steal a held DualSense button");
+    devices[3].state = {};
+    frame = poll();
+    Check(frame.releasedButtons == XINPUT_GAMEPAD_A && frame.pressedButtons == 0,
+        "old owner releases before a different backend supplies input");
+    frame = poll();
+    Check(frame.pressedButtons == XINPUT_GAMEPAD_B && reads.size() == 1,
+        "backend handoff keeps the very first new button press");
+    latestGameInput = 102;
+    devices[4].state.buttons = XINPUT_GAMEPAD_X;
+    frame = poll();
+    Check(reads.size() == 1 && reads.front().device == 101 && frame.state.buttons == XINPUT_GAMEPAD_B,
+        "GameInput hold reads its exact device even when another device supplies the latest reading");
+    devices[0].connected = false;
+    frame = poll();
+    Check(!frame.connected && frame.releasedButtons == XINPUT_GAMEPAD_B,
+        "disconnect produces a neutral release without mixing in another controller");
+    frame = poll();
+    Check(frame.pressedButtons == XINPUT_GAMEPAD_X, "another GameInput device can act after the disconnect release");
+    devices[4].state = {};
+    (void)poll();
+    devices[2].state.buttons = XINPUT_GAMEPAD_Y;
+    devices[3].state.buttons = XINPUT_GAMEPAD_A;
+    frame = poll();
+    Check(frame.pressedButtons == XINPUT_GAMEPAD_Y && reads.back() == devices[2].source,
+        "XInput skips idle lower slots and wins over simultaneous HID activity");
+    devices[1].state.buttons = XINPUT_GAMEPAD_B;
+    frame = poll();
+    Check(reads.size() == 1 && reads.front().device == 2 && frame.pressedButtons == 0,
+        "a held XInput slot is not replaced by a lower slot");
+    devices[2].state = {};
+    (void)poll();
+    devices[1].state = {};
+    frame = poll();
+    Check(frame.pressedButtons == XINPUT_GAMEPAD_A, "HID is considered after XInput becomes neutral");
+    ++devices[3].source.device;
+    frame = poll();
+    Check(!frame.connected && frame.releasedButtons == XINPUT_GAMEPAD_A,
+        "HID reconnection generation cannot silently inherit a previous hold");
+    frame = poll();
+    Check(frame.pressedButtons == XINPUT_GAMEPAD_A, "reconnected HID can supply a fresh action after release");
+    selection.Reset();
+    tracker.Reset();
+    devices[3].state = {};
+    devices[4].state = {};
+    frame = poll();
+    Check(frame.primed && frame.pressedButtons == 0, "hide/reset retires source and frame ownership");
+
+    devices[4].state.buttons = XINPUT_GAMEPAD_A;
+    devices[1].state.buttons = XINPUT_GAMEPAD_A; // Same physical pad exposed by both APIs.
+    frame = poll();
+    Check(frame.pressedButtons == XINPUT_GAMEPAD_A && reads.size() == 1,
+        "GameInput wins over a duplicate XInput report");
+    frame = poll();
+    Check(frame.pressedButtons == 0, "mirrored backend cannot replay a held press");
+    devices[4].state = {};
+    devices[1].state = {};
+    (void)poll();
+    frame = poll();
+    Check(frame.pressedButtons == 0, "mirrored release does not become a second action");
+}
+
+void ControllerActivityThresholdsAndRepeats() {
+    using namespace widgetrail::platform;
+    using Path = widgetrail::input::ControllerReadPath;
+    ControllerActivitySelection selection;
+    WidgetRailOverlayPlatformRawControllerState state{};
+    state.leftThumbX = 7'849; state.rightThumbY = -8'000; state.leftTrigger = 29;
+    Check(!selection.HasActivity(state), "stick drift and subthreshold triggers do not claim input");
+    state.rightThumbY = -8'001;
+    Check(selection.HasActivity(state), "right stick scrolling can claim input without buttons");
+    selection.SetOptions({12'000, 4'000, 30});
+    state = {}; state.leftThumbX = 11'000;
+    Check(!selection.HasActivity(state), "left deadzone is independently configurable");
+    state.rightThumbX = 4'001;
+    Check(selection.HasActivity(state), "right deadzone is independently configurable");
+    state = {}; state.leftThumbY = -32'768;
+    Check(selection.HasActivity(state), "negative full-scale axes do not overflow");
+    state = {}; state.rightTrigger = 30;
+    Check(selection.HasActivity(state), "trigger threshold matches trigger action detection");
+
+    ControllerFrameTracker tracker;
+    tracker.Prime(true, {}, 0);
+    state = {}; state.leftThumbX = 20'000;
+    const auto read = [&](ControllerSource source) {
+        if (source.path == Path::GameInputVisibleLease)
+            return ControllerActivitySample{{source.path, 100}, state, true};
+        return ControllerActivitySample{source};
+    };
+    auto sample = selection.Poll(read);
+    auto frame = tracker.Update(sample.connected, sample.state, 15);
+    Check(frame.stickNavigation.direction == WidgetRailOverlayPlatformNavigationDirection::Right,
+        "selected stick starts navigation immediately");
+    sample = selection.Poll(read);
+    frame = tracker.Update(sample.connected, sample.state, 400);
+    Check(frame.stickNavigation.phase == WidgetRailOverlayPlatformNavigationPhase::Repeated &&
+        frame.stickNavigation.direction == WidgetRailOverlayPlatformNavigationDirection::Right,
+        "owner selection preserves stick repeat cadence");
+    state = {};
+    sample = selection.Poll(read);
+    frame = tracker.Update(sample.connected, sample.state, 800);
+    Check(frame.stickNavigation.direction == WidgetRailOverlayPlatformNavigationDirection::None,
+        "neutral release retires stick repeats");
+}
+
 void QueuedNavigationCannotRepeatAfterRenderingStall() {
     using Direction = WidgetRailOverlayPlatformNavigationDirection;
     using Phase = WidgetRailOverlayPlatformNavigationPhase;
@@ -124,6 +269,8 @@ void QueuedNavigationCannotRepeatAfterRenderingStall() {
 } // namespace
 
 int main() {
+    ControllerActivitySelectionKeepsHoldsAndReleases();
+    ControllerActivityThresholdsAndRepeats();
     QueuedNavigationCannotRepeatAfterRenderingStall();
     Check(WidgetRailOverlayPlatformGetAbiVersion() ==
               WRAIL_OVERLAY_PLATFORM_ABI_VERSION,

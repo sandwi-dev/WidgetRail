@@ -27,7 +27,7 @@ public:
     ~DualSenseHidReader();
     bool Start(const SelectedControllerEnrollment* expected = nullptr,
         ControllerIsolationReaderIngress* ingress = nullptr, std::function<void()> guidePressed = {}) noexcept;
-    bool Sample(SelectedControllerCurrent& current) const noexcept;
+    bool Sample(SelectedControllerCurrent& current, std::uint64_t* connectionGeneration = nullptr) const noexcept;
     bool WaitForReading(std::uint32_t milliseconds) noexcept;
     void Stop() noexcept;
 private:
