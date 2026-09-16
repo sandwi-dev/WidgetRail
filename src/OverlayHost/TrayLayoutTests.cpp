@@ -393,6 +393,17 @@ int main() {
           RadialPageTarget(19, 0, -4) == 16,
           "page navigation wraps and clamps partial pages without crossing identities");
     const widgetrail::declarative::Rect wheelBounds{20, 10, 340, 340};
+    const auto offPage = widgetrail::shell::ComputeRadialTrayLayout(wheelBounds, 19, 3, 2);
+    Check(offPage && offPage->page == 2 && offPage->tiles.size() == 3 &&
+          offPage->tiles.front().slot == 16 && offPage->tiles.back().slot == 18 &&
+          offPage->previousOverflow->targetSlot == 8 && offPage->nextOverflow->targetSlot == 0,
+          "browsing a different page preserves the global selection and uses that page for arrows");
+    const auto returnedPage = widgetrail::shell::ComputeRadialTrayLayout(wheelBounds, 19, 3, 0);
+    Check(returnedPage && returnedPage->tiles[3].slot == 3,
+          "returning to the selected page exposes the same globally selected icon");
+    const auto shrunk = widgetrail::shell::ComputeRadialTrayLayout(wheelBounds, 5, 3, 2);
+    Check(shrunk && shrunk->page == 0 && shrunk->tiles.size() == 5 && !shrunk->nextOverflow,
+          "catalog shrink clamps a browsed page without inventing another selection");
     for (const std::size_t selected : {0U, 8U, 18U}) {
         const auto wheel = widgetrail::shell::ComputeRadialTrayLayout(wheelBounds, 19, selected);
         Check(wheel && wheel->page == selected/8 && wheel->pageCount == 3,

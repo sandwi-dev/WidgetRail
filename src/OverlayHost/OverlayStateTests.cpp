@@ -262,26 +262,27 @@ int main() {
     Send(radial, Command::Activate);
     const auto originalWidget = std::wstring(radial.activeWidget());
     Send(radial, Command::SampleWidgetBack);
-    (void)radial.Dispatch(Command::NavigateRight, false);
-    Check(radial.activeWidget() == originalWidget && radial.selectedWidget() != originalWidget &&
+    (void)radial.Dispatch(Command::NavigateRight);
+    Check(radial.activeWidget() == radial.selectedWidget() && radial.selectedWidget() != originalWidget &&
           radial.focusRegion() == FocusRegion::Tray,
-          "radial highlight leaves the active widget and its input scope untouched");
-    Check(radial.ReturnToActiveWidget() && radial.selectedWidget() == originalWidget &&
+          "radial highlight previews the selected widget while keeping tray focus");
+    const auto previewWidget = std::wstring(radial.selectedWidget());
+    Check(radial.ReturnToActiveWidget() && radial.selectedWidget() == previewWidget &&
           radial.focusRegion() == FocusRegion::Widget,
-          "canceling the wheel returns to the original widget without activation");
+          "closing the wheel returns to the globally selected preview");
     Send(radial, Command::SampleWidgetBack);
-    const auto targetWidget = radial.order()[1];
-    Check(radial.TrySelectTrayWidget(targetWidget, false) && radial.activeWidget() == originalWidget,
-          "direct radial selection does not load or activate the target");
-    (void)radial.Dispatch(Command::Activate, false);
+    const auto targetWidget = radial.order()[2];
+    Check(radial.TrySelectTrayWidget(targetWidget) && radial.activeWidget() == targetWidget &&
+          radial.focusRegion() == FocusRegion::Tray,
+          "direct radial selection previews its target without entering widget focus");
+    (void)radial.Dispatch(Command::Activate);
     Check(radial.activeWidget() == targetWidget && radial.focusRegion() == FocusRegion::Widget,
           "A commits exactly the highlighted radial target");
 
-    // The same configured switcher supports two entry paths without granting
-    // the wheel's highlighted widget preview or dashboard action authority.
+    // Both entry paths share selection and ordinary visible-widget authority.
     OverlayState hybrid({}, {L"music", L"audio", L"settings"});
     const auto sendHybrid = [&](const Command command) {
-        return hybrid.Dispatch(command, !hybrid.radialTrayOpen(true));
+        return hybrid.Dispatch(command);
     };
     sendHybrid(Command::ToggleOverlay);
     sendHybrid(Command::Activate);
@@ -290,10 +291,11 @@ int main() {
     Check(hybrid.radialTrayOpen(true) && !hybrid.radialTrayOpen(false),
           "Back opens the wheel only when the radial setting is enabled");
     sendHybrid(Command::NavigateRight);
-    Check(hybrid.activeWidget() == initial && hybrid.selectedWidget() != initial,
-          "Back entry keeps radial highlights lightweight");
-    Check(hybrid.ReturnToActiveWidget() && hybrid.selectedWidget() == initial,
-          "radial cancel returns to the retained widget");
+    Check(hybrid.activeWidget() == hybrid.selectedWidget() && hybrid.selectedWidget() != initial,
+          "Back entry previews radial highlights using the ordinary tray lifecycle");
+    const auto radialPreview = std::wstring(hybrid.selectedWidget());
+    Check(hybrid.ReturnToActiveWidget() && hybrid.selectedWidget() == radialPreview,
+          "radial cancel returns to the selected preview");
     sendHybrid(Command::FocusTray);
     Check(!hybrid.radialTrayOpen(true) && hybrid.focusRegion() == FocusRegion::Tray,
           "downward boundary enters the rail even with radial switching enabled");

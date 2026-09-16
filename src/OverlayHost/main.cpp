@@ -2014,7 +2014,6 @@ private:
                 pinnedSurfaceCoordinator_.pinned() &&
                 pinnedSurfaceCoordinator_.widgetId() == invalidatedWidget;
             if ((state_.surface() != widgetrail::Surface::Hidden &&
-                 (state_.surface() == widgetrail::Surface::Widget || !RadialSwitcherOpen()) &&
                  currentWidget == invalidatedWidget) || pinnedInvalidation) {
                 RefreshAndApplyPresentation([&] {
                     RefreshWidgetSnapshot(invalidatedWidget);
@@ -5864,7 +5863,7 @@ private:
                 *priorPendingAuthority);
         const auto priorDesiredLifecycle = widgetrail::DesiredWidgetLifecycle(
             priorSurface, priorFocusRegion, priorSelected, priorActive,
-            IsBridgeWidget(priorSelected), IsBridgeWidget(priorActive), !RadialSwitcherOpen());
+            IsBridgeWidget(priorSelected), IsBridgeWidget(priorActive));
         if (priorSurface == widgetrail::Surface::Widget)
             CommitAdmittedWidgetPresentation(priorActive);
         if (priorSurface == widgetrail::Surface::Widget && IsBridgeWidget(priorActive)) {
@@ -5874,6 +5873,10 @@ private:
         if (!mutation()) {
             return;
         }
+        if (priorSelected != state_.selectedWidget() ||
+            priorSurface == widgetrail::Surface::Hidden || !RadialSwitcherOpen() ||
+            state_.reorderMode())
+            radialBrowsedPage_.reset();
         if (priorSurface == widgetrail::Surface::Hidden && state_.surface() != widgetrail::Surface::Hidden) {
             pendingTaskWindowActivation_.reset();
         }
@@ -5972,7 +5975,7 @@ private:
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
             IsBridgeWidget(state_.selectedWidget()),
-            IsBridgeWidget(state_.activeWidget()), !RadialSwitcherOpen());
+            IsBridgeWidget(state_.activeWidget()));
         if (command == widgetrail::Command::Activate && correlationId != 0 &&
             priorDesiredLifecycle && nextDesiredLifecycle &&
             priorDesiredLifecycle->widgetId == nextDesiredLifecycle->widgetId) {
@@ -6052,7 +6055,7 @@ private:
                 state_.surface() == widgetrail::Surface::Widget && IsBridgeWidget(state_.activeWidget()) &&
                 (priorSurface != widgetrail::Surface::Widget || priorActive != state_.activeWidget());
             const bool hoveredBridgeWidget =
-                !RadialSwitcherOpen() && state_.surface() == widgetrail::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
+                state_.surface() == widgetrail::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
                 (priorSurface != widgetrail::Surface::Dashboard || priorSelected != state_.selectedWidget());
             const bool startupFailureBlocksSnapshot =
                 (enteredBridgeWidget && sessions_.Failure(state_.activeWidget())) ||
@@ -6159,7 +6162,7 @@ private:
 
     void Dispatch(const widgetrail::Command command) {
         ApplyStateTransition(
-            [&] { return state_.Dispatch(command, !RadialSwitcherOpen()); }, command);
+            [&] { return state_.Dispatch(command); }, command);
         if (textEntryModal_.active() && state_.surface() == widgetrail::Surface::Hidden) {
             textEntryModal_.UpdateControllerRepeat({}, GetTickCount64());
             textEntryControllerPhase_ = TextEntryControllerPhase::AwaitingEntryNeutral;
@@ -6171,7 +6174,7 @@ private:
         bool accepted = false;
         ApplyStateTransition([&] {
             const auto priorSelected = state_.selectedWidget();
-            accepted = state_.TrySelectTrayWidget(widgetId, !RadialSwitcherOpen());
+            accepted = state_.TrySelectTrayWidget(widgetId);
             return accepted && priorSelected != state_.selectedWidget();
         });
         return accepted;
@@ -6187,12 +6190,32 @@ private:
         return state_.radialTrayOpen(RadialSwitcherEnabled()) &&
             !pinnedSurfaceCoordinator_.controllerFocused();
     }
+    std::size_t RadialBrowsedPage() const noexcept {
+        const auto pageSize = widgetrail::shell::kRadialPageSize;
+        const auto last = state_.order().empty() ? 0 : (state_.order().size()-1)/pageSize;
+        return std::min(radialBrowsedPage_.value_or(state_.selectedSlot()/pageSize), last);
+    }
+    void BrowseRadialPage(const std::size_t page) {
+        if (!RadialSwitcherOpen() || state_.reorderMode() || state_.order().empty()) return;
+        const auto last = (state_.order().size()-1)/widgetrail::shell::kRadialPageSize;
+        const auto target = std::min(page, last);
+        if (target == RadialBrowsedPage()) return;
+        // Page browsing is chrome-only: keep the global selection, visible
+        // widget, lifecycle and dashboard action authority unchanged.
+        radialBrowsedPage_ = target;
+        radialLeftArmed_ = false;
+        retainedTrayPaintState_.reset();
+        ClearAccessibilityTree();
+        InvalidateRect(window_, nullptr, FALSE);
+    }
     void StepRadialSelection(int delta) {
         if (state_.order().empty()) return;
         if (state_.reorderMode()) { Dispatch(delta < 0 ? widgetrail::Command::NavigateLeft : widgetrail::Command::NavigateRight); return; }
-        const auto first = state_.selectedSlot()/8*8;
-        const auto count = std::min<std::size_t>(8, state_.order().size()-first);
-        const auto target = first + static_cast<std::size_t>((static_cast<int>(state_.selectedSlot()-first)+delta+static_cast<int>(count))%static_cast<int>(count));
+        const auto first = RadialBrowsedPage()*widgetrail::shell::kRadialPageSize;
+        const auto count = std::min(widgetrail::shell::kRadialPageSize, state_.order().size()-first);
+        const bool onPage = state_.selectedSlot() >= first && state_.selectedSlot() < first+count;
+        const auto target = !onPage ? (delta < 0 ? first+count-1 : first) :
+            first + static_cast<std::size_t>((static_cast<int>(state_.selectedSlot()-first)+delta+static_cast<int>(count))%static_cast<int>(count));
         (void)SelectTrayWidget(state_.order()[target]);
     }
 
@@ -6705,7 +6728,7 @@ private:
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
             IsBridgeWidget(state_.selectedWidget()),
-            IsBridgeWidget(state_.activeWidget()), !RadialSwitcherOpen());
+            IsBridgeWidget(state_.activeWidget()));
         if (overlayDesired) {
             desiredStates.insert_or_assign(overlayDesired->widgetId, overlayDesired->state);
         }
@@ -9971,6 +9994,10 @@ private:
                 trayTarget = TrayPointerTarget{hit->slot, true};
             } else if (const auto* overflow = widgetrail::shell::HitTestTrayOverflow(
                            *trayLayout, trayX, trayY)) {
+                if (RadialSwitcherOpen()) {
+                    if (!openContext) BrowseRadialPage(overflow->targetSlot/widgetrail::shell::kRadialPageSize);
+                    return;
+                }
                 trayTarget = TrayPointerTarget{overflow->targetSlot, false};
             }
         }
@@ -12179,15 +12206,15 @@ private:
             if (lx*lx+ly*ly < 7849.0F*7849.0F) radialLeftArmed_ = true;
             if (radialLeftArmed_ && !state_.reorderMode()) {
                 if (const auto sector = widgetrail::shell::RadialSector(lx,ly,16000.0F)) {
-                    const auto target = state_.selectedSlot()/8*8 + *sector;
+                    const auto target = RadialBrowsedPage()*widgetrail::shell::kRadialPageSize + *sector;
                     if (target < state_.order().size()) (void)SelectTrayWidget(state_.order()[target]);
                 }
             } else if (state_.reorderMode() && stickDirection) DispatchStickNavigation(*stickDirection);
             if (dpadDirection) DispatchStickNavigation(*dpadDirection);
             if (!state_.reorderMode()) if (const auto page = radialRightStick_.Page(frame.state.rightThumbX,now)) {
-                const auto target = widgetrail::shell::RadialPageTarget(state_.order().size(),state_.selectedSlot(),
+                const auto target = widgetrail::shell::RadialPageTarget(state_.order().size(),RadialBrowsedPage()*widgetrail::shell::kRadialPageSize,
                     page->direction == widgetrail::input::NavigationDirection::Left ? -1 : 1);
-                if (target < state_.order().size()) (void)SelectTrayWidget(state_.order()[target]);
+                BrowseRadialPage(target/widgetrail::shell::kRadialPageSize);
             }
         }
         // An action uses the settled visible target; do not scroll again on
@@ -12590,7 +12617,11 @@ private:
                         state_.focusRegion() != widgetrail::FocusRegion::Tray ||
                         state_.reorderMode())
                         continue;
-                    if (!SelectTrayWidget(request.hostTargetId)) continue;
+                    if (RadialSwitcherOpen()) {
+                        const auto target = std::find(state_.order().begin(), state_.order().end(), request.hostTargetId);
+                        if (target != state_.order().end())
+                            BrowseRadialPage(static_cast<std::size_t>(target-state_.order().begin())/widgetrail::shell::kRadialPageSize);
+                    } else if (!SelectTrayWidget(request.hostTargetId)) continue;
                 } else if (request.hostAction ==
                                widgetrail::accessibility::HostAction::BackToTray ||
                            request.hostAction ==
@@ -13893,7 +13924,6 @@ private:
     }
 
     void RefreshCurrentBridgeSnapshot(const std::uint64_t correlationId = 0) {
-        if (RadialSwitcherOpen() && state_.surface() == widgetrail::Surface::Dashboard) return;
         if (state_.surface() == widgetrail::Surface::Hidden &&
             !pinnedSurfaceCoordinator_.pinned()) return;
         const std::wstring_view widgetId = state_.surface() == widgetrail::Surface::Hidden
@@ -14216,7 +14246,7 @@ private:
         return modalDecision.disposition ==
                 widgetrail::input::AuthoredHeldActionDisposition::Dispatch &&
             state_.surface() != widgetrail::Surface::Hidden &&
-            !textEntryModal_.active() && !trayContextMenu_ && !RadialSwitcherOpen() &&
+            !textEntryModal_.active() && !trayContextMenu_ &&
             !widgetContextMenu_ &&
             !OverlayFullscreenMediaRequested() &&
             !pinnedSurfaceCoordinator_.controllerFocused() &&
@@ -14884,7 +14914,6 @@ private:
             exactActionRequest = std::nullopt,
         const bool physicalPress = false,
         const HeldActionAuthority* exactHeldAction = nullptr) {
-        if (RadialSwitcherOpen()) return;
         if (state_.surface() == widgetrail::Surface::Hidden) {
             if (exactActionRequest) {
                 RejectWidgetActionRequest(
@@ -16651,7 +16680,7 @@ private:
         if (session.radialBounds) {
             if (RadialSwitcherOpen()) {
                 auto radial = widgetrail::shell::ComputeRadialTrayLayout(*session.radialBounds,
-                    state_.order().size(),state_.selectedSlot());
+                    state_.order().size(),state_.selectedSlot(),RadialBrowsedPage());
                 if (!radial) return std::nullopt;
                 radial->statusBounds = layout->statusBounds;
                 if (radial->statusBounds) {
@@ -17720,10 +17749,6 @@ private:
                 std::to_wstring(trayYGesture_.progressPercent(GetTickCount64())) +
                 L"%";
         }
-        if (RadialSwitcherOpen() && !state_.reorderMode()) {
-            if (hints) *hints={{L"left-stick-move",L"Choose"},{L"right-stick-move",L"Page"},{L"A",L"Open"},{L"B",L"Back"},{L"Menu",L"Options"},{L"Y",L"Reorder / hold to reload"}};
-            return L"Left stick Choose    Right stick Page    A Open    B Back    Menu Options    Y Reorder / hold to reload";
-        }
         std::vector<widgetrail::ControllerGuideAction> quickActions;
         const auto* snapshot = GuideSnapshotFor(state_.selectedWidget());
         if (IsBridgeWidget(state_.selectedWidget()) && snapshot) {
@@ -17742,7 +17767,7 @@ private:
             [this](const std::wstring_view text) {
                 return MeasureGuideTextWidth(text);
             },
-            quickActions, hints, [this](auto items) { return MeasureGuideHints(items); });
+            quickActions, hints, [this](auto items) { return MeasureGuideHints(items); }, RadialSwitcherOpen());
         return guide;
     }
 
@@ -18977,6 +19002,7 @@ private:
     widgetrail::input::HeldButtonActionRepeat heldActionRepeat_;
     widgetrail::input::RadialRightStick radialRightStick_;
     bool radialLeftArmed_{};
+    std::optional<std::size_t> radialBrowsedPage_;
     std::optional<HeldActionAuthority> heldActionAuthority_;
     int lastHeldRepeatVerdict_{-1};
     widgetrail::input::WidgetInteractionSession interactionSession_;

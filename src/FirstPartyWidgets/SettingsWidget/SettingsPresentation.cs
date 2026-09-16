@@ -333,7 +333,7 @@ internal static class SettingsPresentation
                 UI.Button($"Widget switcher: {(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial ? "Radial + rail" : "Rail")}",
                     "widget-switcher.toggle", "overlay.widget-switcher").Busy(busy).Classes("setting-row"),
                 UI.Text(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial
-                        ? "B at the widget's top level opens the radial.\nRadial: left stick chooses, right stick changes pages, A opens, B returns.\nMove down past the widget's bottom row for the rail and its shortcuts. B on the rail closes the overlay."
+                        ? "B at the widget's top level opens the radial.\nLeft stick previews widgets and their shortcuts; right stick changes pages without changing the preview. A enters, B returns.\nMove down past the widget's bottom row for the rail. B on the rail closes the overlay."
                         : "Move down past the widget's bottom row, or press B at its top level, to enter the rail.\nLeft/right previews widgets and their shortcuts. A or Up enters the widget; B on the rail closes the overlay.",
                     "overlay.widget-switcher.help").Classes("page-help", "widget-switcher-help"),
                 UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,

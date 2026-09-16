@@ -29,17 +29,19 @@ Radial + rail combines the wheel with the horizontal tray:
   Press A or move up to enter it. B closes the overlay from the horizontal tray.
 
 The wheel opens over the current widget without changing its layout.
-Point the left stick toward a widget, then press A to open it. D-pad or keyboard
-arrows move between slots. B returns to the current widget.
+Point the left stick toward a widget to preview it behind the wheel and use its
+dashboard shortcuts. Press A to enter it. D-pad or keyboard arrows move between
+slots. B returns to the selected preview.
 
 The wheel holds eight widget icons per page, with the selected widget's name in
 the center. Its preferred diameter is 400 logical pixels, scaled by your display
 and interface settings and reduced when screen space is limited.
 Hold the right stick left or right to
-change pages with the same repeat timing as ordinary navigation. Browsing the
-wheel does not open each highlighted widget. Menu and Y retain their tray actions.
-The wheel does not run dashboard shortcuts. Use the horizontal tray for those,
-or open the widget with A to use its own controls.
+change pages with the same repeat timing as ordinary navigation. Changing pages
+keeps the selected widget, preview and shortcuts until you choose another icon.
+Selection is shared across all pages; the center keeps showing the selected
+widget's name even when its icon is on another page. Release the left stick
+before pointing at an icon on the new page. Menu and Y retain their tray actions.
 
 View keeps its pinned-view focus shortcut. Inside a widget, the right stick
 still scrolls; release it to neutral when moving between the wheel and a widget.

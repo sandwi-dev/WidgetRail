@@ -226,7 +226,8 @@ using MeasureControllerGuideText =
     const MeasureControllerGuideText& measureText,
     std::span<const ControllerGuideAction> quickActions = {},
     ControllerGuideHints* hints = nullptr,
-    const MeasureControllerGuideHints& measureHints = {});
+    const MeasureControllerGuideHints& measureHints = {},
+    bool radial = false);
 
 /// Computes a bottom-centered physical-pixel window rectangle that is fully
 /// contained by the monitor work area. Logical dimensions and margins are

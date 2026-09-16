@@ -53,7 +53,8 @@ struct TrayLayout final {
 
 inline constexpr std::size_t kRadialPageSize = 8;
 [[nodiscard]] std::optional<TrayLayout> ComputeRadialTrayLayout(
-    const declarative::Rect& bounds, std::size_t widgetCount, std::size_t selectedSlot);
+    const declarative::Rect& bounds, std::size_t widgetCount, std::size_t selectedSlot,
+    std::optional<std::size_t> browsedPage = std::nullopt);
 [[nodiscard]] std::size_t RadialPageTarget(std::size_t count, std::size_t slot, int delta) noexcept;
 [[nodiscard]] std::optional<std::size_t> RadialSector(float x, float y, float deadZone = 0.0F) noexcept;
 

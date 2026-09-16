@@ -67,6 +67,7 @@ struct Arguments final {
     std::optional<long long> fallbackAuthorityReplaySequence;
     bool geometryOnly{};
     bool inspectorOnly{};
+    bool radialPreviewOnly{};
     bool pinnedSliderRouteOnly{};
     bool fallbackAuthoritySelectionOnly{};
 };
@@ -345,6 +346,8 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
             result.geometryOnly = true;
         } else if (argument == L"--inspector-only") {
             result.inspectorOnly = true;
+        } else if (argument == L"--radial-preview-only") {
+            result.radialPreviewOnly = true;
         } else if (argument == L"--pinned-slider-route-only") {
             result.pinnedSliderRouteOnly = true;
         } else if (argument == L"--fallback-authority-selection-only") {
@@ -380,7 +383,7 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
             Fail("Usage: WidgetSwitchHostTests --installation <dir> "
                  "--fixture-worker <exe> --repository-commit <sha> "
                  "--host-sha256 <sha256> [--geometry-only] "
-                 "[--pinned-slider-route-only] [--inspector-only] "
+                 "[--pinned-slider-route-only] [--inspector-only] [--radial-preview-only] "
                  "[--fallback-authority-selection-only] "
                  "[--fallback-authority-replay-log <path> "
                  "--fallback-authority-marker <offset> "
@@ -5047,6 +5050,118 @@ void RunDeveloperInspectorScenario(const Arguments& arguments) {
     installation.reset();
 }
 
+void RunRadialPreviewScenario(const Arguments& arguments) {
+    auto installation = std::make_unique<TemporaryInstallation>(
+        arguments.installation, arguments.fixtureWorker);
+    const auto settingsPath = installation->LocalAppData() / L"WidgetRail" / L"platform-settings.json";
+    auto settings = ReadUtf8(settingsPath);
+    const auto layoutAt = settings.find("\"widgetSwitcher\": \"rail\"");
+    Require(layoutAt != std::string::npos, "Radial fixture lacks explicit switcher settings");
+    settings.replace(layoutAt, std::string_view("\"widgetSwitcher\": \"rail\"").size(),
+        "\"widgetSwitcher\": \"radial\"");
+    WriteUtf8(settingsPath, settings);
+    installation->PublishCatalogProbe(true);
+    // The catalog-only probe normally has no renderable surface. Give this
+    // ninth, independently owned widget a supported fixture instance.
+    const auto catalogPath = installation->Root() / L"widget-catalog.json";
+    auto catalog = ReadUtf8(catalogPath);
+    const auto instanceAt = catalog.find("catalog-probe.default");
+    Require(instanceAt != std::string::npos, "Radial fixture lacks its ninth catalog entry");
+    catalog.replace(instanceAt, std::string_view("catalog-probe.default").size(), "settings.radial-probe");
+    WriteUtf8(catalogPath, catalog);
+    const auto quoted = [](const fs::path& path) { return L"\"" + path.wstring() + L"\""; };
+    const std::wstring hostArguments =
+        L"--show --process-profile " + installation->ProcessProfile() +
+        L" --development-catalog-root " + quoted(installation->Root()) +
+        L" --development-ready-path " + quoted(installation->ReadyPath()) +
+        L" --development-ready-nonce " + kDevelopmentNonce +
+        L" --development-widget-id audio-mixer --development-widget-instance audio-mixer.default";
+    auto host = std::make_unique<HostProcess>(
+        installation->Root(), installation->LocalAppData(), hostArguments);
+    Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
+        return ReadUtf8(installation->ReadyPath()).find(kDevelopmentNonceUtf8) != std::string::npos;
+    }), "Radial host did not publish authenticated readiness");
+    HWND window{};
+    Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
+        window = LocateHostWindow(host->Id());
+        return window && IsWindowVisible(window);
+    }), "Radial host did not become visible");
+    ComPtr<IUIAutomation> automation;
+    Require(SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(automation.GetAddressOf()))) && automation, "Radial UIA initialization failed");
+    const auto find = [&](const wchar_t* id, const bool chrome = false) {
+        ComPtr<IUIAutomationElement> root;
+        const auto target = chrome ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome") : window;
+        if (!target || FAILED(automation->ElementFromHandle(target, root.GetAddressOf())))
+            return ComPtr<IUIAutomationElement>{};
+        return FindAutomationElement(automation.Get(), root.Get(), id);
+    };
+    const auto hasPreview = [&](const std::string_view widget) {
+        const auto log = ReadUtf8(installation->LocalAppData() / L"WidgetRail" / L"overlay.log");
+        const auto at = log.rfind("Widget presentation paint target=");
+        if (at == std::string::npos) return false;
+        const auto paint = RecordLine(log, at);
+        // A tray preview is visual; it deliberately does not publish ordinary
+        // widget controls as accessible input targets until A enters it.
+        return TextField(paint, "target=") == widget && TextField(paint, "rendered=") == widget &&
+            TextField(paint, "selected=") == widget && TextField(paint, "semantics=") == "current" &&
+            TextField(paint, "content=") == "admitted" && TextField(paint, "input-owner=") == "tray";
+    };
+    SendKey(window, VK_RETURN);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        return IsKeyboardFocused(find(L"widget:audio-ready").Get());
+    }), "Radial fixture did not enter its initial widget");
+    SendKey(window, VK_ESCAPE);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        return IsSelectionItemSelected(find(L"tray:tray.audio-mixer", true).Get()) &&
+            find(L"tray:overflow.next", true);
+    }), "Radial fixture did not expose its first wheel page");
+    SendKey(window, VK_RIGHT);
+    const bool previewReady = WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        return hasPreview("wide-peer") &&
+            IsKeyboardFocused(find(L"tray:tray.wide-peer", true).Get());
+    });
+    if (!previewReady) {
+        const auto log = ReadUtf8(installation->LocalAppData() / L"WidgetRail" / L"overlay.log");
+        Fail("Radial highlight did not preview its target with tray focus; preview=" +
+            std::to_string(hasPreview("wide-peer")) +
+            " selected=" + std::to_string(IsSelectionItemSelected(find(L"tray:tray.wide-peer", true).Get())) +
+            " log=" + log.substr(log.size() > 16000 ? log.size()-16000 : 0));
+    }
+    const auto page = [&](const wchar_t* arrow, const wchar_t* expectedTile) {
+        const auto element = find(arrow, true);
+        ComPtr<IUIAutomationInvokePattern> invoke;
+        Require(element && SUCCEEDED(element->GetCurrentPatternAs(UIA_InvokePatternId,
+            IID_PPV_ARGS(invoke.GetAddressOf()))) && invoke, "Radial page arrow lacks Invoke authority");
+        Require(SUCCEEDED(invoke->Invoke()), "Radial page invocation failed");
+        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+            return static_cast<bool>(find(expectedTile, true));
+        }), "Radial page invocation did not expose the requested page");
+    };
+    page(L"tray:overflow.next", L"tray:tray.catalog-probe");
+    Require(hasPreview("wide-peer") && !find(L"tray:tray.wide-peer", true) &&
+        !fs::exists(installation->StartupSignal(L"catalog-probe")),
+        "Page-only browsing changed the preview or started the off-page widget");
+    page(L"tray:overflow.previous", L"tray:tray.wide-peer");
+    Require(IsSelectionItemSelected(find(L"tray:tray.wide-peer", true).Get()),
+        "Returning to a page lost global selection");
+    page(L"tray:overflow.next", L"tray:tray.catalog-probe");
+    SendKey(window, VK_RIGHT);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        return hasPreview("catalog-probe") &&
+            IsKeyboardFocused(find(L"tray:tray.catalog-probe", true).Get());
+    }), "Explicit choice on a partial page did not preview that widget");
+    page(L"tray:overflow.previous", L"tray:tray.wide-peer");
+    Require(hasPreview("catalog-probe") &&
+        !IsSelectionItemSelected(find(L"tray:tray.wide-peer", true).Get()),
+        "Page change resurrected a per-page selection instead of keeping global selection");
+    SendKey(window, VK_RETURN);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        return IsKeyboardFocused(find(L"widget:settings-ready").Get());
+    }), "A did not enter the globally selected off-page preview");
+    std::cout << "Radial preview global selection and page-only browsing passed\n";
+}
+
 void RunPinnedSliderRouteScenario(const Arguments& arguments) {
     auto installation = std::make_unique<TemporaryInstallation>(
         arguments.installation, arguments.fixtureWorker, true);
@@ -5185,9 +5300,14 @@ int wmain(const int argc, wchar_t** argv) {
             RunPinnedSliderRouteScenario(arguments);
         else if (arguments.inspectorOnly)
             RunDeveloperInspectorScenario(arguments);
+        else if (arguments.radialPreviewOnly)
+            RunRadialPreviewScenario(arguments);
         else {
             RunRetentionScenario(arguments);
-            if (!arguments.geometryOnly) RunDeveloperInspectorScenario(arguments);
+            if (!arguments.geometryOnly) {
+                RunRadialPreviewScenario(arguments);
+                RunDeveloperInspectorScenario(arguments);
+            }
         }
         std::cout << "WidgetSwitchHostTests passed\n";
         CoUninitialize();

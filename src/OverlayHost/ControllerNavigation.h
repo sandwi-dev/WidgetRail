@@ -220,8 +220,7 @@ enum class FocusedSliderButtonRoute {
     if (button == L"A") return ControllerActionRoute::HostActivate;
     if (button == L"Y") return ControllerActionRoute::HostToggleReorder;
     if (button == L"B") return ControllerActionRoute::HostCloseOverlay;
-    // A chooser has no widget shortcut authority until its target is opened.
-    if (context == ControllerActionContext::RadialSwitcher) return ControllerActionRoute::None;
+    // Both tray layouts preview their selected widget under Visible authority.
     return ControllerActionRoute::Widget;
 }
 

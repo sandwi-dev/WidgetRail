@@ -24,14 +24,15 @@ std::size_t RadialPageTarget(std::size_t count, std::size_t slot, int delta) noe
 }
 
 std::optional<TrayLayout> ComputeRadialTrayLayout(const declarative::Rect& bounds,
-    std::size_t count, std::size_t selected) {
+    std::size_t count, std::size_t selected, std::optional<std::size_t> browsedPage) {
     if (!count || !std::isfinite(bounds.width) || !std::isfinite(bounds.height) ||
         bounds.width <= 0 || bounds.height <= 0) return std::nullopt;
     constexpr float pi = 3.14159265358979323846F;
     TrayLayout layout;
     layout.radialBounds = bounds; layout.stripBounds = bounds; layout.totalCount = count;
     layout.pageCount = (count + kRadialPageSize-1)/kRadialPageSize;
-    layout.page = std::min(selected, count-1)/kRadialPageSize;
+    layout.page = std::min(browsedPage.value_or(std::min(selected, count-1)/kRadialPageSize),
+        layout.pageCount-1);
     const float size = std::min(bounds.width, bounds.height);
     const float tile = size*.17F, radius = size*.375F;
     const float cx = bounds.x + bounds.width*.5F, cy = bounds.y + bounds.height*.5F;
@@ -43,9 +44,9 @@ std::optional<TrayLayout> ComputeRadialTrayLayout(const declarative::Rect& bound
     if (layout.pageCount > 1) {
         const float ui = std::min(1.0F, size/400.0F);
         layout.previousOverflow = TrayOverflowLayout{TrayOverflowDirection::Previous, 0,
-            RadialPageTarget(count, selected, -1), {cx-48*ui, cy+7*ui, 24*ui, 24*ui}};
+            RadialPageTarget(count, layout.page*kRadialPageSize, -1), {cx-48*ui, cy+7*ui, 24*ui, 24*ui}};
         layout.nextOverflow = TrayOverflowLayout{TrayOverflowDirection::Next, 0,
-            RadialPageTarget(count, selected, 1), {cx+24*ui, cy+7*ui, 24*ui, 24*ui}};
+            RadialPageTarget(count, layout.page*kRadialPageSize, 1), {cx+24*ui, cy+7*ui, 24*ui, 24*ui}};
     }
     return layout;
 }
