@@ -10,6 +10,7 @@ param(
     [switch]$SemanticChurnTestsOnly,
     [switch]$DeclarativeLayoutTestsOnly,
     [switch]$DeclarativeRendererTestsOnly,
+    [switch]$SettingsContentTestsOnly,
     [switch]$BackgroundSurfaceHostTestsOnly,
     [switch]$AccessibilityTreeTestsOnly,
     [switch]$ControllerGuideTestsOnly,
@@ -68,6 +69,7 @@ $primaryTestSelectors = @(
     [pscustomobject]@{ Name = 'SemanticChurnTestsOnly'; Selected = [bool]$SemanticChurnTestsOnly }
     [pscustomobject]@{ Name = 'DeclarativeLayoutTestsOnly'; Selected = [bool]$DeclarativeLayoutTestsOnly }
     [pscustomobject]@{ Name = 'DeclarativeRendererTestsOnly'; Selected = [bool]$DeclarativeRendererTestsOnly }
+    [pscustomobject]@{ Name = 'SettingsContentTestsOnly'; Selected = [bool]$SettingsContentTestsOnly }
     [pscustomobject]@{ Name = 'BackgroundSurfaceHostTestsOnly'; Selected = [bool]$BackgroundSurfaceHostTestsOnly }
     [pscustomobject]@{ Name = 'AccessibilityTreeTestsOnly'; Selected = [bool]$AccessibilityTreeTestsOnly }
     [pscustomobject]@{ Name = 'ControllerGuideTestsOnly'; Selected = [bool]$ControllerGuideTestsOnly }
@@ -830,6 +832,29 @@ function Invoke-DeclarativeRendererTests {
     if ($LASTEXITCODE -ne 0) {
         throw "DeclarativeRendererTests failed with exit code $LASTEXITCODE."
     }
+}
+
+function Invoke-SettingsContentRendererTests {
+    $fixture = Join-Path $outputDirectory 'settings-content-fixture.json'
+    $objectDirectory = Join-Path $outputDirectory 'obj/settings-content-tests'
+    New-Item -ItemType Directory -Path $objectDirectory -Force | Out-Null
+    $managedArguments = @('run', '--project', (Join-Path $projectDirectory '../../tests/SettingsWidget.Tests/SettingsWidget.Tests.csproj'),
+        '--configuration', $Configuration, "-bl:$objectDirectory/fixture-$([guid]::NewGuid().ToString('N')).binlog")
+    if ($NoRestore) { $managedArguments += '--no-restore' }
+    & dotnet @managedArguments -- --export-renderer-fixture $fixture
+    if ($LASTEXITCODE -ne 0) { throw 'Settings renderer fixture export failed.' }
+    $arguments = $common + @('/DWRAIL_DECLARATIVE_RENDERER_TESTING', '/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING') +
+        @('SettingsContentRendererTests.cpp', 'WidgetBridgeClient.cpp', 'PublicSuffixDomainAuthority.cpp',
+          'DeclarativeRenderer.cpp', 'DeclarativeLayout.cpp', 'NativeStyle.cpp', 'NativeTextLayout.cpp',
+          'DeclarativeMotion.cpp', 'NativeIcons.cpp', 'RemoteImageCache.cpp', 'ArtworkDecoderProcessOwner.cpp' |
+            ForEach-Object { Join-Path $projectDirectory $_ }) +
+        @("/Fo:$objectDirectory\", "/Fe:$outputDirectory\SettingsContentRendererTests.exe", '/link', '/SUBSYSTEM:CONSOLE') +
+        $libraryArguments + @('d2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib',
+            'windowsapp.lib', 'user32.lib', 'bcrypt.lib', 'normaliz.lib')
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) { throw 'SettingsContentRendererTests compile failed.' }
+    & (Join-Path $outputDirectory 'SettingsContentRendererTests.exe') --fixture $fixture
+    if ($LASTEXITCODE -ne 0) { throw 'SettingsContentRendererTests failed.' }
 }
 
 function Invoke-BackgroundSurfaceHostTests {
@@ -1965,6 +1990,11 @@ if ($LocalControllerTestsOnly) {
     return
 }
 
+if ($SettingsContentTestsOnly) {
+    Invoke-SettingsContentRendererTests
+    return
+}
+
 if ($PlatformInteropTestsOnly) {
     if ($SkipTests) {
         throw 'PlatformInteropTestsOnly cannot be combined with SkipTests.'
@@ -2222,6 +2252,7 @@ if ($managedPublishExitCode -ne 0) {
 }
 $settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
 $settingsStylesOutput = Join-Path $settingsOutput 'styles'
+Copy-Item -LiteralPath (Join-Path $settingsProject 'assets') -Destination $settingsOutput -Recurse -Force
 $settingsPayloadOutput = Join-Path $settingsOutput 'payload'
 New-Item -ItemType Directory -Force -Path $settingsStylesOutput, $settingsPayloadOutput | Out-Null
 Copy-Item -LiteralPath (Join-Path $settingsProject 'manifest.json') `
@@ -3005,6 +3036,8 @@ if (-not $SkipTests) {
     if ($LASTEXITCODE -ne 0) {
         throw "SharedComponentGeometryTests failed with exit code $LASTEXITCODE."
     }
+    Invoke-SettingsContentRendererTests
+
 }
 
 Write-Host "Built $outputDirectory\OverlayHost.exe"

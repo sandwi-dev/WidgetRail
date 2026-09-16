@@ -33,7 +33,7 @@ internal static class SettingsPresentation
         var header = Header(state);
         view = state.Page switch
         {
-            SettingsPage.Root => RenderRoot(header, state.Settings, state.Busy),
+            SettingsPage.Root => RenderRoot(header, state.Settings, state.Themes, state.Busy),
             SettingsPage.Appearance => RenderAppearance(
                 header, state.Settings, state.Themes, state.Busy),
             SettingsPage.ThemePicker => RenderThemes(
@@ -58,7 +58,15 @@ internal static class SettingsPresentation
     {
         var children = new List<WidgetElement>
         {
-            UI.Row("settings.header.row",
+            state.Page == SettingsPage.Root
+                ? UI.Row("settings.header.row",
+                    UI.Icon(WidgetGlyph.Settings, "settings.home.mark", "Settings").Classes("home-mark"),
+                    UI.Stack("settings.home.heading",
+                        UI.Text("Settings", "settings.title", "Settings").Classes("home-title"),
+                        UI.Text("Make WidgetRail your own", "settings.home.subtitle", "Make WidgetRail your own")
+                            .Classes("home-subtitle")).Classes("home-heading"))
+                    .Classes("settings-header-row", "home-header")
+                : UI.Row("settings.header.row",
                 UI.Text("SETTINGS", "settings.title", "Settings").Classes("settings-title", "header-title"),
                 UI.Button("Quit", "application.quit", "settings.quit")
                     .Busy(state.Busy).FocusRight("settings.restart").Classes("header-action", "header-quit") with { AccessibilityLabel = "Quit WidgetRail" },
@@ -92,15 +100,16 @@ internal static class SettingsPresentation
             _ => null,
         };
         var headerEntry = FirstButton(content);
+        var hasHeaderActions = FirstButton(header) is not null;
         WidgetElement Link(WidgetElement element)
         {
             if (element is ButtonElement button)
             {
-                if (initialFocus is not null && element.Id is "settings.quit" or "settings.restart")
+                if (hasHeaderActions && initialFocus is not null && element.Id is "settings.quit" or "settings.restart")
                     return button.FocusDown(initialFocus);
-                if (element.Id == headerEntry && button.FocusNeighbors?.Up is null) return button.FocusUp("settings.restart");
+                if (hasHeaderActions && element.Id == headerEntry && button.FocusNeighbors?.Up is null) return button.FocusUp("settings.restart");
             }
-            if (element is ActionSurfaceElement surface && element.Id == headerEntry && surface.FocusNeighbors?.Up is null)
+            if (hasHeaderActions && element is ActionSurfaceElement surface && element.Id == headerEntry && surface.FocusNeighbors?.Up is null)
                 return surface.FocusUp("settings.restart");
             if (element is ContainerElement group) return group with { Children = group.Children.Select(Link).ToArray() };
             return element;
@@ -157,35 +166,40 @@ internal static class SettingsPresentation
     private static WidgetView RenderRoot(
         StackElement header,
         PlatformSettingsDocument settings,
+        ThemeCatalogSnapshot themes,
         bool busy)
     {
-        var appearance = UI.Button("Appearance", "open.appearance", "category.appearance")
-            .Busy(busy).Classes("category-card");
-        var accessibility = UI.Button(
-                "Accessibility", "open.accessibility", "category.accessibility")
-            .Busy(busy).Classes("category-card");
-        var overlay = UI.Button("Overlay", "open.overlay", "category.overlay")
-            .Busy(busy).Classes("category-card");
-        var installedWidgets = UI.Button(
-                "Widgets", "open.installed-widgets", "category.installed-widgets")
-            .Busy(busy).Classes("category-card");
-        var controllers = UI.Button("Controllers", "open.controllers", "category.controllers")
-            .Busy(busy).Classes("category-card");
-        var diagnostics = UI.Button("Diagnostics", "open.diagnostics", "category.diagnostics")
-            .Classes("category-card");
-        var refresh = UI.Button("Refresh", "refresh", "settings.refresh")
-            .Busy(busy).Classes("category-card");
-        var reset = UI.Button("Reset", "open.reset", "category.reset")
-            .Classes("category-card", "danger-card");
-        return RootView(
-            header,
-            UI.VerticalScroll("settings.categories",
-                UI.Text($"Theme: {settings.Appearance.ThemeId} {settings.Appearance.ThemeVersion}",
-                    "settings.summary", "Selected theme").Classes("settings-summary"),
-                UI.ResponsiveGrid("settings.category-grid", 250, 2,
-                        appearance, accessibility, overlay, controllers, installedWidgets,
-                        diagnostics, refresh, reset)
-                    .Classes("category-grid")).Classes("root-category-list"),
+        var selectedTheme = themes.Themes.FirstOrDefault(entry => entry.IsValid &&
+            entry.Descriptor.Id == settings.Appearance.ThemeId &&
+            entry.CatalogVersion == settings.Appearance.ThemeVersion);
+        var themeDescription = selectedTheme is null ? "Themes, colors, and motion" : $"Theme: {selectedTheme.Descriptor.Name}";
+        ActionSurfaceElement Card(string title, string description, string action, string id, string icon, WidgetGlyph fallback) =>
+            UI.ActionSurface(action, id, $"{title}. {description}", ActionSurfaceOrientation.Horizontal,
+                UI.Icon(WidgetIcon.PackageSvg("settings." + icon, WidgetPackageIconColorMode.ThemeTint, fallback),
+                    id + ".icon", title).Classes("home-card-icon"),
+                UI.Stack(id + ".copy",
+                    UI.Text(title, id + ".title", title).Classes("home-card-title"),
+                    UI.Text(description, id + ".description", description).Classes("home-card-description"))
+                    .Classes("home-card-copy"))
+                .Busy(busy).Classes("category-card");
+
+        var categories = UI.VerticalScroll("settings.categories",
+            UI.ResponsiveGrid("settings.category-grid", 250, 2,
+                Card("Appearance", themeDescription, "open.appearance", "category.appearance", "appearance", WidgetGlyph.Settings),
+                Card("Accessibility", "Text, contrast, and motion", "open.accessibility", "category.accessibility", "accessibility", WidgetGlyph.Check),
+                Card("Overlay", "Scale, layout, and startup", "open.overlay", "category.overlay", "overlay", WidgetGlyph.Fullscreen),
+                Card("Controllers", "Input, shortcuts, and exclusive control", "open.controllers", "category.controllers", "controllers", WidgetGlyph.Connection),
+                Card("Widgets", "Install, update, and permissions", "open.installed-widgets", "category.installed-widgets", "widgets", WidgetGlyph.Settings),
+                Card("Diagnostics", "Status, logs, and troubleshooting", "open.diagnostics", "category.diagnostics", "diagnostics", WidgetGlyph.Connection))
+                .Classes("category-grid")).Classes("root-category-list");
+        var utilities = UI.ResponsiveGrid("settings.home.utilities", 120, 4,
+            UI.Button("Refresh", "refresh", "settings.refresh").Busy(busy).Classes("home-utility"),
+            UI.Button("Reset", "open.reset", "category.reset").Classes("home-utility", "danger-card"),
+            UI.Button("Restart", "application.restart", "settings.restart").Busy(busy).Classes("home-utility") with { AccessibilityLabel = "Restart WidgetRail" },
+            UI.Button("Quit", "application.quit", "settings.quit").Busy(busy).Classes("home-utility") with { AccessibilityLabel = "Quit WidgetRail" })
+            .Classes("home-utilities");
+        return RootView(header,
+            UI.Stack("settings.home.body", categories, utilities).Classes("home-body"),
             "category.appearance");
     }
 

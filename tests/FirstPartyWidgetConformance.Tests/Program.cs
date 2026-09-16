@@ -407,7 +407,12 @@ static async Task ShippedPackageIconContracts()
     Assert.Equal(WidgetGlyph.Settings, settings.Presentation.Icon);
     Assert.True(settings.Presentation.PackageIcon is null,
         "Settings must retain its accepted semantic gear without package-icon metadata.");
-    Assert.Equal(0, settings.IconAssets.Count);
+    Assert.SequenceEqual(
+        new[] { "settings.accessibility", "settings.appearance", "settings.controllers", "settings.diagnostics", "settings.overlay", "settings.widgets" },
+        settings.IconAssets.Keys.Order(StringComparer.Ordinal));
+    foreach (var asset in settings.IconAssets.Values)
+        Assert.True(File.Exists(Path.Combine(repository, "src", "FirstPartyWidgets", "SettingsWidget", asset.Path)),
+            "Settings home icon asset is missing.");
 }
 
 static async Task BundledCatalogUsesManifests()

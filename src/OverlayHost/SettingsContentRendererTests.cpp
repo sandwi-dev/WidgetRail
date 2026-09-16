@@ -89,8 +89,8 @@ void CheckReachable(
     const float height) {
     constexpr std::wstring_view controls[] = {
         L"category.appearance", L"category.accessibility", L"category.overlay",
-        L"category.installed-widgets", L"category.diagnostics",
-        L"settings.refresh", L"category.reset",
+        L"category.controllers", L"category.installed-widgets", L"category.diagnostics",
+        L"settings.refresh", L"category.reset", L"settings.restart", L"settings.quit",
     };
     const Rect viewport{0.0F, 0.0F, width, height};
     for (const auto control : controls) {
@@ -111,24 +111,23 @@ void Run(const std::filesystem::path& fixturePath) {
         ReadUtf8(fixturePath), error);
     Check(parsed.has_value(), "production native bridge parses the managed Settings fixture");
     const auto& snapshot = *parsed;
-    Check(snapshot.protocolVersion == 17,
-          "Settings root snapshot selects the surface-axis protocol");
+    Check(snapshot.protocolVersion == 46,
+          "Settings home publishes the package-icon protocol");
     Check(snapshot.activeInputScopeId == L"settings-root" &&
               snapshot.initialFocusId == L"category.appearance",
           "Settings root scope and initial focus remain unchanged");
     Check(snapshot.surface &&
               (!snapshot.surface->widthMode ||
                snapshot.surface->widthMode == L"preferred") &&
-              snapshot.surface->heightMode == L"content" &&
+              (!snapshot.surface->heightMode || snapshot.surface->heightMode == L"preferred") &&
               snapshot.surface->preferredWidth == 880.0 &&
               snapshot.surface->preferredHeight == 520.0 &&
               snapshot.surface->minimumWidth == 520.0 &&
               snapshot.surface->minimumHeight == 360.0,
-          "Settings root carries exact Preferred-by-Content authored bounds");
+          "Settings root carries stable preferred bounds matching its loading view");
     const auto& categories = Find(snapshot.root, L"settings.categories");
-    Check(!categories.baseStyle.contains(L"flex-grow") &&
-              !categories.baseStyle.contains(L"flex-basis"),
-          "Settings root category list does not request fill-growth dead height");
+    Check(categories.baseStyle.contains(L"flex-grow") && categories.baseStyle.contains(L"flex-basis"),
+          "Settings category scroll viewport fills the space below the fixed header");
 
     ComPtr<IDWriteFactory> writeFactory;
     Check(SUCCEEDED(DWriteCreateFactory(
@@ -136,32 +135,10 @@ void Run(const std::filesystem::path& fixturePath) {
               reinterpret_cast<IUnknown**>(writeFactory.GetAddressOf()))),
           "DirectWrite factory is available for production intrinsic text measurement");
     DeclarativeRenderer renderer{nullptr, writeFactory.Get(), nullptr};
-    const auto preferredMeasure = renderer.MeasureContent(
-        snapshot, {880.0F, 520.0F}, false);
-    const auto compactMeasure = renderer.MeasureContent(
-        snapshot, {520.0F, 520.0F}, false);
-    Check(preferredMeasure.succeeded && compactMeasure.succeeded,
-          "production renderer measures the real Settings root at both widths");
-    Near(preferredMeasure.extent.width, 880.0F,
-         "Preferred width remains definite during Content-height measurement");
-    Near(compactMeasure.extent.width, 520.0F,
-         "compact admitted width remains definite during Content-height measurement");
-    Check(preferredMeasure.extent.height > 0.0F &&
-              preferredMeasure.extent.height <= 520.0F,
-          "preferred intrinsic Settings height is finite and below its ceiling");
-    Check(compactMeasure.extent.height > preferredMeasure.extent.height,
-          "one-column compact reflow expands intrinsic content height");
-
-    const auto preferredHeight = std::clamp(
-        preferredMeasure.extent.height, 360.0F, 520.0F);
-    const auto compactHeight = std::clamp(
-        compactMeasure.extent.height, 360.0F, 520.0F);
-    Near(compactHeight, 520.0F,
-         "compact intrinsic height is bounded by the authored preferred ceiling");
     const auto preferred = RenderAt(
-        renderer, snapshot, L"category.appearance", 880.0F, preferredHeight);
+        renderer, snapshot, L"category.appearance", 880.0F, 520.0F);
     const auto compact = RenderAt(
-        renderer, snapshot, L"category.appearance", 520.0F, compactHeight);
+        renderer, snapshot, L"category.appearance", 520.0F, 520.0F);
     const auto& wideAppearance = preferred.elementRects.at(L"category.appearance");
     const auto& wideAccessibility = preferred.elementRects.at(L"category.accessibility");
     Check(wideAppearance.y == wideAccessibility.y &&
@@ -176,10 +153,29 @@ void Run(const std::filesystem::path& fixturePath) {
 
     const auto& preferredRoot = preferred.elementRects.at(L"settings-root");
     const auto& preferredReset = preferred.elementRects.at(L"category.reset");
+    Check(wideAppearance.height >= 88.0F && wideAccessibility.height >= 88.0F,
+          "Settings categories are large cards rather than short text rows");
     Check(preferredRoot.y + preferredRoot.height -
-              (preferredReset.y + preferredReset.height) <= 28.01F,
-          "content-sized Settings root leaves only authored trailing spacing below Reset");
+              (preferredReset.y + preferredReset.height) <= 24.0F,
+          "the secondary actions sit at the bottom of the preferred panel");
+    Check(Contains(preferredRoot, preferredReset), "wide layout keeps the last card inside its panel");
+    const auto constrained = RenderAt(renderer, snapshot, L"category.appearance", 880.0F, 465.0F);
+    const auto& constrainedRoot = constrained.elementRects.at(L"settings-root");
+    const auto& constrainedReset = constrained.elementRects.at(L"category.reset");
+    Check(Contains(constrainedRoot, constrainedReset), "cards remain inside the common constrained panel height");
+    Check(constrainedRoot.y + constrainedRoot.height -
+        (constrainedReset.y + constrainedReset.height) <= 24.0F,
+        "the footer stays at the bottom of a constrained viewport");
 
+    const auto& footer = preferred.elementRects.at(L"settings.home.utilities");
+    for (const auto id : {L"category.appearance", L"category.accessibility", L"category.overlay", L"category.controllers", L"category.installed-widgets", L"category.diagnostics"}) {
+        const auto key = std::wstring(id);
+        const auto& card = preferred.elementRects.at(key);
+        Check(card.y + card.height <= footer.y, "destination cards do not overlap secondary actions");
+        Check(Contains(card, preferred.elementRects.at(key + L".icon")), "card contains its vector icon");
+        Check(Contains(card, preferred.elementRects.at(key + L".title")), "card contains its heading");
+        Check(Contains(card, preferred.elementRects.at(key + L".description")), "card contains its help text");
+    }
     CheckReachable(renderer, snapshot, 520.0F, 360.0F);
 }
 

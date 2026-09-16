@@ -25,7 +25,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controllers page separates input behavior and prerequisite status", ControllerSettingsScenarios.LayoutAndGates),
     ("Controller actions gate enable preserve disable and retry recovery", ControllerSettingsScenarios.ActionsAndRecovery),
     ("Root keeps widget permissions inside Installed Widgets", RootCategories),
-    ("Header actions preserve initial focus and omit Ready", HeaderActions),
+    ("Home secondary actions follow the destination cards without stealing focus", HeaderActions),
     ("Initialization publishes loading before slow dependencies complete", LoadingBeforeReady),
     ("Allow all grants only one widget's displayed declarations atomically", AllowAllPermissions),
     ("Settings cannot be disabled through its UI or saved preferences", SettingsCannotBeDisabled),
@@ -120,8 +120,19 @@ static Task RootCategories()
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
     Assert.Equal("category.appearance", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.appearance", "category.accessibility", "category.overlay", "category.controllers", "category.installed-widgets", "category.diagnostics", "settings.refresh", "category.reset"],
-        Buttons(snapshot.Root).Where(button => button.Id is not ("settings.quit" or "settings.restart")).Select(button => button.Id));
+        ["category.appearance", "category.accessibility", "category.overlay", "category.controllers", "category.installed-widgets", "category.diagnostics"],
+        Nodes(snapshot.Root).Where(node => node.Kind == ViewNodeKind.ActionSurface).Select(node => node.Id));
+    Assert.SequenceEqual(["settings.refresh", "category.reset", "settings.restart", "settings.quit"],
+        Buttons(snapshot.Root).Select(button => button.Id));
+    foreach (var card in Nodes(snapshot.Root).Where(node => node.Kind == ViewNodeKind.ActionSurface))
+    {
+        Assert.True(Nodes(card).Any(node => node.Kind == ViewNodeKind.Icon && node.PackageIcon is not null),
+            "A home destination is missing its themed vector icon.");
+        Assert.True(Nodes(card).Any(node => node.Id == card.Id + ".description" && !string.IsNullOrWhiteSpace(node.Text)),
+            "A home destination is missing its description.");
+    }
+    Assert.True(!Nodes(snapshot.Root).Any(node => node.Text?.Contains("widgetrail.builtin.", StringComparison.Ordinal) == true),
+        "Home copy leaked an internal theme identifier.");
     Assert.Valid(snapshot);
     return Task.CompletedTask;
 }
@@ -137,8 +148,12 @@ static async Task HeaderActions()
     Assert.Equal("category.appearance", view.InitialFocusId);
     Assert.Equal("application.quit", Button(view.Root, "settings.quit").ActionId);
     Assert.Equal("application.restart", Button(view.Root, "settings.restart").ActionId);
-    Assert.Equal("category.appearance", Button(view.Root, "settings.restart").Focus!.Down);
-    Assert.Equal("settings.restart", Button(view.Root, "category.appearance").Focus!.Up);
+    Assert.True(!Buttons(Nodes(view.Root).Single(node => node.Id == "settings.header")).Any(),
+        "Home utility actions are still competing with the header.");
+    Assert.True(Button(view.Root, "settings.restart").Focus?.Down is null,
+        "The footer should not wrap Down back to the top category.");
+    Assert.True(Nodes(view.Root).Single(node => node.Id == "category.appearance").Focus?.Up is null,
+        "Home category should not point Up to the footer.");
     Assert.True(!Nodes(view.Root).Any(node => node.Id == "settings.toast.message" && node.Text == "Ready"), "Ready subheader remained.");
     await Action(widget, "application.restart");
     Assert.SequenceEqual([true], service.Requests);
@@ -294,7 +309,7 @@ static async Task ControllerScrollSurface()
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
     var root = Snapshot(widget);
-    Assert.Equal(ProtocolConstants.ResponsiveGridVersion, root.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.PackageSvgIconVersion, root.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Standard, root.Surface?.Mode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.WidthMode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.HeightMode);
@@ -306,16 +321,14 @@ static async Task ControllerScrollSurface()
         Nodes(root.Root).Single(node => node.Id == "settings.categories").Kind);
     Assert.True(Nodes(root.Root).Single(node => node.Id == "settings.categories")
             .StyleClasses.Contains("root-category-list", StringComparer.Ordinal),
-        "Settings root must use its intrinsic category-list style.");
+        "Settings root must keep its bounded category scroll viewport.");
     Assert.Equal(ScrollAxis.Vertical,
         Nodes(root.Root).Single(node => node.Id == "settings.categories").ScrollAxis);
     var categoryGrid = Nodes(root.Root).Single(node => node.Id == "settings.category-grid");
     Assert.Equal(ViewNodeKind.Grid, categoryGrid.Kind);
     Assert.Equal(250d, categoryGrid.GridMinimumColumnWidth);
     Assert.Equal(2, categoryGrid.GridMaximumColumns);
-    Assert.True(Buttons(categoryGrid).All(button => button.Id == "category.appearance"
-            ? button.Focus is { Up: "settings.restart", Down: null, Left: null, Right: null }
-            : button.Focus is null),
+    Assert.True(Nodes(categoryGrid).Where(node => node.Kind == ViewNodeKind.ActionSurface).All(card => card.Focus is null),
         "Responsive category navigation must use final host geometry rather than static edges.");
 
     await Action(widget, "open.diagnostics");
@@ -2667,8 +2680,8 @@ static async Task ShippedAssetsValidate()
     var rootCategories = compiled.Theme!.Resolve(new WrssElement(
         "scroll", "settings.categories",
         new HashSet<string>(["root-category-list"], StringComparer.Ordinal)));
-    Assert.Equal(null, rootCategories.Get("flex-grow"));
-    Assert.Equal(null, rootCategories.Get("flex-basis"));
+    Assert.Equal(1d, rootCategories.Get("flex-grow")?.Number);
+    Assert.Equal("0", rootCategories.Get("flex-basis")?.Text);
     var nestedPage = compiled.Theme.Resolve(new WrssElement(
         "scroll", "diagnostics.page",
         new HashSet<string>(["settings-page"], StringComparer.Ordinal)));

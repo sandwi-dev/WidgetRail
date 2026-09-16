@@ -13,6 +13,7 @@
     <ProjectReference Include="..\..\WidgetCatalog\WidgetCatalog.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <None Update="assets\icons\*.svg" CopyToOutputDirectory="PreserveNewest" />
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
