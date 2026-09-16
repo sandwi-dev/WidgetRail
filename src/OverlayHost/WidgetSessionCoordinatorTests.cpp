@@ -1058,6 +1058,13 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
            retained.RefreshPending());
     assert(!retained.HasCommittedViewAuthority(
         WidgetCommittedViewUse::DashboardQuickAction, true));
+    const WidgetSessionPresentation backgroundRetained{
+        current.snapshot, WidgetPresentationAuthority::RefreshRetained,
+        WidgetLifecycleState::Background};
+    assert(backgroundRetained.HasCommittedViewAuthority(
+        WidgetCommittedViewUse::DashboardQuickAction, true));
+    assert(!backgroundRetained.HasCommittedViewAuthority(
+        WidgetCommittedViewUse::DashboardQuickAction, false));
     const WidgetSessionPresentation interactiveRetained{
         retained.snapshot,
         WidgetPresentationAuthority::RefreshRetained,

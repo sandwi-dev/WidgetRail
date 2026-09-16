@@ -141,8 +141,9 @@ struct WidgetSessionPresentation final {
 
     /// One admitted checkpoint remains the coherent presentation and
     /// Interactive input/UIA owner while an ordinary replacement is in flight.
-    /// Dashboard actions require Current authority; background admission also
-    /// requires a descriptor whose residency policy admits background actions.
+    /// Background dashboard actions may use the last admitted declaration;
+    /// the Bridge revalidates its exact binding before delivery. They also
+    /// require a descriptor whose residency policy admits background actions.
     /// Failure and transition-retained content remain outside this policy.
     [[nodiscard]] bool HasCommittedViewAuthority(
         const WidgetCommittedViewUse use =
@@ -158,9 +159,11 @@ struct WidgetSessionPresentation final {
                     authority == WidgetPresentationAuthority::RefreshRetained) &&
                 lifecycle == WidgetLifecycleState::Interactive;
         case WidgetCommittedViewUse::DashboardQuickAction:
-            return authority == WidgetPresentationAuthority::Current &&
-                (lifecycle == WidgetLifecycleState::Visible ||
-                 (allowBackgroundDashboard && lifecycle == WidgetLifecycleState::Background));
+            return (authority == WidgetPresentationAuthority::Current &&
+                    lifecycle == WidgetLifecycleState::Visible) ||
+                (allowBackgroundDashboard && lifecycle == WidgetLifecycleState::Background &&
+                 (authority == WidgetPresentationAuthority::Current ||
+                  authority == WidgetPresentationAuthority::RefreshRetained));
         }
         return false;
     }

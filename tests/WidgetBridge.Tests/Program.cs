@@ -143,6 +143,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
     ("Background dashboard actions require a current eligible worker", BridgeClientRegistryScenarios.BackgroundDashboardRequiresResidentAuthority),
     ("Only accepted dashboard activity restarts idle unload", BridgeClientRegistryScenarios.DashboardActivityResetsIdleUnloadOnlyWhenAccepted),
+    ("Dashboard input revalidates unchanged bindings without replay", BridgeClientRegistryScenarios.DashboardBindingRevalidatesWithoutReplay),
     ("Select option authority crosses the managed server wire exactly", SelectAuthorityCrossesServerWire),
     ("Exact-base divergence converges through one full checkpoint", ExactBaseDivergenceConvergesThroughCheckpoint),
     ("Committed text crosses bridge and worker action execution", CommittedTextCrossesBridgeAndWorker),
@@ -4210,7 +4211,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["activeDisplayId", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides"],
+        ["activeDisplayId", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides", "widgetSwitcher"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());

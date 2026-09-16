@@ -510,10 +510,12 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 registration.Configured.ResidencyPolicy).Mode;
             var backgroundIdle = registration.HostLifecycle == WidgetLifecycleState.Background &&
                 residencyMode == WidgetResidencyMode.UnloadAfterIdle;
+            var retainedBackground = registration.HostLifecycle == WidgetLifecycleState.Background &&
+                registration.CachedSnapshot is not null;
             var hiddenAndRestricted =
                 registration.HostLifecycle == WidgetLifecycleState.Background &&
                 (residencyMode == WidgetResidencyMode.SuspendWhenHidden ||
-                 (backgroundIdle && !registration.HasCurrentInputWorker));
+                 (retainedBackground && !registration.HasCurrentInputWorker));
             var incremental = transactionKind ==
                 WidgetPresentationTransactionKind.IncrementalUpdate;
             if (incremental && registration.CachedSnapshot?.Sequence != baseSequence)
@@ -545,7 +547,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                             incremental ? baseSequence : 0,
                             transactionKind,
                             recoveryOriginSequence,
-                            token, existingWorkerOnly: backgroundIdle),
+                            token, existingWorkerOnly: retainedBackground),
                         cancellationToken)
                     .ConfigureAwait(false);
                 DemandCurrent(registration);
@@ -2190,6 +2192,19 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         ControllerInputEvent input,
         string? expectedActionId)
     {
+        if (input.Context == ControllerInputContext.DashboardQuickAction)
+        {
+            var dashboardSnapshot = registration.CachedSnapshot;
+            var dashboardOrigin = registration.FindInputOriginSnapshot(input.SnapshotSequence);
+            var before = dashboardOrigin?.QuickActions.SingleOrDefault(action => action.Button == input.Button);
+            var after = dashboardSnapshot?.QuickActions.SingleOrDefault(action => action.Button == input.Button);
+            if (before is null || after is null || dashboardOrigin!.WidgetInstanceId != dashboardSnapshot!.WidgetInstanceId ||
+                before.ActionId != after.ActionId || before.Capability != after.Capability ||
+                before.RepeatPolicy != after.RepeatPolicy)
+                throw ControllerInputAuthorityException(input,
+                    "Dashboard action changed or its snapshot authority is unavailable.");
+            return input with { SnapshotSequence = dashboardSnapshot!.Sequence };
+        }
         if (input.Context is not (ControllerInputContext.OpenWidget or
             ControllerInputContext.PinnedSurface)) return input;
         var snapshot = registration.CachedSnapshot ?? throw new BridgeProtocolException(

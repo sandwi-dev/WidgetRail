@@ -94,6 +94,9 @@ public sealed class MediaSessionsWidget : Widget
                 bool>
             {
                 Policy = WidgetCommandPolicy.SingleFlight,
+                // Declared dashboard controls also run during the idle grace
+                // period in Background, without starting visible subscriptions.
+                Lifetime = WidgetOperationLifetime.State,
                 Apply = PrepareCommand,
                 Execute = async (execution, context) =>
                 {
