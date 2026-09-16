@@ -160,8 +160,12 @@ static async Task LoadingBeforeReady()
     Assert.Equal(0, service.Requests.Count);
     service.Release.TrySetResult(PlatformDiagnosticsSnapshot.Unavailable());
     await widget.InitializationTask;
-    Assert.Equal("category.appearance", Snapshot(widget).InitialFocusId);
+    var ready = Snapshot(widget);
+    Assert.Equal("category.appearance", ready.InitialFocusId);
+    Assert.Equal(WidgetSurfaceAxisMode.Preferred, ready.Surface?.HeightMode);
+    Assert.Equal(loading.Surface, ready.Surface);
     Assert.Valid(loading);
+    Assert.Valid(ready);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
 }
 
@@ -290,10 +294,10 @@ static async Task ControllerScrollSurface()
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
     var root = Snapshot(widget);
-    Assert.Equal(ProtocolConstants.SurfaceAxisSizingVersion, root.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ResponsiveGridVersion, root.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Standard, root.Surface?.Mode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.WidthMode);
-    Assert.Equal(WidgetSurfaceAxisMode.Content, root.Surface?.HeightMode);
+    Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.HeightMode);
     Assert.Equal(880d, root.Surface?.PreferredWidth);
     Assert.Equal(520d, root.Surface?.PreferredHeight);
     Assert.Equal(520d, root.Surface?.MinimumWidth);

@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.settings",
   "publisher": "widgetrail.firstparty",
   "name": "Settings",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1

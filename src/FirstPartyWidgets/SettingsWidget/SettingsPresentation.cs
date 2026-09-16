@@ -145,7 +145,9 @@ internal static class SettingsPresentation
             {
                 Mode = WidgetSurfaceMode.Standard,
                 WidthMode = WidgetSurfaceAxisMode.Preferred,
-                HeightMode = WidgetSurfaceAxisMode.Content,
+                // Match the loading page so activation does not resize the
+                // surface again after settings have loaded.
+                HeightMode = WidgetSurfaceAxisMode.Preferred,
                 PreferredWidth = 880,
                 PreferredHeight = 520,
                 MinimumWidth = 520,
