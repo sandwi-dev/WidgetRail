@@ -1,6 +1,6 @@
 # OverlayPlatformInterop
 
-`OverlayPlatformInterop` is the version-2 native presentation-platform boundary.
+`OverlayPlatformInterop` is the version-3 native presentation-platform boundary.
 It owns the single production Microsoft GameInput instance, supported Guide
 callback, quarantined legacy Guide adapter, controller device/sample lifecycle,
 repeat and neutral priming, Guide debounce, foreground-target memory, and safe
@@ -10,7 +10,9 @@ The boundary never creates a window, renderer, focus tree, widget transport, or
 managed input reader. Its caller supplies the presentation HWND lifecycle and
 marshals event callbacks onto that window's UI thread. ABI structures carry
 `structSize` and `abiVersion`; callers require
-`WRAIL_OVERLAY_PLATFORM_ABI_VERSION`.
+`WRAIL_OVERLAY_PLATFORM_ABI_VERSION`. Controller frames carry the last active
+controller family separately from the input backend so glyphs also identify
+DualSense readings delivered through GameInput.
 
 Shutdown is idempotent. It stops and unregisters GameInput callbacks, closes
 callback admission, waits for in-flight callbacks, clears queued events, then

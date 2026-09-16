@@ -169,6 +169,35 @@ void ControllerActivitySelectionKeepsHoldsAndReleases() {
     Check(frame.pressedButtons == 0, "mirrored release does not become a second action");
 }
 
+void ControllerGlyphsFollowActivityNotBackend() {
+    using namespace widgetrail::platform;
+    using Family = WidgetRailOverlayPlatformControllerFamily;
+    Check(ControllerFamilyFromHardware(0x054C, 0x0CE6) == Family::PlayStation &&
+        ControllerFamilyFromHardware(0x054C, 0x0DF2) == Family::PlayStation,
+        "GameInput DualSense and DualSense Edge identify as PlayStation");
+    Check(ControllerFamilyFromHardware(0x045E, 0x028E) == Family::Xbox,
+        "Xbox identity remains Xbox regardless of other connected devices");
+    ControllerGlyphSelection glyphs;
+    Check(glyphs.Observe(Family::Xbox, false) == Family::Unknown,
+        "idle startup readings do not choose controller hints");
+    Check(glyphs.Observe(Family::PlayStation, true) == Family::PlayStation,
+        "accepted DualSense activity selects PlayStation glyphs even on GameInput");
+    Check(glyphs.Observe(Family::Xbox, false) == Family::PlayStation,
+        "idle Xbox readings cannot replace last-input glyphs");
+    Check(glyphs.Observe(Family::Unknown, false) == Family::PlayStation,
+        "disconnect and hidden reads preserve last-input glyphs");
+    Check(glyphs.Observe(Family::Xbox, true) == Family::Xbox,
+        "accepted Xbox activity switches glyphs immediately");
+    ControllerActivitySelection selection;
+    WidgetRailOverlayPlatformRawControllerState state{};
+    state.rightThumbX = 100;
+    Check(glyphs.Observe(Family::PlayStation, selection.HasActivity(state)) == Family::Xbox,
+        "DualSense stick drift cannot change Xbox glyphs");
+    state.rightThumbX = 20'000;
+    Check(glyphs.Observe(Family::PlayStation, selection.HasActivity(state)) == Family::PlayStation,
+        "right stick activity changes hints without a button press");
+}
+
 void ControllerActivityThresholdsAndRepeats() {
     using namespace widgetrail::platform;
     using Path = widgetrail::input::ControllerReadPath;
@@ -271,6 +300,7 @@ void QueuedNavigationCannotRepeatAfterRenderingStall() {
 int main() {
     ControllerActivitySelectionKeepsHoldsAndReleases();
     ControllerActivityThresholdsAndRepeats();
+    ControllerGlyphsFollowActivityNotBackend();
     QueuedNavigationCannotRepeatAfterRenderingStall();
     Check(WidgetRailOverlayPlatformGetAbiVersion() ==
               WRAIL_OVERLAY_PLATFORM_ABI_VERSION,
@@ -293,7 +323,7 @@ int main() {
           WidgetRailOverlayPlatformNativeShortcutButtons(nullptr, &nativeButtons) == WRAIL_OVERLAY_PLATFORM_FALSE &&
           nativeButtons == 0 && WidgetRailOverlayPlatformNativeShortcutButtons(nullptr, nullptr) == WRAIL_OVERLAY_PLATFORM_FALSE,
           "native shortcuts are exported and invalid reads clear output safely");
-    Check(sizeof(WidgetRailOverlayPlatformControllerFrame) == 80 &&
+    Check(sizeof(WidgetRailOverlayPlatformControllerFrame) == 84 &&
               offsetof(WidgetRailOverlayPlatformControllerFrame, state) == 20 &&
               offsetof(
                   WidgetRailOverlayPlatformControllerFrame,

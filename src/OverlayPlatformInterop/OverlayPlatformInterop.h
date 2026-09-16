@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <type_traits>
 
-inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 2;
+inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 3;
 inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_FALSE = 0;
 inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_TRUE = 1;
 
@@ -59,6 +59,12 @@ enum class WidgetRailOverlayPlatformReadPath : std::uint32_t {
 };
 
 
+enum class WidgetRailOverlayPlatformControllerFamily : std::uint32_t {
+    Unknown = 0,
+    Xbox = 1,
+    PlayStation = 2,
+};
+
 struct WidgetRailOverlayPlatformEvent final {
     std::uint32_t structSize{sizeof(WidgetRailOverlayPlatformEvent)};
     std::uint32_t abiVersion{WRAIL_OVERLAY_PLATFORM_ABI_VERSION};
@@ -104,6 +110,8 @@ struct WidgetRailOverlayPlatformControllerFrame final {
     WidgetRailOverlayPlatformNavigationEvent stickNavigation{};
     WidgetRailOverlayPlatformNavigationEvent dpadNavigation{};
     std::uint32_t remainingFrames{};
+    WidgetRailOverlayPlatformControllerFamily lastInputFamily{
+        WidgetRailOverlayPlatformControllerFamily::Unknown};
 };
 
 struct WidgetRailOverlayPlatformPlacementInput final {
@@ -275,7 +283,7 @@ static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformCreateOptions>)
 static_assert(sizeof(WidgetRailOverlayPlatformEvent) == 32);
 static_assert(sizeof(WidgetRailOverlayPlatformRawControllerState) == 12);
 static_assert(sizeof(WidgetRailOverlayPlatformNavigationEvent) == 8);
-static_assert(sizeof(WidgetRailOverlayPlatformControllerFrame) == 80);
+static_assert(sizeof(WidgetRailOverlayPlatformControllerFrame) == 84);
 static_assert(sizeof(WidgetRailOverlayPlatformPlacementInput) == 48);
 static_assert(sizeof(WidgetRailOverlayPlatformPlacement) == 24);
 static_assert(sizeof(WidgetRailOverlayPlatformCreateOptions) == 32);
@@ -283,3 +291,5 @@ static_assert(offsetof(WidgetRailOverlayPlatformEvent, timestampMilliseconds) ==
 static_assert(offsetof(WidgetRailOverlayPlatformControllerFrame, state) == 20);
 static_assert(offsetof(WidgetRailOverlayPlatformControllerFrame, stickNavigation) == 60);
 static_assert(offsetof(WidgetRailOverlayPlatformCreateOptions, callbackContext) == 8);
+
+static_assert(offsetof(WidgetRailOverlayPlatformControllerFrame, lastInputFamily) == 80);

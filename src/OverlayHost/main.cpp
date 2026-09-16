@@ -11555,9 +11555,9 @@ private:
         const auto processFrame = [&]() {
         const bool connected =
             frame.connected != WRAIL_OVERLAY_PLATFORM_FALSE;
-        if (connected && widgetrail::guide::SetPlayStationControls(
-                frame.readPath == WidgetRailOverlayPlatformReadPath::DualSenseHid ||
-                frame.readPath == WidgetRailOverlayPlatformReadPath::DualSenseIsolation)) {
+        if (frame.lastInputFamily != WidgetRailOverlayPlatformControllerFamily::Unknown &&
+            widgetrail::guide::SetPlayStationControls(
+                frame.lastInputFamily == WidgetRailOverlayPlatformControllerFamily::PlayStation)) {
             retainedGuidePaintKey_.clear();
             retainedTrayPaintState_.reset();
             pendingWidgetPresentationImpact_.reset();

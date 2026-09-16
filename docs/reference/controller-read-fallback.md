@@ -14,6 +14,13 @@ produce a neutral frame before another controller can take over. Input tracking
 is preserved across backend changes so the new controller's first press is not
 lost. When controllers act simultaneously, the backend order above wins.
 
+Controller hints follow the family of the last controller that supplied accepted
+activity, independently of the backend. DualSense and DualSense Edge hardware
+IDs reported by GameInput select PlayStation glyphs, as native HID input does.
+Idle readings, drift inside the activity deadzones, and disconnects leave those
+hints unchanged. XInput exposes Xbox-style input; a remapper that disguises a
+controller as Xbox cannot reliably identify the original hardware through that API.
+
 GameInput may initialize without supplying gamepad readings. Missing readings
 allow the remaining backends to be considered; initialization alone does not
 claim input. XInput and native HID reads are shared, not foreground-exclusive.

@@ -139,6 +139,7 @@ struct WidgetRailOverlayPlatformHandle final {
     std::optional<widgetrail::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
     widgetrail::platform::ControllerActivitySelection controllerSelection;
+    widgetrail::platform::ControllerGlyphSelection controllerGlyphs;
     ComPtr<IGameInputDevice> sampledGameInputDevice;
     std::optional<HRESULT> lastGamepadReadResult;
     std::uintptr_t lastGamepadReadDevice{};
@@ -269,6 +270,7 @@ struct WidgetRailOverlayPlatformHandle final {
             });
             connected = sample.connected;
             state = sample.state;
+            controllerGlyphs.Observe(sample.family, connected && controllerSelection.HasActivity(state));
             if (sample.source.path != widgetrail::input::ControllerReadPath::None) {
                 decision = {sample.source.path, foregroundConfirmed &&
                     sample.source.path == widgetrail::input::ControllerReadPath::GameInputVisibleLease};
@@ -310,12 +312,18 @@ struct WidgetRailOverlayPlatformHandle final {
             if (requested.device && (!device ||
                 reinterpret_cast<std::uintptr_t>(device) != requested.device)) return sample;
             sample.connected = SUCCEEDED(TryReadGameInput(sample.state, device));
-            if (sample.connected)
+            if (sample.connected) {
                 sample.source.device = reinterpret_cast<std::uintptr_t>(sampledGameInputDevice.Get());
+                const GameInputDeviceInfo* info{};
+                sample.family = SUCCEEDED(sampledGameInputDevice->GetDeviceInfo(&info)) && info
+                    ? widgetrail::platform::ControllerFamilyFromHardware(info->vendorId, info->productId)
+                    : WidgetRailOverlayPlatformControllerFamily::Xbox;
+            }
         } else if (requested.path == Path::XInputCompatibility) {
             XINPUT_STATE input{};
             if (XInputGetState(static_cast<DWORD>(requested.device), &input) == ERROR_SUCCESS) {
                 const auto& pad = input.Gamepad;
+                sample.family = WidgetRailOverlayPlatformControllerFamily::Xbox;
                 sample.state = {pad.wButtons, pad.bLeftTrigger, pad.bRightTrigger,
                     pad.sThumbLX, pad.sThumbLY, pad.sThumbRX, pad.sThumbRY};
                 sample.connected = true;
@@ -326,6 +334,7 @@ struct WidgetRailOverlayPlatformHandle final {
             if (dualSense.Sample(native, &generation) && (!requested.device || requested.device == generation)) {
                 const auto& pad = native.state;
                 sample.source.device = generation;
+                sample.family = WidgetRailOverlayPlatformControllerFamily::PlayStation;
                 sample.state = {pad.buttons, pad.leftTrigger, pad.rightTrigger,
                     pad.leftThumbX, pad.leftThumbY, pad.rightThumbX, pad.rightThumbY};
                 sample.connected = true;
@@ -1030,6 +1039,10 @@ WidgetRailOverlayPlatformReadController(
             WidgetRailOverlayPlatformReadPath::ControllerIsolation;
         // History preserves transitions, but cannot prove a control is still
         // held after a UI stall. Finish with a current-state read for repeats.
+        frame->lastInputFamily = handle->controllerGlyphs.Observe(
+            reading.dualSense ? WidgetRailOverlayPlatformControllerFamily::PlayStation
+                : WidgetRailOverlayPlatformControllerFamily::Xbox,
+            connected && handle->controllerSelection.HasActivity(state));
         frame->remainingFrames = reading.remainingInputStates +
             (reading.queuedInput ? 1U : 0U);
         return WidgetRailOverlayPlatformStatus::Ok;
@@ -1049,6 +1062,7 @@ WidgetRailOverlayPlatformReadController(
     frame->foregroundExclusive = ToAbiBoolean(
         decision.foregroundExclusive);
     frame->readPath = ConvertReadPath(decision.readPath);
+    frame->lastInputFamily = handle->controllerGlyphs.current();
     return WidgetRailOverlayPlatformStatus::Ok;
 }
 

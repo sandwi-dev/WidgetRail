@@ -1,6 +1,7 @@
 #pragma once
 
 #include "OverlayPlatformInterop.h"
+#include "DualSenseReport.h"
 #include "../OverlayHost/ControllerInputOwnership.h"
 
 #include <algorithm>
@@ -27,6 +28,27 @@ struct ControllerActivitySample final {
     ControllerSource source{};
     WidgetRailOverlayPlatformRawControllerState state{};
     bool connected{};
+    WidgetRailOverlayPlatformControllerFamily family{WidgetRailOverlayPlatformControllerFamily::Unknown};
+};
+
+// Device identity determines glyphs independently of its transport/backend.
+inline WidgetRailOverlayPlatformControllerFamily ControllerFamilyFromHardware(
+    std::uint16_t vendor, std::uint16_t product) noexcept {
+    return isolation::IsDualSenseProduct(vendor, product)
+        ? WidgetRailOverlayPlatformControllerFamily::PlayStation
+        : WidgetRailOverlayPlatformControllerFamily::Xbox;
+}
+
+class ControllerGlyphSelection final {
+public:
+    WidgetRailOverlayPlatformControllerFamily Observe(
+        WidgetRailOverlayPlatformControllerFamily family, bool active) noexcept {
+        if (active && family != WidgetRailOverlayPlatformControllerFamily::Unknown) family_ = family;
+        return family_;
+    }
+    [[nodiscard]] WidgetRailOverlayPlatformControllerFamily current() const noexcept { return family_; }
+private:
+    WidgetRailOverlayPlatformControllerFamily family_{WidgetRailOverlayPlatformControllerFamily::Unknown};
 };
 
 class ControllerActivitySelection final {
