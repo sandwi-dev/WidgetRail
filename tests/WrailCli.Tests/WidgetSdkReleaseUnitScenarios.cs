@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Xml.Linq;
 using WidgetRail.WrailCli;
 using WidgetRail.WidgetSdk;
 
@@ -10,7 +11,13 @@ internal static class WidgetSdkReleaseUnitScenarios
     public static Task Run()
     {
         var contract = WidgetSdkReleaseContract.Current;
-        Equal("0.3.0-dev", contract.Version);
+        var repository = new DirectoryInfo(AppContext.BaseDirectory);
+        while (repository is not null && !File.Exists(Path.Combine(repository.FullName, "eng", "WidgetSdkRelease.props")))
+            repository = repository.Parent;
+        if (repository is null) throw new InvalidOperationException("Canonical SDK release properties were not found.");
+        var properties = XDocument.Load(Path.Combine(repository.FullName, "eng", "WidgetSdkRelease.props"));
+        var canonicalVersion = properties.Descendants("WidgetSdkReleaseVersion").Single().Value;
+        Equal(canonicalVersion, contract.Version);
         Equal("WidgetRail.WidgetSdk", contract.PackageId);
         Equal(ControllerWidgetScaffolder.SupportedTemplateVersion, contract.TemplateVersion);
 
