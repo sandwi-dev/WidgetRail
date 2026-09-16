@@ -3746,13 +3746,8 @@ void RunRetentionScenario(const Arguments& arguments) {
     FenceWindow(window);
 
     const auto ordinaryRefreshBefore = ReadUtf8(logPath).size();
-    const auto ordinaryRefreshEpoch = blockSnapshot();
-    const auto blockedSnapshotObservedAt = GetTickCount64();
-    const auto ordinaryBlockedRenderSequence =
-        installation->BlockedSnapshotSequence(ordinaryRefreshEpoch);
-    const auto handshakeLog = ReadUtf8(logPath).substr(ordinaryRefreshBefore);
-    Require(handshakeLog.find("kind=lifecycle") == std::string::npos,
-            "Ready-action block handshake introduced a lifecycle transition; log=" + handshakeLog);
+    // Establish the accepted frame and geometry before starting the bounded
+    // blocked request. Log/geometry waits here must not consume its deadline.
     const auto settingsAfterEnterSequence = ParsePositiveSequence(
         TextField(settingsAfterEnter, "sequence="));
     std::string readyActionCurrent;
@@ -3791,9 +3786,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                 return false;
             });
     Require(readyActionCurrentObserved,
-            "Blocked refresh did not retain its exact accepted Current paint; "
-            "blocked-render-sequence=" +
-                std::to_string(ordinaryBlockedRenderSequence) + " log=" +
+            "Refresh precondition did not retain its exact accepted Current paint; log=" +
                 ReadUtf8(logPath).substr(ordinaryRefreshBefore));
     requireCurrentPresentationCompletion(
         enterFromTrayBefore, readyActionCurrent, kTargets.back().id,
@@ -3808,11 +3801,6 @@ void RunRetentionScenario(const Arguments& arguments) {
             L"Ready-triggered Current before stable retained interval");
     }
     FenceWindow(window);
-    {
-        std::error_code ignored;
-        Require(!fs::exists(installation->BlockedSnapshotComplete(), ignored),
-                "Stable retained boundary waited for the blocked replacement to complete");
-    }
     auto blockedRefreshBefore = ReadUtf8(logPath).size();
     std::string fallbackBlockedCheckpoint;
     if (!*interactiveMode) {
@@ -3883,6 +3871,12 @@ void RunRetentionScenario(const Arguments& arguments) {
         blockedRefreshBefore = ReadUtf8(logPath).size();
     }
     FenceWindow(window);
+    const auto ordinaryRefreshEpoch = blockSnapshot();
+    const auto blockedSnapshotObservedAt = GetTickCount64();
+    const auto handshakeLog = ReadUtf8(logPath).substr(ordinaryRefreshBefore);
+    Require(handshakeLog.find("kind=lifecycle") == std::string::npos,
+            "Ready-action block handshake introduced a lifecycle transition; log=" + handshakeLog);
+    blockedRefreshBefore = ReadUtf8(logPath).size();
     std::string retainedInteractiveUiDiagnostic{"not-observed"};
     std::string firstRetainedUiDiagnostic;
     const bool retainedInteractiveUiReady = WaitUntil(kOperationTimeoutMilliseconds, [&] {
