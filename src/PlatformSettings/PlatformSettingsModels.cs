@@ -87,6 +87,8 @@ public sealed record AppearanceSettings
     /// Fresh installations use the explicit value in Default.
     /// </summary>
     public bool AnimateWidgetSwitching { get; init; }
+    // Missing values in existing settings retain Rail; fresh installations
+    // receive the explicit combined-mode value in Default below.
     public WidgetSwitcherLayout WidgetSwitcher { get; init; } = WidgetSwitcherLayout.Rail;
 
     /// <summary>Global host-owned override; Widget preserves each declaration.</summary>
@@ -114,6 +116,7 @@ public sealed record AppearanceSettings
         BoldText = true,
         Transparency = TransparencyPreference.Full,
         AnimateWidgetSwitching = true,
+        WidgetSwitcher = WidgetSwitcherLayout.Radial,
         WidgetSurfaceAppearance = WidgetSurfaceAppearanceOverride.Widget,
     };
 }

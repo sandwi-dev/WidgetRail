@@ -18,8 +18,9 @@ Text fields can use the built-in controller keyboard.
 
 ## Choose a widget switcher
 
-In **Settings → Overlay → Widget switcher**, choose **Rail** (the default) or
-**Radial**. Radial combines the wheel with the horizontal tray:
+In **Settings → Overlay → Widget switcher**, choose **Radial + rail** (the default
+for new installations) or **Rail**. Existing saved choices stay unchanged.
+Radial + rail combines the wheel with the horizontal tray:
 
 - Press B at a widget's top level to open the wheel. Nested pages and menus
   still handle Back first.

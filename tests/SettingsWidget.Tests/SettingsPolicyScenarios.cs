@@ -51,11 +51,11 @@ internal static class SettingsPolicyScenarios
 
         Require(SettingsPreferencePolicy.TryCreate("widget-switcher.toggle", out var switcher),
             "Widget switcher preference was not admitted.");
-        var radial = switcher.Apply(PlatformSettingsDocument.Default);
-        Equal(WidgetSwitcherLayout.Radial, radial.Appearance.WidgetSwitcher,
-            "Switcher preference did not select radial.");
-        Equal(WidgetSwitcherLayout.Rail, switcher.Apply(radial).Appearance.WidgetSwitcher,
-            "Switcher preference did not return to rail.");
+        var rail = switcher.Apply(PlatformSettingsDocument.Default);
+        Equal(WidgetSwitcherLayout.Rail, rail.Appearance.WidgetSwitcher,
+            "Switcher preference did not select rail from the combined default.");
+        Equal(WidgetSwitcherLayout.Radial, switcher.Apply(rail).Appearance.WidgetSwitcher,
+            "Switcher preference did not return to the combined mode.");
         Require(SettingsPreferencePolicy.TryCreate("text.increase", out var increase),
             "Text preference was not admitted.");
         var maximum = PlatformSettingsDocument.Default with

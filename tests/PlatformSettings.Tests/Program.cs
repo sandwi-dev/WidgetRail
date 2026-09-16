@@ -77,7 +77,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(true, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
         Assert.Equal(true, settings.Appearance.AnimateWidgetSwitching);
-        Assert.Equal(WidgetSwitcherLayout.Rail, settings.Appearance.WidgetSwitcher);
+        Assert.Equal(WidgetSwitcherLayout.Radial, settings.Appearance.WidgetSwitcher);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
 
         using var manager = new ThemeManager(store, Catalog(temp.Path));
@@ -89,6 +89,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(ThemeIdentity.BuiltInDefault, (await store.LoadAsync()).Appearance.ThemeId);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.AnimateWidgetSwitching);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.BoldText);
+        Assert.Equal(WidgetSwitcherLayout.Rail, (await store.LoadAsync()).Appearance.WidgetSwitcher);
     }
 }
 
@@ -120,6 +121,12 @@ static async Task SettingsRoundTrip()
     Assert.DocumentEqual(updated, reloaded);
     Assert.Equal(true, reloaded.Appearance.AnimateWidgetSwitching);
     Assert.Equal(WidgetSwitcherLayout.Radial, reloaded.Appearance.WidgetSwitcher);
+    await store.UpdateAsync(current => current with
+    {
+        Appearance = current.Appearance with { WidgetSwitcher = WidgetSwitcherLayout.Rail },
+    });
+    Assert.Equal(WidgetSwitcherLayout.Rail,
+        (await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync()).Appearance.WidgetSwitcher);
     var source = await File.ReadAllTextAsync(store.Paths.SettingsFile);
     Assert.Contains("\"schemaVersion\": 3", source);
     Assert.Contains("\"motion\": \"reduced\"", source);
