@@ -171,6 +171,11 @@ static async Task LoadingBeforeReady()
     await service.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
     var loading = Snapshot(widget);
     Assert.True(Nodes(loading.Root).Any(node => node.Id == "settings.loading.indicator"), "No loading indicator while dependency was blocked.");
+    Assert.Equal("settings-root", loading.ActiveInputScopeId);
+    Assert.True(!Nodes(loading.Root).Any(node => node.Kind == ViewNodeKind.ActionSurface), "Home cards should be replaced while loading.");
+    Assert.True(!Nodes(loading.Root).Any(node => node.Id is "settings.home.subtitle" or "settings.toast"), "Loading home should have neither a subtitle nor a duplicate loading toast.");
+    Assert.SequenceEqual(["settings.refresh", "category.reset", "settings.restart", "settings.quit"], Buttons(loading.Root).Select(node => node.Id));
+    Assert.True(Buttons(loading.Root).All(node => node.IsBusy == true), "Loading footer actions must remain busy.");
     await Action(widget, "application.quit");
     Assert.Equal(0, service.Requests.Count);
     service.Release.TrySetResult(PlatformDiagnosticsSnapshot.Unavailable());
@@ -179,6 +184,9 @@ static async Task LoadingBeforeReady()
     Assert.Equal("category.appearance", ready.InitialFocusId);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, ready.Surface?.HeightMode);
     Assert.Equal(loading.Surface, ready.Surface);
+    Assert.Equal(loading.Root.Id, ready.Root.Id);
+    Assert.Equal("Settings", Nodes(ready.Root).Single(node => node.Id == "settings.title").Text);
+    Assert.True(!Nodes(ready.Root).Any(node => node.Id is "settings.home.subtitle" or "settings.loading.indicator"), "Ready home retained loading content or its removed subtitle.");
     Assert.Valid(loading);
     Assert.Valid(ready);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
@@ -2703,7 +2711,23 @@ static async Task ShippedAssetsValidate()
 static async Task ExportRendererFixture(string outputPath)
 {
     using var temp = new TemporaryDirectory();
-    var snapshot = Snapshot(Create(temp.Path));
+    await ExportRendererSnapshot(Snapshot(Create(temp.Path)), outputPath);
+    var service = new InitializationDiagnostics();
+    var widget = new SettingsWidget(Store(temp.Path), diagnostics: service);
+    await widget.InitializeAsync(default);
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
+    await service.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    try { await ExportRendererSnapshot(Snapshot(widget), outputPath + ".loading.json"); }
+    finally
+    {
+        service.Release.TrySetResult(PlatformDiagnosticsSnapshot.Unavailable());
+        await widget.InitializationTask;
+        await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+    }
+}
+
+static async Task ExportRendererSnapshot(ViewSnapshot snapshot, string outputPath)
+{
     var validation = ViewSnapshotValidator.Validate(snapshot);
     Assert.Equal(0, validation.Count);
     var project = ProjectDirectory();

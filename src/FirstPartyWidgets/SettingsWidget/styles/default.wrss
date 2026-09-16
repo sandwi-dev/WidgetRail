@@ -193,10 +193,11 @@
 
 .home-header { align: center; gap: 14px; }
 .home-mark { width: 38px; height: 38px; flex-shrink: 0; color: var(--accent); }
-.home-heading { gap: 3px; min-width: 0; }
 .home-title { font-size: 26px; font-weight: 600; max-lines: 1; }
-.home-subtitle { color: var(--text-muted); font-size: 13px; max-lines: 1; }
 .home-body { flex-grow: 1; flex-basis: 0; min-height: 0; gap: 12px; }
+.home-loading { flex-grow: 1; flex-basis: 0; min-height: 0; align: center; justify: center; }
+.home-loading-content { align: center; gap: 12px; }
+.home-loading-message { color: var(--text-muted); font-size: 13px; max-lines: 1; }
 .home-card-icon { width: 34px; height: 34px; flex-shrink: 0; color: var(--accent); }
 .home-card-copy { flex-grow: 1; min-width: 0; gap: 6px; }
 .home-card-title { color: var(--text); font-size: 18px; font-weight: 600; max-lines: 1; }

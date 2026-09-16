@@ -22,7 +22,8 @@ internal sealed record SettingsPresentationState(
     SettingsThemeSelection? SelectedTheme = null,
     string? ThemePickerFocusId = null,
     StartupRegistrationStatus? Startup = null,
-    OverlayDisplayContext? Display = null);
+    OverlayDisplayContext? Display = null,
+    bool Loading = false);
 
 /// <summary>Pure snapshot-only composition for Settings pages owned by DLV-036.</summary>
 internal static class SettingsPresentation
@@ -33,7 +34,7 @@ internal static class SettingsPresentation
         var header = Header(state);
         view = state.Page switch
         {
-            SettingsPage.Root => RenderRoot(header, state.Settings, state.Themes, state.Busy),
+            SettingsPage.Root => RenderRoot(header, state.Settings, state.Themes, state.Busy, state.Loading),
             SettingsPage.Appearance => RenderAppearance(
                 header, state.Settings, state.Themes, state.Busy),
             SettingsPage.ThemePicker => RenderThemes(
@@ -61,10 +62,7 @@ internal static class SettingsPresentation
             state.Page == SettingsPage.Root
                 ? UI.Row("settings.header.row",
                     UI.Icon(WidgetGlyph.Settings, "settings.home.mark", "Settings").Classes("home-mark"),
-                    UI.Stack("settings.home.heading",
-                        UI.Text("Settings", "settings.title", "Settings").Classes("home-title"),
-                        UI.Text("Make WidgetRail your own", "settings.home.subtitle", "Make WidgetRail your own")
-                            .Classes("home-subtitle")).Classes("home-heading"))
+                    UI.Text("Settings", "settings.title", "Settings").Classes("home-title"))
                     .Classes("settings-header-row", "home-header")
                 : UI.Row("settings.header.row",
                 UI.Text("SETTINGS", "settings.title", "Settings").Classes("settings-title", "header-title"),
@@ -146,7 +144,7 @@ internal static class SettingsPresentation
     private static WidgetView RootView(
         StackElement header,
         WidgetElement content,
-        string initialFocus) => new(
+        string? initialFocus) => new(
             ComposeRoot(header, content, "settings-root", initialFocus),
             initialFocus,
             ActiveInputScopeId: "settings-root",
@@ -154,8 +152,7 @@ internal static class SettingsPresentation
             {
                 Mode = WidgetSurfaceMode.Standard,
                 WidthMode = WidgetSurfaceAxisMode.Preferred,
-                // Match the loading page so activation does not resize the
-                // surface again after settings have loaded.
+                // Loading and ready content share one stable home surface.
                 HeightMode = WidgetSurfaceAxisMode.Preferred,
                 PreferredWidth = 880,
                 PreferredHeight = 520,
@@ -167,7 +164,8 @@ internal static class SettingsPresentation
         StackElement header,
         PlatformSettingsDocument settings,
         ThemeCatalogSnapshot themes,
-        bool busy)
+        bool busy,
+        bool loading)
     {
         var selectedTheme = themes.Themes.FirstOrDefault(entry => entry.IsValid &&
             entry.Descriptor.Id == settings.Appearance.ThemeId &&
@@ -183,7 +181,13 @@ internal static class SettingsPresentation
                     .Classes("home-card-copy"))
                 .Busy(busy).Classes("category-card");
 
-        var categories = UI.VerticalScroll("settings.categories",
+        WidgetElement categories = loading
+            ? UI.Stack("settings.categories",
+                UI.Stack("settings.loading.content",
+                    UI.LoadingIndicator("settings.loading.indicator", "Loading settings"),
+                    UI.Text("Loading settings…", "settings.loading.message", "Loading settings").Classes("home-loading-message"))
+                    .Classes("home-loading-content")).Classes("home-loading")
+            : UI.VerticalScroll("settings.categories",
             UI.ResponsiveGrid("settings.category-grid", 250, 2,
                 Card("Appearance", themeDescription, "open.appearance", "category.appearance", "appearance", WidgetGlyph.Settings),
                 Card("Accessibility", "Text, contrast, and motion", "open.accessibility", "category.accessibility", "accessibility", WidgetGlyph.Check),
@@ -194,13 +198,13 @@ internal static class SettingsPresentation
                 .Classes("category-grid")).Classes("root-category-list");
         var utilities = UI.ResponsiveGrid("settings.home.utilities", 120, 4,
             UI.Button("Refresh", "refresh", "settings.refresh").Busy(busy).Classes("home-utility"),
-            UI.Button("Reset", "open.reset", "category.reset").Classes("home-utility", "danger-card"),
+            UI.Button("Reset", "open.reset", "category.reset").Busy(loading).Classes("home-utility", "danger-card"),
             UI.Button("Restart", "application.restart", "settings.restart").Busy(busy).Classes("home-utility") with { AccessibilityLabel = "Restart WidgetRail" },
             UI.Button("Quit", "application.quit", "settings.quit").Busy(busy).Classes("home-utility") with { AccessibilityLabel = "Quit WidgetRail" })
             .Classes("home-utilities");
         return RootView(header,
             UI.Stack("settings.home.body", categories, utilities).Classes("home-body"),
-            "category.appearance");
+            loading ? null : "category.appearance");
     }
 
     private static WidgetView RenderAppearance(

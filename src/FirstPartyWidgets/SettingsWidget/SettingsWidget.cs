@@ -148,18 +148,11 @@ public sealed class SettingsWidget : Widget
 
     public override WidgetView Render()
     {
-        lock (_stateLock)
-            if (_initializing)
-                return SettingsPresentation.View(
-                    UI.Stack("settings.header", UI.Text("SETTINGS", "settings.title", "Settings").Classes("settings-title")),
-                    SettingsPresentation.PageScope("settings.loading",
-                        UI.LoadingIndicator("settings.loading.indicator", "Loading settings"),
-                        UI.Text("Loading settings…", "settings.loading.message", "Loading settings")),
-                    null, "settings.loading");
         PlatformSettingsDocument settings;
         ThemeCatalogSnapshot themes;
         SettingsPage page;
         bool busy;
+        bool loading;
         bool error;
         bool settingsValid;
         PlatformDiagnosticsSnapshot diagnostics;
@@ -177,8 +170,9 @@ public sealed class SettingsWidget : Widget
             display = _display;
             settings = _settings;
             themes = _themes;
-            page = _page;
-            busy = _busy;
+            loading = _initializing;
+            page = loading ? SettingsPage.Root : _page;
+            busy = _busy || loading;
             error = _error;
             settingsValid = _settingsValid;
             diagnostics = _diagnostics;
@@ -187,7 +181,7 @@ public sealed class SettingsWidget : Widget
             selectedAuthorityRecoveryId = _selectedAuthorityRecovery?.RecoveryId;
             selectedTheme = _selectedTheme;
             themePickerFocusId = _themePickerFocusId;
-            status = _toastVisible ? StatusMessage : "Ready";
+            status = !loading && _toastVisible ? StatusMessage : "Ready";
         }
 
         var presentation = new SettingsPresentationState(
@@ -201,7 +195,7 @@ public sealed class SettingsWidget : Widget
             busy,
             error,
             selectedTheme,
-            themePickerFocusId, startupStatus, display);
+            themePickerFocusId, startupStatus, display, loading);
         if (SettingsPresentation.TryRender(presentation, out var view)) return view;
         var header = SettingsPresentation.Header(presentation);
         return page switch

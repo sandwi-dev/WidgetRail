@@ -177,6 +177,31 @@ void Run(const std::filesystem::path& fixturePath) {
         Check(Contains(card, preferred.elementRects.at(key + L".description")), "card contains its help text");
     }
     CheckReachable(renderer, snapshot, 520.0F, 360.0F);
+
+    const auto loading = widgetrail::testing::ParseWidgetSnapshotResponse(
+        ReadUtf8(std::filesystem::path(fixturePath.wstring() + L".loading.json")), error);
+    Check(loading.has_value(), "production renderer parses the loading home fixture");
+    Check(loading->activeInputScopeId == snapshot.activeInputScopeId,
+          "loading retains the home input scope");
+    for (const auto size : {widgetrail::declarative::Size{880.0F, 520.0F},
+                           widgetrail::declarative::Size{880.0F, 465.0F},
+                           widgetrail::declarative::Size{520.0F, 360.0F}}) {
+        const auto waiting = RenderAt(renderer, *loading, L"", size.width, size.height);
+        const auto ready = RenderAt(renderer, snapshot, L"category.appearance", size.width, size.height);
+        const auto& region = waiting.elementRects.at(L"settings.categories");
+        const auto& content = waiting.elementRects.at(L"settings.loading.content");
+        Check(Contains(region, content), "loading content fits inside the card area");
+        Near(content.x + content.width / 2, region.x + region.width / 2,
+             "loading indicator is horizontally centered in the card area", 0.51F);
+        Near(content.y + content.height / 2, region.y + region.height / 2,
+             "loading indicator and label are vertically centered in the card area", 0.51F);
+        for (const auto id : {L"settings.header", L"settings.home.utilities"}) {
+            const auto& before = waiting.elementRects.at(id);
+            const auto& after = ready.elementRects.at(id);
+            Near(before.y, after.y, "home shell does not move when loading finishes");
+            Near(before.height, after.height, "home shell keeps its height when loading finishes");
+        }
+    }
 }
 
 } // namespace
