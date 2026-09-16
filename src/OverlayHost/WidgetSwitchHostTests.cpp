@@ -130,6 +130,18 @@ public:
                  fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         localAppData_ = root_ / L"local-app-data";
         fs::create_directories(localAppData_ / L"WidgetRail");
+        // These scenarios exercise rail preview and Back-to-tray retention.
+        // Keep their layout explicit when the new-install default changes.
+        WriteUtf8(localAppData_ / L"WidgetRail" / L"platform-settings.json", R"json({
+            "schemaVersion": 3,
+            "appearance": {
+                "themeId": "widgetrail.builtin.neon-circuit", "themeVersion": "1.0.0",
+                "interfaceScale": 1, "textScale": 1, "backdropOpacity": 0.64,
+                "motion": "system", "contrast": "system", "boldText": true,
+                "transparency": "full", "animateWidgetSwitching": true,
+                "widgetSwitcher": "rail"
+            }
+        })json");
         readyPath_ = root_ / L"host-ready.txt";
         startupSignalRoot_ = root_ / L"startup-signals";
         fs::create_directories(startupSignalRoot_);
