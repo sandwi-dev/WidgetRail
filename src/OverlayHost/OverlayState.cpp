@@ -26,6 +26,7 @@ bool OverlayState::Dispatch(const Command command, const bool previewTraySelecti
     const auto priorSlot = selectedSlot_;
     const auto priorActive = activeWidget_;
     const auto priorReorder = reorderMode_;
+    const auto priorTrayEntry = trayEntry_;
 
     if (command == Command::ToggleOverlay || command == Command::CloseOverlay) {
         if (surface_ != Surface::Hidden) {
@@ -51,6 +52,12 @@ bool OverlayState::Dispatch(const Command command, const bool previewTraySelecti
         }
     } else if (surface_ == Surface::Hidden) {
         // Hidden means dormant: no navigation input changes host state.
+    } else if ((command == Command::SampleWidgetBack && focusRegion_ == FocusRegion::Widget) ||
+               command == Command::FocusTray) {
+        if (activeWidget_) selectedSlot_ = FindSlot(*activeWidget_);
+        focusRegion_ = FocusRegion::Tray;
+        trayEntry_ = command == Command::FocusTray ? TrayEntry::Directional : TrayEntry::Back;
+        reorderMode_ = false;
     } else if (surface_ == Surface::Dashboard) {
         switch (command) {
         case Command::NavigateLeft:
@@ -80,6 +87,7 @@ bool OverlayState::Dispatch(const Command command, const bool previewTraySelecti
             reorderMode_ = false;
             break;
         case Command::SampleWidgetBack:
+        case Command::FocusTray:
             break;
         case Command::ToggleReorder:
             if (!persistent_.order.empty()) reorderMode_ = !reorderMode_;
@@ -112,19 +120,16 @@ bool OverlayState::Dispatch(const Command command, const bool previewTraySelecti
             if (!persistent_.order.empty()) reorderMode_ = !reorderMode_;
             break;
         case Command::SampleWidgetBack:
+        case Command::FocusTray:
         case Command::ToggleOverlay:
         case Command::CloseOverlay:
             break;
         }
-    } else if (command == Command::SampleWidgetBack) {
-        if (activeWidget_) selectedSlot_ = FindSlot(*activeWidget_);
-        focusRegion_ = FocusRegion::Tray;
-        reorderMode_ = false;
     }
 
     return before != persistent_ || priorSurface != surface_ ||
            priorFocusRegion != focusRegion_ || priorSlot != selectedSlot_ || priorActive != activeWidget_ ||
-           priorReorder != reorderMode_;
+           priorReorder != reorderMode_ || priorTrayEntry != trayEntry_;
 }
 
 bool OverlayState::SetAvailableWidgets(

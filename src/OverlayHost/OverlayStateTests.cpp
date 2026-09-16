@@ -276,6 +276,47 @@ int main() {
     (void)radial.Dispatch(Command::Activate, false);
     Check(radial.activeWidget() == targetWidget && radial.focusRegion() == FocusRegion::Widget,
           "A commits exactly the highlighted radial target");
+
+    // The same configured switcher supports two entry paths without granting
+    // the wheel's highlighted widget preview or dashboard action authority.
+    OverlayState hybrid({}, {L"music", L"audio", L"settings"});
+    const auto sendHybrid = [&](const Command command) {
+        return hybrid.Dispatch(command, !hybrid.radialTrayOpen(true));
+    };
+    sendHybrid(Command::ToggleOverlay);
+    sendHybrid(Command::Activate);
+    const auto initial = std::wstring{hybrid.activeWidget()};
+    sendHybrid(Command::SampleWidgetBack);
+    Check(hybrid.radialTrayOpen(true) && !hybrid.radialTrayOpen(false),
+          "Back opens the wheel only when the radial setting is enabled");
+    sendHybrid(Command::NavigateRight);
+    Check(hybrid.activeWidget() == initial && hybrid.selectedWidget() != initial,
+          "Back entry keeps radial highlights lightweight");
+    Check(hybrid.ReturnToActiveWidget() && hybrid.selectedWidget() == initial,
+          "radial cancel returns to the retained widget");
+    sendHybrid(Command::FocusTray);
+    Check(!hybrid.radialTrayOpen(true) && hybrid.focusRegion() == FocusRegion::Tray,
+          "downward boundary enters the rail even with radial switching enabled");
+    sendHybrid(Command::NavigateRight);
+    Check(hybrid.activeWidget() == hybrid.selectedWidget() && hybrid.activeWidget() != initial,
+          "rail selection previews the selected widget for existing dashboard actions");
+    sendHybrid(Command::Activate);
+    Check(hybrid.focusRegion() == FocusRegion::Widget && !hybrid.radialTrayOpen(true),
+          "rail activation returns ordinary widget focus");
+    sendHybrid(Command::SampleWidgetBack);
+    Check(hybrid.radialTrayOpen(true), "Back uses the wheel after prior rail navigation");
+    (void)hybrid.ReturnToActiveWidget();
+    sendHybrid(Command::FocusTray);
+    sendHybrid(Command::ToggleReorder);
+    Check(hybrid.reorderMode() && !hybrid.radialTrayOpen(true),
+          "rail reordering does not switch to the wheel");
+    sendHybrid(Command::ToggleOverlay);
+    Check(hybrid.surface() == Surface::Hidden && !hybrid.radialTrayOpen(true),
+          "the rail close action hides the overlay instead of opening the wheel");
+    const auto hiddenEntry = hybrid.trayEntry();
+    Check(!sendHybrid(Command::FocusTray) && !sendHybrid(Command::SampleWidgetBack) &&
+              hybrid.trayEntry() == hiddenEntry,
+          "hidden directional and Back commands cannot change tray presentation");
     std::cout << "OverlayStateTests passed\n";
     return EXIT_SUCCESS;
 }

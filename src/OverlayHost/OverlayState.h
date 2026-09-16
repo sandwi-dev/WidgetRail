@@ -21,6 +21,10 @@ enum class FocusRegion {
     Widget,
 };
 
+// Back may use the configured radial chooser. Directional exit always enters
+// the ordinary rail, where selection previews the widget and admits shortcuts.
+enum class TrayEntry { Back, Directional };
+
 enum class Command {
     ToggleOverlay,
     /// Idempotently hides a visible overlay. Unlike ToggleOverlay, this can
@@ -31,6 +35,7 @@ enum class Command {
     Activate,
     Cancel,
     SampleWidgetBack,
+    FocusTray,
     ToggleReorder,
 };
 
@@ -61,6 +66,11 @@ public:
     /// Returns false when the ID is unavailable or the tray does not own input.
     [[nodiscard]] bool TrySelectTrayWidget(std::wstring_view widgetId, bool preview = true) noexcept;
     [[nodiscard]] bool ReturnToActiveWidget() noexcept;
+    [[nodiscard]] TrayEntry trayEntry() const noexcept { return trayEntry_; }
+    [[nodiscard]] bool radialTrayOpen(bool enabled) const noexcept {
+        return enabled && surface_ != Surface::Hidden && focusRegion_ == FocusRegion::Tray &&
+            trayEntry_ == TrayEntry::Back;
+    }
     [[nodiscard]] Surface surface() const noexcept { return surface_; }
     [[nodiscard]] FocusRegion focusRegion() const noexcept { return focusRegion_; }
     [[nodiscard]] std::size_t selectedSlot() const noexcept { return selectedSlot_; }
@@ -83,6 +93,7 @@ private:
     // Widget is the compatibility default for a persisted reopen. A first-run
     // dashboard explicitly switches this to Tray when it becomes visible.
     FocusRegion focusRegion_{FocusRegion::Widget};
+    TrayEntry trayEntry_{TrayEntry::Back};
     std::size_t selectedSlot_{0};
     std::optional<std::wstring> activeWidget_;
     bool reorderMode_{false};

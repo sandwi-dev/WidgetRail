@@ -19,7 +19,15 @@ Text fields can use the built-in controller keyboard.
 ## Choose a widget switcher
 
 In **Settings → Overlay → Widget switcher**, choose **Rail** (the default) or
-**Radial**. With Radial, returning to the tray opens a wheel over the widget.
+**Radial**. Radial combines the wheel with the horizontal tray:
+
+- Press B at a widget's top level to open the wheel. Nested pages and menus
+  still handle Back first.
+- Move down past the widget's bottom row to enter the horizontal tray. Moving
+  left or right previews each widget and enables its dashboard shortcuts.
+  Press A or move up to enter it. B closes the overlay from the horizontal tray.
+
+The wheel opens over the current widget without changing its layout.
 Point the left stick toward a widget, then press A to open it. D-pad or keyboard
 arrows move between slots. B returns to the current widget.
 
@@ -29,7 +37,8 @@ and interface settings and reduced when screen space is limited.
 Hold the right stick left or right to
 change pages with the same repeat timing as ordinary navigation. Browsing the
 wheel does not open each highlighted widget. Menu and Y retain their tray actions.
-Widget-specific shortcuts become available after you open the widget with A.
+The wheel does not run dashboard shortcuts. Use the horizontal tray for those,
+or open the widget with A to use its own controls.
 
 View keeps its pinned-view focus shortcut. Inside a widget, the right stick
 still scrolls; release it to neutral when moving between the wheel and a widget.

@@ -2014,7 +2014,7 @@ private:
                 pinnedSurfaceCoordinator_.pinned() &&
                 pinnedSurfaceCoordinator_.widgetId() == invalidatedWidget;
             if ((state_.surface() != widgetrail::Surface::Hidden &&
-                 (state_.surface() == widgetrail::Surface::Widget || !RadialSwitcherEnabled()) &&
+                 (state_.surface() == widgetrail::Surface::Widget || !RadialSwitcherOpen()) &&
                  currentWidget == invalidatedWidget) || pinnedInvalidation) {
                 RefreshAndApplyPresentation([&] {
                     RefreshWidgetSnapshot(invalidatedWidget);
@@ -5864,7 +5864,7 @@ private:
                 *priorPendingAuthority);
         const auto priorDesiredLifecycle = widgetrail::DesiredWidgetLifecycle(
             priorSurface, priorFocusRegion, priorSelected, priorActive,
-            IsBridgeWidget(priorSelected), IsBridgeWidget(priorActive), !RadialSwitcherEnabled());
+            IsBridgeWidget(priorSelected), IsBridgeWidget(priorActive), !RadialSwitcherOpen());
         if (priorSurface == widgetrail::Surface::Widget)
             CommitAdmittedWidgetPresentation(priorActive);
         if (priorSurface == widgetrail::Surface::Widget && IsBridgeWidget(priorActive)) {
@@ -5972,7 +5972,7 @@ private:
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
             IsBridgeWidget(state_.selectedWidget()),
-            IsBridgeWidget(state_.activeWidget()), !RadialSwitcherEnabled());
+            IsBridgeWidget(state_.activeWidget()), !RadialSwitcherOpen());
         if (command == widgetrail::Command::Activate && correlationId != 0 &&
             priorDesiredLifecycle && nextDesiredLifecycle &&
             priorDesiredLifecycle->widgetId == nextDesiredLifecycle->widgetId) {
@@ -6052,7 +6052,7 @@ private:
                 state_.surface() == widgetrail::Surface::Widget && IsBridgeWidget(state_.activeWidget()) &&
                 (priorSurface != widgetrail::Surface::Widget || priorActive != state_.activeWidget());
             const bool hoveredBridgeWidget =
-                !RadialSwitcherEnabled() && state_.surface() == widgetrail::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
+                !RadialSwitcherOpen() && state_.surface() == widgetrail::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
                 (priorSurface != widgetrail::Surface::Dashboard || priorSelected != state_.selectedWidget());
             const bool startupFailureBlocksSnapshot =
                 (enteredBridgeWidget && sessions_.Failure(state_.activeWidget())) ||
@@ -6159,7 +6159,7 @@ private:
 
     void Dispatch(const widgetrail::Command command) {
         ApplyStateTransition(
-            [&] { return state_.Dispatch(command, !RadialSwitcherEnabled()); }, command);
+            [&] { return state_.Dispatch(command, !RadialSwitcherOpen()); }, command);
         if (textEntryModal_.active() && state_.surface() == widgetrail::Surface::Hidden) {
             textEntryModal_.UpdateControllerRepeat({}, GetTickCount64());
             textEntryControllerPhase_ = TextEntryControllerPhase::AwaitingEntryNeutral;
@@ -6171,7 +6171,7 @@ private:
         bool accepted = false;
         ApplyStateTransition([&] {
             const auto priorSelected = state_.selectedWidget();
-            accepted = state_.TrySelectTrayWidget(widgetId, !RadialSwitcherEnabled());
+            accepted = state_.TrySelectTrayWidget(widgetId, !RadialSwitcherOpen());
             return accepted && priorSelected != state_.selectedWidget();
         });
         return accepted;
@@ -6184,8 +6184,8 @@ private:
             appearanceState_.current()->radialWidgetSwitcher;
     }
     bool RadialSwitcherOpen() const noexcept {
-        return RadialSwitcherEnabled() && state_.surface() != widgetrail::Surface::Hidden &&
-            state_.focusRegion() == widgetrail::FocusRegion::Tray && !pinnedSurfaceCoordinator_.controllerFocused();
+        return state_.radialTrayOpen(RadialSwitcherEnabled()) &&
+            !pinnedSurfaceCoordinator_.controllerFocused();
     }
     void StepRadialSelection(int delta) {
         if (state_.order().empty()) return;
@@ -6705,7 +6705,7 @@ private:
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
             IsBridgeWidget(state_.selectedWidget()),
-            IsBridgeWidget(state_.activeWidget()), !RadialSwitcherEnabled());
+            IsBridgeWidget(state_.activeWidget()), !RadialSwitcherOpen());
         if (overlayDesired) {
             desiredStates.insert_or_assign(overlayDesired->widgetId, overlayDesired->state);
         }
@@ -9977,8 +9977,7 @@ private:
         if (!trayTarget || trayTarget->slot >= state_.order().size()) return;
         if (state_.surface() == widgetrail::Surface::Widget &&
             state_.focusRegion() == widgetrail::FocusRegion::Widget) {
-            Dispatch(widgetrail::Command::SampleWidgetBack);
-            if (RadialSwitcherEnabled() && !openContext) return;
+            Dispatch(widgetrail::Command::FocusTray);
         }
         if (state_.reorderMode()) Dispatch(widgetrail::Command::Cancel);
         const std::wstring targetWidget = state_.order()[trayTarget->slot];
@@ -12522,7 +12521,7 @@ private:
                         continue;
                     if (state_.surface() == widgetrail::Surface::Widget &&
                         state_.focusRegion() == widgetrail::FocusRegion::Widget)
-                        Dispatch(widgetrail::Command::SampleWidgetBack);
+                        Dispatch(widgetrail::Command::FocusTray);
                     if (state_.focusRegion() != widgetrail::FocusRegion::Tray) continue;
                     if (state_.reorderMode()) Dispatch(widgetrail::Command::Cancel);
                     if (!SelectTrayWidget(request.hostTargetId)) continue;
@@ -13894,7 +13893,7 @@ private:
     }
 
     void RefreshCurrentBridgeSnapshot(const std::uint64_t correlationId = 0) {
-        if (RadialSwitcherEnabled() && state_.surface() == widgetrail::Surface::Dashboard) return;
+        if (RadialSwitcherOpen() && state_.surface() == widgetrail::Surface::Dashboard) return;
         if (state_.surface() == widgetrail::Surface::Hidden &&
             !pinnedSurfaceCoordinator_.pinned()) return;
         const std::wstring_view widgetId = state_.surface() == widgetrail::Surface::Hidden
@@ -14090,7 +14089,7 @@ private:
                     false,
                     false)) {
                 flushFocusedSlider();
-                Dispatch(widgetrail::Command::SampleWidgetBack);
+                Dispatch(widgetrail::Command::FocusTray);
             }
             return;
         }
@@ -14154,7 +14153,7 @@ private:
                 false,
                 false)) {
             flushFocusedSlider();
-            Dispatch(widgetrail::Command::SampleWidgetBack);
+            Dispatch(widgetrail::Command::FocusTray);
         }
     }
 
@@ -16665,11 +16664,6 @@ private:
                 }
                 return radial;
             }
-            const auto active = std::find_if(layout->tiles.begin(),layout->tiles.end(),
-                [&](const auto& tile){return tile.slot==state_.selectedSlot();});
-            if (active != layout->tiles.end()) { const auto tile=*active; layout->tiles={tile}; }
-            else layout->tiles.clear();
-            layout->previousOverflow.reset(); layout->nextOverflow.reset();
         }
         return layout;
     }
