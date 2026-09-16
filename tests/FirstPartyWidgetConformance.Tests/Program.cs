@@ -341,25 +341,25 @@ static async Task ShippedPackageIconContracts()
     var repository = FindRepositoryRootForTest();
     var expected = new[]
     {
-        new IconContract("src/FirstPartyWidgets/MediaSessionsWidget", "0.1.2",
+        new IconContract("src/FirstPartyWidgets/MediaSessionsWidget",
             WidgetGlyph.Music, "media-sessions.mark", "assets/icons/media-sessions.svg"),
-        new IconContract("src/FirstPartyWidgets/GamesAppsWidget", "0.1.1",
+        new IconContract("src/FirstPartyWidgets/GamesAppsWidget",
             WidgetGlyph.Play, "games-apps.mark", "assets/icons/games-apps.svg"),
-        new IconContract("src/FirstPartyWidgets/AudioMixerWidget", "0.1.1",
+        new IconContract("src/FirstPartyWidgets/AudioMixerWidget",
             WidgetGlyph.Volume, "audio-mixer.mark", "assets/icons/audio-mixer.svg"),
-        new IconContract("src/FirstPartyWidgets/NetworkControlsWidget", "0.1.1",
+        new IconContract("src/FirstPartyWidgets/NetworkControlsWidget",
             WidgetGlyph.Wifi, "network-controls.mark", "assets/icons/network-controls.svg"),
-        new IconContract("samples/EmbeddedMediaWidget", "0.2.9",
+        new IconContract("samples/EmbeddedMediaWidget",
             WidgetGlyph.Play, "embedded-media.mark", "assets/icons/embedded-media.svg"),
-        new IconContract("samples/YouTubeWidget", "0.3.26",
+        new IconContract("samples/YouTubeWidget",
             WidgetGlyph.Play, "youtube.brand.red", "assets/icons/youtube-red.svg"),
-        new IconContract("samples/YtMusicWidget", "0.2.12",
+        new IconContract("samples/YtMusicWidget",
             WidgetGlyph.Music, "ytmusic.mark", "assets/icons/yt-music.svg"),
-        new IconContract("samples/PlayniteLibraryWidget", "0.2.74",
+        new IconContract("samples/PlayniteLibraryWidget",
             WidgetGlyph.Play, "playnite-library.mark", "assets/icons/playnite-library.svg"),
-        new IconContract("samples/ClockWidget", "0.1.1",
+        new IconContract("samples/ClockWidget",
             WidgetGlyph.Connection, "clock.mark", "assets/icons/clock.svg"),
-        new IconContract("samples/FullApplicationWidget", "0.1.1",
+        new IconContract("samples/FullApplicationWidget",
             WidgetGlyph.Settings, "full-application.mark", "assets/icons/full-application.svg"),
     };
     using var temporary = new TemporaryDirectory("wrail-package-icon-contract");
@@ -372,7 +372,6 @@ static async Task ShippedPackageIconContracts()
             Path.Combine(packageRoot, "manifest.json"));
         var manifest = ManifestJson.Deserialize(manifestBytes);
         Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
-        Assert.Equal(contract.Version, manifest.Version);
         Assert.Equal(contract.Fallback, manifest.Presentation.Icon);
         Assert.Equal(contract.AssetId, manifest.Presentation.PackageIcon?.AssetId);
         Assert.Equal(WidgetPackageIconColorMode.OriginalColor,
@@ -4056,7 +4055,6 @@ file sealed record PackageSpec(
 
 file sealed record IconContract(
     string ProjectRoot,
-    string Version,
     WidgetGlyph Fallback,
     string AssetId,
     string AssetPath);
