@@ -82,6 +82,9 @@ internal static class NetworkControlsProviderPolicy
     {
         if (refreshResults || previous is null || previous.DiscoveryState != WidgetBluetoothDiscoveryState.Ready ||
             incoming.DiscoveryState != WidgetBluetoothDiscoveryState.Ready) return incoming;
+        if (incoming.Devices.Any(device => device.IsConnected &&
+                !previous.Devices.Any(prior => prior.DeviceId == device.DeviceId && prior.IsConnected)))
+            return incoming;
         var current = incoming.Devices.ToDictionary(device => device.DeviceId, StringComparer.Ordinal);
         var visible = new List<WidgetBluetoothDevice>();
         foreach (var prior in previous.Devices)

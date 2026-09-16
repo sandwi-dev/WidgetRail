@@ -20,7 +20,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Explicit scan is controller initiated and reconciles provider events", ExplicitScan),
     ("Wi-Fi management requires confirmation and reconciles real state", WifiManagement),
     ("Late saved-network reads cannot reopen a retired widget view", SavedNetworkLifetime),
-    ("Bluetooth view publishes discovered arrivals only after explicit scan completion", BluetoothScanPublishesOnce),
+    ("Bluetooth results publish at three seconds and scan completion", BluetoothScanPublishesTwice),
     ("Nearby Bluetooth results stay stable while known status changes stay live", StableBluetoothResults),
     ("Bluetooth scanning is explicit and canceled on leaving interactive", BluetoothScanning),
     ("Bluetooth primary action opens options without removing the pairing", BluetoothOptions),
@@ -318,26 +318,42 @@ static async Task SavedNetworkLifetime()
     await Background(widget);
 }
 
-static async Task BluetoothScanPublishesOnce()
+static async Task BluetoothScanPublishesTwice()
 {
+    var clock = new BluetoothScanTimeProvider();
     var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
     fake.Bluetooth = new(WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready,
         [new("b", "Headset", true, false, true), new("c", "Controller", false, false, true)]);
-    var widget = Create(fake);
+    var widget = Create(fake, clock);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.Bluetooth?.Devices.Count == 2);
+    await widget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
     var arrived = fake.Bluetooth with { Devices = [new("a", "Arrival", false, false, true),
-        new("c", "Controller", true, true, true), new("b", "Headset", true, false, true)] };
+        new("c", "Controller updated", false, false, true), new("b", "Headset", true, false, true)] };
     fake.EmitBluetooth(arrived);
-    await WaitUntil(() => widget.Bluetooth!.Devices.Any(device => device.DeviceId == "c" && device.IsConnected));
+    await WaitUntil(() => widget.Bluetooth!.Devices.Any(device => device.DisplayName == "Controller updated"));
     Assert.SequenceEqual(new[] { "b", "c" }, widget.Bluetooth!.Devices.Select(device => device.DeviceId));
     Assert.Equal(0, fake.BluetoothScanCalls);
+    var readsBeforeScan = widget.BluetoothFetchCount;
     await widget.OnActionAsync(new("bluetooth.scan", "network.bluetooth.scan"));
-    await fake.BluetoothScanStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await clock.TimerScheduled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    clock.Advance(TimeSpan.FromMilliseconds(2999));
     Assert.Equal(2, widget.Bluetooth.Devices.Count);
-    fake.BluetoothScanRelease.TrySetResult();
+    clock.Advance(TimeSpan.FromMilliseconds(1));
     await WaitUntil(() => widget.Bluetooth!.Devices.Count == 3);
-    Assert.SequenceEqual(new[] { "a", "c", "b" }, widget.Bluetooth!.Devices.Select(device => device.DeviceId));
+    Assert.Equal(readsBeforeScan, widget.BluetoothFetchCount);
+    Assert.True(Button(Snapshot(widget, 2).Root, "network.bluetooth.scan").IsBusy is true);
+    var later = arrived with { Devices = [new("d", "Later arrival", false, false, true),
+        arrived.Devices[0], arrived.Devices[1] with { DisplayName = "Controller later" }, arrived.Devices[2]] };
+    fake.EmitBluetooth(later);
+    await WaitUntil(() => widget.Bluetooth!.Devices.Any(device => device.DisplayName == "Controller later"));
+    clock.Advance(TimeSpan.FromSeconds(8));
+    Assert.Equal(3, widget.Bluetooth.Devices.Count);
+    clock.Advance(TimeSpan.FromSeconds(1));
+    fake.BluetoothScanRelease.TrySetResult();
+    await WaitUntil(() => widget.Bluetooth!.Devices.Count == 4);
+    Assert.SequenceEqual(new[] { "d", "a", "c", "b" }, widget.Bluetooth!.Devices.Select(device => device.DeviceId));
+    Assert.Equal(readsBeforeScan + 1, widget.BluetoothFetchCount);
     await Background(widget);
 }
 
@@ -346,10 +362,16 @@ static Task StableBluetoothResults()
     var first = new WidgetBluetoothSnapshot(WidgetBluetoothRadioState.On, true, WidgetBluetoothDiscoveryState.Ready,
         [new("b", "Headset", true, false, true), new("c", "Controller", false, false, true)]);
     var latest = first with { Devices = [new("a", "New arrival", false, false, true),
-        new("c", "Controller", true, true, true), new("b", "Headset", true, false, true)] };
+        new("c", "Controller", false, false, true), new("b", "Headset", true, false, true)] };
     var retained = NetworkControlsProviderPolicy.ReconcileBluetoothResults(first, latest);
     Assert.SequenceEqual(new[] { "b", "c" }, retained.Devices.Select(device => device.DeviceId));
-    Assert.True(retained.Devices[1].IsPaired && retained.Devices[1].IsConnected);
+    Assert.True(!retained.Devices[1].IsConnected);
+    var connected = latest with { Devices = [new("c", "Controller", true, true, true), latest.Devices[2], latest.Devices[0]] };
+    var afterConnection = NetworkControlsProviderPolicy.ReconcileBluetoothResults(retained, connected);
+    Assert.SequenceEqual(new[] { "c", "b", "a" }, afterConnection.Devices.Select(device => device.DeviceId));
+    var moreNearby = connected with { Devices = connected.Devices.Append(new WidgetBluetoothDevice("later", "Later", false, false, true)).ToArray() };
+    var unchangedConnection = NetworkControlsProviderPolicy.ReconcileBluetoothResults(afterConnection, moreNearby);
+    Assert.SequenceEqual(new[] { "c", "b", "a" }, unchangedConnection.Devices.Select(device => device.DeviceId));
     var refresh = NetworkControlsProviderPolicy.ReconcileBluetoothResults(retained, latest, refreshResults: true);
     Assert.SequenceEqual(new[] { "a", "c", "b" }, refresh.Devices.Select(device => device.DeviceId));
     var departed = NetworkControlsProviderPolicy.ReconcileBluetoothResults(first, first with { Devices = [] });
@@ -365,19 +387,22 @@ static Task StableBluetoothResults()
 
 static async Task BluetoothScanning()
 {
+    var clock = new BluetoothScanTimeProvider();
     var fake = ReadyHost(WidgetWifiScanState.NotScanned, []);
-    var widget = Create(fake);
+    var widget = Create(fake, clock);
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.Bluetooth is not null);
     Assert.Equal(0, fake.BluetoothScanCalls);
     await widget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
     await widget.OnActionAsync(new("bluetooth.scan", "network.bluetooth.scan"));
     await fake.BluetoothScanStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await clock.TimerScheduled.Task.WaitAsync(TimeSpan.FromSeconds(2));
     Assert.True(Button(Snapshot(widget, 1).Root, "network.bluetooth.scan").IsBusy is true);
     await widget.OnActionAsync(new("bluetooth.scan", "network.bluetooth.scan"));
     Assert.Equal(1, fake.BluetoothScanCalls);
     await Background(widget);
     await WaitUntil(() => fake.BluetoothScanCanceled);
+    clock.Advance(TimeSpan.FromSeconds(3));
     await ActivateInteractive(widget);
     await WaitUntil(() => widget.Bluetooth is not null);
     Assert.True(Button(Snapshot(widget, 2).Root, "network.bluetooth.scan").IsBusy is not true);
@@ -1476,8 +1501,8 @@ static WidgetAvailableWifiNetwork Network(
     bool connected = false,
     bool saved = false) => new(id, name, signal, security, credential, connected, saved);
 
-static NetworkControlsWidget Create(FakeNetworkHost fake) =>
-    WidgetTestHost.Attach(new NetworkControlsWidget(), fake.BuildServices());
+static NetworkControlsWidget Create(FakeNetworkHost fake, TimeProvider? clock = null) =>
+    WidgetTestHost.Attach(new NetworkControlsWidget(clock ?? TimeProvider.System), fake.BuildServices());
 
 static async Task ActivateVisible(NetworkControlsWidget widget) =>
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
@@ -2170,4 +2195,17 @@ file static class Assert
         catch (OperationCanceledException) { return; }
         throw new InvalidOperationException("Expected the lifecycle-bound action to be canceled.");
     }
+}
+
+file sealed class BluetoothScanTimeProvider : TimeProvider
+{
+    private readonly ManualTimerTimeProvider _clock = new();
+    public TaskCompletionSource TimerScheduled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        var timer = _clock.CreateTimer(callback, state, dueTime, period);
+        TimerScheduled.TrySetResult();
+        return timer;
+    }
+    public void Advance(TimeSpan duration) => _clock.Advance(duration);
 }

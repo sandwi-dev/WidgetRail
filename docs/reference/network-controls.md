@@ -36,7 +36,9 @@ operation cannot be performed.
 Choose **Scan for devices** after putting the device into pairing mode. This requests
 an active Windows Bluetooth inquiry for up to 12 seconds and stops when you leave
 the interactive widget. Ordinary status updates do not continuously scan.
-Nearby results are replaced once at the end of an explicit scan. Existing rows
+Results refresh after 3 seconds, again when the 12-second scan finishes, and when
+Windows reports a new device connection. A connection refresh uses the current
+snapshot without starting another scan. Between these updates, existing rows
 keep their order while connection status updates remain live. A nearby device
 that disappears is marked unavailable and moved below nearby results until the next scan.
 

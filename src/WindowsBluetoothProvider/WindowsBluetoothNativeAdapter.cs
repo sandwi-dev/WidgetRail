@@ -112,7 +112,12 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
                 watcher.Added += OnDeviceAdded;
                 watcher.Updated += OnDeviceUpdated;
                 watcher.Start();
+                // A manual inquiry can publish partial results before the passive
+                // watcher's initial enumeration deadline has elapsed.
+                _discoveryState = NativeBluetoothDiscoveryState.Ready;
+                _enumerationDeadline?.Cancel();
             }
+            RaiseChanged();
             await Task.Delay(TimeSpan.FromSeconds(BluetoothDiscoveryLimits.ScanDurationSeconds), cancellationToken).ConfigureAwait(false);
         }
         finally

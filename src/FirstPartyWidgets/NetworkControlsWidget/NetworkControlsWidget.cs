@@ -38,6 +38,12 @@ public sealed class NetworkControlsWidget : Widget
     private const string ProviderObservationOperation = "network.providers";
     private const string ConnectionDetailsRefreshOperation = "network.details.refresh";
 
+    private readonly TimeProvider _timeProvider;
+
+    public NetworkControlsWidget() : this(TimeProvider.System) { }
+    internal NetworkControlsWidget(TimeProvider timeProvider) =>
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+
     private readonly object _stateLock = new();
     private readonly SemaphoreSlim _commandGate = new(1, 1);
     private WidgetNetworkStatus? _networkStatus;
@@ -982,7 +988,29 @@ public sealed class NetworkControlsWidget : Widget
             string? error = null;
             try
             {
-                await HostServices.Network.RequestBluetoothScanAsync(operation.CancellationToken).ConfigureAwait(false);
+                var request = HostServices.Network.RequestBluetoothScanAsync(operation.CancellationToken).AsTask();
+                using var previewLifetime = CancellationTokenSource.CreateLinkedTokenSource(operation.CancellationToken);
+                try
+                {
+                    var preview = Task.Delay(TimeSpan.FromSeconds(3), _timeProvider, previewLifetime.Token);
+                    await Task.WhenAny(request, preview).ConfigureAwait(false);
+                    if (preview.IsCompletedSuccessfully && !request.IsCompleted)
+                    {
+                        // The event subscription already holds the latest results;
+                        // publishing this checkpoint needs no extra provider read.
+                        lock (_stateLock)
+                        {
+                            if (_runGeneration == generation && operation.IsCurrent && _authoritativeBluetooth is not null)
+                            {
+                                _bluetooth = _authoritativeBluetooth;
+                                ReconcileBluetoothSelectionLocked();
+                            }
+                        }
+                        Invalidate();
+                    }
+                    await request.ConfigureAwait(false);
+                }
+                finally { previewLifetime.Cancel(); }
                 Interlocked.Increment(ref _bluetoothFetchCount);
                 var results = await HostServices.Network.GetBluetoothAsync(operation.CancellationToken).ConfigureAwait(false);
                 if (operation.IsCurrent) ApplyBluetooth(results, generation, refreshResults: true);
