@@ -7,7 +7,7 @@ community package.
 ## The version a user installs
 
 The **application version** identifies a complete WidgetRail release. Its source
-is `eng/WidgetRailRelease.props`; the current preview is `0.1.0-preview.7`.
+is `eng/WidgetRailRelease.props`; the current preview is `0.1.0-preview.8`.
 Both Production and Developer use this version. Their contents differ, not
 their stability channel.
 
@@ -16,14 +16,14 @@ together. Native and managed product metadata, artifact names, and release
 manifests use the application release settings. Users update by running a newer
 installer; there is no automatic updater.
 
-The Windows numeric file version is `0.1.0.6` for this preview. A source commit
+The Windows numeric file version is `0.1.0.7` for this preview. A source commit
 distinguishes local candidates with the same preview label. Never replace a
 published release's bytes: advance its version before distributing a correction.
 
 ## The version a widget author builds against
 
 The **SDK and CLI** are a coordinated developer release unit. Their source is
-`eng/WidgetSdkRelease.props`; the current unit is `0.3.0-dev`. It includes matching
+`eng/WidgetSdkRelease.props`; the current unit is `0.3.1-dev`. It includes matching
 templates and the author-facing application bootstrap.
 
 The scaffold bundles an exact SDK package in a local feed. Its version adds a
