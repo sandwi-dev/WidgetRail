@@ -14,6 +14,14 @@ namespace WidgetRail.WindowsSpotifyProvider;
 /// </summary>
 public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
 {
+    public event EventHandler? LocalTransportChanged
+    {
+        add => _localPlayback.TransportChanged += value;
+        remove => _localPlayback.TransportChanged -= value;
+    }
+    public SpotifyLocalTransportObservation? GetLocalTransport(SpotifyIntegrationIdentity identity) =>
+        _localPlayback.GetTransport(identity);
+
     public const string ExactRedirectUri = "http://127.0.0.1:43827/callback/";
     public const string PlaybackReadScope = "user-read-playback-state";
     public const string PlaybackControlScope = "user-modify-playback-state";

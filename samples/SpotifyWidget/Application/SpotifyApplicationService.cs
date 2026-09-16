@@ -6,8 +6,16 @@ internal sealed class SpotifyApplicationService(
     WindowsSpotifyPlatformBackend backend,
     SpotifyIntegrationIdentity identity,
     ISpotifySetupActions? setupActions = null) :
-    ISpotifyApplicationService
+    ISpotifyApplicationService, ISpotifyLocalTransport
 {
+    public event EventHandler? LocalTransportChanged
+    {
+        add => _backend.LocalTransportChanged += value;
+        remove => _backend.LocalTransportChanged -= value;
+    }
+    public SpotifyLocalTransportObservation? GetLocalTransport() =>
+        _backend.GetLocalTransport(_identity);
+
     private readonly WindowsSpotifyPlatformBackend _backend = backend ??
         throw new ArgumentNullException(nameof(backend));
     private readonly SpotifyIntegrationIdentity _identity = identity;

@@ -8,6 +8,7 @@ using System.Text;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Local play pause state and permissions stay aligned through stale cloud refresh", LocalTransportPermissions),
     ("Playlist disk cache survives restart and isolates authorizations", PlaylistDiskPersistence),
     ("Playlist disk failures corruption and quota limits remain cache misses", PlaylistDiskFailures),
     ("Playlist snapshot versions reuse pages only after fresh metadata", PlaylistVersionCache),
@@ -2097,6 +2098,42 @@ static async Task ProjectedProgress()
     await StopAsync(widget);
 }
 
+static async Task LocalTransportPermissions()
+{
+    var harness = SpotifyHarness.Ready();
+    harness.Playback = harness.Playback with
+    {
+        DisallowedActions = harness.Playback.DisallowedActions with { Resuming = true },
+    };
+    harness.Transport = new(true, false, true);
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.play-toggle", "spotify.play-toggle"));
+    Assert.Equal(SpotifyPlaybackOperation.Pause, harness.Commands.Single().Operation);
+    harness.PublishTransport(new(false, true, false));
+    ViewNode Toggle() => Find(widget.Render().CreateSnapshot("local-state", 1).Root, "spotify.play-toggle");
+    Assert.Equal(WidgetGlyph.Play, Toggle().Glyph);
+    Assert.True(Toggle().IsBusy != true && Toggle().IsDisabled != true,
+        "Stale cloud resume restriction must not disable the paused local player");
+    await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh"));
+    Assert.True(Toggle().IsDisabled != true, "Cloud refresh reintroduced a stale restriction");
+    await widget.OnActionAsync(new("spotify.play-toggle", "spotify.play-toggle"));
+    Assert.Equal(SpotifyPlaybackOperation.Play, harness.Commands[1].Operation);
+    harness.PublishTransport(new(true, false, true));
+    Assert.Equal(WidgetGlyph.Pause, Toggle().Glyph);
+    Assert.True(Toggle().IsDisabled != true, "Local pause permission was not updated");
+    harness.PublishTransport(new(true, true, true));
+    Assert.True(Toggle().IsDisabled == true, "Actual local restrictions must still be respected");
+    harness.PublishTransport(null);
+    await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh"));
+    Assert.True(Toggle().IsDisabled != true, "Remote state must resume authority after local ownership ends");
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+    var previous = widget.Playback;
+    harness.PublishTransport(new(false, true, false));
+    Assert.Equal(previous, widget.Playback);
+    await WidgetTestHost.DestroyAsync(widget);
+}
+
 static async Task OptimisticPlayback()
 {
     var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -3391,8 +3428,16 @@ file sealed record OptimisticControlScenario(
     Func<SpotifyPlaybackSummary, string> OwnedValue,
     Func<SpotifyPlaybackSummary, SpotifyPlaybackSummary> Successor);
 
-file sealed class SpotifyHarness : ISpotifyApplicationService
+file sealed class SpotifyHarness : ISpotifyApplicationService, ISpotifyLocalTransport
 {
+    public event EventHandler? LocalTransportChanged;
+    public SpotifyLocalTransportObservation? Transport { get; set; }
+    public SpotifyLocalTransportObservation? GetLocalTransport() => Transport;
+    public void PublishTransport(SpotifyLocalTransportObservation? value)
+    {
+        Transport = value;
+        LocalTransportChanged?.Invoke(this, EventArgs.Empty);
+    }
     public List<string> QueuedUris { get; } = [];
     public int SearchCalls { get; private set; }
     public Func<string, SpotifySearchKind, int, int, CancellationToken, ValueTask<SpotifySearchPage>>? SearchHandler { get; set; }

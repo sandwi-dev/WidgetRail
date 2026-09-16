@@ -1111,9 +1111,20 @@ static async Task LocalPlaybackRoutingAuthority()
         Assert.Equal(0, http.Requests.Count(request =>
             request.Uri.AbsolutePath == "/v1/me/player/pause"));
 
+        var notifications = 0;
+        backend.LocalTransportChanged += (_, _) => notifications++;
+        client.Raise("player_state_changed", AvailableLocalPlayback(paused: true) with
+        {
+            Disallows = new(true, false, false, false, false),
+        });
+        Assert.True(backend.GetLocalTransport(identity) is
+            { IsPlaying: false, PausingDisallowed: true, ResumingDisallowed: false });
+        Assert.Equal(1, notifications);
+
         await backend.TransferSpotifyPlaybackAsync(identity,
             new("remote-device", true), default);
         client.Raise("player_state_changed", AvailableLocalPlayback(paused: false));
+        Assert.True(backend.GetLocalTransport(identity) is null);
         await backend.ControlSpotifyPlaybackAsync(identity,
             new(SpotifyPlaybackOperation.Play), default);
         Assert.Equal(1, http.Requests.Count(request =>
@@ -1130,6 +1141,7 @@ static async Task LocalPlaybackRoutingAuthority()
             request.Uri.AbsolutePath == "/v1/me/player/play"));
 
         client.Raise("player_state_changed", UnavailableLocalPlayback());
+        Assert.True(backend.GetLocalTransport(identity) is null);
         await backend.ControlSpotifyPlaybackAsync(identity,
             new(SpotifyPlaybackOperation.Pause), default);
         Assert.Equal(1, http.Requests.Count(request =>

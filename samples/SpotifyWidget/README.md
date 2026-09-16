@@ -80,6 +80,10 @@ denial remains a visible, recoverable state. Routine successful action, queue,
 token-delivery, and player-state traffic is intentionally not written to the
 bounded diagnostics file; concise typed failures remain available.
 
+For **Play here**, local-player events update play/pause state and permissions
+together. This keeps an old Web API restriction from disabling the button after
+the local player has already changed state. No extra polling is required.
+
 Rendering captures one immutable presentation revision. Playlist detail is keyed
 to both its playlist ID and selection generation, so Back, rapid reselection,
 refresh, and lifecycle cancellation cannot pair a newer heading or route with

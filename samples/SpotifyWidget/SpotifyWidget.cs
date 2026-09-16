@@ -86,6 +86,7 @@ public sealed class SpotifyWidget : Widget
     private long _playbackOperationSequence;
     private long _playbackObservationSequence;
     private SpotifyOptimisticPlaybackReconciliation? _optimisticReconciliation;
+    private bool _observingLocalTransport;
     private string _status = "Spotify loads when this widget becomes visible";
     private SpotifyRefreshWarning? _refreshWarning;
     private int _consecutiveRefreshFailures;
@@ -278,6 +279,9 @@ public sealed class SpotifyWidget : Widget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
+        lock (_gate) _observingLocalTransport = true;
+        if (_spotify is ISpotifyLocalTransport transport)
+            transport.LocalTransportChanged += OnLocalTransportChanged;
         var generation = Interlocked.Increment(ref _activeGeneration);
         _pollTask = RunAdaptivePollingAsync(generation, activeLifetime);
         _progressTask = RunPeriodicUpdatesWhileActiveAsync(
@@ -310,6 +314,9 @@ public sealed class SpotifyWidget : Widget
 
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
+        lock (_gate) _observingLocalTransport = false;
+        if (_spotify is ISpotifyLocalTransport transport)
+            transport.LocalTransportChanged -= OnLocalTransportChanged;
         Interlocked.Increment(ref _activeGeneration);
         _toastExpiry.Cancel();
         lock (_gate)
@@ -1863,6 +1870,9 @@ public sealed class SpotifyWidget : Widget
         SpotifyPlaybackSummary? observed,
         long observationSequence)
     {
+        if (_spotify is ISpotifyLocalTransport transport &&
+            transport.GetLocalTransport() is { } local && observed is not null)
+            observed = SpotifyPlaybackPolicy.ApplyLocalObservation(observed, local);
         if (_pendingOperation is { } pendingOperation)
             return SpotifyPlaybackPolicy.MergeOptimisticPresentation(
                 _playback, observed, pendingOperation);
@@ -1889,6 +1899,21 @@ public sealed class SpotifyWidget : Widget
     private void ClearOptimisticReconciliationLocked()
     {
         _optimisticReconciliation = null;
+    }
+
+    private void OnLocalTransportChanged(object? sender, EventArgs args)
+    {
+        lock (_gate)
+        {
+            if (!_observingLocalTransport || _playback is null ||
+                _spotify is not ISpotifyLocalTransport transport ||
+                transport.GetLocalTransport() is not { } local) return;
+            _playback = SpotifyPlaybackPolicy.ApplyLocalObservation(
+                SpotifyPlaybackPolicy.Project(_playback,
+                    _timeProvider.GetUtcNow().ToUnixTimeMilliseconds())!, local);
+            ClearOptimisticReconciliationLocked();
+        }
+        Invalidate();
     }
 
     private void ApplyRefreshFailure(long generation, Exception exception)

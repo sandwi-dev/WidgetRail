@@ -40,6 +40,8 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     private SpotifyLocalPlaybackState _state;
     private string? _spotifyDeviceId;
     private bool _routingEligible;
+    private SpotifyLocalTransportObservation? _transportObservation;
+    internal event EventHandler? TransportChanged;
     private long _routingDecisionGeneration;
     private int _volumePercent = 80;
     private string? _message;
@@ -74,6 +76,14 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     internal bool IsHostAvailable => File.Exists(_executablePath) &&
         (File.GetAttributes(_executablePath) & FileAttributes.ReparsePoint) == 0;
 
+    internal SpotifyLocalTransportObservation? GetTransport(SpotifyIntegrationIdentity identity)
+    {
+        lock (_stateGate)
+            return _owner == identity && _routingEligible && _client?.IsRunning == true &&
+                _state is SpotifyLocalPlaybackState.Active or SpotifyLocalPlaybackState.AutoplayBlocked
+                ? _transportObservation : null;
+    }
+
     internal SpotifyLocalPlaybackSummary GetSummary(SpotifyIntegrationIdentity identity)
     {
         lock (_stateGate)
@@ -107,6 +117,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
         {
             var generation = checked(++_routingDecisionGeneration);
             _routingEligible = false;
+            _transportObservation = null;
             if (_owner == identity && _state is SpotifyLocalPlaybackState.Active or
                     SpotifyLocalPlaybackState.AutoplayBlocked)
             {
@@ -414,6 +425,9 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 {
                     if (!ReferenceEquals(sender, _client) ||
                         started != _startTimestamp) return;
+                    _transportObservation = playback.IsAvailable
+                        ? new(!playback.Paused, playback.Disallows.Pausing, playback.Disallows.Resuming)
+                        : null;
                     if (!playback.IsAvailable)
                     {
                         _routingEligible = false;
@@ -438,6 +452,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                         }
                     }
                 }
+                TransportChanged?.Invoke(this, EventArgs.Empty);
                 break;
             case "autoplay_failed":
                 if (started != 0)
@@ -573,6 +588,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             _spotifyDeviceId = null;
             _routingEligible = false;
             _ready?.TrySetCanceled();
+            _transportObservation = null;
             _ready = null;
             _startTimestamp = 0;
         }
