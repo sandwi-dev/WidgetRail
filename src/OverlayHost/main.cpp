@@ -583,7 +583,7 @@ public:
     // the bridge supplies runnable worker descriptors, so an unavailable
     // bridge cannot expose inert native placeholder tiles.
     OverlayApp()
-        : state_(LoadPersistentState(), {}),
+        : state_(widgetrail::OverlayState::AwaitingCatalog(LoadPersistentState())),
           actionFailureFeedback_({
               [] { return GetTickCount64(); },
               [this](const std::optional<std::uint64_t> deadline) {

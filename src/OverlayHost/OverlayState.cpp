@@ -19,6 +19,12 @@ OverlayState::OverlayState(
     if (persistent_.lastWidget) selectedSlot_ = FindSlot(*persistent_.lastWidget);
 }
 
+OverlayState OverlayState::AwaitingCatalog(PersistentState persisted) {
+    OverlayState result({}, {});
+    result.pendingPersistent_ = std::move(persisted);
+    return result;
+}
+
 bool OverlayState::Dispatch(const Command command, const bool previewTraySelection) noexcept {
     const auto before = persistent_;
     const auto priorSurface = surface_;
@@ -134,10 +140,14 @@ bool OverlayState::Dispatch(const Command command, const bool previewTraySelecti
 
 bool OverlayState::SetAvailableWidgets(
     std::vector<std::wstring> availableWidgetIds) noexcept {
-    const auto before = persistent_;
+    const auto before = persistent();
     const auto priorSurface = surface_;
     const auto priorSelected = std::wstring(selectedWidget());
     const auto priorActive = activeWidget_;
+    if (pendingPersistent_) {
+        persistent_ = std::move(*pendingPersistent_);
+        pendingPersistent_.reset();
+    }
     Normalize(std::move(availableWidgetIds));
     if (!priorSelected.empty() && Contains(priorSelected)) {
         selectedSlot_ = FindSlot(priorSelected);

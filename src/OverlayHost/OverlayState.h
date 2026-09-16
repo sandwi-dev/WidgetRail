@@ -53,6 +53,10 @@ public:
         std::vector<std::wstring> availableWidgetIds = {
             L"audio-mixer", L"yt-music", L"performance"});
 
+    /// Retains saved preferences without admitting any widget until the first
+    /// authoritative catalog arrives. An empty startup catalog is not deletion.
+    [[nodiscard]] static OverlayState AwaitingCatalog(PersistentState persisted);
+
     [[nodiscard]] bool Dispatch(Command command, bool previewTraySelection = true) noexcept;
     /// Reconciles persisted presentation state with a newly discovered catalog.
     /// Existing relative order is preserved and new IDs are appended.
@@ -78,7 +82,9 @@ public:
     [[nodiscard]] std::wstring_view activeWidget() const noexcept;
     [[nodiscard]] bool reorderMode() const noexcept { return reorderMode_; }
     [[nodiscard]] const std::vector<std::wstring>& order() const noexcept { return persistent_.order; }
-    [[nodiscard]] const PersistentState& persistent() const noexcept { return persistent_; }
+    [[nodiscard]] const PersistentState& persistent() const noexcept {
+        return pendingPersistent_ ? *pendingPersistent_ : persistent_;
+    }
 
 private:
     void Normalize(std::vector<std::wstring> availableWidgetIds) noexcept;
@@ -89,6 +95,7 @@ private:
     [[nodiscard]] bool Contains(std::wstring_view widget) const noexcept;
 
     PersistentState persistent_;
+    std::optional<PersistentState> pendingPersistent_;
     Surface surface_{Surface::Hidden};
     // Widget is the compatibility default for a persisted reopen. A first-run
     // dashboard explicitly switches this to Tray when it becomes visible.

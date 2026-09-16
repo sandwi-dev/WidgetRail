@@ -188,6 +188,38 @@ int main() {
         L"settings", L"now-playing", L"games-apps", L"playnite-library",
         L"audio-mixer", L"network-controls", L"yt-music", L"spotify",
     };
+    OverlayState ordered({}, {L"settings", L"spotify", L"audio-mixer"});
+    Send(ordered, Command::ToggleOverlay);
+    Check(ordered.TrySelectTrayWidget(L"spotify"), "select widget before reordering");
+    Send(ordered, Command::ToggleReorder);
+    Send(ordered, Command::NavigateLeft);
+    Send(ordered, Command::Cancel);
+    const auto savedOrder = ordered.persistent();
+    Check(savedOrder.order.front() == L"spotify", "reorder changes the saved tray order");
+    auto restarted = OverlayState::AwaitingCatalog(savedOrder);
+    Check(restarted.order().empty() && restarted.selectedWidget().empty() &&
+        restarted.persistent() == savedOrder && !restarted.OpenWidgetWithTrayFocus(L"spotify"),
+        "pending catalog preserves saved preferences without admitting saved widget identities");
+    Send(restarted, Command::ToggleOverlay);
+    Send(restarted, Command::Activate);
+    Check(restarted.persistent() == savedOrder && restarted.activeWidget().empty(),
+        "input before catalog readiness cannot erase the saved order or open an unadmitted widget");
+    (void)restarted.SetAvailableWidgets({L"settings", L"audio-mixer", L"spotify", L"network-controls"});
+    Check(restarted.order() == std::vector<std::wstring>{L"spotify", L"settings", L"audio-mixer", L"network-controls"},
+        "restart retains the reordered tray and appends newly discovered widgets");
+    auto secondRestart = OverlayState::AwaitingCatalog(restarted.persistent());
+    (void)secondRestart.SetAvailableWidgets({L"network-controls", L"settings", L"spotify", L"audio-mixer"});
+    Check(secondRestart.order() == restarted.order(), "a second restart preserves order despite discovery order changes");
+    auto removedOnRestart = OverlayState::AwaitingCatalog(savedOrder);
+    (void)removedOnRestart.SetAvailableWidgets({L"settings", L"network-controls"});
+    Check(removedOnRestart.order() == std::vector<std::wstring>{L"settings", L"network-controls"} &&
+        !removedOnRestart.persistent().lastWidget && !removedOnRestart.persistent().reopenWidget,
+        "authoritative catalog still removes unavailable saved identities and retires reopen state");
+    auto knownEmpty = OverlayState::AwaitingCatalog(savedOrder);
+    (void)knownEmpty.SetAvailableWidgets({});
+    Check(knownEmpty.order().empty() && knownEmpty.persistent().order.empty(),
+        "an explicitly received empty catalog is authoritative");
+
     OverlayState productionStartup({}, {});
     const auto beforeCatalog = productionStartup.persistent();
     Check(!productionStartup.OpenWidgetWithTrayFocus(L"settings") &&
