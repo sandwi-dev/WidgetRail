@@ -62,6 +62,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     public int BluetoothRadioControlCalls { get; private set; }
     public int BluetoothPairCalls { get; private set; }
     public int BluetoothScanCalls { get; private set; }
+    public Func<CancellationToken, Task>? BluetoothScanHandler { get; set; }
     public int BluetoothManageCalls { get; private set; }
     public int MediaControlCalls { get; private set; }
     public int AppLibraryLaunchCalls { get; private set; }
@@ -387,7 +388,7 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     {
         cancellationToken.ThrowIfCancellationRequested();
         BluetoothScanCalls++;
-        return Task.CompletedTask;
+        return BluetoothScanHandler?.Invoke(cancellationToken) ?? Task.CompletedTask;
     }
 
     public Task<BluetoothPairingResultSummary> PairBluetoothDeviceAsync(

@@ -355,6 +355,11 @@ static Task StableBluetoothResults()
     var departed = NetworkControlsProviderPolicy.ReconcileBluetoothResults(first, first with { Devices = [] });
     Assert.Equal("c", departed.Devices.Single().DeviceId);
     Assert.True(!departed.Devices.Single().IsPresent);
+    var nearby = first with { Devices = [new("a", "Earlier", false, false, true), new("z", "Nearby", false, false, true)] };
+    var missing = NetworkControlsProviderPolicy.ReconcileBluetoothResults(nearby,
+        nearby with { Devices = [nearby.Devices[1]] });
+    Assert.SequenceEqual(new[] { "z", "a" }, missing.Devices.Select(device => device.DeviceId));
+    Assert.True(!missing.Devices.Last().IsPresent);
     return Task.CompletedTask;
 }
 

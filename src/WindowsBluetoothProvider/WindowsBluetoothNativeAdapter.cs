@@ -113,7 +113,7 @@ internal sealed class WindowsBluetoothNativeAdapter : IWindowsBluetoothNativeAda
                 watcher.Updated += OnDeviceUpdated;
                 watcher.Start();
             }
-            await Task.Delay(TimeSpan.FromSeconds(12), cancellationToken).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(BluetoothDiscoveryLimits.ScanDurationSeconds), cancellationToken).ConfigureAwait(false);
         }
         finally
         {

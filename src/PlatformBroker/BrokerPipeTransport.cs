@@ -56,6 +56,16 @@ internal static class BrokerPipeRequestTimeoutPolicy
     internal static TimeSpan Resolve(
         BrokerPipeTransportOptions options, BrokerRequestEnvelope request)
     {
+        // An explicit inquiry owns a bounded scan, not a short status read.
+        // Use the same duration as the provider on both ends of the pipe.
+        if (request.CapabilityId == PlatformCapabilities.NetworkBluetoothPairV1 &&
+            request.Operation == PlatformCapabilities.NetworkBluetoothScan)
+        {
+            var deadline = TimeSpan.FromSeconds(BluetoothDiscoveryLimits.ScanDurationSeconds +
+                BluetoothDiscoveryLimits.CompletionBudgetSeconds);
+            return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;
+        }
+
         // Display restore owns a bounded wake-up phase in a separate guard.
         // Reads can wait behind that transaction; unrelated display edits and
         // other capabilities keep their ordinary deadline on both pipe ends.

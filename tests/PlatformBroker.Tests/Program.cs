@@ -63,6 +63,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Pipe handshake binds nonce identity and one client", PipeHandshakeIsBound),
     ("Pipe requests preserve identity correlation and lifecycle", PipeRequestsAreBound),
     ("Pipe diagnostics preserve bounded Media Sessions stage and code", PipeMediaDiagnosticsAreTyped),
+    ("Bluetooth scan pipe deadline covers inquiry and still honors lifecycle cancellation", PipeBluetoothScanDeadline),
     ("Pipe loopback timeout extends only the declared long operation", PipeLoopbackTimeoutIsOperationSpecific),
     ("Pipe transports a near-limit loopback JSON response", PipeLoopbackNearLimitResponse),
     ("Pipe request cancellation reaches the fixed backend", PipeCancellationIsObserved),
@@ -809,6 +810,49 @@ static async Task PrivateSecretContracts()
             timeoutMilliseconds = 10_000,
         }));
     Assert.Equal("permission_denied", deniedUse.ErrorCode);
+}
+
+static async Task PipeBluetoothScanDeadline()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var capability = PlatformCapabilities.NetworkBluetoothPairV1;
+    var store = new ConsentStore(temp.Path);
+    await store.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
+    var backend = new SimulatedPlatformBrokerBackend
+    { BluetoothScanHandler = token => Task.Delay(200, token) };
+    var options = new BrokerPipeTransportOptions { RequestTimeout = TimeSpan.FromMilliseconds(50) };
+    var scanRequest = BrokerJson.ParseRequest(Request(identity, capability, PlatformCapabilities.NetworkBluetoothScan, new { }));
+    Assert.Equal(TimeSpan.FromSeconds(15), BrokerPipeRequestTimeoutPolicy.Resolve(options, scanRequest));
+    Assert.Equal(options.RequestTimeout, BrokerPipeRequestTimeoutPolicy.Resolve(options,
+        BrokerJson.ParseRequest(Request(identity, capability, PlatformCapabilities.NetworkBluetoothDevicePair, new { deviceId = "bluetooth-one" }))));
+    Assert.Equal(options.RequestTimeout, BrokerPipeRequestTimeoutPolicy.Resolve(options,
+        scanRequest with { CapabilityId = PlatformCapabilities.NetworkBluetoothReadV1 }));
+    var pipeName = $"wrail-bluetooth-scan-{Guid.NewGuid():N}";
+    await using var server = new BrokerPipeServer(pipeName, identity, [capability], store, backend, options, new string('B', 64));
+    var serving = server.RunAsync();
+    await using var client = new BrokerPipeClient(pipeName, identity, server.ChannelNonce, options);
+    await client.ConnectAsync();
+    server.SetLifecycle(BrokerLifecycleState.Interactive);
+    var response = await client.RequestAsync(capability, PlatformCapabilities.NetworkBluetoothScan, new { });
+    Assert.True(response.Succeeded, response.ErrorCode);
+    Assert.Equal(1, backend.BluetoothScanCalls);
+    var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var canceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    backend.BluetoothScanHandler = async token =>
+    {
+        entered.TrySetResult();
+        try { await Task.Delay(Timeout.Infinite, token); }
+        catch (OperationCanceledException) { canceled.TrySetResult(); throw; }
+    };
+    var pending = client.RequestAsync(capability, PlatformCapabilities.NetworkBluetoothScan, new { });
+    await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    server.SetLifecycle(BrokerLifecycleState.Visible);
+    await canceled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var stopped = await pending;
+    Assert.Equal("lifecycle_denied", stopped.ErrorCode);
+    await client.DisposeAsync();
+    await serving.WaitAsync(TimeSpan.FromSeconds(2));
 }
 
 static async Task PipeLoopbackTimeoutIsOperationSpecific()

@@ -93,7 +93,12 @@ internal static class NetworkControlsProviderPolicy
         // Paired-device additions/removals are meaningful system changes. Nearby
         // discovery never inserts or reorders rows outside an explicit scan result.
         visible.AddRange(incoming.Devices.Where(device => device.IsPaired && current.ContainsKey(device.DeviceId)));
-        return incoming with { Devices = visible.Take(64).ToArray() };
+        return incoming with
+        {
+            // Stable partition: unavailable cached results cannot obscure live
+            // nearby entries, but neither group is re-sorted on every event.
+            Devices = visible.OrderBy(device => !device.IsPaired && !device.IsPresent).Take(64).ToArray(),
+        };
     }
 
     internal static NetworkControlsSelection ReconcileWifiSelection(

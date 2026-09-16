@@ -1015,6 +1015,12 @@ public interface IAppLibraryPlatformBrokerBackend
                 "Running-app registration cleanup is unavailable."));
 }
 
+public static class BluetoothDiscoveryLimits
+{
+    public const int ScanDurationSeconds = 12;
+    public const int CompletionBudgetSeconds = 3;
+}
+
 public interface IBluetoothPlatformBrokerBackend : IPlatformBrokerEventSource
 {
     Task<BluetoothSummary> GetBluetoothAsync(CancellationToken cancellationToken);

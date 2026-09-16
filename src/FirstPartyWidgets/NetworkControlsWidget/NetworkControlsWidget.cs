@@ -988,6 +988,8 @@ public sealed class NetworkControlsWidget : Widget
                 if (operation.IsCurrent) ApplyBluetooth(results, generation, refreshResults: true);
             }
             catch (OperationCanceledException) when (operation.CancellationToken.IsCancellationRequested) { }
+            catch (WidgetCapabilityException exception) when (
+                operation.CancellationToken.IsCancellationRequested || exception.ErrorCode == "lifecycle_denied") { }
             catch (WidgetCapabilityException exception)
             {
                 error = exception.ErrorCode is "permission_denied" or "capability_not_declared" or "capability_revoked"
