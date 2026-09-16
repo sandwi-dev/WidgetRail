@@ -63,6 +63,8 @@ internal sealed record ConfiguredWidget
     public bool FullWidgetPinningSupported { get; init; }
     public required string WorkerExecutable { get; init; }
     public string? StyleFile { get; init; }
+    /// <summary>Optional sealed icon package for a host-configured dedicated worker.</summary>
+    public string? IconPackageRoot { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
     public IReadOnlyList<string> DeclaredCapabilities { get; init; } = [];
     /// <summary>
@@ -371,12 +373,12 @@ public sealed class BridgeCatalog
                 if (!File.Exists(executable))
                     throw new BridgeCatalogException($"Worker executable for '{source.Id}' does not exist.");
                 var style = CompileTheme(source, directory);
-                widgets.Add(source.Id, WithFingerprints(source with
+                widgets.Add(source.Id, WithFingerprints(LoadConfiguredIcons(source with
                 {
                     WorkerExecutable = executable,
                     CompiledTheme = style.Theme,
                     StylePackage = style.Package,
-                }));
+                }, directory)));
             }
             catch (Exception exception) when (
                 isolateOptionalWidgets && !IsEssentialSettings(source) &&
@@ -840,6 +842,40 @@ public sealed class BridgeCatalog
                 "The shared generic worker host for bundled widgets is invalid.",
                 exception);
         }
+    }
+
+    private static ConfiguredWidget LoadConfiguredIcons(ConfiguredWidget source, string catalogDirectory)
+    {
+        if (source.IconPackageRoot is null) return source;
+        if (!IsSafePackageRelativePath(source.IconPackageRoot, allowDirectory: true))
+            throw new BridgeCatalogException("invalid_package_root", "Configured icon package path is invalid.");
+        var packageRoot = Path.GetFullPath(
+            source.IconPackageRoot.Replace('/', Path.DirectorySeparatorChar), catalogDirectory);
+        EnsureNoReparsePoints(catalogDirectory, packageRoot, "configured icon package");
+        InstalledPackageVerification verification;
+        try
+        {
+            verification = InstalledPackageIntegrity.Verify(
+                catalogDirectory, packageRoot, new WidgetCatalogOptions());
+        }
+        catch (Exception exception) when (exception is WidgetPackageException or IOException or UnauthorizedAccessException)
+        {
+            throw new BridgeCatalogException("invalid_integrity", "Configured icon package inventory is invalid.", exception);
+        }
+        var manifest = verification.Manifest;
+        if (!string.Equals(manifest.Id, source.PackageId, StringComparison.Ordinal) ||
+            !string.Equals(manifest.Publisher, source.PublisherId, StringComparison.Ordinal))
+            throw new BridgeCatalogException("manifest_identity_mismatch", "Configured icon package identity does not match its worker.");
+        var metadata = PackageIconAssetResolver.LoadAvailableMetadata(packageRoot, manifest, verification.VerifiedFiles);
+        return source with
+        {
+            PackageRoot = packageRoot,
+            VerifiedPackageFiles = verification.VerifiedFiles,
+            PackageContentDigest = verification.ContentDigest,
+            PackageIconAssets = metadata.Available,
+            DeclaredPackageIconAssetIds = manifest.IconAssets.Keys.ToHashSet(StringComparer.Ordinal),
+            PackageIconAdmissionFailure = metadata.Unavailable.Values.FirstOrDefault(),
+        };
     }
 
     private static ConfiguredWidget LoadBundledWidget(

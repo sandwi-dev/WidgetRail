@@ -2271,6 +2271,8 @@ foreach ($requiredSettingsFile in @(
         throw "Settings deployment is missing $requiredSettingsFile."
     }
 }
+& $bundledPackageSeal $outputDirectory $settingsOutput
+if ($LASTEXITCODE -ne 0) { throw 'Settings icon package sealing failed.' }
 Publish-BundledWidgetPackage `
     (Join-Path $projectDirectory '..\FirstPartyWidgets\AudioMixerWidget') `
     $audioMixerOutput 'AudioMixerWidget' 'Audio Mixer'

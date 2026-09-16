@@ -11,6 +11,7 @@
       "icon": "settings",
       "workerExecutable": "runtime/Settings/SettingsWidget.Worker.exe",
       "styleFile": "runtime/Settings/styles/default.wrss",
+      "iconPackageRoot": "runtime/Settings",
       "memoryLimitMb": 48,
       "residencyPolicy": {
         "schemaVersion": 1,

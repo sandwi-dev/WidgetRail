@@ -46,6 +46,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
     ("Package SVG icons resolve lazily with exact catalog authority and no worker",
         PackageSvgIconsResolveLazily),
+    ("Configured worker icons admit only their sealed package declarations", ConfiguredWorkerIcons),
+    ("Configured Settings icons resolve from the built host catalog", ConfiguredSettingsIcons),
     ("Request dispatcher cleans success failure and cancellation", RequestDispatcherCleansTerminalPaths),
     ("Request classification is closed typed and fail-closed", RequestClassificationIsClosed),
     ("Protected Wi-Fi host admission is exact trusted and bounded", ProtectedWifiHostAdmissionIsExact),
@@ -201,6 +203,66 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static Task ConfiguredSettingsIcons()
+{
+    var catalog = BridgeCatalog.Load(Path.Combine(FindRepositoryRoot(), "src", "OverlayHost", "out", "Release", "widget-catalog.json"));
+    var settings = catalog.GetConfigured("settings");
+    var descriptor = settings.PublicDescriptor();
+    Assert.Equal(6, descriptor.IconAssets.Count);
+    Assert.True(settings.DeclaredPackageIconAssetIds.SetEquals([
+        "settings.appearance", "settings.accessibility", "settings.overlay",
+        "settings.controllers", "settings.widgets", "settings.diagnostics"]),
+        "The dedicated Settings worker must admit all six home-card icons.");
+    Assert.Equal(WidgetGlyph.Settings, descriptor.Icon);
+    Assert.True(descriptor.PackageIcon is null, "Settings must retain its semantic tray gear.");
+    foreach (var asset in descriptor.IconAssets)
+        _ = catalog.ResolvePackageIcon("settings", descriptor.PresentationGeneration, asset.AssetId, asset.NormalizedSha256);
+    return Task.CompletedTask;
+}
+
+static Task ConfiguredWorkerIcons()
+{
+    const string id = "dev.test.configured-icons";
+    using var fixture = TemporaryBundledCatalog.Create(
+        new TemporaryBundledWidgetDefinition(id, "Configured icons", InvalidStyle: false, PackageIcon: true));
+    void WriteCatalog(string root = "packages/package-1", string publisher = "dev.test") =>
+        File.WriteAllText(fixture.Path, JsonSerializer.Serialize(new
+        {
+            catalogVersion = 1,
+            widgets = new[] { new {
+                id, packageId = id, publisherId = publisher, name = "Configured icons",
+                instanceId = "configured.icons", workerExecutable = "WidgetWorkerHost.exe",
+                icon = "settings", iconPackageRoot = root,
+            } },
+        }));
+    WriteCatalog();
+    var catalog = BridgeCatalog.Load(fixture.Path);
+    var configured = catalog.GetConfigured(id);
+    Assert.Equal(WidgetGlyph.Settings, configured.Icon);
+    Assert.True(configured.PackageIcon is null, "Content icons must not replace the dedicated worker's tray glyph.");
+    Assert.True(configured.DeclaredPackageIconAssetIds.SetEquals(["test.mark"]), "Configured worker lost its icon declarations.");
+    var descriptor = configured.PublicDescriptor();
+    var icon = descriptor.IconAssets.Single();
+    _ = catalog.ResolvePackageIcon(id, descriptor.PresentationGeneration, icon.AssetId, icon.NormalizedSha256);
+    var snapshot = new ViewSnapshot {
+        ProtocolVersion = ProtocolConstants.PackageSvgIconVersion, Sequence = 1,
+        WidgetInstanceId = configured.InstanceId, ActiveInputScopeId = "root",
+        Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Icon,
+            Glyph = WidgetGlyph.Settings, PackageIcon = new WidgetPackageIcon("test.mark", WidgetPackageIconColorMode.ThemeTint) },
+    };
+    BridgeClientRegistry.DemandPackageIconAuthority(configured, snapshot);
+    Assert.Throws<BridgeProtocolException>(() => BridgeClientRegistry.DemandPackageIconAuthority(configured,
+        snapshot with { Root = snapshot.Root with { PackageIcon = new WidgetPackageIcon("undeclared", WidgetPackageIconColorMode.ThemeTint) } }));
+    WriteCatalog(publisher: "dev.other");
+    Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(fixture.Path));
+    WriteCatalog(root: "../outside");
+    Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(fixture.Path));
+    WriteCatalog();
+    File.AppendAllText(Path.Combine(fixture.Root, "packages", "package-1", "assets", "mark.svg"), "tampered");
+    Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(fixture.Path));
+    return Task.CompletedTask;
+}
 
 static async Task<int> RunWorkerAsync(string[] arguments)
 {
