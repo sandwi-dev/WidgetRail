@@ -1,4 +1,5 @@
 #include "DualSenseHidReader.h"
+#include "DualSenseConnectionProbe.h"
 #include <Windows.h>
 #include <setupapi.h>
 #include <hidsdi.h>
@@ -33,12 +34,14 @@ std::uint64_t Timestamp() noexcept {
 } // namespace
 
 SelectedControllerDiscoveryStatus DiscoverDualSenseController(std::uint64_t token,
-    DualSenseDevice& selected, const SelectedControllerEnrollment* expected) noexcept {
+    DualSenseDevice& selected, const SelectedControllerEnrollment* expected, bool requireLiveInput) noexcept {
     selected = {};
     try {
         GUID guid{}; HidD_GetHidGuid(&guid);
         Devices devices{SetupDiGetClassDevsW(&guid, nullptr, nullptr, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT)};
         if (devices.value == INVALID_HANDLE_VALUE) return SelectedControllerDiscoveryStatus::Unavailable;
+        // Bound the entire liveness pass, including multiple remembered devices.
+        const auto liveDeadline = GetTickCount64() + 750;
         SP_DEVICE_INTERFACE_DATA entry{sizeof(entry)};
         for (DWORD index = 0; index < 512 && SetupDiEnumDeviceInterfaces(devices.value, nullptr, &guid, index, &entry); ++index) {
             DWORD bytes{};
@@ -48,8 +51,8 @@ SelectedControllerDiscoveryStatus DiscoverDualSenseController(std::uint64_t toke
             auto* detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(buffer.data());
             detail->cbSize = sizeof(*detail);
             if (!SetupDiGetDeviceInterfaceDetailW(devices.value, &entry, detail, bytes, nullptr, nullptr)) continue;
-            // Metadata access only; the actual read handle is opened after selection
-            // (and, for isolation, after the exact-owned HidHide policy is applied).
+            // Metadata identifies candidates. Isolation additionally requires a live
+            // probe below, then reopens its retained reader after hiding the device.
             Handle handle(CreateFileW(detail->DevicePath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
                 nullptr, OPEN_EXISTING, 0, nullptr));
             HIDD_ATTRIBUTES attributes{sizeof(attributes)};
@@ -68,8 +71,16 @@ SelectedControllerDiscoveryStatus DiscoverDualSenseController(std::uint64_t toke
             device.transport = caps.InputReportByteLength == 64 ? DualSenseTransport::Usb : DualSenseTransport::Bluetooth;
             if (!BuildNativeHidDescriptor(device.path, token, attributes.VendorID, attributes.ProductID, device.descriptor) ||
                 (expected && !SameStableControllerIdentity(*expected, device.descriptor.enrollment))) continue;
-            if (!selected.descriptor.valid() || device.descriptor.deviceInstanceId.view() < selected.descriptor.deviceInstanceId.view())
-                selected = std::move(device);
+            if (selected.descriptor.valid() &&
+                device.descriptor.deviceInstanceId.view() >= selected.descriptor.deviceInstanceId.view()) continue;
+            if (requireLiveInput) {
+                const auto now = GetTickCount64();
+                if (now >= liveDeadline) break;
+                const auto wait = static_cast<std::uint32_t>(std::min<ULONGLONG>(250, liveDeadline - now));
+                DualSenseHidReader probe;
+                if (!ProbeDualSenseConnection(probe, device.descriptor.enrollment, wait)) continue;
+            }
+            selected = std::move(device);
         }
         return selected.descriptor.valid() ? SelectedControllerDiscoveryStatus::Ready : SelectedControllerDiscoveryStatus::Unavailable;
     } catch (...) { selected = {}; return SelectedControllerDiscoveryStatus::Unavailable; }

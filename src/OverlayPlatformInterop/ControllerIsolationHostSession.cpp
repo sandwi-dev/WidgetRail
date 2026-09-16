@@ -384,6 +384,9 @@ struct ControllerIsolationHostSession::Impl final {
         }
         { std::scoped_lock lock(mutex); progress = ConvertProgress(routing.state());
           startupDone = true; changed.notify_all(); }
+        QueueDiagnostic(descriptor.enrollment.deviceFamily == NativeDualSenseFamily
+            ? L"Controller isolation selected native DualSense after live input verification"
+            : L"Controller isolation selected physical GameInput controller");
         QueueDiagnostic(guideCompatibilityAvailable
             ? L"Controller isolation physical XInput Guide compatibility polling active cadence-ms=25"
             : L"Controller isolation physical XInput Guide compatibility polling unavailable");

@@ -1,5 +1,7 @@
 #include "../../src/OverlayPlatformInterop/ControllerIsolationHostSession.h"
 #include "../../src/OverlayPlatformInterop/LocalControllerPolicy.h"
+#include "../../src/OverlayPlatformInterop/DualSenseConnectionProbe.h"
+#include "../../src/OverlayPlatformInterop/DualSenseHidReader.h"
 #include <atomic>
 #include <fstream>
 #include <iostream>
@@ -293,6 +295,95 @@ void VisibleStartupAndHeldDisconnect(const std::filesystem::path& root) {
     Check(racedOutput.opens == 0 && !racedEffects.state.active, "discovery race leaves no output or hidden device");
 }
 
+struct ProbeReader final {
+    bool started{true}, readingArrived{}, fresh{true}, connected{true};
+    int starts{}, waits{}, samples{}, stops{};
+    std::uint32_t waitBudget{};
+    SelectedControllerEnrollment requested{};
+    bool Start(const SelectedControllerEnrollment* enrollment) noexcept {
+        ++starts; requested = *enrollment; return started;
+    }
+    bool WaitForReading(std::uint32_t milliseconds) noexcept {
+        ++waits; waitBudget = milliseconds; return readingArrived;
+    }
+    bool Sample(SelectedControllerCurrent& value) noexcept {
+        ++samples; value.connected = connected; return fresh;
+    }
+    void Stop() noexcept { ++stops; }
+};
+
+void DualSenseDiscoveryRequiresLiveInput() {
+    SelectedControllerEnrollment enrollment{}; enrollment.enrollmentToken = 42;
+    ProbeReader reader;
+    Check(!ProbeDualSenseConnection(reader, enrollment, 250) && reader.waits == 1 &&
+        reader.waitBudget == 250 && reader.samples == 0 && reader.stops == 1,
+        "remembered DualSense without reports is rejected after a bounded wait and its probe closes");
+    reader = {}; reader.readingArrived = true; reader.fresh = false;
+    Check(!ProbeDualSenseConnection(reader, enrollment, 250) && reader.stops == 1,
+        "report that became stale before admission cannot select a DualSense");
+    reader = {}; reader.readingArrived = true; reader.connected = false;
+    Check(!ProbeDualSenseConnection(reader, enrollment, 250) && reader.stops == 1,
+        "disconnect between notification and sample cannot select a DualSense");
+    reader = {}; reader.started = false;
+    Check(!ProbeDualSenseConnection(reader, enrollment, 250) && reader.waits == 0 && reader.stops == 1,
+        "failed probe startup leaves no retained reader");
+    reader = {}; reader.readingArrived = true;
+    Check(ProbeDualSenseConnection(reader, enrollment, 125) && reader.requested.enrollmentToken == 42 &&
+        reader.waitBudget == 125 && reader.stops == 1,
+        "fresh report proves the exact candidate and closes before isolation starts");
+}
+
+void DualSenseLossSelectsLiveNeighbor(const std::filesystem::path& root) {
+    Effects effects; Source source; Output output;
+    auto dependencies = Dependencies(root / L"native-disconnect" / L"local-session.v1", effects, &source, output);
+    struct Discovery {
+        std::atomic_bool nativeLive{true};
+        Source* source{};
+        SelectedControllerDescriptor native, other;
+        static SelectedControllerDiscoveryStatus Read(void* context, SelectedControllerDescriptor& result) noexcept {
+            auto& self = *static_cast<Discovery*>(context);
+            // Native metadata remains present when the radio powers off.
+            ProbeReader probe; probe.readingArrived = self.nativeLive.load();
+            result = ProbeDualSenseConnection(probe, self.native.enrollment, 250) ? self.native : self.other;
+            std::scoped_lock lock(self.source->mutex);
+            self.source->connected = true; self.source->state = {}; ++self.source->timestamp;
+            return SelectedControllerDiscoveryStatus::Ready;
+        }
+    } discovery;
+    discovery.source = &source;
+    discovery.other = dependencies.descriptor;
+    discovery.native = dependencies.descriptor;
+    discovery.native.enrollment.deviceFamily = NativeDualSenseFamily;
+    discovery.native.enrollment.vendorId = 0x054C;
+    discovery.native.enrollment.productId = 0x0CE6;
+    discovery.native.enrollment.deviceId[0] = 9;
+    discovery.native.deviceInstanceId = {};
+    const std::wstring nativeId = L"native-dualsense";
+    std::copy(nativeId.begin(), nativeId.end(), discovery.native.deviceInstanceId.value.begin());
+    discovery.native.deviceInstanceId.length = nativeId.size();
+    dependencies.discover = Discovery::Read; dependencies.discoveryContext = &discovery;
+    ControllerIsolationHostSession owner(dependencies);
+    std::wstring error;
+    Check(owner.Start(true, error) && owner.PrepareOverlay(error), "live DualSense isolation starts contained");
+    ControllerIsolationHostReading reading;
+    Check(owner.Poll(reading, error) && reading.dualSense && output.Is({}),
+        "the connected native controller owns input while gameplay remains neutral");
+    discovery.nativeLive = false;
+    Check(source.Publish(ControllerReaderEventKind::Disconnected), "native disconnect is delivered");
+    Check(Until([&] {
+        ControllerIsolationHostReading current;
+        return owner.Poll(current, error) && !current.dualSense && current.progress == LocalControllerProgress::Contained;
+    }), "stale native metadata cannot trap rediscovery instead of selecting the live neighbor");
+    Check(output.opens == 1 && output.removals == 0 && output.Is({}),
+        "replacement retains the same neutral virtual controller");
+    Check(!effects.state.deviceInstanceIds.contains(nativeId) &&
+        effects.state.deviceInstanceIds.contains(std::wstring(discovery.other.deviceInstanceId.view())),
+        "handoff restores the disconnected controller before hiding only the live replacement");
+    owner.Stop();
+    Check(output.removals == 1 && !effects.state.active && effects.state.deviceInstanceIds.empty(),
+        "stopping after native handoff restores owned policy");
+}
+
 void AutomaticSelectionLifetime(const std::filesystem::path& root) {
     Effects effects; Source source; Output output;
     struct Discovery {
@@ -408,7 +499,7 @@ int main() {
     const auto root = std::filesystem::temp_directory_path() / (L"wrail-local-owner-" + std::to_wstring(GetCurrentProcessId()));
     std::filesystem::create_directories(root);
     try { ParserAndRecovery(root); SetupCleanup(root); OwnerTransitions(root);
-          PendingTransitionsAreSingleFlight(root); AutomaticSelectionLifetime(root); VisibleStartupAndHeldDisconnect(root); CompositeGamepadCleanup(root); }
+          PendingTransitionsAreSingleFlight(root); DualSenseDiscoveryRequiresLiveInput(); DualSenseLossSelectsLiveNeighbor(root); AutomaticSelectionLifetime(root); VisibleStartupAndHeldDisconnect(root); CompositeGamepadCleanup(root); }
     catch (const std::exception& error) { std::cerr << "FAILED: " << error.what() << "\nRetained: " << root << '\n'; return 1; }
     std::filesystem::remove_all(root);
     std::cout << "LocalControllerOwnerTests passed " << checks << " checks\n";

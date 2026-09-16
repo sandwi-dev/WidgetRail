@@ -24,13 +24,20 @@ releases native owners. The legacy XInput Guide ordinal remains private to
 Controller isolation is disabled by default. Start the long-lived Release host
 with `OverlayHost.exe --controller-isolation`; the retired enable, status,
 disable, and recover helper commands are rejected. The native platform boundary
-then owns one dedicated routing thread, the selected physical GameInput reader,
+then owns one dedicated routing thread, the selected physical controller reader,
 one ViGEm Xbox 360 target, and the exact HidHide policy delta. Rendering and
 window-message work do not schedule gameplay forwarding.
 
-Startup accepts exactly one known physical gamepad and rejects unavailable,
-ambiguous, unknown, or virtual-output identities before it writes HidHide
-policy. It journals the exact local policy delta before applying it. A prior
+Startup selects one eligible physical controller in stable device order.
+Native DualSense discovery checks for a fresh input report before taking
+priority over GameInput discovery or writing HidHide policy. Windows can retain
+a paired Bluetooth HID interface after its controller powers off; metadata
+alone is not proof of a live connection. Each candidate probe waits at most
+250 ms, within a 750 ms discovery-pass wait budget. Unresponsive candidates
+are skipped so another connected controller can be selected. The temporary
+probe stops before the isolation reader opens, which revalidates the identity
+after hiding. Unavailable, unknown, or virtual-output identities cannot receive
+hiding policy. It journals the exact local policy delta before applying it. A prior
 local journal is restored only when the current policy still proves that the
 delta is ours; foreign additions, inverse policy, corrupt local records, and
 the retired Guardian-era journal all fail closed.

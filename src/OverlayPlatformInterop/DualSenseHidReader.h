@@ -17,7 +17,8 @@ struct DualSenseDevice final {
 bool BuildNativeHidDescriptor(std::wstring_view path, std::uint64_t token,
     std::uint16_t vendor, std::uint16_t product, SelectedControllerDescriptor& descriptor) noexcept;
 SelectedControllerDiscoveryStatus DiscoverDualSenseController(std::uint64_t token,
-    DualSenseDevice& device, const SelectedControllerEnrollment* expected = nullptr) noexcept;
+    DualSenseDevice& device, const SelectedControllerEnrollment* expected = nullptr,
+    bool requireLiveInput = false) noexcept;
 
 // One overlapped HID reader on a background thread. UI reads only a copied,
 // freshness-checked state. Stop cancels pending I/O before releasing its buffers.

@@ -584,7 +584,7 @@ SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(
     if (enrollmentToken == 0)
         return SelectedControllerDiscoveryStatus::UnknownIdentity;
     DualSenseDevice native;
-    const auto nativeStatus = DiscoverDualSenseController(enrollmentToken, native);
+    const auto nativeStatus = DiscoverDualSenseController(enrollmentToken, native, nullptr, true);
     if (nativeStatus == SelectedControllerDiscoveryStatus::Ready) {
         descriptor = native.descriptor;
         return nativeStatus;
