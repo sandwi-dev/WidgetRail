@@ -2280,6 +2280,11 @@ foreach ($requiredSettingsFile in @(
         throw "Settings deployment is missing $requiredSettingsFile."
     }
 }
+# Seal the same Settings inventory that release packaging copies. Dependency
+# symbols can be copied transitively despite CopyOutputSymbolsToPublishDirectory.
+Get-ChildItem -LiteralPath $settingsOutput -Recurse -File |
+    Where-Object Extension -In @('.pdb', '.xml') |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
 & $bundledPackageSeal $outputDirectory $settingsOutput
 if ($LASTEXITCODE -ne 0) { throw 'Settings icon package sealing failed.' }
 Publish-BundledWidgetPackage `
