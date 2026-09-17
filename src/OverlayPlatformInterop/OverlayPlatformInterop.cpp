@@ -13,6 +13,7 @@
 
 #include <Windows.h>
 #include <GameInput.h>
+#include "GameInputQueryRuntime.h"
 #include <Xinput.h>
 #include <wrl/client.h>
 
@@ -520,9 +521,9 @@ WidgetRailOverlayPlatformControllerPrerequisites() noexcept {
             if (api.Connect(client) == api.successCode) { flags |= 2U; api.Disconnect(client); }
             api.FreeClient(client);
         }
-        ComPtr<IGameInput> input;
+        auto input = widgetrail::platform::AcquireGameInputQueryRuntime();
         widgetrail::input::XInputGuideCompatibility guide;
-        if (SUCCEEDED(GameInputCreate(input.ReleaseAndGetAddressOf())) && input && guide.Initialize())
+        if (input && guide.Initialize())
             flags |= 4U;
     } catch (...) { return flags; }
     return flags;

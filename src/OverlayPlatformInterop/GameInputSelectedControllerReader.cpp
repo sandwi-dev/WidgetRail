@@ -6,6 +6,7 @@
 #include <windows.h>
 
 #include <GameInput.h>
+#include "GameInputQueryRuntime.h"
 #include <bcrypt.h>
 #include <cfgmgr32.h>
 #include <initguid.h>
@@ -589,9 +590,8 @@ SelectedControllerDiscoveryStatus DiscoverCurrentPhysicalController(
         descriptor = native.descriptor;
         return nativeStatus;
     }
-    ComPtr<IGameInput> gameInput;
-    if (FAILED(GameInputCreate(gameInput.ReleaseAndGetAddressOf())) ||
-        !gameInput) return SelectedControllerDiscoveryStatus::Unavailable;
+    auto gameInput = widgetrail::platform::AcquireGameInputQueryRuntime();
+    if (!gameInput) return SelectedControllerDiscoveryStatus::Unavailable;
     return DiscoverCurrentPhysicalController(
         *gameInput.Get(), enrollmentToken, descriptor, nullptr, nullptr, ownedOutput);
 }

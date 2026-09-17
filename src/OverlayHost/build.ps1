@@ -631,6 +631,15 @@ function Invoke-RichMediaTests {
 }
 
 function Invoke-OverlayPlatformInteropTests {
+    $queryArguments = $common + @(
+        (Join-Path $platformTestDirectory 'GameInputQueryRuntimeTests.cpp'),
+        "/Fo:$platformTestObjectDirectory\",
+        "/Fe:$outputDirectory\GameInputQueryRuntimeTests.exe", '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @('gameinput.lib')
+    & $cl $queryArguments
+    if ($LASTEXITCODE -ne 0) { throw 'GameInputQueryRuntimeTests build failed.' }
+    & (Join-Path $outputDirectory 'GameInputQueryRuntimeTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'GameInputQueryRuntimeTests failed.' }
     $arguments = $common + @(
         '/DWRAIL_OVERLAY_PLATFORM_IMPORTS',
         (Join-Path $platformTestDirectory 'OverlayPlatformInteropTests.cpp'),
