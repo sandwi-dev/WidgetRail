@@ -435,20 +435,6 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                       artworkRequest.PresentationGeneration))))
                 throw new BridgeProtocolException(
                     "Artwork generation authority is invalid.");
-            using (var admission = _registry.AdmitArtwork(
-                artworkRequest.WidgetId, artworkRequest.ArtworkHandle,
-                artworkRequest.RuntimeGeneration,
-                artworkRequest.PresentationGeneration))
-            {
-                // The publication closes the pre-ack authority race. Resolution
-                // repeats this proof under the exact worker operation gate.
-            }
-            await ReplyAsync(
-                BridgeMessageTypes.Acknowledged,
-                request.RequestId,
-                new { },
-                cancellationToken).ConfigureAwait(false);
-
             var contentType = string.Empty;
             var legacyContentBase64 = string.Empty;
             ConfiguredWidget configured;
@@ -462,7 +448,10 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     artworkRequest.RuntimeGeneration,
                     artworkRequest.PresentationGeneration,
                     _sessionCancellation,
-                    cancellationToken).ConfigureAwait(false))
+                    cancellationToken,
+                    token => ReplyAsync(
+                        BridgeMessageTypes.Acknowledged,
+                        request.RequestId, new { }, token)).ConfigureAwait(false))
                 {
                     configured = resolution.Value.Configured;
                     workerFingerprint = resolution.Value.WorkerFingerprint;

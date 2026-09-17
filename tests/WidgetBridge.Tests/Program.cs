@@ -53,6 +53,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Protected Wi-Fi host admission is exact trusted and bounded", ProtectedWifiHostAdmissionIsExact),
     ("Protected Wi-Fi production dispatch clears one exact secret owner", ProtectedWifiProductionDispatchIsZeroed),
     ("Trusted artwork demand is exact current and lazy through the production bridge", TrustedArtworkDemandIsExact),
+    ("Trusted artwork waits for the current worker snapshot after idle unload", BridgeClientRegistryScenarios.ArtworkWaitsForCurrentWorkerSnapshotAfterIdleUnload),
     ("Test-local BackgroundSurface artwork crosses the worker and Bridge boundary", BackgroundSurfaceArtworkCrossesBridge),
     ("SDK Gallery sealed backgrounds cross the worker and Bridge boundary", SdkGalleryBackgroundArtworkCrossesBridge),
     ("Two provider-neutral media adapters resolve through one sealed contract", EmbeddedMediaAssetsAreProviderNeutral),

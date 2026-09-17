@@ -1092,6 +1092,58 @@ int main() {
         demandCache.Shutdown();
     }
 
+    // Idle unload does not change catalog authority or the image's cache key.
+    // A request from the retained page must recover after the new worker has
+    // a snapshot, without poisoning that stable key or refetching ready pixels.
+    {
+        std::mutex resumeMutex;
+        std::condition_variable resumeChanged;
+        int requests = 0;
+        RemoteImageState resumeState = RemoteImageState::Loading;
+        RemoteImageCache* owner = nullptr;
+        const TrustedArtworkDemandAuthority authority{
+            L"resume-artwork", L"same-runtime", L"same-presentation"};
+        RemoteImageCache resumeCache(
+            {},
+            [&](std::wstring_view, RemoteImageState state) {
+                { std::scoped_lock lock(resumeMutex); resumeState = state; }
+                resumeChanged.notify_all();
+            },
+            {},
+            [&](std::wstring_view, const TrustedArtworkDemandAuthority& origin,
+                std::stop_token) {
+                if (++requests == 1)
+                    return TrustedArtworkRequestDisposition::OriginRetired;
+                assert(owner->SupplyTrustedArtwork(
+                    L"resume-artwork", L"stable-cover", origin,
+                    L"image/png", trustedPngBase64));
+                return TrustedArtworkRequestDisposition::Accepted;
+            });
+        owner = &resumeCache;
+        const auto key = RemoteImageCache::TrustedArtworkKey(
+            L"resume-artwork", L"poster", L"stable-cover");
+        assert(resumeCache.RequestTrustedArtwork(key, authority) == RemoteImageRequestResult::Queued);
+        {
+            std::unique_lock lock(resumeMutex);
+            assert(resumeChanged.wait_for(lock, std::chrono::seconds(2), [&] {
+                return resumeState == RemoteImageState::Missing;
+            }));
+        }
+        assert(resumeCache.GetStats().failedEntries == 0);
+        assert(resumeCache.RequestTrustedArtwork(key, authority) == RemoteImageRequestResult::Queued);
+        {
+            std::unique_lock lock(resumeMutex);
+            assert(resumeChanged.wait_for(lock, std::chrono::seconds(5), [&] {
+                return resumeState == RemoteImageState::Ready;
+            }));
+        }
+        assert(resumeCache.RequestTrustedArtwork(key,
+            {L"resume-artwork", L"later-runtime", L"later-presentation"}) ==
+            RemoteImageRequestResult::AlreadyTracked);
+        resumeCache.Shutdown();
+        assert(requests == 2);
+    }
+
     for (const auto staleDisposition : {
              TrustedArtworkRequestDisposition::OriginRetired,
              TrustedArtworkRequestDisposition::TerminalFailure}) {

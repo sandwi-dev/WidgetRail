@@ -919,7 +919,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             if (input.Context != ControllerInputContext.PinnedLayoutSelection)
                 DemandInteractionAllowed(registration);
             if (input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.PinnedSurface &&
-                !registration.HasCurrentInputWorker)
+                !registration.HasCurrentSnapshotWorker)
                 throw ControllerInputAuthorityException(input,
                     "Controller input worker authority is no longer available.");
             var selectAction = DemandSelectActionAuthority(
@@ -1250,35 +1250,14 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         return null;
     }
 
-    internal BridgeClientPublication<ConfiguredWidget> AdmitArtwork(
-        string widgetId,
-        string artworkHandle,
-        string? expectedRuntimeGeneration = null,
-        string? expectedPresentationGeneration = null)
-    {
-        lock (_gate)
-        {
-            if (_clients.TryGetValue(widgetId, out var registration) &&
-                !registration.IsRetiring &&
-                registration.CachedSnapshot is { } snapshot &&
-                ContainsArtwork(snapshot, artworkHandle) &&
-                MatchesArtworkOrigin(
-                    registration.Configured,
-                    expectedRuntimeGeneration,
-                    expectedPresentationGeneration))
-                return AdmitPublicationLocked(registration, registration.Configured);
-        }
-        throw new BridgeStaleArtworkAuthorityException(
-            "Artwork authority is stale or unavailable.");
-    }
-
     internal async Task<BridgeClientPublication<BridgeResolvedArtwork>> ResolveArtworkAsync(
         string widgetId,
         string artworkHandle,
         string? expectedRuntimeGeneration,
         string? expectedPresentationGeneration,
         CancellationToken sessionCancellation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<CancellationToken, Task>? acknowledge = null)
     {
         if (!BridgeRequestKey.IsBoundedIdentifier(artworkHandle))
             throw new BridgeProtocolException("Artwork handle is invalid.");
@@ -1292,11 +1271,18 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 registration.Configured,
                 expectedRuntimeGeneration,
                 expectedPresentationGeneration);
-            if (registration.CachedSnapshot is not { } snapshot ||
+            if (!registration.HasCurrentSnapshotWorker ||
+                registration.CachedSnapshot is not { } snapshot ||
                 !ContainsArtwork(snapshot, artworkHandle))
-                throw new BridgeProtocolException(
+                throw new BridgeStaleArtworkAuthorityException(
                     "Artwork authority is stale or unavailable.");
             registration.CancelIdleUnload();
+            // Retained pages survive idle unload, but their worker-local handles
+            // cannot resolve until the new worker publishes its own snapshot.
+            // Acknowledge under the operation gate so unload or presentation
+            // replacement cannot slip between admission and resolution.
+            if (acknowledge is not null)
+                await acknowledge(cancellationToken).ConfigureAwait(false);
             var artwork = await ExecuteClientOperationAsync(
                     registration,
                     (client, token) => client.ResolveArtworkAsync(artworkHandle, token),
@@ -2561,7 +2547,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             _cachedSnapshotWorkerStart = workerStart;
         }
 
-        internal bool HasCurrentInputWorker => Client.IsRunning &&
+        internal bool HasCurrentSnapshotWorker => Client.IsRunning &&
             _cachedSnapshotWorkerStart > 0 && Client.Starts == _cachedSnapshotWorkerStart;
 
         internal ViewSnapshot? FindInputOriginSnapshot(long sequence)

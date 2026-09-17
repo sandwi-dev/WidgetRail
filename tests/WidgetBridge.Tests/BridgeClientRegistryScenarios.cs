@@ -8,6 +8,95 @@ using WidgetRail.PlatformDiagnostics;
 
 internal static class BridgeClientRegistryScenarios
 {
+    internal static async Task ArtworkWaitsForCurrentWorkerSnapshotAfterIdleUnload()
+    {
+        const string handle = "artwork.stable-cover";
+        var delay = new ManualRegistryDelay();
+        var configured = Widget("artwork-resume", worker: 'a', catalog: 'a',
+            residency: new WidgetResidencyPolicy
+            {
+                Mode = WidgetResidencyPolicies.UnloadAfterIdle,
+                IdleSeconds = 300,
+            });
+        var expected = new WidgetEncodedArtwork(WidgetArtworkContentType.Png,
+            BackgroundSurfaceBridgeFixtureWidget.ArtworkBytes);
+        await using var fixture = new RegistryFixture(Catalog(configured),
+            delay: delay.InvokeAsync, configure: (_, client) =>
+            {
+                client.SnapshotFactory = sequence => new ViewSnapshot
+                {
+                    Sequence = sequence,
+                    WidgetInstanceId = configured.InstanceId,
+                    ActiveInputScopeId = "poster",
+                    Root = new ViewNode
+                    {
+                        Id = "poster", Kind = ViewNodeKind.Image,
+                        InputScopeId = "poster", ArtworkHandle = handle,
+                    },
+                };
+                client.ArtworkResolver = _ => expected;
+            });
+        var descriptor = configured.PublicDescriptor();
+        var acknowledgements = 0;
+        Task<BridgeClientPublication<BridgeResolvedArtwork>> ResolveAsync() =>
+            fixture.Registry.ResolveArtworkAsync(configured.Id, handle,
+                descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
+                CancellationToken.None, CancellationToken.None, _ =>
+                {
+                    acknowledgements++;
+                    return Task.CompletedTask;
+                });
+
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        _ = await fixture.GetSnapshotAsync(configured.Id);
+        var client = fixture.Clients.Single();
+        using (var first = await ResolveAsync())
+            RegistryAssert.True(ReferenceEquals(expected, first.Value.Artwork));
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
+        (await delay.NextAsync()).Release();
+        await client.Unloaded.WaitAsync(TimeSpan.FromSeconds(2));
+
+        // A retained page must neither restart the worker to fetch an old
+        // handle nor acknowledge a request that will become a cached failure.
+        await AssertStaleAsync();
+        RegistryAssert.Equal(1, client.Starts);
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        RegistryAssert.Equal(2, client.Starts);
+        await AssertStaleAsync();
+        RegistryAssert.Equal(1, acknowledgements);
+        RegistryAssert.Equal(1, client.ArtworkRequests.Count);
+
+        _ = await fixture.GetSnapshotAsync(configured.Id);
+        using (var resumed = await ResolveAsync())
+            RegistryAssert.True(ReferenceEquals(expected, resumed.Value.Artwork));
+        RegistryAssert.Equal(2, acknowledgements);
+        RegistryAssert.Equal(2, client.ArtworkRequests.Count);
+        RegistryAssert.Equal(descriptor.RuntimeGeneration,
+            fixture.Registry.CatalogSnapshot().Catalog.Widgets.Single().RuntimeGeneration);
+
+        Task<BridgeClientSnapshot>? concurrentSnapshot = null;
+        using (var resolved = await fixture.Registry.ResolveArtworkAsync(configured.Id, handle,
+                   descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
+                   CancellationToken.None, CancellationToken.None, _ =>
+                   {
+                       RegistryAssert.Equal(2, client.ArtworkRequests.Count);
+                       concurrentSnapshot = fixture.GetSnapshotAsync(configured.Id);
+                       RegistryAssert.False(concurrentSnapshot.IsCompleted,
+                           "Snapshot replacement entered between artwork admission and resolution.");
+                       return Task.CompletedTask;
+                   }))
+            RegistryAssert.True(ReferenceEquals(expected, resolved.Value.Artwork));
+        _ = await concurrentSnapshot!.WaitAsync(TimeSpan.FromSeconds(2));
+
+        async Task AssertStaleAsync()
+        {
+            var failure = await RegistryAssert.ThrowsAsync<BridgeStaleArtworkAuthorityException>(
+                async () => { using var ignored = await ResolveAsync(); });
+            RegistryAssert.Equal("stale_artwork_authority",
+                WidgetBridgeServer.CreateRequestFailure(failure).Code);
+        }
+    }
+
     internal static async Task VisibleRegistrationPublishesInvalidationExactlyOnce()
     {
         var configured = Widget("notification-registry", worker: 'r', catalog: 'r');
@@ -2500,6 +2589,16 @@ internal sealed class RegistryTestClient(
     internal List<WidgetActionEvent> ActionEvents { get; } = [];
     internal List<EmbeddedMediaPlaybackEvent> EmbeddedMediaPlaybackEvents { get; } = [];
     internal Func<long, ViewSnapshot>? SnapshotFactory { get; set; }
+    internal Func<string, WidgetEncodedArtwork?>? ArtworkResolver { get; set; }
+    internal List<string> ArtworkRequests { get; } = [];
+    public Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
+        string artworkHandle, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureStarted();
+        ArtworkRequests.Add(artworkHandle);
+        return Task.FromResult(ArtworkResolver?.Invoke(artworkHandle));
+    }
     internal Action? AfterSnapshot { get; set; }
     internal Action? AfterLifecycle { get; set; }
     internal bool RebaseRecoverySequence { get; set; }
