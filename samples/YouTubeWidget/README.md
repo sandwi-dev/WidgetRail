@@ -3,8 +3,7 @@
 Watch a video without leaving your game. Search public YouTube videos, play a link,
 or pin the video beside your game with controller controls still available.
 
-> **Screenshot space — player:** add `screenshots/player.png` showing a video and its controls.
-<!-- Replace this placeholder with: ![YouTube Video player](screenshots/player.png) -->
+![YouTube video playback with controller navigation and playback controls](screenshots/player.png)
 
 ## What you can do
 
