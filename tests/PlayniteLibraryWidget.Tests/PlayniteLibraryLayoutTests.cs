@@ -12,6 +12,55 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed class PlayniteLibraryLayoutTests
 {
     [TestMethod]
+    public void HomeFallbackStatesShareTheReadySurfaceAndCenteredBackgroundOwner()
+    {
+        var item = PlayniteLibraryItem.From(Item("app-home", "saved-home", "Home game", "Steam"));
+        var ready = PlayniteLibraryPresentation.Render(State(
+            Snapshot(WidgetPagedResourceStatus.Ready, [item]),
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []));
+        var readySnapshot = new PresentationWidget(ready).RenderSnapshot("home.ready", 1);
+        var theme = CompileStyles();
+        var states = new[]
+        {
+            Snapshot(WidgetPagedResourceStatus.NotLoaded, []),
+            Snapshot(WidgetPagedResourceStatus.Loading, []),
+            Snapshot(WidgetPagedResourceStatus.Ready, []),
+            Snapshot(WidgetPagedResourceStatus.Error, [], error: new WidgetResourceError("library_offline", "Bridge offline")),
+            Snapshot(WidgetPagedResourceStatus.Error, [], error: new WidgetResourceError("credential_missing", "Set up Playnite Bridge")),
+            Snapshot(WidgetPagedResourceStatus.Error, [], error: new WidgetResourceError("authentication_required", "Update token")),
+        };
+        foreach (var collection in states)
+        {
+            var view = PlayniteLibraryPresentation.Render(State(collection,
+                PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []));
+            var snapshot = new PresentationWidget(view).RenderSnapshot("home.fallback", 2);
+            Assert.AreEqual(ready.Surface, view.Surface, "Loading the library must not resize the host surface.");
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            CollectionAssert.AreEqual(readySnapshot.Root.StyleClasses.ToArray(), snapshot.Root.StyleClasses.ToArray());
+            var background = snapshot.Root.Children.Single();
+            Assert.AreEqual(ViewNodeKind.BackgroundSurface, background.Kind);
+            Assert.AreEqual("playnite-library.cinematic", background.Id);
+            var stage = background.Children.Single();
+            Assert.AreEqual("playnite-library.home.stage", stage.Id);
+            var foreground = stage.Children.Single();
+            Assert.AreEqual("playnite-library.home.foreground", foreground.Id);
+            var stageStyle = theme.Resolve(new WrssElement("stack", stage.Id,
+                stage.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+            Assert.AreEqual("100%", stageStyle.Get("width")?.Text);
+            Assert.AreEqual("100%", stageStyle.Get("height")?.Text);
+            Assert.AreEqual("center", stageStyle.Get("align")?.Text);
+            Assert.AreEqual("center", stageStyle.Get("justify")?.Text);
+            Assert.IsNull(stageStyle.Get("max-width"), "Center within the available surface, not a capped root.");
+            var panelStyle = theme.Resolve(new WrssElement("stack", foreground.Id,
+                foreground.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+            Assert.AreEqual("1180px", panelStyle.Get("max-width")?.Text);
+            Assert.AreEqual("760px", panelStyle.Get("max-height")?.Text);
+            Assert.IsFalse(Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.FocusPresentationSurface),
+                "Fallbacks must not show a stale selected-game summary.");
+        }
+    }
+
+    [TestMethod]
     public void BrowsePagingPreservesFocusAndMatchingCount()
     {
         var items = Enumerable.Range(0, 6).Select(index => PlayniteLibraryItem.From(

@@ -614,17 +614,20 @@ internal static class PlayniteLibraryPresentation
                         "playnite-library.category.feedback"))
                 .Classes("playnite-library-main");
         WidgetElement root;
-        if (catalogPage && state.Route == PlayniteLibraryRoute.Library)
+        if (state.Route == PlayniteLibraryRoute.Library)
         {
             var homeContent = UI.Stack("playnite-library.home.focus-content", content)
                 .Classes("playnite-library-home-content");
-            var homeForeground = UI.Stack("playnite-library.home.foreground",
+            var homeForeground = catalogPage
+                ? UI.Stack("playnite-library.home.foreground",
                     header,
                     UI.FocusPresentationSurface(
                         homeContent,
                         DefaultFocusedGameSummary(),
                         "playnite-library.home.focus-summary"))
-                .Classes("playnite-library-home-foreground");
+                    .Classes("playnite-library-home-foreground")
+                : UI.Stack("playnite-library.home.foreground", header, queryControls, content)
+                    .Classes("playnite-library-home-foreground", "playnite-library-home-fallback");
             var homeStage = CinematicStage(
                 "playnite-library.home.stage", homeForeground,
                 "playnite-library-home-stage");
