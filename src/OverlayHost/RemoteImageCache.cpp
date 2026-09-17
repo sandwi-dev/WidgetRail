@@ -464,11 +464,29 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(
         std::scoped_lock lock(mutex_);
         if (trustedArtworkRequests_ != UINT64_MAX) ++trustedArtworkRequests_;
         if (shuttingDown_) return RemoteImageRequestResult::ShuttingDown;
+        // Successful pixels belong to the stable image key. A failure belongs
+        // only to the runtime/presentation that attempted to resolve it.
+        const auto handleSeparator = key.rfind(L'\x1f');
+        if (handleSeparator == std::wstring::npos)
+            return RemoteImageRequestResult::InvalidUrl;
+        const auto handleSuffix = key.substr(handleSeparator);
+        std::erase_if(entries_, [&](const auto& item) {
+            return item.first.starts_with(key.substr(0, widgetEnd + 1)) &&
+                item.first.ends_with(handleSuffix) &&
+                item.second.state == RemoteImageState::Failed &&
+                (!item.second.demandAuthority || *item.second.demandAuthority != authority);
+        });
         if (const auto found = entries_.find(key); found != entries_.end()) {
-            if (found->second.state == RemoteImageState::Loading &&
+            if ((found->second.state == RemoteImageState::Loading ||
+                 found->second.state == RemoteImageState::Queued) &&
                 found->second.demandAuthority &&
                 *found->second.demandAuthority != authority) {
                 const auto generation = ++artworkDemandGeneration_;
+                encodedArtworkBytes_ -= found->second.pendingBytes.size();
+                found->second.pendingBytes.clear();
+                found->second.pendingMimeType.clear();
+                std::erase(queue_, key);
+                found->second.state = RemoteImageState::Loading;
                 found->second.demandAuthority = authority;
                 found->second.demandGeneration = generation;
                 std::erase_if(artworkDemandQueue_, [&](const ArtworkDemand& pending) {
@@ -483,15 +501,12 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(
             found->second.lastUse = ++useCounter_;
             return RemoteImageRequestResult::AlreadyTracked;
         }
-        const auto handleSeparator = key.rfind(L'\x1f');
-        if (handleSeparator == std::wstring::npos)
-            return RemoteImageRequestResult::InvalidUrl;
-        const auto handleSuffix = key.substr(handleSeparator);
         const bool handleIsTerminal = std::any_of(
             entries_.begin(), entries_.end(), [&](const auto& item) {
                 return widgetEnd != std::wstring::npos &&
                     item.first.starts_with(key.substr(0, widgetEnd + 1)) &&
                     item.first.ends_with(handleSuffix) &&
+                    item.second.demandAuthority && *item.second.demandAuthority == authority &&
                     item.second.state == RemoteImageState::Failed && !item.second.budgetRejected;
             });
         if (!handleIsTerminal &&
@@ -507,9 +522,10 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(
             }
         }
         if (handleIsTerminal) {
-            entries_.emplace(key, Entry{
+            auto [failed, _] = entries_.emplace(key, Entry{
                 RemoteImageState::Failed, {}, L"Trusted artwork is unavailable.", {}, {}, {},
                 ++useCounter_});
+            failed->second.demandAuthority = authority;
             return RemoteImageRequestResult::AlreadyTracked;
         }
         const auto generation = ++artworkDemandGeneration_;
@@ -746,7 +762,9 @@ RemoteImageState RemoteImageCache::GetTrustedArtworkState(
     std::scoped_lock lock(mutex_);
     const auto found = entries_.find(std::wstring(key));
     if (found == entries_.end()) return RemoteImageState::Missing;
-    if (found->second.state == RemoteImageState::Loading &&
+    if ((found->second.state == RemoteImageState::Loading ||
+         found->second.state == RemoteImageState::Queued ||
+         found->second.state == RemoteImageState::Failed) &&
         found->second.demandAuthority &&
         *found->second.demandAuthority != authority) {
         return RemoteImageState::Missing;
@@ -886,6 +904,15 @@ HRESULT RemoteImageCache::CreateBitmap(
         image->premultipliedBgra.data(), image->stride, properties, bitmap);
 }
 
+std::size_t RemoteImageCache::ClearFailedTrustedArtwork(const std::wstring_view widgetId) {
+    if (widgetId.empty()) return 0;
+    const auto prefix = L"wrail-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
+    std::scoped_lock lock(mutex_);
+    return std::erase_if(entries_, [&](const auto& item) {
+        return item.first.starts_with(prefix) && item.second.state == RemoteImageState::Failed;
+    });
+}
+
 void RemoteImageCache::Clear() {
     std::scoped_lock lock(mutex_);
     for (auto iterator = entries_.begin(); iterator != entries_.end();) {
@@ -1009,8 +1036,13 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
     while (!stopToken.stop_requested()) {
         std::wstring url;
         ImageDecodeSize decodeSize;
+        std::optional<TrustedArtworkDemandAuthority> artworkAuthority;
+        std::uint64_t artworkGeneration{};
         std::optional<PackageIconDemandAuthority> packageIconAuthority;
         std::uint64_t packageIconGeneration{};
+        std::wstring source;
+        std::vector<std::uint8_t> encodedArtwork;
+        std::wstring encodedArtworkMime;
         {
             std::unique_lock lock(mutex_);
             condition_.wait(lock, [this, &stopToken] {
@@ -1027,23 +1059,18 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
             found->second.state = RemoteImageState::Loading;
             found->second.packageIconQueued = false;
             decodeSize = found->second.decodeSize;
+            artworkAuthority = found->second.demandAuthority;
+            artworkGeneration = found->second.demandGeneration;
             if (found->second.packageIconAuthority) {
                 packageIconAuthority = found->second.packageIconAuthority;
                 packageIconGeneration = found->second.demandGeneration;
             }
-        }
-
-        std::wstring source = url;
-        std::vector<std::uint8_t> encodedArtwork;
-        std::wstring encodedArtworkMime;
-        {
-            std::scoped_lock lock(mutex_);
-            const auto found = entries_.find(url);
-            if (found != entries_.end() && !found->second.pendingSource.empty()) {
+            source = url;
+            if (!found->second.pendingSource.empty()) {
                 source = std::move(found->second.pendingSource);
                 found->second.pendingSource.clear();
             }
-            if (found != entries_.end() && !found->second.pendingBytes.empty()) {
+            if (!found->second.pendingBytes.empty()) {
                 encodedArtwork = std::move(found->second.pendingBytes);
                 encodedArtworkMime = std::move(found->second.pendingMimeType);
                 encodedArtworkBytes_ -= encodedArtwork.size();
@@ -1116,6 +1143,15 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
         {
             std::scoped_lock lock(mutex_);
             if (shuttingDown_ || stopToken.stop_requested()) break;
+            if (artworkAuthority) {
+                const auto found = entries_.find(url);
+                if (found == entries_.end() ||
+                    found->second.state != RemoteImageState::Loading ||
+                    found->second.demandGeneration != artworkGeneration ||
+                    found->second.demandAuthority != artworkAuthority) {
+                    continue;
+                }
+            }
             if (packageIconAuthority) {
                 const auto found = entries_.find(url);
                 if (found == entries_.end() ||

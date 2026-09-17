@@ -6911,6 +6911,11 @@ private:
                 continue;
             }
             if (event.kind == widgetrail::WidgetSessionEventKind::Restarted) {
+                if (imageCache_) {
+                    const auto cleared = imageCache_->ClearFailedTrustedArtwork(event.widgetId);
+                    AppendDiagnostic(L"Widget reload retired failed artwork widget=" +
+                        event.widgetId + L" entries=" + std::to_wstring(cleared));
+                }
                 if (textEntryModal_.active() && textEntryModalAuthority_ &&
                     textEntryModalAuthority_->widgetId == event.widgetId) {
                     textEntryModal_.Close();

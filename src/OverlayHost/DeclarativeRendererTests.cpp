@@ -5734,11 +5734,12 @@ void TrustedArtworkTerminalFallbackIsStable() {
     auto gamesApps = makeSnapshot(L"games-apps");
     DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
     const Rect viewport{0.0F, 0.0F, 420.0F, 360.0F};
-    const auto render = [&](WidgetSnapshot& snapshot, const std::wstring_view widgetId) {
+    const auto render = [&](WidgetSnapshot& snapshot, const std::wstring_view widgetId,
+                            const std::wstring_view runtime = L"transition-runtime") {
         widgetrail::DeclarativeRenderOptions options;
         options.collectAccessibility = true;
         options.artworkWidgetId = widgetId;
-        options.artworkRuntimeGeneration = L"transition-runtime";
+        options.artworkRuntimeGeneration = runtime;
         options.artworkPresentationGeneration = L"transition-presentation";
         target->BeginDraw();
         target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
@@ -5899,6 +5900,25 @@ void TrustedArtworkTerminalFallbackIsStable() {
         "successful revision recovery does not add a failure diagnostic");
     Check(cache.GetStats().entries <= limits.maximumEntries,
         "trusted artwork failure and recovery bookkeeping stays cache bounded");
+    // A catalog replacement must recover the SAME handle through the real
+    // renderer lookup, without requiring a new resource revision or layout.
+    (void)render(gamesApps, L"games-apps", L"replacement-runtime");
+    const widgetrail::TrustedArtworkDemandAuthority replacement{
+        L"games-apps", L"replacement-runtime", L"transition-presentation"};
+    Check(cache.SupplyTrustedArtwork(L"games-apps", unavailableHandle, replacement,
+            L"image/png", std::wstring(trustedPngBase64)),
+        "runtime replacement retries the same failed resource through renderer demand");
+    {
+        std::unique_lock lock(transitionMutex);
+        Check(transitionCompleted.wait_for(lock, std::chrono::seconds(2), [&] {
+            return transitions.size() == 6;
+        }), "replacement authority artwork completes");
+    }
+    const auto replacementFrame = render(gamesApps, L"games-apps", L"replacement-runtime");
+    Check(rasterEvidence(replacementFrame, L"games-apps").unavailableBright > 1'000,
+        "same-handle recovery replaces the fallback with actual artwork pixels");
+    Check(sameRects(replacementFrame.focusRects, gamesPending.focusRects),
+        "same-handle recovery preserves widget navigation geometry");
     cache.Shutdown();
 }
 

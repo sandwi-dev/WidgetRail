@@ -17,6 +17,16 @@ Window previews are live, view-only content. They do not forward controller
 input into the source application. Put an action on the surrounding poster
 when you want the user to switch to that application.
 
+## Recover unavailable artwork
+
+When artwork supplied by a widget fails, the host shows a fallback and remembers
+the failure. Ordinary redraws and snapshot updates do not keep requesting it.
+Replacing the widget's runtime or package lets the visible artwork try again.
+The tray's Reload action also clears that widget's failed artwork.
+
+Successfully loaded images stay cached. Use a new artwork handle when the image
+content changes; reloading a widget does not force existing images to download again.
+
 ## Design a view for pinning
 
 A good pinned view has one purpose: show the video, identify the current track,

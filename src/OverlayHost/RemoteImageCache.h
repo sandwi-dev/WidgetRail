@@ -291,6 +291,8 @@ public:
     bool CanPrefetch(std::wstring_view key) const;
     bool BudgetRejected(std::wstring_view key) const;
     bool ReleaseBudgetRejection(std::wstring_view key);
+    // Explicit Reload retries failures while preserving ready and pending images.
+    std::size_t ClearFailedTrustedArtwork(std::wstring_view widgetId);
     void Clear();
     void Shutdown() noexcept;
 

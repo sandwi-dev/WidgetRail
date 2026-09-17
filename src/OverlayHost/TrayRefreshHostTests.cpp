@@ -137,6 +137,7 @@ public:
             (L"wrail-tray-refresh-" + std::wstring(guidText));
         fs::create_directories(root_);
         fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
+        widgetrail::host_testing::CopyNativeRuntimeDependencies(source, root_);
         fs::copy_file(
             source / L"widget-catalog.json", root_ / L"widget-catalog.json");
         fs::copy(source / L"runtime", root_ / L"runtime",
@@ -144,6 +145,11 @@ public:
         localAppData_ = root_ / L"local-app-data";
         catalogRoot_ = localAppData_ / L"WidgetRail" / L"widgets";
         fs::create_directories(catalogRoot_);
+        // This fixture uses rail wraparound to reach the final installed entry.
+        // Do not inherit the new-install radial default's within-page navigation.
+        widgetrail::host_testing::WriteUtf8(
+            localAppData_ / L"WidgetRail" / L"platform-settings.json",
+            R"json({"schemaVersion":1,"appearance":{"widgetSwitcher":"Rail"}})json");
         readyPath_ = root_ / L"host-ready.txt";
         RunCommunityInstaller(communityFixture, catalogRoot_);
     }
@@ -220,9 +226,11 @@ void RunWidgetScenario(
     activate();
     const auto admitted = "Widget presentation paint target=" +
         WideToUtf8(widgetId) + " content=admitted";
-    if (widgetId == L"settings") {
-        SendKey(window, VK_RETURN);
-    } else {
+    if (widgetId != L"settings") {
+        Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
+            return ReadUtf8(logPath).find(
+                "installed-catalog-terminal result=validated packages=1") != std::string::npos;
+        }), "Installed catalog did not finish before tray navigation; log=" + ReadUtf8(logPath));
         // Authenticate readiness with the stable bundled Settings probe, then
         // reach the installed package through ordinary production tray
         // navigation. This keeps the fixture independent of private installed
@@ -237,8 +245,8 @@ void RunWidgetScenario(
             return ReadUtf8(logPath).find(selected) != std::string::npos;
         });
         Require(reachedInstalledWidget,
-            "Ordinary tray navigation did not select the installed Community widget.");
-        SendKey(window, VK_RETURN);
+            "Ordinary tray navigation did not select the installed Community widget; log=" +
+                ReadUtf8(logPath));
     }
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
         if (!IsWindowVisible(window)) activate();
@@ -252,7 +260,8 @@ void RunWidgetScenario(
         return initialWorkers.size() == 1;
     }), std::string(displayName) + " did not own exactly one worker process.");
     const DWORD initialWorker = initialWorkers.front();
-    SendKey(window, VK_ESCAPE);
+    // Reload is a tray action. Keep tray focus throughout; entering the
+    // widget and immediately backing out races its interactive admission.
 
     const auto sendGesture = [&](const WPARAM phase) {
         DWORD_PTR ignored{};
@@ -274,6 +283,11 @@ void RunWidgetScenario(
         " Hold Y did not replace exactly one selected worker; log=" +
         ReadUtf8(logPath));
     const DWORD restartedWorker = restartedWorkers.front();
+    const auto artworkReset = "Widget reload retired failed artwork widget=" +
+        WideToUtf8(widgetId) + " entries=";
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+        return ReadUtf8(logPath).find(artworkReset) != std::string::npos;
+    }), std::string(displayName) + " successful Reload did not reset failed artwork.");
     Sleep(500);
     const auto settledWorkers =
         scenarioWorkers();
@@ -286,20 +300,23 @@ void RunWidgetScenario(
                 log, std::string(displayName) + " reloading") == 1,
         std::string(displayName) +
             " did not retain one exact host-owned restart diagnostic.");
+    Require(CountOccurrences(log, artworkReset) == 1,
+        "One Reload reset artwork failures more than once.");
 }
 
 void RunScenario(const Arguments& arguments) {
-    TemporaryInstallation installation(
-        arguments.installation, arguments.communityFixture);
-    RunWidgetScenario(
-        installation, L"settings",
-        L"SettingsWidget.Worker.exe",
-        "Settings", L"tray-refresh-settings-dlv209");
-    RunWidgetScenario(
-        installation, kCommunityId,
-        L"WidgetWorkerHost.exe",
-        "Community Refresh Fixture",
-        L"tray-refresh-community-dlv209");
+    // Each route starts with its own preferences and logs. Reload persists
+    // widget focus, which must not become the next scenario's starting state.
+    {
+        TemporaryInstallation installation(arguments.installation, arguments.communityFixture);
+        RunWidgetScenario(installation, L"settings", L"SettingsWidget.Worker.exe",
+            "Settings", L"tray-refresh-settings-dlv209");
+    }
+    {
+        TemporaryInstallation installation(arguments.installation, arguments.communityFixture);
+        RunWidgetScenario(installation, kCommunityId, L"WidgetWorkerHost.exe",
+            "Community Refresh Fixture", L"tray-refresh-community-dlv209");
+    }
 }
 
 } // namespace
