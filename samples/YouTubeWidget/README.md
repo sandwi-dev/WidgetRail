@@ -42,8 +42,7 @@ additional pages load as you reach the end of the results. Google applies its AP
 In pinned-video focus and fullscreen, **X** toggles play/pause. Follow the on-screen
 guide for the actions available on the current page.
 
-> **Screenshot space — pinned video:** add `screenshots/pinned-video.png` showing the video beside a game.
-<!-- Replace this placeholder with: ![YouTube video pinned beside a game](screenshots/pinned-video.png) -->
+![YouTube video pinned in the corner while the player controls remain accessible](screenshots/pinned-video.png)
 
 ## Common questions
 
