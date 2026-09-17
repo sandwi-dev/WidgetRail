@@ -3,8 +3,7 @@
 Bring your Playnite library into WidgetRail. Browse game artwork, find something
 to play, and launch it with your controller without leaving the overlay.
 
-> **Screenshot space — home:** add `screenshots/home.png` showing the game rail and selected game's artwork.
-<!-- Replace this placeholder with: ![Playnite Library home](screenshots/home.png) -->
+![Playnite Library home with a game rail and the selected game's artwork](screenshots/home.png)
 
 ## What you can do
 
@@ -41,8 +40,7 @@ You can reopen connection settings through **Menu → Playnite connection**.
 Home shows installed games. Open **Menu → Library** for Browse, which includes uninstalled games too; its **Installed**
 filter narrows the list. Install those games through Playnite, then refresh the widget.
 
-> **Screenshot space — browse:** add `screenshots/browse.png` showing the library filters and game grid.
-<!-- Replace this placeholder with: ![Browsing and filtering a Playnite library](screenshots/browse.png) -->
+![Browsing a Playnite library with search, filters, and a game grid](screenshots/library.png)
 
 ## Common questions
 

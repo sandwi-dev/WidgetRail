@@ -3,8 +3,7 @@
 Watch a video without leaving your game. Search public YouTube videos, play a link,
 or pin the video beside your game with controller controls still available.
 
-> **Screenshot space — player:** add `screenshots/player.png` showing a video and its controls.
-<!-- Replace this placeholder with: ![YouTube Video player](screenshots/player.png) -->
+![YouTube video playback with controller navigation and playback controls](screenshots/player.png)
 
 ## What you can do
 
@@ -43,8 +42,7 @@ additional pages load as you reach the end of the results. Google applies its AP
 In pinned-video focus and fullscreen, **X** toggles play/pause. Follow the on-screen
 guide for the actions available on the current page.
 
-> **Screenshot space — pinned video:** add `screenshots/pinned-video.png` showing the video beside a game.
-<!-- Replace this placeholder with: ![YouTube video pinned beside a game](screenshots/pinned-video.png) -->
+![YouTube video pinned in the corner while the player controls remain accessible](screenshots/pinned-video.png)
 
 ## Common questions
 

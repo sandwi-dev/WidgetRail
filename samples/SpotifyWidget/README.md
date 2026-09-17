@@ -3,8 +3,7 @@
 Find your next track and control your music from the overlay. Browse playlists,
 manage playback on a Spotify device, or use **Play here** to listen through WidgetRail.
 
-> **Screenshot space — search and player:** add `screenshots/search-player.png` showing search results beside the player.
-<!-- Replace this placeholder with: ![Spotify search and player](screenshots/search-player.png) -->
+![Spotify search results beside the now playing controls](screenshots/search-player.png)
 
 ## What you can do
 
@@ -42,8 +41,7 @@ The on-screen guide shows playback and track-menu actions where available.
 For local playback, open **Devices**, find **This overlay**, and select **Play here**.
 The current WidgetRail installer includes the runtime needed by the local player.
 
-> **Screenshot space — pinned player:** add `screenshots/pinned-player.png` showing a compact pinned layout.
-<!-- Replace this placeholder with: ![Spotify compact pinned player](screenshots/pinned-player.png) -->
+![Spotify with its compact player pinned in the corner](screenshots/pinned-player.png)
 
 ## Common questions
 
