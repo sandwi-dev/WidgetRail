@@ -3452,6 +3452,51 @@ public sealed class PlayniteLibraryTests
 
 
     [TestMethod, Timeout(30_000)]
+    [DataRow("credential_missing", "Set up connection")]
+    [DataRow("authentication_required", "Update token")]
+    public async Task CredentialFailureOffersDirectSetupAndReturnsToLibrary(string code, string actionLabel)
+    {
+        var host = new FakeHost(1)
+        {
+            QueryHandler = (_, _) => ValueTask.FromException<WidgetAppLibraryPage>(
+                new WidgetCapabilityException(code, "private credential detail")),
+        };
+        var connection = new FakeConnectionClient
+        {
+            AllowCredentialMutation = true,
+            Result = new(code == "credential_missing" ? PlayniteBridgeConnectionKind.NotConfigured :
+                PlayniteBridgeConnectionKind.AuthenticationRequired, code),
+        };
+        var widget = Create(host, TimeProvider.System, connection);
+        await Interactive(widget);
+        await Bounded(widget.WhenLibraryIdleAsync(), "credential failure");
+        var home = Snapshot(widget, 90_100);
+        var setup = Nodes(home.Root).Single(node => node.Id == "playnite-library.connection-required.action");
+        Assert.AreEqual(actionLabel, setup.Text);
+        Assert.AreEqual(LauncherWidget.PlayniteOpenActionId, setup.ActionId);
+        Assert.AreEqual(setup.Id, home.InitialFocusId);
+        Assert.IsTrue(Nodes(home.Root).Any(node => (node.Text ?? "").Contains("Playnite Bridge", StringComparison.Ordinal)));
+        Assert.IsFalse(Nodes(home.Root).Any(node => node.ActionId == PlayniteLibraryActions.Retry));
+        Assert.IsFalse(Encoding.UTF8.GetString(SnapshotJson.Serialize(home)).Contains("private credential detail", StringComparison.Ordinal));
+        Assert.AreEqual(0, connection.ProbeCalls, "Rendering setup should not add a connection probe.");
+
+        await widget.OnActionAsync(new(setup.ActionId!, setup.Id));
+        var entry = Snapshot(widget, 90_101);
+        Assert.IsTrue(Nodes(entry.Root).Any(node => node.Id == "playnite-library.playnite.token"));
+        Assert.AreEqual(1, connection.ProbeCalls);
+        connection.Result = new(PlayniteBridgeConnectionKind.Connected, "connected");
+        host.QueryHandler = null;
+        await widget.OnActionAsync(new(LauncherWidget.PlayniteSaveActionId, "playnite-library.playnite.token")
+            { CommittedText = "fixture-token" });
+        Assert.AreEqual(1, connection.SaveCalls);
+        await widget.OnActionAsync(new(LauncherWidget.PlayniteBackActionId, LauncherWidget.PlayniteBackActionId));
+        await Bounded(widget.WhenLibraryIdleAsync(), "library after setup");
+        Assert.AreEqual(WidgetPagedResourceStatus.Ready, widget.Collection.Status);
+        Assert.IsFalse(Nodes(Snapshot(widget, 90_102).Root).Any(node => node.Id == setup.Id));
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task PermissionDeniedIsNotRenderedAsEmptyOrOffline()
     {
         var host = new FakeHost(0)

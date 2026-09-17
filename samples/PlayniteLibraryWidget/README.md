@@ -1,133 +1,73 @@
 # Playnite Library
 
-Playnite Library is a controller-first, full-trust Community sample backed by a
-user-installed Playnite Bridge instance. The package owns its bounded localhost
-client, protected credential prompt, presentation, and organization state. It
-does not copy a product app-library provider into the package.
+Bring your Playnite library into WidgetRail. Browse game artwork, find something
+to play, and launch it with your controller without leaving the overlay.
 
-Home uses non-focusable controller hints: Y refreshes and Menu opens Library,
-Categories, Hidden games, and Playnite connection. X opens the focused game's
-options, including Favorite. Browse also uses a Y hint for Refresh. Header
-hints have a dark backing for readability and do not interrupt navigation through
-the game collection. Browse groups its hints in one horizontal, wrapping row.
+> **Screenshot space — home:** add `screenshots/home.png` showing the game rail and selected game's artwork.
+<!-- Replace this placeholder with: ![Playnite Library home](screenshots/home.png) -->
 
-Browse includes installed and uninstalled games by default. The Installed toggle
-beside Favorites limits Browse to installed games
-and combines with Favorites; Clear turns it off. Uninstalled games show "Not installed"
-on a visible poster badge and keep their game options, but cannot be launched.
-Pressing A shows a toast asking the user to install the game through Playnite and
-then refresh. Home lists installed games only.
+## What you can do
 
-Home orders the full provider collection by favorites, most recently played,
-name, and stable game ID before splitting it into pages. The rail preserves
-that order as pages arrive. Saved games outside a partial cursor window are
-not presented as unavailable merely because their page has not loaded.
-Browse shows the total matching its current query, independently of retained
-page size. Adjacent loading preserves focus and uses the shared edge indicator;
-providers without a known total display an explicitly labeled loaded count.
-Each cursor traversal keeps its initial membership and ordering until refresh;
-current game details and favorite authority remain live. A favorite change takes
-effect in ordering on refresh, so later pages cannot overlap an earlier ordering.
-Home and Browse own separate traversals. Replacing a query retires its old cursors.
-Saving a favorite disables activation temporarily while preserving rail focus.
-Home and Browse load more games automatically while scrolling or navigating;
-there are no LB/RB page-jump shortcuts. Home fetches 16 games per page; Browse fetches 30. Home refreshes
-once whenever it becomes active, including reopening the overlay and returning from another
-route. A successful refresh starts the rail at the beginning.
-Visible-to-interactive transitions do not trigger a second refresh.
-Browse reuses its loaded pages, stable scroll container, and position on reopening
-while the widget remains loaded. After five minutes hidden, WidgetRail unloads
-the widget application to release memory. Reopening then starts a fresh instance;
-in-memory pages and navigation reset, while saved settings remain. This does not
-close Playnite itself or its Bridge extension.
-Refresh and query changes request fresh data explicitly. The retention target is 48 items for Home and 60 for Browse, with a hard maximum
-of 192; visible pages remain protected by the shared cursor policy.
+- Browse installed games on Home, or search your wider library in Browse.
+- Filter by favorites, installed status, source, and collections.
+- Launch installed games through Playnite Bridge.
+- Organize favorites, hidden games, categories, and completion status.
 
-## Setup and safety
+## Connect your library
 
-Open **Playnite setup** in the widget, paste the Playnite Bridge token, and save.
-The token is stored under the package-scoped Windows Credential Manager target
-and is never rendered, logged, or copied into package or private state. The UI
-offers explicit replace and remove actions. Missing credentials produce an
-actionable setup screen; no environment variable is part of the product flow.
+This widget connects to **Playnite Bridge**, a separate local service. Installing
+the widget does not install Playnite or configure the bridge for you.
 
-The transport is structurally limited to `localhost:19821`, disables proxy,
-redirect, cookie, and decompression behavior, and exposes only the fixed routes
-needed for bounded library reads, artwork, launch request admission, favorites,
-hidden state, categories, and completion status. It does not expose arbitrary
-methods or paths, install/uninstall, metadata refresh, deletion, evaluation, or
-account operations.
+1. Install Playnite Library's `.wrwidget` from [WidgetRail releases](https://github.com/sandwi-dev/WidgetRail/releases) through **Settings → Widgets**. Review the full-trust prompt and enable it.
+2. Install and enable Playnite Bridge in Playnite, and keep Playnite running.
+3. Copy the token from Playnite Bridge settings.
+4. In WidgetRail, select **Set up connection**, paste the token, and save it.
+5. Confirm the connection, then select **Back** to load your library.
 
-## Data and authority
+The supported bridge listens on `localhost:19821` and must provide the compatible
+games API. Tokens are stored privately in Windows Credential Manager.
+You can reopen connection settings through **Menu → Playnite connection**.
 
-Playnite game GUIDs are the exact item, action, and mutation authority. Library
-queries traverse deterministic 64-item Bridge pages up to 10,000 games, then
-apply the current search, source, collection, sort, and 32-item presentation
-window locally. Installed and owned-but-not-installed games remain distinct.
-Manual and emulated games are ordinary Playnite records; optional source,
-category, completion, metadata, and artwork fields fail closed when absent or
-malformed.
+## Use it with a controller
 
-Favorites, hidden state, category membership, completion status, and launch
-requests are re-resolved against the current exact GUID before mutation. A
-successful launch response means only that Playnite Bridge accepted the request;
-it is not presented as proof that a process started. WIDGE-121 owns later
-observed-start and overlay-close behavior.
+| Control | Action |
+| --- | --- |
+| A | Open a control or launch the selected installed game |
+| X | Open options for the selected game |
+| Y | Refresh Home or Browse |
+| Menu | Open Library (Browse), Categories, Hidden games, or Playnite connection |
+| B | Return from a nested page |
 
-The application may retain a bounded last-good catalog for presentation when
-the Bridge becomes unavailable. Retained entries are marked stale, expose no
-launch capability, and cannot authorize mutations. A fresh current observation
-is required before any action.
+Home shows installed games. Open **Menu → Library** for Browse, which includes uninstalled games too; its **Installed**
+filter narrows the list. Install those games through Playnite, then refresh the widget.
 
-Home and Browse use independent cursor resources, query generations, retained
-windows, selection anchors, and pagination. Paging or filtering Browse does not
-replace Home's current window or fixed rows, and returning from Browse does not
-issue a gratuitous Home query. Provider identity and mutation authority remain
-shared and current across both presentation routes.
+> **Screenshot space — browse:** add `screenshots/browse.png` showing the library filters and game grid.
+<!-- Replace this placeholder with: ![Browsing and filtering a Playnite library](screenshots/browse.png) -->
 
-Resolved artwork payloads use a package-owned, least-recently-used content cache
-bounded to 128 MiB. That byte budget is an application cache policy, not a
-process-memory limit. Cache hits promote recency, oversized payloads may serve
-the current request without being retained, and byte eviction never revokes a
-still-published artwork handle. Handle registration, lifecycle pinning, and
-late-result rejection remain separate authority owners.
+## Common questions
 
-## Build and package
+**The widget asks me to set up the bridge.** No token has been saved yet. Select
+**Set up connection** to enter the token from Playnite Bridge settings.
+
+**The saved token was rejected.** Select **Update token** and enter the current
+token from Playnite Bridge settings.
+
+**The bridge is unavailable.** Start Playnite and its bridge, then open
+**Playnite connection → Test connection**. An incompatible bridge API needs a compatible bridge version.
+
+**A game is missing.** Home only shows installed games. Check Browse, clear its
+filters, and refresh after changing your library in Playnite.
+
+**Does closing the overlay close Playnite?** No. The widget unloads after five
+minutes hidden to release memory; Playnite and its bridge keep running.
+
+## Build or customize
 
 From the repository root:
 
 ```powershell
-pwsh -NoProfile -File samples/PlayniteLibraryWidget/Build-CommunityPackage.ps1 -Configuration Release
+pwsh -NoProfile -File .\samples\PlayniteLibraryWidget\Build-CommunityPackage.ps1 -Configuration Release
 ```
 
-The script publishes the full-trust application, validates the staged manifest
-and payload, rejects product-provider/debug files, and emits the immutable
-archive under `artifacts/community-addons/playnite-library/`. It does not install
-or launch unless its separate explicit install switch is supplied.
-
-Focused deterministic coverage uses fake Playnite Bridge and credential seams;
-it neither reads a real credential nor connects to a live Playnite instance.
-
-## State ownership
-
-The widget owns render-facing local state through one constructor-created
-`WidgetModel<PlayniteLibraryRenderState>`. Each render reads one atomic model
-snapshot, and equal updates publish neither a model revision nor a widget
-invalidation. Related transitions commit together, so query, route-local
-selection, modal selection, hero, status, and connection presentation cannot be
-observed as a partially updated field cluster.
-
-Provider and persistence authority deliberately remain outside that model:
-
-| Owner | State and responsibility |
-| --- | --- |
-| `WidgetModel<PlayniteLibraryRenderState>` | Immutable query/collection projection, fixed rows and source observations, details/action-sheet/title-editor selections, route-local category/running/hero/focus state, local status/busy/launching presentation, and Playnite connection presentation. |
-| Home and Browse `WidgetCursorResource` instances | Independent remote page lifecycles, queries, cursors, retained item windows, anchors, stale-generation rejection, cancellation, and provider errors. |
-| `WidgetNavigator` | Route stack, route input scopes, and route-return focus. |
-| `WidgetOperations` | Named asynchronous operation admission, cancellation, and drain. |
-| Playnite application/Bridge authority | Current catalog identities, favorites, hidden/category/completion state, and exact mutation/launch authorization. |
-| Private-state and launch-persistence owners | CAS revision, bounded organization persistence, launch-state retention, and their independent generations. |
-
-Remote collections, mutable dictionaries, tasks, cancellation tokens, provider
-clients, and resource/navigator state never move into the render model. The model
-contains only immutable local projections needed to produce a coherent view.
+The package is written to `artifacts/community-addons/playnite-library/` without installing it.
+See [development notes](DEVELOPMENT.md) for the bridge contract, state ownership, caching, and package structure.

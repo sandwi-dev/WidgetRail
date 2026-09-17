@@ -270,7 +270,19 @@ internal static class PlayniteLibraryPresentation
         string? initialFocus = state.Route == PlayniteLibraryRoute.Browse
             ? state.BrowseInitialFocusId ?? snapshot.RequestedFocusId
             : snapshot.RequestedFocusId;
-        if (state.Route == PlayniteLibraryRoute.Categories)
+        if ((state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse) &&
+            snapshot.Error?.Code is "credential_missing" or "authentication_required")
+        {
+            var missing = snapshot.Error.Code == "credential_missing";
+            content = UI.Stack("playnite-library.content",
+                    UI.EmptyState(missing ? "Set up Playnite Bridge" : "Update your Playnite Bridge token",
+                        snapshot.Error.Message, "playnite-library.connection-required",
+                        new ComponentAction(missing ? "Set up connection" : "Update token",
+                            PlayniteLibraryWidget.PlayniteOpenActionId, WidgetGlyph.Settings)))
+                .Classes("playnite-library-content");
+            initialFocus = "playnite-library.connection-required.action";
+        }
+        else if (state.Route == PlayniteLibraryRoute.Categories)
         {
             var categoryRows = state.Organization.Categories.Select(category =>
                 UI.Card("playnite-library.category.card." + category.Id,

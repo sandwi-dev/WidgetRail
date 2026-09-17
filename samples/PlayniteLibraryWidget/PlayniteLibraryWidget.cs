@@ -2514,6 +2514,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     private static WidgetResourceError MapError(Exception exception) => exception switch
     {
+        WidgetCapabilityException capability when capability.ErrorCode == "credential_missing" =>
+            new("credential_missing", "Install and enable Playnite Bridge in Playnite, then copy its token. Select Set up connection to enter it here."),
+        WidgetCapabilityException capability when capability.ErrorCode == "authentication_required" =>
+            new("authentication_required", "The saved Playnite Bridge token was rejected. Copy the current token from Playnite Bridge settings and update it here."),
         WidgetCapabilityException capability when capability.ErrorCode is
             "permission_denied" or "capability_not_declared" or "capability_revoked" =>
             new("permission_denied", "Allow Playnite Library access in Settings."),
