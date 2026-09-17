@@ -38,6 +38,7 @@ For a comfortable controller setup:
 - **Automatically hide the taskbar:** on Windows 11, open Settings → Personalization → Taskbar → Taskbar behaviors. On Windows 10, use the taskbar's desktop-mode auto-hide setting. This leaves more room for WidgetRail near the screen edge.
 - **Xbox full-screen experience / Xbox mode:** if your Windows build offers this mode, turn it off and use the normal Windows desktop with WidgetRail. Its name and availability vary by device and Windows version; look for the Xbox mode or full-screen experience setting on your PC.
 - **Game Bar controller shortcut:** in Windows Settings → Gaming → Game Bar, turn off **Allow your controller to open Game Bar**.
+- **View + Menu emulation:** if Windows offers **Use View + Menu as Guide button in apps** (shown with button icons), turn it off. Windows otherwise translates the combination into a Guide event before WidgetRail receives it. This is separate from allowing the controller to open Game Bar.
 - **WidgetRail opening shortcut:** in WidgetRail Settings → Controllers, set **Controller shortcut** to **Guide**. Use the Xbox Guide button or PlayStation PS button to open and close WidgetRail. This reduces conflicts with games that use View and Menu.
 - **Borderless windowed games:** start with this display mode when using the overlay or pinned video. Exclusive fullscreen can hide desktop overlays.
 

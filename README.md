@@ -142,6 +142,7 @@ Microsoft components. Updates are manual. Follow the
 - Turn on **Automatically hide the taskbar** for more room around the overlay.
 - Turn off **Xbox full-screen experience / Xbox mode** if your PC offers it, so WidgetRail runs alongside the normal Windows desktop.
 - Turn off **Allow your controller to open Game Bar** in **Windows Settings → Gaming → Game Bar**.
+- If Windows offers **Use View + Menu as Guide button in apps**, turn it off too. Otherwise, Windows reports that combination as Guide, so it can still toggle WidgetRail when Guide is selected.
 - In **WidgetRail Settings → Controllers**, set **Controller shortcut** to **Guide** to reduce shortcut conflicts in games. Both the **Xbox Guide button** and **PlayStation PS button** are supported.
 - Use **borderless windowed** mode in games for the most reliable desktop overlay and pinned-video experience.
 
