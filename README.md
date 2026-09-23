@@ -129,7 +129,7 @@ The included `wrail` CLI can also install widgets and themes from local packages
 or named GitHub release assets with checksum verification.
 [Package installation](docs/developers/publishing-and-installation.md)
 
-## Performance and memory
+## Performance
 
 Standard widget interfaces use native rendering. Browser-based surfaces are
 used separately for supported embedded web media.
@@ -139,19 +139,6 @@ used separately for supported embedded web media.
 - **Lifecycle management:** widgets can reduce background work or unload while hidden. Audio Mixer unloads after two minutes hidden; Playnite Library unloads after five. Pinned widgets stay active, and media widgets can remain loaded to preserve playback.
 
 Memory use varies with display size, artwork, active widgets, and playback.
-Local observations from one PC provide a reference, rather than a fixed memory budget:
-
-| Workload | Observed Task Manager memory |
-|---|---|
-| Continuous browsing of a large Playnite library | Around **300 MB** for the overlay process |
-| After launching a game | Around **150 MB** for the overlay and **125 MB** for the Bridge |
-
-Widget workers and media helpers use additional memory. The overlay process
-alone does not represent the application's total usage.
-
-Windows may trim process working sets under memory pressure, reducing Task
-Manager's memory reading while application state remains available. The amount
-reclaimed depends on the workload and Windows memory management.
 
 [Widget lifecycle](docs/reference/widget-residency.md) · [Artwork caching](docs/reference/artwork-disk-cache.md)
 
