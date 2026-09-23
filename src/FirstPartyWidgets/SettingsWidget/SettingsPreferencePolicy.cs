@@ -18,6 +18,7 @@ internal enum SettingsPreferenceKind
     ReducedTransparency,
     AnimateWidgetSwitching,
     WidgetSwitcher,
+    OverlayPosition,
     Theme,
 }
 
@@ -136,6 +137,15 @@ internal readonly record struct SettingsPreferenceMutation(
         },
         SettingsPreferenceKind.Theme when ThemeId is not null && ThemeVersion is not null =>
             appearance with { ThemeId = ThemeId, ThemeVersion = ThemeVersion },
+        SettingsPreferenceKind.OverlayPosition => appearance with
+        {
+            OverlayPosition = appearance.OverlayPosition switch
+            {
+                OverlayPosition.Center => OverlayPosition.BottomLeft,
+                OverlayPosition.BottomLeft => OverlayPosition.BottomRight,
+                _ => OverlayPosition.Center,
+            },
+        },
         _ => appearance,
     };
 
@@ -191,6 +201,7 @@ internal static class SettingsPreferencePolicy
                 SettingsPreferenceKind.ReducedTransparency,
                 "Transparency preference saved"),
             "widget-switcher.toggle" => new(SettingsPreferenceKind.WidgetSwitcher, "Widget switcher layout saved"),
+            "overlay-position.cycle" => new(SettingsPreferenceKind.OverlayPosition, "Overlay position saved"),
             "widget-switch-animation.toggle" => new(
                 SettingsPreferenceKind.AnimateWidgetSwitching,
                 "Widget-switch animation preference saved"),

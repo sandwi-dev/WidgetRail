@@ -1217,6 +1217,24 @@ int main() {
     CheckRenderedGuideContentCentering();
     CheckRetainedTrayInvalidation();
     CheckFixedChromeWindowPolicy();
+    for (const RECT work : {RECT{0, 0, 1920, 1040}, RECT{-2560, -200, 0, 1240}}) {
+        for (const auto position : {widgetrail::OverlayPosition::BottomLeft, widgetrail::OverlayPosition::BottomRight}) {
+            const auto chrome = widgetrail::shell::ComputeFixedChromeWindowBounds(work, 1100, 220, position, 24);
+            for (const LONG width : {400L, 801L, 1100L}) {
+                const auto content = widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
+                    work, chrome.top, width, 500, 8, position, 24);
+                Check(content.has_value(), "corner content fits negative-origin and primary monitors");
+                Check(position == widgetrail::OverlayPosition::BottomLeft
+                    ? content->left == chrome.left : content->right == chrome.right,
+                    "varying widget widths share the fixed chrome outside edge");
+                Check(content->bottom + 8 == chrome.top, "corner content keeps the guide gap");
+            }
+            const auto fullWidth = widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
+                work, chrome.top, work.right - work.left, 500, 8, position, 24);
+            Check(fullWidth && fullWidth->left == work.left && fullWidth->right == work.right,
+                "oversized content collapses side margins to stay within the display");
+        }
+    }
     widgetrail::shell::FillColorKeyRoundedRectangle(nullptr, {}, nullptr);
 
     wic.Reset();

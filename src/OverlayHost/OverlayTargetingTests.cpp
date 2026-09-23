@@ -320,6 +320,23 @@ int main() {
     Check(gate.TryEnter(), "deferred placement enters after original completes");
     Check(!gate.Complete(), "settled placement does not schedule another refresh");
 
+    for (const auto position : {widgetrail::OverlayPosition::BottomLeft, widgetrail::OverlayPosition::BottomRight}) {
+        for (const float width : {320.0F, 639.5F, 961.0F}) {
+            const auto motion = widgetrail::PlanCompositionMotion(961, 701, 640, 400,
+                width, 500, widgetrail::CompositionVerticalAnchor::Bottom, position);
+            const bool left = position == widgetrail::OverlayPosition::BottomLeft;
+            Check(left ? motion.offsetX == 0 : motion.offsetX + width == 961,
+                "corner resize holds the outer edge across fractional animation frames");
+            Check(motion.offsetY + 500 == 701, "corner resize holds the bottom edge");
+            const auto spaces = widgetrail::PlanCompositionChildCoordinates(motion, 640, 400);
+            const widgetrail::CompositionPoint local{90, 70};
+            const auto roundTrip = widgetrail::InverseContentPoint(spaces, widgetrail::ProjectContentPoint(spaces, local));
+            Check(std::abs(roundTrip.x - local.x) < 0.01F && std::abs(roundTrip.y - local.y) < 0.01F,
+                "corner animation preserves pointer coordinate round trips");
+            Check(left ? spaces.chromeOffsetX == 0 : spaces.chromeOffsetX + 640 == 961,
+                "destination chrome uses the same fixed edge");
+        }
+    }
     std::cout << "OverlayTargetingTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

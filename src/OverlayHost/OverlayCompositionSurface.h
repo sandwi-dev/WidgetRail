@@ -1,5 +1,7 @@
 #pragma once
 
+#include "OverlayPosition.h"
+
 #include <Windows.h>
 #include <d2d1_1.h>
 #include <dcomp.h>
@@ -258,8 +260,10 @@ public:
         const ChromePresentation& presentation, CommitTiming& timing) noexcept;
     HRESULT CommitOpacity(float opacity, CommitTiming& timing) noexcept;
     HRESULT SnapContentVisible() noexcept;
-    HRESULT CommitShellZoom(float fromScale, bool opening, bool reducedMotion) noexcept;
-    HRESULT SetShellZoomAnchor(float width, float height) noexcept;
+    HRESULT CommitShellZoom(float fromScale, bool opening, bool reducedMotion,
+        OverlayPosition position = OverlayPosition::Center) noexcept;
+    HRESULT SetShellZoomAnchor(float width, float height,
+        OverlayPosition position = OverlayPosition::Center) noexcept;
     // Creates the only external content slot under this HWND's existing root.
     // The caller may connect a composition-hosted renderer to the returned
     // visual, but this class remains the sole visual-tree/presentation owner.

@@ -73,6 +73,7 @@
     <ClInclude Include="NativeIcons.h" />
     <ClInclude Include="NativeStyle.h" />
     <ClInclude Include="OverlayPlacement.h" />
+    <ClInclude Include="OverlayPosition.h" />
     <ClInclude Include="OverlayPresentationTransaction.h" />
     <ClInclude Include="OverlayTargeting.h" />
     <ClInclude Include="DeclarativeRenderer.h" />

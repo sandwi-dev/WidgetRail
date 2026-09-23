@@ -58,6 +58,16 @@ internal static class SettingsPolicyScenarios
             "Switcher preference did not return to the combined mode.");
         Require(SettingsPreferencePolicy.TryCreate("text.increase", out var increase),
             "Text preference was not admitted.");
+        Require(SettingsPreferencePolicy.TryCreate("overlay-position.cycle", out var position),
+            "Overlay position preference was not admitted.");
+        var positioned = PlatformSettingsDocument.Default;
+        foreach (var expected in new[] { OverlayPosition.BottomLeft, OverlayPosition.BottomRight, OverlayPosition.Center })
+        {
+            positioned = position.Apply(positioned);
+            Equal(expected, positioned.Appearance.OverlayPosition, "Overlay position did not cycle correctly.");
+            Equal(PlatformSettingsDocument.Default.Appearance.WidgetSwitcher, positioned.Appearance.WidgetSwitcher,
+                "Position changed the independent switcher preference.");
+        }
         var maximum = PlatformSettingsDocument.Default with
         {
             Appearance = PlatformSettingsDocument.Default.Appearance with

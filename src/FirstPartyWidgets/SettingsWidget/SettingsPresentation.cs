@@ -350,6 +350,15 @@ internal static class SettingsPresentation
                 UI.Text("Overlay", "overlay.heading", "Overlay settings")
                     .Classes("page-heading"),
                 DisplayHint(display), interfaceScale, opacity,
+                UI.Button($"Position: {settings.Appearance.OverlayPosition switch
+                    {
+                        OverlayPosition.BottomLeft => "Bottom left",
+                        OverlayPosition.BottomRight => "Bottom right",
+                        _ => "Center",
+                    }}", "overlay-position.cycle", "overlay.position")
+                    .Busy(busy).Classes("setting-row"),
+                UI.Text("Choose Center, Bottom left, or Bottom right. Corner layouts keep the outside edge fixed when widgets resize.",
+                    "overlay.position.help").Classes("page-help"),
                 UI.Button($"Widget switcher: {(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial ? "Radial + rail" : "Rail")}",
                     "widget-switcher.toggle", "overlay.widget-switcher").Busy(busy).Classes("setting-row"),
                 UI.Text(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial

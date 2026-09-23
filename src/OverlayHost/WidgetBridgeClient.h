@@ -1,6 +1,7 @@
 #pragma once
 
 #include "WindowPreviewCapture.h"
+#include "OverlayPosition.h"
 #include <set>
 
 #include <Windows.h>
@@ -766,6 +767,7 @@ struct PlatformAppearance final {
     PlatformTransparencyPreference transparency{PlatformTransparencyPreference::Full};
     bool animateWidgetSwitching{};
     bool radialWidgetSwitcher{};
+    OverlayPosition overlayPosition{OverlayPosition::Center};
     PlatformSurfaceAppearanceOverride widgetSurfaceAppearance{
         PlatformSurfaceAppearanceOverride::Widget};
     std::unordered_map<std::wstring, PlatformSurfaceAppearanceOverride>

@@ -7,12 +7,25 @@
 
 namespace widgetrail::shell {
 
+namespace {
+LONG HorizontalOrigin(const RECT& workArea, const LONG width,
+    const OverlayPosition position, const LONG sideMargin) noexcept {
+    const LONG spare = std::max(0L, workArea.right - workArea.left - width);
+    const LONG inset = std::clamp(sideMargin, 0L, spare / 2);
+    switch (position) {
+    case OverlayPosition::BottomLeft: return workArea.left + inset;
+    case OverlayPosition::BottomRight: return workArea.right - width - inset;
+    default: return workArea.left + spare / 2;
+    }
+}
+} // namespace
+
 RECT ComputeFixedChromeWindowBounds(
-    const RECT& workArea, const LONG width, const LONG height) noexcept {
+    const RECT& workArea, const LONG width, const LONG height,
+    const OverlayPosition position, const LONG sideMargin) noexcept {
     if (width <= 0 || height <= 0 || workArea.right <= workArea.left ||
         workArea.bottom <= workArea.top) return {};
-    const LONG availableWidth = workArea.right - workArea.left;
-    const LONG left = workArea.left + (availableWidth - width) / 2;
+    const LONG left = HorizontalOrigin(workArea, width, position, sideMargin);
     return {left, workArea.bottom - height, left + width, workArea.bottom};
 }
 
@@ -44,7 +57,8 @@ std::optional<RECT> ComputeContentWindowBoundsAboveGuide(
     const LONG guideTop,
     const LONG width,
     const LONG height,
-    const LONG panelToGuideGap) noexcept {
+    const LONG panelToGuideGap,
+    const OverlayPosition position, const LONG sideMargin) noexcept {
     if (width <= 0 || height <= 0 || panelToGuideGap < 0 ||
         workArea.right <= workArea.left ||
         workArea.bottom <= workArea.top) return std::nullopt;
@@ -52,8 +66,7 @@ std::optional<RECT> ComputeContentWindowBoundsAboveGuide(
     const LONG maximumY = workArea.bottom - height;
     if (maximumX < workArea.left || maximumY < workArea.top)
         return std::nullopt;
-    const LONG left = workArea.left +
-        ((workArea.right - workArea.left) - width) / 2;
+    const LONG left = HorizontalOrigin(workArea, width, position, sideMargin);
     const LONG top = std::clamp(
         guideTop - panelToGuideGap - height,
         workArea.top, maximumY);

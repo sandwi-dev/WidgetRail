@@ -172,7 +172,9 @@ public:
         const OverlayPresentationExtent destinationExtentDip,
         const std::uint64_t timestamp,
         const bool reducedMotion,
-        const bool wasVisible) noexcept {
+        const bool wasVisible,
+        const OverlayPosition position = OverlayPosition::Center) noexcept {
+        position_ = position;
         if (pendingCompositionFrom_) {
             auto from = *pendingCompositionFrom_;
             if (pendingCompositionRetarget_) {
@@ -204,6 +206,7 @@ public:
                     destinationPlacement.y - containerPlacement.y),
                 containerPlacement.width != destinationPlacement.width ||
                     containerPlacement.height != destinationPlacement.height,
+                position_,
             },
             wasVisible && priorWidth != 0 && priorHeight != 0 &&
                 extentTransition_.active(),
@@ -224,7 +227,7 @@ public:
             static_cast<unsigned int>(destinationPlacement.height),
             initial.widthDip * pixelsPerDipX,
             initial.heightDip * pixelsPerDipY,
-            CompositionVerticalAnchor::Bottom);
+            CompositionVerticalAnchor::Bottom, position_);
         return directive;
     }
 
@@ -310,7 +313,7 @@ public:
                 static_cast<unsigned int>(destination.height),
                 extent.widthDip * motionPixelsPerDipX_,
                 extent.heightDip * motionPixelsPerDipY_,
-                CompositionVerticalAnchor::Bottom),
+                CompositionVerticalAnchor::Bottom, position_),
             OverlayPresentationExtent{
                 static_cast<int>(std::lround(extent.widthDip)),
                 static_cast<int>(std::lround(extent.heightDip)),
@@ -365,6 +368,7 @@ public:
                 static_cast<float>(target.y - container.y),
                 clientWidth != static_cast<unsigned int>(target.width) ||
                     clientHeight != static_cast<unsigned int>(target.height),
+                position_,
             };
         }
         const auto presented = compositionPresentedExtentDip_.value_or(desired);
@@ -383,7 +387,7 @@ public:
             static_cast<unsigned int>(target.height),
             static_cast<float>(presented.widthDip) * pixelsPerDipX,
             static_cast<float>(presented.heightDip) * pixelsPerDipY,
-            CompositionVerticalAnchor::Bottom);
+            CompositionVerticalAnchor::Bottom, position_);
     }
 
     [[nodiscard]] bool RetireHidden() noexcept {
@@ -427,6 +431,7 @@ private:
     std::optional<OverlayPresentationExtent> compositionPresentedExtentDip_;
     std::optional<CommittedPresentationDestination> committedDestination_;
     float motionPixelsPerDipX_{1.0F};
+    OverlayPosition position_{OverlayPosition::Center};
     float motionPixelsPerDipY_{1.0F};
     std::uint64_t motionCommitCount_{};
 };

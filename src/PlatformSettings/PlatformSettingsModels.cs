@@ -38,6 +38,9 @@ public enum WidgetSurfaceAppearanceOverride
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetSwitcherLayout>))]
 public enum WidgetSwitcherLayout { Rail, Radial }
 
+[JsonConverter(typeof(JsonStringEnumConverter<OverlayPosition>))]
+public enum OverlayPosition { Center, BottomLeft, BottomRight }
+
 public sealed record AppearanceSettings
 {
     public const double MinimumInterfaceScale = 0.8;
@@ -90,6 +93,9 @@ public sealed record AppearanceSettings
     // Missing values in existing settings retain Rail; fresh installations
     // receive the explicit combined-mode value in Default below.
     public WidgetSwitcherLayout WidgetSwitcher { get; init; } = WidgetSwitcherLayout.Rail;
+
+    /// <summary>Screen anchor for the widget and its guide and tray.</summary>
+    public OverlayPosition OverlayPosition { get; init; } = OverlayPosition.Center;
 
     /// <summary>Global host-owned override; Widget preserves each declaration.</summary>
     public WidgetSurfaceAppearanceOverride WidgetSurfaceAppearance { get; init; } =
@@ -254,6 +260,8 @@ public static class PlatformSettingsValidator
             Add("$.appearance.motion", "invalid_enum", "Motion preference is invalid.");
         if (!Enum.IsDefined(appearance.WidgetSwitcher))
             Add("$.appearance.widgetSwitcher", "invalid_enum", "Widget switcher layout is invalid.");
+        if (!Enum.IsDefined(appearance.OverlayPosition))
+            Add("$.appearance.overlayPosition", "invalid_enum", "Overlay position is invalid.");
         if (!Enum.IsDefined(appearance.Contrast))
             Add("$.appearance.contrast", "invalid_enum", "Contrast preference is invalid.");
         if (!Enum.IsDefined(appearance.Transparency))

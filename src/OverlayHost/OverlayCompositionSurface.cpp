@@ -1030,24 +1030,26 @@ HRESULT OverlayCompositionSurface::SnapContentVisible() noexcept {
     return result;
 }
 
-HRESULT OverlayCompositionSurface::SetShellZoomAnchor(const float width, const float height) noexcept {
+HRESULT OverlayCompositionSurface::SetShellZoomAnchor(const float width, const float height,
+    const OverlayPosition position) noexcept {
     if (!shellZoomTransform_) return S_OK;
     if (!std::isfinite(width) || !std::isfinite(height) || width <= 0 || height <= 0)
         return E_INVALIDARG;
-    HRESULT result = shellZoomTransform_->SetCenterX(width * 0.5F);
+    HRESULT result = shellZoomTransform_->SetCenterX(width * HorizontalAnchor(position));
     if (SUCCEEDED(result)) result = shellZoomTransform_->SetCenterY(height);
     return result;
 }
 
 HRESULT OverlayCompositionSurface::CommitShellZoom(
-    const float fromScale, const bool opening, const bool reducedMotion) noexcept {
+    const float fromScale, const bool opening, const bool reducedMotion,
+    const OverlayPosition position) noexcept {
     if (!device_ || !rootVisual_ || !std::isfinite(fromScale) || fromScale < OverlayMinimumZoomScale || fromScale > 1.0F)
         return E_INVALIDARG;
     ComPtr<IDCompositionScaleTransform> zoom;
     HRESULT result = device_->CreateScaleTransform(zoom.GetAddressOf());
     RECT client{};
     if (!GetClientRect(contentWindow_, &client)) return HRESULT_FROM_WIN32(GetLastError());
-    if (SUCCEEDED(result)) result = zoom->SetCenterX(static_cast<float>(client.right) * 0.5F);
+    if (SUCCEEDED(result)) result = zoom->SetCenterX(static_cast<float>(client.right) * HorizontalAnchor(position));
     if (SUCCEEDED(result)) result = zoom->SetCenterY(static_cast<float>(client.bottom));
     if (reducedMotion) {
         if (SUCCEEDED(result)) result = zoom->SetScaleX(1.0F);

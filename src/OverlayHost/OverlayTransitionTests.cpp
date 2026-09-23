@@ -608,6 +608,29 @@ int main() {
     SlowDrawingDoesNotConsumeMotionAndRetargetUsesCurrentProgress();
     ClockAndDecisionsAreStable();
     ZoomPolicyHonorsInterruptionAndReducedMotion();
+    for (const auto position : {widgetrail::OverlayPosition::BottomLeft, widgetrail::OverlayPosition::BottomRight}) {
+        for (const bool reduced : {false, true}) {
+            widgetrail::OverlayPresentationTransaction transaction;
+            const bool left = position == widgetrail::OverlayPosition::BottomLeft;
+            const widgetrail::OverlayPlacement container{24, 100, 961, 701};
+            const widgetrail::OverlayPlacement destination{left ? 24 : 345, 401, 640, 400};
+            transaction.BeginExtentTransition({961, 701}, {640, 400}, 100, reduced, true);
+            const auto admission = transaction.PrepareCompositionAdmission(
+                961, 701, destination, container, {640, 400}, 100, reduced, true, position);
+            transaction.AcceptCompositionAdmission(admission);
+            for (const std::uint64_t tick : {100ULL, 160ULL, 400ULL}) {
+                if (const auto step = transaction.PrepareCompositionStep(tick, reduced)) {
+                    const auto& motion = step->presentation;
+                    Near(left ? motion.offsetX : motion.offsetX + 640 * motion.scaleX,
+                        left ? 0.0F : 961.0F, "admitted corner animation keeps the outside border fixed");
+                    transaction.AcceptCompositionStep(*step);
+                }
+            }
+            const auto settled = transaction.CurrentMotionPlan(961, 701, {640, 400});
+            Check(settled.has_value(), "corner admission retains settled geometry");
+            Near(settled->offsetX, left ? 0.0F : 321.0F, "corner motion settles at the exact outside border");
+        }
+    }
     std::cout << "OverlayTransitionTests: " << checks << " checks passed\n";
     return EXIT_SUCCESS;
 }

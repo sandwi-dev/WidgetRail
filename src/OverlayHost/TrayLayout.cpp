@@ -89,15 +89,37 @@ float ComputeTrayStatusSurfaceWidth(const float monitorUsableWidth) noexcept {
 std::optional<TrayLayout> ComputeTrayStatusLayout(
     float width, float height, std::size_t widgetCount, std::size_t selectedSlot,
     std::optional<TrayBand> band, TrayWidthBasis widthBasis,
-    std::optional<float> iconCapacityWidth) {
+    std::optional<float> iconCapacityWidth, const OverlayPosition position) {
     if (!std::isfinite(width) || width <= 0.0F) return std::nullopt;
     const float capacity = iconCapacityWidth.value_or(
         widthBasis == TrayWidthBasis::ExactCapacity ? width : ComputeTrayCapacityWidth(width));
     if (!std::isfinite(capacity) || capacity <= 0.0F || capacity > width)
         return std::nullopt;
     auto layout = ComputeTrayLayout(capacity, height,
-        widgetCount, selectedSlot, band, TrayWidthBasis::ExactCapacity);
+        widgetCount, selectedSlot, band, TrayWidthBasis::ExactCapacity, position);
     if (!layout) return layout;
+    if (position != OverlayPosition::Center) {
+        const float iconWidth = layout->stripBounds.width;
+        const float available = width - iconWidth;
+        const bool wide = available >= kStatusWidth + kStatusGap;
+        const bool showStatus = wide || available >= kCompactStatusWidth + kCompactStatusGap;
+        const float statusWidth = showStatus ? (wide ? kStatusWidth : kCompactStatusWidth) : 0.0F;
+        const float gap = showStatus ? (wide ? kStatusGap : kCompactStatusGap) : 0.0F;
+        const float groupWidth = iconWidth + statusWidth + gap;
+        const float groupLeft = (width - groupWidth) * HorizontalAnchor(position);
+        const bool statusFirst = position == OverlayPosition::BottomLeft;
+        const float iconsLeft = groupLeft + (statusFirst ? statusWidth + gap : 0.0F);
+        const float offset = iconsLeft - layout->stripBounds.x;
+        for (auto& tile : layout->tiles) tile.bounds.x += offset;
+        if (layout->previousOverflow) layout->previousOverflow->bounds.x += offset;
+        if (layout->nextOverflow) layout->nextOverflow->bounds.x += offset;
+        if (showStatus) layout->statusBounds = declarative::Rect{
+            statusFirst ? groupLeft : iconsLeft + iconWidth + gap,
+            layout->stripBounds.y, statusWidth, layout->stripBounds.height};
+        layout->stripBounds.x = groupLeft;
+        layout->stripBounds.width = groupWidth;
+        return layout;
+    }
     const float offset = (width - capacity) * .5F;
     layout->stripBounds.x += offset;
     for (auto& tile : layout->tiles) tile.bounds.x += offset;
@@ -121,7 +143,7 @@ std::optional<TrayLayout> ComputeTrayLayout(
     const std::size_t widgetCount,
     const std::size_t selectedSlot,
     const std::optional<TrayBand> band,
-    const TrayWidthBasis widthBasis) {
+    const TrayWidthBasis widthBasis, const OverlayPosition position) {
     if (widgetCount == 0 || !std::isfinite(width) || !std::isfinite(height) ||
         width <= 0.0F || height <= 0.0F) return std::nullopt;
 
@@ -129,7 +151,7 @@ std::optional<TrayLayout> ComputeTrayLayout(
         ? width
         : ComputeTrayCapacityWidth(width);
     if (layoutWidth <= 0.0F) return std::nullopt;
-    const float layoutOffsetX = (width - layoutWidth) * 0.5F;
+    const float layoutOffsetX = (width - layoutWidth) * HorizontalAnchor(position);
     const float bandTop = band
         ? band->top
         : std::max(0.0F, height - 112.0F);
@@ -148,7 +170,8 @@ std::optional<TrayLayout> ComputeTrayLayout(
         1.0F, std::min({kPreferredTileSize,
                         layoutWidth - horizontalPadding * 2.0F,
                         bandHeight - verticalPadding * 2.0F}));
-    const bool fullCatalogNeedsSpare = widgetCount > 1 && widgetCount % 2 == 0;
+    const bool fullCatalogNeedsSpare = position == OverlayPosition::Center &&
+        widgetCount > 1 && widgetCount % 2 == 0;
     const std::size_t fullCatalogPositionCount =
         widgetCount + (fullCatalogNeedsSpare ? 1U : 0U);
     const float allCatalogTileSize =
@@ -180,24 +203,25 @@ std::optional<TrayLayout> ComputeTrayLayout(
                 (layoutWidth - horizontalPadding * 2.0F - overflowReserve + kGap) /
                 (kPreferredTileSize + kGap))))
         : unreservedMaximum;
-    if (showOverflow && maximumVisible > 1 && maximumVisible % 2 == 0)
+    if (position == OverlayPosition::Center && showOverflow && maximumVisible > 1 && maximumVisible % 2 == 0)
         --maximumVisible;
     const std::size_t visibleCount = std::min(widgetCount, maximumVisible);
     const std::size_t boundedSelected = std::min(selectedSlot, widgetCount - 1);
-    const std::size_t half = visibleCount / 2;
-    // Selection already wraps in OverlayState. Project that same cyclic order
-    // through a fixed center slot without duplicating catalog identities.
+    const std::size_t selectionIndex = position == OverlayPosition::BottomRight ? 0
+        : position == OverlayPosition::BottomLeft ? visibleCount - 1 : visibleCount / 2;
+    // Project the saved cyclic order through a fixed selection slot. Moving
+    // the anchor never changes catalog order or duplicates an identity.
     const std::size_t firstSlot =
-        (boundedSelected + widgetCount - half) % widgetCount;
+        (boundedSelected + widgetCount - selectionIndex) % widgetCount;
     // A complete even catalog cannot surround one selected tile symmetrically.
     // Reserve one ordinary tile position on the trailing side instead of
     // stretching gaps or cloning an item.
     const std::size_t visualPositionCount = visibleCount +
-        (!showOverflow && visibleCount == widgetCount && fullCatalogNeedsSpare
+        (position == OverlayPosition::Center && !showOverflow && visibleCount == widgetCount && fullCatalogNeedsSpare
             ? 1U : 0U);
     const float stripWidth = tileSize * static_cast<float>(visualPositionCount) +
         kGap * static_cast<float>(visualPositionCount - 1) + overflowReserve;
-    const float stripLeft = layoutOffsetX + (layoutWidth - stripWidth) * 0.5F;
+    const float stripLeft = layoutOffsetX + (layoutWidth - stripWidth) * HorizontalAnchor(position);
     const float stripTop = bandTop + (bandHeight - tileSize) * 0.5F;
     const float tileLeft = stripLeft +
         (showOverflow ? overflowSize + kGap : 0.0F);

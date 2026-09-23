@@ -6180,6 +6180,38 @@ private:
         return accepted;
     }
 
+    widgetrail::OverlayPosition CurrentOverlayPosition() const noexcept {
+        return appearanceState_.current()
+            ? appearanceState_.current()->overlayPosition
+            : widgetrail::OverlayPosition::Center;
+    }
+
+    LONG OverlaySideMargin(const UINT dpi) const noexcept {
+        return CurrentOverlayPosition() == widgetrail::OverlayPosition::Center
+            ? 0L : static_cast<LONG>(std::lround(24.0F * dpi / 96.0F));
+    }
+
+    std::optional<widgetrail::OverlayPlacement> ComputePositionedPlacement(
+        const RECT& workArea, const UINT dpi,
+        const float widthDip, const float heightDip) const noexcept {
+        auto placement = ComputePlatformPlacement(workArea, dpi, widthDip, heightDip);
+        if (placement && CurrentOverlayPosition() != widgetrail::OverlayPosition::Center) {
+            placement->x = widgetrail::shell::ComputeFixedChromeWindowBounds(
+                workArea, placement->width, placement->height, CurrentOverlayPosition(),
+                OverlaySideMargin(dpi)).left;
+        }
+        return placement;
+    }
+
+    std::optional<widgetrail::shell::TrayLayout> ComputeCurrentTrayStatusLayout(
+        const float width, const float height, const std::size_t count,
+        const std::size_t selected, const std::optional<widgetrail::shell::TrayBand> band = std::nullopt,
+        const widgetrail::shell::TrayWidthBasis basis = widgetrail::shell::TrayWidthBasis::MonitorUsableWidth,
+        const std::optional<float> capacity = std::nullopt) const {
+        return widgetrail::shell::ComputeTrayStatusLayout(
+            width, height, count, selected, band, basis, capacity, CurrentOverlayPosition());
+    }
+
     bool RadialSwitcherEnabled() const noexcept {
         // The legacy HWND fallback cannot layer a wheel over retained content.
         // Use the rail for both input and paint until composition recovers.
@@ -7334,7 +7366,7 @@ private:
         const auto current = overlayTransition_.Sample(timestamp, reduced);
         overlayTransition_.BeginOpen(timestamp, reduced);
         if (compositionSurface_.available() && FAILED(compositionSurface_.CommitShellZoom(
-                widgetrail::OverlayEntranceZoomScale(current.shellOpacity, reduced), true, reduced)))
+                widgetrail::OverlayEntranceZoomScale(current.shellOpacity, reduced), true, reduced, CurrentOverlayPosition())))
             DisableCompositionFallback(L"opening zoom commit failed");
         shellZoomNeedsSettlement_ = !reduced;
         compositorShellTransition_ = compositionSurface_.available();
@@ -7347,7 +7379,7 @@ private:
         const auto current = overlayTransition_.Sample(timestamp, reduced);
         overlayTransition_.BeginClose(timestamp, reduced);
         if (compositionSurface_.available() && FAILED(compositionSurface_.CommitShellZoom(
-                widgetrail::OverlayEntranceZoomScale(current.shellOpacity, reduced), false, reduced)))
+                widgetrail::OverlayEntranceZoomScale(current.shellOpacity, reduced), false, reduced, CurrentOverlayPosition())))
             DisableCompositionFallback(L"closing zoom commit failed");
         shellZoomNeedsSettlement_ = !reduced;
         compositorShellTransition_ = compositionSurface_.available();
@@ -7378,7 +7410,7 @@ private:
         lastCompositionReducedMotion_ = CurrentAccessibilityPolicy().reducedMotion;
         if (shellZoomNeedsSettlement_ && CurrentAccessibilityPolicy().reducedMotion &&
             compositionSurface_.available()) {
-            (void)compositionSurface_.CommitShellZoom(1.0F, state_.surface() != widgetrail::Surface::Hidden, true);
+            (void)compositionSurface_.CommitShellZoom(1.0F, state_.surface() != widgetrail::Surface::Hidden, true, CurrentOverlayPosition());
             shellZoomNeedsSettlement_ = false;
         }
         if (!overlayTransitionSample_.shellActive) shellZoomNeedsSettlement_ = false;
@@ -7528,7 +7560,7 @@ private:
             presentationTransaction_.PrepareCompositionAdmission(
                 priorWidth, priorHeight, placement, composedContainer,
                 DesiredPresentationExtentDip(), GetTickCount64(),
-                CurrentAccessibilityPolicy().reducedMotion, wasVisible);
+                CurrentAccessibilityPolicy().reducedMotion, wasVisible, CurrentOverlayPosition());
         const auto& motion = directive.initialPresentation;
         widgetrail::OverlayCompositionSurface::VisualPresentation presentation{
             motion.scaleX, motion.scaleY, motion.offsetX, motion.offsetY,
@@ -7546,7 +7578,8 @@ private:
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
         const bool revealContent = CompositionContentRevealPending();
         HRESULT commitResult = compositionSurface_.SetShellZoomAnchor(
-            static_cast<float>(composedContainer.width), static_cast<float>(composedContainer.height));
+            static_cast<float>(composedContainer.width), static_cast<float>(composedContainer.height),
+            CurrentOverlayPosition());
         if (SUCCEEDED(commitResult)) commitResult = compositionSurface_.CommitFrames(
             framePointers, !wasVisible, commitTiming, &presentation, nullptr, revealContent);
         if (FAILED(commitResult)) {
@@ -7713,7 +7746,7 @@ private:
             desiredWidthDip = static_cast<float>(layoutExtent.widthDip);
             desiredHeightDip = static_cast<float>(layoutExtent.heightDip);
         }
-        auto placement = ComputePlatformPlacement(
+        auto placement = ComputePositionedPlacement(
             work, dpi,
             desiredWidthDip * interfaceScale,
             desiredHeightDip * interfaceScale);
@@ -7723,7 +7756,7 @@ private:
         }
         RECT currentContainer{};
         if (wasVisible) GetClientRect(window_, &currentContainer);
-        auto compositionContainer = ComputePlatformPlacement(
+        auto compositionContainer = ComputePositionedPlacement(
             work, dpi,
             std::max(
                 desiredWidthDip * interfaceScale,
@@ -9679,7 +9712,8 @@ private:
                 overlayTransitionSample_.shellOpacity, CurrentAccessibilityPolicy().reducedMotion);
             plan->scaleX *= zoom;
             plan->scaleY *= zoom;
-            plan->offsetX = plan->offsetX * zoom + static_cast<float>(client.right) * (1.0F - zoom) * 0.5F;
+            plan->offsetX = plan->offsetX * zoom + static_cast<float>(client.right) *
+                (1.0F - zoom) * widgetrail::HorizontalAnchor(CurrentOverlayPosition());
             plan->offsetY = plan->offsetY * zoom + static_cast<float>(client.bottom) * (1.0F - zoom);
         }
         return plan;
@@ -9880,7 +9914,7 @@ private:
         }
         auto trayLayout = CurrentCompositionTrayLayout();
         if (!trayLayout) {
-            trayLayout = widgetrail::shell::ComputeTrayStatusLayout(
+            trayLayout = ComputeCurrentTrayStatusLayout(
                 metrics->viewportWidthDip, metrics->viewportHeightDip,
                 state_.order().size(), state_.selectedSlot(),
                 TrayBandBelowGuide(
@@ -10109,7 +10143,7 @@ private:
         if (tray) return IsTrayInteractivePoint(
             *tray, trayX, trayY,
             CurrentTrayViewportWidthDip(metrics->viewportWidthDip));
-        const auto fallbackTray = widgetrail::shell::ComputeTrayStatusLayout(
+        const auto fallbackTray = ComputeCurrentTrayStatusLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
             TrayBandBelowGuide(
@@ -16176,7 +16210,7 @@ private:
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
         const auto extent = DesiredPresentationExtentDip();
-        const auto target = ComputePlatformPlacement(
+        const auto target = ComputePositionedPlacement(
             monitorInfo.rcWork, dpi,
             static_cast<float>(extent.widthDip) * interfaceScale,
             static_cast<float>(extent.heightDip) * interfaceScale);
@@ -16394,11 +16428,15 @@ private:
             anchor.appearanceRevision,
             anchor.catalogOrder,
         };
+        const LONG cornerReservation = CurrentOverlayPosition() == widgetrail::OverlayPosition::Center ? 0L
+            : 2 * OverlaySideMargin(effectiveDpi) + 2 * std::max(2L, static_cast<LONG>(std::ceil(
+                (focusOutlineWidth_ + 2.0F) * effectiveDpi / 96.0F * interfaceScale)));
         const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
-            static_cast<int>(workWidth), static_cast<int>(workHeight),
+            static_cast<int>(std::max(1L, static_cast<LONG>(workWidth) - cornerReservation)),
+            static_cast<int>(workHeight),
             effectiveDpi, interfaceScale);
         if (!metrics) return false;
-        const auto policyLayout = widgetrail::shell::ComputeTrayStatusLayout(
+        const auto policyLayout = ComputeCurrentTrayStatusLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot());
         if (!policyLayout) return false;
@@ -16460,14 +16498,17 @@ private:
         session.dpi = effectiveDpi;
         session.key = std::move(key);
         session.pixelsPerDip = metrics->physicalPixelsPerDip;
-        const LONG guideLeft = (chromeWidth - guideWidth) / 2;
-        const LONG trayLeft = (chromeWidth - trayWidth) / 2;
+        const LONG guideLeft = static_cast<LONG>((chromeWidth - guideWidth) *
+            widgetrail::HorizontalAnchor(CurrentOverlayPosition()));
+        const LONG trayLeft = static_cast<LONG>((chromeWidth - trayWidth) *
+            widgetrail::HorizontalAnchor(CurrentOverlayPosition()));
         session.guideClientBounds = {
             guideLeft, trayMenuHeadroom,
             guideLeft + guideWidth, trayMenuHeadroom + guideHeight,
         };
         session.windowBounds = widgetrail::shell::ComputeFixedChromeWindowBounds(
-            workArea, chromeWidth, chromeHeight);
+            workArea, chromeWidth, chromeHeight, CurrentOverlayPosition(),
+            OverlaySideMargin(effectiveDpi));
         // Fixed chrome outlives content-mode changes. Reserve the actual guide
         // area even when the startup dashboard has no footer to paint yet.
         const float guideHeightDip = static_cast<float>(guideHeight) / session.pixelsPerDip;
@@ -16509,7 +16550,8 @@ private:
                 requestedTrayTop += topExpansion;
                 session.windowBounds =
                     widgetrail::shell::ComputeFixedChromeWindowBounds(
-                        workArea, chromeWidth, chromeHeight);
+                        workArea, chromeWidth, chromeHeight, CurrentOverlayPosition(),
+                        OverlaySideMargin(effectiveDpi));
             }
         }
         const LONG maximumTrayTop = std::max(0L, chromeHeight - traySurfaceHeight);
@@ -16545,7 +16587,8 @@ private:
             session.radialRailOffsetDip = static_cast<float>(radial.railOffset) / session.pixelsPerDip;
             const float sizeDip = static_cast<float>(radial.wheelSize) / session.pixelsPerDip;
             if (radial.wheelSize > 0) session.radialBounds = widgetrail::declarative::Rect{
-                (static_cast<float>(session.trayWidth) / session.pixelsPerDip - sizeDip) / 2,
+                (static_cast<float>(session.trayWidth) / session.pixelsPerDip - sizeDip) *
+                    widgetrail::HorizontalAnchor(CurrentOverlayPosition()),
                 0, sizeDip, sizeDip};
         }
         if (!widgetrail::shell::ApplyFixedChromeWindow(
@@ -16639,7 +16682,8 @@ private:
             fixedChromeAnchor_->interfaceScale));
         const auto bounds = widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
             fixedChromeAnchor_->workArea, guide->top,
-            placement.width, placement.height, panelToGuideGap);
+            placement.width, placement.height, panelToGuideGap, CurrentOverlayPosition(),
+            OverlaySideMargin(fixedChromeAnchor_->dpi));
         if (!bounds) return std::nullopt;
         placement.x = bounds->left;
         placement.y = bounds->top;
@@ -16665,7 +16709,7 @@ private:
         const float menuHeadroom =
             static_cast<float>(session.trayMenuHeadroom) /
             session.pixelsPerDip;
-        auto layout = widgetrail::shell::ComputeTrayStatusLayout(
+        auto layout = ComputeCurrentTrayStatusLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
             widgetrail::shell::TrayBand{
@@ -17199,7 +17243,7 @@ private:
             const auto extent = state_.surface() == widgetrail::Surface::Widget
                 ? PresentedPresentationExtentDip()
                 : widgetrail::OverlayPresentationExtent{kPanelWidth, kDashboardHeight};
-            if (const auto target = ComputePlatformPlacement(
+            if (const auto target = ComputePositionedPlacement(
                     fallbackAnchor->workArea, fallbackAnchor->dpi,
                     static_cast<float>(extent.widthDip) * fallbackAnchor->interfaceScale,
                     static_cast<float>(extent.heightDip) * fallbackAnchor->interfaceScale)) {
@@ -17306,7 +17350,7 @@ private:
             static_cast<unsigned int>(client.right - client.left),
             static_cast<unsigned int>(client.bottom - client.top),
             width, height, static_cast<float>(width), static_cast<float>(height),
-            widgetrail::CompositionVerticalAnchor::Bottom);
+            widgetrail::CompositionVerticalAnchor::Bottom, CurrentOverlayPosition());
         const auto settledSpaces = widgetrail::PlanCompositionChildCoordinates(
             settledMotion, width, height);
         const float destinationOffsetX = settledSpaces.chromeOffsetX;
@@ -17551,7 +17595,7 @@ private:
         const bool publishAccessibility = true) {
         const auto computedLayout = frameLayout
             ? std::optional<widgetrail::shell::TrayLayout>{}
-            : widgetrail::shell::ComputeTrayStatusLayout(
+            : ComputeCurrentTrayStatusLayout(
                 width, height, state_.order().size(), state_.selectedSlot(),
                 TrayBandBelowGuide(height, surfaceGeometry));
         const auto* layout = frameLayout
@@ -17838,7 +17882,7 @@ private:
         } else if (accessibilityActive_) {
             const auto layout = frameTrayLayout
                 ? std::optional<widgetrail::shell::TrayLayout>{*frameTrayLayout}
-                : widgetrail::shell::ComputeTrayStatusLayout(
+                : ComputeCurrentTrayStatusLayout(
                     width, height, state_.order().size(), state_.selectedSlot(),
                     TrayBandBelowGuide(height));
             if (layout) PublishTrayAccessibility(*layout, width, height, &dashboard);
@@ -18167,7 +18211,7 @@ private:
             : std::optional<widgetrail::shell::TrayLayout>{};
         const auto computedTrayLayout = frameTrayLayout || sessionTrayLayout
             ? std::optional<widgetrail::shell::TrayLayout>{}
-            : widgetrail::shell::ComputeTrayStatusLayout(
+            : ComputeCurrentTrayStatusLayout(
                 width, height, state_.order().size(), state_.selectedSlot(),
                 TrayBandBelowGuide(height, &*geometry));
         const auto* trayLayout = frameTrayLayout

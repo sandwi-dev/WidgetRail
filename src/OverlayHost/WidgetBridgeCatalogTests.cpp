@@ -2639,6 +2639,22 @@ int main(int argc, char** argv) {
     CHECK(appearance->transparency == widgetrail::PlatformTransparencyPreference::Reduced);
     CHECK(!appearance->animateWidgetSwitching);
     CHECK(!appearance->radialWidgetSwitcher);
+    CHECK(appearance->overlayPosition == widgetrail::OverlayPosition::Center);
+    for (const auto value : {"\"center\"", "\"BottomLeft\"", "\"bottomRight\"", "false", "\"unknown\""}) {
+        std::string source(ValidAppearance);
+        source.insert(1, std::string("\"overlayPosition\":") + value + ",");
+        error.clear();
+        const auto parsed = widgetrail::testing::ParsePlatformAppearance(source, error);
+        const std::string_view option(value);
+        if (option == "false" || option == "\"unknown\"") {
+            CHECK(!parsed && !error.empty());
+        } else {
+            CHECK(parsed && error.empty());
+            const auto expected = option == "\"BottomLeft\"" ? widgetrail::OverlayPosition::BottomLeft
+                : option == "\"bottomRight\"" ? widgetrail::OverlayPosition::BottomRight : widgetrail::OverlayPosition::Center;
+            CHECK(parsed->overlayPosition == expected);
+        }
+    }
     for (const auto value : {"\"Radial\"", "\"radial\"", "\"Rail\"", "\"rail\"", "false", "\"unknown\""}) {
         std::string source(ValidAppearance);
         source.insert(1, std::string("\"widgetSwitcher\":") + value + ",");

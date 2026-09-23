@@ -420,6 +420,35 @@ int main() {
         Check(widgetrail::shell::HitTestTrayOverflow(*wheel, next.bounds.x+12, next.bounds.y+12),
               "page arrows retain their own pointer action");
     }
+    for (const auto position : {widgetrail::OverlayPosition::BottomLeft, widgetrail::OverlayPosition::BottomRight}) {
+        for (const float width : {192.0F, 680.0F, 1920.0F}) {
+            for (const std::size_t count : {1U, 2U, 8U, 40U}) {
+                for (std::size_t selected = 0; selected < count; ++selected) {
+                    const auto layout = widgetrail::shell::ComputeTrayStatusLayout(
+                        width, 160, count, selected, std::nullopt,
+                        widgetrail::shell::TrayWidthBasis::MonitorUsableWidth, std::nullopt, position);
+                    Check(layout && !layout->tiles.empty(), "corner layout retains navigable icons");
+                    const auto& active = position == widgetrail::OverlayPosition::BottomRight
+                        ? layout->tiles.front() : layout->tiles.back();
+                    Check(active.slot == selected, "selected widget stays at the requested end of the rail");
+                    Check(layout->stripBounds.x >= -0.01F &&
+                        layout->stripBounds.x + layout->stripBounds.width <= width + 0.01F,
+                        "corner icons and status stay inside the viewport");
+                    for (const auto& tile : layout->tiles) {
+                        const auto* hit = widgetrail::shell::HitTestTray(*layout,
+                            tile.bounds.x + tile.bounds.width / 2, tile.bounds.y + tile.bounds.height / 2);
+                        Check(hit && hit->slot == tile.slot, "corner pointer geometry selects the painted identity");
+                        if (layout->statusBounds) {
+                            const auto& status = *layout->statusBounds;
+                            Check(status.x + status.width <= tile.bounds.x ||
+                                tile.bounds.x + tile.bounds.width <= status.x,
+                                "corner status never covers a widget icon");
+                        }
+                    }
+                }
+            }
+        }
+    }
     std::cout << "TrayLayoutTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

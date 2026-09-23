@@ -1,5 +1,7 @@
 #pragma once
 
+#include "OverlayPosition.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -133,6 +135,7 @@ struct CompositionMotionPlan final {
     float offsetX{};
     float offsetY{};
     bool retainsTransparentContainer{};
+    OverlayPosition position{OverlayPosition::Center};
 
     [[nodiscard]] friend constexpr bool operator==(
         const CompositionMotionPlan&,
@@ -163,7 +166,7 @@ struct CompositionPoint final {
 };
 
 /// The destination content owns the animated transform. Host chrome is placed
-/// once at the destination's final bottom-center origin inside the union HWND.
+/// once at the destination's final bottom origin inside the union HWND.
 [[nodiscard]] constexpr CompositionChildCoordinateSpaces
 PlanCompositionChildCoordinates(
     const CompositionMotionPlan content,
@@ -176,13 +179,13 @@ PlanCompositionChildCoordinates(
     return {
         content,
         (static_cast<float>(content.containerWidth) -
-         static_cast<float>(targetWidth)) * 0.5F,
+         static_cast<float>(targetWidth)) * HorizontalAnchor(content.position),
         static_cast<float>(content.containerHeight - targetHeight),
         (static_cast<float>(content.containerWidth) -
-         static_cast<float>(targetWidth)) * 0.5F,
+         static_cast<float>(targetWidth)) * HorizontalAnchor(content.position),
         static_cast<float>(content.containerHeight - targetHeight),
         (static_cast<float>(content.containerWidth) -
-         static_cast<float>(targetWidth)) * 0.5F,
+         static_cast<float>(targetWidth)) * HorizontalAnchor(content.position),
         static_cast<float>(content.containerHeight - targetHeight),
     };
 }
@@ -302,7 +305,8 @@ enum class CompositionVerticalAnchor {
     const float presentedWidth,
     const float presentedHeight,
     const CompositionVerticalAnchor verticalAnchor =
-        CompositionVerticalAnchor::Center) noexcept {
+        CompositionVerticalAnchor::Center,
+    const OverlayPosition position = OverlayPosition::Center) noexcept {
     if (sourceWidth == 0 || sourceHeight == 0 ||
         targetWidth == 0 || targetHeight == 0 ||
         presentedWidth <= 0.0F || presentedHeight <= 0.0F) return {};
@@ -319,11 +323,12 @@ enum class CompositionVerticalAnchor {
         containerHeight,
         scaleX,
         scaleY,
-        (static_cast<float>(containerWidth) - visualWidth) * 0.5F,
+        (static_cast<float>(containerWidth) - visualWidth) * HorizontalAnchor(position),
         verticalAnchor == CompositionVerticalAnchor::Bottom
             ? remainingHeight
             : remainingHeight * 0.5F,
         containerWidth != targetWidth || containerHeight != targetHeight,
+        position,
     };
 }
 

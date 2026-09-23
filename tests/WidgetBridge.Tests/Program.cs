@@ -4271,13 +4271,14 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["activeDisplayId", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides", "widgetSwitcher"],
+        ["activeDisplayId", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "interfaceScale", "motion", "overlayPosition", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides", "widgetSwitcher"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
     Assert.Equal(1.1D, response.Payload.GetProperty("interfaceScale").GetDouble());
     Assert.Equal(1.2D, response.Payload.GetProperty("textScale").GetDouble());
     Assert.Equal(0.7D, response.Payload.GetProperty("backdropOpacity").GetDouble());
+    Assert.Equal("bottomRight", response.Payload.GetProperty("overlayPosition").GetString());
     Assert.Equal("reduced", response.Payload.GetProperty("motion").GetString());
     Assert.Equal("high", response.Payload.GetProperty("contrast").GetString());
     Assert.Equal(true, response.Payload.GetProperty("boldText").GetBoolean());
@@ -7344,6 +7345,7 @@ file sealed class TemporaryAppearance : IAsyncDisposable
                 BoldText = true,
                 Transparency = TransparencyPreference.Reduced,
                 AnimateWidgetSwitching = true,
+                OverlayPosition = OverlayPosition.BottomRight,
             },
         });
         var service = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)), paths => paths[0]);

@@ -78,6 +78,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
         Assert.Equal(true, settings.Appearance.AnimateWidgetSwitching);
         Assert.Equal(WidgetSwitcherLayout.Radial, settings.Appearance.WidgetSwitcher);
+        Assert.Equal(OverlayPosition.Center, settings.Appearance.OverlayPosition);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
 
         using var manager = new ThemeManager(store, Catalog(temp.Path));
@@ -90,6 +91,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(false, (await store.LoadAsync()).Appearance.AnimateWidgetSwitching);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.BoldText);
         Assert.Equal(WidgetSwitcherLayout.Rail, (await store.LoadAsync()).Appearance.WidgetSwitcher);
+        Assert.Equal(OverlayPosition.Center, (await store.LoadAsync()).Appearance.OverlayPosition);
     }
 }
 
@@ -112,6 +114,7 @@ static async Task SettingsRoundTrip()
             Transparency = TransparencyPreference.Reduced,
             AnimateWidgetSwitching = true,
             WidgetSwitcher = WidgetSwitcherLayout.Radial,
+            OverlayPosition = OverlayPosition.BottomRight,
         },
     });
     Assert.Equal("dev.example.slate", updated.Appearance.ThemeId);
@@ -121,6 +124,12 @@ static async Task SettingsRoundTrip()
     Assert.DocumentEqual(updated, reloaded);
     Assert.Equal(true, reloaded.Appearance.AnimateWidgetSwitching);
     Assert.Equal(WidgetSwitcherLayout.Radial, reloaded.Appearance.WidgetSwitcher);
+    Assert.Equal(OverlayPosition.BottomRight, reloaded.Appearance.OverlayPosition);
+    foreach (var position in new[] { OverlayPosition.BottomLeft, OverlayPosition.Center })
+    {
+        await store.UpdateAsync(current => current with { Appearance = current.Appearance with { OverlayPosition = position } });
+        Assert.Equal(position, (await new PlatformSettingsStore(store.Paths).LoadAsync()).Appearance.OverlayPosition);
+    }
     await store.UpdateAsync(current => current with
     {
         Appearance = current.Appearance with { WidgetSwitcher = WidgetSwitcherLayout.Rail },
@@ -278,6 +287,8 @@ static async Task SettingsRangesAreEnforced()
         SettingsJson(appearanceExtra: ",\"contrast\":\"future\""),
         SettingsJson(appearanceExtra: ",\"transparency\":\"future\""),
         SettingsJson(appearanceExtra: ",\"boldText\":1"),
+        SettingsJson(appearanceExtra: ",\"overlayPosition\":\"unknown\""),
+        SettingsJson(appearanceExtra: ",\"overlayPosition\":99"),
         SettingsJson(schemaVersion: 4),
     })
     {

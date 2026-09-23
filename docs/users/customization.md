@@ -17,6 +17,14 @@ Try changes in a widget you use often so you can see how they affect real conten
 
 ## Arrange your tray
 
+Choose **Settings → Overlay → Position** to place the overlay in the center,
+bottom left, or bottom right. Center is the default.
+
+Corner layouts keep the outside edge and bottom edge of the widget fixed as it
+resizes. The guide and rail stay in place. The open widget is the last visible
+rail icon at bottom left, or the first at bottom right; your saved widget order
+does not change. Position works with both Rail and Radial + rail.
+
 Reorder widgets to keep your frequent actions close together. The tray's
 controller guide shows the reorder and reload actions. You can disable widgets
 you do not use, including built-in widgets other than Settings.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DeclarativeLayout.h"
+#include "OverlayPosition.h"
 
 #include <cstddef>
 #include <optional>
@@ -66,7 +67,8 @@ inline constexpr std::size_t kRadialPageSize = 8;
     std::size_t widgetCount,
     std::size_t selectedSlot,
     std::optional<TrayBand> band = std::nullopt,
-    TrayWidthBasis widthBasis = TrayWidthBasis::MonitorUsableWidth);
+    TrayWidthBasis widthBasis = TrayWidthBasis::MonitorUsableWidth,
+    OverlayPosition position = OverlayPosition::Center);
 
 /// Resolves the tray's bounded capacity from the active monitor's usable width.
 /// Exact-capacity child surfaces must not apply this policy a second time.
@@ -75,14 +77,16 @@ inline constexpr std::size_t kRadialPageSize = 8;
 /// Extends the centered tray surface for passive status without reducing icon capacity.
 [[nodiscard]] float ComputeTrayStatusSurfaceWidth(float monitorUsableWidth) noexcept;
 
-/// Adds passive status in spare trailing space without changing icon geometry.
+/// Adds passive status in spare space without reducing icon capacity.
+/// Corner layouts keep status at the outside edge of the rail.
 /// Narrow surfaces compact or omit status before sacrificing icon space.
 /// Exact-capacity child surfaces may supply their original icon capacity separately.
 [[nodiscard]] std::optional<TrayLayout> ComputeTrayStatusLayout(
     float width, float height, std::size_t widgetCount, std::size_t selectedSlot,
     std::optional<TrayBand> band = std::nullopt,
     TrayWidthBasis widthBasis = TrayWidthBasis::MonitorUsableWidth,
-    std::optional<float> iconCapacityWidth = std::nullopt);
+    std::optional<float> iconCapacityWidth = std::nullopt,
+    OverlayPosition position = OverlayPosition::Center);
 
 [[nodiscard]] const TrayTileLayout* HitTestTray(
     const TrayLayout& layout, float x, float y) noexcept;

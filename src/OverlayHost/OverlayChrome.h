@@ -1,5 +1,7 @@
 #pragma once
 
+#include "OverlayPosition.h"
+
 #include <d2d1_1.h>
 
 #include <cstdint>
@@ -20,7 +22,8 @@ constexpr DWORD FixedChromeWindowExStyle() noexcept {
 }
 
 [[nodiscard]] RECT ComputeFixedChromeWindowBounds(
-    const RECT& workArea, LONG width, LONG height) noexcept;
+    const RECT& workArea, LONG width, LONG height,
+    OverlayPosition position = OverlayPosition::Center, LONG sideMargin = 0) noexcept;
 
 struct RadialChromePlacement final {
     RECT windowBounds{};
@@ -42,7 +45,8 @@ struct RadialChromePlacement final {
     LONG guideTop,
     LONG width,
     LONG height,
-    LONG panelToGuideGap) noexcept;
+    LONG panelToGuideGap,
+    OverlayPosition position = OverlayPosition::Center, LONG sideMargin = 0) noexcept;
 [[nodiscard]] bool IsFixedChromeHit(
     POINT screenPoint, const RECT& guideBounds, const RECT& trayBounds) noexcept;
 [[nodiscard]] bool ApplyFixedChromeWindow(

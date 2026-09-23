@@ -830,6 +830,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     if (required.HasKey(L"displayScales")) required.Remove(L"displayScales");
     if (required.HasKey(L"activeDisplayId")) required.Remove(L"activeDisplayId");
     if (required.HasKey(L"widgetSwitcher")) required.Remove(L"widgetSwitcher");
+    if (required.HasKey(L"overlayPosition")) required.Remove(L"overlayPosition");
     if (!HasOnlyProperties(required,
             {L"revision", L"themeId", L"themeVersion", L"interfaceScale", L"textScale",
              L"backdropOpacity", L"motion", L"contrast", L"boldText",
@@ -861,6 +862,24 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     }
 
     PlatformAppearance appearance;
+    if (payload.HasKey(L"overlayPosition")) {
+        const auto value = payload.GetNamedValue(L"overlayPosition");
+        if (value.ValueType() != JsonValueType::String) {
+            error = L"Invalid overlay position.";
+            return std::nullopt;
+        }
+        const auto position = value.GetString();
+        if (position == L"center" || position == L"Center")
+            appearance.overlayPosition = OverlayPosition::Center;
+        else if (position == L"bottomLeft" || position == L"BottomLeft")
+            appearance.overlayPosition = OverlayPosition::BottomLeft;
+        else if (position == L"bottomRight" || position == L"BottomRight")
+            appearance.overlayPosition = OverlayPosition::BottomRight;
+        else {
+            error = L"Invalid overlay position.";
+            return std::nullopt;
+        }
+    }
     if (payload.HasKey(L"widgetSwitcher")) {
         if (payload.GetNamedValue(L"widgetSwitcher").ValueType() != JsonValueType::String) {
             error = L"Invalid widget switcher layout."; return std::nullopt;
