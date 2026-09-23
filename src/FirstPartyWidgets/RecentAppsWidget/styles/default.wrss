@@ -11,7 +11,6 @@
 .recent-apps-widget {
   width: 100vw;
   min-width: 0px;
-  max-width: 520px;
   gap: 8px;
   padding: 14px;
   background: var(--recent-surface);

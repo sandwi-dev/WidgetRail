@@ -273,7 +273,12 @@ internal static class SettingsPresentation
             PageScope("accessibility.page",
                 UI.Text("Accessibility", "accessibility.heading", "Accessibility settings")
                     .Classes("page-heading"),
-                DisplayHint(display), text, system, reduced, visual),
+                DisplayHint(display), text,
+                UI.Text(
+                    "Changing text size can affect widget layouts in unintended ways. Use Interface size in Overlay settings to scale everything proportionally.",
+                    "text.layout-warning", "Text size layout warning")
+                    .Classes("page-help", "text-size-warning"),
+                system, reduced, visual),
             "text.stepper.decrement",
             "accessibility.page");
     }

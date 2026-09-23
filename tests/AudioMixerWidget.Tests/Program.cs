@@ -1548,7 +1548,6 @@ static async Task ShippedAssetsValidate()
     AssertResponsiveLayoutBudget(compiled.Theme!);
     var style = await File.ReadAllTextAsync(Path.Combine(project, "styles", "default.wrss"));
     Assert.Contains("width: 100%", style);
-    Assert.Contains("max-width: 560px", style);
     Assert.Contains(".audio-session-list", style);
     Assert.True(!style.Contains("max-height: 340px", StringComparison.Ordinal),
         "The application rows retained a second fixed-height scroll viewport.");
@@ -1605,13 +1604,13 @@ static void AssertResponsiveLayoutBudget(WrssTheme theme)
     Assert.Equal("1", slider.Get("flex-grow")!.Text);
     Assert.Equal("1", slider.Get("flex-shrink")!.Text);
 
-    foreach (var viewport in new[] { 280D, 320D, 1280D, 3840D })
+    foreach (var viewport in new[] { 280D, 320D, 520D, 572D, 650D, 1280D, 3840D })
     {
         var preferred = Pixels(root.Get("width")!, viewport);
         var rootWidth = Math.Min(viewport, Math.Clamp(
             preferred,
             Pixels(root.Get("min-width")!, viewport),
-            Pixels(root.Get("max-width")!, viewport)));
+            root.Get("max-width") is { } maximum ? Pixels(maximum, viewport) : double.PositiveInfinity));
         var rootInner = rootWidth - HorizontalSpacing(root.Get("padding")!, viewport);
         var cardInner = rootInner - HorizontalSpacing(card.Get("padding")!, viewport);
 
@@ -1623,8 +1622,7 @@ static void AssertResponsiveLayoutBudget(WrssTheme theme)
         Assert.True(controlMinimum <= cardInner,
             $"Audio controls need {controlMinimum}px but only {cardInner}px is available at {viewport}px.");
 
-        Assert.True(rootWidth <= 560 && rootWidth <= viewport,
-            $"Root width {rootWidth}px escaped its viewport/max bound at {viewport}px.");
+        Assert.Equal(viewport, rootWidth);
     }
 }
 

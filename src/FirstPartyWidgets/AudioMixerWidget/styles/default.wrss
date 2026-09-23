@@ -15,7 +15,6 @@
   min-height: 0;
   width: 100%;
   min-width: 280px;
-  max-width: 560px;
   gap: 8px;
   padding: 14px;
   background: var(--surface);

@@ -3,7 +3,6 @@
   height: 100vh;
   min-width: 0px;
   min-height: 0px;
-  max-width: 900px;
   gap: 10px;
   padding: 16px 18px;
   overflow: clip;

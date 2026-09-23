@@ -1,7 +1,6 @@
 .media-sessions-widget {
   width: 100vw;
   min-width: 0px;
-  max-width: 580px;
   gap: 8px;
   padding: 14px 16px;
   background: var(--surface);

@@ -1379,7 +1379,6 @@ static async Task ShippedAssetsValidate()
     var style = await File.ReadAllTextAsync(Path.Combine(project, "styles", "default.wrss"));
     Assert.Contains("width: 100vw", style);
     Assert.Contains("min-width: 0px", style);
-    Assert.Contains("max-width: 560px", style);
     Assert.True(!style.Contains("scale:", StringComparison.Ordinal),
         "Full-width Wi-Fi rows may not scale beyond their clipped scroll viewport.");
 
@@ -1419,12 +1418,12 @@ static void AssertResponsiveLayoutBudget(WrssTheme theme)
     var inset = HorizontalSpacing(list.Get("padding")!, 560) / 2;
     var focusInset = Math.Abs(Pixels(focused.Get("outline-offset")!, 560));
     Assert.True(inset >= focusInset, "Wi-Fi focus outline can clip against the scroll edge.");
-    foreach (var viewport in new[] { 280D, 320D, 1280D, 3840D })
+    foreach (var viewport in new[] { 280D, 320D, 560D, 616D, 700D, 1280D, 3840D })
     {
         var width = Math.Min(viewport, Math.Clamp(Pixels(root.Get("width")!, viewport),
-            Pixels(root.Get("min-width")!, viewport), Pixels(root.Get("max-width")!, viewport)));
-        Assert.True(width <= 560 && width <= viewport,
-            $"Root width {width}px escaped viewport/max bound at {viewport}px.");
+            Pixels(root.Get("min-width")!, viewport),
+            root.Get("max-width") is { } maximum ? Pixels(maximum, viewport) : double.PositiveInfinity));
+        Assert.Equal(viewport, width);
     }
 }
 
