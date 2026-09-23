@@ -56,9 +56,16 @@ current focus. [Learn the controls](controls.md).
 
 ## Enable the features you want
 
-Open **Settings → Widgets**. Review each widget's permissions before enabling it.
-For example, Audio Mixer needs access to audio controls. Settings stays enabled
-so you can always manage the rest of the application.
+1. Open **Settings → Widgets** and select a widget you want to use. If it requests
+   access, open **Permissions & configuration**, review it, and allow the
+   permissions it needs. For example, Audio Mixer needs access to audio controls.
+   Enable the widget if it is disabled.
+2. Choose **Disable widget** for widgets you do not need. They leave the tray
+   and can be enabled again later. Settings stays enabled so you can always
+   manage the application.
+3. Open **Settings → Overlay**. Adjust **Interface size** for your display, choose
+   **Position** and **Widget switcher**, and decide whether to start WidgetRail
+   when signing in. See [Customization](customization.md) for the full set of options.
 
 Spotify, YouTube, and Playnite are separate add-ons. Follow each widget's README
 for installation and service setup; installing WidgetRail alone does not configure them.

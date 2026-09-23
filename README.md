@@ -10,6 +10,22 @@ video or compact widget views visible while the main overlay is closed.
 
 [Download](https://github.com/sandwi-dev/WidgetRail/releases) · [Installation](docs/users/getting-started.md) · [Documentation](docs/README.md) · [Build a widget](docs/developers/widget-quickstart.md)
 
+## Quick start
+
+Requires **Windows 10 build 19041 or newer, or Windows 11, x64**. WidgetRail is
+preview software; this README describes the current source version. Check the
+release notes for features available in each downloadable preview.
+
+1. **Install WidgetRail.** Download an installer from [GitHub Releases](https://github.com/sandwi-dev/WidgetRail/releases). Choose **Production** for everyday use or **Developer** for additional SDK examples. Both editions include the CLI and widget templates.
+2. **Open the overlay.** Launch WidgetRail from the Start menu, then press **View + Menu** together (the default shortcut) or **F1** on a keyboard. Press again to hide it. Use the D-pad or left stick to navigate and A to select, or use the mouse.
+3. **Allow widget permissions.** Open **Settings → Widgets** and select a widget you want to use. If it requests access, open **Permissions & configuration** and allow the permissions it needs, such as audio controls for Audio Mixer. Enable the widget if it is disabled.
+4. **Disable widgets you do not need.** From a widget's details, choose **Disable widget** to remove it from the tray. You can enable it again later; Settings itself remains available.
+5. **Adjust the overlay.** Open **Settings → Overlay** and check **Interface size**, **Position**, and **Widget switcher**. Adjust the size to fit your display, choose the layout you prefer, and enable startup at sign-in if needed.
+
+Before using WidgetRail in games, review the [recommended setup](#recommended-setup)
+for Windows controller shortcuts and display mode. See the
+[installation guide](docs/users/getting-started.md) for runtime requirements and troubleshooting.
+
 ![The WidgetRail overlay over a game](docs/images/overview.png)
 
 ## Controller navigation
@@ -20,15 +36,12 @@ actions available for the current selection. Text fields support an on-screen
 controller keyboard.
 
 - **Controller support:** Xbox-compatible controllers and native DualSense input over USB or Bluetooth. Controller hints use Xbox or PlayStation glyphs according to the detected input.
-- **Opening shortcut:** choose **View + Menu** or **Guide** in Settings. Guide supports both the Xbox Guide button and the PlayStation PS button.
-- **Keyboard and mouse:** use pointer controls, or navigate with arrows, Enter, and Escape. **F1** shows or hides the overlay.
+- **Keyboard navigation:** arrows, Enter, and Escape provide focus, selection, and Back actions.
 - **Optional Exclusive control:** keep a supported controller's input in WidgetRail while the overlay is open. This requires HidHide and ViGEmBus; review the [compatibility notes](docs/users/known-limitations.md#games-and-controller-input) before enabling it.
 
 ### Widget switching
 
-Choose **Radial + rail** or **Rail** in **Settings → Overlay → Widget switcher**.
-
-**Radial + rail** provides direct selection from a wheel, with eight widgets per
+The default **Radial + rail** layout provides direct selection from a wheel, with eight widgets per
 page. Press B at a widget's top level to open it, point the left stick to preview
 a widget, and press A to enter. The right stick changes pages without changing
 the current preview until another icon is selected.
@@ -100,13 +113,13 @@ display; they do not change Windows display scaling.
 | **Overlay position** | Center, Bottom left, or Bottom right. Corner layouts keep the outside and bottom edges fixed during widget resizing, with guide hints aligned to the chosen side. |
 | **Widget switcher** | Radial + rail or the horizontal rail. |
 | **Interface size** | 50%–125%, saved per display. |
-| **Text size** | 85%–150%, saved per display. |
+| **Text size** | 85%–150%, saved per display, under **Settings → Accessibility**. |
 | **Themes** | Built-in themes and installable theme packages. Shared controls and controller hints follow the selected theme. |
 | **Animations** | Enable or disable widget-switch animations, follow Windows motion preferences, or select Reduced motion. |
 | **Contrast and readability** | Follow Windows high contrast, enable High contrast, use Bold text, or reduce transparency. |
 | **Backdrop** | Adjust backdrop opacity from 0% to 80%. |
 | **Startup** | Start WidgetRail quietly when signing in to Windows. |
-| **Tray organization** | Reorder widgets, enable or disable them, and reload a widget from its tray controls. |
+| **Tray organization** | Reorder widget icons and reload a widget from its tray controls. |
 
 New installations use **Neon Circuit**, **Radial + rail**, centered placement,
 bold text, and widget-switch animations. Startup is off by default.
@@ -121,9 +134,8 @@ Use **Settings → Widgets** to install a local `.wrwidget` package, review
 permissions, and enable it. Full-access widgets require explicit approval because
 they run with your Windows account's permissions.
 
-The same section supports manual updates, uninstalling add-ons, and removing
-unused older versions. Built-in widgets update with WidgetRail. Add-ons update
-separately, and updates require review before they are enabled.
+The same section supports uninstalling add-ons and removing unused older
+versions. See [Installation and updates](#installation-and-updates) for update procedures.
 
 The included `wrail` CLI can also install widgets and themes from local packages
 or named GitHub release assets with checksum verification.
@@ -163,32 +175,24 @@ rebuilding on source changes, scenario previews, and package creation.
 The native inspector shows layout, resolved styles, focus, and diagnostic
 information while a development widget runs.
 
-Both installer editions include the CLI and templates. The Developer edition
-adds SDK Gallery and reference widgets. Writing an ordinary C# widget does not
-require building the native host.
+[SDK Gallery](samples/SdkGalleryWidget/README.md) demonstrates the available
+components and layouts. Writing an ordinary C# widget does not require building
+the native host.
 
 [Widget quickstart](docs/developers/widget-quickstart.md) · [Core concepts](docs/developers/concepts.md) · [Presentation composition](docs/reference/presentation-composition.md) · [CLI and inspector](docs/reference/cli-workflows.md) · [Authoring guide](docs/developers/widget-authoring-guide.md)
 
-## Download and installation
+## Installation and updates
 
-WidgetRail is preview software for **Windows 10 build 19041 or newer and
-Windows 11, x64**.
-
-| Edition | Contents |
-|---|---|
-| **Production** | The overlay, built-in utility widgets, CLI, and widget templates. |
-| **Developer** | Everything in Production, plus SDK Gallery and reference samples. |
-
-These are two editions of the same application version, not separate stable
-and unstable channels. This README describes the current source version;
-release notes identify the changes included in each downloadable preview.
-
-Download the installer from [GitHub Releases](https://github.com/sandwi-dev/WidgetRail/releases).
-It includes private .NET base and Windows Desktop runtimes, and checks for
+The installer includes private .NET base and Windows Desktop runtimes, and checks for
 GameInput and WebView2. A missing WebView2 runtime requires an internet download.
 
 Application updates are manual: quit WidgetRail and run the newer installer.
-Your settings and installed add-ons are retained.
+Built-in widgets update with the application; your settings and installed add-ons
+are retained. Production and Developer use the same application version and
+saved data, rather than separate stable and unstable channels.
+
+Update an add-on through **Settings → Widgets → Update from file** in its details.
+Select the newer `.wrwidget`, review its permissions, and enable the update.
 
 [Installation and updates](docs/users/getting-started.md) · [Build from source](docs/maintainers/building.md)
 
@@ -208,10 +212,8 @@ These settings are optional. WidgetRail does not change them automatically.
 
 ### What if widgets are too large or too small, or the guide, tray, and widget overlap?
 
-Adjust **Settings → Overlay → Interface size** between 50% and 125%.
-Use **Settings → Accessibility → Text size** for a separate text adjustment.
-Both sizes are saved for the display shown in Settings. A new display uses
-the existing default sizes; Windows display scaling is unchanged.
+Use the sizing options in [Customization](#customization). Reduce interface size
+if overlay elements overlap; use text size when only labels need adjustment.
 
 ### Why does the overlay open but fail to take focus or switch apps?
 
@@ -224,12 +226,6 @@ If the guide says **Focus blocked**, try clicking inside the overlay. If that
 does not help, use Alt+Tab to switch to the desktop or a regular app, then reopen
 WidgetRail. [Foreground troubleshooting](docs/users/troubleshooting.md#the-overlay-cannot-take-foreground-focus)
 
-### How do I install Playnite Library or another full-access widget?
-
-Download its `.wrwidget` file and choose **Settings → Widgets → Install local
-widget**. Review the full-access confirmation, then configure and enable the
-widget. Playnite also requires its [companion setup](samples/PlayniteLibraryWidget/README.md).
-
 ### Why is an enabled widget missing from the tray?
 
 A **Built in** copy takes priority over an installed duplicate, even when the
@@ -239,10 +235,9 @@ Other widgets may need permission review or a compatible package.
 
 ### What if my controller shortcut does not open WidgetRail?
 
-Confirm that WidgetRail is running and use the shortcut selected in
-**Settings → Controllers**. For View + Menu, press both buttons together and
-release them. Try **F1** on a keyboard to check whether the overlay opens.
-Windows gaming features can also respond to Guide.
+If the keyboard shortcut works but the controller does not, check the selected
+shortcut in **Settings → Controllers** and the Windows options in
+[Recommended setup](#recommended-setup). Windows gaming features can also respond to Guide.
 [Controller troubleshooting](docs/users/troubleshooting.md)
 
 ## License and contributions
