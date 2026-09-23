@@ -2631,6 +2631,20 @@ int main(int argc, char** argv) {
     CHECK(appearance->themeId == L"midnight-blue");
     CHECK(appearance->themeVersion == L"1.2.0");
     CHECK(appearance->interfaceScale == 1.1);
+    for (const auto value : {"0.5", "0.65", "0.499"}) {
+        std::string source(ValidAppearance);
+        const std::string original = "\"interfaceScale\": 1.1";
+        source.replace(source.find(original), original.size(), std::string("\"interfaceScale\": ") + value);
+        error.clear();
+        const auto parsed = widgetrail::testing::ParsePlatformAppearance(source, error);
+        if (std::string_view(value) == "0.499") {
+            CHECK(!parsed && !error.empty());
+        } else {
+            CHECK(parsed && error.empty());
+            CHECK(parsed->interfaceScale == std::stod(value));
+        }
+    }
+    error.clear();
     CHECK(appearance->textScale == 1.25);
     CHECK(appearance->backdropOpacity == 0.62);
     CHECK(appearance->motion == widgetrail::PlatformMotionPreference::Reduced);
@@ -2838,12 +2852,12 @@ int main(int argc, char** argv) {
     CHECK(appearanceState.current()->themeId == L"midnight-blue");
 
     std::string scaledJson(ValidAppearance);
-    scaledJson.insert(1, R"json("displayScales":{"monitor-a":{"interfaceScale":0.85,"textScale":1.4}},)json");
+    scaledJson.insert(1, R"json("displayScales":{"monitor-a":{"interfaceScale":0.5,"textScale":1.4}},)json");
     error.clear();
     const auto parsedScales = widgetrail::testing::ParsePlatformAppearance(scaledJson, error);
     CHECK(parsedScales && error.empty());
-    CHECK(parsedScales->displayScales.at(L"monitor-a").interfaceScale == 0.85);
-    scaledJson.replace(scaledJson.find("0.85"), 4, "0.01");
+    CHECK(parsedScales->displayScales.at(L"monitor-a").interfaceScale == 0.5);
+    scaledJson.replace(scaledJson.find("0.5"), 3, "0.499");
     CHECK(!widgetrail::testing::ParsePlatformAppearance(scaledJson, error));
 
     // Saved sizes must follow monitor identity, not the previous monitor's effective pair.
@@ -2851,12 +2865,12 @@ int main(int argc, char** argv) {
     sized.revision = 20;
     sized.interfaceScale = 1.1;
     sized.textScale = 1.15;
-    sized.displayScales[L"monitor-a"] = {0.8, 1.5};
+    sized.displayScales[L"monitor-a"] = {0.5, 1.5};
     sized.displayScales[L"monitor-b"] = {1.25, 0.85};
     widgetrail::PlatformAppearanceState sizes;
     CHECK(sizes.Publish(sized));
     CHECK(sizes.SelectDisplay(L"monitor-a"));
-    CHECK(sizes.current()->interfaceScale == 0.8 && sizes.current()->textScale == 1.5);
+    CHECK(sizes.current()->interfaceScale == 0.5 && sizes.current()->textScale == 1.5);
     CHECK(sizes.SelectDisplay(L"monitor-b"));
     CHECK(sizes.current()->interfaceScale == 1.25 && sizes.current()->textScale == 0.85);
     CHECK(sizes.SelectDisplay(L"unseen"));

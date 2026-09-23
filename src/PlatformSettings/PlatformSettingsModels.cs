@@ -43,7 +43,7 @@ public enum OverlayPosition { Center, BottomLeft, BottomRight }
 
 public sealed record AppearanceSettings
 {
-    public const double MinimumInterfaceScale = 0.8;
+    public const double MinimumInterfaceScale = 0.5;
     public const double MaximumInterfaceScale = 1.25;
     public const double MinimumTextScale = 0.85;
     public const double MaximumTextScale = 1.5;

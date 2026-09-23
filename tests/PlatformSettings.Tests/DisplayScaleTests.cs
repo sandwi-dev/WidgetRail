@@ -19,7 +19,7 @@ internal static class DisplayScaleTests
             Check(DisplayScalePolicy.Resolve(loaded.Appearance, "unseen") == new DisplayScaleSettings(1.1, 1.2));
             await store.UpdateAsync(current => current with
             {
-                Appearance = DisplayScalePolicy.Set(current.Appearance, "monitor-a", new(0.85, 1.4)),
+                Appearance = DisplayScalePolicy.Set(current.Appearance, "monitor-a", new(0.5, 1.4)),
             });
             await store.UpdateAsync(current => current with
             {
@@ -31,7 +31,7 @@ internal static class DisplayScaleTests
                 Appearance = current.Appearance with { BoldText = !current.Appearance.BoldText },
             });
             loaded = await store.LoadAsync();
-            Check(DisplayScalePolicy.Resolve(loaded.Appearance, "monitor-a") == new DisplayScaleSettings(0.85, 1.4));
+            Check(DisplayScalePolicy.Resolve(loaded.Appearance, "monitor-a") == new DisplayScaleSettings(0.5, 1.4));
             Check(DisplayScalePolicy.Resolve(loaded.Appearance, "monitor-b") == new DisplayScaleSettings(1.25, 0.9));
             Check(DisplayScalePolicy.Resolve(loaded.Appearance, null) == new DisplayScaleSettings(1.1, 1.2));
             var before = await File.ReadAllTextAsync(store.Paths.SettingsFile);
@@ -45,6 +45,13 @@ internal static class DisplayScaleTests
             }
             catch (PlatformSettingsException) { }
             Check(before == await File.ReadAllTextAsync(store.Paths.SettingsFile));
+            Check(PlatformSettingsValidator.Validate(loaded with
+            {
+                Appearance = loaded.Appearance with
+                {
+                    DisplayScales = new Dictionary<string, DisplayScaleSettings> { ["monitor-a"] = new(0.499, 1) },
+                },
+            }).Any(diagnostic => diagnostic.Code == "out_of_range"));
             var bounded = fallback;
             for (var i = 0; i < DisplayScalePolicy.MaximumDisplays; ++i)
                 bounded = DisplayScalePolicy.Set(bounded, "display-" + i, new(1, 1));

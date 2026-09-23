@@ -907,7 +907,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     appearance.themeVersion = std::wstring(std::wstring_view(payload.GetNamedString(L"themeVersion")));
     if (!std::isfinite(revision) || revision < 0 ||
         revision > 9'007'199'254'740'991.0 || std::floor(revision) != revision ||
-        !std::isfinite(appearance.interfaceScale) || appearance.interfaceScale < 0.8 ||
+        !std::isfinite(appearance.interfaceScale) || appearance.interfaceScale < 0.5 ||
         appearance.interfaceScale > 1.25 ||
         !std::isfinite(appearance.textScale) || appearance.textScale < 0.85 ||
         appearance.textScale > 1.5 ||
@@ -937,7 +937,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
                 error = L"Invalid display scale values."; return std::nullopt;
             }
             const PlatformDisplayScale scale{item.GetNamedNumber(L"interfaceScale"), item.GetNamedNumber(L"textScale")};
-            if (!std::isfinite(scale.interfaceScale) || scale.interfaceScale < 0.8 || scale.interfaceScale > 1.25 ||
+            if (!std::isfinite(scale.interfaceScale) || scale.interfaceScale < 0.5 || scale.interfaceScale > 1.25 ||
                 !std::isfinite(scale.textScale) || scale.textScale < 0.85 || scale.textScale > 1.5) {
                 error = L"Display scale outside safety bounds."; return std::nullopt;
             }

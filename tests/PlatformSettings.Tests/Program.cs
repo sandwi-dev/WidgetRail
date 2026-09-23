@@ -105,7 +105,7 @@ static async Task SettingsRoundTrip()
         {
             ThemeId = "dev.example.slate",
             ThemeVersion = "1.2.3",
-            InterfaceScale = 1.15,
+            InterfaceScale = 0.5,
             TextScale = 1.2,
             BackdropOpacity = 0.7,
             Motion = MotionPreference.Reduced,
@@ -279,6 +279,7 @@ static async Task SettingsRangesAreEnforced()
     foreach (var source in new[]
     {
         SettingsJson(interfaceScale: "1.251"),
+        SettingsJson(interfaceScale: "0.499"),
         SettingsJson(textScale: "0.849"),
         SettingsJson(backdropOpacity: "0.81"),
         SettingsJson(themeId: "Upper.Case"),

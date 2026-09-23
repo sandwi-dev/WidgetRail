@@ -783,7 +783,7 @@ int main() {
         const int clientWidth = client.right - client.left;
         const int clientHeight = client.bottom - client.top;
         for (const unsigned int dpi : {72U, 96U, 120U, 144U, 192U, 288U, 480U}) {
-            for (const float interfaceScale : {0.8F, 1.0F, 1.125F, 1.25F}) {
+            for (const float interfaceScale : {0.5F, 0.65F, 0.8F, 1.0F, 1.125F, 1.25F}) {
                 const auto metrics = ComputeOverlayRenderMetrics(
                     clientWidth, clientHeight, dpi, interfaceScale);
                 Check(metrics.has_value(), "arbitrary client DPI and zoom produce render metrics");
@@ -850,7 +850,7 @@ int main() {
     };
     for (const auto work : physicalWorkAreas) {
         for (const unsigned int dpi : {72U, 96U, 120U, 144U, 168U, 192U, 240U, 288U, 384U, 480U}) {
-            for (const float interfaceScale : {0.8F, 0.9F, 1.0F, 1.1F, 1.25F}) {
+            for (const float interfaceScale : {0.5F, 0.65F, 0.8F, 0.9F, 1.0F, 1.1F, 1.25F}) {
                 for (const float desiredHeight : {180.0F, 540.0F, 700.0F}) {
                     const auto placement = ComputeOverlayPlacement(
                         work, dpi, 1180.0F * interfaceScale,

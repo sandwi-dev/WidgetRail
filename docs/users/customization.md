@@ -12,6 +12,9 @@ Choose a theme and adjust the interface scale until text and controls are easy
 to read from where you play. Shared widget controls and controller hints use
 theme colors. Widgets may also supply their own artwork and style choices.
 
+**Settings → Overlay → Interface size** ranges from 50% to 125%. Lower it if
+Windows display scaling makes the overlay too large. The size is saved per display.
+
 Accessibility settings can adjust text and contrast, motion, and transparency.
 Try changes in a widget you use often so you can see how they affect real content.
 

@@ -536,7 +536,7 @@ static async Task BoundedPersistence()
     Assert.Equal(AppearanceSettings.MaximumTextScale, saved.Appearance.TextScale);
     Assert.Equal(1.45D, saved.Appearance.DisplayScales["test-monitor"].TextScale);
     Assert.Equal(AppearanceSettings.MinimumInterfaceScale, saved.Appearance.InterfaceScale);
-    Assert.Equal(0.85D, saved.Appearance.DisplayScales["test-monitor"].InterfaceScale);
+    Assert.Equal(0.55D, saved.Appearance.DisplayScales["test-monitor"].InterfaceScale);
     Assert.Equal(0.75D, saved.Appearance.BackdropOpacity);
 }
 
