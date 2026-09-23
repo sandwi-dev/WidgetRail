@@ -71,7 +71,9 @@ authority and preserve the package's authored IDs and controller graph.
 
 The destination selector is one horizontal tab row at every responsive size;
 the persistent player and selected browse page share the remaining pane. LT/RT
-switch Search, Queue, Playlists, and Devices, including from playlist detail. Y opens
+switch Devices, Search, Queue, and Playlists, including from playlist detail. A
+fresh widget starts on Devices and loads that page after authorization succeeds.
+Y opens
 the nested Settings route and B restores the exact prior route focus. Playlist
 detail is likewise nested: B returns to the exact playlist tile, while B at a
 root destination remains available to the overlay shell. A transport shortcut
@@ -85,15 +87,39 @@ eligibility scopes. After the SDK reports Ready, the package performs one
 bounded `activateElement()` command before transferring playback. WebView2
 grants ephemeral autoplay permission only to the exact trusted document and
 Spotify SDK origins. Local Play/Pause uses the correlated SDK command only while
-an exact successful local-device decision remains current; explicit remote
+the current device is confirmed local by a successful transfer or a fresh
+Web API device observation; explicit remote
 selection revokes that routing and continues through the Web API. Autoplay
 denial remains a visible, recoverable state. Routine successful action, queue,
 token-delivery, and player-state traffic is intentionally not written to the
 bounded diagnostics file; concise typed failures remain available.
 
-For **Play here**, local-player events update play/pause state and permissions
-together. This keeps an old Web API restriction from disabling the button after
-the local player has already changed state. No extra polling is required.
+## Now Playing state
+
+For **Play here**, `player_state_changed` supplies one complete timestamped
+snapshot: track, artists, album, artwork URL, position, duration, playing state,
+repeat, shuffle, and control restrictions. The widget publishes it immediately,
+including on pinned layouts. It does not combine old cloud track metadata with
+new local transport flags.
+
+The existing active refresh loop queries `getCurrentState()` while the local
+device owns playback: normally every 5 seconds playing or 15 seconds paused.
+Healthy local refreshes make no Web API player-state request. A newer SDK event
+wins over an older pending query response. Failed or unavailable local reads
+fall back to the Web API; losing local ownership wakes the refresh loop.
+Remote playback uses `GET /v1/me/player` with the existing 5/15/30-second
+playing/paused/idle delays. A fresh cloud device observation can discover an
+external transfer back to WidgetRail, without overriding a newer device choice
+or local event.
+
+The 250-ms progress tick only repaints the timestamp-based position estimate.
+Deactivation stops widget refreshes and UI event observation; the resident
+helper can continue playing and retain its latest bounded state for reopening.
+
+Play/pause, next/previous and seek use the local SDK when eligible. Device
+discovery/transfers, search, playlists, queue operations, starting a specific
+track or context, and shuffle/repeat commands still require Spotify's Web API.
+No additional timer or unbounded event history is introduced.
 
 ## Presentation and cancellation
 

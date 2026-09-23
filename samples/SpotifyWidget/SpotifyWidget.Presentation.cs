@@ -452,13 +452,13 @@ internal static class SpotifyPresentation
             .Classes("spotify-page-group");
         NavigationShellDestination[] destinations =
         [
+            new("devices", "Devices", "spotify.nav.devices", WidgetGlyph.Connection,
+                IsDisabled: setup),
             new("search", "Search", "spotify.nav.search", WidgetGlyph.Music,
                 IsDisabled: setup),
             new("queue", "Queue", "spotify.nav.queue", WidgetGlyph.Next,
                 IsDisabled: setup),
             new("playlists", "Playlists", "spotify.nav.playlists", WidgetGlyph.Music,
-                IsDisabled: setup),
-            new("devices", "Devices", "spotify.nav.devices", WidgetGlyph.Connection,
                 IsDisabled: setup),
         ];
         var parts = UI.NavigationShellParts(

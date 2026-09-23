@@ -34,12 +34,15 @@ return to the widget's Settings to replace the Client ID later.
 
 ## Use it with a controller
 
-Use **LT / RT** to switch between Search, Queue, Playlists, and Devices. **A** activates
+Once connected, a fresh Spotify widget opens on **Devices**, where you can choose where to listen.
+Use **LT / RT** to switch between Devices, Search, Queue, and Playlists. **A** activates
 the focused control, **Y** opens Settings, and **B** returns from nested pages.
 The on-screen guide shows playback and track-menu actions where available.
 
 For local playback, open **Devices**, find **This overlay**, and select **Play here**.
 The current WidgetRail installer includes the runtime needed by the local player.
+While playing here, Now Playing updates directly from the local player. Playback
+on another device is refreshed periodically through Spotify.
 
 ![Spotify with its compact player pinned in the corner](screenshots/pinned-player.png)
 

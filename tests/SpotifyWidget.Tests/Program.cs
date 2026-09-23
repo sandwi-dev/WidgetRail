@@ -9,6 +9,8 @@ using System.Text;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Local play pause state and permissions stay aligned through stale cloud refresh", LocalTransportPermissions),
+    ("Local events publish full playback and source loss refreshes remote state", LocalPlaybackEvents),
+    ("Fresh Spotify opens Devices first and loads its cached device page", DevicesFirst),
     ("Playlist disk cache survives restart and isolates authorizations", PlaylistDiskPersistence),
     ("Playlist disk failures corruption and quota limits remain cache misses", PlaylistDiskFailures),
     ("Playlist snapshot versions reuse pages only after fresh metadata", PlaylistVersionCache),
@@ -19,7 +21,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Track menu adds once without changing X or fetching collections", TrackMenuRequestBudget),
     ("Play here follow-up reads stop after the bounded settlement budget", LocalStartSettlementBudget),
     ("Play here reconciles stale idle playback without waiting for idle poll", LocalStartReconcilesIdle),
-    ("Search starts first, pages typed results and routes playback", SearchResultsAndPlayback),
+    ("Search pages typed results and routes playback", SearchResultsAndPlayback),
     ("Search drops late responses and preserves query across reopen", SearchLateResponses),
     ("Search accepts changing totals and repeated results without stale virtual windows", SearchMutablePaging),
     ("Section round trips after search always target a rendered focus group", SearchSectionRoundTrips),
@@ -636,7 +638,7 @@ static async Task ResponsiveNavigation()
     Assert.Equal(6, compact.Children.Count);
     Assert.SequenceEqual(new[]
     {
-        "spotify.nav.search", "spotify.nav.queue", "spotify.nav.playlists", "spotify.nav.devices",
+        "spotify.nav.devices", "spotify.nav.search", "spotify.nav.queue", "spotify.nav.playlists",
     }, compact.Children
         .Where(child => child.ActionId is not null)
         .Select(child => child.ActionId!));
@@ -2101,16 +2103,19 @@ static async Task ProjectedProgress()
 static async Task LocalTransportPermissions()
 {
     var harness = SpotifyHarness.Ready();
+    SpotifyLocalTransportObservation Local(bool playing, bool pauseBlocked, bool resumeBlocked) =>
+        new(harness.Playback with { IsPlaying = playing, DisallowedActions = harness.Playback.DisallowedActions with
+            { Pausing = pauseBlocked, Resuming = resumeBlocked } });
     harness.Playback = harness.Playback with
     {
         DisallowedActions = harness.Playback.DisallowedActions with { Resuming = true },
     };
-    harness.Transport = new(true, false, true);
+    harness.Transport = Local(true, false, true);
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     await widget.OnActionAsync(new("spotify.play-toggle", "spotify.play-toggle"));
     Assert.Equal(SpotifyPlaybackOperation.Pause, harness.Commands.Single().Operation);
-    harness.PublishTransport(new(false, true, false));
+    harness.PublishTransport(Local(false, true, false));
     ViewNode Toggle() => Find(widget.Render().CreateSnapshot("local-state", 1).Root, "spotify.play-toggle");
     Assert.Equal(WidgetGlyph.Play, Toggle().Glyph);
     Assert.True(Toggle().IsBusy != true && Toggle().IsDisabled != true,
@@ -2119,19 +2124,63 @@ static async Task LocalTransportPermissions()
     Assert.True(Toggle().IsDisabled != true, "Cloud refresh reintroduced a stale restriction");
     await widget.OnActionAsync(new("spotify.play-toggle", "spotify.play-toggle"));
     Assert.Equal(SpotifyPlaybackOperation.Play, harness.Commands[1].Operation);
-    harness.PublishTransport(new(true, false, true));
+    harness.PublishTransport(Local(true, false, true));
     Assert.Equal(WidgetGlyph.Pause, Toggle().Glyph);
     Assert.True(Toggle().IsDisabled != true, "Local pause permission was not updated");
-    harness.PublishTransport(new(true, true, true));
+    harness.PublishTransport(Local(true, true, true));
     Assert.True(Toggle().IsDisabled == true, "Actual local restrictions must still be respected");
     harness.PublishTransport(null);
     await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh"));
     Assert.True(Toggle().IsDisabled != true, "Remote state must resume authority after local ownership ends");
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
     var previous = widget.Playback;
-    harness.PublishTransport(new(false, true, false));
+    harness.PublishTransport(Local(false, true, false));
     Assert.Equal(previous, widget.Playback);
     await WidgetTestHost.DestroyAsync(widget);
+}
+
+static async Task DevicesFirst()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = new SpotifyWidget(harness);
+    await WidgetTestHost.InitializeAsync(widget);
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready && harness.DeviceCalls == 1);
+    var snapshot = widget.RenderSnapshot("devices-first", 1);
+    var navigation = FindClass(snapshot.Root, "wrail-navigation-shell__compact");
+    Assert.Equal("spotify.nav.devices", navigation.Children.First(child => child.ActionId is not null).ActionId);
+    Assert.True(ContainsAction(snapshot.Root, "spotify.local.start"), "Devices should be the initial page.");
+    Assert.Equal(0, harness.PlaylistCalls);
+    Assert.Equal(0, harness.SearchCalls);
+    await StopAsync(widget);
+}
+
+static async Task LocalPlaybackEvents()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    var reads = harness.PlaybackCalls;
+    var local = harness.Playback with
+    {
+        IsPlaying = false, ProgressMilliseconds = 42_000, DurationMilliseconds = 240_000,
+        RepeatState = SpotifyRepeatState.Track, ShuffleState = true,
+        Item = harness.Playback.Item! with { Title = "Local track", Uri = "spotify:track:local", ArtworkUrl = "https://i.scdn.co/image/local" },
+        DisallowedActions = harness.Playback.DisallowedActions with { Seeking = true, SkippingNext = true },
+    };
+    harness.PublishTransport(new(local));
+    Assert.Equal(local, widget.Playback);
+    var view = widget.RenderSnapshot("local-metadata", 1);
+    Assert.Equal("Local track", Find(view.Root, "spotify.track-title").Text);
+    Assert.Equal(reads, harness.PlaybackCalls);
+    // A stale full refresh must not mix cloud metadata into the local track.
+    await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh"));
+    Assert.Equal(local, widget.Playback);
+    reads = harness.PlaybackCalls;
+    harness.PublishTransport(null);
+    await WaitUntil(() => harness.PlaybackCalls > reads);
+    Assert.Equal(harness.Playback.Item, widget.Playback!.Item);
+    await StopAsync(widget);
 }
 
 static async Task OptimisticPlayback()
@@ -3195,9 +3244,11 @@ static async Task<SpotifyWidget> StartAsync(
         : new SpotifyWidget(harness, timeProvider, diagnostics ?? SpotifyRuntimeDiagnostics.None, 12, 24);
     await WidgetTestHost.InitializeAsync(widget);
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
-    // Existing scenarios exercise the Library route; Search has its own entry tests.
-    if (!search && harness.Configured && harness.Connected && harness.ConfigurationError is null)
-        await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.compact.playlists"));
+    // Scenarios explicitly choose their route; a separate test owns Devices-first startup.
+    if (harness.Configured && harness.Connected && harness.ConfigurationError is null)
+        await widget.OnActionAsync(search
+            ? new("spotify.nav.search", "spotify.nav.compact.search")
+            : new("spotify.nav.playlists", "spotify.nav.compact.playlists"));
     return widget;
 }
 

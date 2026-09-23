@@ -76,7 +76,8 @@ internal static class SpotifyPlaybackPage
                 shuffle: false,
                 disallows: {
                   pausing: false, resuming: false, seeking: false,
-                  skippingNext: false, skippingPrevious: false
+                  skippingNext: false, skippingPrevious: false,
+                  togglingRepeatContext: false, togglingRepeatTrack: false, togglingShuffle: false
                 },
                 currentTrack: null
               };
@@ -93,7 +94,10 @@ internal static class SpotifyPlaybackPage
                   resuming: disallows.resuming === true,
                   seeking: disallows.seeking === true,
                   skippingNext: disallows.skipping_next === true,
-                  skippingPrevious: disallows.skipping_prev === true
+                  skippingPrevious: disallows.skipping_prev === true,
+                  togglingRepeatContext: disallows.toggling_repeat_context === true,
+                  togglingRepeatTrack: disallows.toggling_repeat_track === true,
+                  togglingShuffle: disallows.toggling_shuffle === true
                 },
                 currentTrack: track(value.track_window && value.track_window.current_track)
               };

@@ -66,7 +66,10 @@ public sealed record SpotifyProviderPlayback(
     bool ShuffleState,
     int? VolumePercent,
     SpotifyProviderPlaybackActions Actions,
-    string Attribution = "Spotify");
+    string Attribution = "Spotify")
+{
+    public string? DeviceId { get; init; }
+}
 
 public enum SpotifyProviderPlaybackOperation
 {

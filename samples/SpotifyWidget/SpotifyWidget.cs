@@ -95,6 +95,7 @@ public sealed class SpotifyWidget : Widget
     private long _activeGeneration;
     private readonly SemaphoreSlim _commandGate = new(1, 1);
     private readonly SemaphoreSlim _pollWake = new(0, 1);
+    private int _immediatePlaybackRead;
     private int _playbackSettlementReads;
     private string? _expectedPlaybackUri;
     private ToastElement? _actionToast;
@@ -126,16 +127,16 @@ public sealed class SpotifyWidget : Widget
             throw new ArgumentNullException(nameof(runtimeDiagnostics));
         _navigation = CreateNavigatorWithOptions(
             "spotify.navigation",
-            SpotifyRoute.Search,
+            SpotifyRoute.Devices,
             new WidgetNavigatorOptions<SpotifyRoute>
             {
                 SharedRootScopeId = SpotifyPresentation.InputScope,
                 RootRoutes =
                 [
+                    SpotifyRoute.Devices,
                     SpotifyRoute.Search,
                     SpotifyRoute.Queue,
                     SpotifyRoute.Playlists,
-                    SpotifyRoute.Devices,
                 ],
                 RouteScopeIds = new Dictionary<SpotifyRoute, string>
                 {
@@ -318,6 +319,7 @@ public sealed class SpotifyWidget : Widget
         if (_spotify is ISpotifyLocalTransport transport)
             transport.LocalTransportChanged -= OnLocalTransportChanged;
         Interlocked.Increment(ref _activeGeneration);
+        Interlocked.Exchange(ref _immediatePlaybackRead, 0);
         _toastExpiry.Cancel();
         lock (_gate)
         {
@@ -849,7 +851,10 @@ public sealed class SpotifyWidget : Widget
                 // A command wakes and reschedules this one poller. It does not
                 // start another loop or leave the previous idle delay pending.
                 while (await _pollWake.WaitAsync(PollInterval(), cancellationToken)
-                           .ConfigureAwait(false)) { }
+                           .ConfigureAwait(false))
+                {
+                    if (Interlocked.Exchange(ref _immediatePlaybackRead, 0) != 0) break;
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -1013,6 +1018,11 @@ public sealed class SpotifyWidget : Widget
             SetState(generation, SpotifyWidgetViewState.Ready,
                 playback.IsAvailable ? "Live from Spotify" : "Connected · no active playback",
                 playback, observationSequence: observationSequence);
+            if (generation == Volatile.Read(ref _activeGeneration) &&
+                !cancellationToken.IsCancellationRequested &&
+                _navigation.Value.RootRoute == SpotifyRoute.Devices)
+                StartPageOperation(operation => LoadDestinationIfNeededAsync(
+                    SpotifyRoute.Devices, operation), replaceRunning: false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)
@@ -1198,10 +1208,10 @@ public sealed class SpotifyWidget : Widget
                 navigation.Route, navigation.Depth)) return;
         SpotifyRoute[] sections =
         [
+            SpotifyRoute.Devices,
             SpotifyRoute.Search,
             SpotifyRoute.Queue,
             SpotifyRoute.Playlists,
-            SpotifyRoute.Devices,
         ];
         var current = Array.IndexOf(sections, navigation.RootRoute);
         if (current < 0) return;
@@ -1871,8 +1881,8 @@ public sealed class SpotifyWidget : Widget
         long observationSequence)
     {
         if (_spotify is ISpotifyLocalTransport transport &&
-            transport.GetLocalTransport() is { } local && observed is not null)
-            observed = SpotifyPlaybackPolicy.ApplyLocalObservation(observed, local);
+            transport.GetLocalTransport() is { } local)
+            observed = local.Playback;
         if (_pendingOperation is { } pendingOperation)
             return SpotifyPlaybackPolicy.MergeOptimisticPresentation(
                 _playback, observed, pendingOperation);
@@ -1903,17 +1913,32 @@ public sealed class SpotifyWidget : Widget
 
     private void OnLocalTransportChanged(object? sender, EventArgs args)
     {
+        bool refreshQueue = false;
+        bool localAvailable;
         lock (_gate)
         {
-            if (!_observingLocalTransport || _playback is null ||
-                _spotify is not ISpotifyLocalTransport transport ||
-                transport.GetLocalTransport() is not { } local) return;
-            _playback = SpotifyPlaybackPolicy.ApplyLocalObservation(
-                SpotifyPlaybackPolicy.Project(_playback,
-                    _timeProvider.GetUtcNow().ToUnixTimeMilliseconds())!, local);
-            ClearOptimisticReconciliationLocked();
+            if (!_observingLocalTransport || _authorizationState != SpotifyAuthorizationState.Connected ||
+                _spotify is not ISpotifyLocalTransport transport) return;
+            var local = transport.GetLocalTransport();
+            localAvailable = local is not null;
+            if (local is not null)
+            {
+                refreshQueue = PlaybackQueueIdentity(_playback) != PlaybackQueueIdentity(local.Playback) &&
+                    _pendingOperation is not (SpotifyPlaybackOperation.Next or SpotifyPlaybackOperation.Previous);
+                _playback = local.Playback;
+                _viewState = SpotifyWidgetViewState.Ready;
+                _status = "Live from this PC";
+                _refreshWarning = null;
+                _consecutiveRefreshFailures = 0;
+                ClearOptimisticReconciliationLocked();
+            }
         }
+        // Losing the local source must not wait out an old paused/idle delay.
+        if (!localAvailable) Interlocked.Exchange(ref _immediatePlaybackRead, 1);
+        if (_pollWake.CurrentCount == 0)
+            try { _pollWake.Release(); } catch (SemaphoreFullException) { }
         Invalidate();
+        if (refreshQueue) InvalidateQueueCollection();
     }
 
     private void ApplyRefreshFailure(long generation, Exception exception)

@@ -32,6 +32,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     private readonly Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>,
         CancellationToken, Task<TrustedHostSpotifyAccessToken>> _tokenProvider;
     private readonly ISpotifyRuntimeDiagnostics _runtimeDiagnostics;
+    private readonly TimeProvider _time;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _stateGate = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -41,6 +42,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     private string? _spotifyDeviceId;
     private bool _routingEligible;
     private SpotifyLocalTransportObservation? _transportObservation;
+    private long _observationRevision;
     internal event EventHandler? TransportChanged;
     private long _routingDecisionGeneration;
     private int _volumePercent = 80;
@@ -62,13 +64,15 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
         Func<SpotifyIntegrationIdentity, IReadOnlyCollection<string>, CancellationToken,
             Task<TrustedHostSpotifyAccessToken>> tokenProvider,
         Func<ISpotifyPlaybackHostClient> clientFactory,
-        ISpotifyRuntimeDiagnostics? runtimeDiagnostics = null)
+        ISpotifyRuntimeDiagnostics? runtimeDiagnostics = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
         _executablePath = Path.GetFullPath(executablePath);
         _tokenProvider = tokenProvider ?? throw new ArgumentNullException(nameof(tokenProvider));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
         _runtimeDiagnostics = runtimeDiagnostics ?? SpotifyRuntimeDiagnostics.None;
+        _time = timeProvider ?? TimeProvider.System;
         _state = IsHostAvailable ? SpotifyLocalPlaybackState.Disabled :
             SpotifyLocalPlaybackState.Unavailable;
     }
@@ -82,6 +86,110 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             return _owner == identity && _routingEligible && _client?.IsRunning == true &&
                 _state is SpotifyLocalPlaybackState.Active or SpotifyLocalPlaybackState.AutoplayBlocked
                 ? _transportObservation : null;
+    }
+
+    internal async Task<SpotifyPlaybackSummary?> ReadPlaybackAsync(
+        SpotifyIntegrationIdentity identity, CancellationToken cancellationToken)
+    {
+        ISpotifyPlaybackHostClient? client;
+        long routing;
+        long revision;
+        lock (_stateGate)
+        {
+            client = _owner == identity && _routingEligible &&
+                _state is SpotifyLocalPlaybackState.Active or SpotifyLocalPlaybackState.AutoplayBlocked
+                ? _client : null;
+            routing = _routingDecisionGeneration;
+            revision = _observationRevision;
+        }
+        if (client?.IsRunning != true) return null;
+
+        WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState? state = null;
+        try
+        {
+            // Reuse the widget's adaptive refresh loop, but query the SDK rather
+            // than Spotify's Web API. Events remain the immediate update path.
+            var response = await client.SendAsync("get_current_state", new { }, cancellationToken)
+                .ConfigureAwait(false);
+            if (response.Type == "current_state")
+                state = SpotifyPlaybackProtocolCodec.DecodePayload<WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState>(response.Payload);
+        }
+        catch (Exception exception) when (exception is SpotifyPlaybackHostClientException or SpotifyPlaybackProtocolException)
+        {
+            // A failed local observation falls back to the existing cloud read.
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_stateGate)
+        {
+            if (!ReferenceEquals(client, _client) || _owner != identity ||
+                routing != _routingDecisionGeneration || !_routingEligible) return null;
+            // A push event delivered during this query is newer than its reply.
+            if (revision != _observationRevision) return _transportObservation?.Playback;
+            ++_observationRevision;
+            _transportObservation = state is { IsAvailable: true }
+                ? MapObservation(state) : null;
+            if (state is { IsAvailable: false })
+            {
+                _routingEligible = false;
+                _state = SpotifyLocalPlaybackState.Ready;
+                _message = "Ready to play through this PC.";
+            }
+            return _transportObservation?.Playback;
+        }
+    }
+
+    internal (long Routing, long Observation) ObservationStamp()
+    {
+        lock (_stateGate) return (_routingDecisionGeneration, _observationRevision);
+    }
+
+    internal void ObservePlaybackDevice(SpotifyIntegrationIdentity identity,
+        (long Routing, long Observation) stamp, string? deviceId)
+    {
+        if (string.IsNullOrEmpty(deviceId)) return;
+        lock (_stateGate)
+        {
+            if (_owner != identity || _client?.IsRunning != true || _spotifyDeviceId is null ||
+                _state is not (SpotifyLocalPlaybackState.Ready or SpotifyLocalPlaybackState.Active or SpotifyLocalPlaybackState.AutoplayBlocked) ||
+                stamp != (_routingDecisionGeneration, _observationRevision)) return;
+            // A cloud read can discover a transfer made in another Spotify app.
+            // It cannot override a newer local event or an explicit device choice.
+            _routingEligible = deviceId == _spotifyDeviceId;
+            _transportObservation = null;
+            ++_observationRevision;
+            if (!_routingEligible)
+            {
+                _state = SpotifyLocalPlaybackState.Ready;
+                _message = "Ready to play through this PC.";
+            }
+            else if (_state != SpotifyLocalPlaybackState.AutoplayBlocked)
+            {
+                _state = SpotifyLocalPlaybackState.Active;
+                _message = "Playing through this PC.";
+            }
+        }
+    }
+
+    private SpotifyLocalTransportObservation MapObservation(
+        WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState state)
+    {
+        var track = state.CurrentTrack;
+        var blocked = state.Disallows;
+        // Match the Web API projection's artist bound so joined labels remain
+        // within the overlay protocol's per-string limit.
+        var artists = track is null ? string.Empty : string.Join(", ", track.Artists.Take(8));
+        return new(new SpotifyPlaybackSummary(
+            state.IsAvailable && track is not null, !state.Paused,
+            Math.Clamp(state.PositionMilliseconds, 0, state.DurationMilliseconds),
+            state.DurationMilliseconds, _time.GetUtcNow().ToUnixTimeMilliseconds(),
+            state.RepeatMode switch { 1 => SpotifyRepeatState.Context, 2 => SpotifyRepeatState.Track, _ => SpotifyRepeatState.Off },
+            state.Shuffle,
+            track is null ? null : new SpotifyPlaybackItemSummary(
+                track.Type == "episode" ? SpotifyPlaybackItemType.Episode : SpotifyPlaybackItemType.Track,
+                track.Name, artists.Length == 0 ? "Spotify" : artists, track.AlbumName, track.ArtworkUrl, track.Uri),
+            new(blocked.Pausing, blocked.Resuming, blocked.Seeking, blocked.SkippingNext,
+                blocked.SkippingPrevious, blocked.TogglingRepeatContext, blocked.TogglingRepeatTrack,
+                blocked.TogglingShuffle), "Spotify"));
     }
 
     internal SpotifyLocalPlaybackSummary GetSummary(SpotifyIntegrationIdentity identity)
@@ -118,6 +226,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             var generation = checked(++_routingDecisionGeneration);
             _routingEligible = false;
             _transportObservation = null;
+            ++_observationRevision;
             if (_owner == identity && _state is SpotifyLocalPlaybackState.Active or
                     SpotifyLocalPlaybackState.AutoplayBlocked)
             {
@@ -136,6 +245,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
         lock (_stateGate)
         {
             if (generation != _routingDecisionGeneration || _owner != identity) return;
+            ++_observationRevision;
             _routingEligible = local;
             if (local)
             {
@@ -407,15 +517,19 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 }
                 break;
             case "not_ready":
+            case "disconnected":
                 lock (_stateGate)
                 {
                     if (!ReferenceEquals(sender, _client) ||
                         started != _startTimestamp) return;
                     _spotifyDeviceId = null;
                     _routingEligible = false;
+                    _transportObservation = null;
+                    ++_observationRevision;
                     _state = SpotifyLocalPlaybackState.NotReady;
                     _message = "Spotify temporarily disconnected this PC.";
                 }
+                TransportChanged?.Invoke(this, EventArgs.Empty);
                 break;
             case "player_state_changed":
                 var playback = SpotifyPlaybackProtocolCodec
@@ -425,9 +539,8 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 {
                     if (!ReferenceEquals(sender, _client) ||
                         started != _startTimestamp) return;
-                    _transportObservation = playback.IsAvailable
-                        ? new(!playback.Paused, playback.Disallows.Pausing, playback.Disallows.Resuming)
-                        : null;
+                    ++_observationRevision;
+                    _transportObservation = playback.IsAvailable ? MapObservation(playback) : null;
                     if (!playback.IsAvailable)
                     {
                         _routingEligible = false;
@@ -494,7 +607,11 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                         new SpotifyPlaybackHostClientException(error.Code, message));
                     _state = state;
                     _message = message;
+                    _transportObservation = null;
+                    _routingEligible = false;
+                    ++_observationRevision;
                 }
+                TransportChanged?.Invoke(this, EventArgs.Empty);
                 break;
         }
     }
@@ -589,12 +706,14 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
             _routingEligible = false;
             _ready?.TrySetCanceled();
             _transportObservation = null;
+            ++_observationRevision;
             _ready = null;
             _startTimestamp = 0;
         }
         if (client is null) return;
         client.EventReceived -= OnClientEvent;
         await client.DisposeAsync().ConfigureAwait(false);
+        TransportChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void SetState(

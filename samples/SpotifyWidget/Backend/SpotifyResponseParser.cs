@@ -59,7 +59,10 @@ internal static partial class SpotifyResponseParser
                 repeat,
                 shuffle,
                 volume,
-                ReadActions(root));
+                ReadActions(root))
+            {
+                DeviceId = device.ValueKind == JsonValueKind.Object ? OptionalString(device, "id", 256) : null,
+            };
         }
         catch (SpotifyProviderException) { throw; }
         catch (JsonException exception)

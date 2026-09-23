@@ -8,18 +8,6 @@ namespace WidgetRail.Samples.SpotifyWidget;
 /// </summary>
 internal static class SpotifyPlaybackPolicy
 {
-    internal static SpotifyPlaybackSummary ApplyLocalObservation(
-        SpotifyPlaybackSummary playback, SpotifyLocalTransportObservation local) =>
-        playback with
-        {
-            IsPlaying = local.IsPlaying,
-            DisallowedActions = playback.DisallowedActions with
-            {
-                Pausing = local.PausingDisallowed,
-                Resuming = local.ResumingDisallowed,
-            },
-        };
-
     internal static SpotifyPlaybackOperation ResolveToggle(
         SpotifyPlaybackSummary? playback) =>
         playback?.IsPlaying == true

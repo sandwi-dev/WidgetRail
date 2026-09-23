@@ -130,7 +130,10 @@ public sealed record SpotifyPlaybackDisallows(
     bool Resuming,
     bool Seeking,
     bool SkippingNext,
-    bool SkippingPrevious);
+    bool SkippingPrevious,
+    bool TogglingRepeatContext = false,
+    bool TogglingRepeatTrack = false,
+    bool TogglingShuffle = false);
 
 public sealed record SpotifyPlaybackTrack(
     string? Uri,

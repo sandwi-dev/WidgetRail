@@ -43,6 +43,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Playlist authorization expands to the least privileged read scopes", PlaylistScopeExpansion),
     ("Local playback hands off tokens and exposes only its public pseudo-device", LocalPlaybackLifecycle),
     ("Local playback routing follows exact successful device decisions", LocalPlaybackRoutingAuthority),
+    ("Local playback reads avoid Web API and reject stale SDK and device observations", LocalPlaybackStateAuthority),
+    ("Local state replies cannot cross device choices or caller cancellation", LocalPlaybackReadRaces),
     ("Activation failure and cancellation cannot reach device transfer", LocalPlaybackActivationFailureCleanup),
     ("Disconnect clears cached credentials and stops local playback", DisconnectClearsSession),
     ("Canceled local playback startup releases the host and resets Starting", LocalPlaybackCancellation),
@@ -1083,6 +1085,145 @@ static async Task LocalPlaybackLifecycle()
     finally { File.Delete(hostPath); }
 }
 
+static async Task LocalPlaybackStateAuthority()
+{
+    var hostPath = CreateTemporaryPlaybackHost();
+    try
+    {
+        var client = new FakeLocalPlaybackHostClient("local-device");
+        var time = new ManualTimeProvider();
+        var manager = new SpotifyLocalPlaybackManager(hostPath,
+            (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
+                "local-token", DateTimeOffset.UtcNow.AddMinutes(10), LocalPlaybackScopes())),
+            () => client, timeProvider: time);
+        var remoteDevice = "remote-device";
+        var http = new FakeHttp(request => request.Uri.Host == "accounts.spotify.com"
+            ? Json(200, Token("api-token", null))
+            : request.Method == HttpMethod.Get && request.Uri.AbsolutePath == "/v1/me/player"
+                ? Json(200, JsonSerializer.Serialize(new
+                {
+                    device = new { id = remoteDevice }, is_playing = true, progress_ms = 100,
+                    item = new { type = "track", name = "Remote track", duration_ms = 10000,
+                        uri = "spotify:track:remote", artists = new[] { new { name = "Remote artist" } } },
+                }))
+                : new SpotifyHttpResponse(204, string.Empty, EmptyHeaders()));
+        await using var backend = Backend(new FakeConfigurationStore("Client123456789"), new FakeVault("refresh"),
+            http, new NullBrowser(), new NullCallback(), localPlayback: manager);
+        var identity = Identity();
+        await backend.ControlSpotifyLocalPlaybackAsync(identity,
+            new(SpotifyLocalPlaybackOperation.StartAndTransfer, null, true), default);
+        var frame = AvailableLocalPlayback(paused: false) with
+        {
+            PositionMilliseconds = 24_000, DurationMilliseconds = 200_000, RepeatMode = 2, Shuffle = true,
+            CurrentTrack = new("spotify:track:local", "local", "track", "audio", "Local track", true,
+                "Local album", "https://i.scdn.co/image/local", ["Local artist"]),
+            Disallows = new(false, true, true, true, false, true, false, true),
+        };
+        client.Raise("player_state_changed", frame);
+        var local = await backend.GetSpotifyPlaybackAsync(identity, default);
+        Assert.Equal("Local track", local.Item!.Title);
+        Assert.Equal("Local artist", local.Item.Subtitle);
+        Assert.Equal("Local album", local.Item.ContextName);
+        Assert.Equal("https://i.scdn.co/image/local", local.Item.ArtworkUrl);
+        Assert.Equal(24_000L, local.ProgressMilliseconds);
+        Assert.Equal(time.GetUtcNow().ToUnixTimeMilliseconds(), local.CapturedAtUnixMilliseconds);
+        Assert.Equal(SpotifyRepeatState.Track, local.RepeatState);
+        Assert.True(local.ShuffleState && local.DisallowedActions.Seeking && local.DisallowedActions.TogglingShuffle);
+        int CloudReads() => http.Requests.Count(request => request.Method == HttpMethod.Get && request.Uri.AbsolutePath == "/v1/me/player");
+        Assert.Equal(0, CloudReads());
+
+        client.CurrentState = frame with
+        {
+            CurrentTrack = frame.CurrentTrack with { Artists = Enumerable.Repeat(new string('a', 256), 16).ToArray() },
+        };
+        var boundedArtists = await backend.GetSpotifyPlaybackAsync(identity, default);
+        Assert.Equal(8, boundedArtists.Item!.Subtitle.Split(", ").Length);
+        Assert.True(boundedArtists.Item.Subtitle.Length < 4096);
+        Assert.Equal(0, CloudReads());
+        client.CurrentState = frame;
+
+        var queryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queryReply = new TaskCompletionSource<WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StateQuery = _ => { queryStarted.TrySetResult(); return queryReply.Task; };
+        var pending = backend.GetSpotifyPlaybackAsync(identity, default);
+        await queryStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var newer = frame with { PositionMilliseconds = 9000, CurrentTrack = frame.CurrentTrack with { Name = "Newer track", Uri = "spotify:track:newer" } };
+        client.Raise("player_state_changed", newer);
+        queryReply.SetResult(frame);
+        Assert.Equal("Newer track", (await pending).Item!.Title);
+        Assert.Equal(0, CloudReads());
+        client.StateQuery = null;
+
+        client.CurrentState = UnavailableLocalPlayback();
+        Assert.Equal("Remote track", (await backend.GetSpotifyPlaybackAsync(identity, default)).Item!.Title);
+        Assert.Equal(1, CloudReads());
+        Assert.True(backend.GetLocalTransport(identity) is null);
+
+        // A transfer performed in another Spotify app is discovered by the next
+        // cloud observation, then subsequent reads use the local SDK again.
+        remoteDevice = "local-device";
+        await backend.GetSpotifyPlaybackAsync(identity, default);
+        Assert.Equal(2, CloudReads());
+        client.CurrentState = frame;
+        Assert.Equal("Local track", (await backend.GetSpotifyPlaybackAsync(identity, default)).Item!.Title);
+        Assert.Equal(2, CloudReads());
+
+        client.FailCommandType = "get_current_state";
+        remoteDevice = "remote-device";
+        Assert.Equal("Remote track", (await backend.GetSpotifyPlaybackAsync(identity, default)).Item!.Title);
+        Assert.True(backend.GetLocalTransport(identity) is null);
+        client.FailCommandType = null;
+
+        var stamp = manager.ObservationStamp();
+        var choice = manager.BeginRoutingDecision(identity);
+        manager.CompleteRoutingDecision(identity, choice, local: false);
+        manager.ObservePlaybackDevice(identity, stamp, "local-device");
+        Assert.True(!manager.GetPublicDevice(identity)!.IsActive);
+    }
+    finally { File.Delete(hostPath); }
+}
+
+static async Task LocalPlaybackReadRaces()
+{
+    var hostPath = CreateTemporaryPlaybackHost();
+    try
+    {
+        var client = new FakeLocalPlaybackHostClient("race-device");
+        await using var manager = new SpotifyLocalPlaybackManager(hostPath,
+            (_, _, _) => Task.FromResult(new TrustedHostSpotifyAccessToken(
+                "local-token", DateTimeOffset.UtcNow.AddMinutes(10), LocalPlaybackScopes())), () => client);
+        var identity = Identity();
+        await manager.StartAsync(identity, default);
+        manager.CompleteRoutingDecision(identity, manager.BeginRoutingDecision(identity), local: true);
+        var frame = AvailableLocalPlayback(paused: false) with
+        {
+            CurrentTrack = new("spotify:track:local", "local", "track", "audio", "Local", true, null, null, ["Artist"]),
+        };
+        var reply = new TaskCompletionSource<WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StateQuery = _ => reply.Task;
+        var pending = manager.ReadPlaybackAsync(identity, default);
+        manager.CompleteRoutingDecision(identity, manager.BeginRoutingDecision(identity), local: false);
+        reply.SetResult(frame);
+        Assert.True(await pending is null);
+        Assert.True(manager.GetTransport(identity) is null);
+
+        var generation = manager.BeginRoutingDecision(identity);
+        var pendingTransferStamp = manager.ObservationStamp();
+        manager.CompleteRoutingDecision(identity, generation, local: true);
+        manager.ObservePlaybackDevice(identity, pendingTransferStamp, "remote-device");
+        Assert.True(manager.GetPublicDevice(identity)!.IsActive);
+
+        reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellation = new CancellationTokenSource();
+        pending = manager.ReadPlaybackAsync(identity, cancellation.Token);
+        cancellation.Cancel();
+        reply.SetResult(frame);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => pending, string.Empty);
+        Assert.True(manager.GetTransport(identity) is null);
+    }
+    finally { File.Delete(hostPath); }
+}
+
 static async Task LocalPlaybackRoutingAuthority()
 {
     var hostPath = CreateTemporaryPlaybackHost();
@@ -1118,7 +1259,7 @@ static async Task LocalPlaybackRoutingAuthority()
             Disallows = new(true, false, false, false, false),
         });
         Assert.True(backend.GetLocalTransport(identity) is
-            { IsPlaying: false, PausingDisallowed: true, ResumingDisallowed: false });
+            { Playback: { IsPlaying: false, DisallowedActions: { Pausing: true, Resuming: false } } });
         Assert.Equal(1, notifications);
 
         await backend.TransferSpotifyPlaybackAsync(identity,
@@ -1780,6 +1921,9 @@ internal sealed class FakeLocalPlaybackHostClient(
     internal List<(string Type, JsonElement Payload)> Commands { get; } = [];
     internal Action<string>? CommandObserved { get; set; }
     internal string? FailCommandType { get; set; }
+    internal WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState CurrentState { get; set; } =
+        new(false, true, 0, 0, 0, false, new(false, false, false, false, false), null);
+    internal Func<CancellationToken, Task<WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState>>? StateQuery { get; set; }
     internal TaskCompletionSource? CommandWait { get; set; }
     internal TaskCompletionSource<(string RequestId, TrustedHostSpotifyAccessToken Token)>
         TokenProvided { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1826,11 +1970,17 @@ internal sealed class FakeLocalPlaybackHostClient(
         if (type == FailCommandType)
             throw new SpotifyPlaybackHostClientException(
                 "sdk_command_failed", "The local SDK command failed.");
+        if (type == "get_current_state")
+            return Envelope("current_state", StateQuery is { } query ? await query(cancellationToken) : CurrentState);
         return Envelope("command_completed", new { });
     }
 
-    internal void Raise(string type, object payload) =>
+    internal void Raise(string type, object payload)
+    {
+        if (type == "player_state_changed" && payload is WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState state)
+            CurrentState = state;
         EventReceived?.Invoke(this, Envelope(type, payload));
+    }
 
     public ValueTask DisposeAsync()
     {

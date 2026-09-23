@@ -1,8 +1,8 @@
 namespace WidgetRail.Samples.SpotifyWidget;
 
-// Observation only: state and transport permissions come from the same SDK event.
-public sealed record SpotifyLocalTransportObservation(
-    bool IsPlaying, bool PausingDisallowed, bool ResumingDisallowed);
+// One complete, timestamped observation from the local SDK. Never combine
+// transport flags for one track with cloud metadata for a different track.
+public sealed record SpotifyLocalTransportObservation(SpotifyPlaybackSummary Playback);
 
 public interface ISpotifyLocalTransport
 {

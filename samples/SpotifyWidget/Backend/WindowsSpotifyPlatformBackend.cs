@@ -109,7 +109,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             DefaultPlaybackHostPath(), AcquireTrustedHostAccessTokenAsync,
             () => new SpotifyPlaybackHostClient(
                 SpotifyPlaybackHostClientOptions.CreateDefault(DefaultPlaybackHostPath())),
-            _runtimeDiagnostics);
+            _runtimeDiagnostics, _time);
         var authorizedSender = new SpotifyAuthorizedRequestSender(
             SendAuthorizedRequestAsync);
         _playbackApi = new SpotifyPlaybackApi(authorizedSender);
@@ -417,9 +417,16 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
 
     public Task<SpotifyPlaybackSummary> GetSpotifyPlaybackAsync(
         SpotifyIntegrationIdentity identity, CancellationToken cancellationToken) =>
-        ApplicationCallAsync(async () => MapPlayback(
-            await GetPlaybackAsync(identity, cancellationToken)
-                .ConfigureAwait(false)));
+        ApplicationCallAsync(async () =>
+        {
+            var local = await _localPlayback.ReadPlaybackAsync(identity, cancellationToken).ConfigureAwait(false);
+            if (local is not null) return local;
+            var stamp = _localPlayback.ObservationStamp();
+            var observed = await GetPlaybackAsync(identity, cancellationToken).ConfigureAwait(false);
+            _localPlayback.ObservePlaybackDevice(identity, stamp, observed.DeviceId);
+            // A local event can arrive while the cloud request is in flight.
+            return _localPlayback.GetTransport(identity)?.Playback ?? MapPlayback(observed);
+        });
 
     public Task ControlSpotifyPlaybackAsync(
         SpotifyIntegrationIdentity identity, SpotifyPlaybackCommand command,
