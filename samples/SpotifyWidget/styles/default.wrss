@@ -1,7 +1,7 @@
 .spotify-widget {
+  /* Surface hints own the outer size, including extra room for larger text. */
   width: 100vw;
   min-width: 0px;
-  max-width: 980px;
   gap: 8px;
   padding: 14px 16px;
   background: var(--surface);

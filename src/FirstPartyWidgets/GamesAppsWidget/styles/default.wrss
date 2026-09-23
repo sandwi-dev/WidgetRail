@@ -1,9 +1,9 @@
 .games-apps-widget {
+  /* Surface hints own the outer size, including extra room for larger text. */
   width: 100vw;
   height: 100vh;
   min-width: 0px;
   min-height: 0px;
-  max-width: 820px;
   gap: 8px;
   padding: 12px 14px;
   background: var(--surface);
