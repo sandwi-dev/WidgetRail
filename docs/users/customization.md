@@ -1,4 +1,4 @@
-# Make WidgetRail yours
+# Customization
 
 Open Settings to adjust the overlay. Changes to Quit, Restart, or startup here
 refer to **WidgetRail**, not shutting down or restarting Windows. PC power

@@ -8,7 +8,7 @@ process architecture to use WidgetRail or write your first widget.
 1. [Install and get started](users/getting-started.md)
 2. [Learn the controls](users/controls.md)
 3. [Pin video and compact widgets](users/pinning.md)
-4. [Choose themes and manage widgets](users/customization.md)
+4. [Customization and widget management](users/customization.md)
 
 Need help? Read [Troubleshooting](users/troubleshooting.md) or
 [Compatibility and limitations](users/known-limitations.md).

@@ -47,7 +47,7 @@ View keeps its pinned-view focus shortcut. Inside a widget, the right stick
 still scrolls; release it to neutral when moving between the wheel and a widget.
 If Windows composition is unavailable, WidgetRail uses the rail as a fallback.
 
-## Set it up for you
+## Settings and system controls
 
 Settings controls appearance, scale, themes, widget order and enablement,
 permissions and controller behavior. Settings itself remains enabled.
