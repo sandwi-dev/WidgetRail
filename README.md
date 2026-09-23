@@ -81,7 +81,7 @@ Both installer editions include the following widgets:
 | **Now Playing** | View and control media sessions reported by Windows. |
 | **Network Controls** | Toggle Wi-Fi and Bluetooth radios and view connection details. Connect or disconnect Wi-Fi, manage saved networks and automatic connection, and scan, pair, or remove Bluetooth devices. |
 | **Display Profiles** | Save the current monitor setup and restore it later. Confirm with Keep changes or let the previous setup restore automatically. |
-| **Power** | Sleep, restart, or shut down Windows. Restart and shutdown require confirmation. |
+| **Power** | Sleep, restart, or shut down Windows. |
 | **Settings** | Configure layout, appearance, accessibility, controllers, startup, widgets, permissions, and diagnostics. |
 
 The tray displays local time, internet connectivity over Wi-Fi or Ethernet,
