@@ -175,7 +175,7 @@ used separately for supported embedded web media.
 
 - **Rendering reuse:** unchanged styles, text layouts, and prepared content are cached. Updates repaint affected areas where possible.
 - **Paged content and artwork:** long collections load as needed. Images are decoded for their display size, with bounded memory caches and a disk cache for eligible web artwork.
-- **Lifecycle management:** widgets can reduce background work or unload while hidden. Audio Mixer unloads after two minutes hidden; Playnite Library unloads after five. Pinned widgets stay active, and media widgets can remain loaded to preserve playback.
+- **Lifecycle management:** Audio Mixer stays loaded while hidden and stops its active audio subscriptions. Playnite Library unloads after five minutes hidden. Pinned widgets stay active, and media widgets can remain loaded to preserve playback.
 
 Memory use varies with display size, artwork, active widgets, and playback.
 

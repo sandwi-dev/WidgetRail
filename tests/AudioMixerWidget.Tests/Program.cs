@@ -1536,8 +1536,8 @@ static async Task ShippedAssetsValidate()
         "system.audio.input.control.v1",
     ], manifest.OptionalPermissions);
     var residency = WidgetResidencyPolicies.Resolve(manifest);
-    Assert.Equal(WidgetResidencyMode.UnloadAfterIdle, residency.Mode);
-    Assert.Equal(TimeSpan.FromSeconds(120), residency.IdleDuration);
+    Assert.Equal(WidgetResidencyMode.SuspendWhenHidden, residency.Mode);
+    Assert.True(residency.IdleDuration is null, "Suspended Audio Mixer must not have an idle-unload timeout.");
     Assert.Equal(64, manifest.ResourceRequest.MemoryMb);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     var package = WrssPackageLoader.LoadFile(

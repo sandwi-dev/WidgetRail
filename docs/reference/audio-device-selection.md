@@ -6,9 +6,10 @@ Multimedia default. A missing default is shown as Choose a device, not a guessed
 selection. With no connected devices in a direction, that selector is disabled.
 Focus uses stable selector IDs and explicit links through the scrollable mixer.
 
-Audio Mixer stops its active subscriptions when hidden and unloads after two
-minutes. Reopening reads the current audio state. Unloading the widget does not
-change Windows volume, device choices, or playback in other applications.
+Audio Mixer uses `suspend-when-hidden`: it stays resident and stops its active
+subscriptions while hidden. Reopening reads the current audio state. Hiding
+the widget does not change Windows volume, device choices, or playback in
+other applications. An explicit Reload still creates a fresh widget instance.
 
 The shared SDK adds HostServices.Audio.SetDefaultOutputDeviceAsync(deviceId) and
 SetDefaultInputDeviceAsync(deviceId). Both require the optional Interactive-only
