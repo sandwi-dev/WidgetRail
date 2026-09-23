@@ -99,6 +99,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Help describes the complete workflow", HelpWorks),
     ("Inspector startup requires exact host capability acknowledgement", InspectorHandshake),
     ("GitHub discovery and published checksums install exact assets", GitHubDiscoveryWorkflow),
+    ("GitHub release listings group packages and provide install commands", GitHubReleaseListing),
     ("GitHub widget updates require review and retain rollback versions", GitHubWidgetUpdateWorkflow),
     ("GitHub theme updates retain the current appearance selection", GitHubThemeUpdateWorkflow),
     ("GitHub metadata failures are bounded and actionable", GitHubMetadataSafety),
@@ -259,8 +260,17 @@ static async Task GitHubDiscoveryWorkflow()
     Assert.Equal(0, list.Code);
     Assert.Contains("sample.wrwidget", list.Output);
     Assert.Equal(1, urls.Count);
+    var readable = await RunCliWithHandler(handler, "releases", "sample/repo");
+    Assert.Equal(0, readable.Code);
+    var installLine = readable.Output.Split('\n').Select(line => line.Trim())
+        .Single(line => line.StartsWith("wrail install \"", StringComparison.Ordinal));
+    var printedSource = installLine["wrail install ".Length..].Trim('"');
+    Assert.Equal("github:sample/repo@v1/sample.wrwidget", printedSource);
+    Assert.True(!readable.Output.Contains("No checksum published", StringComparison.Ordinal),
+        "A release checksum manifest was incorrectly reported as missing.");
+    Assert.Equal(2, urls.Count);
     var catalogRoot = Path.Combine(temp.Path, "catalog");
-    var install = await RunCliWithHandler(handler, "install", "github:sample/repo@v1/sample.wrwidget", "--catalog", catalogRoot);
+    var install = await RunCliWithHandler(handler, "install", printedSource, "--catalog", catalogRoot);
     Assert.Equal(0, install.Code);
     Assert.True(urls.Any(url => url.EndsWith("/v1/SHA256SUMS.txt", StringComparison.Ordinal)), "Published checksum was not fetched.");
     var installed = (await new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot).DiscoverAsync()).Widgets.Single();
@@ -272,6 +282,59 @@ static async Task GitHubDiscoveryWorkflow()
     Assert.Equal(0, (await RunCli("uninstall", installed.Id, "--catalog", catalogRoot)).Code);
     Assert.True(PackageSources.Find(catalogRoot, "widget", installed.Id, "1.0.0", installed.ActiveVersion.ContentDigest) is null,
         "Uninstalled widget retained its GitHub source metadata.");
+}
+
+static async Task GitHubReleaseListing()
+{
+    var hash = new string('a', 64);
+    var metadata = JsonSerializer.SerializeToUtf8Bytes(new[]
+    {
+        new
+        {
+            tag_name = "v2", draft = false, prerelease = false,
+            assets = new[]
+            {
+                new { name = "music.wrwidget", size = 1572864L, digest = (string?)("sha256:" + hash) },
+                new { name = "ocean.wrtheme", size = 1536L, digest = (string?)null },
+                new { name = "setup.exe", size = 100L, digest = (string?)null },
+            },
+        },
+    });
+    var requests = 0;
+    using var handler = new StubHttpHandler((_, _) =>
+    {
+        requests++;
+        return Task.FromResult(Response(HttpStatusCode.OK, metadata));
+    });
+    var previousCulture = System.Globalization.CultureInfo.CurrentCulture;
+    try
+    {
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo("fr-FR");
+        var result = await RunCliWithHandler(handler, "releases", "sample/repo", "--page", "2");
+        Assert.Equal(0, result.Code);
+        Assert.Equal(1, requests);
+        Assert.Equal(1, result.Output.Split('\n').Count(line => line.Trim() == "v2"));
+        Assert.Contains("music.wrwidget (1.5 MiB)", result.Output);
+        Assert.Contains("wrail install \"github:sample/repo@v2/music.wrwidget\"", result.Output);
+        Assert.Contains("ocean.wrtheme (1.5 KiB)", result.Output);
+        Assert.Contains("wrail theme install \"github:sample/repo@v2/ocean.wrtheme\"", result.Output);
+        Assert.Contains("No checksum published; add --sha256", result.Output);
+        Assert.Contains("Page 2", result.Output);
+        Assert.True(!result.Output.Contains("setup.exe", StringComparison.Ordinal) &&
+            !result.Output.Contains(hash, StringComparison.Ordinal) &&
+            !result.Output.Contains("--accept-full-trust", StringComparison.Ordinal),
+            "Discovery included installers, raw hashes, or automatic full-trust approval.");
+        var json = await RunCliWithHandler(handler, "releases", "sample/repo", "--json");
+        Assert.Equal(0, json.Code);
+        using var document = JsonDocument.Parse(json.Output);
+        var asset = document.RootElement.GetProperty("releases")[0].GetProperty("assets")[0];
+        Assert.Equal(hash, asset.GetProperty("sha256").GetString());
+        Assert.Equal(1572864L, asset.GetProperty("size").GetInt64());
+    }
+    finally
+    {
+        System.Globalization.CultureInfo.CurrentCulture = previousCulture;
+    }
 }
 
 static async Task GitHubWidgetUpdateWorkflow()

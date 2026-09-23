@@ -85,8 +85,14 @@ and [Package format](widget-packaging.md).
 & $wrail install github:example/widgets@v1.0.0/example.wrwidget
 ```
 
-Discovery lists widget and theme assets from one page of up to 20 releases.
-Use `--tag` for an exact release or `--json` for structured results. Prereleases
+Discovery groups widget and theme packages by release, with readable sizes and
+copyable `wrail install` or `wrail theme install` commands. With the `$wrail`
+PowerShell variable used above, replace the command's leading `wrail` with
+`& $wrail`. Discovery does not approve full-trust execution on your behalf;
+review such a widget before adding `--accept-full-trust` to its install command.
+
+Each page includes up to 20 releases. Use `--tag` for an exact release or `--json`
+for structured results, including hashes and exact byte sizes. Prereleases
 are omitted unless requested. Discovery supports public repositories; it does
 not read GitHub credentials or clone source.
 

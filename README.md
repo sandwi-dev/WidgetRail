@@ -130,16 +130,43 @@ bold text, and widget-switch animations. Startup is off by default.
 
 ## Widget installation and management
 
-Use **Settings → Widgets** to install a local `.wrwidget` package, review
-permissions, and enable it. Full-access widgets require explicit approval because
+Use **Settings → Widgets → Install local widget** for a downloaded `.wrwidget`
+package. Full-access widgets require explicit approval because
 they run with your Windows account's permissions.
 
 The same section supports uninstalling add-ons and removing unused older
 versions. See [Installation and updates](#installation-and-updates) for update procedures.
 
-The included `wrail` CLI can also install widgets and themes from local packages
-or named GitHub release assets with checksum verification.
-[Package installation](docs/developers/publishing-and-installation.md)
+### Install from GitHub releases
+
+The included `wrail` CLI can discover and install packages directly from public
+GitHub releases. Open PowerShell and locate the installed CLI; it is not added
+to PATH automatically:
+
+```powershell
+$appRoot = (Get-ItemProperty 'HKCU:\Software\WidgetRail\Installation').ApplicationRoot
+$wrail = Join-Path $appRoot 'wrail.cmd'
+& $wrail releases sandwi-dev/WidgetRail --include-prerelease
+```
+
+The listing groups widget and theme packages by release, with readable file
+sizes and an install command for each package. `--include-prerelease` includes
+preview releases; installers are excluded. Use `--page 2` for older releases,
+`--tag <tag>` for a specific release, or `--json` for hashes and exact byte sizes.
+
+Copy the install command for the package you want. When using the PowerShell
+variable above, replace the command's leading `wrail` with `& $wrail`.
+
+If the CLI reports `full_trust_approval_required`, review the widget's source
+and requirements, then repeat its install command with `--accept-full-trust`.
+
+The CLI verifies the download against the published checksum. If no checksum
+is available, supply the publisher's expected hash with `--sha256`.
+Installation leaves the widget disabled. Open **Settings → Widgets** to review
+any requested permissions and enable it, then complete the account or companion
+setup described in its README. No widget code runs during installation.
+
+[CLI package reference](docs/reference/cli-packages.md#discover-packages-on-github)
 
 ## Performance
 

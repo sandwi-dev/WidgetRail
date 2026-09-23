@@ -68,9 +68,11 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
 
 ## Commands
 
-- `releases <owner/repository>` lists widget/theme assets from public GitHub
-  releases. Use `--page` (20 releases per page), `--include-prerelease`, `--tag`
-  or `--json`. No authentication, source cloning or background polling occurs.
+- `releases <owner/repository>` groups widget/theme packages from public GitHub
+  releases by tag, showing readable sizes and a copyable install command for each
+  package. Use `--page` (20 releases per page), `--include-prerelease`, `--tag`,
+  or `--json` for SHA-256 hashes and exact byte sizes. No authentication, package
+  downloads, source cloning or background polling occurs during discovery.
 - `update <widget-id>` and `theme update <theme-id>` validate a candidate and
   print a review plus an exact apply command. `--repo` supplies a source for
   older/local installs; `--tag` and `--asset` select an explicit candidate.

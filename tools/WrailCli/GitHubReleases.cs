@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
 
@@ -188,13 +189,34 @@ internal static class ReleasesCommand
             await output.WriteLineAsync(JsonSerializer.Serialize(new { schemaVersion = 1, repository, page, releases = visible }, DiagnosticJson.Options));
         else
         {
-            foreach (var release in visible)
+            foreach (var release in visible.Where(release => release.Assets.Count != 0))
+            {
+                await output.WriteLineAsync($"{release.Tag}{(release.Prerelease ? " (prerelease)" : "")}");
                 foreach (var asset in release.Assets)
-                    await output.WriteLineAsync($"{release.Tag}{(release.Prerelease ? " (prerelease)" : "")}  {asset.Name}  {asset.Size} bytes\n  github:{repository}@{release.Tag}/{asset.Name}\n  SHA-256: {asset.Sha256 ?? "not published; supply --sha256"}");
+                {
+                    var command = asset.Name.EndsWith(".wrtheme", StringComparison.OrdinalIgnoreCase)
+                        ? "theme install" : "install";
+                    var source = new GitHubPackageSource(repository, release.Tag, asset.Name);
+                    await output.WriteLineAsync($"  {asset.Name} ({FormatSize(asset.Size)})");
+                    await output.WriteLineAsync($"    wrail {command} \"{source}\"");
+                    if (asset.Sha256 is null && release.ChecksumFile is null)
+                        await output.WriteLineAsync("    No checksum published; add --sha256 <publisher-hash> when installing.");
+                }
+                await output.WriteLineAsync();
+            }
             if (!visible.Any(release => release.Assets.Count != 0)) await output.WriteLineAsync("No widget or theme packages were found in the selected releases.");
+            else await output.WriteLineAsync("Use --json for SHA-256 hashes and exact byte sizes.");
             if (parsed.Option("--tag") is null)
-                await output.WriteLineAsync("Showing one page of up to 20 releases. Use --page to browse more, or --tag for an exact release.");
+                await output.WriteLineAsync($"Page {page} (up to 20 releases). Use --page N, --tag TAG, or --include-prerelease for previews.");
         }
         return 0;
     }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes} B"),
+        < 1024 * 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024d:0.##} KiB"),
+        < 1024 * 1024 * 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024d * 1024):0.##} MiB"),
+        _ => string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024d * 1024 * 1024):0.##} GiB"),
+    };
 }
