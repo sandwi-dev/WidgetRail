@@ -207,8 +207,8 @@ std::optional<TrayLayout> ComputeTrayLayout(
         --maximumVisible;
     const std::size_t visibleCount = std::min(widgetCount, maximumVisible);
     const std::size_t boundedSelected = std::min(selectedSlot, widgetCount - 1);
-    const std::size_t selectionIndex = position == OverlayPosition::BottomRight ? 0
-        : position == OverlayPosition::BottomLeft ? visibleCount - 1 : visibleCount / 2;
+    const std::size_t selectionIndex = position == OverlayPosition::BottomLeft ? 0
+        : position == OverlayPosition::BottomRight ? visibleCount - 1 : visibleCount / 2;
     // Project the saved cyclic order through a fixed selection slot. Moving
     // the anchor never changes catalog order or duplicates an identity.
     const std::size_t firstSlot =

@@ -21,8 +21,8 @@ Choose **Settings → Overlay → Position** to place the overlay in the center,
 bottom left, or bottom right. Center is the default.
 
 Corner layouts keep the outside edge and bottom edge of the widget fixed as it
-resizes. The guide and rail stay in place. The open widget is the last visible
-rail icon at bottom left, or the first at bottom right; your saved widget order
+resizes. The guide and rail stay in place. The open widget is the first visible
+rail icon at bottom left, or the last at bottom right; your saved widget order
 does not change. Position works with both Rail and Radial + rail.
 
 Reorder widgets to keep your frequent actions close together. The tray's

@@ -429,7 +429,7 @@ int main() {
                         widgetrail::shell::TrayWidthBasis::MonitorUsableWidth, std::nullopt, position);
                     Check(layout && !layout->tiles.empty(), "corner layout retains navigable icons");
                     const auto& active = position == widgetrail::OverlayPosition::BottomRight
-                        ? layout->tiles.front() : layout->tiles.back();
+                        ? layout->tiles.back() : layout->tiles.front();
                     Check(active.slot == selected, "selected widget stays at the requested end of the rail");
                     Check(layout->stripBounds.x >= -0.01F &&
                         layout->stripBounds.x + layout->stripBounds.width <= width + 0.01F,
