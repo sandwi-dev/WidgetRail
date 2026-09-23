@@ -15744,7 +15744,7 @@ private:
         return widgetrail::guide::PaintHints(renderTarget_.Get(),writeFactory_.Get(),guideFormat_.Get(),hints,
             {bounds.x,bounds.y,bounds.x+bounds.width,bounds.y+bounds.height},
             {trayItemBrush_->GetColor(),trayItemTextBrush_->GetColor(),traySelectedBrush_->GetColor(),
-             traySelectedTextBrush_->GetColor(),HighContrastSurfacePolicy()});
+             traySelectedTextBrush_->GetColor(),HighContrastSurfacePolicy()}, CurrentOverlayPosition());
     }
 
     enum class CompositionPaintLayer {

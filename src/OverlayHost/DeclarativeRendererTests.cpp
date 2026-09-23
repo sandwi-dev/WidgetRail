@@ -6562,6 +6562,23 @@ void ControllerGuideGlyphsAndTheme() {
     Check(SUCCEEDED(target->EndDraw()) && largeBoxes.size()==3 &&
           std::abs((largeBoxes.back().right-largeBoxes.front().left)-MeasureHints(write.Get(),large.Get(),hints).value())<.1F,
         "large-text guide preserves measured text scale inside the fixed guide row");
+    for (const auto position : {widgetrail::OverlayPosition::Center,
+            widgetrail::OverlayPosition::BottomLeft, widgetrail::OverlayPosition::BottomRight}) {
+        for (const float right : {230.0F, 940.0F}) {
+            target->BeginDraw();
+            const auto aligned = PaintHints(target.Get(), write.Get(), format.Get(), hints,
+                {10, 40, right, 100}, palette, position);
+            Check(SUCCEEDED(target->EndDraw()) && aligned.size() == hints.size(),
+                "aligned guide paints every hint at full and constrained widths");
+            const float before = aligned.front().left - 10;
+            const float after = right - aligned.back().right;
+            Check(before >= -0.01F && after >= -0.01F, "aligned hints stay within the guide");
+            Check(position == widgetrail::OverlayPosition::BottomLeft ? std::abs(before) < 0.01F
+                : position == widgetrail::OverlayPosition::BottomRight ? std::abs(after) < 0.01F
+                : std::abs(before - after) < 0.01F,
+                "painted and accessible hint bounds share the overlay alignment");
+        }
+    }
 }
 
 void BitmapRetentionPolicyIsBounded() {

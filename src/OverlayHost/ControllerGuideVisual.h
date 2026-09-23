@@ -1,5 +1,6 @@
 #pragma once
 #include "OverlayPlacement.h"
+#include "OverlayPosition.h"
 #include "ControllerPromptFont.h"
 #include <d2d1.h>
 #include <dwrite.h>
@@ -218,13 +219,14 @@ inline std::optional<float> MeasureHints(IDWriteFactory* factory,IDWriteTextForm
     return width;
 }
 inline std::vector<D2D1_RECT_F> PaintHints(ID2D1RenderTarget* target,IDWriteFactory* factory,IDWriteTextFormat* format,
-    std::span<const ControllerGuideHint> hints,D2D1_RECT_F bounds,const HintPalette& palette) {
+    std::span<const ControllerGuideHint> hints,D2D1_RECT_F bounds,const HintPalette& palette,
+    OverlayPosition position = OverlayPosition::Center) {
     std::vector<D2D1_RECT_F> boxes;
     const auto width=MeasureHints(factory,format,hints);
     if(!target||!width||*width<=0||bounds.right<=bounds.left||bounds.bottom<=bounds.top) return boxes;
     const float baseScale=HintScale(format);
     const float fit=std::min({1.0F,(bounds.right-bounds.left)/ *width,(bounds.bottom-bounds.top)/(34*baseScale)});
-    const float left=bounds.left+((bounds.right-bounds.left)- *width*fit)*.5F;
+    const float left=bounds.left+((bounds.right-bounds.left)- *width*fit)*HorizontalAnchor(position);
     const float top=bounds.top+((bounds.bottom-bounds.top)-34*baseScale*fit)*.5F;
     D2D1_MATRIX_3X2_F original; target->GetTransform(&original);
     const auto transform=D2D1::Matrix3x2F::Scale(fit,fit)*D2D1::Matrix3x2F::Translation(left,top)*original;
