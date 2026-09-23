@@ -10,6 +10,8 @@ video or compact widget views visible while the main overlay is closed.
 
 [Download](https://github.com/sandwi-dev/WidgetRail/releases) · [Installation](docs/users/getting-started.md) · [Documentation](docs/README.md) · [Build a widget](docs/developers/widget-quickstart.md)
 
+![The WidgetRail overlay over a game](docs/images/overview.png)
+
 ## Quick start
 
 Requires **Windows 10 build 19041 or newer, or Windows 11, x64**. WidgetRail is
@@ -25,8 +27,6 @@ release notes for features available in each downloadable preview.
 Before using WidgetRail in games, review the [recommended setup](#recommended-setup)
 for Windows controller shortcuts and display mode. See the
 [installation guide](docs/users/getting-started.md) for runtime requirements and troubleshooting.
-
-![The WidgetRail overlay over a game](docs/images/overview.png)
 
 ## Controller navigation
 
