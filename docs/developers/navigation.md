@@ -51,6 +51,11 @@ D-pad and left-stick navigation move focus and reveal the target control.
 Right-stick scrolling moves the viewport; focus settles after scrolling stops
 instead of jumping with every arriving page.
 
+Overflowing vertical containers also show a thin scroll indicator by default.
+Use `with { ShowScrollbar = false }` on a scroll element to hide it for that
+container and release its reserved gutter. Scrolling and focus-follow remain enabled.
+See [Scroll indicators](../reference/declarative-ui.md#scroll-indicators).
+
 For long lists and responsive grids, use the cursor resource and matching
 collection metadata. The host can ask for adjacent pages near an edge or when
 loaded items do not yet fill the viewport. A responsive grid may need more

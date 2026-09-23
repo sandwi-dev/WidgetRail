@@ -131,6 +131,8 @@ internal static partial class ThemeNewCommand
           --surface-raised: rgba(31, 35, 47, 0.98);
           --text: #f7f7fa;
           --text-muted: #adb4c2;
+          --scrollbar-track: #303647;
+          --scrollbar-thumb: #adb4c2;
           --focus: #ff7898;
         }
 

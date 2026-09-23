@@ -1315,6 +1315,11 @@ WidgetNode ParseNode(const JsonObject& source) {
             source.GetNamedBoolean(L"usesFocusedDescendantArtwork");
     }
     node.scrollAxis = OptionalString(source, L"scrollAxis");
+    if (source.HasKey(L"showScrollbar")) {
+        if (node.kind != L"scroll" || source.GetNamedValue(L"showScrollbar").ValueType() != JsonValueType::Boolean)
+            throw winrt::hresult_invalid_argument(L"showScrollbar requires a scroll container and boolean value.");
+        node.showScrollbar = source.GetNamedBoolean(L"showScrollbar");
+    }
     node.scrollNearStartActionId = OptionalString(source, L"scrollNearStartActionId");
     node.scrollNearEndActionId = OptionalString(source, L"scrollNearEndActionId");
     node.collectionAnchorKey = OptionalString(source, L"collectionAnchorKey");
@@ -1853,6 +1858,8 @@ void ValidatePosterTiles(const WidgetNode& root, const int protocolVersion) {
 
 void ValidateBackgroundSurfaces(const WidgetNode& root, const int protocolVersion) {
     const auto visit = [&](const auto& self, const WidgetNode& node) -> void {
+        if (node.showScrollbar.has_value() && protocolVersion < protocol_contract::ScrollbarVisibilityVersion)
+            throw winrt::hresult_invalid_argument(L"Scrollbar visibility requires protocol version 53.");
         if (node.kind == L"backgroundSurface" &&
             protocolVersion < protocol_contract::BackgroundSurfaceVersion)
             throw winrt::hresult_invalid_argument(
@@ -1908,7 +1915,7 @@ void ValidateFocusPresentations(const WidgetNode& root, const int protocolVersio
             !node.focusRight.empty() || !node.inputScopeId.empty() ||
             !node.initialChildFocusId.empty() || node.usesFocusedDescendantArtwork ||
             !node.focusPresentation.empty() || !node.defaultFocusPresentation.empty() ||
-            !node.scrollAxis.empty() || !node.scrollNearStartActionId.empty() ||
+            !node.scrollAxis.empty() || node.showScrollbar.has_value() || !node.scrollNearStartActionId.empty() ||
             !node.scrollNearEndActionId.empty() || node.scrollPaginationThreshold != 0 ||
             node.collectionResetGeneration || node.collectionGeneration || node.collectionStartIndex || node.virtualCollectionWindow || !node.collectionAnchorKey.empty() ||
             !node.collectionItemKey.empty() || !node.shortcuts.empty())
@@ -2512,7 +2519,7 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 56> properties{
+    static constexpr std::array<std::wstring_view, 57> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextMenuButton", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
@@ -2523,7 +2530,7 @@ bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
         L"focusPersistenceId", L"focus", L"inputScopeId", L"initialChildFocusId",
         L"usesFocusedDescendantArtwork", L"focusPresentation",
-        L"defaultFocusPresentation", L"scrollAxis",
+        L"defaultFocusPresentation", L"scrollAxis", L"showScrollbar",
         L"scrollNearStartActionId", L"scrollNearEndActionId",
         L"scrollPaginationThreshold", L"virtualCollectionWindow",
         L"collectionResetGeneration", L"collectionGeneration", L"collectionLoading", L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey",
@@ -2568,7 +2575,7 @@ bool ValidateWidgetDocumentStructure(
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
                  L"inputScopeId", L"initialChildFocusId", L"usesFocusedDescendantArtwork",
                  L"focusPresentation", L"defaultFocusPresentation",
-                 L"scrollAxis", L"scrollNearStartActionId",
+                 L"scrollAxis", L"showScrollbar", L"scrollNearStartActionId",
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
                  L"virtualCollectionWindow",
                  L"collectionResetGeneration", L"collectionGeneration", L"collectionLoading", L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey", L"collectionItemKey",
@@ -3065,6 +3072,8 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         return Effect::MeasureLayout | Effect::Paint |
             Effect::Interaction | Effect::Accessibility;
     }
+    if (property == L"showScrollbar")
+        return Effect::MeasureLayout | Effect::Paint | Effect::Interaction | Effect::Accessibility;
     if (property == L"text" || property == L"textEntryValue" ||
         property == L"textEntryPlaceholder") {
         return Effect::MeasureLayout | Effect::Paint | Effect::Accessibility;

@@ -9,6 +9,8 @@
   --border-strong: rgba(219, 230, 240, 0.22);
   --text: #edf2f7;
   --text-muted: #a3afbd;
+  --scrollbar-track: #303b49;
+  --scrollbar-thumb: #a3afbd;
   --text-subdued: #74808d;
   --focus: #f1f4f7;
   --accent: #8ca9c4;

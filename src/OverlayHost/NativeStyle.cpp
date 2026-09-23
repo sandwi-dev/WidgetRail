@@ -193,6 +193,9 @@ struct NativeRenderStyle::Data final {
     std::optional<NativeColor> shadowColor;
     std::optional<NativeColor> imageTint;
     std::optional<NativeColor> scrimColor;
+    float scrollbarWidth{4};
+    std::optional<NativeColor> scrollbarTrackColor{NativeColor{0.3F, 0.3F, 0.3F, 1}};
+    std::optional<NativeColor> scrollbarThumbColor{NativeColor{0.7F, 0.7F, 0.7F, 1}};
     std::optional<float> width;
     std::optional<float> height;
     std::optional<float> minWidth;
@@ -252,6 +255,9 @@ WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, outlineColor, outlineColor
 WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, shadowColor, shadowColor)
 WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, imageTint, imageTint)
 WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, scrimColor, scrimColor)
+WRAIL_STYLE_GETTER(float, scrollbarWidthPx, scrollbarWidth)
+WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, scrollbarTrackColor, scrollbarTrackColor)
+WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, scrollbarThumbColor, scrollbarThumbColor)
 WRAIL_STYLE_GETTER(const std::optional<float>&, widthPx, width)
 WRAIL_STYLE_GETTER(const std::optional<float>&, heightPx, height)
 WRAIL_STYLE_GETTER(const std::optional<float>&, minWidthPx, minWidth)
@@ -466,6 +472,13 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         else if (property == L"shadow-color") data->shadowColor = Color(property, value);
         else if (property == L"image-tint") data->imageTint = Color(property, value);
         else if (property == L"scrim-color") data->scrimColor = Color(property, value);
+        else if (property == L"scrollbar-track-color") {
+            if (const auto color = Color(property, value)) data->scrollbarTrackColor = color;
+        } else if (property == L"scrollbar-thumb-color") {
+            if (const auto color = Color(property, value)) data->scrollbarThumbColor = color;
+        } else if (property == L"scrollbar-width") {
+            if (const auto width = Length(property, value, LengthBasis::Width, 2, 8)) data->scrollbarWidth = *width;
+        }
         else if (property == L"width") data->width = Length(property, value, LengthBasis::Width, 0, kMaximumResolvedDimension);
         else if (property == L"height") data->height = Length(property, value, LengthBasis::Height, 0, kMaximumResolvedDimension);
         else if (property == L"min-width") data->minWidth = Length(property, value, LengthBasis::Width, 0, kMaximumResolvedDimension);
@@ -612,6 +625,8 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         data->opacity = 1;
         data->backgroundBlur = 0;
         if (data->background) data->background->alpha = 1;
+        if (data->scrollbarTrackColor) data->scrollbarTrackColor->alpha = 1;
+        if (data->scrollbarThumbColor) data->scrollbarThumbColor->alpha = 1;
     }
     if (accessibility.reducedMotion) data->transitionDuration = 0;
     data->fontWeight = std::max(
@@ -633,11 +648,13 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         paintedBackground, inheritedBackground, data->opacity);
     const auto ApplyContrast = [&](std::optional<NativeColor>& color,
                                    std::wstring_view property,
-                                   const bool synthesizeMissing = false) {
+                                   const bool synthesizeMissing = false,
+                                   const std::optional<NativeColor> against = std::nullopt) {
         if (!accessibility.contrastHook || (!color && !synthesizeMissing)) return;
+        const auto surface = against.value_or(background);
         try {
             NativeColor adjusted = accessibility.contrastHook(
-                color.value_or(DefaultContrastingColor(background)), background);
+                color.value_or(DefaultContrastingColor(surface)), surface);
             if (std::isfinite(adjusted.red) && std::isfinite(adjusted.green) &&
                 std::isfinite(adjusted.blue) && std::isfinite(adjusted.alpha)) {
                 adjusted.red = std::clamp(adjusted.red, 0.0F, 1.0F);
@@ -652,6 +669,10 @@ NativeStyleResult NativeStyleAdapter::Adapt(
     // WRSS colors. Materializing the foreground here prevents the renderer's
     // normal-mode text/icon fallback from bypassing the accessibility layer.
     ApplyContrast(data->foreground, L"color", true);
+    // Contrast the thumb against the actual track, rather than independently
+    // forcing both parts to the same high-contrast foreground color.
+    ApplyContrast(data->scrollbarThumbColor, L"scrollbar-thumb-color", false,
+        ResolveNativeSurfaceColor(data->scrollbarTrackColor, background, data->opacity));
     if (context.focused) {
         data->outlineWidth = std::max(data->outlineWidth,
             ClampFinite(accessibility.minimumFocusRingPx, 2, 1, 16));

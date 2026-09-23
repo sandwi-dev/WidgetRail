@@ -444,6 +444,7 @@ struct WidgetNode final {
     std::vector<WidgetNode> focusPresentation;
     std::vector<WidgetNode> defaultFocusPresentation;
     std::wstring scrollAxis;
+    std::optional<bool> showScrollbar;
     std::wstring scrollNearStartActionId;
     std::wstring scrollNearEndActionId;
     std::size_t scrollPaginationThreshold{};

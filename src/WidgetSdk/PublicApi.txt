@@ -2462,6 +2462,7 @@ property bool WidgetRail.WidgetSdk.PickerOption.IsDisabled { get; set; }
 property bool WidgetRail.WidgetSdk.PickerOption.IsSelected { get; set; }
 property bool WidgetRail.WidgetSdk.PinnedLayoutHandle.IsSelected { get; }
 property bool WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.AlreadyRegistered { get; set; }
+property bool WidgetRail.WidgetSdk.ScrollElement.ShowScrollbar { get; set; }
 property bool WidgetRail.WidgetSdk.SegmentedTab.IsDisabled { get; set; }
 property bool WidgetRail.WidgetSdk.SelectOption.IsBusy { get; set; }
 property bool WidgetRail.WidgetSdk.SelectOption.IsDisabled { get; set; }

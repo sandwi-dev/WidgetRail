@@ -26,6 +26,8 @@
 
   --text: #e8f1fb;
   --text-muted: #9aa8c4;
+  --scrollbar-track: #232d4a;
+  --scrollbar-thumb: #67bbd0;
   --text-subdued: #7d89a5;
 
   /* Focus stays a near-neutral bright value, only barely cooled toward the

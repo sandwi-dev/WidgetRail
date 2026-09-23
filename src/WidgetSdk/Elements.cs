@@ -341,6 +341,8 @@ public sealed record ScrollElement : ContainerElement
     }
 
     public ScrollAxis Axis { get; init; }
+    /// <summary>Reserves a thin gutter and shows a non-interactive indicator when vertical content overflows. Defaults to true.</summary>
+    public bool ShowScrollbar { get; init; } = true;
     public string? NearStartActionId { get; init; }
     public string? NearEndActionId { get; init; }
     public int? PaginationThreshold { get; init; }
@@ -401,6 +403,7 @@ public sealed record ScrollElement : ContainerElement
     internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.Scroll) with
     {
         ScrollAxis = Axis,
+        ShowScrollbar = ShowScrollbar ? null : false,
         ScrollNearStartActionId = NearStartActionId,
         ScrollNearEndActionId = NearEndActionId,
         ScrollPaginationThreshold = PaginationThreshold,

@@ -190,6 +190,8 @@ public sealed record WrssCompileOptions
             ["--surface-muted"] = "rgba(44, 49, 62, 0.92)",
             ["--text"] = "#f7f7fa",
             ["--text-muted"] = "#aeb5c3",
+            ["--scrollbar-track"] = "#343946",
+            ["--scrollbar-thumb"] = "#aeb5c3",
             ["--text-subdued"] = "#7f8796",
             ["--focus"] = "#ff7898",
             ["--scrim"] = "rgba(0, 0, 0, 0.64)",

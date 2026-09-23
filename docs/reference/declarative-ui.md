@@ -17,6 +17,32 @@ public override WidgetView Render() => new(
 `Stack` arranges children vertically. `Text` displays a label. The button invokes
 the `refresh` action and has the stable element ID `refresh-button`.
 
+## Scroll indicators
+
+Vertical scroll containers show a thin, non-interactive scrollbar when their
+content exceeds the viewport. It indicates position and how much content is
+visible without adding a focus target. A dedicated gutter separates the bar
+from the items. It occupies 12 logical pixels: a 6-pixel content gap, the
+default 4-pixel bar, and a 2-pixel outer inset.
+Content-sized widgets include it in their measured width; fixed-width or
+screen-constrained containers give that space from their content area.
+
+Widget authors can hide it on an individual container in C#:
+
+```csharp
+UI.VerticalScroll("items", items) with { ShowScrollbar = false }
+```
+
+`ShowScrollbar` defaults to `true`. While enabled, the gutter stays reserved
+even when everything fits, so items do not shift as overflow changes. Setting
+it to `false` removes both the bar and its gutter without disabling scrolling or
+focus-follow behavior. Horizontal containers do not display a vertical bar.
+An explicit opt-out requires a host supporting snapshot protocol 53; ordinary
+scroll containers keep their existing minimum protocol version.
+
+The active theme supplies separate track and thumb colors. See
+[WRSS scrollbars](wrss.md#scrollbars) for styling properties.
+
 ## Choose an element
 
 | Purpose | API or guide |

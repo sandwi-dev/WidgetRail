@@ -853,6 +853,7 @@ internal static class PlayniteLibraryPresentation
             .Classes("playnite-library-catalog-scroll",
                 "playnite-library-browse-scroll") with
             {
+                ShowScrollbar = false,
                 CollectionAnchorKey = collectionAnchorKey,
                 CollectionStartIndex = collectionAnchorKey is null ? null : snapshot.StartIndex,
                 CollectionGeneration = collectionAnchorKey is not null && snapshot.WindowGeneration > 0 ? snapshot.WindowGeneration : null,

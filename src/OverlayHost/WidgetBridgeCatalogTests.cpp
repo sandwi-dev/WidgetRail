@@ -1300,6 +1300,36 @@ void VerifyEmbeddedMediaBundleBoundary() {
 }
 
 void VerifyPositionedCollectionProtocol() {
+    const std::string scrollbar = R"json({"snapshot":{"protocolVersion":53,"sequence":1,
+        "widgetInstanceId":"scrollbar","activeInputScopeId":"root",
+        "root":{"id":"root","kind":"stack","children":[
+            {"id":"list","kind":"scroll","scrollAxis":"vertical","showScrollbar":false,"children":[]}]}}
+        ,"renderStyles":{}})json";
+    std::wstring scrollbarError;
+    const auto scrollbarParsed = widgetrail::testing::ParseWidgetSnapshotResponse(scrollbar, scrollbarError);
+    Require(scrollbarParsed && scrollbarParsed->root.children.front().showScrollbar == false,
+        "C# scrollbar opt-out reaches the native nested scroll node");
+    const auto scrollbarUpdate = widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
+        "widgetId":"scrollbar","update":{"protocolVersion":18,"widgetInstanceId":"scrollbar",
+          "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseSequence":1,"sequence":2,
+          "operations":[{"kind":"setProperties","targetId":"list",
+            "properties":[{"property":"showScrollbar","value":true}]}]},"renderStyles":{}})json", scrollbarError);
+    Require(scrollbarUpdate.has_value(), "native parser admits scrollbar visibility updates");
+    const auto scrollbarMaterialized = widgetrail::MaterializeWidgetPresentationUpdate(
+        *scrollbarParsed, *scrollbarUpdate, L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", scrollbarError);
+    Require(scrollbarMaterialized && scrollbarMaterialized->snapshot.root.children.front().showScrollbar == true &&
+        widgetrail::HasWidgetPresentationEffect(scrollbarMaterialized->impact.effects,
+            widgetrail::WidgetPresentationEffect::MeasureLayout) &&
+        scrollbarMaterialized->impact.hasNonTextMeasureLayout,
+        "native scrollbar update relayouts the gutter and preserves scroll container authority");
+    auto oldScrollbar = scrollbar;
+    oldScrollbar.replace(oldScrollbar.find("53"), 2, "52");
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(oldScrollbar, scrollbarError),
+        "nested scrollbar option requires its protocol version");
+    auto invalidScrollbar = scrollbar;
+    invalidScrollbar.replace(invalidScrollbar.find("false"), 5, "42");
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(invalidScrollbar, scrollbarError),
+        "scrollbar visibility rejects a non-boolean value");
     const std::string json = R"json({"snapshot":{"protocolVersion":47,"sequence":1,
         "widgetInstanceId":"positioned","activeInputScopeId":"items","initialFocusId":"item.1",
         "root":{"id":"items","kind":"scroll","scrollAxis":"vertical","collectionAnchorKey":"key.1",

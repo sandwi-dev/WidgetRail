@@ -147,7 +147,9 @@ void WindowPreviewGeometryAndRetainedFrames() {
     auto result = render(L"poster-0");
     Check(result.succeeded, "preview scene prepares without artwork or capture");
     Check(result.windowPreviewRegions.size() == 1, "only visible previews demand live resources");
-    Near(result.windowPreviewRegions.front().bounds.height, 135, "preview respects contain aspect ratio");
+    Near(result.windowPreviewRegions.front().bounds.height,
+        std::round(result.windowPreviewRegions.front().bounds.width * 9.0F / 16.0F),
+        "preview respects contain aspect ratio within the gutter-adjusted viewport");
     Check(!result.navigationRects.contains(L"poster-0.preview"),
         "preview is view-only; enclosing poster retains navigation authority");
     const auto plan = renderer.PlanRetainedPaint(snapshot, result.windowPreviewRegions.front().clip);
@@ -1353,6 +1355,200 @@ WidgetSnapshot PosterAdmissionSnapshot(
     return snapshot;
 }
 
+void ScrollIndicatorsRespectViewportAndRetainedPaint() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "scroll indicator native resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf())));
+    ok(wic->CreateBitmap(100, 100, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad,
+        canvas.ReleaseAndGetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf()));
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), nullptr);
+    WidgetSnapshot snapshot;
+    snapshot.sequence = 1;
+    snapshot.instanceId = L"scroll-indicator";
+    snapshot.activeInputScopeId = L"list";
+    snapshot.root = Node(L"shell", L"stack");
+    snapshot.root.children.push_back(Node(L"list", L"scroll"));
+    auto& list = snapshot.root.children.front();
+    list.scrollAxis = L"vertical";
+    list.baseStyle = {
+        {L"width", Length(100)}, {L"height", Length(100)},
+        {L"flex-shrink", Number(0)},
+        {L"scrollbar-track-color", Color(L"#ff0000")},
+        {L"scrollbar-thumb-color", Color(L"#00ff00")},
+    };
+    for (int i = 0; i < 4; ++i) {
+        auto item = Node((L"row." + std::to_wstring(i)).c_str(), L"stack");
+        item.baseStyle = {{L"height", Length(100)}, {L"width", Length(100)},
+            {L"flex-shrink", Number(0)}, {L"background", Color(L"#000000")}};
+        list.children.push_back(std::move(item));
+    }
+    DeclarativeRenderOptions options;
+    options.accessibility.reducedMotion = true;
+    options.suppressFocusedDescendantFollow = true;
+    const Rect viewport{0, 0, 100, 100};
+    const auto draw = [&](const std::optional<Rect> damage = std::nullopt) {
+        target->BeginDraw();
+        if (damage) target->PushAxisAlignedClip(
+            D2D1::RectF(damage->x, damage->y, damage->x + damage->width, damage->y + damage->height),
+            D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        auto result = renderer.Render(target.Get(), snapshot, L"", viewport, options);
+        if (damage) target->PopAxisAlignedClip();
+        ok(target->EndDraw());
+        Check(result.succeeded, "scroll indicator frame succeeds");
+        return result;
+    };
+    const auto pixel = [&](int x, int y, int red, int green) {
+        ComPtr<IWICBitmapLock> lock;
+        const WICRect area{x, y, 1, 1};
+        ok(canvas->Lock(&area, WICBitmapLockRead, lock.ReleaseAndGetAddressOf()));
+        UINT count{}; BYTE* bytes{};
+        ok(lock->GetDataPointer(&count, &bytes));
+        Check(count >= 4 && std::abs(int(bytes[2]) - red) < 3 && std::abs(int(bytes[1]) - green) < 3,
+            "scroll track and thumb paint independently and old thumb pixels clear");
+    };
+    const auto top = draw();
+    Check(top.scrollbarTracks.size() == 1 && top.scrollbarThumbs.size() == 1,
+        "overflowing vertical scroll defaults to one indicator");
+    Near(top.scrollbarTracks.at(L"list").width, 4, "default scrollbar is thin");
+    const auto itemRight = top.elementVisibleRects.at(L"row.0").x + top.elementVisibleRects.at(L"row.0").width;
+    Near(top.scrollbarTracks.at(L"list").x - itemRight, 6.0F,
+        "scrollbar leaves a six-DIP gap after the item viewport");
+    Near(top.scrollbarThumbs.at(L"list").height, 24, "long scroll thumb retains a readable minimum");
+    Check(top.hitRegions.empty() && top.navigationRects.empty() && top.accessibilityRegions.empty(),
+        "decorative scrollbar adds no input or accessibility targets");
+    pixel(96, 12, 0, 255);
+    pixel(96, 80, 255, 0);
+    for (const float delta : {150.0F, 150.0F, -300.0F}) {
+        const auto plan = renderer.PlanFocusedFreeScroll(snapshot, L"",
+            declarative::ScrollAxis::Vertical, delta, viewport, L"list");
+        Check(plan.has_value(), "scrollbar follows existing free-scroll planning");
+        const auto frame = draw(plan->render.damage);
+        Check(frame.fullLayoutBuildCount == 0, "scroll indicator movement keeps retained layout");
+        const auto thumb = frame.scrollbarThumbs.at(L"list");
+        pixel(96, static_cast<int>(thumb.y + thumb.height / 2), 0, 255);
+        pixel(96, delta > 0 ? 12 : 80, 255, 0);
+    }
+    // Disabling the option releases the gutter and relayouts its content.
+    list.showScrollbar = false;
+    WidgetPresentationImpact impact{snapshot.sequence, snapshot.sequence + 1,
+        WidgetPresentationEffect::MeasureLayout | WidgetPresentationEffect::Paint, {L"list"}};
+    impact.hasNonTextMeasureLayout = true;
+    ++snapshot.sequence;
+    const auto hiddenPlan = renderer.PlanPresentationUpdate(snapshot, impact, viewport);
+    const auto hidden = draw(hiddenPlan ? std::optional<Rect>{hiddenPlan->damage} : std::nullopt);
+    Check(hidden.scrollbarTracks.empty(), "author opt-out removes the indicator");
+    Near(hidden.elementRects.at(L"row.0").width, top.elementRects.at(L"row.0").width + 12,
+        "author opt-out releases the gutter back to the content");
+    pixel(96, 12, 0, 0);
+    list.showScrollbar.reset();
+    list.children.resize(1);
+    ++snapshot.sequence;
+    const auto fitting = draw();
+    Check(fitting.scrollbarTracks.empty(), "content fitting viewport has no indicator");
+    Near(fitting.elementRects.at(L"row.0").width, top.elementRects.at(L"row.0").width,
+        "gutter stays stable when content stops overflowing");
+    list.children.front().baseStyle[L"width"] = Length(300);
+    list.scrollAxis = L"horizontal";
+    ++snapshot.sequence;
+    Check(draw().scrollbarTracks.empty(), "horizontal overflow has no vertical indicator");
+
+    list.scrollAxis = L"vertical";
+    list.children.front().baseStyle[L"height"] = Length(300);
+    list.baseStyle[L"height"] = Length(2);
+    ++snapshot.sequence;
+    Check(draw().scrollbarTracks.empty(), "degenerate viewport does not draw invalid geometry");
+    list.baseStyle[L"height"] = Length(80);
+    list.baseStyle[L"translate-y"] = Length(50);
+    ++snapshot.sequence;
+    const auto clipped = draw();
+    Near(clipped.scrollbarTracks.at(L"list").height, 76,
+        "ancestor clipping does not change full viewport proportions");
+    pixel(96, 30, 0, 0);
+
+    list.baseStyle[L"translate-y"] = Length(0);
+    list.baseStyle[L"height"] = Length(100);
+    auto inner = Node(L"inner", L"scroll");
+    inner.scrollAxis = L"vertical";
+    inner.baseStyle = list.baseStyle;
+    inner.baseStyle[L"height"] = Length(80);
+    inner.children = std::move(list.children);
+    inner.children.front().baseStyle[L"width"] = Length(100);
+    auto tail = Node(L"tail", L"stack");
+    tail.baseStyle = {{L"height", Length(200)}, {L"flex-shrink", Number(0)}};
+    list.children = {std::move(inner), std::move(tail)};
+    ++snapshot.sequence;
+    const auto nested = draw();
+    Check(nested.scrollbarTracks.size() == 2, "nested overflowing viewports have independent indicators");
+    const auto innerTrack = nested.scrollbarTracks.at(L"inner");
+    Check(innerTrack.x + innerTrack.width < nested.scrollbarTracks.at(L"list").x,
+        "nested indicators sharing an edge do not cover one another");
+    const auto oldHeight = nested.scrollbarThumbs.at(L"list").height;
+    list.children.back().baseStyle[L"height"] = Length(400);
+    impact = {snapshot.sequence, snapshot.sequence + 1,
+        WidgetPresentationEffect::MeasureLayout | WidgetPresentationEffect::Paint, {L"tail"}};
+    impact.hasNonTextMeasureLayout = true;
+    ++snapshot.sequence;
+    const auto growthPlan = renderer.PlanPresentationUpdate(snapshot, impact, viewport);
+    Check(growthPlan.has_value(), "content growth admits a bounded update");
+    const auto grown = draw(growthPlan->damage);
+    Check(grown.scrollbarThumbs.at(L"list").height < oldHeight,
+        "content extent changes update scrollbar proportions during partial repaint");
+
+    WidgetSnapshot intrinsic = snapshot;
+    intrinsic.instanceId = L"intrinsic-gutter";
+    intrinsic.root = Node(L"intrinsic.list", L"scroll");
+    intrinsic.root.scrollAxis = L"vertical";
+    auto intrinsicItem = Node(L"intrinsic.item", L"stack");
+    intrinsicItem.baseStyle = {{L"width", Length(120)}, {L"height", Length(100)}};
+    intrinsic.root.children = {intrinsicItem};
+    const auto withGutter = renderer.MeasureContent(intrinsic, {500, 300}, true);
+    intrinsic.root.showScrollbar = false;
+    const auto withoutGutter = renderer.MeasureContent(intrinsic, {500, 300}, true);
+    Check(withGutter.succeeded && withoutGutter.succeeded, "intrinsic scroll measurement succeeds");
+    Near(withGutter.extent.width, withoutGutter.extent.width + 12,
+        "content-sized widget grows by the scrollbar gutter width");
+}
+
+void ScrollIndicatorStylePolicies() {
+    using namespace widgetrail;
+    WidgetComputedStyle colors{
+        {L"scrollbar-track-color", Color(L"#00000080")},
+        {L"scrollbar-thumb-color", Color(L"#00000080")},
+        {L"scrollbar-width", Length(100)},
+    };
+    NativeStyleContext context;
+    context.effectiveBackground = NativeColor{1, 1, 1, 1};
+    auto policy = CreateNativeAccessibilityPolicy({}, true, true);
+    policy.reducedTransparency = true;
+    const auto accessible = NativeStyleAdapter::Adapt(colors, context, policy);
+    Check(accessible.diagnostics.empty(), "typed scrollbar colors adapt without diagnostics");
+    Near(accessible.style.scrollbarWidthPx(), 8, "native scrollbar width clamps after unit resolution");
+    Near(accessible.style.scrollbarTrackColor()->alpha, 1, "reduced transparency applies to the track");
+    Near(accessible.style.scrollbarThumbColor()->alpha, 1, "reduced transparency applies to the thumb");
+    Check(accessible.style.scrollbarThumbColor()->red > 0.9F &&
+        accessible.style.scrollbarTrackColor()->red < 0.1F,
+        "high contrast corrects thumb against the track even on a light parent");
+    colors[L"scrollbar-width"] = Length(0);
+    colors[L"scrollbar-thumb-color"] = Keyword(L"invalid");
+    const auto malformed = NativeStyleAdapter::Adapt(colors, context);
+    Near(malformed.style.scrollbarWidthPx(), 2, "native scrollbar has a bounded minimum width");
+    Check(!malformed.diagnostics.empty() && malformed.style.scrollbarThumbColor().has_value(),
+        "malformed color preserves a visible fallback with a diagnostic");
+}
+
 void RetainedPosterPaintPreservesArtwork() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -2400,6 +2596,9 @@ void VirtualCollectionWindowKeepsNativeWorkBounded() {
         "only viewport-visible admitted items create accessibility regions");
     Check(initial.scrollViewports.at(L"virtual.list").maximumOffset > 500'000.0F,
         "known logical extent contributes bounded estimated scroll range");
+    Check(initial.scrollbarThumbs.contains(L"virtual.list") &&
+        initial.scrollbarThumbs.at(L"virtual.list").height >= 24,
+        "virtual collection uses its existing estimated range with a readable scrollbar thumb");
     Check(initial.focusRects.contains(L"virtual.item.4992"),
         "the first admitted logical item is visible at its global offset");
 
@@ -3890,8 +4089,8 @@ void DeferredFocusOutlineUsesEffectiveVisibilityClip() {
          "outline clip preserves scroll viewport x");
     Near(clipped.currentFocusOutlineClip->y, 0.0F,
          "outline clip preserves scroll viewport y");
-    Near(clipped.currentFocusOutlineClip->width, 120.0F,
-         "outline clip preserves scroll viewport width");
+    Near(clipped.currentFocusOutlineClip->width, 108.0F,
+         "outline clip excludes the scrollbar gutter from the item viewport");
     Near(clipped.currentFocusOutlineClip->height, 60.0F,
          "outline clip prevents a partial ring from escaping the scroll viewport");
 }
@@ -6755,6 +6954,8 @@ int main() {
     ActionSurfacePlanningAndInteractionGeometry();
     PosterTileUsesFixedFullBleedGeometry();
     RetainedPosterPaintPreservesArtwork();
+    ScrollIndicatorsRespectViewportAndRetainedPaint();
+    ScrollIndicatorStylePolicies();
     PosterArtworkAdmissionUsesPresentedGeometry();
     BackgroundSurfacePreservesForegroundAuthority();
     ResponsiveGridFlowsThroughNativePlanning();

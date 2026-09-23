@@ -931,7 +931,7 @@ struct DeclarativeRenderer::RenderPass final {
         element.maxHeight = style.maxHeightPx();
         element.padding = BoxSpacing::Four(
             style.paddingPx().top,
-            style.paddingPx().right,
+            style.paddingPx().right + ScrollbarGutterWidth(node, style),
             style.paddingPx().bottom,
             style.paddingPx().left);
         element.margin = BoxSpacing::Four(
@@ -4485,6 +4485,71 @@ struct DeclarativeRenderer::RenderPass final {
                     std::max(posterTop, admissionTop) > 0.5;
     }
 
+    struct ScrollIndicator final {
+        Rect track;
+        Rect thumb;
+        Rect clip;
+    };
+    static constexpr float kScrollbarContentGap = 6.0F;
+    static constexpr float kScrollbarEdgeInset = 2.0F;
+
+    [[nodiscard]] static float ScrollbarGutterWidth(
+        const WidgetNode& node, const NativeRenderStyle& style) noexcept {
+        // Reserve a stable lane before measurement, even while content fits.
+        // This avoids wrap/overflow feedback and makes intrinsic widths include
+        // the indicator. Explicitly sized containers keep their outer bounds.
+        return node.kind == L"scroll" && node.scrollAxis == L"vertical" &&
+            node.showScrollbar.value_or(true)
+            ? style.scrollbarWidthPx() + kScrollbarContentGap + kScrollbarEdgeInset : 0.0F;
+    }
+
+    [[nodiscard]] std::optional<ScrollIndicator> PrepareScrollIndicator(
+        const WidgetNode& node, const NativeRenderStyle& style,
+        const PresentationNode& presented) const {
+        if (node.kind != L"scroll" || !node.showScrollbar.value_or(true)) return std::nullopt;
+        const auto* box = layout.Find(NarrowStableId(node.id));
+        if (!box || box->scrollAxis != declarative::ScrollAxis::Vertical ||
+            !std::isfinite(box->maximumScrollOffset) || box->maximumScrollOffset <= 0.5F ||
+            !std::isfinite(box->scrollOffset)) return std::nullopt;
+        const auto& content = presented.contentBox;
+        if (!std::isfinite(content.x) || !std::isfinite(content.y) ||
+            !std::isfinite(content.width) || !std::isfinite(content.height) ||
+            content.width <= 4 || content.height <= 4) return std::nullopt;
+        const float width = style.scrollbarWidthPx();
+        const Rect track{content.x + content.width + kScrollbarContentGap,
+            content.y + kScrollbarEdgeInset, width, content.height - 2 * kScrollbarEdgeInset};
+        // Descendants are clipped to contentBox, which excludes the gutter.
+        // The indicator is container chrome and uses its outer visibility clip.
+        const auto clip = Intersection(presented.borderBox, presented.ancestorClip);
+        if (Intersection(track, clip).width <= 0 || Intersection(track, clip).height <= 0)
+            return std::nullopt;
+        // Use the complete viewport, not its ancestor-clipped portion. The
+        // extent includes existing virtual spacers and never requests pages.
+        const double fraction = static_cast<double>(content.height) /
+            (static_cast<double>(content.height) + box->maximumScrollOffset);
+        const float thumbHeight = std::clamp(static_cast<float>(track.height * fraction),
+            std::min(24.0F, track.height), track.height);
+        const float progress = std::clamp(box->scrollOffset / box->maximumScrollOffset, 0.0F, 1.0F);
+        return ScrollIndicator{track,
+            {track.x, track.y + (track.height - thumbHeight) * progress, width, thumbHeight}, clip};
+    }
+
+    void DrawScrollIndicator(const ScrollIndicator& indicator,
+        const NativeRenderStyle& style, const float opacity) const {
+        if (!target) return;
+        target->PushAxisAlignedClip(D2DRect(indicator.clip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        const auto Paint = [&](const Rect& rect, const std::optional<NativeColor>& color) {
+            if (!color) return;
+            if (auto brush = Brush(target, WithOpacity(*color, opacity))) {
+                const float radius = rect.width * 0.5F;
+                target->FillRoundedRectangle({D2DRect(rect), radius, radius}, brush.Get());
+            }
+        };
+        Paint(indicator.track, style.scrollbarTrackColor());
+        Paint(indicator.thumb, style.scrollbarThumbColor());
+        target->PopAxisAlignedClip();
+    }
+
     void DrawNode(
         const WidgetNode& node,
         const std::wstring_view inheritedInputScope = {}) {
@@ -4557,6 +4622,14 @@ struct DeclarativeRenderer::RenderPass final {
         }
 
         CollectFocusGeometry(node, inputScope, presented);
+
+        const auto indicator = PrepareScrollIndicator(node, style, presented);
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        if (indicator) {
+            result.scrollbarTracks[node.id] = indicator->track;
+            result.scrollbarThumbs[node.id] = indicator->thumb;
+        }
+#endif
 
         if (!target) {
             if (node.kind == L"focusPresentationSurface") {
@@ -4730,6 +4803,9 @@ struct DeclarativeRenderer::RenderPass final {
         }
         for (const auto& child : node.children) DrawNode(child, inputScope);
         DrawCollectionLoading(node, style, Intersection(presented.contentBox, presented.visibleBox), opacity);
+        if (indicator) {
+            DrawScrollIndicator(*indicator, style, opacity);
+        }
         // Draw semantic state after descendants so it remains visible over a
         // composed tile while the entire surface stays the sole input target.
         if (node.kind == L"actionSurface") {
@@ -5319,7 +5395,12 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
             continue;
         }
 
-        auto damage = Intersection(visible->second.rect, viewport);
+        // The scroll content viewport excludes its reserved scrollbar gutter.
+        // Repaint container chrome too so a moved thumb never leaves stale pixels.
+        const auto scrollNode = cache->nodes.find(candidate.id);
+        auto damage = Intersection(scrollNode != cache->nodes.end()
+            ? UnionRect(visible->second.rect, scrollNode->second.paintBounds)
+            : visible->second.rect, viewport);
         if (damage.width <= 0.0F || damage.height <= 0.0F) {
             return reject(FocusedFreeScrollPlanDisposition::EmptyDamage);
         }

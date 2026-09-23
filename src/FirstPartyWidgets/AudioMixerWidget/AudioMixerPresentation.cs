@@ -236,7 +236,7 @@ internal static class AudioMixerPresentation
                             .Classes("audio-help", "is-neutral"),
                         retry).Classes("audio-state-card"));
             var emptyRoot = UI.VerticalScroll("audio.root", emptyChildren.ToArray())
-                .Classes("audio-mixer-widget", "has-master", "has-state");
+                .Classes("audio-mixer-widget", "has-master", "has-state") with { ShowScrollbar = false };
             return new WidgetView(emptyRoot, InitialFocusId: initialFocusId,
                 QuickActions: quickActions, Surface: CompactSurface);
         }
@@ -263,7 +263,7 @@ internal static class AudioMixerPresentation
         rootChildren.Add(UI.Stack("audio.sessions.list", sessionRows)
             .Classes("audio-session-list"));
         var root = UI.VerticalScroll("audio.root", rootChildren.ToArray())
-            .Classes("audio-mixer-widget", "has-sessions");
+            .Classes("audio-mixer-widget", "has-sessions") with { ShowScrollbar = false };
         return new WidgetView(root, InitialFocusId: initialFocusId,
             QuickActions: quickActions, Surface: CompactSurface);
     }
@@ -435,7 +435,7 @@ internal static class AudioMixerPresentation
                     UI.Text(title, "audio.state.title", title).Classes("audio-state-title"),
                     UI.Text(help, "audio.state.help", help).Classes("audio-help", error ? "is-error" : "is-neutral"),
                     retry).Classes("audio-state-card"))
-            .Classes("audio-mixer-widget", error ? "has-error" : "has-state");
+            .Classes("audio-mixer-widget", error ? "has-error" : "has-state") with { ShowScrollbar = false };
         return new WidgetView(root, InitialFocusId: "audio.retry", Surface: CompactSurface);
     }
 

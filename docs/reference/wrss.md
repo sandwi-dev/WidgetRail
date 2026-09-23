@@ -24,6 +24,32 @@ button.primary:focused {
 }
 ```
 
+## Scrollbars
+
+Scrollbars use the `scroll` container's computed style. Their appearance is
+independent of its background and text color:
+
+```css
+scroll {
+  scrollbar-width: 4px;
+  scrollbar-track-color: var(--scrollbar-track);
+  scrollbar-thumb-color: var(--scrollbar-thumb);
+}
+```
+
+All built-in themes define these two tokens. The default width is 4 logical
+pixels; `scrollbar-width` resolves to 2–8 logical pixels. A separate gutter on
+the right reserves the bar's width plus a 6-pixel gap from content and a 2-pixel
+outer inset. It stays reserved
+while `ShowScrollbar` is enabled, even when content fits. The thumb follows the existing
+scroll range, including estimated virtual-list extent, without fetching pages.
+Its size can change as the list's known extent changes.
+
+Visibility belongs to the widget's C# `ScrollElement.ShowScrollbar` option,
+which defaults to `true`. A bar appears only for overflowing vertical content.
+It cannot be focused, clicked or dragged. Host accessibility policy still
+applies to its colors and transparency.
+
 ## Selectors and cascade
 
 A selector is a single semantic compound: optional role, `#stable-id`, zero or more `.style-classes`, and the pseudo-states `:focused`, `:pressed`, `:selected`, `:disabled`, or `:busy`. Comma-separated selector lists are supported. Descendant/sibling combinators and attribute selectors are not. Disabled and Busy remain controller-focusable; these selectors style unavailable or pending activation without changing navigation membership.
@@ -64,6 +90,8 @@ The canonical runtime list is `WrssPropertyCatalog.AllowedProperties`. It curren
   `corner-radius`, `shape`, and opacity.
 - Media: `aspect-ratio`, `object-fit`, `object-position`, `image-tint`, and
   `scrim-color`.
+- Scroll indicators: `scrollbar-width`, `scrollbar-track-color`, and
+  `scrollbar-thumb-color`.
 - Effects: `scale`, `background-blur`, shadow color/blur/offset,
   `transition-duration`, and `transition-easing`.
 

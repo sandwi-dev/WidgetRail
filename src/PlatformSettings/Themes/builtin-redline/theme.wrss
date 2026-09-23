@@ -31,6 +31,8 @@
 
   --text: #fbeeec;
   --text-muted: #cdaeaa;
+  --scrollbar-track: #49312e;
+  --scrollbar-thumb: #d99389;
   --text-subdued: #a5847f;
 
   /* Focus stays a near-neutral bright value, warmed only enough to belong to

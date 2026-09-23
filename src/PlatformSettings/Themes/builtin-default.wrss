@@ -9,6 +9,8 @@
   --border-strong: rgba(246, 240, 226, 0.22);
   --text: #f2efe8;
   --text-muted: #aaa69d;
+  --scrollbar-track: #34332f;
+  --scrollbar-thumb: #aaa69d;
   --text-subdued: #7d7a72;
   --focus: #f4f0e8;
   --accent: #b8ae92;
@@ -27,6 +29,11 @@ canvas {
   font-family: var(--font-text);
 }
 backdrop { background: var(--canvas-veil); }
+scroll {
+  scrollbar-width: 4px;
+  scrollbar-track-color: var(--scrollbar-track);
+  scrollbar-thumb-color: var(--scrollbar-thumb);
+}
 panel,
 tray {
   background: var(--surface);

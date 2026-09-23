@@ -10,6 +10,9 @@
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="..\..\src\PlatformSettings\Themes\builtin-default.wrss"
+             Link="Themes\builtin-default.wrss"
+             CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\src\PlatformSettings\Themes\builtin-cool-slate\theme.wrss"
              Link="Themes\builtin-cool-slate.wrss"
              CopyToOutputDirectory="PreserveNewest" />

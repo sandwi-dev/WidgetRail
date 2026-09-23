@@ -205,6 +205,8 @@ struct RenderResult final {
     std::map<std::wstring, float, std::less<>> sliderThumbXs;
     std::map<std::wstring, ButtonContentPlacement, std::less<>> buttonContentPlacements;
     std::map<std::wstring, declarative::Rect, std::less<>> collectionLoadingRects;
+    std::map<std::wstring, declarative::Rect, std::less<>> scrollbarTracks;
+    std::map<std::wstring, declarative::Rect, std::less<>> scrollbarThumbs;
     std::map<std::wstring, std::wstring, std::less<>> buttonStateCues;
     std::map<std::wstring, std::uint32_t, std::less<>> textLineCounts;
     std::map<std::wstring, std::wstring, std::less<>> backgroundArtworkHandles;

@@ -10,6 +10,7 @@ internal static class WidgetPresentationUpdateTests
     internal static Task Run()
     {
         PropertyNoOpAndRoundTrip();
+        ScrollbarUpdatesAtomically();
         SelectOptionsUpdateAtomically();
         PackageIconUpdatesAtomically();
         VirtualCollectionWindowUpdatesAtomically();
@@ -24,6 +25,22 @@ internal static class WidgetPresentationUpdateTests
         PropertyCoalescingIsBounded();
         DifferIsTrustTierNeutral();
         return Task.CompletedTask;
+    }
+
+    private static void ScrollbarUpdatesAtomically()
+    {
+        var before = new WidgetView(UI.VerticalScroll("scroll", UI.Text("Content", "text"))
+            with { ShowScrollbar = false }).CreateSnapshot("scrollbar.update", 1);
+        var after = before with { Sequence = 2, Root = before.Root with { ShowScrollbar = true } };
+        var publication = WidgetPresentationDiff.Create(before, after, Generation, 1,
+            PresentationUpdateCapabilities.Current, WidgetPresentationTransactionKind.IncrementalUpdate);
+        True(publication.Update?.Operations.Single().Properties?.Single().Property == PresentationProperty.ShowScrollbar,
+            "Scrollbar visibility should produce one bounded property update.");
+        var admitted = PresentationUpdateMaterializer.Apply(before, publication.Update!, Generation);
+        Equal(true, admitted.Root.ShowScrollbar);
+        Equal(PresentationPropertyImpact.MeasureLayout | PresentationPropertyImpact.Paint |
+            PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
+            PresentationPropertyMetadata.Impact(PresentationProperty.ShowScrollbar));
     }
 
     private static void PackageIconUpdatesAtomically()

@@ -490,6 +490,8 @@ public sealed record ViewNode
     /// clips descendants, and reveals controller focus; widgets never publish pixels.
     /// </summary>
     public ScrollAxis? ScrollAxis { get; init; }
+    /// <summary>Optional vertical scroll indicator visibility; omission means enabled. Requires protocol v53.</summary>
+    public bool? ShowScrollbar { get; init; }
     /// <summary>
     /// Optional protocol-v11 actions emitted once controller or keyboard focus
     /// approaches the leading or trailing edge of this scroll container.

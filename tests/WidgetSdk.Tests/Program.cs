@@ -22,6 +22,7 @@ var tests = new (string Name, Func<Task> Run)[]
         EmbeddedMediaSessionTests.Run),
     ("Automatic presentation updates are atomic bounded and fallback-safe", WidgetPresentationUpdateTests.Run),
     ("Protocol v2 scroll containers round-trip with host-owned semantics", ScrollContainersRoundTrip),
+    ("Scroll indicators default on and author opt-out is versioned", ScrollbarVisibilityRoundTrip),
     ("Protocol v11 scroll pagination is bounded and versioned", ScrollPaginationRoundTrip),
     ("Baseline widgets remain protocol v1 compatible", BaselineProtocolCompatibility),
     ("Protocol v9 responsive branches are semantic and versioned", ResponsiveVisibilityRoundTrip),
@@ -1330,6 +1331,27 @@ static Task ScrollContainersRoundTrip()
     Assert.Equal(560D, restored.Surface.PreferredWidth);
     Assert.Equal(360D, restored.Surface.MinimumWidth);
     Assert.Equal("close-details", restored.Root.Shortcuts.Single().ActionId);
+    return Task.CompletedTask;
+}
+
+static Task ScrollbarVisibilityRoundTrip()
+{
+    var visible = UI.VerticalScroll("list", UI.Text("Content", "content"));
+    Assert.True(visible.ShowScrollbar, "Indicators default on.");
+    var baseline = new WidgetView(visible).CreateSnapshot("scrollbar.instance", 1);
+    Assert.Equal(ProtocolConstants.ScrollContainerVersion, baseline.ProtocolVersion);
+    Assert.True(baseline.Root.ShowScrollbar is null, "Default visibility keeps existing wire compatibility.");
+    var hidden = new WidgetView(visible with { ShowScrollbar = false })
+        .CreateSnapshot("scrollbar.instance", 2);
+    Assert.Equal(ProtocolConstants.ScrollbarVisibilityVersion, hidden.ProtocolVersion);
+    Assert.Equal(false, SnapshotJson.Deserialize(SnapshotJson.Serialize(hidden)).Root.ShowScrollbar);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(hidden).Count);
+    Assert.True(ViewSnapshotValidator.Validate(hidden with { ProtocolVersion = 52 }).Count > 0,
+        "An old host cannot silently ignore explicit visibility.");
+    Assert.True(ViewSnapshotValidator.Validate(hidden with
+    {
+        Root = hidden.Root with { Kind = ViewNodeKind.Stack, ScrollAxis = null },
+    }).Any(error => error.Code == "scroll_property_not_allowed"), "Only scroll containers accept visibility.");
     return Task.CompletedTask;
 }
 

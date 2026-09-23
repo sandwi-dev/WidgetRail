@@ -17,6 +17,8 @@ var tests = new (string Name, Action Run)[]
     ("Explicit theme layers outrank selector specificity", LayerPrecedence),
     ("Selected disabled busy and focused states compose", InteractionStateComposition),
     ("Typed values clamp bounded renderer inputs", Clamping),
+    ("Scrollbar parts have independent colors and bounded widths", ScrollbarStyles),
+    ("Every built-in theme supplies separate scrollbar colors", BuiltinScrollbarPalettes),
     ("Invalid typed values prevent theme publication", InvalidTypedValues),
     ("Resolved property enumeration is deterministic", DeterministicResolution),
     ("Media-card properties compile to typed renderer values", MediaCardValues),
@@ -365,6 +367,45 @@ static void Clamping()
     Assert.Equal("64px", style.Get("background-blur")!.Text);
     Assert.Equal("2000ms", style.Get("transition-duration")!.Text);
     Assert.Equal("256px 0px", style.Get("padding")!.Text);
+}
+
+static void ScrollbarStyles()
+{
+    var compile = Compile("""
+        :root { --track: #123456; --thumb: #abcdef; }
+        scroll { scrollbar-track-color: var(--track); scrollbar-thumb-color: var(--thumb); scrollbar-width: 4px; }
+        #thin { scrollbar-width: 0px; }
+        #wide { scrollbar-width: 100px; }
+        """);
+    Assert.True(compile.IsValid, Describe(compile.Diagnostics));
+    var style = compile.Theme!.Resolve(new WrssElement("scroll", "list"));
+    Assert.Equal("#123456", style.Get("scrollbar-track-color")!.Text);
+    Assert.Equal("#abcdef", style.Get("scrollbar-thumb-color")!.Text);
+    Assert.Equal("4px", style.Get("scrollbar-width")!.Text);
+    Assert.Equal("2px", compile.Theme.Resolve(new WrssElement("scroll", "thin")).Get("scrollbar-width")!.Text);
+    Assert.Equal("8px", compile.Theme.Resolve(new WrssElement("scroll", "wide")).Get("scrollbar-width")!.Text);
+    Assert.True(!WrssParser.Parse("scroll { scrollbar-thumb-color: url(file:///secret); }", "unsafe.wrss").IsValid,
+        "Scrollbar colors must not admit external resources.");
+}
+
+static void BuiltinScrollbarPalettes()
+{
+    var baseline = WrssParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
+        "Themes", "builtin-default.wrss")), "builtin-default.wrss");
+    Assert.EmptyErrors(baseline.Diagnostics);
+    foreach (var name in new[] { "default", "cool-slate", "arcade-rush", "neon-circuit", "redline" })
+    {
+        var palette = WrssParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
+            "Themes", $"builtin-{name}.wrss")), $"builtin-{name}.wrss");
+        Assert.EmptyErrors(palette.Diagnostics);
+        var compiled = WrssThemeCompiler.Compile([
+            new WrssThemeLayer(0, [baseline.Document]), new WrssThemeLayer(200, [palette.Document])]);
+        Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
+        var scroll = compiled.Theme!.Resolve(new WrssElement("scroll", "items"));
+        Assert.Equal("4px", scroll.Get("scrollbar-width")!.Text);
+        Assert.True(scroll.Get("scrollbar-thumb-color")!.Text != scroll.Get("scrollbar-track-color")!.Text,
+            $"Theme {name} must distinguish the thumb from its track.");
+    }
 }
 
 static void InteractionStateComposition()

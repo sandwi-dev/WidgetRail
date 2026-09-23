@@ -80,6 +80,7 @@ public enum PresentationProperty
     ContextMenuButton,
     WindowId,
     PreviewAspectRatio,
+    ShowScrollbar,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -142,6 +143,9 @@ public static class PresentationPropertyMetadata
 {
     public static PresentationPropertyImpact Impact(PresentationProperty property) => property switch
     {
+        PresentationProperty.ShowScrollbar => PresentationPropertyImpact.MeasureLayout |
+            PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction |
+            PresentationPropertyImpact.Accessibility,
         PresentationProperty.CollectionResetGeneration => PresentationPropertyImpact.MeasureLayout | PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
         PresentationProperty.ContextMenuButton => PresentationPropertyImpact.Authority | PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
         PresentationProperty.CollectionLoading => PresentationPropertyImpact.Paint,

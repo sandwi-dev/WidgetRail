@@ -130,6 +130,9 @@ public:
     [[nodiscard]] const std::optional<NativeColor>& shadowColor() const noexcept;
     [[nodiscard]] const std::optional<NativeColor>& imageTint() const noexcept;
     [[nodiscard]] const std::optional<NativeColor>& scrimColor() const noexcept;
+    [[nodiscard]] float scrollbarWidthPx() const noexcept;
+    [[nodiscard]] const std::optional<NativeColor>& scrollbarTrackColor() const noexcept;
+    [[nodiscard]] const std::optional<NativeColor>& scrollbarThumbColor() const noexcept;
     [[nodiscard]] const std::optional<float>& widthPx() const noexcept;
     [[nodiscard]] const std::optional<float>& heightPx() const noexcept;
     [[nodiscard]] const std::optional<float>& minWidthPx() const noexcept;

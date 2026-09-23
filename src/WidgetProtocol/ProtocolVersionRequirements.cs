@@ -212,6 +212,9 @@ internal sealed class ProtocolVersionRequirements
                         $"LoadingIndicator requires protocol version {ProtocolConstants.LoadingIndicatorVersion} or later.");
                     break;
                 case ViewNodeKind.Scroll:
+                    if (node.ShowScrollbar is not null)
+                        Add("scrollbar-visibility", ProtocolConstants.ScrollbarVisibilityVersion,
+                            $"{path}.showScrollbar", "Scrollbar visibility requires protocol version 53 or later.");
                     Add(
                         "scroll-container",
                         ProtocolConstants.ScrollContainerVersion,

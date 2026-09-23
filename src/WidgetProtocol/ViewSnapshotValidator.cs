@@ -763,7 +763,7 @@ public static class ViewSnapshotValidator
                     node.FocusBackgroundArtworkHandle is not null ||
                     node.ImageFit is not null || node.Glyph is not null ||
                     node.IndicatorSize is not null || node.InputScopeId is not null ||
-                    node.ScrollAxis is not null || node.GridMinimumColumnWidth is not null ||
+                    node.ScrollAxis is not null || node.ShowScrollbar is not null || node.GridMinimumColumnWidth is not null ||
                     node.GridMaximumColumns is not null || node.IsDisabled is not null ||
                     node.IsSelected is not null || node.IsBusy is not null)
                     Add(path, "media_viewport_property_not_allowed",
@@ -954,7 +954,7 @@ public static class ViewSnapshotValidator
                         ContainsCollectionItem(child, isRoot: false));
                 }
             }
-            else if (node.ScrollAxis is not null || node.ScrollNearStartActionId is not null ||
+            else if (node.ScrollAxis is not null || node.ShowScrollbar is not null || node.ScrollNearStartActionId is not null ||
                      node.ScrollNearEndActionId is not null ||
                      node.ScrollPaginationThreshold is not null ||
                      node.VirtualCollectionWindow is not null ||
@@ -1024,7 +1024,7 @@ public static class ViewSnapshotValidator
                     node.Step is not null || node.ValueChangedActionId is not null ||
                     node.ImageSource is not null || node.ImageFit is not null ||
                     node.Glyph is not null || node.IndicatorSize is not null ||
-                    node.InputScopeId is not null || node.ScrollAxis is not null ||
+                    node.InputScopeId is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.GridMinimumColumnWidth is not null || node.GridMaximumColumns is not null)
                     Add(path, "action_surface_property_not_allowed",
                         "Action surfaces accept interaction metadata, orientation, style classes, shortcuts, and bounded presentational children only.");
@@ -1440,7 +1440,7 @@ public static class ViewSnapshotValidator
                     node.IsSelected is not null || node.IsBusy is not null ||
                     node.FocusPersistenceId is not null || node.Focus is not null ||
                     node.InputScopeId is not null || node.InitialChildFocusId is not null ||
-                    node.UsesFocusedDescendantArtwork is not null || node.ScrollAxis is not null ||
+                    node.UsesFocusedDescendantArtwork is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
                     node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null ||
                     node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
@@ -1584,7 +1584,7 @@ public static class ViewSnapshotValidator
                     node.FocusPersistenceId is not null || node.Focus is not null ||
                     node.InputScopeId is not null || node.InitialChildFocusId is not null ||
                     node.UsesFocusedDescendantArtwork is not null || node.FocusPresentation is not null ||
-                    node.DefaultFocusPresentation is not null || node.ScrollAxis is not null ||
+                    node.DefaultFocusPresentation is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
                     node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null ||
                     node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||

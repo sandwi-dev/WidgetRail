@@ -39,6 +39,10 @@ Shared tokens include `--accent`, `--surface`, `--text`, `--text-muted`, and
 `--focus`. If your widget leaves a token undefined, it can inherit the global
 theme or host default. An explicit package definition overrides that default.
 
+Scroll indicators have separate `--scrollbar-track` and `--scrollbar-thumb`
+tokens. Theme them independently of text and container backgrounds; see
+[Scrollbar styling](../reference/wrss.md#scrollbars).
+
 Try both light and dark backgrounds. Avoid conveying an error or disabled state
 through color alone; use a useful message as well.
 
