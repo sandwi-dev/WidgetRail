@@ -119,6 +119,13 @@ helper can continue playing and retain its latest bounded state for reopening.
 Play/pause, next/previous and seek use the local SDK when eligible. Device
 discovery/transfers, search, playlists, queue operations, starting a specific
 track or context, and shuffle/repeat commands still require Spotify's Web API.
+The local SDK's action restrictions also apply to shuffle/repeat controls.
+Queue reads compare the cloud response's current track with the current local
+track. A mismatch gets at most two retries, after 500 ms and another 1.5 seconds,
+within the existing queue request lifetime. Normal reads make one request. If
+the cloud queue still disagrees, the queue page retains its last loaded list
+with a refresh warning; Refresh retries it. Track identity cannot detect a
+stale queue whose current-track URI is unchanged, including repeated tracks.
 No additional timer or unbounded event history is introduced.
 
 ## Presentation and cancellation

@@ -10,6 +10,9 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Local play pause state and permissions stay aligned through stale cloud refresh", LocalTransportPermissions),
     ("Local events publish full playback and source loss refreshes remote state", LocalPlaybackEvents),
+    ("Local queue rejects lagging cloud state then publishes the settled list", LocalQueueSettlement),
+    ("Local queue retries are bounded and expose a recoverable warning", LocalQueueSettlementBounded),
+    ("Local queue retry stops when the widget is destroyed", LocalQueueSettlementCancellation),
     ("Fresh Spotify opens Devices first and loads its cached device page", DevicesFirst),
     ("Playlist disk cache survives restart and isolates authorizations", PlaylistDiskPersistence),
     ("Playlist disk failures corruption and quota limits remain cache misses", PlaylistDiskFailures),
@@ -2183,6 +2186,76 @@ static async Task LocalPlaybackEvents()
     await StopAsync(widget);
 }
 
+static async Task LocalQueueSettlement()
+{
+    var harness = SpotifyHarness.Ready();
+    harness.Queue = harness.Queue with { CurrentlyPlaying = harness.Queue.CurrentlyPlaying! with { Uri = harness.Playback.Item!.Uri! } };
+    harness.Transport = new(harness.Playback);
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.queue"));
+    await WaitUntil(() => harness.QueueCalls == 1);
+    var next = harness.Queue.Items[0];
+    var following = next with { Uri = "spotify:track:following", Title = "Following" };
+    var settled = harness.Queue with { CurrentlyPlaying = next, Items = [following] };
+    harness.QueueHandler = _ => ValueTask.FromResult(harness.QueueCalls == 2 ? harness.Queue : settled);
+    harness.PublishTransport(new(harness.Playback with
+    {
+        Item = harness.Playback.Item! with { Uri = next.Uri, Title = next.Title },
+    }));
+    Assert.Equal(2, harness.QueueCalls);
+    Assert.True(!ContainsAction(widget.RenderSnapshot("lagging", 1).Root, QueuePlay(following.Uri)),
+        "The retry should still be waiting for cloud settlement.");
+    await WaitUntil(() => ContainsAction(widget.RenderSnapshot("settled", 2).Root, QueuePlay(following.Uri)));
+    Assert.Equal(3, harness.QueueCalls);
+    Assert.True(!ContainsAction(widget.RenderSnapshot("settled", 3).Root, QueuePlay(next.Uri)),
+        "The playing track remained in the old queue after settlement.");
+    await StopAsync(widget);
+}
+
+static async Task LocalQueueSettlementBounded()
+{
+    var harness = SpotifyHarness.Ready();
+    harness.Queue = harness.Queue with { CurrentlyPlaying = harness.Queue.CurrentlyPlaying! with { Uri = harness.Playback.Item!.Uri! } };
+    harness.Transport = new(harness.Playback);
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.queue"));
+    await WaitUntil(() => harness.QueueCalls == 1);
+    var next = harness.Queue.Items[0];
+    harness.PublishTransport(new(harness.Playback with
+    {
+        Item = harness.Playback.Item! with { Uri = next.Uri },
+    }));
+    await WaitUntil(() => ContainsId(widget.RenderSnapshot("unsettled", 1).Root,
+        "spotify.queue.refresh-warning.shared"));
+    Assert.Equal(4, harness.QueueCalls);
+    Assert.True(ContainsAction(widget.RenderSnapshot("retained", 2).Root, QueuePlay(next.Uri)),
+        "A failed refresh should preserve the last loaded list with a warning.");
+    // A manual retry can recover; this is not a permanent queue error.
+    harness.Queue = harness.Queue with { CurrentlyPlaying = next, Items = [] };
+    await widget.OnActionAsync(new("spotify.page.retry", "spotify.page.retry"));
+    await WaitUntil(() => ContainsId(widget.RenderSnapshot("recovered", 3).Root, "spotify.queue.empty.shared"));
+    Assert.Equal(5, harness.QueueCalls);
+    await StopAsync(widget);
+}
+
+static async Task LocalQueueSettlementCancellation()
+{
+    var harness = SpotifyHarness.Ready();
+    harness.Transport = new(harness.Playback with
+    {
+        Item = harness.Playback.Item! with { Uri = "spotify:track:local" },
+    });
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.queue"));
+    await WaitUntil(() => harness.QueueCalls == 1);
+    await StopAsync(widget);
+    await Task.Delay(600);
+    Assert.Equal(1, harness.QueueCalls);
+}
+
 static async Task OptimisticPlayback()
 {
     var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -3508,6 +3581,7 @@ file sealed class SpotifyHarness : ISpotifyApplicationService, ISpotifyLocalTran
     public Exception? ControlError { get; set; }
     public Exception? StartPlaybackError { get; set; }
     public Exception? QueueError { get; set; }
+    public Func<CancellationToken, ValueTask<SpotifyQueueSummary>>? QueueHandler { get; set; }
     public Task? ControlWait { get; set; }
     public TaskCompletionSource<SpotifyAuthorizationSummary>? ConnectCompletion { get; set; }
     public CancellationToken? ConnectCancellationToken { get; private set; }
@@ -3637,7 +3711,7 @@ file sealed class SpotifyHarness : ISpotifyApplicationService, ISpotifyLocalTran
         QueueCalls++;
         if (QueueError is not null)
             return ValueTask.FromException<SpotifyQueueSummary>(QueueError);
-        return ValueTask.FromResult(Queue);
+        return QueueHandler is null ? ValueTask.FromResult(Queue) : QueueHandler(cancellationToken);
     }
 
     public async ValueTask<SpotifyPlaylistPageSummary> GetPlaylistsAsync(

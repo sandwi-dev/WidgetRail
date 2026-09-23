@@ -892,11 +892,17 @@ internal static class SpotifyPresentation
         var scroll = UI.VerticalScroll("spotify.queue.scroll", rows)
             .Classes("spotify-page-scroll") with
         { CollectionAnchorKey = queue.Anchor?.Value };
-        return UI.Stack($"spotify.queue.page.{mode}",
-                UI.SectionHeader("Up next", $"spotify.queue.header.{mode}", "QUEUE",
-                    $"{queue.Items.Count} upcoming items · Play from here uses the loaded queue",
-                    SectionRefresh("queue", mode)),
-                scroll)
+        var content = new List<WidgetElement>
+        {
+            UI.SectionHeader("Up next", $"spotify.queue.header.{mode}", "QUEUE",
+                $"{queue.Items.Count} upcoming items · Play from here uses the loaded queue",
+                SectionRefresh("queue", mode)),
+        };
+        if (queue.Error is { } refreshError)
+            content.Add(UI.Alert("Queue refresh failed", refreshError.Message, AlertTone.Warning,
+                $"spotify.queue.refresh-warning.{mode}"));
+        content.Add(scroll);
+        return UI.Stack($"spotify.queue.page.{mode}", content.ToArray())
             .Classes("spotify-page");
     }
 

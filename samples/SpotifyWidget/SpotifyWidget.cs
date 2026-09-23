@@ -764,7 +764,7 @@ public sealed class SpotifyWidget : Widget
         queueLifetime.CancelAfter(QueueLoadTimeout);
         try
         {
-            var queue = await _spotify.GetQueueAsync(queueLifetime.Token)
+            var queue = await ReadSettledQueueAsync(queueLifetime.Token)
                 .ConfigureAwait(false);
             var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
             var items = _queueOccurrences.NormalizePage(
@@ -791,6 +791,29 @@ public sealed class SpotifyWidget : Widget
                 "queue-refresh", QueueFailureDiagnosticCode(exception),
                 operation, generation, ElapsedMilliseconds(started));
             throw;
+        }
+    }
+
+    private async ValueTask<SpotifyQueueSummary> ReadSettledQueueAsync(
+        CancellationToken cancellationToken)
+    {
+        // Local track events can arrive before the cloud queue catches up.
+        // Retry only a proven mismatch; normal queue reads still cost one request.
+        for (var attempt = 0; ; attempt++)
+        {
+            var queue = await _spotify.GetQueueAsync(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var local = (_spotify as ISpotifyLocalTransport)?.GetLocalTransport()?.Playback;
+            if (local is not { IsAvailable: true, Item.Uri: { } currentUri } ||
+                queue.CurrentlyPlaying?.Uri == currentUri)
+                return queue;
+
+            if (attempt == 2)
+                throw new SpotifyApplicationException("queue_not_settled",
+                    "Spotify’s queue has not caught up with this PC. Refresh to try again.");
+
+            await Task.Delay(TimeSpan.FromMilliseconds(attempt == 0 ? 500 : 1500),
+                _timeProvider, cancellationToken).ConfigureAwait(false);
         }
     }
 
