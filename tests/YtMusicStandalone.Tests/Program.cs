@@ -17,10 +17,14 @@ var tests = new List<(string, Func<Task>)>
     ("Empty setup has one clear primary action and no empty playback controls", CompactSetup),
     ("Browsing uses four horizontal tabs and one focus target per song", ControllerRows),
     ("Controller Y opens settings, B returns, and X works from a song", ControllerRouting),
+    ("Scrubber commands convert milliseconds to player seconds", SeekUnits),
     ("Sign-in can be canceled from the controller without waiting for its timeout", CancelAuth),
 };
 if (args.Length == 2 && args[0] == "--package-root")
-    tests.Add(("Packaged provider and player complete a muted live radio playback", () => LivePackage(args[1])));
+{
+    tests.Add(("Production Python launch prevents late-import writes", () => LateImportDoesNotWrite(args[1])));
+    tests.Add(("Installed provider and muted radio playback leave the sealed package unchanged", () => ImmutablePackage(args[1])));
+}
 var failures = 0;
 foreach (var (name, run) in tests)
 {
@@ -100,7 +104,6 @@ static async Task RadioDoesNotBlock()
         await Until(() => service.RadioCalls == 1);
         await widget.OnActionAsync(new("player.toggle", "player.main.toggle"));
         await Until(() => service.Commands.Contains("toggle"));
-        await widget.OnActionAsync(new("player.open", "player.open"));
         var toggle = Nodes(widget.Render().CreateSnapshot("test", 1).Root).Single(n => n.Id == "player.main.toggle");
         Check(toggle.IsDisabled != true && toggle.IsBusy != true, "Transport blocked by catalogue work");
         service.PendingRadio.TrySetResult();
@@ -182,7 +185,7 @@ static async Task CompactSetup()
         Check(view.InitialFocusId == "setup.primary", "Setup starts away from its primary action");
         Check(!Nodes(view.Root).Any(n => n.Kind == ViewNodeKind.Slider || n.ActionId?.StartsWith("player.", StringComparison.Ordinal) == true), "Empty playback controls still rendered");
         Check(!Nodes(view.Root).Any(n => n.ActionId == "disconnect"), "Disconnected account exposes an unusable disconnect control");
-        Check(!Nodes(view.Root).Any(n => n.Id == "music.tabs"), "Setup still contains the browsing navigation");
+        Check(!Nodes(view.Root).Any(n => n.Id == "music.nav.compact"), "Setup still contains the browsing navigation");
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }
@@ -193,13 +196,19 @@ static async Task ControllerRows()
     try
     {
         var view = widget.Render().CreateSnapshot("rows", 1);
-        var tabs = Nodes(view.Root).Single(n => n.Id == "music.tabs");
+        var tabs = Nodes(view.Root).Single(n => n.Id == "music.nav.compact");
         Check(tabs.Kind == ViewNodeKind.Row && Nodes(tabs).Count(n => n.Kind == ViewNodeKind.Button) == 4, "Expected four horizontal destination buttons");
         var rows = Nodes(view.Root).Where(n => n.Kind == ViewNodeKind.ActionSurface && n.Id.StartsWith("item.", StringComparison.Ordinal)).ToArray();
         Check(rows.Length == 12, "The visible song window changed unexpectedly");
         Check(rows.All(n => n.ContextMenuButton == ControllerButton.Menu && n.ContextActions.Any(a => a.Label == "Start radio")), "Song radio is missing from the controller context menu");
         Check(!Nodes(view.Root).Any(n => n.Kind == ViewNodeKind.Button && n.ActionId?.StartsWith("radio.", StringComparison.Ordinal) == true), "Radio adds a focus stop beside each song");
-        Check(!Nodes(view.Root).Any(n => n.Kind == ViewNodeKind.Slider), "Browsing still requires crossing playback sliders");
+        var panes = Nodes(view.Root).Single(n => n.Id == "music.panes");
+        Check(panes.Kind == ViewNodeKind.Row && panes.Children.Count == 2, "Player and browsing are not adjacent panes");
+        Check(Nodes(panes.Children[0]).Any(n => n.Id == "player.main.toggle") &&
+            Nodes(panes.Children[0]).Any(n => n.Kind == ViewNodeKind.Slider), "Persistent transport or seeking is missing");
+        Check(!Nodes(panes.Children[1]).Any(n => n.Kind == ViewNodeKind.Slider), "Playback sliders entered the browsing focus path");
+        Check(!Nodes(view.Root).Any(n => n.ActionId == "player.open"), "Rejected mini-player route is still exposed");
+        Check(rows.All(n => n.Focus?.Left == "player.main.toggle"), "Songs lack a direct route to transport");
         Check(view.FocusGroupEntryRequest is { } focus &&
             Nodes(view.Root).Any(n => n.Id == focus.GroupId && n.InitialChildFocusId == "item.0"), "Loaded content is not entered after a tab change");
     }
@@ -228,6 +237,21 @@ static async Task ControllerRouting()
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }
 
+static async Task SeekUnits()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        await widget.OnActionAsync(new("player.seek", "player.main.seek.slider") { RequestedValue = 12500 });
+        await Until(() => service.Commands.Contains("seek"));
+        Check(service.LastValue == 12.5, "Scrubber milliseconds were not converted to player seconds");
+        await widget.OnActionAsync(new("player.volume", "player.main.volume") { RequestedValue = .35 });
+        await Until(() => service.Commands.Contains("volume"));
+        Check(service.LastValue == .35, "Volume was incorrectly scaled");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
 static async Task CancelAuth()
 {
     var (widget, service) = await Start();
@@ -244,6 +268,71 @@ static async Task CancelAuth()
         await Until(() => Nodes(widget.Render().CreateSnapshot("cancel", 2).Root).Single(n => n.Id == "setup.primary").ActionId != "signin.cancel");
     }
     finally { service.PendingAuth?.TrySetResult("Canceled"); await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static SortedDictionary<string, string> PackageHashes(string root) => new(
+    Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).ToDictionary(
+        file => Path.GetRelativePath(root, file),
+        file => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(file)))),
+    StringComparer.Ordinal);
+
+static async Task ImmutablePackage(string root)
+{
+    var before = PackageHashes(root);
+    try { await LivePackage(root); }
+    finally
+    {
+        var after = PackageHashes(root);
+        Check(before.SequenceEqual(after), "Playback mutated the installed package: " +
+            string.Join(", ", after.Keys.Except(before.Keys).Concat(before.Keys.Where(key => !after.TryGetValue(key, out var hash) || hash != before[key]))));
+    }
+}
+
+static async Task LateImportDoesNotWrite(string root)
+{
+    // Exercise the production launch with an offline service fixture. Fresh source
+    // modules intentionally have no pycache, including the lazily imported solver.
+    var temporary = Path.Combine(Path.GetTempPath(), "WidgetRail-YtMusic-import-test-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(temporary);
+    try
+    {
+        var source = Path.Combine(root, "payload", "python");
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            if (file.Contains("__pycache__", StringComparison.Ordinal) || file.EndsWith(".pyc", StringComparison.Ordinal)) continue;
+            var target = Path.Combine(temporary, "python", Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target);
+        }
+        Directory.CreateDirectory(Path.Combine(temporary, "service"));
+        File.WriteAllText(Path.Combine(temporary, "service", "service.py"), """
+            import json, sys
+            for line in sys.stdin:
+                request = json.loads(line)
+                import yt_dlp_ejs.yt.solver
+                print(json.dumps({"id": request["id"], "result": {"connected": False}}), flush=True)
+            """);
+        var before = PackageHashes(temporary);
+        await using (var service = new MusicService(temporary))
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await service.InitializeAsync(timeout.Token);
+        }
+        Check(before.SequenceEqual(PackageHashes(temporary)), "Production launch wrote cache files during late solver import");
+        // Negative control: the old launch flags must reproduce the mutation in
+        // this disposable fixture, proving the check exercises a writable import.
+        var oldLaunch = new System.Diagnostics.ProcessStartInfo(Path.Combine(temporary, "python", "python.exe"))
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in new[] { "-I", "-c", "import yt_dlp_ejs.yt.solver" }) oldLaunch.ArgumentList.Add(argument);
+        using var control = System.Diagnostics.Process.Start(oldLaunch)!;
+        await control.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        Check(control.ExitCode == 0 && !before.SequenceEqual(PackageHashes(temporary)),
+            "Old flags did not reproduce the cache mutation; the regression fixture is ineffective");
+    }
+    finally { Directory.Delete(temporary, recursive: true); }
 }
 
 static async Task LivePackage(string root)
@@ -278,6 +367,7 @@ sealed class FakeService : IMusicService
     public int RadioCalls, SearchCalls, AuthCalls, CancelCalls;
     public CancellationToken AuthToken;
     public bool Disposed;
+    public double? LastValue;
     public MusicPage? PageOverride;
     public readonly System.Collections.Concurrent.ConcurrentBag<string> Commands = [];
     public Task InitializeAsync(CancellationToken token) => Task.CompletedTask;
@@ -293,6 +383,6 @@ sealed class FakeService : IMusicService
     }
     public Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token) => Task.CompletedTask;
     public Task RadioAsync(MusicItem song, CancellationToken token) { RadioCalls++; return PendingRadio?.Task.WaitAsync(token) ?? Task.CompletedTask; }
-    public Task CommandAsync(string command, double? value, CancellationToken token) { Commands.Add(command); return Task.CompletedTask; }
+    public Task CommandAsync(string command, double? value, CancellationToken token) { LastValue = value; Commands.Add(command); return Task.CompletedTask; }
     public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
 }

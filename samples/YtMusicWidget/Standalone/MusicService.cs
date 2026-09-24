@@ -32,8 +32,10 @@ public sealed class MusicService : IMusicService
         try
         {
             if (_backend is not null) return;
+            // Installed packages are sealed. Late provider imports must never write
+            // bytecode beside the bundled modules (-I ignores Python env settings).
             var backend = new JsonProcess(Path.Combine(_directory, "python", "python.exe"),
-                ["-I", "-u", Path.Combine(_directory, "service", "service.py")]);
+                ["-I", "-B", "-u", Path.Combine(_directory, "service", "service.py")]);
             try
             {
                 var result = await backend.CallAsync("status", null, token).ConfigureAwait(false);

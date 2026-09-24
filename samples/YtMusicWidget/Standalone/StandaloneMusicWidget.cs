@@ -131,9 +131,9 @@ public sealed partial class StandaloneMusicWidget : Widget
         if (!IsActive || action.Phase is not (ControllerEventPhase.Pressed or ControllerEventPhase.Repeated)) return ValueTask.CompletedTask;
         var id = action.ActionId;
         if (action.Phase == ControllerEventPhase.Repeated && id is not ("player.seek" or "player.volume")) return ValueTask.CompletedTask;
-        if (id is "tab.setup" or "player.open")
+        if (id == "tab.setup")
         {
-            lock (_gate) { _panelReturnFocus = action.FocusedElementId; _panel = id == "tab.setup" ? "setup" : "player"; EnterContent(); }
+            lock (_gate) { _panelReturnFocus = action.FocusedElementId; _panel = "setup"; EnterContent(); }
             Invalidate();
         }
         else if (id == "panel.back")
@@ -241,7 +241,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                 // Transport remains responsive while catalogue requests and stream resolution are pending.
                 Operations.RunSerial("music.transport", async context =>
                 {
-                    try { await _service.CommandAsync(command, action.RequestedValue, context.CancellationToken); }
+                    try { await _service.CommandAsync(command, command == "seek" ? action.RequestedValue / 1000 : action.RequestedValue, context.CancellationToken); }
                     catch (Exception error) when (error is IOException or OperationCanceledException) { SetStatus("Playback command failed. Try again."); }
                 }, WidgetOperationLifetime.Widget);
             }

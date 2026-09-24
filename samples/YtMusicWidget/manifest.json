@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.ytmusic",
   "publisher": "widgetrail.samples",
   "name": "YouTube Music",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",

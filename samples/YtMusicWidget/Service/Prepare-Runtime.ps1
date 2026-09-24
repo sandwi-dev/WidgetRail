@@ -32,5 +32,5 @@ foreach ($artifact in $lock) {
 }
 @('python313.zip', '.', 'Lib', 'yt_dlp.zip') | Set-Content -LiteralPath (Join-Path $destinationPath 'python313._pth') -Encoding ascii
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'quickjs-LICENSE.txt') -Destination $destinationPath
-& (Join-Path $destinationPath 'python.exe') -I -c 'import ytmusicapi, yt_dlp, yt_dlp_ejs, requests, websocket; print("YouTube Music runtime imports passed")'
+& (Join-Path $destinationPath 'python.exe') -I -B -c 'import ytmusicapi, yt_dlp, yt_dlp_ejs.yt.solver, requests, websocket; print("YouTube Music runtime imports passed")'
 if ($LASTEXITCODE -ne 0) { throw 'Packaged Python runtime import check failed.' }

@@ -12,24 +12,27 @@ public sealed partial class StandaloneMusicWidget
             var state = _service.State;
             var panel = _panel;
             var compact = panel is not null;
-            var content = panel == "setup" ? Setup(state) : panel == "player" ? Player(state, "main") : Browse(state);
+            var content = panel == "setup" ? Setup(state) : Browse(state);
             var entry = EntryFocus(state);
             var group = UI.Stack(ContentGroupId, content).Classes(compact ? "music-panel-body" : "music-body");
-            if (!entry.StartsWith("tab.", StringComparison.Ordinal)) group = group.RememberChildFocus(entry);
+            if (!entry.StartsWith("music.nav.", StringComparison.Ordinal)) group = group.RememberChildFocus(entry);
             var children = new List<WidgetElement> { Header(panel) };
-            if (!compact) children.Add(TabsBar(entry));
-            children.Add(group);
+            if (compact) children.Add(group);
+            else
+            {
+                var parts = UI.NavigationShellParts("music.nav", _tab, entry, group,
+                    Tabs.Select(tab => new NavigationShellDestination(tab, Title(tab), "tab." + tab, WidgetGlyph.Music)).ToArray(),
+                    compactLeadingAdornment: UI.Text("LT", "tabs.previous", "Left trigger, previous section").Classes("music-section-trigger"),
+                    compactTrailingAdornment: UI.Text("RT", "tabs.next", "Right trigger, next section").Classes("music-section-trigger"));
+                children.Add(UI.Row("music.navigation.header",
+                    parts.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always).AddClasses("music-navigation-tabs"),
+                    UI.ControllerHint(ControllerButton.Y, "Settings", "hint.settings").Classes("music-settings-hint"))
+                    .Classes("music-navigation-header"));
+                children.Add(UI.Row("music.panes", Player(state, "main", entry), group).Classes("music-panes"));
+            }
             var status = state.Player.Error ?? _status;
             if (!string.IsNullOrWhiteSpace(status) && status != "Loading…" && !_signingIn)
                 children.Add(UI.Text(status, "music.status").Classes("music-status"));
-            if (!compact)
-            {
-                if (state.Current is not null) children.Add(MiniPlayer(state));
-                children.Add(UI.Row("music.help",
-                    UI.ControllerHint(ControllerButton.A, "Play / open", "hint.activate"),
-                    UI.ControllerHint(ControllerButton.Menu, "Song options", "hint.options"),
-                    UI.ControllerHint(ControllerButton.Y, "Settings", "hint.settings")).Classes("music-hints"));
-            }
             var root = UI.Stack("music.root", children.ToArray()).InputScope("music.root").Classes("music-root");
             if (panel is not null) root = root.Shortcut(ControllerButton.B, "panel.back", label: "Back to music");
             else
@@ -48,8 +51,8 @@ public sealed partial class StandaloneMusicWidget
                 .InputScope("music.pinned").Classes("music-root");
             return new(root, InitialFocusId: entry, Surface: new()
             {
-                Mode = WidgetSurfaceMode.Adaptive, PreferredWidth = compact ? 760 : 960,
-                PreferredHeight = compact ? 440 : 680, MinimumWidth = 600, MinimumHeight = compact ? 360 : 440,
+                Mode = WidgetSurfaceMode.Adaptive, PreferredWidth = compact ? 760 : 980,
+                PreferredHeight = compact ? 440 : 700, MinimumWidth = 620, MinimumHeight = compact ? 360 : 400,
             })
             {
                 FocusGroupEntryRequest = _focusRequest,
@@ -69,23 +72,8 @@ public sealed partial class StandaloneMusicWidget
         return UI.Row("music.header",
             UI.Icon(WidgetIcon.PackageSvg("ytmusic.mark", WidgetPackageIconColorMode.OriginalColor, WidgetGlyph.Music),
                 "music.brand", "YouTube Music").Classes("music-brand"),
-            UI.Text(panel == "setup" ? "YouTube Music · Settings" : panel == "player" ? "Now playing" : "YouTube Music", "music.title")
+            UI.Text(panel == "setup" ? "YouTube Music · Settings" : "YouTube Music", "music.title")
                 .Classes("music-title", "music-grow"), action).Classes("music-header");
-    }
-
-    private WidgetElement TabsBar(string entry)
-    {
-        var buttons = new List<WidgetElement> { UI.ControllerHint(ControllerButton.LeftTrigger, "Previous", "tabs.previous") };
-        for (var index = 0; index < Tabs.Length; index++)
-        {
-            var tab = Tabs[index];
-            buttons.Add(UI.Button(Title(tab), "tab." + tab, "tab." + tab).Selected(tab == _tab)
-                .FocusLeft("tab." + Tabs[Math.Max(0, index - 1)])
-                .FocusRight("tab." + Tabs[Math.Min(Tabs.Length - 1, index + 1)])
-                .FocusDown(entry).FocusUp("settings.open").Classes("music-tab"));
-        }
-        buttons.Add(UI.ControllerHint(ControllerButton.RightTrigger, "Next", "tabs.next"));
-        return UI.Row("music.tabs", buttons.ToArray()).Classes("music-tabs");
     }
 
     private WidgetElement Setup(MusicState state)
@@ -157,7 +145,7 @@ public sealed partial class StandaloneMusicWidget
                     .FocusUp(index == _offset ? TopEntry(state) : "item." + (index - 1));
                 if (index + 1 < end) row = row.FocusDown("item." + (index + 1));
                 else if (items.Count > PageSize) row = row.FocusDown(_offset + PageSize < items.Count ? "page.next" : "page.previous");
-                else if (state.Current is not null) row = row.FocusDown("player.open");
+                row = row.FocusLeft(state.Current is null ? "player.main.empty" : "player.main.toggle");
                 if (item.Kind == "song") row = row.ContextMenuShortcut(ControllerButton.Menu)
                     .ContextAction("radio." + index, "Start radio");
                 content.Add(row);
@@ -183,12 +171,11 @@ public sealed partial class StandaloneMusicWidget
         return UI.VerticalScroll("music.scroll", content.ToArray()).Classes("music-scroll");
     }
 
-    private string TopEntry(MusicState state) => _tab == "search" ? "search" : _tab == "library" ? "library.playlists" : "tab." + _tab;
+    private string TopEntry(MusicState state) => _tab == "search" ? "search" : _tab == "library" ? "library.playlists" : NavigationFocusId;
 
     private string EntryFocus(MusicState state)
     {
         if (_panel == "setup") return "setup.primary";
-        if (_panel == "player") return state.Current is null ? "player.main.empty" : "player.main.toggle";
         var items = _tab == "queue" ? state.Queue : _page.Items;
         if (_panelReturnFocus is { } remembered && remembered.StartsWith("item.", StringComparison.Ordinal) &&
             int.TryParse(remembered[5..], out var index) && index >= _offset && index < Math.Min(_offset + PageSize, items.Count)) return remembered;
@@ -198,51 +185,60 @@ public sealed partial class StandaloneMusicWidget
         if (items.Count > _offset) return "item." + _offset;
         if (_tab == "library") return "library.playlists";
         if (!_loading) return "empty.search";
-        return "tab." + _tab;
+        return NavigationFocusId;
     }
 
-    private static WidgetElement MiniPlayer(MusicState state)
-    {
-        var current = state.Current!;
-        return UI.ActionSurface("player.open", "player.open", "Playback controls. " + current.Title, ActionSurfaceOrientation.Horizontal,
-            UI.Icon(state.Player.Playing ? WidgetGlyph.Pause : WidgetGlyph.Play, "mini.state", state.Player.Playing ? "Playing" : "Paused").Classes("music-mini-icon"),
-            UI.Stack("mini.copy", UI.Text(current.Title, "mini.title").Classes("music-track-title"),
-                UI.Text(state.Player.Buffering ? "Buffering…" : current.Subtitle, "mini.artist").Classes("music-muted")).Classes("music-grow"),
-            UI.ControllerHint(ControllerButton.X, "Play / pause", "mini.toggle.hint"),
-            UI.Icon(WidgetGlyph.Settings, "mini.controls", "Open playback controls").Classes("music-mini-icon"))
-            .Classes("music-mini-player");
-    }
+    private string NavigationFocusId => WidgetIds.Scope("music.nav").KeyedId("compact", _tab);
 
-    private static WidgetElement Player(MusicState state, string mode)
+    private static WidgetElement Player(MusicState state, string mode, string? adjacentFocus = null)
     {
         var prefix = "player." + mode;
+        var pane = mode == "main";
         var current = state.Current;
         if (current is null)
-            return UI.Button("Browse music", "tab.home", prefix + ".empty").Classes("music-primary");
+            return UI.Stack(prefix,
+                UI.Icon(WidgetGlyph.Music, prefix + ".icon", "Nothing playing").Classes("music-empty-icon"),
+                UI.Text("Nothing playing", prefix + ".title").Classes("music-section-title"),
+                UI.Text("Choose a song or start a radio.", prefix + ".copy").Classes("music-muted"),
+                UI.Button("Search music", "tab.search", prefix + ".empty").Classes("music-secondary"))
+                .Classes("music-player", pane ? "music-player-pane" : "music-player-pinned");
         var p = state.Player;
+        var toggle = UI.IconButton(p.Playing ? WidgetGlyph.Pause : WidgetGlyph.Play, "player.toggle", prefix + ".toggle",
+                p.Playing ? "Pause" : "Play", IconButtonVariant.Primary, IconButtonSize.Large)
+            .FocusLeft(prefix + ".previous").FocusRight(prefix + ".next").FocusUp(prefix + ".seek.slider").Classes("music-play");
+        var repeat = UI.IconButton(WidgetGlyph.Repeat, "player.repeat", prefix + ".repeat", "Repeat: " + state.Repeat,
+                size: IconButtonSize.Small).Selected(state.Repeat != "off")
+            .FocusLeft(prefix + ".next").FocusUp(prefix + ".seek.slider").Classes("music-secondary-action");
+        if (adjacentFocus is not null) repeat = repeat.FocusRight(adjacentFocus);
         var controls = UI.Row(prefix + ".controls",
-            UI.Button("", "player.previous", prefix + ".previous").Icon(WidgetGlyph.Previous, "Previous song"),
-            UI.Button("", "player.toggle", prefix + ".toggle").Icon(p.Playing ? WidgetGlyph.Pause : WidgetGlyph.Play, p.Playing ? "Pause" : "Play").Classes("music-primary"),
-            UI.Button("", "player.next", prefix + ".next").Icon(WidgetGlyph.Next, "Next song"),
-            UI.Button("Shuffle", "player.shuffle", prefix + ".shuffle").Selected(state.Shuffle),
-            UI.Button("Repeat: " + state.Repeat, "player.repeat", prefix + ".repeat")).Classes("music-controls");
-        var content = new List<WidgetElement>
-        {
-            UI.Text(current.Title, prefix + ".title").Classes("music-track-title"),
-            UI.Text(p.Buffering ? "Buffering…" : current.Subtitle, prefix + ".artist").Classes("music-muted"), controls,
-            UI.Text(Time(p.Position) + " / " + Time(p.Duration), prefix + ".time").Classes("music-muted"),
-            UI.Slider(Math.Clamp(p.Position, 0, Math.Max(1, p.Duration)), 0, Math.Max(1, p.Duration), Math.Min(10, Math.Max(1, p.Duration)),
-                "player.seek", prefix + ".seek", "Playback position", Time(p.Position) + " / " + Time(p.Duration))
-                .RequireControllerActivation().Disabled(p.Duration <= 0),
-            UI.Row(prefix + ".volume.row", UI.Icon(WidgetGlyph.Volume, prefix + ".volume.icon", "Volume").Classes("music-mini-icon"),
-                UI.Slider(p.Volume, 0, 1, .05, "player.volume", prefix + ".volume", "Volume", Math.Round(p.Volume * 100) + "%")
-                    .RequireControllerActivation().Classes("music-grow")).Classes("music-controls"),
-        };
-        return UI.VerticalScroll(prefix + ".scroll", UI.Stack(prefix, content.ToArray()).Classes("music-player")).Classes("music-panel-scroll");
+            UI.IconButton(WidgetGlyph.Shuffle, "player.shuffle", prefix + ".shuffle", "Shuffle", size: IconButtonSize.Small)
+                .Selected(state.Shuffle).FocusRight(prefix + ".previous").FocusUp(prefix + ".seek.slider").Classes("music-secondary-action"),
+            UI.IconButton(WidgetGlyph.Previous, "player.previous", prefix + ".previous", "Previous song")
+                .FocusLeft(prefix + ".shuffle").FocusRight(prefix + ".toggle").FocusUp(prefix + ".seek.slider").Classes("music-transport"),
+            toggle,
+            UI.IconButton(WidgetGlyph.Next, "player.next", prefix + ".next", "Next song")
+                .FocusLeft(prefix + ".toggle").FocusRight(prefix + ".repeat").FocusUp(prefix + ".seek.slider").Classes("music-transport"),
+            repeat).Classes("music-transport-row");
+        WidgetElement artwork = current.Artwork.StartsWith("https://", StringComparison.Ordinal)
+            ? UI.Image(current.Artwork, prefix + ".artwork", current.Title, ImageFit.Cover).Classes("music-artwork")
+            : UI.Icon(WidgetGlyph.Music, prefix + ".artwork", "No artwork").Classes("music-artwork", "music-artwork-placeholder");
+        var content = new List<WidgetElement>();
+        if (pane) content.Add(UI.Row(prefix + ".artwork.frame", artwork).Classes("music-artwork-frame"));
+        content.Add(UI.Text(current.Title, prefix + ".title").Classes("music-track-title"));
+        content.Add(UI.Text(p.Buffering ? "Buffering…" : current.Subtitle, prefix + ".artist").Classes("music-player-subtitle"));
+        content.Add(UI.Scrubber(TimeSpan.FromSeconds(Math.Clamp(p.Position, 0, Math.Max(1, p.Duration))),
+                TimeSpan.FromSeconds(Math.Max(1, p.Duration)), TimeSpan.FromSeconds(Math.Min(5, Math.Max(1, p.Duration))), "player.seek", prefix + ".seek", "Playback position")
+            .RequireControllerActivation().Disabled(p.Duration <= 0).FocusDown(prefix + ".toggle").AddClasses("music-scrubber"));
+        content.Add(controls);
+        content.Add(UI.Row(prefix + ".volume.row",
+            UI.Icon(WidgetGlyph.Volume, prefix + ".volume.icon", "Volume").Classes("music-volume-icon"),
+            UI.Slider(p.Volume, 0, 1, .05, "player.volume", prefix + ".volume", "Volume", Math.Round(p.Volume * 100) + "%")
+                .RequireControllerActivation().Classes("music-grow")).Classes("music-volume-row"));
+        return UI.VerticalScroll(prefix + ".scroll", content.ToArray())
+            .Classes("music-player", pane ? "music-player-pane" : "music-player-pinned");
     }
 
     private static TileArtwork Artwork(MusicItem item) => item.Artwork.StartsWith("https://", StringComparison.Ordinal)
         ? TileArtwork.FromHttps(item.Artwork, item.Title) : TileArtwork.FromGlyph(WidgetGlyph.Music, item.Title);
     private static string Title(string value) => value.Length == 0 ? value : char.ToUpperInvariant(value[0]) + value[1..];
-    private static string Time(double seconds) => $"{(int)Math.Max(0, seconds) / 60}:{(int)Math.Max(0, seconds) % 60:00}";
 }
