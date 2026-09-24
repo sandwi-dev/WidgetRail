@@ -94,5 +94,3 @@ title { font-weight: 700; letter-spacing: -0.015em; }
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-
-.wrail-controller-hint__key { font-weight: 700; }

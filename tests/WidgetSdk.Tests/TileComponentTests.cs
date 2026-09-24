@@ -251,7 +251,7 @@ internal static class TileComponentTests
             .ContextMenu(ControllerButton.Menu, new WidgetContextAction("library.open", "Library"));
         var menu = new WidgetView(UI.Stack("menu.root", hint, tile.ContextMenuShortcut(ControllerButton.X)), tile.Id)
             .CreateSnapshot("menu.instance", 1);
-        Equal(ProtocolConstants.ContextMenuTriggerVersion, menu.ProtocolVersion);
+        Equal(ProtocolConstants.ControllerGlyphVersion, menu.ProtocolVersion);
         True(PresentationPropertyMetadata.Impact(PresentationProperty.ContextMenuButton).HasFlag(PresentationPropertyImpact.Paint),
             "Changing a menu trigger must rebuild its visible popup anchor geometry.");
         var actionsImpact = PresentationPropertyMetadata.Impact(PresentationProperty.ContextActions);

@@ -98,7 +98,6 @@ slider,
 .wrail-poster-tile__artwork { corner-radius: 14px; }
 
 .wrail-badge { corner-radius: 12px; }
-.wrail-controller-hint__key { corner-radius: 10px; }
 .wrail-code-text { corner-radius: 12px; }
 progress { corner-radius: 2px; }
 
@@ -118,8 +117,6 @@ title { font-weight: 600; letter-spacing: -0.005em; }
 }
 
 .wrail-badge__label { font-weight: 600; letter-spacing: 0.02em; }
-.wrail-controller-hint__key { font-weight: 600; }
-
 .wrail-window-preview {
   width: 100%; min-width: 0; flex-shrink: 0; overflow: clip;
   background: var(--surface); color: var(--text-muted);

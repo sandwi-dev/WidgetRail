@@ -178,7 +178,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             LauncherWidget.PlayniteOpenActionId,
         }, library.ContextActions.Select(action => action.ActionId).ToArray());
         Assert.IsTrue(nodes.Any(node =>
-            node.Id == "playnite-library.library.menu.key" && node.Text == "Menu"));
+            node.Id == "playnite-library.library.menu.key" && node.ControllerPrompt == ControllerPrompt.Menu));
         var rail = nodes.Single(node => node.Id == PlayniteLibraryPresentation.HomeRailId);
         Assert.AreEqual(ViewNodeKind.Scroll, rail.Kind);
         Assert.AreEqual(ScrollAxis.Horizontal, rail.ScrollAxis);
@@ -228,10 +228,10 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(Nodes(hintRegion).Any(node =>
             node.Id.StartsWith("playnite-library.hint.", StringComparison.Ordinal)));
         Assert.IsFalse(Nodes(hintRegion).Any(node =>
-                node.Id == "playnite-library.hint.options.key" && node.Text == "Y"),
+                node.Id == "playnite-library.hint.options.key" && node.ControllerPrompt == ControllerPrompt.Y),
             "Home must not advertise the retired Y game-action surface.");
         Assert.IsTrue(Nodes(hintRegion).Any(node =>
-                node.Id == "playnite-library.hint.options.key" && node.Text == "X"),
+                node.Id == "playnite-library.hint.options.key" && node.ControllerPrompt == ControllerPrompt.X),
             "Home must advertise X for game options.");
         var unavailableView = PlayniteLibraryPresentation.Render(
             presentation with { OrganizationBusy = true });

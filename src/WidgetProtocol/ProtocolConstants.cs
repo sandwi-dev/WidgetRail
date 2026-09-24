@@ -9,7 +9,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 53;
+    public const int CurrentVersion = 54;
+    public const int ControllerGlyphVersion = 54;
     public const int ScrollbarVisibilityVersion = 53;
     public const int WindowPreviewVersion = 52;
     public const int ScrollContainerVersion = 2;

@@ -25,8 +25,8 @@ public sealed partial class StandaloneMusicWidget
             {
                 var parts = UI.NavigationShellParts("music.nav", _tab, entry, group,
                     Tabs.Select(tab => new NavigationShellDestination(tab, Title(tab), "tab." + tab, WidgetGlyph.Music)).ToArray(),
-                    compactLeadingAdornment: CompactControllerKey("LT", "Left trigger, previous section", "tabs.previous"),
-                    compactTrailingAdornment: CompactControllerKey("RT", "Right trigger, next section", "tabs.next"));
+                    compactLeadingAdornment: CompactControllerKey(ControllerButton.LeftTrigger, "Left trigger, previous section", "tabs.previous"),
+                    compactTrailingAdornment: CompactControllerKey(ControllerButton.RightTrigger, "Right trigger, next section", "tabs.next"));
                 children.Add(UI.Row("music.navigation.header",
                     parts.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always).AddClasses("music-navigation-tabs"),
                     UI.ControllerHint(ControllerButton.Y, "Settings", "hint.settings").Classes("music-settings-hint"))
@@ -80,9 +80,9 @@ public sealed partial class StandaloneMusicWidget
         return UI.Row("music.header", children.ToArray()).Classes("music-header");
     }
 
-    private static RowElement CompactControllerKey(string key, string label, string id) =>
-        UI.Row(id, UI.Text(key, id + ".label", label).Classes("wrail-controller-hint__key", "music-section-trigger-key"))
-            .Classes("music-section-trigger");
+    private static ControllerGlyphElement CompactControllerKey(
+        ControllerButton button, string accessibilityLabel, string id) =>
+        UI.ControllerGlyph(button, id, accessibilityLabel).Classes("music-section-trigger-key");
 
     private WidgetElement Setup(MusicState state)
     {

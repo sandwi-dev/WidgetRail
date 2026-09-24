@@ -3242,6 +3242,11 @@ void WidgetSurfaceCoordinator::NotifyOwner(const WPARAM notification) const noex
     }
 }
 
+void WidgetSurfaceCoordinator::ControllerPromptsChanged() noexcept {
+    if (renderer_) renderer_->CancelPresentationUpdatePlan();
+    RequestPaint();
+}
+
 void WidgetSurfaceCoordinator::RequestPaint(const RECT* update) noexcept {
     if (!window_) return;
     ++workCounters_.invalidations;

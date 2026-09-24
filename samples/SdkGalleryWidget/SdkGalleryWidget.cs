@@ -291,22 +291,12 @@ public sealed class SdkGalleryWidget : Widget
             Destinations,
             expandedPane: null,
             expandedPaneEntryFocusId: null,
-            compactLeadingAdornment: UI.Row(
-                    "gallery.hint.section.previous",
-                    UI.Text(
-                            "LB",
-                            "gallery.hint.section.previous.key",
-                            "LB, Previous section")
-                        .Classes("gallery-section-bumper-label"))
-                .Classes("wrail-controller-hint__key", "gallery-section-bumper-key"),
-            compactTrailingAdornment: UI.Row(
-                    "gallery.hint.section.next",
-                    UI.Text(
-                            "RB",
-                            "gallery.hint.section.next.key",
-                            "RB, Next section")
-                        .Classes("gallery-section-bumper-label"))
-                .Classes("wrail-controller-hint__key", "gallery-section-bumper-key"));
+            compactLeadingAdornment: UI.ControllerGlyph(ControllerButton.LeftBumper,
+                    "gallery.hint.section.previous", "Previous section")
+                .Classes("gallery-section-bumper-key"),
+            compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper,
+                    "gallery.hint.section.next", "Next section")
+                .Classes("gallery-section-bumper-key"));
 
     private StackElement OverviewPage() => UI.Stack("gallery.overview",
         UI.SectionHeader(
@@ -351,10 +341,10 @@ public sealed class SdkGalleryWidget : Widget
             "gallery.overview.empty",
             new ComponentAction("Populate example", "gallery.empty.populate", WidgetGlyph.Play)),
         UI.Row("gallery.overview.hints",
-            UI.ControllerHint(ControllerButton.DPadRight, "Navigate", "gallery.hint.navigate"),
+            UI.ControllerHint(ControllerPrompt.DPad, "Navigate", "gallery.hint.navigate"),
             UI.ControllerHint(ControllerButton.A, "Select", "gallery.hint.select"),
             UI.ControllerHint(ControllerButton.B, "Back", "gallery.hint.back"),
-            UI.ControllerHint(ControllerButton.RightStick, "Scroll", "gallery.hint.scroll"))
+            UI.ControllerHint(ControllerPrompt.RightStickMove, "Scroll", "gallery.hint.scroll"))
             .Classes("gallery-controller-hints"))
         .AddClasses("gallery-page");
 

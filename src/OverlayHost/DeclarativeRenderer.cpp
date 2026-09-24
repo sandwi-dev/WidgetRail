@@ -2,6 +2,7 @@
 
 #include "BackgroundSurfaceTransitionPolicy.h"
 #include "NativeIcons.h"
+#include "ControllerGlyphVisual.h"
 #include "NativeTextLayout.h"
 #include "RemoteImageCache.h"
 #include "WidgetContextMenuAuthority.h"
@@ -2720,6 +2721,10 @@ struct DeclarativeRenderer::RenderPass final {
         }
         if (node.kind == L"windowPreview") return {240.0F, static_cast<float>(240.0 / node.previewAspectRatio)};
         if (node.kind == L"image") return {120.0F, 120.0F};
+        if (node.kind == L"controllerGlyph") {
+            const auto size = style.fontSizePx();
+            return {controller::ControlWidth(controller::ParsePrompt(node.controllerPrompt), size), size};
+        }
         if (node.kind == L"icon") return {24.0F, 24.0F};
         if (node.kind == L"loadingIndicator") {
             if (node.indicatorSize == L"compact") return {16.0F, 16.0F};
@@ -4675,7 +4680,7 @@ struct DeclarativeRenderer::RenderPass final {
         const bool semanticNode =
             node.kind == L"button" || node.kind == L"slider" ||
             node.kind == L"actionSurface" || node.kind == L"image" ||
-            node.kind == L"icon" || node.kind == L"loadingIndicator" ||
+            node.kind == L"icon" || node.kind == L"controllerGlyph" || node.kind == L"loadingIndicator" ||
             node.kind == L"progress" || node.kind == L"windowPreview" || node.kind == L"mediaViewport" ||
             (node.kind == L"text" &&
                 (!node.text.empty() || !node.accessibilityLabel.empty()));
@@ -4819,6 +4824,23 @@ struct DeclarativeRenderer::RenderPass final {
                 paintRect, presented.visibleBox);
             if (visibleImageRect.width > 0.5F && visibleImageRect.height > 0.5F)
                 DrawImage(node, style, paintRect, opacity, focused);
+        } else if (node.kind == L"controllerGlyph") {
+            const auto control = controller::ParsePrompt(node.controllerPrompt);
+            auto brush = Brush(target, WithOpacity(style.foreground().value_or(kDefaultText), opacity));
+            if (brush) {
+                const auto bounds = D2DRect(presented.contentBox);
+                if (!controller::PromptFont().Draw(target,
+                        controller::PromptCharacter(control, options.playStationControls), bounds, brush.Get())) {
+                    // A missing private font must never turn the prompt into an
+                    // unrelated Unicode character from a system fallback font.
+                    ComPtr<IDWriteTextFormat> fallback;
+                    if (SUCCEEDED(owner->writeFactory_->CreateTextFormat(L"Segoe UI", nullptr,
+                            DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+                            std::max(8.0F, style.fontSizePx() * .6F), L"", fallback.GetAddressOf())))
+                        controller::DrawControl(target, fallback.Get(), control, bounds, brush.Get(),
+                            -1.0F, options.playStationControls);
+                }
+            }
         } else if (node.kind == L"icon") {
             if (!node.packageIcon || !DrawPackageIcon(
                     style, presented.contentBox, opacity, *node.packageIcon))
@@ -5123,7 +5145,7 @@ DeclarativeRenderer::PlanPresentationUpdate(
     const auto planningStarted = std::chrono::steady_clock::now();
     pendingIncrementalPlan_.reset();
     const auto& cache = incrementalLayoutCache_;
-    if (!cache || cache->instanceId != snapshot.instanceId ||
+    if (!cache || cache->options.playStationControls != controller::UsePlayStationControls() || cache->instanceId != snapshot.instanceId ||
         cache->sequence != impact.baseSequence ||
         snapshot.sequence != impact.sequence ||
         !SameRect(cache->viewport, viewport) ||
@@ -5281,7 +5303,7 @@ DeclarativeRenderer::PlanFocusUpdate(
     const std::vector<std::wstring>& additionalPaintNodeIds) {
     pendingIncrementalPlan_.reset();
     const auto& cache = incrementalLayoutCache_;
-    if (!cache || cache->instanceId != snapshot.instanceId ||
+    if (!cache || cache->options.playStationControls != controller::UsePlayStationControls() || cache->instanceId != snapshot.instanceId ||
         cache->sequence != snapshot.sequence ||
         cache->focusedElementId != priorFocusedElementId ||
         priorFocusedElementId == nextFocusedElementId ||
@@ -5561,7 +5583,7 @@ std::optional<IncrementalPresentationPlan>
 DeclarativeRenderer::PlanRetainedPaint(
     const WidgetSnapshot& snapshot, const std::optional<Rect> requestedDamage) {
     const auto& cache = incrementalLayoutCache_;
-    if (!cache || cache->instanceId != snapshot.instanceId ||
+    if (!cache || cache->options.playStationControls != controller::UsePlayStationControls() || cache->instanceId != snapshot.instanceId ||
         cache->sequence != snapshot.sequence) return std::nullopt;
     return PlanBackgroundSurfaceAnimationFrame(requestedDamage.value_or(cache->viewport));
 }
@@ -5569,7 +5591,7 @@ DeclarativeRenderer::PlanRetainedPaint(
 std::optional<IncrementalPresentationPlan>
 DeclarativeRenderer::PlanBackgroundSurfaceAnimationFrame(Rect damage) {
     const auto& cache = incrementalLayoutCache_;
-    if (!cache || !FiniteRect(damage)) return std::nullopt;
+    if (!cache || cache->options.playStationControls != controller::UsePlayStationControls() || !FiniteRect(damage)) return std::nullopt;
     damage = Intersection(damage, cache->viewport);
     if (damage.width <= 0.0F || damage.height <= 0.0F) return std::nullopt;
     if (pendingIncrementalPlan_ &&
@@ -5655,6 +5677,7 @@ RenderResult DeclarativeRenderer::Render(
         Size{viewport.width, viewport.height});
     pass.compactMode = IsCompactResponsiveSurface(responsiveViewport);
     pass.options = options;
+    pass.result.playStationControls = options.playStationControls;
     const auto* previousCollectionCache = incrementalLayoutCache_ &&
             incrementalLayoutCache_->instanceId == snapshot.instanceId
         ? &*incrementalLayoutCache_
@@ -5693,7 +5716,8 @@ RenderResult DeclarativeRenderer::Render(
         const auto& b = options.accessibility;
         const auto oldResponsive = previous.responsiveViewport.value_or(Size{viewport.width, viewport.height});
         const auto newResponsive = options.responsiveViewport.value_or(Size{viewport.width, viewport.height});
-        return previous.pixelScale == options.pixelScale && previous.rootFontSizePx == options.rootFontSizePx &&
+        return previous.playStationControls == options.playStationControls &&
+            previous.pixelScale == options.pixelScale && previous.rootFontSizePx == options.rootFontSizePx &&
             previous.surfaceBackground == options.surfaceBackground &&
             oldResponsive.width == newResponsive.width && oldResponsive.height == newResponsive.height &&
             a.textScale == b.textScale && a.minimumFontWeight == b.minimumFontWeight &&
@@ -6000,6 +6024,7 @@ RenderResult DeclarativeRenderer::PrepareFocusEntry(
     pass.pressedId = options.pressedElementId;
     pass.viewport = viewport;
     pass.options = options;
+    pass.result.playStationControls = options.playStationControls;
     pass.options.collectAccessibility = false;
     pass.options.compositorBackgroundAvailable = false;
     const auto responsiveViewport = options.responsiveViewport.value_or(
@@ -6071,6 +6096,7 @@ ContentMeasureResult DeclarativeRenderer::MeasureContent(
     pass.viewport = {0.0F, 0.0F,
         admittedMaximumExtent.width, admittedMaximumExtent.height};
     pass.options = options;
+    pass.result.playStationControls = options.playStationControls;
     pass.options.responsiveViewport = admittedMaximumExtent;
     pass.compactMode = IsCompactResponsiveSurface(admittedMaximumExtent);
     pass.measurementOnly = true;

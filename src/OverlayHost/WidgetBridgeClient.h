@@ -437,6 +437,7 @@ struct WidgetNode final {
     std::wstring glyph;
     std::optional<WidgetPackageIcon> packageIcon;
     std::wstring indicatorSize;
+    std::wstring controllerPrompt;
     // Empty and "always" are equivalent. Protocol-v9 conditional values are
     // interpreted only by the native host against its compact breakpoint.
     std::wstring visibleWhen;

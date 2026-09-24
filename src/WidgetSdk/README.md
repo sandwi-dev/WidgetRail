@@ -927,6 +927,24 @@ coalesced full-snapshot event buffer closes the fetch/subscription race.
 `WatchSessionsAsync` and `WatchStatusAsync` remain compatibility helpers for
 event-only consumers.
 
+### Controller symbols
+
+`UI.ControllerHint(ControllerButton.Y, "Refresh", "refresh.hint")` pairs a native
+controller glyph with an ordinary label. `UI.ControllerGlyph(button, id,
+accessibilityLabel: null)` emits only the symbol. Both are presentational and
+never bind input or enter focus traversal. The host supplies PromptFont,
+controller-specific Xbox/PlayStation symbols, and accessible button names.
+
+For movement, use the `ControllerPrompt` overload, for example
+`UI.ControllerHint(ControllerPrompt.RightStickMove, "Scroll", "scroll.hint")`.
+`ControllerButton.RightStick` continues to mean pressing R3. Glyphs use snapshot
+protocol 54 and the `wrail-controller-glyph` theme class. The labeled factory
+preserves its Row return type and `.key`/`.label` IDs, with a
+`ControllerGlyphElement` followed by a `TextElement`.
+
+See [controller symbols and styling](../../docs/reference/controller-ui-components.md#controller-symbols-and-hints)
+for sizing, accessibility, and migration guidance.
+
 ### Context menus from controller hints
 
 A visible non-focusable container can declare a scoped native dropdown with

@@ -7102,6 +7102,88 @@ void VisibleArtworkAndChromeSurviveCachePressure() {
         "retained chrome bitmap survives GPU churn without re-creation");
 }
 
+void WidgetControllerGlyphsRenderAndTrackControllerFamily() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "controller glyph native resources"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    ok(wic->CreateBitmap(300, 90, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), nullptr);
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"controller-glyphs"; snapshot.sequence = 1;
+    snapshot.activeInputScopeId = L"root";
+    snapshot.root = Node(L"root", L"row");
+    snapshot.root.baseStyle = {{L"width", Length(300)}, {L"height", Length(60)}, {L"align", {L"keyword", L"center"}}, {L"gap", LengthList(L"8px")}};
+    auto glyph = Node(L"key", L"controllerGlyph");
+    glyph.baseStyle = {{L"font-size", Length(24)}, {L"color", Color(L"#ff0000")}, {L"flex-shrink", Number(0)}};
+    auto label = Node(L"label", L"text"); label.text = L"Refresh";
+    label.baseStyle = {{L"font-size", Length(12)}, {L"color", Color(L"#ffffff")}};
+    const std::array<std::wstring_view,22> prompts{L"a",L"b",L"x",L"y",L"leftBumper",L"rightBumper",L"leftTrigger",L"rightTrigger",
+        L"leftStickPress",L"rightStickPress",L"leftStickMove",L"rightStickMove",L"dPad",L"dPadHorizontal",L"dPadVertical",
+        L"dPadUp",L"dPadDown",L"dPadLeft",L"dPadRight",L"view",L"menu",L"guide"};
+    std::vector<BYTE> xboxPixels;
+    for (bool playStation : {false, true}) {
+        (void)widgetrail::controller::SetPlayStationControls(playStation);
+        if (playStation) Check(!renderer.PlanRetainedPaint(snapshot), "family change rejects stale retained glyph paint");
+        for (const auto prompt : prompts) {
+            glyph.controllerPrompt = prompt;
+            snapshot.root.children = {glyph, label}; ++snapshot.sequence;
+            for (float scale : {1.0F, 1.5F}) {
+                widgetrail::DeclarativeRenderOptions options;
+                options.collectAccessibility = true; options.accessibility.textScale = scale;
+                target->BeginDraw(); target->Clear(D2D1::ColorF(0,0));
+                auto result = renderer.Render(target.Get(), snapshot, L"", {0,0,300,90}, options);
+                ok(target->EndDraw());
+                for (const auto& diagnostic : result.diagnostics)
+                    std::wcerr << L"controller glyph: " << diagnostic.message << L'\n';
+                Check(result.succeeded && result.diagnostics.empty(), "controller glyph rendered without diagnostics");
+                Check(result.focusRects.empty() && result.hitRegions.empty(), "glyph and label never acquire input targets");
+                Check(result.accessibilityRegions.size() == 2, "glyph and label have accessibility geometry");
+                const auto key = result.elementRects.at(L"key"), text = result.elementRects.at(L"label");
+                Near(key.y + key.height/2, text.y + text.height/2, "glyph and label centers align", 1.0F);
+                Near(key.height, 24 * scale, "glyph follows text scale", 1.0F);
+                std::vector<BYTE> pixels(300*90*4);
+                ok(canvas->CopyPixels(nullptr,300*4,static_cast<UINT>(pixels.size()),pixels.data()));
+                unsigned red = 0;
+                for (int y=0;y<90;++y) for (int x=0;x<static_cast<int>(key.width);++x) {
+                    const auto at=(y*300+x)*4;
+                    if(pixels[at+2]>0 && pixels[at]==0 && pixels[at+1]==0) ++red;
+                }
+                Check(red > 10, "every prompt uses themed ink");
+                if (prompt == L"a" && scale == 1) {
+                    if (!playStation) xboxPixels = pixels;
+                    else Check(xboxPixels != pixels, "PlayStation Cross differs from Xbox A");
+                }
+            }
+        }
+    }
+    // Exercise the same vector/text fallback used when the private font is unavailable.
+    ComPtr<IDWriteTextFormat> fallback;
+    ok(write->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL,
+        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 14, L"", fallback.GetAddressOf()));
+    ComPtr<ID2D1SolidColorBrush> ink;
+    ok(target->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White), ink.GetAddressOf()));
+    for (bool playStation : {false, true}) for (const auto prompt : prompts) {
+        target->BeginDraw(); target->Clear(D2D1::ColorF(0,0));
+        widgetrail::controller::DrawControl(target.Get(), fallback.Get(), widgetrail::controller::ParsePrompt(prompt),
+            {4,4,36,36}, ink.Get(), -1, playStation, false);
+        ok(target->EndDraw());
+        std::vector<BYTE> pixels(300*90*4);
+        ok(canvas->CopyPixels(nullptr,300*4,static_cast<UINT>(pixels.size()),pixels.data()));
+        Check(std::any_of(pixels.begin(),pixels.end(),[](BYTE value){return value!=0;}), "missing-font fallback produces visible pixels");
+    }
+    Check(widgetrail::controller::PromptCharacter(widgetrail::controller::Control::R3) !=
+        widgetrail::controller::PromptCharacter(widgetrail::controller::Control::RightStick), "stick click differs from movement");
+    (void)widgetrail::controller::SetPlayStationControls(false);
+}
+
 void ControllerGuideGlyphsAndTheme() {
     using namespace widgetrail::guide;
     using Microsoft::WRL::ComPtr;
@@ -7394,6 +7476,7 @@ int main() {
     PosterArtworkLoadsAtDisplaySizeUnderPressure(true);
     VisibleArtworkAndChromeSurviveCachePressure();
     ControllerGuideGlyphsAndTheme();
+    WidgetControllerGlyphsRenderAndTrackControllerFamily();
     BitmapRetentionPolicyIsBounded();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
     CoUninitialize();

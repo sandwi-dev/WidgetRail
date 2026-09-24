@@ -475,7 +475,7 @@ public sealed partial class YouTubeWidgetTests
         StringAssert.Contains(styles,
             ".youtube-section-settings-hint { flex-shrink: 0; }");
         StringAssert.Contains(styles,
-            ".youtube-section-bumper-label { color: var(--text);");
+            ".youtube-section-bumper-key { font-size: var(--controller-glyph-size, 24px);");
         Assert.DoesNotContain(".youtube-section-bumper-key { height: 100%", styles);
         await WidgetTestHost.DestroyAsync(widget);
     }
@@ -625,7 +625,7 @@ public sealed partial class YouTubeWidgetTests
             "youtube.search.open-route", "youtube.root"));
         var hidden = widget.RenderSnapshot("youtube-test", 3);
         var requiredProtocolVersion = Math.Max(
-            ProtocolConstants.ControllerShortcutLabelVersion,
+            ProtocolConstants.ControllerGlyphVersion,
             Math.Max(
                 ProtocolConstants.EmbeddedMediaSessionVersion,
                 ProtocolConstants.RememberedChildFocusGroupVersion));

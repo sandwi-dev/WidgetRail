@@ -140,3 +140,17 @@ returns only bounded sanitized progress and support flags; it exposes no
 process, path, launcher identity, provider authority, or durable launch token.
 Community launchers must still persist only `SavedId`, resolve it immediately
 before launch, and invoke the returned current opaque `AppId` exactly once.
+
+## Controller hint symbols (0.4.0-dev)
+
+| Migration field | Contract |
+|---|---|
+| Old surface or behavior | `UI.ControllerHint(ControllerButton, string, string)` produced a Row with two Text children; custom navigation badges often used plain `UI.Text("LT", ...)`. |
+| Replacement | The existing factory keeps its signature, Row, and `.key`/`.label` IDs. The first child is now `ControllerGlyphElement`; the second remains Text. Use `UI.ControllerGlyph` for a symbol alone and `ControllerPrompt` for movement instead of stick clicks. |
+| First deprecated release unit | Not distributed; no separate deprecation interval. |
+| First removed release unit | 0.4.0-dev changes the first-child type; no public factory signature is removed. |
+| Protocol impact | Glyph nodes and `controllerPrompt` deltas require protocol 54. The host continues accepting old text-only snapshots. New snapshots fail version admission on older hosts. |
+| Supported consumer impact | Repository widgets are migrated together, including their custom badges and WRSS. Code casting `hint.Children[0]` to Text must instead use ControllerGlyphElement. Text labels at `Children[1]` retain their contract. Rebuild/repackage widgets; styling alone cannot convert stored text nodes into semantic controls. |
+| Before/after | Replace `UI.Text("RT", "next")` with `UI.ControllerGlyph(ControllerButton.RightTrigger, "next", "Next section")`. Replace misleading scroll hints using `ControllerButton.RightStick` with `ControllerPrompt.RightStickMove`. |
+| Template and release unit | ControllerWidget template version 2 stays supported: its source contract is unchanged. SDK, CLI, generated packages and API baseline advance together to 0.4.0-dev. |
+| Validation | SDK/protocol, public-API/CLI/template compatibility, migrated widget suites, native parsing/rendering/accessibility, controller-family repaint and font fallback checks. |

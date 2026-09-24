@@ -44,7 +44,7 @@ static async Task PageCoverage()
 {
     var widget = new SdkGalleryWidget();
     var overview = Snapshot(widget, 1);
-    Assert.Equal(ProtocolConstants.PackageSvgIconVersion, overview.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ControllerGlyphVersion, overview.ProtocolVersion);
     Assert.Equal("gallery.refresh", overview.InitialFocusId);
     Assert.Equal(widget.Navigation.InputScopeId, overview.ActiveInputScopeId);
     Assert.Equal(WidgetSurfaceMode.Standard, overview.Surface!.Mode);
@@ -85,24 +85,20 @@ static async Task PageCoverage()
     var nextSection = compactNavigation.Children[^1];
     Assert.Equal("gallery.hint.section.previous", previousSection.Id);
     Assert.Equal("gallery.hint.section.next", nextSection.Id);
-    Assert.Equal(ViewNodeKind.Row, previousSection.Kind);
-    Assert.Equal(ViewNodeKind.Row, nextSection.Kind);
+    Assert.Equal(ViewNodeKind.ControllerGlyph, previousSection.Kind);
+    Assert.Equal(ViewNodeKind.ControllerGlyph, nextSection.Kind);
     Assert.True(previousSection.StyleClasses.SequenceEqual(
-        ["wrail-controller-hint__key", "gallery-section-bumper-key"]));
+        ["wrail-controller-glyph", "gallery-section-bumper-key"]));
     Assert.True(nextSection.StyleClasses.SequenceEqual(
-        ["wrail-controller-hint__key", "gallery-section-bumper-key"]));
+        ["wrail-controller-glyph", "gallery-section-bumper-key"]));
     Assert.True(previousSection.ActionId is null && previousSection.Focus is null &&
         previousSection.Shortcuts.Count == 0);
     Assert.True(nextSection.ActionId is null && nextSection.Focus is null &&
         nextSection.Shortcuts.Count == 0);
-    var previousLabel = previousSection.Children.Single();
-    var nextLabel = nextSection.Children.Single();
-    Assert.Equal("LB", previousLabel.Text);
-    Assert.Equal("RB", nextLabel.Text);
-    Assert.Equal("LB, Previous section", previousLabel.AccessibilityLabel);
-    Assert.Equal("RB, Next section", nextLabel.AccessibilityLabel);
-    Assert.True(previousLabel.StyleClasses.SequenceEqual(["gallery-section-bumper-label"]));
-    Assert.True(nextLabel.StyleClasses.SequenceEqual(["gallery-section-bumper-label"]));
+    Assert.Equal(ControllerPrompt.LeftBumper, previousSection.ControllerPrompt);
+    Assert.Equal(ControllerPrompt.RightBumper, nextSection.ControllerPrompt);
+    Assert.Equal("Previous section", previousSection.AccessibilityLabel);
+    Assert.Equal("Next section", nextSection.AccessibilityLabel);
     var rootHints = Find(overview, "gallery.section.hints");
     Assert.Equal(1, rootHints.Children.Count);
     Assert.Equal("gallery.hint.section.actions", rootHints.Children[0].Id);
@@ -117,10 +113,10 @@ static async Task PageCoverage()
     Assert.Equal(4, hints.Children.Count);
     Assert.True(hints.Children.All(node => node.Kind == ViewNodeKind.Row &&
         node.ActionId is null && node.Shortcuts.Count == 0));
-    Assert.Equal("D-pad right", Find(overview, "gallery.hint.navigate.key").Text);
-    Assert.Equal("A", Find(overview, "gallery.hint.select.key").Text);
-    Assert.Equal("B", Find(overview, "gallery.hint.back.key").Text);
-    Assert.Equal("RS", Find(overview, "gallery.hint.scroll.key").Text);
+    Assert.Equal(ControllerPrompt.DPad, Find(overview, "gallery.hint.navigate.key").ControllerPrompt);
+    Assert.Equal(ControllerPrompt.A, Find(overview, "gallery.hint.select.key").ControllerPrompt);
+    Assert.Equal(ControllerPrompt.B, Find(overview, "gallery.hint.back.key").ControllerPrompt);
+    Assert.Equal(ControllerPrompt.RightStickMove, Find(overview, "gallery.hint.scroll.key").ControllerPrompt);
 
     await Act(widget, "gallery.tab.controls");
     var controls = Snapshot(widget, 2);
@@ -131,7 +127,7 @@ static async Task PageCoverage()
 
     await Act(widget, "gallery.tab.tiles");
     var tiles = Snapshot(widget, 3);
-    Assert.Equal(ProtocolConstants.FocusAssociatedPresentationVersion, tiles.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ControllerGlyphVersion, tiles.ProtocolVersion);
     Assert.Equal(4, Nodes(tiles.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface));
     Assert.Equal(2, Nodes(tiles.Root).Count(node =>
         node.StyleClasses.SequenceEqual(["wrail-action-surface", "wrail-tile"])));
@@ -322,7 +318,7 @@ static async Task TrustedArtwork()
     var snapshot = Snapshot(widget, 1);
     var artworkHandle = Find(snapshot, "gallery.app.artwork").ArtworkHandle;
     Assert.True(artworkHandle is not null);
-    Assert.Equal(ProtocolConstants.FocusAssociatedPresentationVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.ControllerGlyphVersion, snapshot.ProtocolVersion);
     Assert.Equal(ViewNodeKind.BackgroundSurface, snapshot.Root.Kind);
     Assert.True(snapshot.Root.StyleClasses.SequenceEqual(
         ["wrail-background-surface", "gallery-root-background"]));
@@ -580,7 +576,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.18", manifest.Version);
+    Assert.Equal("0.1.19", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
@@ -655,14 +651,10 @@ static Task StyleContract()
     Assert.Equal("clip", root.Get("overflow")?.Text);
     var bumperKey = compiled.Theme.Resolve(new WrssElement(
         "row", StyleClasses: new HashSet<string>(
-            ["wrail-controller-hint__key", "gallery-section-bumper-key"])))!;
-    Assert.Equal("center", bumperKey.Get("align")?.Text);
-    Assert.Equal("center", bumperKey.Get("justify")?.Text);
-    Assert.Equal("#f7f7fa", bumperKey.Get("background")?.Text);
-    var bumperLabel = compiled.Theme.Resolve(new WrssElement(
-        "text", StyleClasses: new HashSet<string>(["gallery-section-bumper-label"])))!;
-    Assert.Equal("#0b0d12", bumperLabel.Get("color")?.Text);
-    Assert.Equal("center", bumperLabel.Get("text-align")?.Text);
+            ["wrail-controller-glyph", "gallery-section-bumper-key"])))!;
+    Assert.Equal("24px", bumperKey.Get("font-size")?.Text);
+    Assert.Equal("#f7f7fa", bumperKey.Get("color")?.Text);
+    Assert.Equal("0", bumperKey.Get("flex-shrink")?.Text);
     var grid = compiled.Theme.Resolve(new WrssElement(
         "grid", StyleClasses: new HashSet<string>(["wrail-responsive-grid"])))!;
     Assert.Equal("100%", grid.Get("width")?.Text);

@@ -5,6 +5,7 @@ using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Controller glyphs share readable geometry and theme ink", ControllerGlyphThemeTests.Run),
     ("Display sizing preserves defaults and isolates persisted monitors", DisplayScaleTests.Run),
     ("Startup registration respects ownership Windows approval and failures", StartupRegistrationTests.Run),
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),

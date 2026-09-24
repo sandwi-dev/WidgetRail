@@ -541,6 +541,10 @@ method WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.Deconstruct(out str
 method WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.ToString() -> string
+method WidgetRail.WidgetSdk.ControllerGlyphElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.ControllerGlyphElement.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.ControllerGlyphElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.ControllerGlyphElement.ToString() -> string
 method WidgetRail.WidgetSdk.ControllerInputEvent.<Clone>$() -> WidgetRail.WidgetSdk.ControllerInputEvent
 method WidgetRail.WidgetSdk.ControllerInputEvent.Deconstruct(out WidgetRail.WidgetProtocol.ControllerButton Button, out WidgetRail.WidgetProtocol.ControllerEventPhase Phase, out WidgetRail.WidgetSdk.ControllerInputContext Context, out string? FocusedElementId, out long Sequence, out long MonotonicTimestampMicroseconds, out string? ActiveInputScopeId, out long SnapshotSequence, out double? RequestedValue, out WidgetRail.WidgetSdk.ControllerInputOrigin Origin) -> void
 method WidgetRail.WidgetSdk.ControllerInputEvent.Equals(object? obj) -> bool
@@ -1560,6 +1564,8 @@ method static WidgetRail.WidgetSdk.ContainerElement.op_Equality(WidgetRail.Widge
 method static WidgetRail.WidgetSdk.ContainerElement.op_Inequality(WidgetRail.WidgetSdk.ContainerElement? left, WidgetRail.WidgetSdk.ContainerElement? right) -> bool
 method static WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.op_Equality(WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest? left, WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest? right) -> bool
 method static WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.op_Inequality(WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest? left, WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest? right) -> bool
+method static WidgetRail.WidgetSdk.ControllerGlyphElement.op_Equality(WidgetRail.WidgetSdk.ControllerGlyphElement? left, WidgetRail.WidgetSdk.ControllerGlyphElement? right) -> bool
+method static WidgetRail.WidgetSdk.ControllerGlyphElement.op_Inequality(WidgetRail.WidgetSdk.ControllerGlyphElement? left, WidgetRail.WidgetSdk.ControllerGlyphElement? right) -> bool
 method static WidgetRail.WidgetSdk.ControllerInputEvent.op_Equality(WidgetRail.WidgetSdk.ControllerInputEvent? left, WidgetRail.WidgetSdk.ControllerInputEvent? right) -> bool
 method static WidgetRail.WidgetSdk.ControllerInputEvent.op_Inequality(WidgetRail.WidgetSdk.ControllerInputEvent? left, WidgetRail.WidgetSdk.ControllerInputEvent? right) -> bool
 method static WidgetRail.WidgetSdk.FocusBackgroundElement.op_Equality(WidgetRail.WidgetSdk.FocusBackgroundElement? left, WidgetRail.WidgetSdk.FocusBackgroundElement? right) -> bool
@@ -1679,7 +1685,10 @@ method static WidgetRail.WidgetSdk.UI.Card(string id, params WidgetRail.WidgetSd
 method static WidgetRail.WidgetSdk.UI.ChoiceRow(WidgetRail.WidgetSdk.WidgetIcon icon, string label, string action, string id, bool isSelected = false, bool isDisabled = false, bool isBusy = false, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.ChoiceRow(string label, string action, string id, bool isSelected = false, bool isDisabled = false, bool isBusy = false, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.CodeText(string text, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.TextElement
+method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerButton button, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
+method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerPrompt prompt, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
 method static WidgetRail.WidgetSdk.UI.ControllerHint(WidgetRail.WidgetProtocol.ControllerButton button, string label, string id) -> WidgetRail.WidgetSdk.RowElement
+method static WidgetRail.WidgetSdk.UI.ControllerHint(WidgetRail.WidgetProtocol.ControllerPrompt prompt, string label, string id) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.Divider(string id) -> WidgetRail.WidgetSdk.SpacerElement
 method static WidgetRail.WidgetSdk.UI.EmptyState(WidgetRail.WidgetSdk.WidgetIcon icon, string title, string message, string id, WidgetRail.WidgetSdk.ComponentAction? action = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.EmptyState(string title, string message, string id, WidgetRail.WidgetSdk.ComponentAction? action = null, WidgetRail.WidgetProtocol.WidgetGlyph glyph = WidgetRail.WidgetProtocol.WidgetGlyph.Connection) -> WidgetRail.WidgetSdk.StackElement
@@ -1982,6 +1991,8 @@ method virtual WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse.Equals(Widge
 method virtual WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest.Equals(WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.ContainerElement.Equals(WidgetRail.WidgetSdk.ContainerElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest.Equals(WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest? other) -> bool
+method virtual WidgetRail.WidgetSdk.ControllerGlyphElement.<Clone>$() -> WidgetRail.WidgetSdk.ControllerGlyphElement
+method virtual WidgetRail.WidgetSdk.ControllerGlyphElement.Equals(WidgetRail.WidgetSdk.ControllerGlyphElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.ControllerInputEvent.Equals(WidgetRail.WidgetSdk.ControllerInputEvent? other) -> bool
 method virtual WidgetRail.WidgetSdk.FocusBackgroundElement.<Clone>$() -> WidgetRail.WidgetSdk.FocusBackgroundElement
 method virtual WidgetRail.WidgetSdk.FocusBackgroundElement.Equals(WidgetRail.WidgetSdk.FocusBackgroundElement? other) -> bool
@@ -2291,6 +2302,7 @@ property WidgetRail.WidgetProtocol.ControllerButton? WidgetRail.WidgetSdk.Contai
 property WidgetRail.WidgetProtocol.ControllerButton? WidgetRail.WidgetSdk.WidgetActionEvent.ControllerButton { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.ControllerInputEvent.Phase { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.WidgetActionEvent.Phase { get; set; }
+property WidgetRail.WidgetProtocol.ControllerPrompt WidgetRail.WidgetSdk.ControllerGlyphElement.Prompt { get; set; }
 property WidgetRail.WidgetProtocol.EmbeddedMediaSession WidgetRail.WidgetSdk.MediaViewportElement.Session { get; set; }
 property WidgetRail.WidgetProtocol.EmbeddedMediaSession? WidgetRail.WidgetSdk.WidgetView.EmbeddedMediaSession { get; set; }
 property WidgetRail.WidgetProtocol.FocusGroupEntryRequest? WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.FocusGroupEntryRequest { get; set; }
@@ -2898,6 +2910,7 @@ property string? WidgetRail.WidgetSdk.ButtonElement.LeadingArtworkHandle { get; 
 property string? WidgetRail.WidgetSdk.ButtonElement.LeadingImageSource { get; set; }
 property string? WidgetRail.WidgetSdk.ContainerElement.InitialChildFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.ContainerElement.InputScopeId { get; set; }
+property string? WidgetRail.WidgetSdk.ControllerGlyphElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.ControllerInputEvent.ActiveInputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.ControllerInputEvent.FocusedElementId { get; set; }
 property string? WidgetRail.WidgetSdk.ControllerInputEvent.PinnedLayoutId { get; set; }
@@ -3028,6 +3041,7 @@ type sealed class WidgetRail.WidgetSdk.ConfirmWidgetRunningAppRequest : System.I
 type sealed class WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse : System.IEquatable<WidgetRail.WidgetSdk.ConfirmWidgetRunningAppResponse>
 type sealed class WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest : System.IEquatable<WidgetRail.WidgetSdk.ConnectWidgetAvailableWifiNetworkRequest>
 type sealed class WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest : System.IEquatable<WidgetRail.WidgetSdk.ControlWidgetMediaSessionRequest>
+type sealed class WidgetRail.WidgetSdk.ControllerGlyphElement : System.IEquatable<WidgetRail.WidgetSdk.ControllerGlyphElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.ControllerInputEvent : System.IEquatable<WidgetRail.WidgetSdk.ControllerInputEvent>
 type sealed class WidgetRail.WidgetSdk.FocusBackgroundElement : System.IEquatable<WidgetRail.WidgetSdk.FocusBackgroundElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.FocusPresentationElement : System.IEquatable<WidgetRail.WidgetSdk.FocusPresentationElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement

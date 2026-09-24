@@ -1,3 +1,4 @@
+#include "ControllerPrompt.h"
 #include "WidgetBridgeClient.h"
 #include "PublicSuffixDomainAuthority.h"
 #include "WidgetSurfaceGeometry.h"
@@ -1113,6 +1114,18 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.id = std::wstring(std::wstring_view(source.GetNamedString(L"id")));
     node.kind = std::wstring(std::wstring_view(source.GetNamedString(L"kind")));
     const bool declaredSelect = node.kind == L"select";
+    if (node.kind == L"controllerGlyph" &&
+        !HasNoUnknownProperties(source, {L"id", L"kind", L"controllerPrompt", L"accessibilityLabel",
+            L"visibleWhen", L"styleClasses", L"shortcuts", L"contextActions", L"children", L"selectOptions"}))
+        throw winrt::hresult_invalid_argument(L"ControllerGlyph contains unsupported properties.");
+    node.controllerPrompt = OptionalString(source, L"controllerPrompt");
+    if (node.kind == L"controllerGlyph") {
+        if (controller::ParsePrompt(node.controllerPrompt) == controller::Control::Unknown)
+            throw winrt::hresult_invalid_argument(L"Unknown controller prompt.");
+    } else if (source.HasKey(L"controllerPrompt")) {
+        throw winrt::hresult_invalid_argument(L"Controller prompts require ControllerGlyph.");
+    }
+
     if (node.kind == L"windowPreview" &&
         !HasNoUnknownProperties(source, {L"id", L"kind", L"windowId", L"previewAspectRatio",
             L"imageFit", L"accessibilityLabel", L"visibleWhen", L"styleClasses",
@@ -1648,6 +1661,9 @@ WidgetNode ParseNode(const JsonObject& source) {
         (node.children.size() != 1U || node.defaultFocusPresentation.size() != 1U))
         throw winrt::hresult_invalid_argument(
             L"FocusPresentationSurface requires one default and one content child.");
+    if (node.kind == L"controllerGlyph" && (!node.children.empty() || !node.shortcuts.empty() ||
+        !node.contextActions.empty() || !node.selectOptions.empty()))
+        throw winrt::hresult_invalid_argument(L"ControllerGlyph cannot own children or input.");
     if (node.kind == L"windowPreview" && (!node.children.empty() ||
         (node.imageFit != L"contain" && node.imageFit != L"cover")))
         throw winrt::hresult_invalid_argument(L"WindowPreview must be view-only with a valid fit.");
@@ -1920,7 +1936,7 @@ void ValidateFocusPresentations(const WidgetNode& root, const int protocolVersio
             node.kind == L"grid" || node.kind == L"text" ||
             node.kind == L"progress" || node.kind == L"spacer" ||
             node.kind == L"image" || node.kind == L"icon" ||
-            node.kind == L"loadingIndicator";
+            node.kind == L"loadingIndicator" || node.kind == L"controllerGlyph";
         if (!kindAllowed || !node.actionId.empty() || !node.contextActions.empty() ||
             !node.selectOptions.empty() || node.isSelect ||
             !node.valueChangedActionId.empty() || !node.sliderInteractionMode.empty() ||
@@ -2395,6 +2411,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     std::wstring mediaViewportAccessibleName;
     const auto collectMediaViewports = [&](const auto& self,
                                            const WidgetNode& node) -> void {
+        if (node.kind == L"controllerGlyph" && snapshot.protocolVersion < protocol_contract::ControllerGlyphVersion)
+            throw winrt::hresult_invalid_argument(L"ControllerGlyph requires protocol version 54.");
         if (node.kind == L"windowPreview" && snapshot.protocolVersion < protocol_contract::WindowPreviewVersion)
             throw winrt::hresult_invalid_argument(L"WindowPreview requires protocol version 52.");
         if (node.kind == L"mediaViewport") {
@@ -2536,13 +2554,13 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 57> properties{
+    static constexpr std::array<std::wstring_view, 58> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextMenuButton", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
         L"artworkHandle", L"focusBackgroundArtworkHandle", L"windowId", L"previewAspectRatio", L"mediaSessionId",
-        L"imageFit", L"glyph", L"packageIcon", L"indicatorSize",
+        L"imageFit", L"glyph", L"packageIcon", L"indicatorSize", L"controllerPrompt",
         L"actionSurfaceOrientation", L"actionSurfacePresentation", L"gridMinimumColumnWidth",
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
         L"focusPersistenceId", L"focus", L"inputScopeId", L"initialChildFocusId",
@@ -2587,7 +2605,7 @@ bool ValidateWidgetDocumentStructure(
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
                  L"imageSource", L"artworkHandle", L"focusBackgroundArtworkHandle",
                  L"mediaSessionId", L"windowId", L"previewAspectRatio", L"imageFit", L"glyph", L"packageIcon",
-                 L"indicatorSize", L"actionSurfaceOrientation", L"actionSurfacePresentation",
+                 L"indicatorSize", L"controllerPrompt", L"actionSurfaceOrientation", L"actionSurfacePresentation",
                  L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
                  L"inputScopeId", L"initialChildFocusId", L"usesFocusedDescendantArtwork",
@@ -3155,7 +3173,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"maximum" || property == L"step" ||
         property == L"imageFit" ||
         property == L"glyph" || property == L"packageIcon" ||
-        property == L"indicatorSize" ||
+        property == L"indicatorSize" || property == L"controllerPrompt" ||
         property == L"actionSurfaceOrientation" ||
         property == L"actionSurfacePresentation" ||
         property == L"scrollAxis" ||

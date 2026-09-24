@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NativeTextLayout.h"
+#include "ControllerPrompt.h"
 
 #include "DeclarativeLayout.h"
 #include "DeclarativeMotion.h"
@@ -170,6 +171,7 @@ struct ComputedCompositorBackground final {
 };
 
 struct RenderResult final {
+    bool playStationControls{};
     bool succeeded{};
     std::shared_ptr<const RenderInspection> inspection;
     /// True only while at least one paint-only node transition requires a
@@ -332,6 +334,7 @@ struct FocusedFreeScrollPlanDiagnostic final {
 };
 
 struct DeclarativeRenderOptions final {
+    bool playStationControls{controller::UsePlayStationControls()};
     bool collectInspection{};
     std::function<Microsoft::WRL::ComPtr<ID2D1Bitmap1>(ID2D1RenderTarget*, std::wstring_view)> windowPreviewBitmap;
     float pixelScale{1.0F};

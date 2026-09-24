@@ -163,7 +163,7 @@ public sealed class MediaSessionsWidget : Widget
             pills[index] = UI.Button(session.AppName, "media.select", id)
                 .Icon(session.PlaybackStatus == WidgetMediaPlaybackStatus.Playing
                     ? WidgetGlyph.Pause : WidgetGlyph.Music,
-                    $"{session.AppName}. {session.Title}. Press A to select")
+                    $"{session.AppName}. {session.Title}. Select to select")
                 .PersistFocusAs(id + ".focus")
                 .Selected(string.Equals(session.SessionId, selected.SessionId, StringComparison.Ordinal))
                 .FocusLeft(pillIds[Math.Max(0, index - 1)])

@@ -326,6 +326,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.Glyph => Read<WidgetGlyph?>(change.Value),
                 PresentationProperty.PackageIcon => Read<WidgetPackageIcon?>(change.Value),
                 PresentationProperty.IndicatorSize => Read<LoadingIndicatorSize?>(change.Value),
+                PresentationProperty.ControllerPrompt => Read<ControllerPrompt?>(change.Value),
                 PresentationProperty.ActionSurfaceOrientation => Read<ActionSurfaceOrientation?>(change.Value),
                 PresentationProperty.ActionSurfacePresentation => Read<ActionSurfacePresentation?>(change.Value),
                 PresentationProperty.IsDisabled or PresentationProperty.IsSelected or
@@ -462,6 +463,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.Glyph => node with { Glyph = Read<WidgetGlyph?>(change.Value) },
                 PresentationProperty.PackageIcon => node with { PackageIcon = Read<WidgetPackageIcon?>(change.Value) },
                 PresentationProperty.IndicatorSize => node with { IndicatorSize = Read<LoadingIndicatorSize?>(change.Value) },
+                PresentationProperty.ControllerPrompt => node with { ControllerPrompt = Read<ControllerPrompt?>(change.Value) },
                 PresentationProperty.ActionSurfaceOrientation => node with { ActionSurfaceOrientation = Read<ActionSurfaceOrientation?>(change.Value) },
                 PresentationProperty.ActionSurfacePresentation => node with { ActionSurfacePresentation = Read<ActionSurfacePresentation?>(change.Value) },
                 PresentationProperty.GridMinimumColumnWidth => node with { GridMinimumColumnWidth = Read<double?>(change.Value) },

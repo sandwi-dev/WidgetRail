@@ -1,4 +1,5 @@
 #include "AccessibilityTree.h"
+#include "ControllerPrompt.h"
 
 #include <algorithm>
 #include <climits>
@@ -24,14 +25,16 @@ std::optional<Role> ResolveRole(const WidgetNode& node) noexcept {
         node.kind == L"textEntry") return Role::Button;
     if (node.kind == L"slider") return Role::Slider;
     if (node.kind == L"text") return Role::Text;
-    if (node.kind == L"image" || node.kind == L"icon" ||
+    if (node.kind == L"image" || node.kind == L"icon" || node.kind == L"controllerGlyph" ||
         node.kind == L"mediaViewport" || node.kind == L"windowPreview") return Role::Image;
     if (node.kind == L"progress" || node.kind == L"loadingIndicator") return Role::Progress;
     return std::nullopt;
 }
 
-std::wstring_view AccessibleName(const WidgetNode& node) noexcept {
+std::wstring_view AccessibleName(const WidgetNode& node, bool playStation) noexcept {
     if (!node.accessibilityLabel.empty()) return node.accessibilityLabel;
+    if (node.kind == L"controllerGlyph")
+        return controller::AccessibleName(controller::ParsePrompt(node.controllerPrompt), playStation);
     return node.text;
 }
 
@@ -157,7 +160,7 @@ Tree BuildWidgetTree(
         const auto region = regions.find(source.id);
         const bool inActiveScope = scope == snapshot.activeInputScopeId;
         const bool exposed = inActiveScope && role && region != regions.end() &&
-            !AccessibleName(source).empty();
+            !AccessibleName(source, render.playStationControls).empty();
 
         auto parent = accessibleParent;
         const auto ownSet = virtualPositions.find(&source);
@@ -167,7 +170,7 @@ Tree BuildWidgetTree(
         if (exposed) {
             Node node;
             node.id = source.id;
-            node.name = AccessibleName(source);
+            node.name = AccessibleName(source, render.playStationControls);
             node.value = source.accessibilityValue;
             if (source.kind == L"slider" && source.id == focusedElementId &&
                 !source.isDisabled && !source.isBusy) {

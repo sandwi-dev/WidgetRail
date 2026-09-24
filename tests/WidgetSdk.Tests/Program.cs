@@ -8,6 +8,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Controller glyphs are semantic versioned input-inert content", ControllerGlyphTests.Run),
     ("Window previews are additive bounded view-only poster content", WindowPreviewScenarios.Contract),
     ("Snapshot serialization is deterministic and round-trips", SnapshotRoundTrip),
     ("Protocol validation diagnostics retain only typed safe structural identifiers",
@@ -2855,8 +2856,8 @@ static Task MinimalistRowsAreSemantic()
     var hint = Find(snapshot.Root, "minimal.hint.previous");
     Assert.Equal(ViewNodeKind.Row, hint.Kind);
     Assert.Equal(null, hint.ActionId);
-    Assert.Equal("LB", Find(snapshot.Root, "minimal.hint.previous.key").Text);
-    Assert.Equal("Left bumper", Find(snapshot.Root, "minimal.hint.previous.key").AccessibilityLabel);
+    Assert.Equal(ControllerPrompt.LeftBumper, Find(snapshot.Root, "minimal.hint.previous.key").ControllerPrompt);
+    Assert.Equal(null, Find(snapshot.Root, "minimal.hint.previous.key").AccessibilityLabel);
     Assert.Equal("Previous track", Find(snapshot.Root, "minimal.hint.previous.label").Text);
 
     Assert.Throws<ArgumentException>(() => UI.ValueRow("", "value", "row"));

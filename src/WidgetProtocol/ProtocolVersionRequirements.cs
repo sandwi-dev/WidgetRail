@@ -295,6 +295,10 @@ internal sealed class ProtocolVersionRequirements
                             $"{path}.textEntryInputKind",
                             $"Sensitive text entry requires protocol version {ProtocolConstants.SensitiveTextEntryVersion} or later.");
                     break;
+                case ViewNodeKind.ControllerGlyph:
+                    Add("controller-glyph", ProtocolConstants.ControllerGlyphVersion, path,
+                        "Controller glyphs require protocol version 54 or later.");
+                    break;
                 case ViewNodeKind.WindowPreview:
                     Add("window-preview", ProtocolConstants.WindowPreviewVersion, path,
                         "WindowPreview requires protocol version 52 or later.");

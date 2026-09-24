@@ -137,8 +137,6 @@ title { font-weight: 600; letter-spacing: -0.01em; }
   text-transform: uppercase;
 }
 
-.wrail-controller-hint__key { font-weight: 600; letter-spacing: 0.04em; }
-
 .wrail-window-preview {
   width: 100%; min-width: 0; flex-shrink: 0; overflow: clip;
   background: var(--surface); color: var(--text-muted);

@@ -468,9 +468,9 @@ internal static class SpotifyPresentation
             pageGroup,
             destinations,
             compactLeadingAdornment: CompactControllerKey(
-                "LT", "Left trigger, previous section", "spotify.section.previous.hint"),
+                ControllerButton.LeftTrigger, "Left trigger, previous section", "spotify.section.previous.hint"),
             compactTrailingAdornment: CompactControllerKey(
-                "RT", "Right trigger, next section", "spotify.section.next.hint"));
+                ControllerButton.RightTrigger, "Right trigger, next section", "spotify.section.next.hint"));
 
         var header = Header(presentation.Status, presentation.ViewState);
         var content = new List<WidgetElement> { header };
@@ -611,14 +611,9 @@ internal static class SpotifyPresentation
                 : "spotify.devices.empty.shared.action";
     }
 
-    private static RowElement CompactControllerKey(
-        string key,
-        string accessibilityLabel,
-        string id) => UI.Row(
-            id,
-            UI.Text(key, id + ".label", accessibilityLabel)
-                .Classes("wrail-controller-hint__key", "spotify-section-trigger-key"))
-        .Classes("spotify-section-trigger-hint");
+    private static ControllerGlyphElement CompactControllerKey(
+        ControllerButton button, string accessibilityLabel, string id) =>
+        UI.ControllerGlyph(button, id, accessibilityLabel).Classes("spotify-section-trigger-key");
 
     private static WidgetElement PlayerPanel(
         SpotifyPlaybackSummary? playback,

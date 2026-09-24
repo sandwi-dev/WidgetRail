@@ -792,26 +792,7 @@ public static partial class UI
     public static RowElement ControllerHint(
         ControllerButton button,
         string label,
-        string id)
-    {
-        EnsureDefined(button, nameof(button));
-        ArgumentException.ThrowIfNullOrWhiteSpace(label);
-        var (shortName, spokenName) = ControllerButtonNames(button);
-        return new RowElement(id,
-        [
-            new TextElement(StableIdentifier.Child(id, "key"), shortName, spokenName)
-            {
-                RequiredStyleClasses = ["wrail-controller-hint__key"],
-            },
-            new TextElement(StableIdentifier.Child(id, "label"), label, label)
-            {
-                RequiredStyleClasses = ["wrail-controller-hint__label"],
-            },
-        ])
-        {
-            RequiredStyleClasses = ["wrail-controller-hint"],
-        };
-    }
+        string id) => ControllerHint(PromptForButton(button), label, id);
 
     public static ButtonElement IconButton(
         WidgetGlyph glyph,
@@ -1233,28 +1214,6 @@ public static partial class UI
 
     private static string Token<T>(T value) where T : struct, Enum =>
         value.ToString().ToLowerInvariant();
-
-    private static (string ShortName, string SpokenName) ControllerButtonNames(
-        ControllerButton button) => button switch
-    {
-        ControllerButton.A => ("A", "A button"),
-        ControllerButton.B => ("B", "B button"),
-        ControllerButton.X => ("X", "X button"),
-        ControllerButton.Y => ("Y", "Y button"),
-        ControllerButton.LeftBumper => ("LB", "Left bumper"),
-        ControllerButton.RightBumper => ("RB", "Right bumper"),
-        ControllerButton.LeftTrigger => ("LT", "Left trigger"),
-        ControllerButton.RightTrigger => ("RT", "Right trigger"),
-        ControllerButton.DPadUp => ("D-pad up", "D-pad up"),
-        ControllerButton.DPadDown => ("D-pad down", "D-pad down"),
-        ControllerButton.DPadLeft => ("D-pad left", "D-pad left"),
-        ControllerButton.DPadRight => ("D-pad right", "D-pad right"),
-        ControllerButton.LeftStick => ("LS", "Left stick button"),
-        ControllerButton.RightStick => ("RS", "Right stick button"),
-        ControllerButton.Menu => ("Menu", "Menu button"),
-        ControllerButton.View => ("View", "View button"),
-        _ => throw new ArgumentOutOfRangeException(nameof(button)),
-    };
 
     private static void EnsureDefined<T>(T value, string parameterName) where T : struct, Enum
     {

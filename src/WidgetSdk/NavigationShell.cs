@@ -392,7 +392,7 @@ public static partial class UI
         {
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or
                 ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.Spacer or
-                ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator) ||
+                ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator or ViewNodeKind.ControllerGlyph) ||
                 node.ActionId is not null || node.ValueChangedActionId is not null ||
                 node.ContextMenuButton is not null || (node.ContextActions?.Count ?? 0) != 0 ||
                 (node.SelectOptions?.Count ?? 0) != 0 || node.Focus is not null ||

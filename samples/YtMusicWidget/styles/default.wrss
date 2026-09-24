@@ -62,7 +62,7 @@
 .music-transport:focused, .music-secondary-action:focused { color: var(--text); background: var(--surface-active, #262623); }
 .music-secondary-action:selected { color: var(--accent); }
 
-.music-section-trigger-key { min-width: 28px; min-height: 28px; padding: 5px 7px; justify: center; background: var(--surface-active, #262623); corner-radius: 6px; }
+.music-section-trigger-key { font-size: var(--controller-glyph-size, 24px); color: var(--text-muted); padding: 0px; flex-shrink: 0; }
 
 .music-browse { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-shrink: 1; gap: 8px; }
 .music-collection-item { width: 100%; min-width: 0px; gap: 6px; flex-shrink: 0; }

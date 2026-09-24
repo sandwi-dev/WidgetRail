@@ -77,21 +77,7 @@
   flex-shrink: 0;
 }
 
-.games-section-bumper-key {
-  min-width: 30px;
-  min-height: 26px;
-  padding: 3px 6px;
-  align: center;
-  justify: center;
-  flex-grow: 0;
-  flex-shrink: 0;
-}
-
-.games-section-bumper-label {
-  min-width: 0px;
-  max-lines: 1;
-  text-align: center;
-}
+.games-section-bumper-key { font-size: var(--controller-glyph-size, 24px); color: var(--text-muted); padding: 0px; flex-shrink: 0; }
 
 .games-section-body {
   width: 100%;

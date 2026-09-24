@@ -11,6 +11,7 @@
   "src/WidgetSdk/WidgetEncodedArtwork.cs": "docs/reference/visual-content.md",
   "src/WidgetSdk/Toast.cs": "docs/reference/visual-content.md",
   "src/WidgetSdk/ModernComponents.cs": "docs/reference/controller-ui-components.md",
+  "src/WidgetSdk/ControllerGlyph.cs": "docs/reference/controller-ui-components.md",
   "src/WidgetSdk/TileComponents.cs": "docs/reference/controller-ui-components.md",
   "src/WidgetSdk/WidgetIds.cs": "docs/reference/identity-and-input.md",
   "src/WidgetSdk/WidgetFocusTargetLookup.cs": "docs/reference/identity-and-input.md",

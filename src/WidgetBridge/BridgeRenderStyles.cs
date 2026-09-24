@@ -133,6 +133,7 @@ internal static class BridgeRenderStyleResolver
         ViewNodeKind.Spacer => "spacer",
         ViewNodeKind.Image => "image",
         ViewNodeKind.Icon => "icon",
+        ViewNodeKind.ControllerGlyph => "controllerGlyph",
         ViewNodeKind.LoadingIndicator => "loadingIndicator",
         ViewNodeKind.ActionSurface => "actionSurface",
         ViewNodeKind.Grid => "grid",

@@ -48,6 +48,7 @@ public enum PresentationProperty
     Glyph,
     PackageIcon,
     IndicatorSize,
+    ControllerPrompt,
     ActionSurfaceOrientation,
     ActionSurfacePresentation,
     GridMinimumColumnWidth,
@@ -238,6 +239,7 @@ public static class PresentationPropertyMetadata
         PresentationProperty.ImageFit or
         PresentationProperty.Glyph or
         PresentationProperty.IndicatorSize or
+        PresentationProperty.ControllerPrompt or
         PresentationProperty.ActionSurfaceOrientation or
         PresentationProperty.ActionSurfacePresentation or
         PresentationProperty.ScrollAxis or

@@ -391,6 +391,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.Glyph, before.Glyph, after.Glyph);
         Add(PresentationProperty.PackageIcon, before.PackageIcon, after.PackageIcon);
         Add(PresentationProperty.IndicatorSize, before.IndicatorSize, after.IndicatorSize);
+        Add(PresentationProperty.ControllerPrompt, before.ControllerPrompt, after.ControllerPrompt);
         Add(PresentationProperty.ActionSurfaceOrientation, before.ActionSurfaceOrientation, after.ActionSurfaceOrientation);
         Add(PresentationProperty.ActionSurfacePresentation, before.ActionSurfacePresentation, after.ActionSurfacePresentation);
         Add(PresentationProperty.GridMinimumColumnWidth, before.GridMinimumColumnWidth, after.GridMinimumColumnWidth);

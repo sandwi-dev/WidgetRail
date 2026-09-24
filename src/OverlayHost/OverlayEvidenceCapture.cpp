@@ -31,6 +31,7 @@ struct CaptureArguments final {
     float textScale{1.0F};
     bool reducedTransparency{};
     bool highContrast{};
+    bool playStationControls{};
     std::wstring focusId;
 };
 
@@ -63,6 +64,7 @@ CaptureArguments ParseArguments(const int argc, wchar_t** argv) {
         else if (argument == L"--focus") result.focusId = requireValue();
         else if (argument == L"--reduced-transparency") result.reducedTransparency = true;
         else if (argument == L"--high-contrast") result.highContrast = true;
+        else if (argument == L"--playstation") result.playStationControls = true;
         else Fail(L"Unknown argument: " + std::wstring(argument));
     }
     if (result.input.empty() || result.output.empty())
@@ -179,6 +181,7 @@ int wmain(const int argc, wchar_t** argv) {
         appearance.motion = widgetrail::PlatformMotionPreference::Reduced;
 
         widgetrail::DeclarativeRenderOptions options;
+        options.playStationControls = arguments.playStationControls;
         options.pixelScale = arguments.dpi / 96.0F;
         options.surfaceBackground = widgetrail::NativeColor{0.035F, 0.043F, 0.063F, 1.0F};
         options.surfaceCornerRadiusPx = 18.0F;

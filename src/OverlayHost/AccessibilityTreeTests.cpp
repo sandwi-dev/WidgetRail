@@ -374,6 +374,24 @@ int main() {
     Check(tree.nodes.empty() && !tree.focusedNode,
           "unpainted semantic nodes are never exposed to assistive technology");
 
+    {
+        widgetrail::WidgetSnapshot prompts;
+        prompts.instanceId = L"prompt.instance"; prompts.sequence = 1;
+        prompts.activeInputScopeId = L"key";
+        prompts.root.id = L"key"; prompts.root.kind = L"controllerGlyph";
+        prompts.root.controllerPrompt = L"a";
+        widgetrail::RenderResult glyphRender;
+        glyphRender.accessibilityRegions = {Region(L"key", 0)};
+        const auto xbox = widgetrail::accessibility::BuildWidgetTree(L"prompts", L"generation", prompts, glyphRender, L"");
+        Check(xbox.nodes.size() == 1 && xbox.nodes[0].name == L"A button" && !xbox.focusedNode,
+            "controller symbol has a noninteractive accessible name");
+        glyphRender.playStationControls = true;
+        const auto ps = widgetrail::accessibility::BuildWidgetTree(L"prompts", L"generation", prompts, glyphRender, L"");
+        Check(ps.nodes.size() == 1 && ps.nodes[0].name == L"Cross button", "accessible name follows rendered controller family");
+        prompts.root.accessibilityLabel = L"Previous section";
+        const auto custom = widgetrail::accessibility::BuildWidgetTree(L"prompts", L"generation", prompts, glyphRender, L"");
+        Check(custom.nodes[0].name == L"Previous section", "authored accessible context is retained");
+    }
     std::cout << "AccessibilityTreeTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

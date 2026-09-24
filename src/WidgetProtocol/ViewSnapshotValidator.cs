@@ -774,6 +774,19 @@ public static class ViewSnapshotValidator
                 Add($"{path}.mediaSessionId", "media_session_id_not_allowed",
                     "Media session identity applies only to MediaViewport nodes.");
             }
+            if (node.Kind is ViewNodeKind.ControllerGlyph)
+            {
+                if (node.ControllerPrompt is null || !Enum.IsDefined(node.ControllerPrompt.Value))
+                    Add($"{path}.controllerPrompt", "invalid_controller_prompt", "A controller glyph requires a supported prompt.");
+                if (node.Text is not null || node.AccessibilityValue is not null || node.Value is not null ||
+                    node.Minimum is not null || node.Maximum is not null || node.Step is not null ||
+                    node.ImageSource is not null || node.ArtworkHandle is not null || node.ImageFit is not null ||
+                    node.Glyph is not null || node.PackageIcon is not null || node.IndicatorSize is not null ||
+                    node.Focus is not null || node.FocusPersistenceId is not null || node.InitialChildFocusId is not null)
+                    Add(path, "controller_glyph_property_not_allowed", "Controller glyphs are presentational symbols, not text or input controls.");
+            }
+            else if (node.ControllerPrompt is not null)
+                Add($"{path}.controllerPrompt", "controller_prompt_not_allowed", "Controller prompts apply only to controller glyphs.");
             if (node.Kind is ViewNodeKind.LoadingIndicator)
             {
                 if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))
@@ -1571,7 +1584,7 @@ public static class ViewSnapshotValidator
                         $"A focus-associated presentation may be at most {ProtocolConstants.MaximumFocusPresentationDepth} levels deep.");
                 if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
                     ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.Spacer or
-                    ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator) ||
+                    ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator or ViewNodeKind.ControllerGlyph) ||
                     node.ActionId is not null || (node.ContextActions?.Count ?? 0) != 0 ||
                     (node.SelectOptions?.Count ?? 0) != 0 ||
                     node.TextEntryValue is not null || node.TextEntryPlaceholder is not null ||

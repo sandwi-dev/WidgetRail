@@ -564,8 +564,8 @@ internal static class NetworkControlsPresentation
             var actionId = device.IsPaired
                 ? "bluetooth.device.details" : "bluetooth.device.pair";
             var actionLabel = device.IsPaired
-                ? "Press A for device options. Press X to manage in Windows Bluetooth Settings"
-                : device.IsPresent ? "Press A to pair. Press X if Windows interaction is required" : "Scan again to find this device";
+                ? "Select for device options. Use the Windows settings shortcut to manage this device"
+                : device.IsPresent ? "Select to pair. Use the Windows settings shortcut if pairing needs additional steps" : "Scan again to find this device";
             var button = UI.Button(device.DisplayName, actionId, id)
                 .Icon(WidgetGlyph.Connection,
                     $"{device.DisplayName}. {deviceState}. {detail}. {actionLabel}")
@@ -608,15 +608,15 @@ internal static class NetworkControlsPresentation
 
     private static string NetworkActionLabel(WidgetAvailableWifiNetwork network)
     {
-        if (network.IsConnected) return "Press A for connection options";
+        if (network.IsConnected) return "Select for connection options";
         if (network.CredentialRequired)
             return network.Security == WidgetWifiSecurityKind.Personal
-                ? "Press A to enter the password securely"
+                ? "Select to enter the password securely"
                 : "Use Windows network settings for this authentication method";
         if ((network.Security is WidgetWifiSecurityKind.Enterprise or
                 WidgetWifiSecurityKind.Unknown) && !network.HasSavedProfile)
             return "Use Windows network settings for this authentication method";
-        return "Press A or X to connect";
+        return "Select to connect";
     }
 
     private static string BluetoothDeviceDetail(WidgetBluetoothDevice device) =>

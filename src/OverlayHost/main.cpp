@@ -11620,6 +11620,7 @@ private:
         if (frame.lastInputFamily != WidgetRailOverlayPlatformControllerFamily::Unknown &&
             widgetrail::guide::SetPlayStationControls(
                 frame.lastInputFamily == WidgetRailOverlayPlatformControllerFamily::PlayStation)) {
+            pinnedSurfaceCoordinator_.ControllerPromptsChanged();
             retainedGuidePaintKey_.clear();
             retainedTrayPaintState_.reset();
             pendingWidgetPresentationImpact_.reset();

@@ -24,6 +24,7 @@ public enum ViewNodeKind
     FocusPresentationSurface,
     Select,
     WindowPreview,
+    ControllerGlyph,
 }
 
 /// <summary>One bounded option in a host-owned anchored Select popup.</summary>
@@ -424,6 +425,7 @@ public sealed record ViewNode
     public WidgetGlyph? Glyph { get; init; }
     public WidgetPackageIcon? PackageIcon { get; init; }
     public LoadingIndicatorSize? IndicatorSize { get; init; }
+    public ControllerPrompt? ControllerPrompt { get; init; }
     /// <summary>
     /// Primary content direction for an ActionSurface. It is intentionally
     /// semantic rather than pixel geometry; responsive wrapping remains a

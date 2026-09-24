@@ -1520,6 +1520,23 @@ int main(int argc, char** argv) {
         std::wcout << L"Read-only display identity: " << display.id << L" name=" << display.name << L"\n";
         return 0;
     }
+    {
+        const auto parse = [](std::string root, int version = 54) {
+            std::wstring error;
+            return widgetrail::testing::ParseWidgetSnapshotResponse(
+                "{\"snapshot\":{\"protocolVersion\":" + std::to_string(version) +
+                ",\"sequence\":1,\"widgetInstanceId\":\"glyph\",\"activeInputScopeId\":\"key\",\"root\":" + root + "},\"renderStyles\":{}}", error);
+        };
+        const std::string valid = R"({"id":"key","kind":"controllerGlyph","controllerPrompt":"rightStickMove"})";
+        const auto parsed = parse(valid);
+        CHECK(parsed && parsed->root.controllerPrompt == L"rightStickMove");
+        CHECK(!parse(valid, 53));
+        CHECK(!parse(R"({"id":"key","kind":"controllerGlyph","controllerPrompt":"unsupported"})"));
+        CHECK(!parse(R"({"id":"key","kind":"controllerGlyph"})"));
+        CHECK(!parse(R"({"id":"key","kind":"controllerGlyph","controllerPrompt":"a","actionId":"run"})"));
+        CHECK(!parse(R"({"id":"key","kind":"controllerGlyph","controllerPrompt":"a","children":[{"id":"child","kind":"text","text":"bad"}]})"));
+        CHECK(!parse(R"({"id":"key","kind":"text","text":"A","controllerPrompt":"a"})"));
+    }
     CHECK(widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(L"stale_controller_input_authority"));
     CHECK(widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(L"stale_pinned_input_authority"));
     CHECK(!widgetrail::WidgetBridgeClient::IsStaleControllerInputResult(L"request_failed"));

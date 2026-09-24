@@ -14,10 +14,50 @@ They provide consistent focus, actions, and theme classes across widgets.
 | Poster tile | Artwork and a primary content action |
 | Action sheet | Secondary actions without cluttering the main page |
 | Controller hint | Explain a shortcut without adding a focus stop |
+| Controller glyph | Show a button or stick symbol beside navigation or custom content |
 
 The complete factories live in [`ModernComponents.cs`](../../src/WidgetSdk/ModernComponents.cs),
-[`TileComponents.cs`](../../src/WidgetSdk/TileComponents.cs), and
-[`UI.cs`](../../src/WidgetSdk/UI.cs). SDK Gallery shows them in the overlay.
+[`TileComponents.cs`](../../src/WidgetSdk/TileComponents.cs),
+[`UI.cs`](../../src/WidgetSdk/UI.cs), and
+[`ControllerGlyph.cs`](../../src/WidgetSdk/ControllerGlyph.cs). SDK Gallery shows them in the overlay.
+
+## Controller symbols and hints
+
+```csharp
+UI.ControllerHint(ControllerButton.Y, "Refresh", "refresh.hint");
+UI.ControllerGlyph(ControllerButton.LeftTrigger, "section.previous", "Previous section");
+UI.ControllerHint(ControllerPrompt.RightStickMove, "Scroll", "scroll.hint");
+```
+
+The native host draws its bundled PromptFont and selects Xbox or PlayStation
+symbols from the last active controller family. Symbols remain non-focusable:
+these components document controls without registering shortcuts. A hint may
+still own a container context menu, or be presentational content inside an
+action surface. No font files need to be included in widget packages.
+
+Use `ControllerButton` for actual buttons. `LeftStick` and `RightStick` in that
+enum mean **pressing** the stick. Use `ControllerPrompt.LeftStickMove` or
+`RightStickMove` for movement, and `DPad`, `DPadHorizontal`, or `DPadVertical`
+for directional navigation. `ControllerPrompt` is presentation-only and also
+supports `Guide`; it does not extend the set of widget-bindable buttons.
+
+The glyph-only factory accepts optional accessible context, such as "Previous
+section". Without an override, the host supplies the controller-specific name
+(for example, "A button" or "Cross button"). Action labels stay ordinary text.
+
+Style `.wrail-controller-glyph` for all symbols, `.wrail-controller-hint__key`
+for symbols in labeled hints, and `.wrail-controller-hint__label` for labels.
+The default glyph size is 24 logical pixels; a theme can set
+`--controller-glyph-size` or override `font-size` on a specific glyph. Color,
+opacity, padding, and container decoration are themeable. Glyphs honor text
+scaling and high contrast. Font family, weight, letter spacing, and line height
+do not reshape symbols; those properties continue to apply normally to labels.
+The host centers each symbol's visible ink and provides a readable drawn fallback
+if PromptFont cannot be loaded.
+
+Glyph nodes require snapshot protocol 54. Rebuild packages to adopt the new
+`ControllerHint` rendering; old packages continue emitting their old text nodes.
+Do not infer controls from strings such as "X" or from style-class names.
 
 ## Keep one interaction owner
 

@@ -187,6 +187,7 @@ struct WidgetSurfacePaintTrace final {
 /// snapshot. No public or worker-facing type can supply a window or z-order.
 class WidgetSurfaceCoordinator final {
 public:
+    void ControllerPromptsChanged() noexcept;
     static constexpr std::size_t MaximumPinnedSurfaces = 1;
 
     WidgetSurfaceCoordinator();

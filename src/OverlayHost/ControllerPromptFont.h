@@ -8,7 +8,7 @@
 #include <filesystem>
 #pragma comment(lib, "dwrite.lib")
 
-namespace widgetrail::guide {
+namespace widgetrail::controller {
 
 // Private font face, loaded once without registering a system font. Direct glyph
 // runs avoid text fallback interpreting PromptFont's Unicode mappings as arrows.
@@ -70,4 +70,4 @@ inline const ControllerPromptFont& PromptFont() {
     return font;
 }
 
-} // namespace widgetrail::guide
+} // namespace widgetrail::controller

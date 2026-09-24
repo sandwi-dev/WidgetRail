@@ -129,7 +129,7 @@ internal static class AudioMixerPresentation
                 output.Volume, 0, 1, VolumeStep,
                 "output.volume.set",
                 "audio.master.volume.slider",
-                $"Master output volume, {(output.IsMuted ? "muted" : "audible")}. Press A to {(output.IsMuted ? "unmute" : "mute")}",
+                $"Master output volume, {(output.IsMuted ? "muted" : "audible")}. Select to {(output.IsMuted ? "unmute" : "mute")}",
                 accessibilityValue: $"{masterPercent}%",
                 activationAction: "output.mute.toggle")
             .Busy(state.DeviceSwitchPending)
@@ -182,7 +182,7 @@ internal static class AudioMixerPresentation
             var inputSlider = UI.Slider(
                     input.Volume, 0, 1, VolumeStep,
                     "input.volume.set", "audio.input.volume.slider",
-                    $"Microphone volume, {(input.IsMuted ? "muted" : "live")}. Press A to {(input.IsMuted ? "unmute" : "mute")}",
+                    $"Microphone volume, {(input.IsMuted ? "muted" : "live")}. Select to {(input.IsMuted ? "unmute" : "mute")}",
                     accessibilityValue: $"{inputPercent}%",
                     activationAction: "input.mute.toggle")
                 .Busy(state.DeviceSwitchPending)
@@ -317,7 +317,7 @@ internal static class AudioMixerPresentation
                 session.Volume, 0, 1, VolumeStep,
                 controls.VolumeSet,
                 controls.VolumeSlider,
-                $"{session.DisplayName} volume, {(session.IsMuted ? "muted" : "audible")}. Press A to {(session.IsMuted ? "unmute" : "mute")}",
+                $"{session.DisplayName} volume, {(session.IsMuted ? "muted" : "audible")}. Select to {(session.IsMuted ? "unmute" : "mute")}",
                 accessibilityValue: $"{percent}%",
                 activationAction: controls.Mute)
             .FocusUp(previous?.VolumeSlider ?? firstFocusUp)

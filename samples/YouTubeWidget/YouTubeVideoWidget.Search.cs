@@ -727,11 +727,11 @@ public sealed partial class YouTubeVideoWidget
             expandedPaneEntryFocusId: null,
             compactLeadingAdornment: configured
                 ? CompactControllerKey(
-                    "LB", "Left bumper, previous section", "youtube.section.previous.hint")
+                    ControllerButton.LeftBumper, "Left bumper, previous section", "youtube.section.previous.hint")
                 : null,
             compactTrailingAdornment: configured
                 ? CompactControllerKey(
-                    "RB", "Right bumper, next section", "youtube.section.next.hint")
+                    ControllerButton.RightBumper, "Right bumper, next section", "youtube.section.next.hint")
                 : null);
         var header = UI.Row(
                 "youtube.section.header",
@@ -758,14 +758,9 @@ public sealed partial class YouTubeVideoWidget
             : root;
     }
 
-    private static RowElement CompactControllerKey(
-        string key,
-        string accessibilityLabel,
-        string id) => UI.Row(
-            id,
-            UI.Text(key, id + ".label", accessibilityLabel)
-                .Classes("youtube-section-bumper-label"))
-            .Classes("wrail-controller-hint__key", "youtube-section-bumper-key");
+    private static ControllerGlyphElement CompactControllerKey(
+        ControllerButton button, string accessibilityLabel, string id) =>
+        UI.ControllerGlyph(button, id, accessibilityLabel).Classes("youtube-section-bumper-key");
 
     private async ValueTask<WidgetCursorPage<YouTubeSearchItem>> LoadSearchPageAsync(
         WidgetCollectionCursor? cursor,

@@ -184,3 +184,14 @@ resolved focused `outline-color` for the active track/thumb treatment and adds
 a thicker geometric thumb halo, so selected adjustment remains visible in high
 contrast and without relying on color alone. Existing `slider:focused` rules
 continue to own the theme color.
+
+## Controller glyph styling
+
+Controller glyphs use `.wrail-controller-glyph`; labeled hints additionally use
+`.wrail-controller-hint__key`. `font-size` sets their intrinsic height, and
+`--controller-glyph-size` customizes the shared default (24px). The host reserves
+slightly wider boxes for bumper/trigger symbols and keeps Xbox/PlayStation box
+sizes stable when controllers change. `color` and `opacity` affect glyph ink;
+ordinary box properties can decorate the surrounding space. Font family, weight,
+letter spacing, and line height never substitute or distort the private symbol
+font. Style the separate `.wrail-controller-hint__label` for action text.

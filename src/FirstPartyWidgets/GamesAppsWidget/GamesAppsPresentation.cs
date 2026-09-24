@@ -86,11 +86,11 @@ internal static class GamesAppsPresentation
             pageContent,
             Destinations(state),
             compactLeadingAdornment: SectionBumperBadge(
-                "LB",
+                ControllerButton.LeftBumper,
                 "Previous section",
                 "games.section.previous.hint"),
             compactTrailingAdornment: SectionBumperBadge(
-                "RB",
+                ControllerButton.RightBumper,
                 "Next section",
                 "games.section.next.hint"));
         var header = RenderHeader(state, parts.CompactNavigation);
@@ -155,11 +155,11 @@ internal static class GamesAppsPresentation
         var expandedBumpers = UI.Row(
                 "games.section.expanded-hints",
                 SectionBumperBadge(
-                    "LB",
+                    ControllerButton.LeftBumper,
                     "Previous section",
                     "games.section.expanded.previous"),
                 SectionBumperBadge(
-                    "RB",
+                    ControllerButton.RightBumper,
                     "Next section",
                     "games.section.expanded.next"))
             .VisibleWhen(ResponsiveVisibility.ExpandedOnly)
@@ -184,14 +184,9 @@ internal static class GamesAppsPresentation
             .Classes("games-header");
     }
 
-    private static RowElement SectionBumperBadge(
-        string text,
-        string accessibilityLabel,
-        string id) => UI.Row(
-            id,
-            UI.Text(text, id + ".label", $"{text}, {accessibilityLabel}")
-                .Classes("games-section-bumper-label"))
-        .Classes("wrail-controller-hint__key", "games-section-bumper-key");
+    private static ControllerGlyphElement SectionBumperBadge(
+        ControllerButton button, string accessibilityLabel, string id) =>
+        UI.ControllerGlyph(button, id, accessibilityLabel).Classes("games-section-bumper-key");
 
     private static WidgetElement RenderLibraryContent(GamesAppsPresentationState state)
     {
