@@ -21,8 +21,15 @@ if (args is ["--export-layout", var directory])
         await File.WriteAllBytesAsync(Path.Combine(directory, "library.snapshot.json"), SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 1)));
         service.PageOverride = new("Home", Enumerable.Range(0, 6).Select(i => new MusicItem("song" + i, "song", "Home song " + i, Artwork: "https://example.invalid/fixture.png", Section: i < 4 ? "Quick picks" : "For you")).ToArray());
         await widget.OnActionAsync(new("tab.home", "test"));
+        await widget.OnActionAsync(new("refresh", "test"));
         await Until(() => Nodes(widget.Render().CreateSnapshot("layout", 1).Root).Any(n => n.Text == "For you"));
         await File.WriteAllBytesAsync(Path.Combine(directory, "home.snapshot.json"), SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 1)));
+        await widget.OnActionAsync(new("tab.library", "test"));
+        await File.WriteAllBytesAsync(Path.Combine(directory, "library-return.snapshot.json"), SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 2)));
+        service.PageOverride = new("Your playlists", Enumerable.Range(0, 30).Select(i => new MusicItem("NEW" + i, "playlist", "Updated playlist " + i)).ToArray());
+        await widget.OnActionAsync(new("refresh", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        await File.WriteAllBytesAsync(Path.Combine(directory, "library-refresh.snapshot.json"), SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 3)));
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
     return 0;
@@ -45,6 +52,9 @@ var tests = new List<(string, Func<Task>)>
     ("Browsing uses four horizontal tabs and one focus target per song", ControllerRows),
     ("Controller Y opens settings, B returns, and X works from a song", ControllerRouting),
     ("Cursor browsing traverses long lists and restores collection focus", CursorTraversal),
+    ("Sections retain cursor windows and focus groups until an explicit refresh", RetainedSections),
+    ("New searches reset results while a late search cannot replace a retained section", RetainedSearch),
+    ("Reconnect and disconnect invalidate retained account pages", AccountPages),
     ("Library controls stay in one row, Home keeps sections, and player hides scrollbar", BrowsePresentation),
     ("Queue refreshes after background changes without resetting on playback ticks", QueueRefresh),
     ("Scrubber commands convert milliseconds to player seconds", SeekUnits),
@@ -131,7 +141,7 @@ static async Task<(StandaloneMusicWidget, FakeService)> Start()
     var widget = new StandaloneMusicWidget(service);
     await WidgetTestHost.InitializeAsync(widget);
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
-    await Until(() => Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.ActionId == "item.0"));
+    await Until(() => widget.Render().FocusGroupEntryRequest is not null && Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.ActionId == "item.0"));
     return (widget, service);
 }
 static IEnumerable<ViewNode> Nodes(ViewNode root) => new[] { root }.Concat(root.Children.SelectMany(Nodes));
@@ -153,7 +163,7 @@ static async Task Snapshots()
             Check(Nodes(snapshot.Root).Count() <= ProtocolConstants.MaximumNodeCount, "Unbounded page projection");
         }
         await Until(() => Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.ActionId == "item.0"));
-        var scroll = Nodes(widget.Render().CreateSnapshot("test", 1).Root).Single(n => n.Id == "music.scroll");
+        var scroll = Nodes(widget.Render().CreateSnapshot("test", 1).Root).Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal));
         Check(scroll.ScrollNearEndActionId is not null, "Cursor viewport has no next-window demand");
         await widget.OnActionAsync(new(scroll.ScrollNearEndActionId!, scroll.Id));
         await Until(() => Nodes(widget.Render().CreateSnapshot("test", 2).Root).Any(n => n.ActionId == "item.29"));
@@ -333,13 +343,13 @@ static async Task CursorTraversal()
         for (var demand = 0; demand < 30; demand++)
         {
             var view = widget.Render().CreateSnapshot("cursor", demand + 2);
-            var scroll = Nodes(view.Root).Single(n => n.Id == "music.scroll");
+            var scroll = Nodes(view.Root).Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal));
             var rowKeys = Nodes(scroll).Where(n => n.CollectionItemKey is not null).Select(n => n.CollectionItemKey!).ToArray();
             Check(rowKeys.Length <= 96, "Retained window exceeded its bound");
             Check(!Nodes(view.Root).Any(n => n.ActionId is "page.next" or "page.previous"), "Manual pages remain");
             if (scroll.ScrollNearEndActionId is null) break;
             await widget.OnActionAsync(new(scroll.ScrollNearEndActionId, scroll.Id) { VisibleCollectionKeys = rowKeys.TakeLast(4).ToArray() });
-            await Until(() => Nodes(widget.Render().CreateSnapshot("cursor", 2).Root).Single(n => n.Id == "music.scroll").CollectionGeneration != scroll.CollectionGeneration);
+            await Until(() => Nodes(widget.Render().CreateSnapshot("cursor", 2).Root).Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal)).CollectionGeneration != scroll.CollectionGeneration);
         }
         var last = widget.Render().CreateSnapshot("cursor", 40);
         Check(Nodes(last.Root).Any(n => n.ActionId == "item.499"), "Could not reach the final album");
@@ -347,10 +357,124 @@ static async Task CursorTraversal()
         await Until(() => widget.Render().FocusGroupEntryRequest is not null);
         await widget.OnActionAsync(new("back", "test"));
         await Until(() => widget.Render().InitialFocusId == "item.499");
-        var returned = Nodes(widget.Render().CreateSnapshot("cursor", 41).Root).Single(n => n.Id == "music.scroll");
+        var returned = Nodes(widget.Render().CreateSnapshot("cursor", 41).Root).Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal));
         Check(returned.ScrollNearStartActionId is not null, "Cannot scroll back through the earlier collection");
         await widget.OnActionAsync(new(returned.ScrollNearStartActionId!, returned.Id));
         await Until(() => Nodes(widget.Render().CreateSnapshot("cursor", 42).Root).Any(n => n.ActionId == "item.456"));
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static ViewNode BrowseScroll(StandaloneMusicWidget widget) => Nodes(widget.Render().CreateSnapshot("focus", 1).Root)
+    .Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal));
+
+static async Task RetainedSections()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        service.PageOverride = new("Saved playlists", Enumerable.Range(0, 150).Select(i => new MusicItem("PL" + i, "playlist", "Playlist " + i)).ToArray());
+        await widget.OnActionAsync(new("tab.library", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        for (var page = 0; page < 5; page++)
+        {
+            var scroll = BrowseScroll(widget);
+            await widget.OnActionAsync(new(scroll.ScrollNearEndActionId!, scroll.Id)
+            {
+                VisibleCollectionKeys = Nodes(scroll).Where(n => n.CollectionItemKey is not null).Select(n => n.CollectionItemKey!).TakeLast(4).ToArray(),
+            });
+            await Until(() => BrowseScroll(widget).CollectionGeneration != scroll.CollectionGeneration);
+        }
+        var before = BrowseScroll(widget);
+        Check(before.CollectionStartIndex > 0, "Test did not evict the initial cursor window");
+        var focus = widget.Render().FocusGroupEntryRequest!;
+        var calls = service.BrowseCalls.Count;
+        foreach (var destination in new[] { "home", "search", "queue" })
+        {
+            await widget.OnActionAsync(new("tab." + destination, "test"));
+            await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+            Check(BrowseScroll(widget).Id != before.Id, "Independent sections share a collection identity");
+            await widget.OnActionAsync(new("tab.library", "test"));
+            var after = BrowseScroll(widget);
+            Check(after.CollectionResetGeneration == before.CollectionResetGeneration && after.CollectionGeneration == before.CollectionGeneration &&
+                after.CollectionStartIndex == before.CollectionStartIndex && Nodes(after).Select(n => n.CollectionItemKey).SequenceEqual(Nodes(before).Select(n => n.CollectionItemKey)),
+                "Section navigation replaced or reset its retained cursor window");
+            Check(widget.Render().FocusGroupEntryRequest is { } request && request.GroupId == focus.GroupId && request.RequestId > focus.RequestId,
+                "Returning did not request entry into the same remembered focus group");
+        }
+        Check(service.BrowseCalls.Count == calls, "Switching to loaded sections fetched their catalogue again");
+        await widget.OnActionAsync(new("library.songs", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        var songs = BrowseScroll(widget);
+        await widget.OnActionAsync(new("tab.home", "test"));
+        await widget.OnActionAsync(new("tab.library", "test"));
+        Check(BrowseScroll(widget).Id == songs.Id && BrowseScroll(widget).CollectionResetGeneration == songs.CollectionResetGeneration,
+            "Returning to Library lost its last filter");
+        await widget.OnActionAsync(new("library.playlists", "test"));
+        Check(BrowseScroll(widget).CollectionGeneration == before.CollectionGeneration, "Switching filters discarded playlist scrolling");
+        await widget.OnActionAsync(new("refresh", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        Check(BrowseScroll(widget).CollectionStartIndex == 0 && BrowseScroll(widget).CollectionResetGeneration != before.CollectionResetGeneration,
+            "Explicit refresh retained stale item focus");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static async Task RetainedSearch()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        await widget.OnActionAsync(new("tab.search", "test"));
+        await widget.OnActionAsync(new("search", "search") { CommittedText = "first query" });
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        var before = BrowseScroll(widget);
+        await widget.OnActionAsync(new("tab.home", "test"));
+        var home = BrowseScroll(widget);
+        await widget.OnActionAsync(new("tab.search", "test"));
+        Check(service.SearchCalls == 1 && BrowseScroll(widget).CollectionResetGeneration == before.CollectionResetGeneration, "Returning to Search refreshed its cursor");
+        await widget.OnActionAsync(new("search", "search") { CommittedText = "new query" });
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        Check(service.SearchCalls == 2 && BrowseScroll(widget).CollectionResetGeneration != before.CollectionResetGeneration, "New query did not reset old results");
+        service.PendingSearch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await widget.OnActionAsync(new("search", "search") { CommittedText = "slow query" });
+        await Until(() => service.SearchCalls == 3);
+        await widget.OnActionAsync(new("tab.home", "test"));
+        service.PendingSearch.SetResult(new("Stale results", [new("old", "song", "Stale song")]));
+        service.PendingSearch = null;
+        // A completed replacement drains the old page operation before we inspect Home again.
+        await widget.OnActionAsync(new("tab.search", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        await widget.OnActionAsync(new("tab.home", "test"));
+        Check(BrowseScroll(widget).CollectionGeneration == home.CollectionGeneration &&
+            !Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Text == "Stale song"), "Late search replaced retained Home");
+    }
+    finally { service.PendingSearch?.TrySetResult(new("Canceled", [])); await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static async Task AccountPages()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        service.PageOverride = new("Old account", [new("old", "playlist", "Old account playlist")]);
+        await widget.OnActionAsync(new("tab.library", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        var before = BrowseScroll(widget);
+        await widget.OnActionAsync(new("tab.home", "test"));
+        service.PageOverride = new("New account", [new("new", "playlist", "New account playlist")]);
+        await widget.OnActionAsync(new("signin", "test"));
+        await Until(() => Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Text == "New account playlist"));
+        await widget.OnActionAsync(new("tab.library", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        Check(BrowseScroll(widget).CollectionResetGeneration != before.CollectionResetGeneration &&
+            !Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Text == "Old account playlist"), "Reconnect reused old account results");
+        service.PageOverride = new("Signed out", []);
+        await widget.OnActionAsync(new("disconnect", "test"));
+        await Until(() => !service.State.Connected && widget.Render().FocusGroupEntryRequest is not null);
+        await widget.OnActionAsync(new("tab.home", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        Check(!Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Text == "New account playlist"), "Disconnect retained private Home results");
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }
@@ -364,12 +488,13 @@ static async Task BrowsePresentation()
         await Until(() => Nodes(widget.Render().CreateSnapshot("ui", 1).Root).Any(n => n.Text == "Library result"));
         var view = widget.Render().CreateSnapshot("ui", 2);
         var toolbar = Nodes(view.Root).Single(n => n.Id == "library.toolbar");
-        var scroll = Nodes(view.Root).Single(n => n.Id == "music.scroll");
+        var scroll = Nodes(view.Root).Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal));
         Check(!Nodes(scroll).Any(n => n.Id is "library.toolbar" or "page.heading"), "Library header moves with the list");
         Check(toolbar.Kind == ViewNodeKind.Row && toolbar.Children[0].Id == "library.filters" && toolbar.Children[1].Id == "refresh", "Refresh is not alongside the library filters");
         Check(Nodes(view.Root).Single(n => n.Id == "player.main.scroll").ShowScrollbar == false, "Player still reserves a scrollbar gutter");
         service.PageOverride = new("Home", [new("a", "song", "First", Section: "Quick picks"), new("b", "song", "Second", Section: "Quick picks"), new("c", "playlist", "Mix", Section: "For you")]);
         await widget.OnActionAsync(new("tab.home", "test"));
+        await widget.OnActionAsync(new("refresh", "test"));
         await Until(() => Nodes(widget.Render().CreateSnapshot("ui", 3).Root).Any(n => n.Text == "For you"));
         var headings = Nodes(widget.Render().CreateSnapshot("ui", 4).Root).Where(n => n.Id.StartsWith("section.title.", StringComparison.Ordinal)).Select(n => n.Text).ToArray();
         Check(headings.SequenceEqual(new[] { "Quick picks", "For you" }), "Home lost section order or repeated headings within a section");
@@ -387,9 +512,9 @@ static async Task QueueRefresh()
     {
         await widget.OnActionAsync(new("tab.queue", "test"));
         await Until(() => Nodes(widget.Render().CreateSnapshot("queue", 1).Root).Any(n => n.Id == "item.0"));
-        var before = Nodes(widget.Render().CreateSnapshot("queue", 2).Root).Single(n => n.Id == "music.scroll");
+        var before = Nodes(widget.Render().CreateSnapshot("queue", 2).Root).Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal));
         service.PlaybackTick();
-        var after = Nodes(widget.Render().CreateSnapshot("queue", 3).Root).Single(n => n.Id == "music.scroll");
+        var after = Nodes(widget.Render().CreateSnapshot("queue", 3).Root).Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal));
         Check(before.CollectionResetGeneration == after.CollectionResetGeneration, "Playback progress reset queue scrolling");
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
         service.ReplaceQueue([new("new", "song", "New queue song")]);
@@ -569,6 +694,7 @@ sealed class FakeService : IMusicService
     public TaskCompletionSource<MusicPage>? PendingSearch;
     public TaskCompletionSource<string>? PendingAuth;
     public int RadioCalls, SearchCalls, AuthCalls, CancelCalls;
+    public readonly System.Collections.Concurrent.ConcurrentBag<string> BrowseCalls = [];
     public CancellationToken AuthToken;
     public bool Disposed;
     public double? LastValue;
@@ -579,12 +705,17 @@ sealed class FakeService : IMusicService
     public Task<string> SignInAsync(CancellationToken token) { AuthCalls++; AuthToken = token; return PendingAuth?.Task.WaitAsync(token) ?? Task.FromResult("Connected"); }
     public Task CancelSignInAsync(CancellationToken token) { CancelCalls++; return Task.CompletedTask; }
     public Task DisconnectAsync(CancellationToken token) { State = MusicState.Empty; Changed?.Invoke(); return Task.CompletedTask; }
-    public Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token)
+    public async Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token)
     {
-        if (PageOverride is not null) return Task.FromResult(PageOverride);
-        if (kind == "search") { SearchCalls++; if (PendingSearch is not null) return PendingSearch.Task; }
-        if (kind == "library") return Task.FromResult(new MusicPage("Library result", []));
-        return Task.FromResult(new MusicPage("Home", Enumerable.Range(0, 30).Select(i => new MusicItem(i.ToString(), "song", "Song " + i)).ToArray()));
+        BrowseCalls.Add(kind + ":" + value);
+        if (PageOverride is not null) return PageOverride;
+        if (kind == "search")
+        {
+            SearchCalls++;
+            return PendingSearch is not null ? await PendingSearch.Task : new MusicPage("Search results", [new("result", "song", "Search song")]);
+        }
+        if (kind == "library") return new MusicPage("Library result", []);
+        return new MusicPage("Home", Enumerable.Range(0, 30).Select(i => new MusicItem(i.ToString(), "song", "Song " + i)).ToArray());
     }
     public Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token) => Task.CompletedTask;
     public Task PlayNextAsync(MusicItem song, CancellationToken token) { NextSongs.Add(song); return Task.CompletedTask; }

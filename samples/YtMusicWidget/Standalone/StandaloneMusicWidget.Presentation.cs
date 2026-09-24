@@ -115,7 +115,7 @@ public sealed partial class StandaloneMusicWidget
 
     private WidgetElement Browse(MusicState state)
     {
-        var collection = _collection.Capture();
+        var collection = Collection.Capture();
         var entries = collection.Snapshot.Items;
         var content = new List<WidgetElement>();
         var rows = new List<WidgetElement>();
@@ -139,7 +139,7 @@ public sealed partial class StandaloneMusicWidget
         else
         {
             var heading = new List<WidgetElement>();
-            heading.Add(UI.Text(_tab == "queue" ? "Up next" : _page.Title, "page.title").Classes("music-section-title", "music-grow"));
+            heading.Add(UI.Text(_tab == "queue" ? "Up next" : Page.Title, "page.title").Classes("music-section-title", "music-grow"));
             if (_tab != "library" || _history.Count != 0)
             {
                 if (_loading || _tab != "queue") heading.Add(RefreshControl());
@@ -203,7 +203,7 @@ public sealed partial class StandaloneMusicWidget
                 if (_tab != "search") rows.Add(UI.Button("Search music", "tab.search", "empty.search").Classes("music-primary"));
             }
         }
-        content.Add(collection.Present(UI.VerticalScroll("music.scroll", rows.ToArray())).Classes("music-scroll"));
+        content.Add(collection.Present(UI.VerticalScroll(_browse.ScrollId, rows.ToArray())).Classes("music-scroll"));
         return UI.Stack("music.browse", content.ToArray()).Classes("music-browse");
     }
 
@@ -216,7 +216,7 @@ public sealed partial class StandaloneMusicWidget
     private string EntryFocus(MusicState state)
     {
         if (_panel == "setup") return "setup.primary";
-        var entries = _collection.Snapshot.Items;
+        var entries = Collection.Snapshot.Items;
         if (_panelReturnFocus is { } remembered && remembered.StartsWith("item.", StringComparison.Ordinal) &&
             int.TryParse(remembered[5..], out var index) && entries.Any(entry => entry.Index == index)) return remembered;
         if (_tab == "search") return "search";

@@ -1,5 +1,6 @@
 #include "DeclarativeRenderer.h"
 #include "WidgetBridgeClient.h"
+#include "WidgetSurfaceFocus.h"
 #include <dwrite.h>
 #include <wrl/client.h>
 #include <filesystem>
@@ -11,20 +12,28 @@
 
 void Require(bool condition, const char* message) { if (!condition) throw std::runtime_error(message); }
 int Run(int argc, wchar_t** argv) {
-    if (argc != 5) return 2;
+    if (argc != 7) return 2;
     Microsoft::WRL::ComPtr<IDWriteFactory> factory;
     Require(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(factory.GetAddressOf()))), "DirectWrite unavailable");
     widgetrail::DeclarativeRenderer renderer{nullptr, factory.Get(), nullptr};
+    widgetrail::input::WidgetFocusGroupMemory focusMemory;
     for (int file = 1; file < argc; ++file) {
         std::ifstream stream(std::filesystem::path(argv[file]), std::ios::binary);
         const std::string text{std::istreambuf_iterator<char>(stream), {}};
         std::wstring error;
         const auto snapshot = widgetrail::testing::ParseWidgetSnapshotResponse(text, error);
         Require(snapshot.has_value(), "Cannot parse production styled snapshot");
+        const auto fixture = std::filesystem::path(argv[file]).stem().wstring();
         for (const auto size : {widgetrail::declarative::Size{980, 700}, widgetrail::declarative::Size{620, 400}}) {
             widgetrail::DeclarativeRenderOptions options;
             options.responsiveViewport = size;
             const auto result = renderer.Render(nullptr, *snapshot, L"item.0", {0, 0, size.width, size.height}, options);
+            if (fixture == L"library-return" || fixture == L"library-refresh") {
+                Require(snapshot->focusGroupEntryRequest.has_value(), "Section did not request focus entry");
+                const auto restored = focusMemory.Resolve(L"ytmusic", *snapshot, snapshot->focusGroupEntryRequest->groupId, result);
+                Require(restored == (fixture == L"library-return" ? L"item.17" : L"item.0"),
+                    "Production focus memory did not restore the playlist on return or reset it on refresh");
+            }
             const auto& panes = result.elementRects.at(L"music.panes");
             const bool playing = result.elementRects.contains(L"player.main.scroll");
             const auto& player = result.elementRects.at(playing ? L"player.main.scroll" : L"player.main.empty");
@@ -76,8 +85,10 @@ int Run(int argc, wchar_t** argv) {
                 Require(controls.x >= player.x && controls.x + controls.width <= player.x + player.width + 1, "Transport escapes player pane");
             }
         }
+        if (fixture == L"library") focusMemory.Remember(L"ytmusic", *snapshot, L"item.17");
+        if (fixture == L"home") focusMemory.Remember(L"ytmusic", *snapshot, L"item.1");
     }
-    std::cout << "PASS native layout: empty, playing, library toolbar and Home at compact and preferred sizes\n";
+    std::cout << "PASS native layout and focus: empty, playing, library toolbar, Home, playlist return and refresh at compact and preferred sizes\n";
     return 0;
 }
 

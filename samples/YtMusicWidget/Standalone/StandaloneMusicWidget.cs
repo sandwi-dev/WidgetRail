@@ -9,15 +9,29 @@ public sealed partial class StandaloneMusicWidget : Widget
     private const int PageSize = 24;
     private readonly object _gate = new();
     private readonly IMusicService _service;
-    private MusicPage _page = new("Home", []);
+    private BrowseState _browse;
+    private readonly Dictionary<string, BrowseState> _sections = new(StringComparer.Ordinal);
+    private string _libraryFilter = "playlists";
+    private MusicPage Page { get => _browse.Page; set => _browse.Page = value; }
     private string _tab = "home", _kind = "home", _value = "", _query = "";
     private string _status = "Loading YouTube Music…";
-    private int _offset;
-    private readonly WidgetCursorResource<BrowseEntry> _collection;
-    private IReadOnlyList<MusicItem> _collectionSource = [];
-    private BrowseEntry[] _collectionItems = [];
+    private WidgetCursorResource<BrowseEntry> Collection => _browse.Collection;
     private long _collectionGeneration;
     private sealed record BrowseEntry(int Index, MusicItem Item, WidgetCollectionItemKey Key);
+    // Fixed section slots plus one reusable detail slot bound retained cursor state.
+    private sealed class BrowseState(string id)
+    {
+        public string ScrollId { get; } = "music.scroll." + id;
+        public string GroupId { get; } = "music.content." + id;
+        public WidgetCursorResource<BrowseEntry> Collection { get; set; } = null!;
+        public MusicPage Page { get; set; } = new("Home", []);
+        public IReadOnlyList<MusicItem> Source { get; set; } = [];
+        public BrowseEntry[] Items { get; set; } = [];
+        public int Offset { get; set; }
+        public string Kind { get; set; } = "";
+        public string Value { get; set; } = "";
+        public bool Loaded { get; set; }
+    }
     private bool _loading, _signingIn, _initialized;
     private long _pageGeneration;
     private long _focusSequence;
@@ -30,15 +44,25 @@ public sealed partial class StandaloneMusicWidget : Widget
     public StandaloneMusicWidget(IMusicService service)
     {
         _service = service;
-        _collection = CreateCursorResource<BrowseEntry>("music.collection", new()
+        _browse = GetBrowseState("home", "");
+        _service.Changed += ServiceChanged;
+    }
+
+    private BrowseState GetBrowseState(string kind, string value)
+    {
+        var id = kind == "library" ? "library." + value : kind is "home" or "search" or "queue" ? kind : "detail";
+        if (_sections.TryGetValue(id, out var existing)) return existing;
+        var state = new BrowseState(id);
+        state.Collection = CreateCursorResource<BrowseEntry>("music.collection." + id, new()
         {
             PageSize = PageSize, MaximumRetainedItems = 96, RetainedItemTarget = 72,
-            PaginationThreshold = 4, LoadPage = LoadCollectionPage,
+            PaginationThreshold = 4, LoadPage = (cursor, direction, limit, token) => LoadCollectionPage(state, cursor, limit, token),
             MapError = _ => new("music.collection.failed", "Could not load more music."),
-            Viewports = [new("music.scroll", item => item.Key, item => "item." + item.Index)
+            Viewports = [new(state.ScrollId, item => item.Key, item => "item." + item.Index)
                 { EstimatedItemExtent = 90 }],
         });
-        _service.Changed += ServiceChanged;
+        _sections.Add(id, state);
+        return state;
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -63,9 +87,9 @@ public sealed partial class StandaloneMusicWidget : Widget
         else
         {
             lock (_gate)
-                if (_tab == "queue" && !ReferenceEquals(_collectionSource, _service.State.Queue))
+                if (_tab == "queue" && !ReferenceEquals(_browse.Source, _service.State.Queue))
                     ReplaceCollection(_service.State.Queue);
-                else _collection.EnsureLoaded();
+                else Collection.EnsureLoaded();
         }
         return ValueTask.CompletedTask;
     }
@@ -79,59 +103,69 @@ public sealed partial class StandaloneMusicWidget : Widget
     private void ServiceChanged()
     {
         lock (_gate)
-            if (IsActive && _tab == "queue" && !ReferenceEquals(_collectionSource, _service.State.Queue))
+            if (IsActive && _tab == "queue" && !ReferenceEquals(_browse.Source, _service.State.Queue))
                 ReplaceCollection(_service.State.Queue);
         if (IsActive) Invalidate();
     }
 
     private WidgetOperationHandle ReplaceCollection(IReadOnlyList<MusicItem> items)
     {
-        _collectionSource = items;
+        _browse.Source = items;
         var generation = ++_collectionGeneration;
-        _collectionItems = items.Select((item, index) =>
+        _browse.Items = items.Select((item, index) =>
             new BrowseEntry(index, item, new($"music.item.{generation}.{index}"))).ToArray();
-        _offset = Math.Min(_offset, Math.Max(0, ((items.Count - 1) / PageSize) * PageSize));
-        _collection.Reset(invalidate: false);
-        return _collection.EnsureLoaded();
+        _browse.Offset = Math.Min(_browse.Offset, Math.Max(0, ((items.Count - 1) / PageSize) * PageSize));
+        Collection.Reset(invalidate: false);
+        return Collection.EnsureLoaded();
     }
 
     private ValueTask<WidgetCursorPage<BrowseEntry>> LoadCollectionPage(
-        WidgetCollectionCursor? cursor, WidgetCursorDirection? direction, int limit, CancellationToken token)
+        BrowseState state, WidgetCollectionCursor? cursor, int limit, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            var start = cursor is null ? _offset : int.Parse(cursor.Value.Value.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
-            var entries = _collectionItems.Skip(start).Take(limit).ToArray();
+            var start = cursor is null ? state.Offset : int.Parse(cursor.Value.Value.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
+            var entries = state.Items.Skip(start).Take(limit).ToArray();
             return ValueTask.FromResult(new WidgetCursorPage<BrowseEntry>(entries,
                 start == 0 ? null : new WidgetCollectionCursor("p" + Math.Max(0, start - limit)),
-                start + entries.Length >= _collectionItems.Length ? null : new WidgetCollectionCursor("p" + (start + entries.Length)))
-                { FirstItemIndex = start, TotalItemCount = _collectionItems.Length });
+                start + entries.Length >= state.Items.Length ? null : new WidgetCollectionCursor("p" + (start + entries.Length)))
+                { FirstItemIndex = start, TotalItemCount = state.Items.Length });
         }
     }
     private void SetStatus(string value) { lock (_gate) _status = value; Invalidate(); }
-    private string ContentGroupId => "music.content." + _focusSequence;
+    private string ContentGroupId => _panel == "setup" ? "music.content.setup" : _browse.GroupId;
     private void EnterContent()
     {
         _focusSequence++;
         _focusRequest = new() { RequestId = _focusSequence, GroupId = ContentGroupId };
     }
 
-    private void LoadPage(int offset = 0, string? returnFocus = null)
+    private void LoadPage(int offset = 0, string? returnFocus = null, bool refresh = true)
     {
         string kind, value;
         long generation;
         lock (_gate)
         {
             kind = _kind; value = _value; generation = ++_pageGeneration;
+            _browse = GetBrowseState(kind, value);
             _focusRequest = null;
-            _offset = offset;
             _panelReturnFocus = returnFocus;
-            _collection.Reset(invalidate: false);
-            _collectionItems = [];
-            _page = new(kind == "search" ? "Search" : kind == "library" ? "Library" : "Home", []);
+            if (!refresh && _browse.Loaded && _browse.Kind == kind && _browse.Value == value)
+            {
+                _loading = false; _status = "";
+                if (kind == "queue" && !ReferenceEquals(_browse.Source, _service.State.Queue))
+                    ReplaceCollection(_service.State.Queue);
+                else Collection.EnsureLoaded();
+                EnterContent(); Invalidate(); return;
+            }
+            _browse.Kind = kind; _browse.Value = value; _browse.Loaded = false;
+            _browse.Offset = offset;
+            Collection.Reset(invalidate: false);
+            _browse.Items = []; _browse.Source = [];
+            Page = new(kind == "search" ? "Search" : kind == "library" ? "Library" : "Home", []);
             _loading = kind is not ("queue" or "setup") && !(kind == "search" && value.Length == 0);
-            if (!_loading) { _status = ""; ReplaceCollection(kind == "queue" ? _service.State.Queue : []); EnterContent(); Invalidate(); return; }
+            if (!_loading) { _status = ""; ReplaceCollection(kind == "queue" ? _service.State.Queue : []); _browse.Loaded = true; EnterContent(); Invalidate(); return; }
             _status = "Loading…";
         }
         Invalidate();
@@ -144,7 +178,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                 lock (_gate)
                 {
                     if (!context.IsCurrent || generation != _pageGeneration) return;
-                    _page = page; _status = "";
+                    Page = page; _status = "";
                     collectionLoad = ReplaceCollection(page.Items);
                 }
                 await collectionLoad.Completion;
@@ -152,6 +186,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                 {
                     if (!context.IsCurrent || generation != _pageGeneration) return;
                     _loading = false;
+                    _browse.Loaded = true;
                     EnterContent();
                 }
                 Invalidate();
@@ -175,16 +210,16 @@ public sealed partial class StandaloneMusicWidget : Widget
         {
             _panel = null;
             _panelReturnFocus = null;
-            _tab = _kind = tab; _value = tab == "library" ? "playlists" : tab == "search" ? _query : "";
+            _tab = _kind = tab; _value = tab == "library" ? _libraryFilter : tab == "search" ? _query : "";
             _history.Clear();
         }
-        LoadPage();
+        LoadPage(refresh: false);
     }
 
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         if (!IsActive || action.Phase is not (ControllerEventPhase.Pressed or ControllerEventPhase.Repeated)) return ValueTask.CompletedTask;
-        if (_collection.TryHandlePagination(action, out _)) return ValueTask.CompletedTask;
+        if (Collection.TryHandlePagination(action, out _)) return ValueTask.CompletedTask;
         var id = action.ActionId;
         if (action.Phase == ControllerEventPhase.Repeated && id is not ("player.seek" or "player.volume")) return ValueTask.CompletedTask;
         if (id == "tab.setup")
@@ -210,8 +245,8 @@ public sealed partial class StandaloneMusicWidget : Widget
         }
         else if (id.StartsWith("library.", StringComparison.Ordinal) && id[8..] is "playlists" or "songs" or "albums" or "artists")
         {
-            lock (_gate) { _kind = "library"; _value = id[8..]; _history.Clear(); }
-            LoadPage();
+            lock (_gate) { _kind = "library"; _value = _libraryFilter = id[8..]; _history.Clear(); }
+            LoadPage(refresh: false);
         }
         else if (id == "back")
         {
@@ -221,7 +256,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                 if (!_history.TryPop(out previous)) return ValueTask.CompletedTask;
                 _kind = previous.Kind; _value = previous.Value;
             }
-            LoadPage(previous.Offset, previous.Focus);
+            LoadPage(previous.Offset, previous.Focus, refresh: false);
         }
         else if (id == "refresh") LoadPage();
         else if (id == "signin")
@@ -233,7 +268,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                 try
                 {
                     var status = await _service.SignInAsync(context.CancellationToken);
-                    if (context.IsCurrent) SetStatus(status);
+                    if (context.IsCurrent) { ResetAccountPages(); SetStatus(status); }
                 }
                 catch (Exception error) when (error is IOException or OperationCanceledException)
                 { if (context.IsCurrent) SetStatus("Sign-in did not complete. Select Sign in to try again."); }
@@ -254,13 +289,17 @@ public sealed partial class StandaloneMusicWidget : Widget
                 { if (context.IsCurrent) SetStatus("Could not cancel sign-in. Close the browser window to finish."); }
             }, WidgetOperationLifetime.Widget);
         }
-        else if (id == "disconnect") RunPlayback(token => _service.DisconnectAsync(token));
+        else if (id == "disconnect") RunPlayback(async token =>
+        {
+            await _service.DisconnectAsync(token);
+            ResetAccountPages();
+        });
         else if (id.StartsWith("item.", StringComparison.Ordinal) || id.StartsWith("radio.", StringComparison.Ordinal) || id.StartsWith("next.", StringComparison.Ordinal))
         {
             var separator = id.IndexOf('.');
             if (!int.TryParse(id[(separator + 1)..], out var index)) return ValueTask.CompletedTask;
             MusicItem[] items;
-            lock (_gate) items = (_tab == "queue" ? _service.State.Queue : _page.Items).ToArray();
+            lock (_gate) items = (_tab == "queue" ? _service.State.Queue : Page.Items).ToArray();
             if (index < 0 || index >= items.Length) return ValueTask.CompletedTask;
             var item = items[index];
             if (id.StartsWith("next.", StringComparison.Ordinal) && item.Kind == "song")
@@ -306,6 +345,23 @@ public sealed partial class StandaloneMusicWidget : Widget
             }
         }
         return ValueTask.CompletedTask;
+    }
+
+    private void ResetAccountPages()
+    {
+        lock (_gate)
+        {
+            ++_pageGeneration;
+            foreach (var state in _sections.Values)
+            {
+                state.Loaded = false;
+                state.Source = []; state.Items = []; state.Page = new("", []);
+                state.Collection.Reset(invalidate: false);
+            }
+            _history.Clear();
+            _kind = _tab; _value = _tab == "library" ? _libraryFilter : _tab == "search" ? _query : "";
+        }
+        LoadPage();
     }
 
     private void RunPlayback(Func<CancellationToken, Task> run) => Operations.RunLatest("music.selection", async context =>

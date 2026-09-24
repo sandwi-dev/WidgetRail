@@ -5,6 +5,8 @@ Home recommendations in square artwork grids under YouTube Music’s section hea
 Search, your Library,
 a local Queue, and a compact pinned player. **Mixed for you** appears first when available.
 Collections scroll continuously as you browse.
+Switching tabs or Library filters remembers your highlighted item while the widget
+is running. Use **Refresh** to reload a collection from the beginning.
 **YTMDesktop is not required.**
 
 <!-- Screenshot: add screenshots/library-player.png showing the library and player. -->

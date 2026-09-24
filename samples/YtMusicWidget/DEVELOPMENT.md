@@ -18,6 +18,12 @@ radio and Play next are host-owned Menu context actions. Play next inserts into 
 the active queue and its unshuffled order, without changing the current song. The SDK compact navigation sits above a persistent left player and right browsing pane,
 following the Spotify widget. Settings is a compact secondary page. Explicit focus-group
 entry requests enter newly loaded pages and restore collection selection on Back.
+Home, Search, Queue and each of the four Library filters retain separate cursor
+windows and stable focus-group/scroll IDs. Section returns reuse loaded results;
+Refresh, a new search, account changes and changed queue contents reset the relevant
+collection. Library remembers its last filter. One reusable detail slot bounds
+playlist/album/artist state; Back reuses the parent section or reloads older detail
+routes around their saved entry. This state is in memory, not persisted across restarts.
 
 - Page operations use the SDK's Active lifetime and latest-request cancellation.
 - Sign-in and selected playback use the Widget lifetime, surviving Background.
