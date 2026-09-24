@@ -41,6 +41,7 @@
 #include "WidgetSessionCoordinator.h"
 #include "WidgetSurfaceCoordinator.h"
 #include "WidgetInteractionSession.h"
+#include "WidgetScrollPaginationRoute.h"
 #include "TextEntryModal.h"
 #include "TextEntryActionAdmission.h"
 #include "TrayLayout.h"
@@ -13775,20 +13776,25 @@ private:
             interactionSession_.RetireScrollPagination(widgetId, reason));
     }
 
+    [[nodiscard]] std::optional<widgetrail::input::WidgetInteractionAuthority>
+    ScrollPaginationAuthorityFor(
+        const std::wstring_view widgetId,
+        const widgetrail::WidgetSnapshot* renderedSnapshot = nullptr) const {
+        return widgetrail::input::ResolveScrollPaginationAuthority(
+            state_.surface(), state_.activeWidget(), widgetId,
+            sessions_.Presentation(widgetId), sessions_.FindDescriptor(widgetId),
+            !!sessions_.Failure(widgetId), renderedSnapshot);
+    }
+
     void ReconcileScrollPaginationPrefetch(
         const std::wstring_view widgetId,
         const widgetrail::WidgetSnapshot& snapshot,
-        const widgetrail::WidgetDescriptor& descriptor,
         const widgetrail::RenderResult& renderResult) {
+        const auto authority = ScrollPaginationAuthorityFor(widgetId, &snapshot);
+        if (!authority) return;
         PublishScrollPaginationOutcome(
             interactionSession_.ReconcileScrollPagination(
-                {
-                    widgetId,
-                    &snapshot,
-                    descriptor.runtimeGeneration,
-                    descriptor.presentationGeneration,
-                    false,
-                },
+                *authority,
                 renderResult,
                 GetTickCount64()));
     }
@@ -13819,26 +13825,17 @@ private:
     void DispatchQueuedScrollPaginationPrefetch() {
         constexpr std::size_t maximumDispatches = 16;
         for (std::size_t index = 0; index < maximumDispatches; ++index) {
-            if (state_.surface() != widgetrail::Surface::Widget) {
-                ClearScrollPaginationPrefetch(L"stale-route");
-                return;
-            }
             const std::wstring widgetId{state_.activeWidget()};
-            const auto* snapshot = InteractionSnapshotFor(widgetId);
-            const auto* descriptor = sessions_.FindDescriptor(widgetId);
-            if (!snapshot || !descriptor || sessions_.Failure(widgetId)) {
+            const auto authority = ScrollPaginationAuthorityFor(widgetId);
+            if (!authority) {
                 ClearScrollPaginationPrefetch(L"stale-route");
                 return;
             }
+            const auto* snapshot = authority->semantics;
+            const auto* descriptor = sessions_.FindDescriptor(widgetId);
             auto [request, session] =
                 interactionSession_.AcquireScrollPaginationDispatch(
-                    {
-                        widgetId,
-                        snapshot,
-                        descriptor->runtimeGeneration,
-                        descriptor->presentationGeneration,
-                        false,
-                    },
+                    *authority,
                     lastWidgetRenderResult_,
                     GetTickCount64());
             PublishScrollPaginationOutcome(session);
@@ -18835,7 +18832,7 @@ private:
                 if (!inertRetainedSnapshot && result.succeeded) {
                     ReconcileWindowPreviews(*snapshot, result);
                     ReconcileScrollPaginationPrefetch(
-                        widget, semanticSnapshot, *descriptor, result);
+                        widget, semanticSnapshot, result);
                     if (auto next = interactionSession_.ResolvePendingCollectionFocus(
                             {widget, &semanticSnapshot, descriptor->runtimeGeneration, descriptor->presentationGeneration, false},
                             interactionSession_.focusedElementId(), result)) {

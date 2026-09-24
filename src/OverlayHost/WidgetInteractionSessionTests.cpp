@@ -1,5 +1,6 @@
 #include "WidgetInteractionSession.h"
 #include "WidgetSessionCoordinator.h"
+#include "WidgetScrollPaginationRoute.h"
 #include "PopupMenuMetrics.h"
 
 #include <algorithm>
@@ -1823,6 +1824,89 @@ void PressedAndAdmissionReconciliation() {
           "idempotent lifecycle cleanup returns no unrelated damage");
 }
 
+void PreviewPaginationUsesDispatchAuthority() {
+    using namespace widgetrail;
+    using namespace widgetrail::input;
+    auto snapshot = PagedSnapshot();
+    snapshot.root.children[0].collectionStartIndex = 0;
+    snapshot.root.children[0].scrollNearStartActionId.clear();
+    WidgetDescriptor descriptor;
+    descriptor.runtimeGeneration = L"runtime-7";
+    descriptor.presentationGeneration = L"presentation-9";
+    WidgetSessionPresentation presentation{
+        &snapshot, WidgetPresentationAuthority::Current, WidgetLifecycleState::Visible};
+    WidgetInteractionSession session;
+    const auto route = [&](const WidgetSnapshot* rendered = nullptr) {
+        return ResolveScrollPaginationAuthority(Surface::Widget,
+            L"paged.widget", L"paged.widget", presentation, &descriptor, false, rendered);
+    };
+    std::uint64_t now{};
+    const auto paint = [&](const RenderResult& geometry) {
+        const auto authority = route(&snapshot);
+        return authority ? session.ReconcileScrollPagination(*authority, geometry, ++now)
+                         : ScrollPaginationSessionOutcome{};
+    };
+    auto geometry = PagedRender(0, 0);
+    std::size_t queued{};
+    // Artwork arrivals and scale changes repaint a visible tray preview. None
+    // may post a pagination request that the interactive dispatcher will deny.
+    for (const float height : {80.0F, 180.0F, 360.0F}) {
+        auto& viewport = geometry.scrollViewports.at(L"page.scroll");
+        viewport.rect.height = height;
+        viewport.maximumOffset = std::max(0.0F, 220.0F - height);
+        for (int pass = 0; pass < 500; ++pass) queued += paint(geometry).dispatchReady;
+    }
+    Check(queued == 0 && !route(), "repeated resized preview paints never create undispatchable pagination");
+
+    presentation.lifecycle = WidgetLifecycleState::Interactive;
+    Check(paint(geometry).dispatchReady, "activating the preview can fill its underfilled viewport");
+    const auto interactive = route();
+    Check(interactive && session.AcquireScrollPaginationDispatch(*interactive, geometry, ++now).first,
+          "the same route admits queued pagination dispatch");
+    queued = 0;
+    for (int pass = 0; pass < 500; ++pass) queued += paint(geometry).dispatchReady;
+    Check(queued == 0, "repaints cannot duplicate the interactive in-flight request");
+
+    presentation.lifecycle = WidgetLifecycleState::Visible;
+    Check(!route(), "demotion removes pagination action authority");
+    (void)session.RetireScrollPagination({}, L"stale-route");
+    queued = 0;
+    for (int pass = 0; pass < 500; ++pass) queued += paint(geometry).dispatchReady;
+    Check(queued == 0, "retiring a demoted request cannot begin a repaint/requeue loop");
+    presentation.lifecycle = WidgetLifecycleState::Interactive;
+    Check(paint(geometry).dispatchReady, "returning to the widget rearms pagination once");
+    presentation.lifecycle = WidgetLifecycleState::Visible;
+    Check(!route(), "demotion between queue and dispatch denies the queued request");
+    const auto retired = session.RetireScrollPagination({}, L"stale-route");
+    Check(retired.diagnostics.size() == 1 && !paint(geometry).dispatchReady,
+          "a queued request retires once without requeueing from the visible preview");
+    presentation.lifecycle = WidgetLifecycleState::Interactive;
+
+    auto obsolete = snapshot;
+    --obsolete.sequence;
+    Check(!route(&obsolete), "a rendered old checkpoint cannot queue against a newer interactive snapshot");
+    presentation.authority = WidgetPresentationAuthority::RefreshRetained;
+    Check(route(&snapshot).has_value(), "ordinary refresh retains its admitted interactive pagination route");
+    presentation.authority = WidgetPresentationAuthority::FailureRetained;
+    Check(!route(), "retained failure pixels do not grant pagination authority");
+    presentation.authority = WidgetPresentationAuthority::Current;
+    presentation.lifecycle = WidgetLifecycleState::Background;
+    Check(!route(), "background widgets cannot queue pagination");
+    presentation.lifecycle = WidgetLifecycleState::Interactive;
+    Check(!ResolveScrollPaginationAuthority(Surface::Hidden, L"paged.widget", L"paged.widget",
+              presentation, &descriptor, false), "hidden surfaces cannot queue or dispatch pagination");
+    Check(!ResolveScrollPaginationAuthority(Surface::Dashboard, L"paged.widget", L"paged.widget",
+              presentation, &descriptor, false), "dashboard surfaces cannot queue or dispatch pagination");
+    Check(!ResolveScrollPaginationAuthority(Surface::Widget, L"other.widget", L"paged.widget",
+              presentation, &descriptor, false), "outgoing widgets cannot queue against another active widget");
+    Check(!ResolveScrollPaginationAuthority(Surface::Widget, L"paged.widget", L"paged.widget",
+              presentation, &descriptor, true), "failed widgets cannot admit pagination");
+    Check(!ResolveScrollPaginationAuthority(Surface::Widget, L"paged.widget", L"paged.widget",
+              presentation, nullptr, false), "removed widgets cannot admit pagination");
+    presentation.snapshot = nullptr;
+    Check(!route(), "missing snapshots cannot admit pagination");
+}
+
 void ColdCollectionAndReversePrefetch() {
     using namespace widgetrail::input;
     auto snapshot = PagedSnapshot(); snapshot.root.children[0].collectionStartIndex = 0;
@@ -2372,6 +2456,7 @@ int main() {
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();
     ColdCollectionAndReversePrefetch();
+    PreviewPaginationUsesDispatchAuthority();
     CoalescedRefreshKeepsSameEdgeButCompletesOldPrefetch();
     TerminalReverseIntentCannotBlockViewportRefill();
     CursorBoundaryAndViewportDemand();
