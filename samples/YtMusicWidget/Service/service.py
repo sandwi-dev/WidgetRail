@@ -7,6 +7,7 @@ import concurrent.futures
 import ctypes
 from ctypes import wintypes
 import http.server
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,7 +18,7 @@ import subprocess
 import sys
 import threading
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 MAX_ITEMS = 500
 MAX_LINE = 2 * 1024 * 1024
@@ -73,6 +74,136 @@ def protected(data, decrypt=False):
         return ctypes.string_at(target.data, target.size)
     finally:
         kernel.LocalFree(target.data)
+
+
+def valid_stream_url(url):
+    if not isinstance(url, str) or len(url) > 16384 or any(c in url for c in "\r\n\0"):
+        return False
+    try:
+        parsed = urlparse(url)
+        return (parsed.scheme == "https" and (parsed.hostname or "").endswith(".googlevideo.com")
+                and parsed.username is None and parsed.password is None and parsed.port in (None, 443))
+    except ValueError:
+        return False
+
+
+def stream_expiry(url, now):
+    try:
+        values = parse_qs(urlparse(url).query, max_num_fields=256).get("expire", [])
+        if len(values) == 1 and values[0].isdigit():
+            return min(int(values[0]), now + 6 * 60 * 60)
+    except (ValueError, OverflowError):
+        pass
+    return None
+
+
+class StreamUrlCache:
+    """Bounded current-user encrypted URLs; never stores audio or loopback tokens."""
+    MAX_ENTRIES = 512
+    MAX_BYTES = 4 * 1024 * 1024
+    SAFETY_MARGIN = 120
+    HEADER_NAMES = {"user-agent", "referer", "origin"}
+
+    def __init__(self, root, auth):
+        self.root = Path(root)
+        self.path = self.root / "stream-urls.dpapi"
+        self.account = self.fingerprint(auth)
+        self.entries = {}
+        if self.safe_path():
+            try:
+                with self.path.open("rb") as file:
+                    encrypted = file.read(self.MAX_BYTES + 1)
+                if len(encrypted) > self.MAX_BYTES:
+                    return
+                document = json.loads(protected(encrypted, decrypt=True))
+                if document.get("version") != 1 or document.get("account") != self.account:
+                    return
+                entries = document.get("entries")
+                if not isinstance(entries, dict) or len(entries) > self.MAX_ENTRIES:
+                    return
+                now = time.time()
+                self.entries = {video: value for video, value in entries.items() if self.valid(video, value, now)}
+            except (OSError, ValueError, TypeError, AttributeError, RecursionError):
+                pass
+
+    @staticmethod
+    def fingerprint(auth):
+        return hashlib.sha256(json.dumps(auth, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+    def safe_path(self):
+        return not any(path.is_symlink() or path.is_junction() for path in (self.root, self.path))
+
+    @classmethod
+    def valid(cls, video, entry, now):
+        if not isinstance(video, str) or not VIDEO_ID.fullmatch(video) or not isinstance(entry, dict):
+            return False
+        url, headers, expiry = entry.get("url"), entry.get("headers"), entry.get("expires")
+        if not valid_stream_url(url) or not isinstance(headers, dict) or len(headers) > 3:
+            return False
+        if not all(isinstance(key, str) and key.lower() in cls.HEADER_NAMES and isinstance(value, str)
+                   and len(value) <= 2048 and not any(c in value for c in "\r\n\0") for key, value in headers.items()):
+            return False
+        signed_expiry = stream_expiry(url, now)
+        return (isinstance(expiry, (float, int)) and signed_expiry is not None
+                and now + cls.SAFETY_MARGIN < expiry <= signed_expiry)
+
+    def get(self, video):
+        entry = self.entries.pop(video, None)
+        if entry is None or not self.valid(video, entry, time.time()):
+            return None
+        self.entries[video] = entry
+        return dict(entry, headers=dict(entry["headers"]))
+
+    def put(self, video, stream):
+        now = time.time()
+        entry = {name: stream[name] for name in ("url", "headers", "expires")}
+        if not self.valid(video, entry, now):
+            return
+        self.entries = {key: value for key, value in self.entries.items() if self.valid(key, value, now)}
+        self.entries.pop(video, None)
+        self.entries[video] = entry
+        sizes = {key: len(json.dumps(value, separators=(",", ":")).encode("utf-8")) + len(key) + 8
+                 for key, value in self.entries.items()}
+        total = sum(sizes.values())
+        while len(self.entries) > self.MAX_ENTRIES or total > self.MAX_BYTES - 65536:
+            oldest = next(iter(self.entries))
+            self.entries.pop(oldest)
+            total -= sizes[oldest]
+        self.save()
+
+    def remove(self, video):
+        if self.entries.pop(video, None) is not None:
+            self.save()
+
+    def reset(self, auth):
+        self.account = self.fingerprint(auth)
+        self.entries.clear()
+        if self.safe_path():
+            try: self.path.unlink(missing_ok=True)
+            except OSError: pass
+
+    def save(self):
+        if not self.safe_path():
+            return
+        temporary = None
+        try:
+            import tempfile
+            data = json.dumps({"version": 1, "account": self.account, "entries": self.entries}, separators=(",", ":")).encode("utf-8")
+            if len(data) > self.MAX_BYTES:
+                return
+            encrypted = protected(data)
+            if len(encrypted) > self.MAX_BYTES:
+                return
+            with tempfile.NamedTemporaryFile(dir=self.root, prefix=".stream-cache-", suffix=".tmp", delete=False) as file:
+                temporary = Path(file.name)
+                file.write(encrypted)
+            os.replace(temporary, self.path)
+        except OSError:
+            pass  # Cache IO cannot prevent playback.
+        finally:
+            if temporary is not None:
+                try: temporary.unlink(missing_ok=True)
+                except OSError: pass
 
 
 def normalize(item, kind=None):
@@ -206,6 +337,7 @@ class MusicService:
         self.auth_cancel = threading.Event()
         self.generation = 0
         self.cache = {}
+        self.url_cache = StreamUrlCache(self.root, self.auth)
         self.streams = {}
         self.stream_keys = {}
         self.resolving = {}
@@ -245,6 +377,7 @@ class MusicService:
                 self.cache.clear()
                 self.streams.clear()
                 self.stream_keys.clear()
+                self.url_cache.reset(self.auth)
                 self.auth_path.unlink(missing_ok=True)
                 generation = self.generation
             self.retire_resolvers(generation)
@@ -321,6 +454,7 @@ class MusicService:
                         self.cache.clear()
                         self.streams.clear()
                         self.stream_keys.clear()
+                        self.url_cache.reset(self.auth)
                         generation = self.generation
                     self.retire_resolvers(generation)
                     return {"connected": True}
@@ -402,16 +536,30 @@ class MusicService:
                 self.cache[key] = (time.monotonic() + 300, result)
         return result
 
-    def resolve(self, args, *, speculative=False):
+    def resolve(self, args, *, speculative=False, renew=None):
         video = str(args.get("videoId", ""))
         if not VIDEO_ID.fullmatch(video):
             raise ValueError("invalid_video")
         with self.lock:
-            key = self.stream_keys.get(video)
-            if key and self.streams.get(key, {}).get("expires", 0) > time.time() + 120:
-                return {"url": self.local_url(key)}
-            auth = dict(self.auth)
             generation = self.generation
+            renew_key = None
+            if renew is not None:
+                renew_key, previous = renew
+                current = self.streams.get(renew_key)
+                if current is None or current["generation"] != generation or current["video"] != video:
+                    raise RuntimeError("session_changed")
+                if current is not previous:
+                    return {"url": self.local_url(renew_key)}
+                current["expires"] = 0
+                self.url_cache.remove(video)
+            else:
+                key = self.stream_keys.get(video)
+                if key and self.streams.get(key, {}).get("expires", 0) > time.time() + StreamUrlCache.SAFETY_MARGIN:
+                    return {"url": self.local_url(key)}
+                cached = self.url_cache.get(video)
+                if cached is not None:
+                    return self.register_stream(video, cached, generation)
+            auth = dict(self.auth)
             identity = (generation, video)
             pending = self.resolving.get(identity)
             owner = pending is None
@@ -423,7 +571,7 @@ class MusicService:
             # repeating YouTube requests and the JavaScript signature solver.
             return pending.result(timeout=40)
         try:
-            result = self.resolve_uncached(video, auth, generation, speculative=speculative)
+            result = self.resolve_uncached(video, auth, generation, speculative=speculative, key=renew_key)
             pending.set_result(result)
             return result
         except Exception as error:
@@ -434,24 +582,33 @@ class MusicService:
                 if self.resolving.get(identity) is pending:
                     del self.resolving[identity]
 
-    def resolve_uncached(self, video, auth, generation, *, speculative=False):
+    def resolve_uncached(self, video, auth, generation, *, speculative=False, key=None):
         lane = self.prefetch_resolver if speculative else self.foreground_resolver
         info = lane.extract(video, auth, generation, self.is_current_session)
         url = str(info.get("url", ""))
-        parsed = urlparse(url)
-        if parsed.scheme != "https" or not (parsed.hostname or "").endswith(".googlevideo.com"):
+        if not valid_stream_url(url):
             raise ValueError("unsupported_stream")
-        key = secrets.token_urlsafe(24)
-        headers = {k: v for k, v in info.get("http_headers", {}).items() if k.lower() in {"user-agent", "referer", "origin"}}
+        now = time.time()
+        headers = {k: v for k, v in info.get("http_headers", {}).items() if k.lower() in StreamUrlCache.HEADER_NAMES}
+        stream = {"url": url, "headers": headers, "expires": stream_expiry(url, now) or now + 900}
         with self.lock:
-            if generation != self.generation or self.stopping.is_set():
+            if not self.is_current_session(generation):
                 raise RuntimeError("session_changed")
-            if len(self.streams) >= 32:
-                self.streams.pop(next(iter(self.streams)))
-            self.streams[key] = {"url": url, "headers": headers, "expires": time.time() + 900}
-            self.stream_keys[video] = key
-            if len(self.stream_keys) > 64:
-                self.stream_keys.pop(next(iter(self.stream_keys)))
+            self.url_cache.put(video, stream)
+            return self.register_stream(video, stream, generation, key)
+
+    def register_stream(self, video, stream, generation, key=None):
+        # Called under the service lock. Restarted helpers always mint fresh
+        # loopback handles; only the signed upstream URL is persisted.
+        if not self.is_current_session(generation):
+            raise RuntimeError("session_changed")
+        key = key or secrets.token_urlsafe(24)
+        if key not in self.streams and len(self.streams) >= 32:
+            self.streams.pop(next(iter(self.streams)))
+        self.streams[key] = dict(stream, video=video, generation=generation)
+        self.stream_keys[video] = key
+        if len(self.stream_keys) > 64:
+            self.stream_keys.pop(next(iter(self.stream_keys)))
         return {"url": self.local_url(key)}
 
     def local_url(self, key):
@@ -472,26 +629,45 @@ class MusicService:
                 if not stream:
                     self.send_error(404)
                     return
-                headers = dict(stream["headers"])
                 requested_range = self.headers.get("Range", "")
-                if requested_range and re.fullmatch(r"bytes=\d*-\d*", requested_range):
-                    headers["Range"] = requested_range
                 try:
-                    with requests.get(stream["url"], headers=headers, stream=True, timeout=(8, 15), allow_redirects=False) as response:
-                        if response.status_code not in (200, 206):
-                            self.send_error(502)
-                            return
-                        self.send_response(response.status_code)
-                        for name in ("Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"):
-                            if name in response.headers:
-                                self.send_header(name, response.headers[name])
-                        self.send_header("Access-Control-Allow-Origin", "https://ytmusic.widgetrail.internal")
-                        self.send_header("Cache-Control", "no-store")
-                        self.end_headers()
-                        for chunk in response.iter_content(65536):
-                            if service.stopping.is_set(): break
-                            self.wfile.write(chunk)
-                except (OSError, requests.RequestException):
+                    for attempt in range(2):
+                        headers = dict(stream["headers"])
+                        if requested_range and re.fullmatch(r"bytes=\d*-\d*", requested_range):
+                            headers["Range"] = requested_range
+                        with requests.get(stream["url"], headers=headers, stream=True, timeout=(8, 15), allow_redirects=False) as response:
+                            if response.status_code in (401, 403, 404, 410) and attempt == 0:
+                                pass  # Close the rejected response before resolving again.
+                            elif response.status_code not in (200, 206):
+                                if response.status_code in (401, 403, 404, 410):
+                                    with service.lock:
+                                        if stream["generation"] == service.generation:
+                                            stream["expires"] = 0
+                                            service.url_cache.remove(stream["video"])
+                                self.send_error(502)
+                                return
+                            else:
+                                self.send_response(response.status_code)
+                                for name in ("Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"):
+                                    if name in response.headers:
+                                        self.send_header(name, response.headers[name])
+                                self.send_header("Access-Control-Allow-Origin", "https://ytmusic.widgetrail.internal")
+                                self.send_header("Cache-Control", "no-store")
+                                self.end_headers()
+                                for chunk in response.iter_content(65536):
+                                    if service.stopping.is_set(): break
+                                    self.wfile.write(chunk)
+                                return
+                        result = service.resolve({"videoId": stream["video"]}, renew=(parts[2], stream))
+                        resolved_key = result["url"].rsplit("/", 1)[-1]
+                        with service.lock:
+                            refreshed = service.streams[resolved_key]
+                            if (service.streams.get(parts[2]) is stream and
+                                    refreshed["generation"] == stream["generation"]):
+                                service.streams[parts[2]] = refreshed
+                            stream = refreshed
+                except Exception:
+                    # Provider exceptions can contain signed URLs; do not log them.
                     self.close_connection = True
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         server.daemon_threads = True

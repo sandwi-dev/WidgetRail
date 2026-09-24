@@ -56,13 +56,20 @@ It does not reuse or delete YTMDesktop's pairing token or application data.
 the last queued entry to make room. If the current song is last, it removes the
 first (oldest played) entry instead, keeping the current and next songs intact.
 
+**Where is the stream cache?** It is encrypted for your Windows account in
+`%LOCALAPPDATA%\WidgetRail\applications\widgetrail.samples.ytmusic\stream-urls.dpapi`.
+It holds at most 512 URLs and 4 MB, with no audio downloads. Disconnecting clears it.
+You can also delete just this file after quitting WidgetRail; it rebuilds as needed.
+
 **Is the whole queue preloaded?** Only its metadata is loaded. The player buffers
 the current song and prepares the next song’s stream URL when possible; it does not
 download audio for the whole queue.
 
 **Why does a song take time to start?** A new song needs a playable stream resolved
-from YouTube before audio can begin. The next queued song is prepared in advance,
-but uncached selections can still take several seconds.
+from YouTube before audio can begin. Valid stream URLs are cached across restarts,
+and the next queued song is prepared in advance. Uncached selections can still take
+several seconds. URLs expire—often after about six hours—or can be rejected earlier;
+the player then resolves a fresh URL.
 
 **A song does not start.** Select it again to resolve a fresh stream. If your library
 also fails to load, reconnect in Settings. YouTube changes can require a widget update.

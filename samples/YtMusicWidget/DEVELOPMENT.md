@@ -38,7 +38,14 @@ entry requests enter newly loaded pages and restore collection selection on Back
   temporary instance within the existing worker-pool bound. Instances are retired
   after extraction failures, after 32 extractions, on account changes, and on exit.
   Busy old-session instances close after their request finishes; their results cannot
-  become playable in a newer session. No persistent resolver disk cache is used.
+  become playable in a newer session. yt-dlp's internal disk cache remains disabled.
+- Resolved upstream URLs use a separate DPAPI-protected `stream-urls.dpapi` file in
+  the widget's application-data directory. It is bound to the saved account session,
+  limited to 512 entries / 4 MB, atomically replaced, and disposable on corruption or
+  IO failure. Only URLs with an explicit signed expiry are persisted, capped at six
+  hours with a two-minute reuse margin. Audio, cookies and local capability tokens
+  are not cached there. Account changes clear it. The audio proxy retries resolution
+  once on HTTP 401/403/404/410, retains Range requests, and keeps upstream URLs private.
 - The player stops on parent exit or stdin closure. Application disposal closes
   both helpers, with bounded forced cleanup if they do not exit. The player drains
   its dedicated browser process; the parent removes its temporary profile after
