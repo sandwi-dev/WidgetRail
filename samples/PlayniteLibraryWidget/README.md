@@ -39,11 +39,15 @@ You can reopen connection settings through **Menu → Playnite connection**.
 | A | Open a control or launch the selected installed game |
 | X | Open options for the selected game |
 | Y | Refresh Home or Browse |
-| Menu | Open Library (Browse), Categories, Hidden games, or Playnite connection |
+| Menu | Open Categories, Hidden games, or Playnite connection |
 | B | Return from a nested page |
 
-Home shows installed games. Open **Menu → Library** for Browse, which includes uninstalled games too; its **Installed**
+Use **Home** and **Library** in the header to switch views. Home shows installed
+games; Library opens Browse, which includes uninstalled games too. Its **Installed**
 filter narrows the list. Install those games through Playnite, then refresh the widget.
+
+The interface follows your selected WidgetRail theme. Categories open by selecting
+the row; game covers retain their original artwork colors.
 
 ![Browsing a Playnite library with search, filters, and a game grid](screenshots/library.png)
 

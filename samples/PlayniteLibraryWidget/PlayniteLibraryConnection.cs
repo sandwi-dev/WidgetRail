@@ -31,18 +31,18 @@ internal static class PlayniteLibraryConnectionPresentation
         {
             PlayniteBridgeConnectionKind.Connected => (
                 "Playnite Bridge connected",
-                "The bounded local library API is compatible.", AlertTone.Success),
+                "Your library is ready to browse.", AlertTone.Success),
             PlayniteBridgeConnectionKind.AuthenticationRequired => (
                 "Authentication required",
                 "The saved token was rejected. Enter the current Playnite Bridge token.",
                 AlertTone.Warning),
             PlayniteBridgeConnectionKind.Incompatible => (
                 "Playnite Bridge is incompatible",
-                "The local service does not expose the required bounded games API.",
+                "Update Playnite Bridge to a compatible version, then try again.",
                 AlertTone.Warning),
             PlayniteBridgeConnectionKind.Malformed => (
                 "Playnite Bridge returned invalid data",
-                "The local service response did not match the bounded games contract.",
+                "Restart Playnite and test the connection again.",
                 AlertTone.Danger),
             PlayniteBridgeConnectionKind.Unavailable when state.Code == "permission_required" => (
                 "Permission required",
@@ -68,10 +68,6 @@ internal static class PlayniteLibraryConnectionPresentation
             .AddClasses("playnite-library-control", "playnite-library-playnite-token");
         var actions = new List<WidgetElement>
         {
-            UI.Button("Back", PlayniteLibraryWidget.PlayniteBackActionId,
-                    PlayniteLibraryWidget.PlayniteBackActionId)
-                .Disabled(!state.Interactive)
-                .AddClasses("playnite-library-control"),
             UI.Button("Test connection", PlayniteLibraryWidget.PlayniteRefreshActionId,
                     PlayniteLibraryWidget.PlayniteRefreshActionId)
                 .Disabled(!enabled || !configured)
@@ -91,9 +87,10 @@ internal static class PlayniteLibraryConnectionPresentation
                         UI.Text("Playnite connection", "playnite-library.playnite.title")
                             .Classes("playnite-library-title"))
                     .Classes("playnite-library-playnite-heading"),
-                    UI.Row("playnite-library.playnite.actions", actions.ToArray())
-                        .Classes("playnite-library-actions",
-                            "playnite-library-playnite-actions"))
+                    UI.Button("Back", PlayniteLibraryWidget.PlayniteBackActionId,
+                            PlayniteLibraryWidget.PlayniteBackActionId)
+                        .Disabled(!state.Interactive)
+                        .AddClasses("playnite-library-control"))
                 .Classes("playnite-library-header", "playnite-library-playnite-header"),
             UI.Text("Local service · localhost:19821",
                     "playnite-library.playnite.endpoint",
@@ -102,9 +99,11 @@ internal static class PlayniteLibraryConnectionPresentation
             UI.Alert(title, detail, tone, "playnite-library.playnite.status"),
             UI.Stack("playnite-library.playnite.credential",
                     UI.SectionHeader("Protected token", "playnite-library.playnite.credential.header",
-                        description: "Stored privately and injected only into this local connection."),
+                        description: "Saved securely in Windows Credential Manager."),
                     token)
                 .Classes("playnite-library-playnite-card"),
+            UI.Row("playnite-library.playnite.actions", actions.ToArray())
+                .Classes("playnite-library-actions", "playnite-library-playnite-actions"),
         };
         if (state.Feedback is { } feedback)
             children.Add(UI.Toast(feedback.Title, feedback.Message, feedback.Tone,
@@ -116,7 +115,10 @@ internal static class PlayniteLibraryConnectionPresentation
                     UI.Text("Checking the local connection…",
                         "playnite-library.playnite.busy.text"))
                 .Classes("playnite-library-playnite-card"));
-        var shell = UI.Stack("playnite-library.playnite.shell", children.ToArray())
+        var shell = UI.Stack("playnite-library.playnite.shell",
+                children[0],
+                UI.VerticalScroll("playnite-library.playnite.content", children.Skip(1).ToArray())
+                    .Classes("playnite-library-playnite-content"))
             .Classes("playnite-library-playnite-shell");
         var root = UI.Stack("playnite-library.playnite.root", shell)
             .Classes("playnite-library-playnite");

@@ -645,6 +645,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 if (cleared.Result)
                     ReloadQuery(retainCurrentItems: !resetBrowseViewport);
                 return;
+            case PlayniteLibraryActions.HomeOpen:
+                if (LifecycleState != WidgetLifecycleState.Interactive ||
+                    _navigation.Value.Route != PlayniteLibraryRoute.Browse) return;
+                if (_navigation.Navigate(PlayniteLibraryRoute.Library, action.SourceElementId) ==
+                    WidgetNavigationResult.Changed)
+                    await ReturnToLibraryAsync(resetPresentation: false).ConfigureAwait(false);
+                return;
             case PlayniteLibraryActions.BrowseOpen:
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
                     _navigation.Value.Route != PlayniteLibraryRoute.Library) return;

@@ -87,32 +87,33 @@ internal static class PlayniteLibraryPresentation
         };
         var headerStatus = state.Route == PlayniteLibraryRoute.Browse
             ? BrowseStatus(state) : state.Status;
-        WidgetElement header = state.Route == PlayniteLibraryRoute.Library
-            ? UI.Row("playnite-library.home.actions",
+        WidgetElement header = UI.Stack("playnite-library.header",
+                UI.Text(routeTitle, "playnite-library.title", routeTitle)
+                    .Classes("playnite-library-title"),
+                UI.Text(headerStatus, "playnite-library.status", headerStatus)
+                    .Classes("playnite-library-status"))
+            .Classes("playnite-library-header");
+        if (state.Route == PlayniteLibraryRoute.Library)
+            header = UI.Row("playnite-library.home.actions",
+                    PrimaryNavigation(state, renderActionsEnabled),
                     UI.Row("playnite-library.home.utilities",
-                            UI.ControllerHint(ControllerButton.Y, "Refresh", "playnite-library.hint.refresh"))
-                        .Classes("playnite-library-home-utilities"),
-                    LibraryNavigation(state, renderActionsEnabled))
-                .Classes("playnite-library-home-actions")
-            : UI.Stack("playnite-library.header",
-                UI.Text(routeTitle, "playnite-library.compact.title", routeTitle)
-                    .Classes("playnite-library-title")
-                    .VisibleWhen(ResponsiveVisibility.CompactOnly),
-                UI.Text(headerStatus, "playnite-library.compact.status", headerStatus)
-                    .Classes("playnite-library-status")
-                    .VisibleWhen(ResponsiveVisibility.CompactOnly),
-                UI.Stack("playnite-library.header.expanded",
-                        UI.Text("GAMES", "playnite-library.eyebrow", "Games")
-                            .Classes("playnite-library-eyebrow"),
-                        UI.Text(routeTitle, "playnite-library.title", routeTitle)
-                            .Classes("playnite-library-title"),
-                        UI.Text(headerStatus, "playnite-library.status", headerStatus)
-                            .Classes("playnite-library-status"))
-                    .Classes("playnite-library-header-expanded")
-                    .VisibleWhen(ResponsiveVisibility.ExpandedOnly))
-                .Classes("playnite-library-header", "playnite-library-header-copy");
+                            UI.ControllerHint(ControllerButton.Y, "Refresh", "playnite-library.hint.refresh"),
+                            LibraryNavigation(state, renderActionsEnabled))
+                        .Classes("playnite-library-home-utilities"))
+                .Classes("playnite-library-home-actions");
         if (state.Route == PlayniteLibraryRoute.Browse)
-            header = header.AddClasses("playnite-library-browse-header");
+            header = UI.Stack("playnite-library.header",
+                    UI.Row("playnite-library.browse.toolbar",
+                            PrimaryNavigation(state, renderActionsEnabled),
+                            LibraryNavigation(state, renderActionsEnabled))
+                        .Classes("playnite-library-browse-toolbar"),
+                    UI.Row("playnite-library.browse.title-row",
+                            UI.Text(routeTitle, "playnite-library.title", routeTitle)
+                                .Classes("playnite-library-title"),
+                            UI.Text(headerStatus, "playnite-library.status", headerStatus)
+                                .Classes("playnite-library-status"))
+                        .Classes("playnite-library-browse-title-row"))
+                .Classes("playnite-library-browse-header");
         if (state.Route == PlayniteLibraryRoute.Categories)
             header = UI.Row("playnite-library.categories.header",
                     UI.Stack("playnite-library.categories.heading",
@@ -285,26 +286,21 @@ internal static class PlayniteLibraryPresentation
         else if (state.Route == PlayniteLibraryRoute.Categories)
         {
             var categoryRows = state.Organization.Categories.Select(category =>
-                UI.Card("playnite-library.category.card." + category.Id,
-                    UI.Row("playnite-library.category.row." + category.Id,
+                UI.ActionSurface(PlayniteLibraryActions.CategoryOpen(category.Id),
+                        "playnite-library.category.open-button." + category.Id,
+                        $"{category.Name}, {GameCount(category.SavedIds.Count)}",
+                        ActionSurfaceOrientation.Horizontal,
                         UI.Stack("playnite-library.category.copy." + category.Id,
                                 UI.Text(category.Name,
-                                        "playnite-library.category.summary." + category.Id,
-                                        $"{category.Name}, {category.SavedIds.Count} games")
+                                        "playnite-library.category.summary." + category.Id)
                                     .Classes("playnite-library-category-summary"),
-                                UI.Text($"{category.SavedIds.Count} games",
-                                        "playnite-library.category.count." + category.Id,
-                                        $"{category.SavedIds.Count} games")
+                                UI.Text(GameCount(category.SavedIds.Count),
+                                        "playnite-library.category.count." + category.Id)
                                     .Classes("playnite-library-category-count"))
                             .Classes("playnite-library-category-copy"),
-                        (UI.Button("Open",
-                                PlayniteLibraryActions.CategoryOpen(category.Id),
-                                "playnite-library.category.open-button." + category.Id)
-                            with { AccessibilityLabel = "Open " + category.Name })
-                            .Disabled(!state.Interactive)
-                            .AddClasses("playnite-library-control",
-                                "playnite-library-category-open"))
-                        .Classes("playnite-library-category-row"))
+                        UI.Text("›", "playnite-library.category.chevron." + category.Id)
+                            .Classes("playnite-library-category-chevron"))
+                    .Disabled(!state.Interactive || state.OrganizationBusy)
                     .AddClasses("playnite-library-category"))
                 .ToArray();
             var create = UI.TextEntry(string.Empty, "Create category",
@@ -316,9 +312,9 @@ internal static class PlayniteLibraryPresentation
                     .AddClasses("playnite-library-control", "playnite-library-search",
                         "playnite-library-category-create");
             content = UI.Stack("playnite-library.content",
-                    UI.Text("Categories are read from Playnite. Creating or changing " +
-                            "membership uses the exact current Playnite game identity.",
-                        "playnite-library.categories.help", "Category help"),
+                    UI.Text("Browse your Playnite categories or create a new one.",
+                        "playnite-library.categories.help", "Category help")
+                        .Classes("playnite-library-status"),
                     create,
                     UI.VerticalScroll("playnite-library.categories.list",
                             categoryRows)
@@ -501,7 +497,7 @@ internal static class PlayniteLibraryPresentation
                         warmRows[0].DisplayName,
                         "Checking current availability · " + warmRows[0].SourceAttribution),
                     UI.Alert("Checking installed games",
-                        snapshot.Error?.Message ?? "Saved display rows cannot launch until current provider resolution succeeds.",
+                        snapshot.Error?.Message ?? "Checking which games are available to play…",
                         snapshot.Error is null ? AlertTone.Info : AlertTone.Warning,
                         "playnite-library.warm-status",
                         new ComponentAction("Try again", "playnite-library.retry", WidgetGlyph.Refresh)),
@@ -515,11 +511,11 @@ internal static class PlayniteLibraryPresentation
             content = UI.Stack("playnite-library.content",
                     PlayniteLibraryHeroRailPresentation.Fallback(
                         "Loading installed games",
-                        "Reading the trusted installed-game catalog…"),
+                        "Loading your Playnite library…"),
                     UI.Card("playnite-library.loading",
                         UI.LoadingIndicator("playnite-library.loading.indicator",
                             "Loading installed games"),
-                        UI.Text("Reading the trusted installed-game catalog…",
+                        UI.Text("Loading your Playnite library…",
                             "playnite-library.loading.text", "Loading installed games")))
                 .Classes("playnite-library-content");
         }
@@ -568,9 +564,9 @@ internal static class PlayniteLibraryPresentation
             content = UI.Stack("playnite-library.content",
                     PlayniteLibraryHeroRailPresentation.Fallback(
                         "No installed games",
-                        "Trusted installed games will appear here."),
+                        "Your installed Playnite games will appear here."),
                     UI.EmptyState("No installed games",
-                        "No trusted installed game registrations are currently available.",
+                        "Install a game in Playnite, then refresh your library.",
                         "playnite-library.empty",
                         new ComponentAction("Refresh", "playnite-library.refresh",
                             WidgetGlyph.Refresh),
@@ -1009,7 +1005,7 @@ internal static class PlayniteLibraryPresentation
         var current = row.Current;
         var artwork = current is null ? null : PosterArtwork(current);
         var availability = current is null ? "Unavailable · Restore" : "Hidden · Restore";
-        return UI.PosterTile(row.Display.DisplayName, availability,
+        var tile = UI.PosterTile(row.Display.DisplayName, availability,
                 PlayniteLibraryActions.Restore,
                 PlayniteLibraryIdentity.FocusId(
                     "hidden", PlayniteLibraryIdentity.Key(row.Display.SavedId)),
@@ -1019,6 +1015,7 @@ internal static class PlayniteLibraryPresentation
                     $"{row.Display.DisplayName}, {row.Display.SourceAttribution}, {availability}")
             .Disabled(!interactive)
             .AddClasses("playnite-library-tile", "playnite-library-fixed-tile");
+        return artwork is null ? RevealPosterFallback(tile) : HidePosterCopy(tile);
     }
 
     private static WidgetElement Tile(
@@ -1062,7 +1059,11 @@ internal static class PlayniteLibraryPresentation
             .Busy(launching || availability.Busy)
             .Disabled(!interactive || !PlayniteLibraryAvailabilityPresentation.CanManage(current))
             .AddClasses("playnite-library-tile");
-        if (PlayniteLibraryAvailabilityPresentation.IsUninstalled(current))
+        if (artwork is null)
+            tile = RevealPosterFallback(tile);
+        else if (!PlayniteLibraryAvailabilityPresentation.IsUninstalled(current))
+            tile = HidePosterCopy(tile);
+        if (artwork is not null && PlayniteLibraryAvailabilityPresentation.IsUninstalled(current))
             tile = tile with
             {
                 Children = tile.Children.Select(child =>
@@ -1103,7 +1104,7 @@ internal static class PlayniteLibraryPresentation
             if (focusSummaryContext)
                 result = result.PresentOnFocus(FocusedGameSummary(
                     savedId, title, source, state, favorite, completionStatus,
-                    current, categories));
+                    current));
             var focusedArtwork = current.Presentation.Artwork.Find(
                 WidgetAppLibraryArtworkRole.Hero) ?? current.Presentation.Artwork.Find(
                 WidgetAppLibraryArtworkRole.Tile);
@@ -1123,16 +1124,65 @@ internal static class PlayniteLibraryPresentation
                     .Classes("playnite-library-summary-meta"))
             .Classes("playnite-library-home-summary");
 
+    private static string GameCount(int count) => count == 1 ? "1 game" : $"{count} games";
+
+    private static RowElement PrimaryNavigation(
+        PlayniteLibraryPresentationState state, bool enabled) =>
+        UI.Row("playnite-library.navigation",
+                UI.Button("Home", PlayniteLibraryActions.HomeOpen, "playnite-library.nav.home")
+                    .Selected(state.Route == PlayniteLibraryRoute.Library)
+                    .Disabled(!enabled)
+                    .AddClasses("playnite-library-control", "playnite-library-navigation-button"),
+                UI.Button("Library", PlayniteLibraryActions.BrowseOpen, "playnite-library.nav.library")
+                    .Selected(state.Route == PlayniteLibraryRoute.Browse)
+                    .Disabled(!enabled)
+                    .AddClasses("playnite-library-control", "playnite-library-navigation-button"))
+            .Classes("playnite-library-navigation");
+
     private static ContainerElement LibraryNavigation(
         PlayniteLibraryPresentationState state,
         bool renderActionsEnabled) =>
-        UI.ControllerHint(ControllerButton.Menu, "Menu", "playnite-library.library.menu")
+        UI.ControllerHint(ControllerButton.Menu, "More", "playnite-library.library.menu")
             .ContextMenu(ControllerButton.Menu,
-                new(PlayniteLibraryActions.BrowseOpen, "Library", IsDisabled: !renderActionsEnabled),
                 new(PlayniteLibraryActions.CategoriesOpen, "Categories", IsDisabled: !renderActionsEnabled),
                 new(PlayniteLibraryActions.HiddenOpen, "Hidden games",
                     IsDisabled: !renderActionsEnabled || state.Organization.ExcludedSavedIds.Count == 0),
                 new(PlayniteLibraryWidget.PlayniteOpenActionId, "Playnite connection", IsDisabled: !renderActionsEnabled));
+
+    private static ActionSurfaceElement RevealPosterFallback(ActionSurfaceElement tile) => tile with
+    {
+        Children = tile.Children.Select(Reveal).ToArray(),
+    };
+
+    private static ActionSurfaceElement HidePosterCopy(ActionSurfaceElement tile) => tile with
+    {
+        Children = tile.Children.Select(child =>
+            child is StackElement scrim && scrim.StyleClasses.Contains("wrail-poster-tile__scrim")
+                ? scrim with
+                {
+                    StyleClasses = [.. scrim.StyleClasses, "playnite-library-poster-artwork-copy"],
+                    Children = scrim.Children.Select(content =>
+                        content.AddClasses("playnite-library-poster-artwork-copy")).ToArray(),
+                }
+                : child).ToArray(),
+    };
+
+    private static WidgetElement Reveal(WidgetElement element)
+    {
+        if (element is StackElement stack)
+            element = stack with { Children = stack.Children.Select(Reveal).ToArray() };
+        else if (element is RowElement row)
+            element = row with { Children = row.Children.Select(Reveal).ToArray() };
+        if (element.StyleClasses.Contains("wrail-poster-tile__scrim"))
+            return element.AddClasses("playnite-library-poster-fallback");
+        if (element.StyleClasses.Contains("wrail-poster-tile__content"))
+            return element.AddClasses("playnite-library-poster-fallback-content");
+        if (element.StyleClasses.Contains("wrail-poster-tile__title"))
+            return element.AddClasses("playnite-library-poster-fallback-title");
+        if (element.StyleClasses.Contains("wrail-poster-tile__details"))
+            return element.AddClasses("playnite-library-poster-fallback-detail");
+        return element;
+    }
 
     private static WidgetElement FocusedGameSummary(
         string savedId,
@@ -1141,47 +1191,64 @@ internal static class PlayniteLibraryPresentation
         string state,
         bool favorite,
         string? completionStatus,
-        PlayniteLibraryItem current,
-        IReadOnlyList<PlayniteLibraryCategory>? categories)
+        PlayniteLibraryItem current)
     {
         var metadata = current.Presentation.Metadata;
-        var traits = new List<string> { source,
-            current.Presentation.Availability.State.ToString() };
-        if (favorite) traits.Add("Favorite");
-        if (!string.IsNullOrWhiteSpace(completionStatus)) traits.Add(completionStatus!);
+        var details = new List<string> { source };
         if (metadata?.PlaytimeMinutes is > 0)
-            traits.Add(FormatPlaytime(metadata.PlaytimeMinutes.Value));
+            details.Add(FormatPlaytime(metadata.PlaytimeMinutes.Value));
         if (metadata?.LastPlayedAtUnixMilliseconds is { } lastPlayed)
-            traits.Add("Last played " + DateTimeOffset.FromUnixTimeMilliseconds(lastPlayed)
-                .ToLocalTime().ToString("g"));
-        if (!string.IsNullOrWhiteSpace(metadata?.Version))
-            traits.Add("Version " + metadata.Version);
-        var memberships = (categories ?? [])
-            .Where(category => PlayniteLibraryCategoryPolicy.Contains(
-                category, current.Value.SavedId))
-            .Select(category => category.Name)
-            .Take(3)
-            .ToArray();
-        if (memberships.Length != 0) traits.Add(string.Join(", ", memberships));
-        var summary = string.Join(" · ", traits);
+            details.Add("Last played " + DateTimeOffset.FromUnixTimeMilliseconds(lastPlayed)
+                .ToLocalTime().ToString("d"));
         var id = PlayniteLibraryIdentity.Key(savedId).Value;
+        var badges = new List<WidgetElement>();
+        var availability = current.Presentation.Availability.State == WidgetAppLibraryAvailabilityState.Installed
+            ? "Installed" : PlayniteLibraryAvailabilityPresentation.IsUninstalled(current)
+                ? "Not installed" : null;
+        if (availability is not null) badges.Add(SummaryBadge(availability, "availability"));
+        if (favorite) badges.Add(SummaryBadge("Favorite", "favorite", accent: true));
+        if (!string.IsNullOrWhiteSpace(completionStatus))
+            badges.Add(SummaryBadge(completionStatus!, "completion"));
+        if (!string.Equals(state, "Play", StringComparison.Ordinal) &&
+            !string.Equals(state, availability, StringComparison.Ordinal))
+            badges.Add(SummaryBadge(state, "state", accent: true));
+        var summary = string.Join(" · ", details);
         var children = new List<WidgetElement>
         {
             UI.Text(title, "playnite-library.home.summary.game.title." + id, title)
                 .Classes("playnite-library-summary-title"),
             UI.Text(summary, "playnite-library.home.summary.game.subtitle." + id, summary)
                 .Classes("playnite-library-summary-meta"),
+            UI.Row("playnite-library.home.summary.game.badges." + id, badges.ToArray())
+                .Classes("playnite-library-summary-badges"),
         };
-        if (!string.Equals(state, "Play", StringComparison.Ordinal))
-            children.Add(UI.Text(state, "playnite-library.home.summary.game.state." + id, state)
-                .Classes("playnite-library-summary-state"));
         if (!string.IsNullOrWhiteSpace(metadata?.Description))
             children.Add(UI.Text(metadata.Description,
                     "playnite-library.home.summary.game.description." + id,
                     metadata.Description)
                 .Classes("playnite-library-summary-description"));
-        return UI.Stack("playnite-library.home.summary.game." + id, children.ToArray())
+        var compactSummary = favorite ? "Favorite · " + summary : summary;
+        if (!string.Equals(state, "Play", StringComparison.Ordinal))
+            compactSummary = state + " · " + compactSummary;
+        return UI.Stack("playnite-library.home.summary.game." + id,
+                UI.Stack("playnite-library.home.summary.expanded." + id, children.ToArray())
+                    .Classes("playnite-library-summary-expanded")
+                    .VisibleWhen(ResponsiveVisibility.ExpandedOnly),
+                UI.Stack("playnite-library.home.summary.compact." + id,
+                        UI.Text(title, "playnite-library.home.summary.compact-title." + id)
+                            .Classes("playnite-library-summary-compact-title"),
+                        UI.Text(compactSummary, "playnite-library.home.summary.compact-meta." + id)
+                            .Classes("playnite-library-summary-compact-meta"))
+                    .Classes("playnite-library-summary-compact")
+                    .VisibleWhen(ResponsiveVisibility.CompactOnly))
             .Classes("playnite-library-home-summary");
+
+        WidgetElement SummaryBadge(string label, string suffix, bool accent = false)
+        {
+            var badge = UI.Text(label, "playnite-library.home.summary.game." + suffix + "." + id)
+                .Classes("playnite-library-summary-badge");
+            return accent ? badge.AddClasses("playnite-library-summary-badge-accent") : badge;
+        }
     }
 
     private static string FormatPlaytime(long minutes) => minutes >= 60

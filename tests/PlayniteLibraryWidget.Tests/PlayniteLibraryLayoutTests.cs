@@ -9,7 +9,7 @@ using LauncherWidget = WidgetRail.Samples.PlayniteLibrary.PlayniteLibraryWidget;
 namespace WidgetRail.Tests.PlayniteLibrary;
 
 [TestClass]
-public sealed class PlayniteLibraryLayoutTests
+public sealed partial class PlayniteLibraryLayoutTests
 {
     [TestMethod]
     public void HomeFallbackStatesShareTheReadySurfaceAndCenteredBackgroundOwner()
@@ -156,12 +156,12 @@ public sealed class PlayniteLibraryLayoutTests
             homeStage.Children.Single().Id);
         Assert.AreEqual(1, nodes.Count(node => node.Kind == ViewNodeKind.FocusPresentationSurface));
         var topActions = nodes.Single(node => node.Id == "playnite-library.home.actions");
-        Assert.AreEqual("playnite-library.home.utilities", topActions.Children[0].Id);
-        Assert.AreEqual("playnite-library.library.menu", topActions.Children[^1].Id);
+        Assert.AreEqual("playnite-library.navigation", topActions.Children[0].Id);
+        Assert.AreEqual("playnite-library.home.utilities", topActions.Children[^1].Id);
         CollectionAssert.AreEqual(new[]
         {
-            "playnite-library.hint.refresh",
-        }, topActions.Children[0].Children.Select(node => node.Id).ToArray());
+            "playnite-library.hint.refresh", "playnite-library.library.menu",
+        }, topActions.Children[^1].Children.Select(node => node.Id).ToArray());
         Assert.IsFalse(nodes.Any(node => node.Id is "playnite-library.eyebrow" or
             "playnite-library.title" or "playnite-library.status"));
         Assert.IsFalse(nodes.Any(node => node.StyleClasses.Contains(
@@ -170,10 +170,9 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.IsNull(library.ActionId);
         Assert.IsFalse(library.IsFocusable);
         Assert.AreEqual(ControllerButton.Menu, library.ContextMenuButton);
-        Assert.IsFalse(Nodes(topActions).Any(node => node.IsFocusable));
+        Assert.AreEqual(2, Nodes(topActions).Count(node => node.IsFocusable));
         CollectionAssert.AreEqual(new[]
         {
-            "playnite-library.browse.open",
             "playnite-library.categories.open",
             "playnite-library.hidden.open",
             LauncherWidget.PlayniteOpenActionId,
@@ -261,7 +260,7 @@ public sealed class PlayniteLibraryLayoutTests
             "styles", "default.wrss"));
         Assert.IsFalse(styles.Contains("\nbutton {", StringComparison.Ordinal),
             "Playnite WRSS must not style every Button through a bare element selector.");
-        Assert.IsTrue(topActions.Children[0].Children.All(node =>
+        Assert.IsTrue(topActions.Children[^1].Children.All(node =>
             !node.IsFocusable));
         StringAssert.Contains(styles,
             ".playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; padding: 4px 6px 10px; }");
@@ -272,7 +271,7 @@ public sealed class PlayniteLibraryLayoutTests
         StringAssert.Contains(styles,
             ".playnite-library-tile { aspect-ratio: 2/3;");
         StringAssert.Contains(styles,
-            ".playnite-library-fixed-tile { width: 150px; min-width: 150px; flex-basis: 150px; flex-grow: 0; flex-shrink: 0; }");
+            ".playnite-library-fixed-tile { width: 28vh; min-width: 112px; max-width: 150px; flex-basis: 28vh; flex-grow: 0; flex-shrink: 0; }");
         StringAssert.Contains(styles,
             ".playnite-library-surface-stage { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; overflow: clip; }");
         StringAssert.Contains(styles,
@@ -280,11 +279,8 @@ public sealed class PlayniteLibraryLayoutTests
         StringAssert.Contains(styles,
             ".wrail-background-surface { background: rgba(0, 0, 0, 0); }");
         StringAssert.Contains(styles,
-            ".playnite-library-home-summary { width: 100%; min-width: 0px; max-width: 620px;");
-        StringAssert.Contains(styles,
-            ".wrail-poster-tile__scrim { width: 100%; height: 0px; min-height: 0px; padding: 0px; background: rgba(0, 0, 0, 0); corner-radius: 12px; overflow: clip; }");
-        StringAssert.Contains(styles,
-            ".wrail-poster-tile__content { height: 0px; min-height: 0px; gap: 0px; overflow: clip; }");
+            ".playnite-library-home-summary { width: 100%; min-width: 0px; max-width: 760px;");
+
 
         var theme = CompileStyles();
         var homeStyle = theme.Resolve(new WrssElement("stack", null,
@@ -302,7 +298,7 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.IsNull(stageStyle.Get("max-width"),
             "The BackgroundSurface content owner must not inherit the foreground cap.");
         var posterScrimStyle = theme.Resolve(new WrssElement("stack", null,
-            new HashSet<string>(["wrail-poster-tile__scrim"],
+            new HashSet<string>(["wrail-poster-tile__scrim", "playnite-library-poster-artwork-copy"],
                 StringComparer.Ordinal)));
         Assert.AreEqual("0px", posterScrimStyle.Get("height")?.Text,
             "Playnite posters must not reserve a visible text/scrim overlay.");
@@ -328,7 +324,7 @@ public sealed class PlayniteLibraryLayoutTests
         var topActionsStyle = theme.Resolve(new WrssElement("row", null,
             new HashSet<string>(["playnite-library-home-actions"],
                 StringComparer.Ordinal)));
-        Assert.AreEqual("rgba(0, 0, 0, 0)", topActionsStyle.Get("background")?.Text);
+        Assert.AreEqual("rgba(21, 21, 20, 0.98)", topActionsStyle.Get("background")?.Text);
 
         var browseView = PlayniteLibraryPresentation.Render(State(
             collection, organization, PlayniteLibraryRoute.Browse, []));
@@ -414,8 +410,8 @@ public sealed class PlayniteLibraryLayoutTests
             "Favorites is an ordinary On/Off command, not a selected-state toggle surface.");
         Assert.IsFalse(favorites.StyleClasses.Contains(
             "playnite-library-filter-active", StringComparer.Ordinal));
-        Assert.IsFalse(browseNodes.Any(node => node.IsSelected is not null ||
-            node.Glyph == WidgetGlyph.Check),
+        Assert.IsFalse(Nodes(browseNodes.Single(node => node.Id == "playnite-library.query"))
+            .Any(node => node.IsSelected is not null || node.Glyph == WidgetGlyph.Check),
             "Browse filters must remain ordinary commands without selected/check semantics.");
 
         var activeBrowse = State(collection, organization, PlayniteLibraryRoute.Browse, [])
@@ -664,7 +660,8 @@ public sealed class PlayniteLibraryLayoutTests
             homeTile.StyleClasses.ToHashSet(StringComparer.Ordinal)));
         var hiddenStyle = theme.Resolve(new WrssElement("action-surface", null,
             hiddenTile.StyleClasses.ToHashSet(StringComparer.Ordinal)));
-        Assert.AreEqual("150px", homeStyle.Get("width")?.Text);
+        Assert.AreEqual("28vh", homeStyle.Get("width")?.Text);
+        Assert.AreEqual("150px", homeStyle.Get("max-width")?.Text);
         Assert.AreEqual(homeStyle.Get("width")?.Text,
             hiddenStyle.Get("width")?.Text);
         Assert.AreEqual(2D / 3D, hiddenStyle.Get("aspect-ratio")?.Number);
@@ -879,7 +876,7 @@ public sealed class PlayniteLibraryLayoutTests
         Assert.AreEqual("13px", control.Get("font-size")?.Text);
         Assert.AreEqual("600", control.Get("font-weight")?.Text);
         Assert.AreEqual("center", control.Get("text-align")?.Text);
-        Assert.AreEqual("rgba(15, 24, 35, 0.96)", control.Get("background")?.Text);
+        Assert.AreEqual("rgba(29, 29, 27, 0.98)", control.Get("background")?.Text);
         Assert.AreEqual("1px", control.Get("border-width")?.Text);
         Assert.AreEqual("10px", control.Get("corner-radius")?.Text);
         foreach (var state in new[]
@@ -897,7 +894,7 @@ public sealed class PlayniteLibraryLayoutTests
             if (state == WrssPseudoState.Focused)
             {
                 Assert.AreEqual("2px", styled.Get("outline-width")?.Text);
-                Assert.AreEqual("#ffffff", styled.Get("outline-color")?.Text);
+                Assert.AreEqual("#f4f0e8", styled.Get("outline-color")?.Text);
             }
         }
         var search = theme.Resolve(new WrssElement("text-entry", null,
@@ -1106,12 +1103,23 @@ public sealed class PlayniteLibraryLayoutTests
         throw new DirectoryNotFoundException("WidgetRail repository root was not found.");
     }
 
-    private static WrssTheme CompileStyles()
+    private static WrssTheme CompileStyles(string? themeName = null)
     {
         var stylesRoot = Path.Combine(AppContext.BaseDirectory, "styles");
         var package = WrssPackageLoader.Load(
             "default.wrss", new WrssFileSourceProvider(stylesRoot));
-        var compiled = WrssThemeCompiler.Compile(package);
+        var themeRoot = Path.Combine(RepositoryRoot(), "src", "PlatformSettings", "Themes");
+        var platform = WrssPackageLoader.Load("builtin-default.wrss", new WrssFileSourceProvider(themeRoot));
+        var layers = new List<WrssThemeLayer> { new(0, platform.Documents) };
+        if (themeName is not null)
+        {
+            var selected = WrssPackageLoader.Load("theme.wrss",
+                new WrssFileSourceProvider(Path.Combine(themeRoot, themeName)));
+            Assert.IsTrue(selected.IsValid);
+            layers.Add(new(100, selected.Documents));
+        }
+        layers.Add(new(200, package.Documents));
+        var compiled = WrssThemeCompiler.Compile(layers);
         Assert.IsTrue(compiled.IsValid,
             string.Join(Environment.NewLine,
                 compiled.Diagnostics.Select(diagnostic => diagnostic.Message)));

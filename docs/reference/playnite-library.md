@@ -11,9 +11,14 @@ Home shows installed games in a poster rail. Its ordering is favorites, recency,
 name, then a stable game ID. Loading more pages continues that ordering; it does
 not re-sort only the currently visible posters.
 
-Y refreshes the library. Menu opens the Home menu, which includes Library.
-X opens options for the focused game, including Favorite. These hints are
-separate from focusable posters so navigating the rail does not stop at a header button.
+The Home and Library header destinations switch between the installed-game rail
+and Browse. Y refreshes; Menu opens Categories, Hidden games, and connection
+settings. X opens options for the focused game, including Favorite. The controller
+hints remain separate from focusable navigation and posters.
+
+Panels, controls, text, and focus follow the selected global theme. The Home
+summary separates game metadata from status badges, with a compact presentation
+on smaller surfaces. Posters without covers show readable titles.
 
 ## Browse
 

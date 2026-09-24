@@ -15,6 +15,7 @@ internal static class PlayniteLibraryActions
     internal const string HiddenBack = "playnite-library.hidden.back";
     internal const string SearchCommit = "playnite-library.search.commit";
     internal const string QueryClear = "playnite-library.query.clear";
+    internal const string HomeOpen = "playnite-library.home.open";
     internal const string BrowseOpen = "playnite-library.browse.open";
     internal const string FavoritesFilter = "playnite-library.filter.favorites";
     internal const string InstalledFilter = "playnite-library.filter.installed";

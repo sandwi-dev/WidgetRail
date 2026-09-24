@@ -9,11 +9,19 @@ does not copy a product app-library provider into the package.
 
 ## Navigation and library behavior
 
-Home uses non-focusable controller hints: Y refreshes and Menu opens Library,
-Categories, Hidden games, and Playnite connection. X opens the focused game's
-options, including Favorite. Browse also uses a Y hint for Refresh. Header
-hints have a dark backing for readability and do not interrupt navigation through
-the game collection. Browse groups its hints in one horizontal, wrapping row.
+Home and Library are focusable header destinations. Library opens Browse; Home
+returns to the installed-game rail without resetting Browse's query. B retains
+ordinary nested-page Back behavior. Y refreshes, Menu opens Categories, Hidden
+games, and Playnite connection, and X opens the focused game's options. These
+controller hints remain non-focusable. Category rows are single action surfaces.
+
+Package WRSS owns layout and uses shared theme tokens for colors, fonts, borders,
+and focus. Home retains focus-driven background artwork and a selected-game
+summary. Expanded summaries separate metadata and status badges; compact surfaces
+use a shorter summary and smaller posters. Missing-cover posters retain readable
+labels. Connection content scrolls below its fixed header when space is limited.
+Theme regression tests compile platform defaults, each selected built-in theme,
+then widget styles in production cascade order.
 
 Browse includes installed and uninstalled games by default. The Installed toggle
 beside Favorites limits Browse to installed games
