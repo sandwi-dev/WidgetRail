@@ -130,6 +130,11 @@ struct WidgetDescriptor final {
     std::vector<WidgetDescriptorQuickAction> quickActions;
 };
 
+struct WidgetCatalogSnapshot final {
+    std::vector<WidgetDescriptor> widgets;
+    bool isComplete{};
+};
+
 /// Resolves one exact private catalog quick-action advertisement. Identifiers
 /// remain opaque to the bridge; the native shell assigns meaning only to the
 /// IDs it owns (for example, the tray contextual-refresh opt-in).
@@ -908,7 +913,7 @@ public:
         const std::wstring& installedCatalogRoot = L"");
     void Stop() noexcept;
     /// Enumerates public widget descriptors without starting widget workers.
-    [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ListWidgets();
+    [[nodiscard]] std::optional<WidgetCatalogSnapshot> ListWidgets();
     /// Retrieves immutable platform appearance without launching a widget worker.
     [[nodiscard]] std::optional<PlatformAppearance> GetPlatformAppearance(
         const std::wstring* displayId = nullptr, const std::wstring* displayName = nullptr,
@@ -1107,6 +1112,8 @@ struct BridgeFrameReadResult final {
 [[nodiscard]] BridgeFrameReadResult ReadBridgeFrame(HANDLE pipe);
 [[nodiscard]] std::string SerializeControllerInputRequest(
     std::wstring_view expectedSelectOptionActionId);
+[[nodiscard]] std::optional<WidgetCatalogSnapshot> ParseWidgetCatalog(
+    std::string_view payloadUtf8, std::wstring& error);
 [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
     std::string_view payloadUtf8,
     std::wstring& error);

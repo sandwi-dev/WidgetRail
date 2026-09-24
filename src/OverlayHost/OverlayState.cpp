@@ -21,7 +21,7 @@ OverlayState::OverlayState(
 
 OverlayState OverlayState::AwaitingCatalog(PersistentState persisted) {
     OverlayState result({}, {});
-    result.pendingPersistent_ = std::move(persisted);
+    result.persistent_ = std::move(persisted);
     return result;
 }
 
@@ -39,8 +39,9 @@ bool OverlayState::Dispatch(const Command command, const bool previewTraySelecti
             if (surface_ == Surface::Dashboard && !selectedWidget().empty()) {
                 persistent_.lastWidget = std::wstring(selectedWidget());
             }
-            persistent_.reopenWidget = surface_ == Surface::Widget &&
-                                       persistent_.lastWidget.has_value();
+            if (!availableOrder_.empty())
+                persistent_.reopenWidget = surface_ == Surface::Widget &&
+                                           persistent_.lastWidget.has_value();
             surface_ = Surface::Hidden;
             reorderMode_ = false;
         } else if (command == Command::CloseOverlay) {
@@ -96,7 +97,7 @@ bool OverlayState::Dispatch(const Command command, const bool previewTraySelecti
         case Command::FocusTray:
             break;
         case Command::ToggleReorder:
-            if (!persistent_.order.empty()) reorderMode_ = !reorderMode_;
+            if (!availableOrder_.empty()) reorderMode_ = !reorderMode_;
             break;
         case Command::ToggleOverlay:
         case Command::CloseOverlay:
@@ -123,7 +124,7 @@ bool OverlayState::Dispatch(const Command command, const bool previewTraySelecti
             reorderMode_ = false;
             break;
         case Command::ToggleReorder:
-            if (!persistent_.order.empty()) reorderMode_ = !reorderMode_;
+            if (!availableOrder_.empty()) reorderMode_ = !reorderMode_;
             break;
         case Command::SampleWidgetBack:
         case Command::FocusTray:
@@ -139,16 +140,13 @@ bool OverlayState::Dispatch(const Command command, const bool previewTraySelecti
 }
 
 bool OverlayState::SetAvailableWidgets(
-    std::vector<std::wstring> availableWidgetIds) noexcept {
+    std::vector<std::wstring> availableWidgetIds, const bool isComplete) noexcept {
     const auto before = persistent();
+    const auto beforeAvailable = availableOrder_;
     const auto priorSurface = surface_;
     const auto priorSelected = std::wstring(selectedWidget());
     const auto priorActive = activeWidget_;
-    if (pendingPersistent_) {
-        persistent_ = std::move(*pendingPersistent_);
-        pendingPersistent_.reset();
-    }
-    Normalize(std::move(availableWidgetIds));
+    Normalize(std::move(availableWidgetIds), isComplete);
     if (!priorSelected.empty() && Contains(priorSelected)) {
         selectedSlot_ = FindSlot(priorSelected);
     } else if (persistent_.lastWidget) {
@@ -158,7 +156,7 @@ bool OverlayState::SetAvailableWidgets(
     }
     if (activeWidget_ && !Contains(*activeWidget_)) {
         activeWidget_.reset();
-        persistent_.reopenWidget = false;
+        if (isComplete) persistent_.reopenWidget = false;
         if (surface_ == Surface::Widget) {
             surface_ = Surface::Dashboard;
             focusRegion_ = FocusRegion::Tray;
@@ -166,7 +164,7 @@ bool OverlayState::SetAvailableWidgets(
     }
     if (priorSelected.empty() && surface_ == Surface::Dashboard)
         PresentSelectedWidget(FocusRegion::Tray);
-    return before != persistent_ || priorSurface != surface_ ||
+    return before != persistent_ || beforeAvailable != availableOrder_ || priorSurface != surface_ ||
            priorActive != activeWidget_ || priorSelected != selectedWidget();
 }
 
@@ -184,10 +182,10 @@ bool OverlayState::TrySelectTrayWidget(const std::wstring_view widgetId, const b
         reorderMode_) {
         return false;
     }
-    const auto found = std::find(persistent_.order.begin(), persistent_.order.end(), widgetId);
-    if (found == persistent_.order.end()) return false;
+    const auto found = std::find(availableOrder_.begin(), availableOrder_.end(), widgetId);
+    if (found == availableOrder_.end()) return false;
     const auto targetSlot = static_cast<std::size_t>(
-        std::distance(persistent_.order.begin(), found));
+        std::distance(availableOrder_.begin(), found));
     if (targetSlot == selectedSlot_) return true;
     selectedSlot_ = targetSlot;
     if (preview) PresentSelectedWidget(FocusRegion::Tray);
@@ -203,16 +201,17 @@ bool OverlayState::ReturnToActiveWidget() noexcept {
 }
 
 std::wstring_view OverlayState::selectedWidget() const noexcept {
-    return persistent_.order.empty() || selectedSlot_ >= persistent_.order.size()
+    return availableOrder_.empty() || selectedSlot_ >= availableOrder_.size()
                ? std::wstring_view{}
-               : std::wstring_view(persistent_.order[selectedSlot_]);
+               : std::wstring_view(availableOrder_[selectedSlot_]);
 }
 
 std::wstring_view OverlayState::activeWidget() const noexcept {
     return activeWidget_ ? std::wstring_view(*activeWidget_) : std::wstring_view{};
 }
 
-void OverlayState::Normalize(std::vector<std::wstring> availableWidgetIds) noexcept {
+void OverlayState::Normalize(
+    std::vector<std::wstring> availableWidgetIds, const bool isComplete) noexcept {
     if (availableWidgetIds.size() > kMaximumWidgets) availableWidgetIds.resize(kMaximumWidgets);
     std::vector<std::wstring> available;
     std::unordered_set<std::wstring> seen;
@@ -226,32 +225,51 @@ void OverlayState::Normalize(std::vector<std::wstring> availableWidgetIds) noexc
     normalized.reserve(available.size());
     seen.clear();
     for (const auto& id : persistent_.order) {
-        if (allowed.contains(id) && seen.insert(id).second) normalized.push_back(id);
+        if (normalized.size() == kMaximumWidgets) break;
+        if ((!isComplete || allowed.contains(id)) && !id.empty() && seen.insert(id).second)
+            normalized.push_back(id);
     }
     for (const auto& id : available) {
+        if (normalized.size() == kMaximumWidgets) break;
         if (seen.insert(id).second) normalized.push_back(id);
     }
     persistent_.order = std::move(normalized);
-    if (persistent_.lastWidget && !allowed.contains(*persistent_.lastWidget)) {
+    availableOrder_.clear();
+    for (const auto& id : persistent_.order)
+        if (allowed.contains(id)) availableOrder_.push_back(id);
+    // At the saved-state bound, keep newly discovered entries usable even if
+    // their positions cannot be persisted until complete discovery frees slots.
+    for (const auto& id : available)
+        if (std::find(availableOrder_.begin(), availableOrder_.end(), id) == availableOrder_.end())
+            availableOrder_.push_back(id);
+    if (isComplete && persistent_.lastWidget && !allowed.contains(*persistent_.lastWidget)) {
         persistent_.lastWidget.reset();
         persistent_.reopenWidget = false;
     }
     if (!persistent_.lastWidget) persistent_.reopenWidget = false;
-    if (selectedSlot_ >= persistent_.order.size()) selectedSlot_ = 0;
+    if (selectedSlot_ >= availableOrder_.size()) selectedSlot_ = 0;
 }
 
 void OverlayState::MoveSelection(const int delta) noexcept {
-    if (persistent_.order.empty()) return;
-    const auto count = static_cast<long long>(persistent_.order.size());
+    if (availableOrder_.empty()) return;
+    const auto count = static_cast<long long>(availableOrder_.size());
     const auto current = static_cast<long long>(selectedSlot_);
     selectedSlot_ = static_cast<std::size_t>((current + delta + count) % count);
 }
 
 void OverlayState::MoveCard(const int delta) noexcept {
-    if (persistent_.order.empty()) return;
+    if (availableOrder_.empty()) return;
     const auto next = static_cast<long long>(selectedSlot_) + delta;
-    if (next < 0 || next >= static_cast<long long>(persistent_.order.size())) return;
-    std::swap(persistent_.order[selectedSlot_], persistent_.order[static_cast<std::size_t>(next)]);
+    if (next < 0 || next >= static_cast<long long>(availableOrder_.size())) return;
+    // Swap the visible entries' saved slots, leaving undiscovered entries in
+    // place. The visible slot numbers need not match the saved slot numbers.
+    const auto currentSaved = std::find(
+        persistent_.order.begin(), persistent_.order.end(), availableOrder_[selectedSlot_]);
+    const auto nextSaved = std::find(
+        persistent_.order.begin(), persistent_.order.end(), availableOrder_[static_cast<std::size_t>(next)]);
+    if (currentSaved != persistent_.order.end() && nextSaved != persistent_.order.end())
+        std::iter_swap(currentSaved, nextSaved);
+    std::swap(availableOrder_[selectedSlot_], availableOrder_[static_cast<std::size_t>(next)]);
     selectedSlot_ = static_cast<std::size_t>(next);
 }
 
@@ -265,15 +283,15 @@ void OverlayState::PresentSelectedWidget(const FocusRegion focusRegion) noexcept
 }
 
 std::size_t OverlayState::FindSlot(const std::wstring_view widget) const noexcept {
-    const auto found = std::find(persistent_.order.begin(), persistent_.order.end(), widget);
-    return found == persistent_.order.end()
+    const auto found = std::find(availableOrder_.begin(), availableOrder_.end(), widget);
+    return found == availableOrder_.end()
                ? 0U
-               : static_cast<std::size_t>(std::distance(persistent_.order.begin(), found));
+               : static_cast<std::size_t>(std::distance(availableOrder_.begin(), found));
 }
 
 bool OverlayState::Contains(const std::wstring_view widget) const noexcept {
-    return std::find(persistent_.order.begin(), persistent_.order.end(), widget) !=
-           persistent_.order.end();
+    return std::find(availableOrder_.begin(), availableOrder_.end(), widget) !=
+           availableOrder_.end();
 }
 
 } // namespace widgetrail

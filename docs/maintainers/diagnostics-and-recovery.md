@@ -33,6 +33,21 @@ recovery inspection failures are reduced independently to stable bounded states
 before crossing the diagnostics channel. One unavailable area cannot replace
 the remaining last-good snapshot.
 
+## Tray order during catalog discovery
+
+The host saves tray order, last-used widget and reopen preference in
+`%LOCALAPPDATA%\WidgetRail\overlay-state.ini` whenever those preferences change.
+The saved order is separate from the currently available tray entries.
+
+The private `list-widgets` response includes `isComplete` alongside its revision
+and widgets. Startup discovery and rejected installed-catalog validation publish
+incomplete catalogs: available widgets remain usable, but absent IDs retain their
+saved positions. Reordering available widgets updates their saved slots without
+discarding those missing entries. A successful complete refresh removes unavailable
+IDs and appends new ones. Completeness changes publish a new revision even when
+the widget list is unchanged. A failed reload that retains the last-good catalog
+also retains its ordering authority; it does not invent removals.
+
 ## Transport and authority
 
 Runtime diagnostics are not a community-widget capability. The bridge attaches

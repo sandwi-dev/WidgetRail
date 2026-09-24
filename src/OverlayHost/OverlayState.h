@@ -59,9 +59,10 @@ public:
 
     [[nodiscard]] bool Dispatch(Command command, bool previewTraySelection = true) noexcept;
     /// Reconciles persisted presentation state with a newly discovered catalog.
-    /// Existing relative order is preserved and new IDs are appended.
+    /// Missing saved IDs are removed only after complete discovery. An incomplete
+    /// catalog admits available widgets without discarding their saved positions.
     [[nodiscard]] bool SetAvailableWidgets(
-        std::vector<std::wstring> availableWidgetIds) noexcept;
+        std::vector<std::wstring> availableWidgetIds, bool isComplete = true) noexcept;
     /// Opens one catalog-admitted widget directly from Hidden while retaining
     /// the tray as the sole input focus owner.
     [[nodiscard]] bool OpenWidgetWithTrayFocus(
@@ -81,13 +82,13 @@ public:
     [[nodiscard]] std::wstring_view selectedWidget() const noexcept;
     [[nodiscard]] std::wstring_view activeWidget() const noexcept;
     [[nodiscard]] bool reorderMode() const noexcept { return reorderMode_; }
-    [[nodiscard]] const std::vector<std::wstring>& order() const noexcept { return persistent_.order; }
+    [[nodiscard]] const std::vector<std::wstring>& order() const noexcept { return availableOrder_; }
     [[nodiscard]] const PersistentState& persistent() const noexcept {
-        return pendingPersistent_ ? *pendingPersistent_ : persistent_;
+        return persistent_;
     }
 
 private:
-    void Normalize(std::vector<std::wstring> availableWidgetIds) noexcept;
+    void Normalize(std::vector<std::wstring> availableWidgetIds, bool isComplete = true) noexcept;
     void MoveSelection(int delta) noexcept;
     void MoveCard(int delta) noexcept;
     void PresentSelectedWidget(FocusRegion focusRegion) noexcept;
@@ -95,7 +96,7 @@ private:
     [[nodiscard]] bool Contains(std::wstring_view widget) const noexcept;
 
     PersistentState persistent_;
-    std::optional<PersistentState> pendingPersistent_;
+    std::vector<std::wstring> availableOrder_;
     Surface surface_{Surface::Hidden};
     // Widget is the compatibility default for a persisted reopen. A first-run
     // dashboard explicitly switches this to Tray when it becomes visible.

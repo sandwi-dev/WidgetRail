@@ -201,8 +201,9 @@ public sealed class BridgeCatalog
     private readonly IReadOnlyList<ConfiguredWidget> _ordered;
     private readonly string _fingerprint;
 
-    internal BridgeCatalog(IEnumerable<ConfiguredWidget> configured)
+    internal BridgeCatalog(IEnumerable<ConfiguredWidget> configured, bool isComplete = true)
     {
+        IsComplete = isComplete;
         _ordered = configured.ToArray();
         _configured = _ordered.ToDictionary(widget => widget.Id, StringComparer.Ordinal);
         _fingerprint = Fingerprint(_ordered.Select(widget => widget.CatalogFingerprint));
@@ -211,8 +212,15 @@ public sealed class BridgeCatalog
     public IReadOnlyList<BridgeWidgetDescriptor> Widgets =>
         _ordered.Select(widget => widget.PublicDescriptor()).ToArray();
 
+    // Incomplete catalogs admit available widgets, but cannot prove that absent
+    // installed widgets were removed. This metadata travels with the revision.
+    internal bool IsComplete { get; }
+
+    internal BridgeCatalog WithCompleteness(bool isComplete) =>
+        isComplete == IsComplete ? this : new(_ordered, isComplete);
+
     internal BridgeCatalog WithWidgetSettings(WidgetRail.PlatformSettings.BuiltInWidgetSettings settings) =>
-        new(_ordered.Where(widget => widget.Id == "settings" || settings.IsEnabled(widget.PackageId)));
+        new(_ordered.Where(widget => widget.Id == "settings" || settings.IsEnabled(widget.PackageId)), IsComplete);
 
     internal ConfiguredWidget GetConfigured(string widgetId)
     {
@@ -247,6 +255,7 @@ public sealed class BridgeCatalog
     }
 
     internal bool IsEquivalentTo(BridgeCatalog other) =>
+        IsComplete == other.IsComplete &&
         string.Equals(_fingerprint, other._fingerprint, StringComparison.Ordinal);
 
     public static BridgeCatalog Load(string path) => LoadCore(
@@ -666,7 +675,7 @@ public sealed class BridgeCatalog
                 ],
             });
         });
-        return new BridgeCatalog(updated);
+        return new BridgeCatalog(updated, IsComplete);
     }
 
     private static ConfiguredWidget WithFingerprints(ConfiguredWidget source)

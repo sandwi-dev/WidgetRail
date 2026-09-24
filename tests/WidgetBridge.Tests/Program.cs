@@ -81,6 +81,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Catalog monitor retains invalid trusted state and fails closed on installed state", CatalogMonitorIsRevisionedAndLastGood),
+    ("Catalog completeness is revisioned through failure and same-widget recovery", CatalogCompletenessRecovery),
     ("Cold installed catalog loading does not block trusted bridge readiness", ColdInstalledCatalogDoesNotBlockBridgeReadiness),
     ("Catalog reload authority is single-flight latest-wins and cancellable", CatalogReloadAuthorityIsLatestWinsAndCancellable),
     ("Live installed bytes are pinned and post-release tamper cannot relaunch", InstalledPackageTamperRetiresLiveWorker),
@@ -3387,6 +3388,51 @@ static async Task CatalogMonitorIsRevisionedAndLastGood()
     Assert.SequenceEqual([1L, 2L, 3L, 4L, 5L], revisions);
 }
 
+static async Task CatalogCompletenessRecovery()
+{
+    using var trustedFiles = TemporaryCatalog.Create(name: "Trusted");
+    using var installedRoot = new TemporaryDirectory("wrail-catalog-completeness");
+    var trusted = BridgeCatalog.LoadTrusted(trustedFiles.Path, installedRoot.Path);
+    var outcome = 0;
+    await using var monitor = new BridgeCatalogMonitor(
+        trustedFiles.Path, installedRoot.Path, Environment.ProcessPath!, trusted,
+        initialDiagnostics: null, installedCatalogPending: true,
+        loadCatalog: _ => outcome == 0
+            ? Task.FromException<BridgeCatalogLoadResult>(new IOException("test discovery failure"))
+            : Task.FromResult(new BridgeCatalogLoadResult(trusted, [], InstalledCatalogValid: outcome == 1)));
+    var pipeName = $"wrail-catalog-completeness-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(pipeName, trusted, 64 * 1024, catalogMonitor: monitor);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
+    await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+    try
+    {
+        var failed = await monitor.ReloadNowAsync();
+        Assert.False(failed.Current.IsComplete, "Startup I/O failure made the catalog complete.");
+        var pending = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+        Assert.False(pending.Payload.GetProperty("isComplete").GetBoolean(),
+            "Initial registry snapshot lost incomplete authority.");
+        foreach (var (nextOutcome, expectedRevision, expectedComplete) in new[]
+                 { (1, 1L, true), (2, 2L, false), (1, 3L, true) })
+        {
+            outcome = nextOutcome;
+            var result = await monitor.ReloadNowAsync();
+            Assert.True(result.Published, "A completeness-only change did not publish a revision.");
+            var changed = await client.ReadEventAsync(BridgeMessageTypes.CatalogChanged);
+            Assert.Equal(expectedRevision, changed.Payload.GetProperty("revision").GetInt64());
+            var listed = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
+            Assert.Equal(expectedRevision, listed.Payload.GetProperty("revision").GetInt64());
+            Assert.Equal(expectedComplete, listed.Payload.GetProperty("isComplete").GetBoolean());
+            Assert.SequenceEqual(trusted.Widgets.Select(widget => widget.Id), listed.Payload
+                .GetProperty("widgets").EnumerateArray().Select(widget => widget.GetProperty("id").GetString()!));
+        }
+    }
+    finally
+    {
+        await client.RequestAsync(BridgeMessageTypes.Stop, new { });
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(3));
+    }
+}
+
 static async Task ColdInstalledCatalogDoesNotBlockBridgeReadiness()
 {
     var trustedCatalogPath = Path.Combine(
@@ -3454,6 +3500,8 @@ static async Task ColdInstalledCatalogDoesNotBlockBridgeReadiness()
         var listedWhilePending = await client.RequestAsync(
             BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(BridgeMessageTypes.Widgets, listedWhilePending.Type);
+        Assert.False(listedWhilePending.Payload.GetProperty("isComplete").GetBoolean(),
+            "A pending startup catalog must not authorize deleting saved widget positions.");
         Assert.SequenceEqual(trustedIds, listedWhilePending.Payload
             .GetProperty("widgets").EnumerateArray()
             .Select(widget => widget.GetProperty("id").GetString()!));
@@ -3475,6 +3523,8 @@ static async Task ColdInstalledCatalogDoesNotBlockBridgeReadiness()
         Assert.Equal(1L, changed.Payload.GetProperty("revision").GetInt64());
         var listedAfterValidation = await client.RequestAsync(
             BridgeMessageTypes.ListWidgets, new { });
+        Assert.True(listedAfterValidation.Payload.GetProperty("isComplete").GetBoolean(),
+            "Successful discovery must publish complete catalog authority with its revision.");
         Assert.SequenceEqual([.. trustedIds, "dev.example.delayed"], listedAfterValidation.Payload
             .GetProperty("widgets").EnumerateArray()
             .Select(widget => widget.GetProperty("id").GetString()!));
@@ -3600,6 +3650,8 @@ static async Task CatalogReloadAuthorityIsLatestWinsAndCancellable()
     Assert.True(rejected.Published,
         "Rejected installed validation did not publish trusted-only authority.");
     Assert.Equal("Trusted", rejected.Current.Widgets.Single().Name);
+    Assert.False(rejected.Current.IsComplete,
+        "Failed installed validation must not authorize deleting saved positions.");
     Assert.True(!rejectedMonitor.DiagnosticsSnapshot().InstalledCatalogPending,
         "Rejected installed validation remained incorrectly pending after its terminal result.");
 

@@ -207,6 +207,37 @@ int main() {
     (void)restarted.SetAvailableWidgets({L"settings", L"audio-mixer", L"spotify", L"network-controls"});
     Check(restarted.order() == std::vector<std::wstring>{L"spotify", L"settings", L"audio-mixer", L"network-controls"},
         "restart retains the reordered tray and appends newly discovered widgets");
+    // A built-ins-only catalog is usable, but not proof that installed widgets
+    // were removed. Reorder the visible subset while preserving hidden slots.
+    const PersistentState delayedSaved{
+        {L"spotify", L"settings", L"playnite", L"audio-mixer"}, L"spotify", true};
+    auto delayed = OverlayState::AwaitingCatalog(delayedSaved);
+    (void)delayed.SetAvailableWidgets({L"settings", L"audio-mixer"}, false);
+    Check(delayed.persistent() == delayedSaved &&
+        delayed.order() == std::vector<std::wstring>{L"settings", L"audio-mixer"},
+        "incomplete discovery preserves saved positions but only admits available widgets");
+    Check(!delayed.OpenWidgetWithTrayFocus(L"spotify"), "saved unavailable widget cannot be opened");
+    Send(delayed, Command::ToggleOverlay);
+    Check(!delayed.TrySelectTrayWidget(L"playnite"), "saved unavailable widget cannot be selected");
+    Check(delayed.TrySelectTrayWidget(L"audio-mixer"), "available widget can be reordered during discovery");
+    Send(delayed, Command::ToggleReorder);
+    Send(delayed, Command::NavigateLeft);
+    Send(delayed, Command::Cancel);
+    const auto reorderedDuringDiscovery = delayed.persistent();
+    Check(reorderedDuringDiscovery.order == std::vector<std::wstring>{L"spotify", L"audio-mixer", L"playnite", L"settings"},
+        "reordering during discovery updates visible positions without discarding hidden positions");
+    (void)delayed.SetAvailableWidgets({}, false);
+    Check(delayed.persistent().order == reorderedDuringDiscovery.order && delayed.order().empty(),
+        "failed incomplete discovery can retire visible entries without erasing saved order");
+    auto delayedRestart = OverlayState::AwaitingCatalog(delayed.persistent());
+    (void)delayedRestart.SetAvailableWidgets({L"settings", L"audio-mixer"}, false);
+    (void)delayedRestart.SetAvailableWidgets({L"settings", L"audio-mixer", L"spotify", L"playnite", L"network"}, true);
+    Check(delayedRestart.order() == std::vector<std::wstring>{L"spotify", L"audio-mixer", L"playnite", L"settings", L"network"},
+        "successful discovery restores saved interleaving and appends only new widgets across restarts");
+    (void)delayedRestart.SetAvailableWidgets({L"settings", L"audio-mixer", L"network"}, true);
+    Check(delayedRestart.persistent().order == std::vector<std::wstring>{L"audio-mixer", L"settings", L"network"},
+        "complete catalog removes genuinely unavailable entries while preserving remaining order");
+
     auto secondRestart = OverlayState::AwaitingCatalog(restarted.persistent());
     (void)secondRestart.SetAvailableWidgets({L"network-controls", L"settings", L"spotify", L"audio-mixer"});
     Check(secondRestart.order() == restarted.order(), "a second restart preserves order despite discovery order changes");

@@ -176,6 +176,7 @@ struct WidgetSessionRuntimeChange final {
 struct WidgetSessionCatalogChange final {
     std::vector<WidgetSessionRuntimeChange> runtimeChanges;
     std::vector<std::wstring> availableWidgetIds;
+    bool isComplete{};
 };
 
 struct WidgetSessionEvent final {
@@ -221,7 +222,7 @@ struct WidgetSessionOperationResult final {
 
 struct WidgetSessionOperations final {
     std::function<WidgetSessionOperationResult<bool>(std::stop_token)> ensureStarted;
-    std::function<WidgetSessionOperationResult<std::vector<WidgetDescriptor>>(
+    std::function<WidgetSessionOperationResult<WidgetCatalogSnapshot>(
         std::stop_token)> listWidgets;
     std::function<WidgetSessionOperationResult<WidgetPresentationPublication>(
         std::stop_token, std::wstring_view, WidgetLifecycleState, long long,
@@ -371,7 +372,7 @@ private:
         WidgetSessionFailure failure;
         WidgetBridgeRequestFailureCategory requestFailureCategory{
             WidgetBridgeRequestFailureCategory::None};
-        std::optional<std::vector<WidgetDescriptor>> descriptors;
+        std::optional<WidgetCatalogSnapshot> catalog;
         std::optional<WidgetSnapshot> snapshot;
         std::optional<WidgetPresentationUpdate> update;
         std::optional<WidgetPresentationTransactionKind> transactionKind;
@@ -436,7 +437,7 @@ private:
     void WorkerLoop(std::stop_token stopToken);
     [[nodiscard]] Completion Execute(Request request, std::stop_token stopToken);
     [[nodiscard]] std::optional<WidgetSessionCatalogChange> ApplyCatalog(
-        std::vector<WidgetDescriptor> descriptors);
+        WidgetCatalogSnapshot catalog);
     [[nodiscard]] bool CompletionRuntimeIsCurrent(const Request& request) const noexcept;
     [[nodiscard]] bool CompletionIsCurrent(const Request& request) const noexcept;
     void MarkRefreshInFlight(std::wstring_view widgetId, std::uint64_t requestId);

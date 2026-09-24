@@ -22,6 +22,7 @@ namespace {
 
 using namespace std::chrono_literals;
 using widgetrail::WidgetDescriptor;
+using widgetrail::WidgetCatalogSnapshot;
 using widgetrail::WidgetAdmissionTrace;
 using widgetrail::WidgetAdmissionTraceStage;
 using widgetrail::WidgetLifecycleState;
@@ -114,6 +115,7 @@ struct FakeBridge final {
     std::mutex mutex;
     std::condition_variable_any changed;
     std::vector<WidgetDescriptor> catalog;
+    bool catalogComplete{true};
     std::unordered_map<std::wstring, WidgetSnapshot> snapshots;
     std::optional<WidgetSnapshot> snapshotAfterNextRead;
     std::wstring stalledWidget;
@@ -168,8 +170,8 @@ struct FakeBridge final {
             [this](std::stop_token) {
                 std::scoped_lock lock(mutex);
                 ++catalogCalls;
-                return WidgetSessionOperationResult<std::vector<WidgetDescriptor>>::Success(
-                    catalog);
+                return WidgetSessionOperationResult<WidgetCatalogSnapshot>::Success(
+                    {catalog, catalogComplete});
             },
             [this](std::stop_token token, std::wstring_view widgetId,
                    WidgetLifecycleState, const long long baseSequence,
@@ -416,6 +418,7 @@ std::vector<widgetrail::WidgetSessionEvent> WaitEvents(
 
 void CatalogReplacementAndLastGoodSnapshot() {
     FakeBridge bridge;
+    bridge.catalogComplete = false;
     bridge.catalog = {
         Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1"),
         Descriptor(L"beta", L"beta.one", L"runtime-1", L"view-1"),
@@ -423,7 +426,20 @@ void CatalogReplacementAndLastGoodSnapshot() {
     WidgetSessionCoordinator coordinator(bridge.Operations());
     auto initial = coordinator.EstablishCatalog();
     assert(initial && initial->availableWidgetIds.size() == 2);
+    assert(!initial->isComplete);
     assert(coordinator.Contains(L"alpha") && coordinator.Contains(L"beta"));
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.catalogComplete = true;
+    }
+    assert(coordinator.RequestCatalog());
+    const auto completion = WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::CatalogChanged;
+        });
+    });
+    assert(completion.back().catalog && completion.back().catalog->isComplete &&
+        completion.back().catalog->runtimeChanges.empty());
 
     bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 1);
     assert(coordinator.RequestSnapshot(L"alpha"));

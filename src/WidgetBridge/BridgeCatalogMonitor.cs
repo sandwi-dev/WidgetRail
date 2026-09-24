@@ -113,7 +113,8 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
         _installedCatalogRoot = Path.GetFullPath(installedCatalogRoot);
         _workerHostExecutable = Path.GetFullPath(workerHostExecutable);
         _settingsFilePath = settingsFilePath;
-        _current = initialCatalog ?? throw new ArgumentNullException(nameof(initialCatalog));
+        _current = (initialCatalog ?? throw new ArgumentNullException(nameof(initialCatalog)))
+            .WithCompleteness(!installedCatalogPending);
         _lastDiagnostics = initialDiagnostics?.Take(64).ToArray() ?? [];
         _installedCatalogPending = installedCatalogPending;
         _widgetRejections = initialWidgetRejections?.Take(256).ToArray() ?? [];
@@ -282,6 +283,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 }
                 else if (!loaded!.InstalledCatalogValid)
                 {
+                    var incomplete = loaded.Catalog.WithCompleteness(false);
                     var warnings = loaded.Warnings.Concat(
                     ["Widget catalog reload failed closed to the trusted catalog; all community widgets were retired."])
                         .Take(64)
@@ -290,9 +292,9 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                     _retainedLastGood = false;
                     _installedCatalogPending = false;
                     _widgetRejections = loaded.WidgetRejections.Take(256).ToArray();
-                    if (demand.ForceRevision || !_current.IsEquivalentTo(loaded.Catalog))
+                    if (demand.ForceRevision || !_current.IsEquivalentTo(incomplete))
                     {
-                        _current = loaded.Catalog;
+                        _current = incomplete;
                         checked { ++_revision; }
                         changed = new BridgeCatalogChanged(_revision, _current, warnings);
                         _pendingForceRevision = false;
@@ -303,13 +305,14 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
                 }
                 else
                 {
+                    var complete = loaded.Catalog.WithCompleteness(true);
                     _lastDiagnostics = loaded.Warnings.Take(64).ToArray();
                     _retainedLastGood = false;
                     _widgetRejections = loaded.WidgetRejections.Take(256).ToArray();
                     if (demand.ForceRevision || _installedCatalogPending ||
-                        !_current.IsEquivalentTo(loaded.Catalog))
+                        !_current.IsEquivalentTo(complete))
                     {
-                        _current = loaded.Catalog;
+                        _current = complete;
                         checked { ++_revision; }
                         changed = new BridgeCatalogChanged(
                             _revision, _current, loaded.Warnings);

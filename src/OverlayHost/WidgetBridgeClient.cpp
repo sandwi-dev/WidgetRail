@@ -823,6 +823,23 @@ std::optional<WidgetStyleValue> ParseShellStyleValue(
     return value;
 }
 
+std::optional<WidgetCatalogSnapshot> ParseWidgetCatalog(
+    const JsonObject& payload, std::wstring& error) {
+    // Missing metadata cannot authorize deleting saved identities (including
+    // when talking to an older Bridge). Malformed metadata is rejected.
+    bool isComplete = false;
+    if (payload.HasKey(L"isComplete")) {
+        if (payload.GetNamedValue(L"isComplete").ValueType() != JsonValueType::Boolean) {
+            error = L"WidgetBridge catalog completeness must be a boolean.";
+            return std::nullopt;
+        }
+        isComplete = payload.GetNamedBoolean(L"isComplete");
+    }
+    auto widgets = ParseWidgetDescriptors(payload, error);
+    if (!widgets) return std::nullopt;
+    return WidgetCatalogSnapshot{std::move(*widgets), isComplete};
+}
+
 std::optional<PlatformAppearance> ParsePlatformAppearance(
     const JsonObject& payload,
     std::wstring& error) {
@@ -4174,7 +4191,7 @@ void WidgetBridgeClient::CloseTransport() noexcept {
     transportTainted_ = false;
 }
 
-std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
+std::optional<WidgetCatalogSnapshot> WidgetBridgeClient::ListWidgets() {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
@@ -4248,7 +4265,7 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
                 return std::nullopt;
             }
             std::wstring parseError;
-            auto descriptors = ParseWidgetDescriptors(payload, parseError);
+            auto descriptors = ParseWidgetCatalog(payload, parseError);
             if (!descriptors) {
                 Fail(std::move(parseError));
                 return std::nullopt;
@@ -5919,6 +5936,16 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
         return widgetrail::ParseWidgetDescriptors(payload, error);
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid widget descriptor JSON: " + std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<WidgetCatalogSnapshot> ParseWidgetCatalog(
+    const std::string_view payloadUtf8, std::wstring& error) {
+    try {
+        return widgetrail::ParseWidgetCatalog(JsonObject::Parse(winrt::to_hstring(payloadUtf8)), error);
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid widget catalog JSON: " + std::wstring(exception.message());
         return std::nullopt;
     }
 }

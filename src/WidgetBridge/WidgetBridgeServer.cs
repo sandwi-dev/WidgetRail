@@ -96,7 +96,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         _requestDiagnosticSink = requestDiagnosticSink;
         _workerDiagnosticRoot = workerDiagnosticRoot;
         _registry = new BridgeClientRegistry(
-            catalog ?? throw new ArgumentNullException(nameof(catalog)),
+            _catalogMonitor?.Current ?? catalog ?? throw new ArgumentNullException(nameof(catalog)),
             residencyBudget ?? new WorkerResidencyBudgetOptions(),
             CreateWidgetClient,
             PublishClientInvalidation,
@@ -387,7 +387,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.ListWidgets:
             var (listCatalog, listRevision) = _registry.CatalogSnapshot();
             await ReplyAsync(BridgeMessageTypes.Widgets, request.RequestId,
-                    new { revision = listRevision, widgets = listCatalog.Widgets }, cancellationToken)
+                    new { revision = listRevision, isComplete = listCatalog.IsComplete, widgets = listCatalog.Widgets }, cancellationToken)
                 .ConfigureAwait(false);
             break;
         case BridgeMessageTypes.GetPlatformAppearance:

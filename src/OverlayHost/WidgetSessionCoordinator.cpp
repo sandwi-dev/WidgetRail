@@ -655,7 +655,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             continue;
         }
         if (request.kind == RequestKind::Catalog) {
-            auto change = ApplyCatalog(std::move(*completion.descriptors));
+            auto change = ApplyCatalog(std::move(*completion.catalog));
             if (change) {
                 WidgetSessionEvent event;
                 event.kind = WidgetSessionEventKind::CatalogChanged;
@@ -1408,7 +1408,7 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
         case RequestKind::Catalog: {
             if (!operations_.listWidgets) break;
             auto result = operations_.listWidgets(stopToken);
-            if (result.value) completion.descriptors = std::move(*result.value);
+            if (result.value) completion.catalog = std::move(*result.value);
             else completion.failure = FailureFrom(result.failureStage, std::move(result.safeError));
             return completion;
         }
@@ -1500,8 +1500,10 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
 }
 
 std::optional<WidgetSessionCatalogChange> WidgetSessionCoordinator::ApplyCatalog(
-    std::vector<WidgetDescriptor> descriptors) {
+    WidgetCatalogSnapshot catalog) {
+    auto descriptors = std::move(catalog.widgets);
     WidgetSessionCatalogChange change;
+    change.isComplete = catalog.isComplete;
     std::unordered_set<std::wstring> ids;
     ids.reserve(descriptors.size());
     for (const auto& descriptor : descriptors) {

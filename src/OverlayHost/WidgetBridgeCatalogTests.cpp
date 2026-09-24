@@ -1578,6 +1578,18 @@ int main(int argc, char** argv) {
     secret[0] = L'\n';
     CHECK(!widgetrail::ProtectedWifiSecretFrame::Create(secret));
     std::wstring error;
+    const auto pendingCatalog = widgetrail::testing::ParseWidgetCatalog(
+        R"json({"widgets":[],"isComplete":false})json", error);
+    CHECK(pendingCatalog && !pendingCatalog->isComplete && pendingCatalog->widgets.empty());
+    const auto completeCatalog = widgetrail::testing::ParseWidgetCatalog(
+        R"json({"widgets":[],"isComplete":true})json", error);
+    CHECK(completeCatalog && completeCatalog->isComplete);
+    const auto legacyCatalog = widgetrail::testing::ParseWidgetCatalog(
+        R"json({"widgets":[]})json", error);
+    CHECK(legacyCatalog && !legacyCatalog->isComplete);
+    CHECK(!widgetrail::testing::ParseWidgetCatalog(
+        R"json({"widgets":[],"isComplete":"true"})json", error));
+    error.clear();
     const auto valid = widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.music",

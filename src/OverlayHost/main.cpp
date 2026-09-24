@@ -617,10 +617,10 @@ public:
                       auto value = bridge_.ListWidgets();
                       return value
                           ? widgetrail::WidgetSessionOperationResult<
-                                std::vector<widgetrail::WidgetDescriptor>>::Success(
+                                widgetrail::WidgetCatalogSnapshot>::Success(
                                     std::move(*value))
                           : widgetrail::WidgetSessionOperationResult<
-                                std::vector<widgetrail::WidgetDescriptor>>::Failure(
+                                widgetrail::WidgetCatalogSnapshot>::Failure(
                                     widgetrail::WidgetSessionFailureStage::Catalog,
                                     bridge_.lastError());
                   },
@@ -6676,7 +6676,7 @@ private:
         }
         bool trayStateChanged = false;
         ApplyStateTransition([&] {
-            trayStateChanged = state_.SetAvailableWidgets(change.availableWidgetIds);
+            trayStateChanged = state_.SetAvailableWidgets(change.availableWidgetIds, change.isComplete);
             return trayStateChanged;
         });
         if (!trayStateChanged) {
