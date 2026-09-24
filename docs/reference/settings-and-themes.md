@@ -55,7 +55,8 @@ Controller hints and common components use shared theme classes. Widget-specific
 artwork can retain its own colors; do not assume a brand logo is monochrome.
 
 Widget context menus, tray menus, and Select dropdowns share native popup styling:
-vertically centered labels, inset selection rows, and theme-derived depth. Their
+vertically centered labels, inset selection rows with a short leading accent,
+and theme-derived depth. A subdued outer border keeps emphasis on the selected row. Their
 surface, selection, selected text, and focus colors follow the existing host
 theme styles. Shadows and decorative shading are omitted in high-contrast mode.
 Dropdowns retain their checkmarks, icons, and value-selection behavior.

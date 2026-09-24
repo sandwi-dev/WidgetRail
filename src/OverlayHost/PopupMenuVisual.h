@@ -66,8 +66,11 @@ inline void DrawPopupMenuPanel(ID2D1RenderTarget* target, const declarative::Rec
             target->FillRoundedRectangle(panel, lighting.Get());
         }
     }
-    brush->SetColor(colors.focus);
-    target->DrawRoundedRectangle(panel, brush.Get(), std::clamp(focusWidth, 1.0F, kPopupMenuShadowMargin));
+    auto border = colors.highContrast ? colors.focus : colors.muted;
+    if (!colors.highContrast) border.a *= .55F;
+    brush->SetColor(border);
+    target->DrawRoundedRectangle(panel, brush.Get(), colors.highContrast
+        ? std::clamp(focusWidth, 1.0F, kPopupMenuShadowMargin) : 1.0F);
 }
 
 inline void DrawPopupMenuSelection(ID2D1RenderTarget* target, const declarative::Rect& bounds,
@@ -84,6 +87,15 @@ inline void DrawPopupMenuSelection(ID2D1RenderTarget* target, const declarative:
             highlight.a *= .35F;
             fill->SetColor(highlight);
             target->DrawRoundedRectangle(selectedBounds, fill.Get(), 1.0F);
+        }
+        const float markerHeight = std::min(20.0F, bounds.height * .5F);
+        const float markerTop = bounds.y + (bounds.height - markerHeight) * .5F;
+        const float markerRadius = std::min(radius, 1.5F);
+        if (bounds.width >= 12) {
+            fill->SetColor(colors.highContrast ? colors.selectedText : colors.focus);
+            target->FillRoundedRectangle(D2D1::RoundedRect(
+                D2D1::RectF(bounds.x + 4.5F, markerTop, bounds.x + 7.5F, markerTop + markerHeight),
+                markerRadius, markerRadius), fill.Get());
         }
     }
 }
