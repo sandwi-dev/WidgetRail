@@ -15,7 +15,11 @@ UI windowing; it does not bypass the provider’s 500-entry fetch cap. Home reta
 provider section titles, with one responsive square-poster grid per section.
 “Mixed for you” is promoted first when present; other sections retain provider order. Song
 radio and Play next are host-owned Menu context actions. Play next inserts into both
-the active queue and its unshuffled order, without changing the current song. The SDK compact navigation sits above a persistent left player and right browsing pane,
+the active queue and its unshuffled order, without changing the current song.
+Playlist Play next fetches the bounded playlist, skips non-song entries, then commits
+one ordered block under the queue lock. Capacity trimming removes the same occurrences
+in both orders; only the first inserted song is prefetched. Empty queues start playback.
+The SDK compact navigation sits above a persistent left player and right browsing pane,
 following the Spotify widget. Settings is a compact secondary page. Explicit focus-group
 entry requests enter newly loaded pages and restore collection selection on Back.
 Home, Search, Queue and each of the four Library filters retain separate cursor

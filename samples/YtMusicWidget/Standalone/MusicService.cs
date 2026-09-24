@@ -101,45 +101,38 @@ public sealed class MusicService : IMusicService
         await SelectAsync(token).ConfigureAwait(false);
     }
 
-    public async Task PlayNextAsync(MusicItem song, CancellationToken token)
+    public async Task<PlayNextResult> PlayNextAsync(MusicItem item, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        // Each queued occurrence retains its own identity when the same song is
-        // added again, including while switching between shuffled/original order.
-        song = song with { };
+        IReadOnlyList<MusicItem> tracks;
+        if (item.Kind == "playlist")
+        {
+            var page = await BrowseAsync("playlist", item.Id, token).ConfigureAwait(false);
+            tracks = page.Items.Where(track => track.Kind == "song").ToArray();
+            if (tracks.Count == 0) throw new IOException("This playlist has no playable songs.");
+        }
+        else if (item.Kind == "song") tracks = [item];
+        else throw new ArgumentException("Select a song or playlist.", nameof(item));
+
         bool startPlayback;
+        MusicQueueAddition addition;
+        string nextId;
         lock (_gate)
         {
-            var current = _state.Current;
-            startPlayback = current is null;
-            if (startPlayback)
-            {
-                _originalQueue = MusicQueue.InsertNext([], -1, song).Items;
-                _state = _state with { Queue = _originalQueue, Index = 0 };
-            }
-            else
-            {
-                var insertion = MusicQueue.InsertNext(_state.Queue, _state.Index, song);
-                if (_state.Shuffle)
-                {
-                    // Remove the same occurrence in both orders; independently
-                    // trimming each tail would bring the evicted song back later.
-                    var original = _originalQueue.ToList();
-                    if (insertion.Removed is { } removed)
-                        original.RemoveAt(original.FindIndex(item => ReferenceEquals(item, removed)));
-                    var originalIndex = original.FindIndex(item => ReferenceEquals(item, current));
-                    _originalQueue = MusicQueue.InsertNext(original, originalIndex, song).Items;
-                }
-                else _originalQueue = insertion.Items;
-                _state = _state with { Queue = insertion.Items, Index = insertion.CurrentIndex };
-            }
+            token.ThrowIfCancellationRequested();
+            startPlayback = _state.Current is null;
+            addition = MusicQueue.AddNext(_state, _originalQueue, tracks);
+            _originalQueue = addition.OriginalQueue;
+            _state = addition.State;
+            nextId = _state.Queue[startPlayback ? 0 : _state.Index + 1].Id;
         }
         if (startPlayback) await SelectAsync(token).ConfigureAwait(false);
         else
         {
             Changed?.Invoke();
-            if (_backend is not null) await PrefetchAsync(song.Id, token).ConfigureAwait(false);
+            if (_backend is not null) await PrefetchAsync(nextId, token).ConfigureAwait(false);
         }
+        return addition.Result;
     }
 
     private async Task EnsurePlayerAsync(CancellationToken token)

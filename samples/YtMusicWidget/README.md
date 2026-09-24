@@ -34,6 +34,7 @@ The standalone package currently supports Windows x64.
 
 - Select a song to play it and queue the songs in that collection.
 - Focus a song, press **Menu**, and choose **Play next** to insert it after the current song. The rest of the queue stays in place; an empty queue starts playback immediately.
+- **Play next** also works on playlists. Songs are inserted together in playlist order, including when shuffle is already enabled. The current song keeps playing.
 - Choose **Start radio** to replace the queue with recommendations based on it.
 - Use **Queue** to select a different queued song. The current song stays highlighted while you browse.
 - Use the player on the left for playback, seeking, volume, shuffle and repeat while browsing on the right.
@@ -54,9 +55,11 @@ WidgetRail's Now Playing widget can control the local player.
 with an independent player. Sign in again and approve the new full-trust permission.
 It does not reuse or delete YTMDesktop's pairing token or application data.
 
-**What happens when the queue is full?** At the 500-song limit, Play next removes
-the last queued entry to make room. If the current song is last, it removes the
-first (oldest played) entry instead, keeping the current and next songs intact.
+**What happens when the queue is full?** Play next trims existing entries from
+the end, then the oldest played entries if necessary, keeping the current song.
+For large playlists, it adds up to the first 499 playable songs when a current song
+exists, or 500 when the queue is empty. The status reports the number added and
+the queue limit. Remaining playlist songs are not loaded automatically.
 
 **Where is the stream cache?** It is encrypted for your Windows account in
 `%LOCALAPPDATA%\WidgetRail\applications\widgetrail.samples.ytmusic\stream-urls.dpapi`.

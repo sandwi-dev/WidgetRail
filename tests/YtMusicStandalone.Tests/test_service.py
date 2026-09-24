@@ -192,6 +192,17 @@ class ServiceTests(unittest.TestCase):
         self.service.disconnect({})
         self.assertEqual({}, self.service.cache)
 
+    def test_large_playlist_is_bounded_in_provider_order(self):
+        class Fake:
+            def get_playlist(self, playlist_id, limit):
+                assert playlist_id == "PLtest" and limit == 500
+                # A provider page may cross the requested limit.
+                return {"title": "Large playlist", "tracks": [
+                    {"videoId": "M7lc1UVf-VE", "title": str(index)} for index in range(750)]}
+        self.service.client = lambda: Fake()
+        result = self.service.browse({"kind": "playlist", "value": "PLtest"})
+        self.assertEqual([str(index) for index in range(500)], [item["title"] for item in result["items"]])
+
     def test_library_requests_recently_added_only_where_supported(self):
         class Fake:
             def get_library_playlists(self, limit):

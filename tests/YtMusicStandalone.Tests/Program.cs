@@ -41,6 +41,8 @@ var tests = new List<(string, Func<Task>)>
 {
     ("Queue ends, repeats one only on automatic end, and wraps only with repeat all", QueuePolicy),
     ("Play next inserts after the current song and preserves the remaining queue", QueueInsertion),
+    ("Playlist insertion preserves order and current occurrences within the queue limit", PlaylistInsertion),
+    ("Playlist Play next remains responsive and reports limits and failures", PlaylistNextAction),
     ("Song menus expose Play next and dispatch without starting radio", PlayNextAction),
     ("Shuffle preserves current and played entries and retains every occurrence", ShufflePolicy),
     ("All pages and pinned layout produce valid bounded snapshots", Snapshots),
@@ -87,27 +89,105 @@ static Task QueuePolicy()
     Check(MusicQueue.Next(3, 1, "one", false) == 2, "Explicit next escapes repeat one");
     return Task.CompletedTask;
 }
+static MusicState QueueState(IReadOnlyList<MusicItem> queue, int index, bool shuffle = false) =>
+    new(true, queue, index, shuffle, "off", new("playing", true));
+
 static Task QueueInsertion()
 {
     var songs = Enumerable.Range(0, 4).Select(i => new MusicItem(i.ToString(), "song", "Song " + i)).ToArray();
     var added = new MusicItem("added", "song", "Added");
-    var next = MusicQueue.InsertNext(songs, 1, added);
-    Check(next.Items.SequenceEqual(new[] { songs[0], songs[1], added, songs[2], songs[3] }) && next.CurrentIndex == 1 && next.Removed is null,
+    var next = MusicQueue.AddNext(QueueState(songs, 1), songs, [added]);
+    Check(next.State.Queue.SequenceEqual(new[] { songs[0], songs[1], added, songs[2], songs[3] }) && next.State.Index == 1,
         "Play next reordered or replaced the existing queue");
-    Check(MusicQueue.InsertNext([], -1, added).Items.SequenceEqual(new[] { added }), "Empty queue insertion failed");
+    Check(MusicQueue.AddNext(MusicState.Empty, [], [added]).State.Queue.SequenceEqual(new[] { added }), "Empty queue insertion failed");
     var full = Enumerable.Range(0, MusicQueue.MaximumItems).Select(i => new MusicItem(i.ToString(), "song", "Song " + i)).ToArray();
     foreach (var index in new[] { 0, 250, 498, 499 })
     {
-        var insertion = MusicQueue.InsertNext(full, index, added);
+        var insertion = MusicQueue.AddNext(QueueState(full, index), full, [added]).State;
         var removed = index == full.Length - 1 ? full[0] : full[^1];
-        Check(insertion.Items.Length == MusicQueue.MaximumItems && ReferenceEquals(insertion.Items[insertion.CurrentIndex], full[index]),
+        Check(insertion.Queue.Count == MusicQueue.MaximumItems && ReferenceEquals(insertion.Current, full[index]),
             "Full queue lost its bound or current song");
-        Check(ReferenceEquals(insertion.Items[insertion.CurrentIndex + 1], added) && ReferenceEquals(insertion.Removed, removed),
+        Check(insertion.Queue[insertion.Index + 1] == added && !insertion.Queue.Any(item => ReferenceEquals(item, removed)),
             "Full queue removed the wrong tail entry or lost the added song");
-        Check(insertion.Items.Where(item => !ReferenceEquals(item, added)).SequenceEqual(full.Where(item => !ReferenceEquals(item, removed))),
+        Check(insertion.Queue.Where(item => item.Id != added.Id).SequenceEqual(full.Where(item => !ReferenceEquals(item, removed))),
             "Tail replacement reordered the retained songs");
     }
     return Task.CompletedTask;
+}
+
+static Task PlaylistInsertion()
+{
+    var original = Enumerable.Range(0, 500).Select(i => new MusicItem("same-id", "song", "Occurrence " + i)).ToArray();
+    foreach (var queueSize in new[] { 0, 4, 500 })
+    foreach (var count in new[] { 1, 3, 499, 500, 700 })
+    foreach (var shuffle in new[] { false, true })
+    {
+        var queue = original.Take(queueSize).ToArray();
+        var playlist = Enumerable.Range(0, count).Select(i => new MusicItem("playlist-" + i, "song", "Playlist song " + i)).ToArray();
+        foreach (var index in queueSize == 0 ? new[] { -1 } : new[] { 0, queueSize / 2, queueSize - 1 })
+        {
+            var active = shuffle ? MusicQueue.Shuffled(queue, index, new Random(13)) : queue;
+            var state = QueueState(active, index, shuffle);
+            var result = MusicQueue.AddNext(state, queue, playlist);
+            var next = result.State;
+            var added = Math.Min(count, queueSize == 0 ? 500 : 499);
+            Check(result.Result.AddedCount == added && next.Queue.Count <= 500, "Oversized playlist did not respect insertion capacity");
+            Check(result.Result.QueueLimitReached == (next.Queue.Count == 500), "Queue capacity feedback is wrong");
+            Check(next.Player == state.Player && next.Shuffle == state.Shuffle, "Queue edit changed playback or shuffle state");
+            var start = queueSize == 0 ? 0 : next.Index + 1;
+            Check(next.Queue.Skip(start).Take(added).SequenceEqual(playlist.Take(added)), "Playlist order was reversed, shuffled or truncated at the wrong end");
+            if (queueSize != 0) Check(ReferenceEquals(next.Current, state.Current), "Playlist insertion removed the current occurrence");
+            else Check(next.Index == 0, "Empty queue did not select the playlist's first song");
+            var originalIndex = queueSize == 0 ? -1 : Array.FindIndex(result.OriginalQueue, item => ReferenceEquals(item, state.Current));
+            Check(result.OriginalQueue.Skip(originalIndex + 1).Take(added).SequenceEqual(playlist.Take(added)), "Turning shuffle off would lose playlist placement");
+            Check(new HashSet<MusicItem>(next.Queue, ReferenceEqualityComparer.Instance).SetEquals(result.OriginalQueue),
+                "Shuffled and original orders retained different occurrences");
+            var retained = next.Queue.Where(item => item.Id == "same-id").ToArray();
+            Check(retained.SequenceEqual(active.Where(item => retained.Any(kept => ReferenceEquals(item, kept)))), "Eviction reordered retained entries");
+            var evicted = active.Length + added - next.Queue.Count;
+            var tail = Math.Min(evicted, active.Length - index - 1);
+            var expectedRetained = active.Skip(evicted - tail).Take(active.Length - evicted);
+            Check(retained.SequenceEqual(expectedRetained), "Eviction did not trim the tail then the oldest played entries");
+        }
+    }
+    var duplicate = original[0];
+    var repeated = MusicQueue.AddNext(QueueState([duplicate], 0), [duplicate], [duplicate, duplicate]);
+    Check(repeated.State.Queue.Distinct(ReferenceEqualityComparer.Instance).Count() == 3,
+        "Repeated song insertion reused occurrence identities");
+    try { MusicQueue.AddNext(MusicState.Empty, [], []); throw new Exception("Empty playlist accepted"); }
+    catch (ArgumentException) { }
+    return Task.CompletedTask;
+}
+
+static async Task PlaylistNextAction()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        service.PageOverride = new("Playlists", [new("PLtest", "playlist", "Test playlist"), new("album", "album", "Album")]);
+        await widget.OnActionAsync(new("refresh", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        var view = widget.Render().CreateSnapshot("playlist-next", 1);
+        var playlist = Nodes(view.Root).Single(n => n.Id == "item.0");
+        Check(playlist.ContextActions.Any(action => action.ActionId == "next.0") && !playlist.ContextActions.Any(action => action.ActionId == "radio.0"),
+            "Playlist menu has missing Play next or unsupported radio");
+        Check(!Nodes(view.Root).Single(n => n.Id == "item.1").ContextActions.Any(), "Album menu was expanded unintentionally");
+        service.PendingNext = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var dispatch = widget.OnActionAsync(new("next.0", "item.0"));
+        Check(dispatch.IsCompletedSuccessfully, "Playlist fetching blocks host dispatch");
+        await Until(() => service.NextSongs.Count == 1);
+        await widget.OnActionAsync(new("player.toggle", "test"));
+        await Until(() => service.Commands.Contains("toggle"));
+        Check(service.NextSongs.Single().Id == "PLtest" && service.RadioCalls == 0, "Wrong playlist action dispatched");
+        service.PendingNext.SetResult(new(499, true));
+        await Until(() => Nodes(widget.Render().CreateSnapshot("playlist-next", 2).Root).Any(n => n.Text == "Added 499 songs to play next (500-song queue limit)"));
+        service.PendingNext = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await widget.OnActionAsync(new("next.0", "item.0"));
+        await Until(() => service.NextSongs.Count == 2);
+        service.PendingNext.SetException(new IOException("empty_playlist"));
+        await Until(() => Nodes(widget.Render().CreateSnapshot("playlist-next", 3).Root).Any(n => n.Text?.StartsWith("Could not add this playlist", StringComparison.Ordinal) == true));
+    }
+    finally { service.PendingNext?.TrySetCanceled(); await WidgetTestHost.DestroyAsync(widget); }
 }
 
 static async Task PlayNextAction()
@@ -732,6 +812,7 @@ sealed class FakeService : IMusicService
         Changed?.Invoke();
     }
     public TaskCompletionSource? PendingRadio;
+    public TaskCompletionSource<PlayNextResult>? PendingNext;
     public TaskCompletionSource<MusicPage>? PendingSearch;
     public TaskCompletionSource<MusicPage>? PendingLibrary;
     public TaskCompletionSource<string>? PendingAuth;
@@ -760,7 +841,7 @@ sealed class FakeService : IMusicService
         return new MusicPage("Home", Enumerable.Range(0, 30).Select(i => new MusicItem(i.ToString(), "song", "Song " + i)).ToArray());
     }
     public Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token) => Task.CompletedTask;
-    public Task PlayNextAsync(MusicItem song, CancellationToken token) { NextSongs.Add(song); return Task.CompletedTask; }
+    public Task<PlayNextResult> PlayNextAsync(MusicItem item, CancellationToken token) { NextSongs.Add(item); return PendingNext?.Task.WaitAsync(token) ?? Task.FromResult(new PlayNextResult(1, false)); }
     public Task RadioAsync(MusicItem song, CancellationToken token) { RadioCalls++; return PendingRadio?.Task.WaitAsync(token) ?? Task.CompletedTask; }
     public Task CommandAsync(string command, double? value, CancellationToken token) { LastValue = value; Commands.Add(command); return Task.CompletedTask; }
     public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
