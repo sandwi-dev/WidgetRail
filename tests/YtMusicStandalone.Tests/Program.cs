@@ -15,6 +15,16 @@ if (args is ["--export-layout", var directory])
             await File.WriteAllBytesAsync(Path.Combine(directory, playing ? "playing.snapshot.json" : "empty.snapshot.json"),
                 SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 1)));
         }
+        await widget.OnActionAsync(new("next.0", "item.0"));
+        await Until(() => Nodes(widget.Render().CreateSnapshot("layout", 2).Root)
+            .Any(n => n.Text == "Added to play next"));
+        await File.WriteAllBytesAsync(Path.Combine(directory, "status-short.snapshot.json"),
+            SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 2)));
+        service.SetPlayerError("Playback is temporarily unavailable. Reconnect your account or try another song. " +
+            "This deliberately long status must stay inside the header without moving the player or browsing panels.");
+        await File.WriteAllBytesAsync(Path.Combine(directory, "status-long.snapshot.json"),
+            SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 3)));
+        service.SetPlayerError(null);
         service.PageOverride = new("Your playlists", Enumerable.Range(0, 30).Select(i => new MusicItem("PL" + i, "playlist", "Playlist " + i)).ToArray());
         await widget.OnActionAsync(new("tab.library", "test"));
         await Until(() => widget.Render().FocusGroupEntryRequest is not null && Nodes(widget.Render().CreateSnapshot("layout", 1).Root).Any(n => n.Text == "Your playlists"));
@@ -805,6 +815,7 @@ sealed class FakeService : IMusicService
     public MusicState State { get; private set; } = new(true, [new("M7lc1UVf-VE", "song", "Playing")], 0, false, "off", new("M7lc1UVf-VE", true));
     public event Action? Changed;
     public void PlaybackTick() { State = State with { Player = State.Player with { Position = State.Player.Position + 1 } }; Changed?.Invoke(); }
+    public void SetPlayerError(string? error) { State = State with { Player = State.Player with { Error = error } }; Changed?.Invoke(); }
     public void ReplaceQueue(IReadOnlyList<MusicItem> queue) { State = State with { Queue = queue, Index = 0 }; Changed?.Invoke(); }
     public void SetPlayback(bool playing)
     {
