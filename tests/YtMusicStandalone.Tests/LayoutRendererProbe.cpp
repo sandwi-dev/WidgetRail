@@ -8,16 +8,18 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <map>
 #include <stdexcept>
 #include <cmath>
 
 void Require(bool condition, const char* message) { if (!condition) throw std::runtime_error(message); }
 int Run(int argc, wchar_t** argv) {
-    if (argc != 8) return 2;
+    if (argc != 10) return 2;
     Microsoft::WRL::ComPtr<IDWriteFactory> factory;
     Require(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(factory.GetAddressOf()))), "DirectWrite unavailable");
     widgetrail::DeclarativeRenderer renderer{nullptr, factory.Get(), nullptr};
     widgetrail::input::WidgetFocusGroupMemory focusMemory;
+    std::map<float, widgetrail::declarative::Rect> playingPaneBounds;
     for (int file = 1; file < argc; ++file) {
         std::ifstream stream(std::filesystem::path(argv[file]), std::ios::binary);
         const std::string text{std::istreambuf_iterator<char>(stream), {}};
@@ -58,6 +60,21 @@ int Run(int argc, wchar_t** argv) {
                     "Production focus memory did not restore the playlist on return or reset it on refresh");
             }
             const auto& panes = result.elementRects.at(L"music.panes");
+            const auto& header = result.elementRects.at(L"music.header");
+            const auto& title = result.elementRects.at(L"music.title");
+            const auto& status = result.elementRects.at(L"music.status");
+            Require(status.x >= title.x + title.width + 11 &&
+                status.x + status.width <= header.x + header.width + .1F &&
+                status.y >= header.y && status.y + status.height <= header.y + header.height + .1F,
+                "Header status overlaps the title or escapes its reserved space");
+            Require(!result.focusRects.contains(L"settings.open"), "Removed header settings button remains focusable");
+            if (fixture == L"playing") playingPaneBounds.insert_or_assign(size.width, panes);
+            if (fixture == L"status-short" || fixture == L"status-long") {
+                const auto& baseline = playingPaneBounds.at(size.width);
+                Require(std::abs(panes.x - baseline.x) < .1F && std::abs(panes.y - baseline.y) < .1F &&
+                    std::abs(panes.width - baseline.width) < .1F && std::abs(panes.height - baseline.height) < .1F,
+                    "Status length changes the player or browsing pane geometry");
+            }
             const bool playing = result.elementRects.contains(L"player.main.scroll");
             const auto& player = result.elementRects.at(playing ? L"player.main.scroll" : L"player.main.empty");
             const auto& browse = result.elementRects.at(L"music.browse");
@@ -114,7 +131,7 @@ int Run(int argc, wchar_t** argv) {
         }
         if (fixture == L"home") focusMemory.Remember(L"ytmusic", *snapshot, L"item.1");
     }
-    std::cout << "PASS native layout and focus: empty, playing, library toolbar, Home, playlist return and refresh at compact and preferred sizes\n";
+    std::cout << "PASS native layout and focus: empty, playing, header statuses, library toolbar, Home, playlist return and refresh at compact and preferred sizes\n";
     return 0;
 }
 

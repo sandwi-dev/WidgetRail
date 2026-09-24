@@ -59,7 +59,7 @@ It does not reuse or delete YTMDesktop's pairing token or application data.
 **What happens when the queue is full?** Play next trims existing entries from
 the end, then the oldest played entries if necessary, keeping the current song.
 For large playlists or albums, it adds up to the first 499 playable songs when a current song
-exists, or 500 when the queue is empty. The status reports the number added and
+exists, or 500 when the queue is empty. The header status reports the number added and
 the queue limit. Remaining songs are not loaded automatically.
 
 **Where is the stream cache?** It is encrypted for your Windows account in

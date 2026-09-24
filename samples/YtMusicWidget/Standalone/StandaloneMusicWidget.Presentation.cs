@@ -17,7 +17,9 @@ public sealed partial class StandaloneMusicWidget
             var group = UI.Stack(compact ? ContentGroupId : _browse.GroupId, content).Classes(compact ? "music-panel-body" : "music-body");
             if (group.Id == ContentGroupId && !entry.StartsWith("music.nav.", StringComparison.Ordinal))
                 group = group.RememberChildFocus(entry);
-            var children = new List<WidgetElement> { Header(panel) };
+            var status = state.Player.Error ?? _status;
+            if (string.IsNullOrWhiteSpace(status) || status == "Loading…" || _signingIn) status = string.Empty;
+            var children = new List<WidgetElement> { Header(panel, status) };
             if (compact) children.Add(group);
             else
             {
@@ -31,9 +33,6 @@ public sealed partial class StandaloneMusicWidget
                     .Classes("music-navigation-header"));
                 children.Add(UI.Row("music.panes", Player(state, "main", entry), group).Classes("music-panes"));
             }
-            var status = state.Player.Error ?? _status;
-            if (!string.IsNullOrWhiteSpace(status) && status != "Loading…" && !_signingIn)
-                children.Add(UI.Text(status, "music.status").Classes("music-status"));
             var root = UI.Stack("music.root", children.ToArray()).InputScope("music.root").Classes("music-root");
             if (panel is not null) root = root.Shortcut(ControllerButton.B, "panel.back", label: "Back to music");
             else
@@ -65,16 +64,20 @@ public sealed partial class StandaloneMusicWidget
         }
     }
 
-    private WidgetElement Header(string? panel)
+    private static WidgetElement Header(string? panel, string status)
     {
-        var action = panel is null
-            ? UI.Button("", "tab.setup", "settings.open").Icon(WidgetGlyph.Settings, "Settings — Y").Classes("music-icon-button")
-            : UI.Button("Back", "panel.back", "panel.back").Shortcut(ControllerButton.B, "Back to music").Classes("music-secondary");
-        return UI.Row("music.header",
+        var children = new List<WidgetElement>
+        {
             UI.Icon(WidgetIcon.PackageSvg("ytmusic.mark", WidgetPackageIconColorMode.OriginalColor, WidgetGlyph.Music),
                 "music.brand", "YouTube Music").Classes("music-brand"),
             UI.Text(panel == "setup" ? "YouTube Music · Settings" : "YouTube Music", "music.title")
-                .Classes("music-title", "music-grow"), action).Classes("music-header");
+                .Classes("music-title"),
+            UI.Text(status, "music.status").Classes("music-status"),
+        };
+        if (panel is not null)
+            children.Add(UI.Button("Back", "panel.back", "panel.back")
+                .Shortcut(ControllerButton.B, "Back to music").Classes("music-secondary"));
+        return UI.Row("music.header", children.ToArray()).Classes("music-header");
     }
 
     private static RowElement CompactControllerKey(string key, string label, string id) =>
