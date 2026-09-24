@@ -62,6 +62,13 @@ Testing only mutable staging is not sufficient. These checks do not launch sign-
 Live provider tests are not CI gates: YouTube service and account availability
 are outside the repository's control.
 
+`tests/YtMusicStandalone.Tests/Test-Layout.ps1 -TaffyLibrary <built-wrail_taffy_layout.lib>`
+builds deterministic empty/playing snapshots, uses the production Bridge style
+projection, and checks their actual native-renderer geometry at 980×700 and 620×400.
+It verifies the bounded player width, separate browsing pane, full-height cards,
+centered empty state and transport containment without opening or controlling the overlay.
+Use the library from a native build of this checkout's pinned Taffy source.
+
 Before acceptance, install the candidate, sign in, browse a private playlist,
 start song radio, test transport and seeking, close/reopen the overlay while
 playing, test the pinned layout and Now Playing controls, then restart WidgetRail

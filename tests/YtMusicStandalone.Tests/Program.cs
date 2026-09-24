@@ -3,6 +3,23 @@ using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
 
+if (args is ["--export-layout", var directory])
+{
+    Directory.CreateDirectory(directory);
+    var (widget, service) = await Start();
+    try
+    {
+        foreach (var playing in new[] { false, true })
+        {
+            service.SetPlayback(playing);
+            await File.WriteAllBytesAsync(Path.Combine(directory, playing ? "playing.snapshot.json" : "empty.snapshot.json"),
+                SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 1)));
+        }
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+    return 0;
+}
+
 var tests = new List<(string, Func<Task>)>
 {
     ("Queue ends, repeats one only on automatic end, and wraps only with repeat all", QueuePolicy),
@@ -361,6 +378,12 @@ sealed class FakeService : IMusicService
 {
     public MusicState State { get; private set; } = new(true, [new("M7lc1UVf-VE", "song", "Playing")], 0, false, "off", new("M7lc1UVf-VE", true));
     public event Action? Changed;
+    public void SetPlayback(bool playing)
+    {
+        State = playing ? new(true, [new("test", "song", "A song title", "Artist name")], 0, false, "off", new("test", true, Position: 15, Duration: 196))
+            : new(true, [], -1, false, "off", new());
+        Changed?.Invoke();
+    }
     public TaskCompletionSource? PendingRadio;
     public TaskCompletionSource<MusicPage>? PendingSearch;
     public TaskCompletionSource<string>? PendingAuth;

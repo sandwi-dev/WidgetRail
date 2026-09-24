@@ -86,7 +86,8 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         ArgumentNullException.ThrowIfNull(widgetPackage);
         var current = Current;
-        if (_widgetThemes.TryGetValue(widgetId, out var cached) && cached.Revision == current.Revision)
+        if (_widgetThemes.TryGetValue(widgetId, out var cached) && cached.Revision == current.Revision &&
+            ReferenceEquals(cached.Package, widgetPackage))
             return cached.Theme;
 
         var compiled = current.CompileForWidget(widgetPackage);
@@ -98,7 +99,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
                 $"Layered style for widget '{widgetId}' is invalid: {SafeDiagnostic(diagnostic.Code)}: " +
                 SafeDiagnostic(diagnostic.Message));
         }
-        var entry = new WidgetThemeCacheEntry(current.Revision, compiled.Theme!);
+        var entry = new WidgetThemeCacheEntry(current.Revision, widgetPackage, compiled.Theme!);
         _widgetThemes[widgetId] = entry;
         return entry.Theme;
     }
@@ -311,7 +312,10 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         return singleLine.Length <= 256 ? singleLine : singleLine[..256];
     }
 
-    private sealed record WidgetThemeCacheEntry(long Revision, WrssTheme Theme);
+    // A catalog replacement loads a new immutable style package, even when the
+    // widget ID and global appearance revision stay the same. Keep one entry per
+    // widget, while preventing an old generation's rules from styling a new one.
+    private sealed record WidgetThemeCacheEntry(long Revision, WrssPackageResult Package, WrssTheme Theme);
 }
 
 internal sealed record BridgeDisplayContextRequest(string Id, string Name, IReadOnlyList<string> DevicePaths)

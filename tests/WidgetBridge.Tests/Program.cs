@@ -20,6 +20,23 @@ using WidgetRail.Samples.SdkGalleryWidget;
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
 
+if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var outputPath])
+{
+    var snapshot = SnapshotJson.Deserialize(await File.ReadAllBytesAsync(snapshotPath));
+    var package = WrssPackageLoader.LoadFile(Path.GetFullPath(stylePath), Path.GetDirectoryName(Path.GetFullPath(stylePath))!);
+    var compiled = WrssThemeCompiler.Compile(package);
+    if (!compiled.IsValid) throw new InvalidOperationException(string.Join("\n", compiled.Diagnostics));
+    using var document = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
+    var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+    await File.WriteAllTextAsync(outputPath, JsonSerializer.Serialize(new
+    {
+        snapshot = document.RootElement,
+        renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme),
+    }, options));
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Window previews publish themed render styles for every protocol role", WindowPreviewScenarios.ThemedRenderRoles),
@@ -135,6 +152,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
     ("Widget styles override global theme defaults", WidgetStylesOverrideGlobalThemeDefaults),
+    ("Widget styles follow package replacement without an appearance reload", WidgetStylesFollowPackageReplacement),
     ("Appearance reload publishes revisions and retains last good state", AppearanceReloadIsLastGood),
     ("Widget lifecycle is explicit, lazy, and idempotent through the bridge", LifecycleIsExplicit),
     ("Suspend-when-hidden blocks work and serves only a cached view", SuspendWhenHiddenIsLogical),
@@ -4366,6 +4384,36 @@ static async Task WidgetStylesOverrideGlobalThemeDefaults()
     Assert.Equal("#ffffff", button.GetProperty("color").GetProperty("text").GetString());
     Assert.Equal(0.8D, button.GetProperty("opacity").GetProperty("number").GetDouble());
     Assert.Equal("7px", button.GetProperty("corner-radius").GetProperty("text").GetString());
+}
+
+static async Task WidgetStylesFollowPackageReplacement()
+{
+    await using var appearance = await TemporaryAppearance.CreateAsync();
+    static WrssPackageResult Package(string source)
+    {
+        var parsed = WrssParser.Parse(source, "styles/default.wrss");
+        return new([parsed.Document], parsed.Diagnostics);
+    }
+    var original = Package(".player { width: 100%; } .retired { padding: 19px; }");
+    var updated = Package(".player { width: 320px; } .panes { gap: 12px; }");
+    var player = new WrssElement("stack", StyleClasses: new HashSet<string> { "player" });
+    var revision = appearance.Service.Current.Revision;
+    var first = appearance.Service.ResolveWidgetTheme("music", original);
+    Assert.Equal("100%", first.Resolve(player).Get("width")!.Text);
+    Assert.True(ReferenceEquals(first, appearance.Service.ResolveWidgetTheme("music", original)),
+        "Unchanged package was recompiled.");
+    var neighbor = appearance.Service.ResolveWidgetTheme("neighbor", original);
+    var replacement = appearance.Service.ResolveWidgetTheme("music", updated);
+    Assert.Equal("320px", replacement.Resolve(player).Get("width")!.Text);
+    Assert.Equal("12px", replacement.Resolve(new WrssElement("row", StyleClasses: new HashSet<string> { "panes" })).Get("gap")!.Text);
+    Assert.True(replacement.Resolve(new WrssElement("stack", StyleClasses: new HashSet<string> { "retired" })).Get("padding")?.Text != "19px",
+        "Removed rules leaked into the replacement package.");
+    Assert.True(ReferenceEquals(replacement, appearance.Service.ResolveWidgetTheme("music", updated)),
+        "Replacement package missed its own cache entry.");
+    Assert.True(ReferenceEquals(neighbor, appearance.Service.ResolveWidgetTheme("neighbor", original)),
+        "Package replacement evicted an unrelated widget.");
+    Assert.Equal("100%", appearance.Service.ResolveWidgetTheme("music", original).Resolve(player).Get("width")!.Text);
+    Assert.Equal(revision, appearance.Service.Current.Revision);
 }
 
 static async Task AppearanceReloadIsLastGood()

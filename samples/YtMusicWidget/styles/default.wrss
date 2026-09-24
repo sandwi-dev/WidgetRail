@@ -1,4 +1,4 @@
-.music-root { width: 100vw; min-width: 0px; padding: 16px; gap: 12px; background: var(--surface); color: var(--text); overflow: clip; }
+.music-root { width: 100vw; min-width: 0px; padding: 14px 16px; gap: 8px; background: var(--surface); color: var(--text); overflow: clip; }
 .music-header { gap: 12px; align: center; min-width: 0px; flex-shrink: 0; }
 .music-brand { width: 28px; height: 28px; flex-shrink: 0; }
 .music-title { font-size: 22px; font-weight: 600; max-lines: 1; text-overflow: ellipsis; }
@@ -27,8 +27,8 @@
 .music-section-trigger { flex-shrink: 0; color: var(--text-muted); font-size: 10px; max-lines: 1; }
 .music-panes { width: 100%; min-width: 0px; min-height: 0px; flex-basis: 0px; flex-grow: 1; flex-shrink: 1; gap: 12px; align: stretch; overflow: clip; }
 .music-body { min-width: 0px; min-height: 0px; flex-basis: 0px; flex-grow: 1; flex-shrink: 1; padding: 12px; background: var(--surface-raised); corner-radius: 12px; overflow: clip; }
-.music-player { min-width: 0px; min-height: 0px; gap: 12px; padding: 12px; background: var(--surface-raised); corner-radius: 12px; }
-.music-player-pane { width: 320px; min-width: 260px; max-width: 340px; flex-basis: 320px; flex-grow: 0; flex-shrink: 1; }
+.music-player { min-width: 0px; min-height: 0px; gap: 8px; padding: 12px; align: center; justify: center; background: var(--surface-raised); corner-radius: 12px; overflow: clip; }
+.music-player.music-player-pane { width: 320px; min-width: 260px; max-width: 340px; flex-basis: 320px; flex-grow: 0; flex-shrink: 1; }
 .music-player-pinned { width: 100%; flex-grow: 1; flex-shrink: 1; }
 .music-artwork-frame { width: 100%; justify: center; flex-shrink: 0; }
 .music-artwork { width: 142px; height: 142px; corner-radius: 10px; }
@@ -54,3 +54,5 @@
 .music-transport:focused, .music-secondary-action:focused, .music-play:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .music-transport:focused, .music-secondary-action:focused { color: var(--text); background: var(--surface-active, #262623); }
 .music-secondary-action:selected { color: var(--accent); }
+
+.music-section-trigger-key { min-width: 28px; min-height: 28px; padding: 5px 7px; justify: center; background: var(--surface-active, #262623); corner-radius: 6px; }

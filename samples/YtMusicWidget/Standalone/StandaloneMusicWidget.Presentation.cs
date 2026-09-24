@@ -22,8 +22,8 @@ public sealed partial class StandaloneMusicWidget
             {
                 var parts = UI.NavigationShellParts("music.nav", _tab, entry, group,
                     Tabs.Select(tab => new NavigationShellDestination(tab, Title(tab), "tab." + tab, WidgetGlyph.Music)).ToArray(),
-                    compactLeadingAdornment: UI.Text("LT", "tabs.previous", "Left trigger, previous section").Classes("music-section-trigger"),
-                    compactTrailingAdornment: UI.Text("RT", "tabs.next", "Right trigger, next section").Classes("music-section-trigger"));
+                    compactLeadingAdornment: CompactControllerKey("LT", "Left trigger, previous section", "tabs.previous"),
+                    compactTrailingAdornment: CompactControllerKey("RT", "Right trigger, next section", "tabs.next"));
                 children.Add(UI.Row("music.navigation.header",
                     parts.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always).AddClasses("music-navigation-tabs"),
                     UI.ControllerHint(ControllerButton.Y, "Settings", "hint.settings").Classes("music-settings-hint"))
@@ -75,6 +75,10 @@ public sealed partial class StandaloneMusicWidget
             UI.Text(panel == "setup" ? "YouTube Music · Settings" : "YouTube Music", "music.title")
                 .Classes("music-title", "music-grow"), action).Classes("music-header");
     }
+
+    private static RowElement CompactControllerKey(string key, string label, string id) =>
+        UI.Row(id, UI.Text(key, id + ".label", label).Classes("wrail-controller-hint__key", "music-section-trigger-key"))
+            .Classes("music-section-trigger");
 
     private WidgetElement Setup(MusicState state)
     {
@@ -145,7 +149,7 @@ public sealed partial class StandaloneMusicWidget
                     .FocusUp(index == _offset ? TopEntry(state) : "item." + (index - 1));
                 if (index + 1 < end) row = row.FocusDown("item." + (index + 1));
                 else if (items.Count > PageSize) row = row.FocusDown(_offset + PageSize < items.Count ? "page.next" : "page.previous");
-                row = row.FocusLeft(state.Current is null ? "player.main.empty" : "player.main.toggle");
+                if (state.Current is not null) row = row.FocusLeft("player.main.toggle");
                 if (item.Kind == "song") row = row.ContextMenuShortcut(ControllerButton.Menu)
                     .ContextAction("radio." + index, "Start radio");
                 content.Add(row);
@@ -196,11 +200,7 @@ public sealed partial class StandaloneMusicWidget
         var pane = mode == "main";
         var current = state.Current;
         if (current is null)
-            return UI.Stack(prefix,
-                UI.Icon(WidgetGlyph.Music, prefix + ".icon", "Nothing playing").Classes("music-empty-icon"),
-                UI.Text("Nothing playing", prefix + ".title").Classes("music-section-title"),
-                UI.Text("Choose a song or start a radio.", prefix + ".copy").Classes("music-muted"),
-                UI.Button("Search music", "tab.search", prefix + ".empty").Classes("music-secondary"))
+            return UI.EmptyState("Nothing playing", "Choose a song or start a radio.", prefix + ".empty", glyph: WidgetGlyph.Music)
                 .Classes("music-player", pane ? "music-player-pane" : "music-player-pinned");
         var p = state.Player;
         var toggle = UI.IconButton(p.Playing ? WidgetGlyph.Pause : WidgetGlyph.Play, "player.toggle", prefix + ".toggle",
