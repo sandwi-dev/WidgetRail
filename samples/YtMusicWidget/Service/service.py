@@ -118,6 +118,8 @@ class MusicService:
         self.cache = {}
         self.streams = {}
         self.stream_keys = {}
+        self.resolving = {}
+        self.prefetch_work = None
         self.stopping = threading.Event()
         self.prefetch = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self.secret = secrets.token_urlsafe(32)
@@ -249,6 +251,9 @@ class MusicService:
         client = self.client()
         if kind == "home":
             shelves = client.get_home(limit=6)
+            # Stable ordering: promote this shelf while preserving provider order
+            # among all other recommendations (and among any matching shelves).
+            shelves = sorted(shelves, key=lambda shelf: str(shelf.get("title") or "").strip().casefold() != "mixed for you")
             entries = []
             for shelf in shelves:
                 for entry in items(shelf.get("contents", [])):
@@ -263,7 +268,12 @@ class MusicService:
             readers = {"playlists": (client.get_library_playlists, "playlist"), "songs": (client.get_library_songs, "song"),
                        "albums": (client.get_library_albums, "album"), "artists": (client.get_library_artists, "artist")}
             reader, item_kind = readers[value]
-            result = {"title": "Your " + value, "items": items(reader(limit=MAX_ITEMS), item_kind)}
+            # The playlist endpoint has no order parameter. Other library
+            # endpoints support a provider-side order before applying the limit.
+            options = {"limit": MAX_ITEMS}
+            if value != "playlists":
+                options["order"] = "recently_added"
+            result = {"title": "Your " + value, "items": items(reader(**options), item_kind)}
         elif kind == "playlist":
             page = client.get_playlist(value, limit=MAX_ITEMS)
             result = {"title": str(page.get("title", "Playlist"))[:160], "items": items(page.get("tracks"))}
@@ -287,8 +297,6 @@ class MusicService:
         return result
 
     def resolve(self, args):
-        from yt_dlp import YoutubeDL
-        import http.cookiejar
         video = str(args.get("videoId", ""))
         if not VIDEO_ID.fullmatch(video):
             raise ValueError("invalid_video")
@@ -298,6 +306,31 @@ class MusicService:
                 return {"url": self.local_url(key)}
             auth = dict(self.auth)
             generation = self.generation
+            identity = (generation, video)
+            pending = self.resolving.get(identity)
+            owner = pending is None
+            if owner:
+                pending = concurrent.futures.Future()
+                self.resolving[identity] = pending
+        if not owner:
+            # A foreground selection joins its in-flight prefetch instead of
+            # repeating YouTube requests and the JavaScript signature solver.
+            return pending.result(timeout=40)
+        try:
+            result = self.resolve_uncached(video, auth, generation)
+            pending.set_result(result)
+            return result
+        except Exception as error:
+            pending.set_exception(error)
+            raise
+        finally:
+            with self.lock:
+                if self.resolving.get(identity) is pending:
+                    del self.resolving[identity]
+
+    def resolve_uncached(self, video, auth, generation):
+        from yt_dlp import YoutubeDL
+        import http.cookiejar
         # A package-owned browser engine decodes audio; no FFmpeg process or audio downloads.
         class Quiet:
             def debug(self, *_): pass
@@ -377,7 +410,9 @@ class MusicService:
     def handle(self, method, args):
         if method == "prefetch":
             # One speculative track cannot occupy foreground request workers.
-            self.prefetch.submit(self.safe_prefetch, dict(args))
+            with self.lock:
+                if self.prefetch_work is None or self.prefetch_work.done():
+                    self.prefetch_work = self.prefetch.submit(self.safe_prefetch, dict(args))
             return {}
         if method not in {"status", "signin", "cancel_signin", "disconnect", "browse", "resolve"}:
             raise ValueError("unknown_method")

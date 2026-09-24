@@ -19,7 +19,7 @@ if (args is ["--export-layout", var directory])
         await widget.OnActionAsync(new("tab.library", "test"));
         await Until(() => Nodes(widget.Render().CreateSnapshot("layout", 1).Root).Any(n => n.Text == "Your playlists"));
         await File.WriteAllBytesAsync(Path.Combine(directory, "library.snapshot.json"), SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 1)));
-        service.PageOverride = new("Home", [new("a", "song", "First", Section: "Quick picks"), new("b", "playlist", "Mix", Section: "For you")]);
+        service.PageOverride = new("Home", Enumerable.Range(0, 6).Select(i => new MusicItem("song" + i, "song", "Home song " + i, Section: i < 4 ? "Quick picks" : "For you")).ToArray());
         await widget.OnActionAsync(new("tab.home", "test"));
         await Until(() => Nodes(widget.Render().CreateSnapshot("layout", 1).Root).Any(n => n.Text == "For you"));
         await File.WriteAllBytesAsync(Path.Combine(directory, "home.snapshot.json"), SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 1)));
@@ -242,7 +242,8 @@ static async Task ControllerRows()
             Nodes(panes.Children[0]).Any(n => n.Kind == ViewNodeKind.Slider), "Persistent transport or seeking is missing");
         Check(!Nodes(panes.Children[1]).Any(n => n.Kind == ViewNodeKind.Slider), "Playback sliders entered the browsing focus path");
         Check(!Nodes(view.Root).Any(n => n.ActionId == "player.open"), "Rejected mini-player route is still exposed");
-        Check(rows.All(n => n.Focus?.Left == "player.main.toggle"), "Songs lack a direct route to transport");
+        Check(rows.All(n => n.Focus?.Left is null), "Home posters override horizontal grid navigation");
+        Check(Nodes(view.Root).Any(n => n.Kind == ViewNodeKind.Grid), "Home posters are not grouped in a grid");
         Check(view.FocusGroupEntryRequest is { } focus &&
             Nodes(view.Root).Any(n => n.Id == focus.GroupId && n.InitialChildFocusId == "item.0"), "Loaded content is not entered after a tab change");
     }
@@ -283,7 +284,7 @@ static async Task CursorTraversal()
         {
             var view = widget.Render().CreateSnapshot("cursor", demand + 2);
             var scroll = Nodes(view.Root).Single(n => n.Id == "music.scroll");
-            var rowKeys = scroll.Children.Where(n => n.CollectionItemKey is not null).Select(n => n.CollectionItemKey!).ToArray();
+            var rowKeys = Nodes(scroll).Where(n => n.CollectionItemKey is not null).Select(n => n.CollectionItemKey!).ToArray();
             Check(rowKeys.Length <= 96, "Retained window exceeded its bound");
             Check(!Nodes(view.Root).Any(n => n.ActionId is "page.next" or "page.previous"), "Manual pages remain");
             if (scroll.ScrollNearEndActionId is null) break;
@@ -322,6 +323,9 @@ static async Task BrowsePresentation()
         await Until(() => Nodes(widget.Render().CreateSnapshot("ui", 3).Root).Any(n => n.Text == "For you"));
         var headings = Nodes(widget.Render().CreateSnapshot("ui", 4).Root).Where(n => n.Id.StartsWith("section.title.", StringComparison.Ordinal)).Select(n => n.Text).ToArray();
         Check(headings.SequenceEqual(new[] { "Quick picks", "For you" }), "Home lost section order or repeated headings within a section");
+        var grids = Nodes(widget.Render().CreateSnapshot("ui", 5).Root).Where(n => n.Kind == ViewNodeKind.Grid).ToArray();
+        Check(grids.Length == 2 && grids[0].Children.Count == 2 && grids[1].Children.Count == 1, "Home did not group posters by section");
+        Check(grids.SelectMany(g => g.Children).All(n => n.ActionSurfacePresentation == ActionSurfacePresentation.Poster), "Home still uses list rows");
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }

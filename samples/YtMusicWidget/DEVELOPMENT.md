@@ -12,7 +12,8 @@ Browsing uses four horizontal tabs and one rich focus target per result.
 A `WidgetCursorResource` pages through the provider’s bounded in-memory collection
 in 24-entry windows, targeting 72 retained entries with a hard cap of 96. This is
 UI windowing; it does not bypass the provider’s 500-entry fetch cap. Home retains
-provider section titles and order. Song
+provider section titles, with one responsive square-poster grid per section.
+“Mixed for you” is promoted first when present; other sections retain provider order. Song
 radio is a host-owned Menu context action. The SDK compact navigation sits above a persistent left player and right browsing pane,
 following the Spotify widget. Settings is a compact secondary page. Explicit focus-group
 entry requests enter newly loaded pages and restore collection selection on Back.
@@ -28,6 +29,9 @@ entry requests enter newly loaded pages and restore collection selection on Back
 - Queue ordering, repeat and shuffle belong to the application, not the browser.
 - At most 24 catalogue responses are retained for five minutes. Resolved stream
   URLs have short lifetimes; only the next track is speculatively prepared.
+  Foreground requests join an in-flight resolution for the same track and session;
+  speculative work has no unbounded backlog. Player startup and stream resolution
+  run concurrently, but loading still waits for both and checks the selected generation.
 - The player stops on parent exit or stdin closure. Application disposal closes
   both helpers, with bounded forced cleanup if they do not exit. The player drains
   its dedicated browser process; the parent removes its temporary profile after

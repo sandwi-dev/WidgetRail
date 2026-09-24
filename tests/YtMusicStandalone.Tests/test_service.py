@@ -75,6 +75,24 @@ class ServiceTests(unittest.TestCase):
         self.service.disconnect({})
         self.assertEqual({}, self.service.cache)
 
+    def test_library_requests_recently_added_only_where_supported(self):
+        class Fake:
+            def get_library_playlists(self, limit):
+                assert limit == music.MAX_ITEMS
+                return [{"playlistId": "PLtest", "title": "Playlist"}]
+            def get_library_songs(self, limit, order):
+                assert limit == music.MAX_ITEMS and order == "recently_added"
+                return [{"videoId": "M7lc1UVf-VE", "title": "Song"}]
+            def get_library_albums(self, limit, order):
+                assert limit == music.MAX_ITEMS and order == "recently_added"
+                return [{"browseId": "MPREtest", "title": "Album"}]
+            def get_library_artists(self, limit, order):
+                assert limit == music.MAX_ITEMS and order == "recently_added"
+                return [{"browseId": "UCtest", "title": "Artist"}]
+        self.service.client = lambda: Fake()
+        for name in ("playlists", "songs", "albums", "artists"):
+            self.assertEqual(1, len(self.service.browse({"kind": "library", "value": name})["items"]))
+
     def test_home_preserves_provider_sections_and_order(self):
         class Fake:
             def get_home(self, limit):
@@ -86,6 +104,16 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(["Quick picks", "For you"], [item["section"] for item in result["items"]])
         self.assertEqual(["First", "Mix"], [item["title"] for item in result["items"]])
 
+    def test_home_promotes_mixed_for_you_without_reordering_other_shelves(self):
+        class Fake:
+            def get_home(self, limit):
+                return [{"title": title, "contents": [{"playlistId": "PL" + str(index), "title": title}]}
+                        for index, title in enumerate(["Quick picks", "Rediscover", "Mixed for you", "New releases"])]
+        self.service.client = lambda: Fake()
+        result = self.service.browse({"kind": "home", "value": ""})
+        self.assertEqual(["Mixed for you", "Quick picks", "Rediscover", "New releases"],
+                         [item["section"] for item in result["items"]])
+
     def test_normalization_bounds_content_and_rejects_non_https_art(self):
         item = music.normalize({"videoId": "M7lc1UVf-VE", "title": "x" * 1000,
             "thumbnails": [{"url": "http://localhost/private"}]})
@@ -93,6 +121,65 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual("", item["artwork"])
         self.assertEqual("song", item["kind"])
         self.assertIsNone(music.normalize({"title": "no identity"}))
+
+    def test_selection_joins_inflight_prefetch(self):
+        import concurrent.futures
+        import threading
+        entered, release, joined = threading.Event(), threading.Event(), threading.Event()
+        calls = []
+        def resolve_uncached(video, auth, generation):
+            calls.append(video)
+            entered.set()
+            if not release.wait(3):
+                raise TimeoutError("test did not release extraction")
+            return {"url": "http://127.0.0.1/fixture"}
+        self.service.resolve_uncached = resolve_uncached
+        self.service.handle("prefetch", {"videoId": "M7lc1UVf-VE"})
+        self.assertTrue(entered.wait(3))
+        pending = next(iter(self.service.resolving.values()))
+        original_result = pending.result
+        def join(timeout=None):
+            joined.set()
+            return original_result(timeout)
+        try:
+            with patch.object(pending, "result", side_effect=join):
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    selection = executor.submit(self.service.resolve, {"videoId": "M7lc1UVf-VE"})
+                    try:
+                        self.assertTrue(joined.wait(3), "Selection did not join the pending extraction")
+                        self.assertFalse(selection.done())
+                    finally:
+                        release.set()
+                    self.assertEqual({"url": "http://127.0.0.1/fixture"}, selection.result(timeout=3))
+            self.assertEqual(["M7lc1UVf-VE"], calls)
+            self.assertEqual({}, self.service.resolving)
+        finally:
+            release.set()
+
+    def test_failed_extraction_can_be_retried(self):
+        with patch.object(self.service, "resolve_uncached", side_effect=[RuntimeError("fixture failure"), {"url": "http://127.0.0.1/fixture"}]) as resolve:
+            with self.assertRaises(RuntimeError): self.service.resolve({"videoId": "M7lc1UVf-VE"})
+            self.assertEqual({}, self.service.resolving)
+            self.assertEqual({"url": "http://127.0.0.1/fixture"}, self.service.resolve({"videoId": "M7lc1UVf-VE"}))
+            self.assertEqual(2, resolve.call_count)
+
+    def test_prefetch_has_no_unbounded_backlog(self):
+        import threading
+        entered, release = threading.Event(), threading.Event()
+        calls = []
+        def resolve(args):
+            calls.append(args["videoId"])
+            entered.set()
+            release.wait(3)
+        self.service.resolve = resolve
+        try:
+            self.service.handle("prefetch", {"videoId": "M7lc1UVf-VE"})
+            self.assertTrue(entered.wait(3))
+            for i in range(50): self.service.handle("prefetch", {"videoId": "other" + str(i)})
+        finally:
+            release.set()
+            self.service.prefetch.shutdown(wait=True)
+        self.assertEqual(["M7lc1UVf-VE"], calls)
 
     def test_invalid_stream_id_never_reaches_extractor(self):
         with patch("yt_dlp.YoutubeDL") as downloader:

@@ -1,8 +1,10 @@
 # YouTube Music
 
 Browse music and listen directly through WidgetRail. The standalone widget includes
-Home recommendations grouped by YouTube Music’s section headings, Search, your Library,
-a local Queue, and a compact pinned player. Collections scroll continuously as you browse.
+Home recommendations in square artwork grids under YouTube Music’s section headings,
+Search, your Library,
+a local Queue, and a compact pinned player. **Mixed for you** appears first when available.
+Collections scroll continuously as you browse.
 **YTMDesktop is not required.**
 
 <!-- Screenshot: add screenshots/library-player.png showing the library and player. -->
@@ -13,6 +15,9 @@ a local Queue, and a compact pinned player. Collections scroll continuously as y
 2. Review the **full-trust** prompt and enable the widget.
 3. Press **Y** for Settings and choose **Sign in with Google**. Complete sign-in in the separate Chrome window (Edge is the fallback).
 4. Return to the overlay and open **Library**, or search for a song.
+
+Library Songs, Albums and Artists use **Recently added** order. Playlists retain
+YouTube Music’s default order because its playlist API does not expose sorting.
 
 Public search and supported public playback can also work without signing in.
 Your personal library requires an account. This is an unofficial YouTube Music
@@ -45,6 +50,10 @@ WidgetRail's Now Playing widget can control the local player.
 **I used the old YT Music widget.** This version replaces its companion connection
 with an independent player. Sign in again and approve the new full-trust permission.
 It does not reuse or delete YTMDesktop's pairing token or application data.
+
+**Why does a song take time to start?** A new song needs a playable stream resolved
+from YouTube before audio can begin. The next queued song is prepared in advance,
+but uncached selections can still take several seconds.
 
 **A song does not start.** Select it again to resolve a fresh stream. If your library
 also fails to load, reconnect in Settings. YouTube changes can require a widget update.

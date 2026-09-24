@@ -152,8 +152,12 @@ public sealed class MusicService : IMusicService
         try
         {
             await InitializeAsync(selectionToken).ConfigureAwait(false);
-            await EnsurePlayerAsync(selectionToken).ConfigureAwait(false);
-            var stream = await _backend!.CallAsync("resolve", new { videoId = current.Id }, selectionToken).ConfigureAwait(false);
+            // Starting WebView2 and resolving the stream do not depend on each
+            // other. Observe both tasks before admitting this generation's load.
+            var playerReady = EnsurePlayerAsync(selectionToken);
+            var streamReady = _backend!.CallAsync("resolve", new { videoId = current.Id }, selectionToken);
+            await Task.WhenAll(playerReady, streamReady).ConfigureAwait(false);
+            var stream = await streamReady.ConfigureAwait(false);
             selectionToken.ThrowIfCancellationRequested();
             // Generation travels to the player; stale audio events cannot replace the selected song.
             await _player!.CallAsync("load", new

@@ -52,6 +52,17 @@ int Run(int argc, wchar_t** argv) {
                     Require(button.x >= filters.x && button.x + button.width <= filters.x + filters.width + 1, "Library filter escapes its group");
                 }
             }
+            if (result.elementRects.contains(L"home.grid.0")) {
+                const auto& first = result.elementRects.at(L"item.0");
+                const auto& second = result.elementRects.at(L"item.1");
+                Require(std::abs(first.width - first.height) < 1, "Home poster is not square");
+                if (size.width > 900) {
+                    Require(second.x > first.x && std::abs(first.y - second.y) < 1, "Home posters are not in a row of the section grid");
+                }
+                if (result.elementRects.contains(L"home.section.4"))
+                    Require(result.elementRects.at(L"home.section.4").y >= first.y + first.height,
+                        "Home section overlaps the preceding grid");
+            }
             if (!playing) {
                 const auto& title = result.elementRects.at(L"player.main.empty.title");
                 Require(title.y > player.y + player.height * .3f && title.y < player.y + player.height * .7f, "Empty player message is not centered");

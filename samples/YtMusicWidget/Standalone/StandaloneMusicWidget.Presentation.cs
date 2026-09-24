@@ -145,27 +145,53 @@ public sealed partial class StandaloneMusicWidget
                 if (_loading || _tab != "queue") heading.Add(RefreshControl());
             }
             content.Add(UI.Row("page.heading", heading.ToArray()).Classes("music-controls"));
+            var sectionTiles = new List<WidgetElement>();
+            string? section = null;
+            var sectionStart = 0;
+            void FinishSection()
+            {
+                if (sectionTiles.Count == 0) return;
+                rows.Add(UI.Stack("home.section." + sectionStart,
+                    UI.Text(section ?? "Recommendations", "section.title." + sectionStart).Classes("music-shelf-title"),
+                    UI.ResponsiveGrid("home.grid." + sectionStart, 130, 4, sectionTiles.ToArray()).Classes("music-home-grid"))
+                    .Classes("music-home-section"));
+                sectionTiles.Clear();
+            }
             for (var position = 0; position < entries.Count; position++)
             {
                 var entry = entries[position];
                 var index = entry.Index;
                 var item = entry.Item;
                 var playing = _tab == "queue" && index == state.Index;
-                var row = UI.Tile(item.Title, playing ? "Now playing" : Title(item.Kind), "item." + index, "item." + index,
-                        subtitle: string.IsNullOrWhiteSpace(item.Subtitle) ? null : item.Subtitle, artwork: Artwork(item),
-                        accessibilityLabel: (item.Kind == "song" ? "Play " : "Open ") + item.Title + ". " + item.Subtitle)
-                    .Selected(playing).Classes("music-track");
+                var home = _kind == "home";
+                var subtitle = string.IsNullOrWhiteSpace(item.Subtitle) ? null : item.Subtitle;
+                var label = (item.Kind == "song" ? "Play " : "Open ") + item.Title + ". " + item.Subtitle;
+                var row = home
+                    ? UI.PosterTile(item.Title, Title(item.Kind), "item." + index, "item." + index,
+                        subtitle: subtitle, artwork: item.Artwork.StartsWith("https://", StringComparison.Ordinal) ? Artwork(item) : null,
+                        accessibilityLabel: label).Classes("music-home-poster")
+                    : UI.Tile(item.Title, playing ? "Now playing" : Title(item.Kind), "item." + index, "item." + index,
+                        subtitle: subtitle, artwork: Artwork(item), accessibilityLabel: label).Classes("music-track");
+                row = row.Selected(playing);
                 if (position == 0 && !collection.Snapshot.HasBefore) row = row.FocusUp(TopEntry(state));
-                if (state.Current is not null) row = row.FocusLeft("player.main.toggle");
+                // Grid navigation owns horizontal neighbours between Home posters.
+                if (!home && state.Current is not null) row = row.FocusLeft("player.main.toggle");
                 if (item.Kind == "song") row = row.ContextMenuShortcut(ControllerButton.Menu)
                     .ContextAction("radio." + index, "Start radio");
-                WidgetElement presented = row;
-                if (_kind == "home" && item.Section.Length != 0 &&
-                    (position == 0 || entries[position - 1].Item.Section != item.Section))
-                    presented = UI.Stack("section.item." + index,
-                        UI.Text(item.Section, "section.title." + index).Classes("music-shelf-title"), row).Classes("music-collection-item");
-                rows.Add(collection.PresentItem(entry, presented));
+                var presented = collection.PresentItem(entry, row);
+                if (home)
+                {
+                    if (section != (string.IsNullOrWhiteSpace(item.Section) ? "Recommendations" : item.Section))
+                    {
+                        FinishSection();
+                        section = string.IsNullOrWhiteSpace(item.Section) ? "Recommendations" : item.Section;
+                        sectionStart = index;
+                    }
+                    sectionTiles.Add(presented);
+                }
+                else rows.Add(presented);
             }
+            FinishSection();
             if (!_loading && entries.Count == 0)
             {
                 rows.Add(UI.Icon(WidgetGlyph.Music, "empty.icon", "Music").Classes("music-empty-icon"));
