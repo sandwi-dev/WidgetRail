@@ -88,6 +88,31 @@ class ServiceTests(unittest.TestCase):
             with self.assertRaises(ValueError): self.service.resolve({"videoId": "https://localhost/"})
             downloader.assert_not_called()
 
+    def test_browser_prefers_chrome_and_falls_back_to_edge(self):
+        root = Path(self.directory.name)
+        chrome = root / "programs/Google/Chrome/Application/chrome.exe"
+        edge = root / "programs-x86/Microsoft/Edge/Application/msedge.exe"
+        for path in (chrome, edge):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"fixture")
+        environment = {"PROGRAMFILES": str(root / "programs"), "PROGRAMFILES(X86)": str(root / "programs-x86"), "LOCALAPPDATA": str(root / "local")}
+        self.assertEqual(chrome, music.browser_executable(environment))
+        chrome.unlink()
+        self.assertEqual(edge, music.browser_executable(environment))
+
+    def test_login_uses_explicit_loopback_debugging_port(self):
+        arguments = music.browser_arguments("profile", 49123)
+        self.assertIn("--remote-debugging-port=49123", arguments)
+        self.assertIn("--remote-debugging-address=127.0.0.1", arguments)
+        self.assertNotIn("--enable-automation", arguments)
+        self.assertNotIn("--remote-allow-origins=*", arguments)
+        with self.assertRaises(ValueError): music.browser_arguments("profile", 0)
+
+    def test_cancel_login_does_not_stop_audio_service(self):
+        self.service.handle("cancel_signin", {})
+        self.assertTrue(self.service.auth_cancel.is_set())
+        self.assertFalse(self.service.stopping.is_set())
+
 
 if __name__ == "__main__":
     unittest.main()

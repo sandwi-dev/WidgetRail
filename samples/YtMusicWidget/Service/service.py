@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -21,6 +22,24 @@ from urllib.parse import urlparse
 MAX_ITEMS = 500
 MAX_LINE = 2 * 1024 * 1024
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def browser_executable(environment=None):
+    environment = os.environ if environment is None else environment
+    # Match Now Playing's preference: installed Chrome first, then Edge.
+    candidates = [Path(environment.get(name, "")) / suffix
+                  for suffix in ("Google/Chrome/Application/chrome.exe", "Microsoft/Edge/Application/msedge.exe")
+                  for name in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
+    return next((path for path in candidates if path.is_file()), None)
+
+
+def browser_arguments(profile, port):
+    if not 1 <= port <= 65535:
+        raise ValueError("invalid_browser_port")
+    return [f"--remote-debugging-port={port}", "--remote-debugging-address=127.0.0.1",
+            "--user-data-dir=" + str(profile), "--no-first-run", "--no-default-browser-check",
+            "--disable-background-mode", "--new-window",
+            "https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F"]
 
 
 def make_client(auth):
@@ -94,6 +113,7 @@ class MusicService:
                 pass  # An expired/different-user session returns to sign-in.
         self.lock = threading.RLock()
         self.auth_gate = threading.Lock()
+        self.auth_cancel = threading.Event()
         self.generation = 0
         self.cache = {}
         self.streams = {}
@@ -114,6 +134,7 @@ class MusicService:
             return {"connected": bool(self.auth)}
 
     def disconnect(self, _):
+        self.auth_cancel.set()
         self.stopping.set()  # Cancels any login currently awaiting user input.
         with self.auth_gate:
             with self.lock:
@@ -126,6 +147,10 @@ class MusicService:
         self.stopping.clear()
         return self.status({})
 
+    def cancel_signin(self, _):
+        self.auth_cancel.set()
+        return {}
+
     def signin(self, _):
         # A dedicated temporary profile never inspects the user's existing browser session.
         import tempfile
@@ -134,29 +159,32 @@ class MusicService:
         import websocket
         from ytmusicapi.helpers import get_authorization
         with self.auth_gate:
-            candidates = [Path(os.environ.get(name, "")) / suffix
-                          for name in ("PROGRAMFILES(X86)", "PROGRAMFILES", "LOCALAPPDATA")
-                          for suffix in ("Microsoft/Edge/Application/msedge.exe", "Google/Chrome/Application/chrome.exe")]
-            browser = next((p for p in candidates if p.is_file()), None)
+            self.auth_cancel.clear()
+            browser = browser_executable()
             if browser is None:
                 raise RuntimeError("browser_unavailable")
             profile = tempfile.mkdtemp(prefix="ytmusic-login-", dir=self.root)
             process = None
             connection = None
             try:
-                process = subprocess.Popen([str(browser), "--remote-debugging-port=0",
-                    "--remote-debugging-address=127.0.0.1", "--user-data-dir=" + profile,
-                    "--no-first-run", "--no-default-browser-check", "--new-window", "https://music.youtube.com/"],
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                    probe.bind(("127.0.0.1", 0))
+                    port = probe.getsockname()[1]
+                process = subprocess.Popen([str(browser), *browser_arguments(profile, port)],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 deadline = time.monotonic() + 300
-                active = Path(profile) / "DevToolsActivePort"
-                while time.monotonic() < deadline and not self.stopping.wait(.5):
+                while time.monotonic() < deadline and not self.stopping.is_set() and not self.auth_cancel.wait(.5):
                     if connection is None:
-                        if not active.exists():
+                        if process.poll() is not None:
+                            raise RuntimeError("signin_window_closed")
+                        try:
+                            with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=3) as response:
+                                endpoint = json.load(response)["webSocketDebuggerUrl"]
+                        except OSError:
                             continue
-                        port = int(active.read_text().splitlines()[0])
-                        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=3) as response:
-                            endpoint = json.load(response)["webSocketDebuggerUrl"]
+                        endpoint_uri = urlparse(endpoint)
+                        if endpoint_uri.scheme != "ws" or endpoint_uri.hostname != "127.0.0.1" or endpoint_uri.port != port:
+                            raise RuntimeError("invalid_browser_endpoint")
                         connection = websocket.create_connection(endpoint, timeout=3, suppress_origin=True)
                     connection.send(json.dumps({"id": 1, "method": "Storage.getCookies"}))
                     while True:
@@ -177,7 +205,7 @@ class MusicService:
                         make_client(headers).get_library_playlists(limit=1)
                     except Exception:
                         continue
-                    if self.stopping.is_set():
+                    if self.stopping.is_set() or self.auth_cancel.is_set():
                         raise RuntimeError("signin_cancelled")
                     blob = protected(json.dumps(headers).encode("utf-8"))
                     temporary = self.auth_path.with_suffix(".tmp")
@@ -346,7 +374,7 @@ class MusicService:
             # One speculative track cannot occupy foreground request workers.
             self.prefetch.submit(self.safe_prefetch, dict(args))
             return {}
-        if method not in {"status", "signin", "disconnect", "browse", "resolve"}:
+        if method not in {"status", "signin", "cancel_signin", "disconnect", "browse", "resolve"}:
             raise ValueError("unknown_method")
         return getattr(self, method)(args)
 
@@ -355,6 +383,7 @@ class MusicService:
         except Exception: pass
 
     def close(self):
+        self.auth_cancel.set()
         self.stopping.set()
         self.server.shutdown()
         self.server.server_close()

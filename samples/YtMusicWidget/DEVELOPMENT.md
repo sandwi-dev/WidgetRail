@@ -8,8 +8,15 @@ No Spotify or native-host implementation is changed.
 
 ## State and lifetime
 
+Browsing uses four horizontal tabs and one rich focus target per result. Song
+radio is a host-owned Menu context action. Settings and detailed playback are
+compact secondary pages; the empty player is not rendered. Explicit focus-group
+entry requests enter newly loaded pages and restore collection selection on Back.
+
 - Page operations use the SDK's Active lifetime and latest-request cancellation.
 - Sign-in and selected playback use the Widget lifetime, surviving Background.
+- Cancel sign-in sends an explicit backend cancellation before canceling the local
+  operation. Authentication cancellation is independent of audio playback.
 - Real audio events provide playback state; command acknowledgement does not
   disable transport until a cloud state refresh.
 - Selection generations reject old player events. Radio uses a fresh watch-playlist
@@ -55,7 +62,9 @@ this user smoke test; mocked tests do not establish them.
 
 ## Boundaries
 
-Authentication uses an isolated temporary Edge/Chrome profile. Session data is
+Authentication prefers Chrome, with Edge as fallback, and uses an isolated temporary
+profile with an explicit nonzero loopback debugging port. Port zero is avoided
+because Chromium uses it as an automation signal. Session data is
 stored with current-user Windows DPAPI. Provider response bodies, cookies and
 stream URLs never enter a view snapshot or diagnostic log. The local HTTP server
 accepts only random handles for pre-resolved Google video audio; callers cannot

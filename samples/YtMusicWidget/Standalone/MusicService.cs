@@ -65,6 +65,12 @@ public sealed class MusicService : IMusicService
         Changed?.Invoke();
     }
 
+    public async Task CancelSignInAsync(CancellationToken token)
+    {
+        if (_backend is not null)
+            await _backend.CallAsync("cancel_signin", null, token).ConfigureAwait(false);
+    }
+
     public async Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token)
     {
         await InitializeAsync(token).ConfigureAwait(false);

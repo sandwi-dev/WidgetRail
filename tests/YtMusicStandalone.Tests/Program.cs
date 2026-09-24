@@ -14,6 +14,10 @@ var tests = new List<(string, Func<Task>)>
     ("Background actions cannot start playback", BackgroundInput),
     ("Protocol rejects oversized and incomplete messages", BoundedProtocol),
     ("Theme compiles without unsupported declarations", Theme),
+    ("Empty setup has one clear primary action and no empty playback controls", CompactSetup),
+    ("Browsing uses four horizontal tabs and one focus target per song", ControllerRows),
+    ("Controller Y opens settings, B returns, and X works from a song", ControllerRouting),
+    ("Sign-in can be canceled from the controller without waiting for its timeout", CancelAuth),
 };
 if (args.Length == 2 && args[0] == "--package-root")
     tests.Add(("Packaged provider and player complete a muted live radio playback", () => LivePackage(args[1])));
@@ -96,6 +100,7 @@ static async Task RadioDoesNotBlock()
         await Until(() => service.RadioCalls == 1);
         await widget.OnActionAsync(new("player.toggle", "player.main.toggle"));
         await Until(() => service.Commands.Contains("toggle"));
+        await widget.OnActionAsync(new("player.open", "player.open"));
         var toggle = Nodes(widget.Render().CreateSnapshot("test", 1).Root).Single(n => n.Id == "player.main.toggle");
         Check(toggle.IsDisabled != true && toggle.IsBusy != true, "Transport blocked by catalogue work");
         service.PendingRadio.TrySetResult();
@@ -162,6 +167,85 @@ static Task Theme()
     return Task.CompletedTask;
 }
 
+static async Task CompactSetup()
+{
+    var service = new FakeService();
+    await service.DisconnectAsync(default);
+    var widget = new StandaloneMusicWidget(service);
+    try
+    {
+        await WidgetTestHost.InitializeAsync(widget);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        await Until(() => Nodes(widget.Render().CreateSnapshot("setup", 1).Root).Any(n => n.Id == "setup.primary"));
+        var view = widget.Render().CreateSnapshot("setup", 2);
+        Check(view.Surface!.PreferredHeight <= 440, "Setup uses the full browsing height");
+        Check(view.InitialFocusId == "setup.primary", "Setup starts away from its primary action");
+        Check(!Nodes(view.Root).Any(n => n.Kind == ViewNodeKind.Slider || n.ActionId?.StartsWith("player.", StringComparison.Ordinal) == true), "Empty playback controls still rendered");
+        Check(!Nodes(view.Root).Any(n => n.ActionId == "disconnect"), "Disconnected account exposes an unusable disconnect control");
+        Check(!Nodes(view.Root).Any(n => n.Id == "music.tabs"), "Setup still contains the browsing navigation");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static async Task ControllerRows()
+{
+    var (widget, _) = await Start();
+    try
+    {
+        var view = widget.Render().CreateSnapshot("rows", 1);
+        var tabs = Nodes(view.Root).Single(n => n.Id == "music.tabs");
+        Check(tabs.Kind == ViewNodeKind.Row && Nodes(tabs).Count(n => n.Kind == ViewNodeKind.Button) == 4, "Expected four horizontal destination buttons");
+        var rows = Nodes(view.Root).Where(n => n.Kind == ViewNodeKind.ActionSurface && n.Id.StartsWith("item.", StringComparison.Ordinal)).ToArray();
+        Check(rows.Length == 12, "The visible song window changed unexpectedly");
+        Check(rows.All(n => n.ContextMenuButton == ControllerButton.Menu && n.ContextActions.Any(a => a.Label == "Start radio")), "Song radio is missing from the controller context menu");
+        Check(!Nodes(view.Root).Any(n => n.Kind == ViewNodeKind.Button && n.ActionId?.StartsWith("radio.", StringComparison.Ordinal) == true), "Radio adds a focus stop beside each song");
+        Check(!Nodes(view.Root).Any(n => n.Kind == ViewNodeKind.Slider), "Browsing still requires crossing playback sliders");
+        Check(view.FocusGroupEntryRequest is { } focus &&
+            Nodes(view.Root).Any(n => n.Id == focus.GroupId && n.InitialChildFocusId == "item.0"), "Loaded content is not entered after a tab change");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static async Task ControllerRouting()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        var view = widget.RenderSnapshot("controller", 10);
+        Check(await widget.OnControllerInputAsync(new(ControllerButton.X, ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget, "item.0", ActiveInputScopeId: view.ActiveInputScopeId, SnapshotSequence: view.Sequence)), "X was not routed from a song");
+        await Until(() => service.Commands.Contains("toggle"));
+        view = widget.RenderSnapshot("controller", 11);
+        Check(await widget.OnControllerInputAsync(new(ControllerButton.Y, ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget, "item.0", ActiveInputScopeId: view.ActiveInputScopeId, SnapshotSequence: view.Sequence)), "Y did not open settings");
+        await Until(() => Nodes(widget.Render().CreateSnapshot("controller", 12).Root).Any(n => n.Id == "setup.primary"));
+        view = widget.RenderSnapshot("controller", 13);
+        Check(await widget.OnControllerInputAsync(new(ControllerButton.B, ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget, "setup.primary", ActiveInputScopeId: view.ActiveInputScopeId, SnapshotSequence: view.Sequence)), "B did not return from settings");
+        await Until(() => Nodes(widget.Render().CreateSnapshot("controller", 14).Root).Any(n => n.Id == "item.0"));
+        Check(widget.Render().InitialFocusId == "item.0", "Returning from settings lost the selected song");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static async Task CancelAuth()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        service.PendingAuth = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await widget.OnActionAsync(new("tab.setup", "settings.open"));
+        await widget.OnActionAsync(new("signin", "setup.primary"));
+        await Until(() => service.AuthCalls == 1);
+        var primary = Nodes(widget.Render().CreateSnapshot("cancel", 1).Root).Single(n => n.Id == "setup.primary");
+        Check(primary.ActionId == "signin.cancel" && primary.IsDisabled != true, "Waiting for sign-in leaves no usable primary control");
+        await widget.OnActionAsync(new("signin.cancel", "setup.primary"));
+        await Until(() => service.CancelCalls == 1 && service.AuthToken.IsCancellationRequested);
+        await Until(() => Nodes(widget.Render().CreateSnapshot("cancel", 2).Root).Single(n => n.Id == "setup.primary").ActionId != "signin.cancel");
+    }
+    finally { service.PendingAuth?.TrySetResult("Canceled"); await WidgetTestHost.DestroyAsync(widget); }
+}
+
 static async Task LivePackage(string root)
 {
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
@@ -191,13 +275,14 @@ sealed class FakeService : IMusicService
     public TaskCompletionSource? PendingRadio;
     public TaskCompletionSource<MusicPage>? PendingSearch;
     public TaskCompletionSource<string>? PendingAuth;
-    public int RadioCalls, SearchCalls, AuthCalls;
+    public int RadioCalls, SearchCalls, AuthCalls, CancelCalls;
     public CancellationToken AuthToken;
     public bool Disposed;
     public MusicPage? PageOverride;
     public readonly System.Collections.Concurrent.ConcurrentBag<string> Commands = [];
     public Task InitializeAsync(CancellationToken token) => Task.CompletedTask;
     public Task<string> SignInAsync(CancellationToken token) { AuthCalls++; AuthToken = token; return PendingAuth?.Task.WaitAsync(token) ?? Task.FromResult("Connected"); }
+    public Task CancelSignInAsync(CancellationToken token) { CancelCalls++; return Task.CompletedTask; }
     public Task DisconnectAsync(CancellationToken token) { State = MusicState.Empty; Changed?.Invoke(); return Task.CompletedTask; }
     public Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token)
     {

@@ -10,7 +10,7 @@ Home, Search, your Library, a local Queue, and a compact pinned player.
 
 1. Install the YouTube Music `.wrwidget` through **Settings → Widgets → Install from local file**.
 2. Review the **full-trust** prompt and enable the widget.
-3. Open **Setup → Sign in**. Complete Google sign-in in the separate Edge or Chrome window.
+3. Press **Y** for Settings and choose **Sign in with Google**. Complete sign-in in the separate Chrome window (Edge is the fallback).
 4. Return to the overlay and open **Library**, or search for a song.
 
 Public search and supported public playback can also work without signing in.
@@ -25,13 +25,15 @@ The standalone package currently supports Windows x64.
 ## Playback and radio
 
 - Select a song to play it and queue the songs in that collection.
-- Select **Start radio** beside a song to replace the queue with recommendations based on it.
+- Focus a song, press **Menu**, and choose **Start radio** to replace the queue with recommendations based on it.
 - Use **Queue** to select a different queued song.
-- Control playback, seek, volume, shuffle and repeat from the player below the page.
+- Select the compact player below the page to open seeking, volume, shuffle and repeat controls.
 - Pin **Compact now playing** to keep controls beside your game.
 
-**LT / RT** changes tabs, **X** plays or pauses, and **LB / RB** selects the previous
-or next song. Music continues when the overlay closes. Windows media controls and
+**LT / RT** changes the four browsing tabs, **X** plays or pauses, and **LB / RB**
+selects the previous or next song. **Y** opens Settings; **B** returns to your music.
+While signing in, **Cancel sign-in** closes the temporary browser session without
+stopping playback. Music continues when the overlay closes. Windows media controls and
 WidgetRail's Now Playing widget can control the local player.
 
 <!-- Screenshot: add screenshots/song-radio.png showing Start radio and its resulting queue. -->
@@ -44,14 +46,14 @@ with an independent player. Sign in again and approve the new full-trust permiss
 It does not reuse or delete YTMDesktop's pairing token or application data.
 
 **A song does not start.** Select it again to resolve a fresh stream. If your library
-also fails to load, reconnect in Setup. YouTube changes can require a widget update.
+also fails to load, reconnect in Settings. YouTube changes can require a widget update.
 
 **Sign-in does not open.** Install Edge or Chrome. The widget uses a separate temporary
 profile and does not inspect your existing browser profile.
 
 **Where is the saved session?** In
 `%LOCALAPPDATA%\WidgetRail\applications\widgetrail.samples.ytmusic\session.dpapi`,
-encrypted for your Windows account. **Setup → Disconnect** removes it. To remove it
+encrypted for your Windows account. **Settings → Disconnect** removes it. To remove it
 manually, quit WidgetRail and delete only that application's directory.
 
 **Why is my very large library incomplete?** This first version loads up to 500 entries

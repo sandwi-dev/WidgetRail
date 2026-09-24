@@ -17,6 +17,7 @@ public interface IMusicService : IAsyncDisposable
     event Action? Changed;
     Task InitializeAsync(CancellationToken token);
     Task<string> SignInAsync(CancellationToken token);
+    Task CancelSignInAsync(CancellationToken token);
     Task DisconnectAsync(CancellationToken token);
     Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token);
     Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token);
