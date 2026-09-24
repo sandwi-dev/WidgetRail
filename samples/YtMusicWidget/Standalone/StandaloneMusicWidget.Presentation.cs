@@ -14,8 +14,9 @@ public sealed partial class StandaloneMusicWidget
             var compact = panel is not null;
             var content = panel == "setup" ? Setup(state) : Browse(state);
             var entry = EntryFocus(state);
-            var group = UI.Stack(ContentGroupId, content).Classes(compact ? "music-panel-body" : "music-body");
-            if (!entry.StartsWith("music.nav.", StringComparison.Ordinal)) group = group.RememberChildFocus(entry);
+            var group = UI.Stack(compact ? ContentGroupId : _browse.GroupId, content).Classes(compact ? "music-panel-body" : "music-body");
+            if (group.Id == ContentGroupId && !entry.StartsWith("music.nav.", StringComparison.Ordinal))
+                group = group.RememberChildFocus(entry);
             var children = new List<WidgetElement> { Header(panel) };
             if (compact) children.Add(group);
             else
@@ -203,7 +204,14 @@ public sealed partial class StandaloneMusicWidget
                 if (_tab != "search") rows.Add(UI.Button("Search music", "tab.search", "empty.search").Classes("music-primary"));
             }
         }
-        content.Add(collection.Present(UI.VerticalScroll(_browse.ScrollId, rows.ToArray())).Classes("music-scroll"));
+        var scroll = collection.Present(UI.VerticalScroll(_browse.ScrollId, rows.ToArray())).Classes("music-scroll");
+        // Filter buttons must not replace the remembered selection inside a Library list.
+        if (_kind == "library" && state.Connected)
+        {
+            if (entries.Count > 0) scroll = scroll.RememberChildFocus("item." + entries[0].Index);
+            else if (!_loading) scroll = scroll.RememberChildFocus("empty.search");
+        }
+        content.Add(scroll);
         return UI.Stack("music.browse", content.ToArray()).Classes("music-browse");
     }
 
@@ -211,7 +219,7 @@ public sealed partial class StandaloneMusicWidget
         ? UI.LoadingIndicator("page.loading")
         : UI.Button("", "refresh", "refresh").Icon(WidgetGlyph.Refresh, "Refresh this page").Classes("music-refresh");
 
-    private string TopEntry(MusicState state) => _tab == "search" ? "search" : _tab == "library" && _history.Count == 0 ? "library.playlists" : NavigationFocusId;
+    private string TopEntry(MusicState state) => _tab == "search" ? "search" : _tab == "library" && _history.Count == 0 ? "library." + _libraryFilter : NavigationFocusId;
 
     private string EntryFocus(MusicState state)
     {
@@ -222,7 +230,7 @@ public sealed partial class StandaloneMusicWidget
         if (_tab == "search") return "search";
         if (_tab == "library" && !state.Connected) return "connect.prompt";
         if (entries.Count > 0) return "item." + entries[0].Index;
-        if (_tab == "library" && _history.Count == 0) return "library.playlists";
+        if (_tab == "library" && _history.Count == 0 && _loading) return "library." + _libraryFilter;
         if (!_loading) return "empty.search";
         return NavigationFocusId;
     }

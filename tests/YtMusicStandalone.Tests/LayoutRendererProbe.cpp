@@ -28,6 +28,13 @@ int Run(int argc, wchar_t** argv) {
             widgetrail::DeclarativeRenderOptions options;
             options.responsiveViewport = size;
             const auto result = renderer.Render(nullptr, *snapshot, L"item.0", {0, 0, size.width, size.height}, options);
+            if (fixture == L"library") {
+                widgetrail::input::WidgetFocusGroupMemory filterFocus;
+                filterFocus.Remember(L"ytmusic", *snapshot, L"library.playlists");
+                Require(snapshot->focusGroupEntryRequest.has_value(), "Loaded Library did not request list entry");
+                Require(filterFocus.Resolve(L"ytmusic", *snapshot, snapshot->focusGroupEntryRequest->groupId, result) == L"item.0",
+                    "A Library filter button stole focus from the first loaded result");
+            }
             if (fixture == L"library-return" || fixture == L"library-refresh") {
                 Require(snapshot->focusGroupEntryRequest.has_value(), "Section did not request focus entry");
                 const auto restored = focusMemory.Resolve(L"ytmusic", *snapshot, snapshot->focusGroupEntryRequest->groupId, result);
@@ -85,7 +92,10 @@ int Run(int argc, wchar_t** argv) {
                 Require(controls.x >= player.x && controls.x + controls.width <= player.x + player.width + 1, "Transport escapes player pane");
             }
         }
-        if (fixture == L"library") focusMemory.Remember(L"ytmusic", *snapshot, L"item.17");
+        if (fixture == L"library") {
+            focusMemory.Remember(L"ytmusic", *snapshot, L"item.17");
+            focusMemory.Remember(L"ytmusic", *snapshot, L"library.songs");
+        }
         if (fixture == L"home") focusMemory.Remember(L"ytmusic", *snapshot, L"item.1");
     }
     std::cout << "PASS native layout and focus: empty, playing, library toolbar, Home, playlist return and refresh at compact and preferred sizes\n";

@@ -134,7 +134,8 @@ public sealed partial class StandaloneMusicWidget : Widget
         }
     }
     private void SetStatus(string value) { lock (_gate) _status = value; Invalidate(); }
-    private string ContentGroupId => _panel == "setup" ? "music.content.setup" : _browse.GroupId;
+    private string ContentGroupId => _panel == "setup" ? "music.content.setup"
+        : _kind == "library" && _service.State.Connected ? _browse.ScrollId : _browse.GroupId;
     private void EnterContent()
     {
         _focusSequence++;

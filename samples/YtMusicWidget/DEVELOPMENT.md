@@ -21,7 +21,11 @@ entry requests enter newly loaded pages and restore collection selection on Back
 Home, Search, Queue and each of the four Library filters retain separate cursor
 windows and stable focus-group/scroll IDs. Section returns reuse loaded results;
 Refresh, a new search, account changes and changed queue contents reset the relevant
-collection. Library remembers its last filter. One reusable detail slot bounds
+collection. Library remembers its last filter.
+Library focus memory belongs to the results scroll, excluding the filter toolbar.
+New results enter at the first item; returning to a loaded list restores its last
+focused result. Loading stays on the selected filter, and Up returns to that filter.
+One reusable detail slot bounds
 playlist/album/artist state; Back reuses the parent section or reloads older detail
 routes around their saved entry. This state is in memory, not persisted across restarts.
 

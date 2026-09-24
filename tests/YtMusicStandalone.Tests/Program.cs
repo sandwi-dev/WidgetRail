@@ -17,7 +17,7 @@ if (args is ["--export-layout", var directory])
         }
         service.PageOverride = new("Your playlists", Enumerable.Range(0, 30).Select(i => new MusicItem("PL" + i, "playlist", "Playlist " + i)).ToArray());
         await widget.OnActionAsync(new("tab.library", "test"));
-        await Until(() => Nodes(widget.Render().CreateSnapshot("layout", 1).Root).Any(n => n.Text == "Your playlists"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null && Nodes(widget.Render().CreateSnapshot("layout", 1).Root).Any(n => n.Text == "Your playlists"));
         await File.WriteAllBytesAsync(Path.Combine(directory, "library.snapshot.json"), SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 1)));
         service.PageOverride = new("Home", Enumerable.Range(0, 6).Select(i => new MusicItem("song" + i, "song", "Home song " + i, Artwork: "https://example.invalid/fixture.png", Section: i < 4 ? "Quick picks" : "For you")).ToArray());
         await widget.OnActionAsync(new("tab.home", "test"));
@@ -53,6 +53,7 @@ var tests = new List<(string, Func<Task>)>
     ("Controller Y opens settings, B returns, and X works from a song", ControllerRouting),
     ("Cursor browsing traverses long lists and restores collection focus", CursorTraversal),
     ("Sections retain cursor windows and focus groups until an explicit refresh", RetainedSections),
+    ("Library filters wait on the selected filter then enter results without remembering toolbar focus", LibraryFilterFocus),
     ("New searches reset results while a late search cannot replace a retained section", RetainedSearch),
     ("Reconnect and disconnect invalidate retained account pages", AccountPages),
     ("Library controls stay in one row, Home keeps sections, and player hides scrollbar", BrowsePresentation),
@@ -420,6 +421,44 @@ static async Task RetainedSections()
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }
 
+static async Task LibraryFilterFocus()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        await widget.OnActionAsync(new("tab.library", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        service.PendingLibrary = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await widget.OnActionAsync(new("library.songs", "library.songs"));
+        await Until(() => service.BrowseCalls.Contains("library:songs"));
+        var loading = widget.Render().CreateSnapshot("filters", 1);
+        Check(loading.InitialFocusId == "library.songs", "Loading Songs moved focus to another filter");
+        Check(loading.FocusGroupEntryRequest is null, "Loading entered the toolbar as if it were results");
+        Check(!Nodes(loading.Root).Any(n => n.InitialChildFocusId?.StartsWith("library.", StringComparison.Ordinal) == true),
+            "A loading list remembers Library toolbar focus");
+        service.PendingLibrary.SetResult(new("Saved songs", [new("song", "song", "Saved song")]));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        var loaded = widget.Render().CreateSnapshot("filters", 2);
+        var group = Nodes(loaded.Root).Single(n => n.Id == loaded.FocusGroupEntryRequest!.GroupId);
+        Check(group.Kind == ViewNodeKind.Scroll && group.InitialChildFocusId == "item.0" && loaded.InitialFocusId == "item.0",
+            "Loaded Songs did not enter its first result");
+        Check(!Nodes(group).Any(n => n.Id.StartsWith("library.", StringComparison.Ordinal)), "Filter controls remain in list focus memory");
+        Check(Nodes(group).Single(n => n.Id == "item.0").Focus?.Up == "library.songs", "Up from Songs returns to the wrong filter");
+        await widget.OnActionAsync(new("library.albums", "library.albums"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        await widget.OnActionAsync(new("library.songs", "library.songs"));
+        Check(widget.Render().FocusGroupEntryRequest!.GroupId == group.Id, "Revisiting Songs lost its list focus group");
+        service.PendingLibrary = null;
+        service.PageOverride = new("Empty songs", []);
+        await widget.OnActionAsync(new("refresh", "test"));
+        await Until(() => widget.Render().FocusGroupEntryRequest is not null);
+        var empty = widget.Render().CreateSnapshot("filters", 3);
+        Check(empty.InitialFocusId == "empty.search" && Nodes(empty.Root).Single(n => n.Id == empty.FocusGroupEntryRequest!.GroupId).InitialChildFocusId == "empty.search",
+            "Empty Library results lack a valid focus target");
+    }
+    finally { service.PendingLibrary?.TrySetResult(new("Canceled", [])); await WidgetTestHost.DestroyAsync(widget); }
+}
+
 static async Task RetainedSearch()
 {
     var (widget, service) = await Start();
@@ -692,6 +731,7 @@ sealed class FakeService : IMusicService
     }
     public TaskCompletionSource? PendingRadio;
     public TaskCompletionSource<MusicPage>? PendingSearch;
+    public TaskCompletionSource<MusicPage>? PendingLibrary;
     public TaskCompletionSource<string>? PendingAuth;
     public int RadioCalls, SearchCalls, AuthCalls, CancelCalls;
     public readonly System.Collections.Concurrent.ConcurrentBag<string> BrowseCalls = [];
@@ -714,7 +754,7 @@ sealed class FakeService : IMusicService
             SearchCalls++;
             return PendingSearch is not null ? await PendingSearch.Task : new MusicPage("Search results", [new("result", "song", "Search song")]);
         }
-        if (kind == "library") return new MusicPage("Library result", []);
+        if (kind == "library") return PendingLibrary is not null ? await PendingLibrary.Task : new MusicPage("Library result", []);
         return new MusicPage("Home", Enumerable.Range(0, 30).Select(i => new MusicItem(i.ToString(), "song", "Song " + i)).ToArray());
     }
     public Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token) => Task.CompletedTask;
