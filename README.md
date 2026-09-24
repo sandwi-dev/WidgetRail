@@ -10,7 +10,9 @@ video or compact widget views visible while the main overlay is closed.
 
 [Download](https://github.com/sandwi-dev/WidgetRail/releases) · [Installation](docs/users/getting-started.md) · [Documentation](docs/README.md) · [Build a widget](docs/developers/widget-quickstart.md)
 
-![The WidgetRail overlay over a game](docs/images/overview.png)
+![WidgetRail's radial switcher over the Spotify widget](docs/images/overview-radial.png)
+
+![Games & Apps with WidgetRail's horizontal rail](docs/images/overview-rail.png)
 
 ## Quick start
 
