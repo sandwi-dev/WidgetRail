@@ -61,6 +61,13 @@ continues to own the stable layout metadata.
 
 ## State ownership
 
+The application allocates each playback helper's temporary WebView2 profile and
+removes it after the helper exits, including forced termination. On graceful
+shutdown the helper drains its dedicated browser process before exiting. Stale
+recovery accepts only the generated PID/GUID directory names, skips reparse points
+and live owners, and retries profiles older than one day. Saved authorization and
+playlist caches are separate from these temporary profiles.
+
 Internally, one non-partial widget owns lifecycle, provider calls, resources,
 committed state, and invalidation. Closed value-only policies classify authored
 route/actions and reconcile playback/device commands; a separate pure presenter

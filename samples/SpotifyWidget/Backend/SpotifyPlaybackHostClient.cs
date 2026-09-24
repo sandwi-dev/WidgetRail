@@ -438,20 +438,26 @@ internal sealed class SpotifyPlaybackHostClient : ISpotifyPlaybackHostClient
     private sealed record CommandError(string Code, string Message);
 }
 
-internal sealed class SpotifyPlaybackHostProcessFactory : ISpotifyPlaybackHostProcessFactory
+internal sealed class SpotifyPlaybackHostProcessFactory(string? temporaryRoot = null) : ISpotifyPlaybackHostProcessFactory
 {
     public ISpotifyPlaybackHostProcess Start(string executablePath, int parentProcessId)
     {
-        var startInfo = CreateStartInfo(executablePath, parentProcessId);
-        var process = Process.Start(startInfo) ??
-            throw new SpotifyPlaybackHostClientException(
-                "host_unavailable", "The Spotify playback host could not be started.");
-        return new SpotifyPlaybackHostProcess(process);
+        var profile = new SpotifyPlaybackProfileDirectory(temporaryRoot);
+        try
+        {
+            var startInfo = CreateStartInfo(executablePath, parentProcessId, profile.RootPath);
+            var process = Process.Start(startInfo) ??
+                throw new SpotifyPlaybackHostClientException(
+                    "host_unavailable", "The Spotify playback host could not be started.");
+            return new SpotifyPlaybackHostProcess(process, profile);
+        }
+        catch { profile.Dispose(); throw; }
     }
 
-    internal static ProcessStartInfo CreateStartInfo(string executablePath, int parentProcessId)
+    internal static ProcessStartInfo CreateStartInfo(string executablePath, int parentProcessId, string profilePath)
     {
         if (parentProcessId <= 0) throw new ArgumentOutOfRangeException(nameof(parentProcessId));
+        if (!Path.IsPathFullyQualified(profilePath)) throw new ArgumentException("Profile path must be absolute.", nameof(profilePath));
         var startInfo = new ProcessStartInfo(executablePath)
         {
             UseShellExecute = false,
@@ -469,6 +475,8 @@ internal sealed class SpotifyPlaybackHostProcessFactory : ISpotifyPlaybackHostPr
         startInfo.ArgumentList.Add("--parent-pid");
         startInfo.ArgumentList.Add(parentProcessId.ToString(
             System.Globalization.CultureInfo.InvariantCulture));
+        startInfo.ArgumentList.Add("--profile");
+        startInfo.ArgumentList.Add(profilePath);
         return startInfo;
     }
 }
@@ -476,9 +484,14 @@ internal sealed class SpotifyPlaybackHostProcessFactory : ISpotifyPlaybackHostPr
 internal sealed class SpotifyPlaybackHostProcess : ISpotifyPlaybackHostProcess
 {
     private readonly Process _process;
+    private readonly SpotifyPlaybackProfileDirectory _profile;
+    private int _disposed;
 
-    internal SpotifyPlaybackHostProcess(Process process) =>
+    internal SpotifyPlaybackHostProcess(Process process, SpotifyPlaybackProfileDirectory profile)
+    {
         _process = process ?? throw new ArgumentNullException(nameof(process));
+        _profile = profile ?? throw new ArgumentNullException(nameof(profile));
+    }
 
     public TextWriter Input => _process.StandardInput;
     public TextReader Output => _process.StandardOutput;
@@ -490,10 +503,19 @@ internal sealed class SpotifyPlaybackHostProcess : ISpotifyPlaybackHostProcess
         if (!_process.HasExited) _process.Kill(entireProcessTree: true);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        _process.Dispose();
-        return ValueTask.CompletedTask;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        try
+        {
+            if (!_process.HasExited) Terminate();
+            // Terminate requests exit; it does not prove the helper's profile handles
+            // have closed. Only the parent can remove the entire profile reliably.
+            await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            _profile.Dispose();
+        }
+        catch (TimeoutException) { /* Preserve the profile for later stale recovery. */ }
+        finally { _process.Dispose(); }
     }
 }
 

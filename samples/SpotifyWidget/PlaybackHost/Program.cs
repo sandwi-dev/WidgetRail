@@ -9,7 +9,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (!TryParentProcessId(args, out var parentProcessId) ||
+        if (!TryArguments(args, out var parentProcessId, out var profilePath) ||
             !Console.IsInputRedirected || !Console.IsOutputRedirected)
             return 2;
 
@@ -34,13 +34,13 @@ internal static class Program
             }
         }
 
-        using var form = new SpotifyPlaybackHostForm(Emit);
+        using var form = new SpotifyPlaybackHostForm(Emit, profilePath);
         _ = form.Handle;
         void Stop()
         {
             lifetime.Cancel();
             if (!form.IsDisposed && form.IsHandleCreated)
-                form.BeginInvoke(form.Close);
+                form.BeginInvoke(form.Stop);
         }
 
         _ = Task.Run(async () =>
@@ -86,10 +86,12 @@ internal static class Program
         return 0;
     }
 
-    private static bool TryParentProcessId(string[] args, out int parentProcessId)
+    private static bool TryArguments(string[] args, out int parentProcessId, out string profilePath)
     {
         parentProcessId = 0;
-        return args.Length == 2 &&
+        profilePath = args.Length == 4 ? args[3] : string.Empty;
+        return args.Length == 4 && args[2] == "--profile" &&
+            Path.IsPathFullyQualified(profilePath) &&
             string.Equals(args[0], "--parent-pid", StringComparison.Ordinal) &&
             int.TryParse(args[1], System.Globalization.NumberStyles.None,
                 System.Globalization.CultureInfo.InvariantCulture, out parentProcessId) &&

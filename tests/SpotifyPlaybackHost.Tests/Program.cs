@@ -14,7 +14,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Page playback state rejects unsafe metadata and artwork", PageStateContract),
     ("Only the internal playback document is a trusted page source", PageSourceContract),
     ("Autoplay permission is exact ephemeral and probe-free", AutoplayPermissionContract),
-    ("Ephemeral profile is removed on clean disposal", EphemeralProfileContract),
 };
 
 var failures = 0;
@@ -230,19 +229,6 @@ static Task AutoplayPermissionContract()
         StringComparison.Ordinal));
     Assert.True(!source.Contains("Emit(\"autoplay_permission\"",
         StringComparison.Ordinal));
-    return Task.CompletedTask;
-}
-
-static Task EphemeralProfileContract()
-{
-    string path;
-    using (var profile = new EphemeralUserDataDirectory())
-    {
-        path = profile.RootPath;
-        Assert.True(Directory.Exists(path));
-        File.WriteAllText(Path.Combine(path, "probe"), "temporary");
-    }
-    Assert.True(!Directory.Exists(path));
     return Task.CompletedTask;
 }
 
