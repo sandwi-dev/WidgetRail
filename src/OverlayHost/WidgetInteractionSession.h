@@ -3,6 +3,7 @@
 #include "ControllerNavigation.h"
 #include "FocusNavigation.h"
 #include "PressedInteraction.h"
+#include "PopupMenuMetrics.h"
 #include "SliderInteraction.h"
 #include "WidgetSurfaceFocus.h"
 
@@ -293,7 +294,8 @@ struct SelectPopupContentLayout final {
 [[nodiscard]] SelectPopupLayout ComputeSelectPopupLayout(
     declarative::Rect anchor,
     declarative::Rect viewport,
-    const SelectPopupBinding& popup);
+    const SelectPopupBinding& popup,
+    float preferredWidth = shell::kPopupMenuMinimumWidth);
 
 [[nodiscard]] SelectPopupContentLayout ComputeSelectPopupContentLayout(
     declarative::Rect rowBounds,

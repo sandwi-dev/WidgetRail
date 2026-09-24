@@ -2195,6 +2195,42 @@ void PaginationPrefetchLifecycle() {
                  "input-to-visible-page-ms=45\n";
 }
 
+void PopupMenuSizingAndEdgeAlignment() {
+    using namespace widgetrail::shell;
+    using widgetrail::declarative::Rect;
+    Check(PopupMenuWidth(20) == 220 && PopupMenuWidth(200) == 254 && PopupMenuWidth(700) == 360,
+        "popup content sizing includes chrome and stays between its minimum and maximum");
+    Check(PopupMenuWidth(700, 180) == 180, "narrow viewports override the popup minimum");
+    const Rect viewport{10, 20, 600, 400};
+    const Rect leftAnchor{120, 100, 136, 100};
+    const auto left = PopupMenuLeft(leftAnchor, viewport, 220);
+    Check(left + kPopupMenuShadowMargin == leftAnchor.x,
+        "popup visible left border aligns with its item, excluding shadow");
+    const Rect rightAnchor{480, 100, 120, 100};
+    const auto right = PopupMenuLeft(rightAnchor, viewport, 220);
+    Check(right + 220 - kPopupMenuShadowMargin == rightAnchor.x + rightAnchor.width,
+        "popup visible right border aligns when left alignment overflows");
+    Check(PopupMenuLeft({10, 100, 136, 100}, viewport, 220) == viewport.x,
+        "left-edge popup clamps when neither exact edge alignment fits");
+    Check(PopupMenuLeft(leftAnchor, {50, 20, 180, 400}, 180) == 50,
+        "narrow popup fits inside a viewport with a nonzero origin");
+
+    widgetrail::input::SelectPopupBinding popup;
+    popup.options.resize(12);
+    const auto initial = widgetrail::input::ComputeSelectPopupLayout(leftAnchor, viewport, popup, 270);
+    popup.highlightedOption = 11;
+    const auto moved = widgetrail::input::ComputeSelectPopupLayout(leftAnchor, viewport, popup, 270);
+    Check(initial.bounds.width == 270 && moved.bounds.width == initial.bounds.width &&
+        moved.bounds.x == initial.bounds.x && moved.items.back().optionIndex == 11,
+        "dropdown width and alignment stay fixed when its highlighted row scrolls");
+    popup.options.resize(3);
+    popup.highlightedOption = 0;
+    const auto below = widgetrail::input::ComputeSelectPopupLayout({120, 30, 136, 30}, viewport, popup, 270);
+    const auto above = widgetrail::input::ComputeSelectPopupLayout({120, 385, 136, 30}, viewport, popup, 270);
+    Check(below.bounds.y >= 60 && above.bounds.y + above.bounds.height <= 385,
+        "dropdown preserves below-first and above-if-needed placement");
+}
+
 void AnchoredSelectPopupIsExactAndBounded() {
     using widgetrail::input::ComputeSelectPopupLayout;
     using widgetrail::input::NavigationDirection;
@@ -2341,6 +2377,7 @@ int main() {
     CursorBoundaryAndViewportDemand();
     PaginationPrefetchLifecycle();
     AnchoredSelectPopupIsExactAndBounded();
+    PopupMenuSizingAndEdgeAlignment();
     std::cout << "WidgetInteractionSessionTests passed (" << checks
               << " checks)\n";
     return EXIT_SUCCESS;

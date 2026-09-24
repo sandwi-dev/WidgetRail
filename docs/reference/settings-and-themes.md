@@ -60,6 +60,11 @@ and theme-derived depth. A subdued outer border keeps emphasis on the selected r
 surface, selection, selected text, and focus colors follow the existing host
 theme styles. Shadows and decorative shading are omitted in high-contrast mode.
 Dropdowns retain their checkmarks, icons, and value-selection behavior.
+Menus measure all labels when opened and keep that width while navigating. The
+width ranges from 220 to 360 logical pixels, shrinking further if the viewport
+requires it; long labels use an ellipsis. The visible left border aligns with the
+opener when it fits, otherwise the right border aligns, with viewport clamping as
+a final fallback. Shadow space is excluded from the visual edge alignment.
 
 ## Theme packages and updates
 

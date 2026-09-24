@@ -11,9 +11,9 @@ namespace widgetrail::input {
 SelectPopupLayout ComputeSelectPopupLayout(
     const declarative::Rect anchor,
     const declarative::Rect viewport,
-    const SelectPopupBinding& popup) {
+    const SelectPopupBinding& popup,
+    const float preferredWidth) {
     constexpr float kRowHeight = shell::kPopupMenuRowHeight;
-    constexpr float kMinimumWidth = 220.0F;
     constexpr float kGap = 4.0F;
     constexpr std::size_t kMaximumVisibleRows = 8;
     SelectPopupLayout result;
@@ -27,9 +27,10 @@ SelectPopupLayout ComputeSelectPopupLayout(
         {kMaximumVisibleRows, popup.options.size(), rowsThatFit});
     const float rowHeight = std::min(
         kRowHeight, contentHeight / static_cast<float>(visibleCount));
-    const float width = std::min(viewport.width, std::max(anchor.width, kMinimumWidth));
+    const float width = std::min(viewport.width, std::clamp(preferredWidth,
+        shell::kPopupMenuMinimumWidth, shell::kPopupMenuMaximumWidth));
     const float height = rowHeight * static_cast<float>(visibleCount) + inset * 2;
-    float x = std::clamp(anchor.x, viewport.x, viewport.x + viewport.width - width);
+    const float x = shell::PopupMenuLeft(anchor, viewport, width);
     float y = anchor.y + anchor.height + kGap;
     if (y + height > viewport.y + viewport.height)
         y = anchor.y - kGap - height;
@@ -57,9 +58,9 @@ SelectPopupContentLayout ComputeSelectPopupContentLayout(
     const float leftInset,
     const float rightInset) noexcept {
     constexpr float kCheckmarkWidth = 20.0F;
-    constexpr float kCheckmarkAdvance = 22.0F;
+    constexpr float kCheckmarkAdvance = shell::kPopupMenuCheckmarkAdvance;
     constexpr float kGlyphSize = 22.0F;
-    constexpr float kGlyphAdvance = 28.0F;
+    constexpr float kGlyphAdvance = shell::kPopupMenuGlyphAdvance;
     SelectPopupContentLayout result;
     float contentLeft = rowBounds.x + std::max(0.0F, leftInset);
     const float contentRight = std::max(

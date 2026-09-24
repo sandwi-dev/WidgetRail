@@ -9294,6 +9294,7 @@ private:
     struct TrayContextMenuState final {
         std::wstring widgetId;
         std::size_t selectedItem{};
+        float preferredWidth{widgetrail::shell::kPopupMenuMinimumWidth};
     };
 
     struct TrayContextMenuLayout final {
@@ -9313,6 +9314,7 @@ private:
         std::vector<widgetrail::WidgetContextAction> actions;
         std::size_t selectedItem{};
         widgetrail::input::WidgetContextMenuSource sourceIdentity;
+        float preferredWidth{widgetrail::shell::kPopupMenuMinimumWidth};
     };
 
     struct WidgetContextMenuLayout final {
@@ -9353,7 +9355,7 @@ private:
             anchor->second,
             {geometry->widgetViewportX, geometry->widgetViewportY,
              geometry->widgetViewportWidth, geometry->widgetViewportHeight},
-            *interactionSession_.selectPopup());
+            *interactionSession_.selectPopup(), selectPopupPreferredWidth_);
     }
 
     [[nodiscard]] std::optional<widgetrail::accessibility::SelectPopupAccessibility>
@@ -9388,6 +9390,18 @@ private:
             descriptor->presentationGeneration, false};
         const auto activation = interactionSession_.OpenSelectPopup(authority, *node);
         if (activation == widgetrail::input::SelectActivationResult::Opened) {
+            float contentWidth{};
+            for (const auto& option : node->selectOptions) {
+                widgetrail::icons::NativeIcon icon{};
+                const bool hasIcon = option.packageIcon.has_value() ||
+                    (!option.glyph.empty() && widgetrail::icons::TryParseNativeIcon(option.glyph, icon));
+                const float leadingWidth =
+                    (option.isSelected ? widgetrail::shell::kPopupMenuCheckmarkAdvance : 0.0F) +
+                    (hasIcon ? widgetrail::shell::kPopupMenuGlyphAdvance : 0.0F);
+                contentWidth = std::max(contentWidth, leadingWidth +
+                    widgetrail::shell::MeasurePopupMenuText(writeFactory_.Get(), hintFormat_.Get(), option.label));
+            }
+            selectPopupPreferredWidth_ = widgetrail::shell::PopupMenuWidth(contentWidth);
             widgetAccessibilityProjection_.Clear();
             InvalidateRect(window_, nullptr, FALSE);
         }
@@ -9513,15 +9527,13 @@ private:
     CurrentWidgetContextMenuLayout(const float width, const float height) const {
         if (!WidgetContextMenuAuthorityCurrent() ||
             widgetContextMenu_->actions.empty()) return std::nullopt;
-        const float menuWidth = std::min(320.0F, std::max(1.0F, width - 16.0F));
+        const float menuWidth = std::min(widgetContextMenu_->preferredWidth, std::max(1.0F, width - 16.0F));
         const float menuHeight = std::min(widgetrail::shell::PopupMenuHeight(widgetContextMenu_->actions.size()),
             std::max(1.0F, height - 16.0F));
         const float inset = std::min({widgetrail::shell::kPopupMenuInset, menuWidth * .25F, menuHeight * .25F});
         const float rowHeight = (menuHeight - inset * 2) / static_cast<float>(widgetContextMenu_->actions.size());
-        const float left = std::clamp(
-            widgetContextMenu_->anchor.x + widgetContextMenu_->anchor.width * 0.5F -
-                menuWidth * 0.5F,
-            8.0F, std::max(8.0F, width - menuWidth - 8.0F));
+        const float left = widgetrail::shell::PopupMenuLeft(widgetContextMenu_->anchor,
+            {8.0F, 8.0F, std::max(1.0F, width - 16.0F), std::max(1.0F, height - 16.0F)}, menuWidth);
         const float below = widgetContextMenu_->anchor.y +
             widgetContextMenu_->anchor.height + kTrayContextMenuGapDip;
         const float top = below + menuHeight <= height - 8.0F
@@ -9662,12 +9674,11 @@ private:
                     state_.order()[candidate.slot] == trayContextMenu_->widgetId;
             });
         if (tile == tray.tiles.end()) return std::nullopt;
-        const float menuWidth = std::min(286.0F, std::max(1.0F, width - 16.0F));
+        const float menuWidth = std::min(trayContextMenu_->preferredWidth, std::max(1.0F, width - 16.0F));
         const float menuHeight =
             widgetrail::shell::PopupMenuHeight(actions.size());
-        const float left = std::clamp(
-            tile->bounds.x + tile->bounds.width * 0.5F - menuWidth * 0.5F,
-            8.0F, std::max(8.0F, width - menuWidth - 8.0F));
+        const float left = widgetrail::shell::PopupMenuLeft(tile->bounds,
+            {8.0F, 0.0F, std::max(1.0F, width - 16.0F), menuHeight}, menuWidth);
         const float top = tray.radialBounds
             ? tray.radialBounds->y + std::max(0.0F,(tray.radialBounds->height-menuHeight)/2)
             : tray.stripBounds.y - kTrayContextMenuGapDip - menuHeight;
@@ -10271,6 +10282,13 @@ private:
             0,
             *sourceIdentity,
         };
+        float contentWidth{};
+        for (const auto& action : widgetContextMenu_->actions) {
+            const std::wstring label = action.style == L"danger" ? L"Danger · " + action.label : action.label;
+            contentWidth = std::max(contentWidth,
+                widgetrail::shell::MeasurePopupMenuText(writeFactory_.Get(), hintFormat_.Get(), label));
+        }
+        widgetContextMenu_->preferredWidth = widgetrail::shell::PopupMenuWidth(contentWidth);
         (void)SetFocus(window_);
         InvalidateRect(window_, nullptr, FALSE);
         return true;
@@ -10309,6 +10327,13 @@ private:
             widgetId.empty() || widgetId != state_.selectedWidget()) return;
         widgetContextMenu_.reset();
         trayContextMenu_ = TrayContextMenuState{std::wstring(widgetId), 0};
+        float contentWidth{};
+        for (const auto& action : CurrentTrayMenuActions()) {
+            contentWidth = std::max({contentWidth,
+                widgetrail::shell::MeasurePopupMenuText(writeFactory_.Get(), hintFormat_.Get(), action.name),
+                widgetrail::shell::MeasurePopupMenuText(writeFactory_.Get(), hintFormat_.Get(), action.value)});
+        }
+        trayContextMenu_->preferredWidth = widgetrail::shell::PopupMenuWidth(contentWidth);
         retainedTrayPaintState_.reset();
         (void)SetFocus(window_);
         InvalidateRect(window_, nullptr, FALSE);
@@ -18981,6 +19006,7 @@ private:
     std::optional<HeldActionAuthority> heldActionAuthority_;
     int lastHeldRepeatVerdict_{-1};
     widgetrail::input::WidgetInteractionSession interactionSession_;
+    float selectPopupPreferredWidth_{widgetrail::shell::kPopupMenuMinimumWidth};
     std::wstring rightStickDropSignature_;
     std::uint64_t rightStickDropCount_{};
     std::optional<bool> lastForegroundOwnership_;

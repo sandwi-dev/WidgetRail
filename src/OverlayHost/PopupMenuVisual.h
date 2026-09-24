@@ -27,6 +27,34 @@ inline float PopupMenuCornerRadius(float themedRadius) noexcept {
     return std::clamp(themedRadius * .75F, 0.0F, 12.0F);
 }
 
+inline float MeasurePopupMenuText(IDWriteFactory* factory, IDWriteTextFormat* font,
+    std::wstring_view text) {
+    if (!factory || !font || text.empty()) return 0;
+    Microsoft::WRL::ComPtr<IDWriteTextLayout> layout;
+    if (FAILED(factory->CreateTextLayout(text.data(), static_cast<UINT32>(text.size()), font,
+        16384, 16384, layout.GetAddressOf()))) return 0;
+    layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    DWRITE_TEXT_METRICS metrics{};
+    return SUCCEEDED(layout->GetMetrics(&metrics)) ? metrics.widthIncludingTrailingWhitespace : 0;
+}
+
+inline Microsoft::WRL::ComPtr<IDWriteTextLayout> CreatePopupMenuTextLayout(
+    IDWriteFactory* factory, IDWriteTextFormat* font, std::wstring_view text, float width, float height) {
+    Microsoft::WRL::ComPtr<IDWriteTextLayout> layout;
+    if (!factory || !font || width <= 0 || height <= 0 ||
+        FAILED(factory->CreateTextLayout(text.data(), static_cast<UINT32>(text.size()), font,
+            width, height, layout.GetAddressOf()))) return {};
+    layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+    layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+    layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    Microsoft::WRL::ComPtr<IDWriteInlineObject> ellipsis;
+    if (SUCCEEDED(factory->CreateEllipsisTrimmingSign(font, ellipsis.GetAddressOf()))) {
+        const DWRITE_TRIMMING trimming{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
+        layout->SetTrimming(&trimming, ellipsis.Get());
+    }
+    return layout;
+}
+
 inline void DrawPopupMenuPanel(ID2D1RenderTarget* target, const declarative::Rect& bounds,
     const PopupMenuColors& colors, float themedRadius, float focusWidth) {
     if (!target || bounds.width <= kPopupMenuShadowMargin * 2 ||
@@ -106,13 +134,9 @@ inline void DrawPopupMenuText(ID2D1RenderTarget* target, IDWriteFactory* factory
     if (!target || !factory || !font || !ink || bounds.width <= 0 || bounds.height <= 0) return;
     std::wstring text{label};
     if (!detail.empty()) { text += L'\n'; text += detail; }
-    Microsoft::WRL::ComPtr<IDWriteTextLayout> layout;
-    if (FAILED(factory->CreateTextLayout(text.data(), static_cast<UINT32>(text.size()), font,
-        bounds.width, bounds.height, layout.GetAddressOf()))) return;
     // Per-layout alignment cannot leak into the shared hint format or guide.
-    layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-    layout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
-    layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    const auto layout = CreatePopupMenuTextLayout(factory, font, text, bounds.width, bounds.height);
+    if (!layout) return;
     if (!detail.empty()) layout->SetDrawingEffect(muted,
         {static_cast<UINT32>(label.size() + 1), static_cast<UINT32>(detail.size())});
     target->DrawTextLayout({bounds.x, bounds.y}, layout.Get(), ink, D2D1_DRAW_TEXT_OPTIONS_CLIP);

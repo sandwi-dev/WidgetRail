@@ -1380,6 +1380,23 @@ void ContextMenuVisualsCenterTextAndRespectThemes() {
                 ok(write->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
                     DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize, L"en-us", font.GetAddressOf()));
                 font->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+                const auto shortWidth = MeasurePopupMenuText(write.Get(), font.Get(), L"Play next");
+                const auto longLabel = std::wstring(100, L'W');
+                const auto longWidth = MeasurePopupMenuText(write.Get(), font.Get(), longLabel);
+                Check(shortWidth > 0 && longWidth > shortWidth && PopupMenuWidth(longWidth) == kPopupMenuMaximumWidth,
+                    "popup width uses actual themed text measurements and caps long labels");
+                const auto trimmed = CreatePopupMenuTextLayout(write.Get(), font.Get(), longLabel,
+                    kPopupMenuMaximumWidth - kPopupMenuInset * 2 - kPopupMenuContentInset - 12, 42);
+                Check(trimmed != nullptr, "long popup label creates a text layout");
+                DWRITE_LINE_METRICS line{};
+                UINT32 lines{};
+                ok(trimmed->GetLineMetrics(&line, 1, &lines));
+                Check(lines == 1 && line.isTrimmed, "long popup label ellipsizes on a single line");
+                DWRITE_TRIMMING trimming{};
+                ComPtr<IDWriteInlineObject> sign;
+                ok(trimmed->GetTrimming(&trimming, sign.GetAddressOf()));
+                Check(trimming.granularity == DWRITE_TRIMMING_GRANULARITY_CHARACTER && sign != nullptr,
+                    "popup truncation has an ellipsis sign rather than silently clipping text");
                 const auto draw = [&](std::wstring_view label, std::wstring_view detail) {
                     target->BeginDraw();
                     target->Clear(D2D1::ColorF(0, 0.0F));
