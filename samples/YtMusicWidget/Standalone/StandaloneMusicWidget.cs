@@ -267,11 +267,6 @@ public sealed partial class StandaloneMusicWidget : Widget
             {
                 Operations.RunSerial("music.queue", async context =>
                 {
-                    if (_service.State.Queue.Count >= MusicQueue.MaximumItems)
-                    {
-                        SetStatus("Queue is full (500 songs). Start a new song or collection first.");
-                        return;
-                    }
                     try
                     {
                         await _service.PlayNextAsync(item, context.CancellationToken);

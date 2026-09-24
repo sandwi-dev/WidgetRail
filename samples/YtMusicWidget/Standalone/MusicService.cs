@@ -114,16 +114,24 @@ public sealed class MusicService : IMusicService
             startPlayback = current is null;
             if (startPlayback)
             {
-                _originalQueue = MusicQueue.InsertNext([], -1, song);
+                _originalQueue = MusicQueue.InsertNext([], -1, song).Items;
                 _state = _state with { Queue = _originalQueue, Index = 0 };
             }
             else
             {
-                var queue = MusicQueue.InsertNext(_state.Queue, _state.Index, song);
-                var originalIndex = Array.FindIndex(_originalQueue, item => ReferenceEquals(item, current));
-                _originalQueue = _state.Shuffle
-                    ? MusicQueue.InsertNext(_originalQueue, originalIndex, song) : queue;
-                _state = _state with { Queue = queue };
+                var insertion = MusicQueue.InsertNext(_state.Queue, _state.Index, song);
+                if (_state.Shuffle)
+                {
+                    // Remove the same occurrence in both orders; independently
+                    // trimming each tail would bring the evicted song back later.
+                    var original = _originalQueue.ToList();
+                    if (insertion.Removed is { } removed)
+                        original.RemoveAt(original.FindIndex(item => ReferenceEquals(item, removed)));
+                    var originalIndex = original.FindIndex(item => ReferenceEquals(item, current));
+                    _originalQueue = MusicQueue.InsertNext(original, originalIndex, song).Items;
+                }
+                else _originalQueue = insertion.Items;
+                _state = _state with { Queue = insertion.Items, Index = insertion.CurrentIndex };
             }
         }
         if (startPlayback) await SelectAsync(token).ConfigureAwait(false);

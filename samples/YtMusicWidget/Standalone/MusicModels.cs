@@ -31,13 +31,24 @@ public static class MusicQueue
 {
     public const int MaximumItems = 500;
 
-    public static MusicItem[] InsertNext(IReadOnlyList<MusicItem> queue, int index, MusicItem song)
+    public static (MusicItem[] Items, int CurrentIndex, MusicItem? Removed) InsertNext(
+        IReadOnlyList<MusicItem> queue, int index, MusicItem song)
     {
-        if (song.Kind != "song" || index < -1 || index >= queue.Count || queue.Count >= MaximumItems)
-            throw new ArgumentException("Select a song for a queue with available capacity.");
+        if (song.Kind != "song" || index < -1 || index >= queue.Count || queue.Count > MaximumItems)
+            throw new ArgumentException("Select a song from a valid queue.");
         var result = queue.ToList();
+        MusicItem? removed = null;
+        if (result.Count == MaximumItems)
+        {
+            // Never evict the current song. At the end of a full queue, reclaim
+            // the oldest played entry instead and retain the current occurrence.
+            var removeIndex = index == result.Count - 1 ? 0 : result.Count - 1;
+            removed = result[removeIndex];
+            result.RemoveAt(removeIndex);
+            if (removeIndex < index) index--;
+        }
         result.Insert(index + 1, song);
-        return result.ToArray();
+        return (result.ToArray(), index, removed);
     }
 
     public static int Next(int count, int index, string repeat, bool ended) =>

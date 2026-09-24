@@ -79,14 +79,21 @@ static Task QueueInsertion()
     var songs = Enumerable.Range(0, 4).Select(i => new MusicItem(i.ToString(), "song", "Song " + i)).ToArray();
     var added = new MusicItem("added", "song", "Added");
     var next = MusicQueue.InsertNext(songs, 1, added);
-    Check(next.SequenceEqual(new[] { songs[0], songs[1], added, songs[2], songs[3] }), "Play next reordered or replaced the existing queue");
-    Check(MusicQueue.InsertNext([], -1, added).SequenceEqual(new[] { added }), "Empty queue insertion failed");
-    try
+    Check(next.Items.SequenceEqual(new[] { songs[0], songs[1], added, songs[2], songs[3] }) && next.CurrentIndex == 1 && next.Removed is null,
+        "Play next reordered or replaced the existing queue");
+    Check(MusicQueue.InsertNext([], -1, added).Items.SequenceEqual(new[] { added }), "Empty queue insertion failed");
+    var full = Enumerable.Range(0, MusicQueue.MaximumItems).Select(i => new MusicItem(i.ToString(), "song", "Song " + i)).ToArray();
+    foreach (var index in new[] { 0, 250, 498, 499 })
     {
-        MusicQueue.InsertNext(Enumerable.Repeat(added, MusicQueue.MaximumItems).ToArray(), 0, added);
-        throw new Exception("Queue exceeded its bound");
+        var insertion = MusicQueue.InsertNext(full, index, added);
+        var removed = index == full.Length - 1 ? full[0] : full[^1];
+        Check(insertion.Items.Length == MusicQueue.MaximumItems && ReferenceEquals(insertion.Items[insertion.CurrentIndex], full[index]),
+            "Full queue lost its bound or current song");
+        Check(ReferenceEquals(insertion.Items[insertion.CurrentIndex + 1], added) && ReferenceEquals(insertion.Removed, removed),
+            "Full queue removed the wrong tail entry or lost the added song");
+        Check(insertion.Items.Where(item => !ReferenceEquals(item, added)).SequenceEqual(full.Where(item => !ReferenceEquals(item, removed))),
+            "Tail replacement reordered the retained songs");
     }
-    catch (ArgumentException) { }
     return Task.CompletedTask;
 }
 
@@ -95,6 +102,7 @@ static async Task PlayNextAction()
     var (widget, service) = await Start();
     try
     {
+        service.ReplaceQueue(Enumerable.Range(0, MusicQueue.MaximumItems).Select(i => new MusicItem(i.ToString(), "song", "Full queue song " + i)).ToArray());
         var first = Nodes(widget.Render().CreateSnapshot("next", 1).Root).Single(n => n.Id == "item.0");
         Check(first.ContextActions.Any(action => action.ActionId == "next.0" && action.Label == "Play next"), "Play next is missing from song options");
         await widget.OnActionAsync(new("next.0", "item.0"));
@@ -522,6 +530,22 @@ static async Task LivePackage(string root)
     Check(service.State.Queue[service.State.Index + 1] == queued, "Turning shuffle off lost Play next placement");
     await service.CommandAsync("next", null, timeout.Token);
     await Until(() => service.State.Player.TrackId == queued.Id && service.State.Player.Playing && service.State.Player.Duration > 0);
+    var fullQueue = Enumerable.Range(0, MusicQueue.MaximumItems).Select(i => song with { Title = "Occurrence " + i }).ToArray();
+    await service.PlayAsync(fullQueue, 0, timeout.Token);
+    await service.CommandAsync("shuffle", null, timeout.Token);
+    var evicted = service.State.Queue[^1];
+    await service.PlayNextAsync(queued, timeout.Token);
+    Check(service.State.Queue.Count == MusicQueue.MaximumItems && service.State.Queue[1] == queued &&
+        !service.State.Queue.Any(item => ReferenceEquals(item, evicted)), "Full shuffled queue did not replace its tail");
+    await service.CommandAsync("shuffle", null, timeout.Token);
+    Check(service.State.Queue.Count == MusicQueue.MaximumItems && service.State.Queue[1] == queued &&
+        !service.State.Queue.Any(item => ReferenceEquals(item, evicted)), "Unshuffle restored the evicted song");
+    await service.PlayAsync(fullQueue, fullQueue.Length - 1, timeout.Token);
+    var lastCurrent = service.State.Current;
+    await service.PlayNextAsync(queued, timeout.Token);
+    Check(service.State.Queue.Count == MusicQueue.MaximumItems && ReferenceEquals(service.State.Current, lastCurrent) &&
+        service.State.Queue[service.State.Index + 1] == queued && !service.State.Queue.Any(item => ReferenceEquals(item, fullQueue[0])),
+        "Full queue ending lost the current/next song or retained its oldest entry");
     await service.CommandAsync("pause", null, timeout.Token);
     await Until(() => !service.State.Player.Playing);
     await service.CommandAsync("toggle", null, timeout.Token);

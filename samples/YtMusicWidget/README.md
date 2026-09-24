@@ -52,6 +52,14 @@ WidgetRail's Now Playing widget can control the local player.
 with an independent player. Sign in again and approve the new full-trust permission.
 It does not reuse or delete YTMDesktop's pairing token or application data.
 
+**What happens when the queue is full?** At the 500-song limit, Play next removes
+the last queued entry to make room. If the current song is last, it removes the
+first (oldest played) entry instead, keeping the current and next songs intact.
+
+**Is the whole queue preloaded?** Only its metadata is loaded. The player buffers
+the current song and prepares the next song’s stream URL when possible; it does not
+download audio for the whole queue.
+
 **Why does a song take time to start?** A new song needs a playable stream resolved
 from YouTube before audio can begin. The next queued song is prepared in advance,
 but uncached selections can still take several seconds.
