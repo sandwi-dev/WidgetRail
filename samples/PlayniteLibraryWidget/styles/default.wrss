@@ -125,7 +125,7 @@
 
 /* Readable controller hints remain outside focus navigation. */
 .wrail-controller-hint { min-height: 28px; flex-grow: 0; flex-shrink: 1; align: center; gap: 6px; padding: 0px; background: transparent; border-width: 0px; }
-.wrail-controller-hint__key { font-size: var(--controller-glyph-size, 24px); color: var(--text); padding: 0px; background: transparent; border-width: 0px; }
+.wrail-controller-hint__key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); padding: 0px; background: transparent; border-width: 0px; }
 .wrail-controller-hint__label { color: var(--text-muted); font-size: 12px; font-weight: 400; max-lines: 1; text-overflow: ellipsis; }
 .playnite-library-footer { width: 100%; align: center; gap: 10px; }
 .playnite-library-install-badge { height: 34px; min-height: 34px; padding: 7px 8px; background: var(--surface-active, var(--surface-muted)); border-top-color: var(--border-strong, var(--text-muted)); border-top-width: 1px; corner-radius: 0px; }

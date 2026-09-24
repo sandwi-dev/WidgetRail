@@ -25,6 +25,7 @@
   --border-strong: rgba(122, 214, 255, 0.34);
 
   --text: #e8f1fb;
+  --controller-glyph-color: #83c6d8;
   --text-muted: #9aa8c4;
   --scrollbar-track: #232d4a;
   --scrollbar-thumb: #67bbd0;

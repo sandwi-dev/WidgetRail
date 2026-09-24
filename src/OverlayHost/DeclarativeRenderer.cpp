@@ -4828,7 +4828,14 @@ struct DeclarativeRenderer::RenderPass final {
             const auto control = controller::ParsePrompt(node.controllerPrompt);
             auto brush = Brush(target, WithOpacity(style.foreground().value_or(kDefaultText), opacity));
             if (brush) {
-                const auto bounds = D2DRect(presented.contentBox);
+                // Flex containers may stretch the node's box. Treat font-size
+                // as the symbol size, not permission to fill the whole row.
+                const auto& box = presented.contentBox;
+                const float size = std::min(style.fontSizePx(), std::max(0.0F, box.height));
+                const float width = std::min(controller::ControlWidth(control, size), std::max(0.0F, box.width));
+                const auto bounds = D2D1::RectF(
+                    box.x + (box.width - width) * .5F, box.y + (box.height - size) * .5F,
+                    box.x + (box.width + width) * .5F, box.y + (box.height + size) * .5F);
                 if (!controller::PromptFont().Draw(target,
                         controller::PromptCharacter(control, options.playStationControls), bounds, brush.Get())) {
                     // A missing private font must never turn the prompt into an

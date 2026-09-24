@@ -7164,6 +7164,36 @@ void WidgetControllerGlyphsRenderAndTrackControllerFamily() {
             }
         }
     }
+    // Navigation rows stretch adornments to button height. Glyph ink must
+    // retain its font size even when both dimensions of its box are larger.
+    snapshot.root.baseStyle[L"align"] = {L"keyword", L"stretch"};
+    glyph.controllerPrompt = L"leftTrigger";
+    glyph.baseStyle[L"width"] = Length(64);
+    snapshot.root.children = {glyph, label};
+    for (bool playStation : {false, true}) for (float scale : {1.0F, 1.5F}) {
+        widgetrail::DeclarativeRenderOptions options;
+        options.playStationControls = playStation;
+        options.accessibility.textScale = scale;
+        ++snapshot.sequence;
+        target->BeginDraw(); target->Clear(D2D1::ColorF(0,0));
+        const auto result = renderer.Render(target.Get(), snapshot, L"", {0,0,300,90}, options);
+        ok(target->EndDraw());
+        Check(result.succeeded, "stretched controller glyph renders");
+        const auto box = result.elementRects.at(L"key");
+        std::vector<BYTE> pixels(300*90*4);
+        ok(canvas->CopyPixels(nullptr,300*4,static_cast<UINT>(pixels.size()),pixels.data()));
+        int top = 90, bottom = -1;
+        for (int y=0;y<90;++y) for (int x=0;x<300;++x) {
+            const auto at = (y*300+x)*4;
+            if (pixels[at+2]>16 && pixels[at]==0 && pixels[at+1]==0) {
+                top = std::min(top,y); bottom = std::max(bottom,y);
+            }
+        }
+        Check(bottom >= top && bottom-top+1 <= std::ceil(24*scale),
+            "stretching a glyph box never enlarges its ink beyond font size");
+        Near((top+bottom+1)*.5F, box.y+box.height*.5F,
+            "stretched glyph stays vertically centered", 1.0F);
+    }
     // Exercise the same vector/text fallback used when the private font is unavailable.
     ComPtr<IDWriteTextFormat> fallback;
     ok(write->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL,

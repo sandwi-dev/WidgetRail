@@ -9,6 +9,7 @@
   --border-strong: rgba(246, 240, 226, 0.22);
   --text: #f2efe8;
   --text-muted: #aaa69d;
+  --controller-glyph-color: #b8ae92;
   --scrollbar-track: #34332f;
   --scrollbar-thumb: #aaa69d;
   --text-subdued: #7d7a72;
@@ -806,7 +807,7 @@ slider:focused {
    symbol box without distorting its shape. Labels retain normal text styling. */
 .wrail-controller-glyph {
   font-size: var(--controller-glyph-size, 24px);
-  color: var(--text);
+  color: var(--controller-glyph-color, var(--text-muted));
   padding: 0px;
   flex-grow: 0;
   flex-shrink: 0;

@@ -30,6 +30,7 @@
   --border-strong: rgba(255, 214, 208, 0.30);
 
   --text: #fbeeec;
+  --controller-glyph-color: #e8a299;
   --text-muted: #cdaeaa;
   --scrollbar-track: #49312e;
   --scrollbar-thumb: #d99389;

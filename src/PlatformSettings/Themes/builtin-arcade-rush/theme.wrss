@@ -25,6 +25,7 @@
 
   --text: #f6eef8;
   --text-muted: #c0aec8;
+  --controller-glyph-color: #dba6cf;
   --scrollbar-track: #463149;
   --scrollbar-thumb: #d58dba;
   --text-subdued: #9a86a4;

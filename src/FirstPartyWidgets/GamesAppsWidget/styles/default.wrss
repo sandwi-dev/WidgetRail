@@ -77,7 +77,7 @@
   flex-shrink: 0;
 }
 
-.games-section-bumper-key { font-size: var(--controller-glyph-size, 24px); color: var(--text-muted); padding: 0px; flex-shrink: 0; }
+.games-section-bumper-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); padding: 0px; flex-shrink: 0; }
 
 .games-section-body {
   width: 100%;

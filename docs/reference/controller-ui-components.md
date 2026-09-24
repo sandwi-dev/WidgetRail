@@ -49,7 +49,10 @@ Style `.wrail-controller-glyph` for all symbols, `.wrail-controller-hint__key`
 for symbols in labeled hints, and `.wrail-controller-hint__label` for labels.
 The default glyph size is 24 logical pixels; a theme can set
 `--controller-glyph-size` or override `font-size` on a specific glyph. Color,
-opacity, padding, and container decoration are themeable. Glyphs honor text
+opacity, padding, and container decoration are themeable. Set
+`--controller-glyph-color` to change symbol ink independently of labels; the
+built-in themes use a subdued accent. A stretched layout box keeps the symbol
+centered at its font size instead of enlarging it to fill the row. Glyphs honor text
 scaling and high contrast. Font family, weight, letter spacing, and line height
 do not reshape symbols; those properties continue to apply normally to labels.
 The host centers each symbol's visible ink and provides a readable drawn fallback

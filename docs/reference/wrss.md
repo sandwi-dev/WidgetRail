@@ -192,6 +192,8 @@ Controller glyphs use `.wrail-controller-glyph`; labeled hints additionally use
 `--controller-glyph-size` customizes the shared default (24px). The host reserves
 slightly wider boxes for bumper/trigger symbols and keeps Xbox/PlayStation box
 sizes stable when controllers change. `color` and `opacity` affect glyph ink;
-ordinary box properties can decorate the surrounding space. Font family, weight,
+`--controller-glyph-color` controls the built-in themes' subdued accent separately
+from label text. Flex stretching does not enlarge the ink beyond `font-size`.
+Ordinary box properties can decorate the surrounding space. Font family, weight,
 letter spacing, and line height never substitute or distort the private symbol
 font. Style the separate `.wrail-controller-hint__label` for action text.

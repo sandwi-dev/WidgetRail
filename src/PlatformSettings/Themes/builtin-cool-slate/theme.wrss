@@ -8,6 +8,7 @@
   --border: rgba(219, 230, 240, 0.12);
   --border-strong: rgba(219, 230, 240, 0.22);
   --text: #edf2f7;
+  --controller-glyph-color: #9fb7d0;
   --text-muted: #a3afbd;
   --scrollbar-track: #303b49;
   --scrollbar-thumb: #a3afbd;

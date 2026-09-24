@@ -347,7 +347,7 @@
   flex-shrink: 0;
 }
 .spotify-navigation-settings-hint { flex-shrink: 0; }
-.spotify-section-trigger-key { font-size: var(--controller-glyph-size, 24px); color: var(--text-muted); padding: 0px; flex-shrink: 0; }
+.spotify-section-trigger-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); padding: 0px; flex-shrink: 0; }
 .spotify-player-card.spotify-player-dock {
   width: 100%;
   min-width: 0px;
