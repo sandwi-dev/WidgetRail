@@ -177,7 +177,7 @@ public sealed partial class StandaloneMusicWidget
                 if (position == 0 && !collection.Snapshot.HasBefore) row = row.FocusUp(TopEntry(state));
                 // Grid navigation owns horizontal neighbours between Home posters.
                 if (!home && state.Current is not null) row = row.FocusLeft("player.main.toggle");
-                if (item.Kind is "song" or "playlist") row = row.ContextMenuShortcut(ControllerButton.Menu)
+                if (item.Kind is "song" or "playlist" or "album") row = row.ContextMenuShortcut(ControllerButton.Menu)
                     .ContextAction("next." + index, "Play next");
                 if (item.Kind == "song") row = row.ContextAction("radio." + index, "Start radio");
                 var presented = collection.PresentItem(entry, row);

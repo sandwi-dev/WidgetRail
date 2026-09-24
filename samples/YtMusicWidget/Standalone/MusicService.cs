@@ -105,14 +105,14 @@ public sealed class MusicService : IMusicService
     {
         token.ThrowIfCancellationRequested();
         IReadOnlyList<MusicItem> tracks;
-        if (item.Kind == "playlist")
+        if (item.Kind is "playlist" or "album")
         {
-            var page = await BrowseAsync("playlist", item.Id, token).ConfigureAwait(false);
+            var page = await BrowseAsync(item.Kind, item.Id, token).ConfigureAwait(false);
             tracks = page.Items.Where(track => track.Kind == "song").ToArray();
-            if (tracks.Count == 0) throw new IOException("This playlist has no playable songs.");
+            if (tracks.Count == 0) throw new IOException($"This {item.Kind} has no playable songs.");
         }
         else if (item.Kind == "song") tracks = [item];
-        else throw new ArgumentException("Select a song or playlist.", nameof(item));
+        else throw new ArgumentException("Select a song, playlist or album.", nameof(item));
 
         bool startPlayback;
         MusicQueueAddition addition;

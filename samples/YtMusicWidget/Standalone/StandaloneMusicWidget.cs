@@ -303,20 +303,20 @@ public sealed partial class StandaloneMusicWidget : Widget
             lock (_gate) items = (_tab == "queue" ? _service.State.Queue : Page.Items).ToArray();
             if (index < 0 || index >= items.Length) return ValueTask.CompletedTask;
             var item = items[index];
-            if (id.StartsWith("next.", StringComparison.Ordinal) && item.Kind is "song" or "playlist")
+            if (id.StartsWith("next.", StringComparison.Ordinal) && item.Kind is "song" or "playlist" or "album")
             {
                 Operations.RunSerial("music.queue", async context =>
                 {
                     try
                     {
-                        if (item.Kind == "playlist") SetStatus("Loading playlist to play next…");
+                        if (item.Kind != "song") SetStatus($"Loading {item.Kind} to play next…");
                         var result = await _service.PlayNextAsync(item, context.CancellationToken);
                         SetStatus(item.Kind == "song" ? "Added to play next" :
                             $"Added {result.AddedCount} song{(result.AddedCount == 1 ? "" : "s")} to play next" +
                             (result.QueueLimitReached ? " (500-song queue limit)" : ""));
                     }
                     catch (Exception error) when (error is IOException or OperationCanceledException or ArgumentException)
-                    { SetStatus(item.Kind == "playlist" ? "Could not add this playlist. It may be empty or unavailable. Try again."
+                    { SetStatus(item.Kind != "song" ? $"Could not add this {item.Kind}. It may be empty or unavailable. Try again."
                         : "Could not add the song to the queue. Try again."); }
                 }, WidgetOperationLifetime.Widget);
             }

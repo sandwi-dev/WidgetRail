@@ -18,7 +18,7 @@ provider section titles, with one responsive square-poster grid per section.
 “Mixed for you” is promoted first when present; other sections retain provider order. Song
 radio and Play next are host-owned Menu context actions. Play next inserts into both
 the active queue and its unshuffled order, without changing the current song.
-Playlist Play next fetches the bounded playlist, skips non-song entries, then commits
+Playlist and album Play next fetch the bounded collection, skip non-song entries, then commit
 one ordered block under the queue lock. Capacity trimming removes the same occurrences
 in both orders; only the first inserted song is prefetched. Empty queues start playback.
 The SDK compact navigation sits above a persistent left player and right browsing pane,
@@ -82,7 +82,7 @@ the sealed installation; environment flags alone are ignored under `-I`. yt-dlp 
 ## Verification
 
 The default managed verification includes `ytmusic-standalone-tests`. It checks
-valid snapshots, song/playlist queue insertion and capacity rules, shuffle occurrence
+valid snapshots, song/playlist/album queue insertion and capacity rules, shuffle occurrence
 identity, retained section focus, stale responses, independent transport, sign-in
 lifetime, hidden-input rejection and bounded IPC. `test_service.py` adds isolated
 Python checks for DPAPI, session deletion, proxy admission, radio artwork, bounded

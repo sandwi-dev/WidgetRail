@@ -42,7 +42,8 @@ var tests = new List<(string, Func<Task>)>
     ("Queue ends, repeats one only on automatic end, and wraps only with repeat all", QueuePolicy),
     ("Play next inserts after the current song and preserves the remaining queue", QueueInsertion),
     ("Playlist insertion preserves order and current occurrences within the queue limit", PlaylistInsertion),
-    ("Playlist Play next remains responsive and reports limits and failures", PlaylistNextAction),
+    ("Playlist Play next remains responsive and reports limits and failures", () => CollectionNextAction("playlist", "PLtest")),
+    ("Album Play next remains responsive and reports limits and failures", () => CollectionNextAction("album", "MPRE_test")),
     ("Song menus expose Play next and dispatch without starting radio", PlayNextAction),
     ("Shuffle preserves current and played entries and retains every occurrence", ShufflePolicy),
     ("All pages and pinned layout produce valid bounded snapshots", Snapshots),
@@ -159,33 +160,33 @@ static Task PlaylistInsertion()
     return Task.CompletedTask;
 }
 
-static async Task PlaylistNextAction()
+static async Task CollectionNextAction(string kind, string id)
 {
     var (widget, service) = await Start();
     try
     {
-        service.PageOverride = new("Playlists", [new("PLtest", "playlist", "Test playlist"), new("album", "album", "Album")]);
+        service.PageOverride = new("Collections", [new(id, kind, "Test collection"), new("UCartist", "artist", "Artist")]);
         await widget.OnActionAsync(new("refresh", "test"));
         await Until(() => widget.Render().FocusGroupEntryRequest is not null);
         var view = widget.Render().CreateSnapshot("playlist-next", 1);
-        var playlist = Nodes(view.Root).Single(n => n.Id == "item.0");
-        Check(playlist.ContextActions.Any(action => action.ActionId == "next.0") && !playlist.ContextActions.Any(action => action.ActionId == "radio.0"),
-            "Playlist menu has missing Play next or unsupported radio");
-        Check(!Nodes(view.Root).Single(n => n.Id == "item.1").ContextActions.Any(), "Album menu was expanded unintentionally");
+        var collection = Nodes(view.Root).Single(n => n.Id == "item.0");
+        Check(collection.ContextActions.Any(action => action.ActionId == "next.0") && !collection.ContextActions.Any(action => action.ActionId == "radio.0"),
+            "Collection menu has missing Play next or unsupported radio");
+        Check(!Nodes(view.Root).Single(n => n.Id == "item.1").ContextActions.Any(), "Artist menu was expanded unintentionally");
         service.PendingNext = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var dispatch = widget.OnActionAsync(new("next.0", "item.0"));
-        Check(dispatch.IsCompletedSuccessfully, "Playlist fetching blocks host dispatch");
+        Check(dispatch.IsCompletedSuccessfully, "Collection fetching blocks host dispatch");
         await Until(() => service.NextSongs.Count == 1);
         await widget.OnActionAsync(new("player.toggle", "test"));
         await Until(() => service.Commands.Contains("toggle"));
-        Check(service.NextSongs.Single().Id == "PLtest" && service.RadioCalls == 0, "Wrong playlist action dispatched");
+        Check(service.NextSongs.Single().Id == id && service.NextSongs.Single().Kind == kind && service.RadioCalls == 0, "Wrong collection action dispatched");
         service.PendingNext.SetResult(new(499, true));
         await Until(() => Nodes(widget.Render().CreateSnapshot("playlist-next", 2).Root).Any(n => n.Text == "Added 499 songs to play next (500-song queue limit)"));
         service.PendingNext = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await widget.OnActionAsync(new("next.0", "item.0"));
         await Until(() => service.NextSongs.Count == 2);
-        service.PendingNext.SetException(new IOException("empty_playlist"));
-        await Until(() => Nodes(widget.Render().CreateSnapshot("playlist-next", 3).Root).Any(n => n.Text?.StartsWith("Could not add this playlist", StringComparison.Ordinal) == true));
+        service.PendingNext.SetException(new IOException("empty_collection"));
+        await Until(() => Nodes(widget.Render().CreateSnapshot("playlist-next", 3).Root).Any(n => n.Text?.StartsWith($"Could not add this {kind}", StringComparison.Ordinal) == true));
     }
     finally { service.PendingNext?.TrySetCanceled(); await WidgetTestHost.DestroyAsync(widget); }
 }
