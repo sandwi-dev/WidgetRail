@@ -18031,7 +18031,7 @@ private:
                 widgetrail::icons::TryParseNativeIcon(option.glyph, icon);
             const bool hasIcon = option.packageIcon.has_value() || hasSemanticIcon;
             const auto content = widgetrail::input::ComputeSelectPopupContentLayout(
-                item.bounds, option.isSelected, hasIcon, 12.0F, 10.0F);
+                item.bounds, option.isSelected, hasIcon, widgetrail::shell::kPopupMenuContentInset, 10.0F);
             if (content.checkmarkBounds) {
                 const auto& bounds = *content.checkmarkBounds;
                 widgetrail::shell::DrawPopupMenuText(renderTarget_.Get(), writeFactory_.Get(),

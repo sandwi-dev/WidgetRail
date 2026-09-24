@@ -10,6 +10,7 @@ inline constexpr float kPopupMenuShadowMargin = 6.0F;
 inline constexpr float kPopupMenuPadding = 6.0F;
 inline constexpr float kPopupMenuInset = kPopupMenuShadowMargin + kPopupMenuPadding;
 inline constexpr float kPopupMenuRowHeight = 48.0F;
+inline constexpr float kPopupMenuContentInset = 18.0F;
 
 inline constexpr float PopupMenuHeight(std::size_t count) noexcept {
     return kPopupMenuInset * 2 + kPopupMenuRowHeight * static_cast<float>(count);

@@ -122,14 +122,15 @@ inline void DrawPopupMenuRow(ID2D1RenderTarget* target, IDWriteFactory* factory,
     IDWriteTextFormat* font, const declarative::Rect& bounds, std::wstring_view label,
     std::wstring_view detail, bool selected, bool enabled, const PopupMenuColors& colors,
     float themedRadius) {
-    if (!target || !factory || !font || bounds.width <= 24 || bounds.height <= 6) return;
+    if (!target || !factory || !font || bounds.width <= kPopupMenuContentInset + 12 || bounds.height <= 6) return;
     Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> ink, muted;
     const auto foreground = !enabled ? colors.muted : selected ? colors.selectedText : colors.text;
     if (FAILED(target->CreateSolidColorBrush(foreground, ink.GetAddressOf())) ||
         FAILED(target->CreateSolidColorBrush(colors.muted, muted.GetAddressOf()))) return;
     if (selected) DrawPopupMenuSelection(target, bounds, colors, themedRadius);
     DrawPopupMenuText(target, factory, font,
-        {bounds.x + 12, bounds.y + 3, bounds.width - 24, bounds.height - 6},
+        {bounds.x + kPopupMenuContentInset, bounds.y + 3,
+            bounds.width - kPopupMenuContentInset - 12, bounds.height - 6},
         label, detail, ink.Get(), muted.Get());
 }
 
