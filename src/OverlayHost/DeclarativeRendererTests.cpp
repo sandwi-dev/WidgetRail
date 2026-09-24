@@ -1248,6 +1248,103 @@ WidgetSnapshot PosterTileSnapshot(const std::wstring_view titleText) {
     return snapshot;
 }
 
+void NestedPercentagePostersKeepBoundsAcrossScrollPaths() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "percentage poster native resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    ok(wic->CreateBitmap(640, 400, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
+    for (const double percentage : {50.0, 100.0}) {
+        DeclarativeRenderer renderer(d2d.Get(), write.Get(), nullptr);
+        WidgetSnapshot snapshot;
+        snapshot.instanceId = L"percentage.posters";
+        snapshot.sequence = 1;
+        snapshot.activeInputScopeId = L"root";
+        snapshot.root = Node(L"root", L"stack");
+        snapshot.root.inputScopeId = L"root";
+        auto scroll = Node(L"scroll", L"scroll");
+        scroll.scrollAxis = L"vertical";
+        scroll.showScrollbar = false;
+        scroll.baseStyle = {{L"width", Length(percentage, L"%")}, {L"height", Length(210)}, {L"flex-shrink", Number(0)}};
+        auto grid = Node(L"grid", L"grid");
+        grid.gridMinimumColumnWidth = 130;
+        grid.gridMaximumColumns = 4;
+        grid.baseStyle = {{L"width", Length(100, L"%")}, {L"gap", LengthList(L"12px")}, {L"flex-shrink", Number(0)}};
+        for (int i = 0; i < 12; ++i) {
+            const auto id = L"tile." + std::to_wstring(i);
+            auto poster = PosterTileSnapshot(L"Late Night House Grooves").root.children.front();
+            const auto rename = [&](const auto& self, WidgetNode& node) -> void {
+                node.id.replace(0, std::wstring{L"poster.card"}.size(), id);
+                for (auto& child : node.children) self(self, child);
+            };
+            rename(rename, poster);
+            poster.baseStyle.erase(L"width");
+            poster.baseStyle[L"aspect-ratio"] = Number(1);
+            auto& scrim = poster.children.back();
+            scrim.baseStyle[L"width"] = Length(100, L"%");
+            scrim.baseStyle[L"padding"] = LengthList(L"8px");
+            auto content = Node((id + L".content").c_str(), L"stack");
+            content.baseStyle = {{L"width", Length(100, L"%")}, {L"min-width", Length(0)}};
+            content.children = std::move(scrim.children);
+            content.children.front().baseStyle[L"width"] = Length(100, L"%");
+            content.children.front().baseStyle[L"font-size"] = Length(14);
+            scrim.children = {std::move(content)};
+            grid.children.push_back(std::move(poster));
+        }
+        scroll.children.push_back(std::move(grid));
+        snapshot.root.children.push_back(std::move(scroll));
+        const Rect viewport{0, 0, 580, 240};
+        DeclarativeRenderOptions options;
+        options.accessibility.reducedMotion = true;
+        options.pixelScale = 1.25F;
+        const auto draw = [&](std::wstring_view focus, bool freeScroll = false) {
+            options.suppressFocusedDescendantFollow = freeScroll;
+            target->BeginDraw();
+            target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+            const auto result = renderer.Render(target.Get(), snapshot, focus, viewport, options);
+            ok(target->EndDraw());
+            for (int i = 0; i < 12; ++i) {
+                const auto id = L"tile." + std::to_wstring(i);
+                const auto tile = result.elementRects.at(id);
+                const auto scrim = result.elementRects.at(id + L".scrim");
+                const auto title = result.elementRects.at(id + L".title");
+                Near(scrim.width, tile.width, "percentage scrim follows actual grid track width");
+                Check(title.x >= scrim.x + 7.9F && title.x + title.width <= scrim.x + scrim.width - 7.9F,
+                    "nested percentage title stays inside scrim padding");
+            }
+            Near(result.elementRects.at(L"scroll").width, std::round(static_cast<float>(580 * percentage / 100) * options.pixelScale) / options.pixelScale,
+                "local layout preserves a fractional boundary's assigned width");
+            return result;
+        };
+        const auto full = draw(L"tile.0");
+        Check(full.textLineCounts.at(L"tile.0.title") == 2, "full layout wraps poster title to two lines");
+        Check(renderer.PlanFocusedFreeScroll(snapshot, L"tile.0", declarative::ScrollAxis::Vertical, 16, viewport, L"scroll").has_value(),
+            "right stick produces a retained local scroll plan");
+        const auto moving = draw(L"tile.0", true);
+        Check(moving.fullLayoutBuildCount == 0 && moving.textLineCounts.at(L"tile.0.title") == 2,
+            "right-stick path retains geometry and wrapped title");
+        Check(renderer.PlanRetainedPaint(snapshot).has_value(), "settled frame can reuse current layout");
+        const auto retained = draw(L"tile.0", true);
+        Check(retained.fullLayoutBuildCount == 0, "settled repaint does not force full layout");
+        Check(renderer.PlanFocusUpdate(snapshot, L"tile.0", L"tile.11", viewport).has_value(), "D-pad move plans focus reveal");
+        const auto reveal = draw(L"tile.11");
+        Check(reveal.focusRects.contains(L"tile.11") && reveal.textLineCounts.at(L"tile.11.title") == 2,
+            "offscreen D-pad reveal preserves wrapped title");
+        Check(reveal.fullLayoutBuildCount > 0, "regression exercises full layout during focus reveal");
+        const auto rebuilt = draw(L"tile.11");
+        Near(rebuilt.elementRects.at(L"tile.11.title").width, moving.elementRects.at(L"tile.11.title").width,
+            "fresh and incremental paths agree on title width");
+    }
+}
+
 void PosterTileUsesFixedFullBleedGeometry() {
     using Microsoft::WRL::ComPtr;
     ComPtr<IDWriteFactory> write;
@@ -6952,6 +7049,7 @@ int main() {
     ResponsiveNavigationShellFitsBoundedSurfaces();
     SliderPlanningAndAccessibilityTargets();
     ActionSurfacePlanningAndInteractionGeometry();
+    NestedPercentagePostersKeepBoundsAcrossScrollPaths();
     PosterTileUsesFixedFullBleedGeometry();
     RetainedPosterPaintPreservesArtwork();
     ScrollIndicatorsRespectViewportAndRetainedPaint();

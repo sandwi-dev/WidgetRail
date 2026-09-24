@@ -984,6 +984,19 @@ void OutputIsDeterministicAndOrdinal() {
 }
 
 
+void NestedPercentageWidthsUseContainingBlocks() {
+    auto root = Element("root");
+    root.widthFraction = .5F;
+    auto child = Element("child"); child.widthFraction = .5F; child.height = 40.0F;
+    auto leaf = Element("leaf"); leaf.widthFraction = 1.0F; leaf.height = 20.0F;
+    child.children = {leaf}; root.children = {child};
+    const auto layout = ComputeLayout(root, {0, 0, 400, 100});
+    Check(layout.valid(), "percentage layout is valid");
+    Near(layout.Find("root")->borderBox.width, 200, "root percentage uses the viewport");
+    Near(layout.Find("child")->borderBox.width, 100, "child percentage uses its actual parent");
+    Near(layout.Find("leaf")->borderBox.width, 100, "nested full width stays inside the containing block");
+}
+
 void RetainedGridKeepsLogicalColumns() {
     for (const float width : {478.0F, 642.0F, 806.0F, 970.0F, 1134.0F}) {
         const auto window = [&](int start) {
@@ -1006,6 +1019,7 @@ void RetainedGridKeepsLogicalColumns() {
 } // namespace
 
 int main() {
+    NestedPercentageWidthsUseContainingBlocks();
     RetainedGridKeepsLogicalColumns();
     MediaLayout1080p();
     FlexShrinkAndMinimums();

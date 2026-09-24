@@ -91,6 +91,9 @@ struct LayoutElement {
     std::int32_t gridStartIndex{};
 
     std::optional<float> width;
+    // Resolve against the actual containing block in Taffy (1.0 means 100%).
+    // Mutually exclusive with an absolute width.
+    std::optional<float> widthFraction;
     std::optional<float> height;
     std::optional<float> minWidth;
     std::optional<float> minHeight;

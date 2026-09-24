@@ -142,7 +142,15 @@ public:
         auto& rootInput = inputs_[rootIndex];
         const bool fillAutoRootWidth =
             options_.fillAutoRootWidth.value_or(options_.fillAutoRoot);
-        if (fillAutoRootWidth && !root.width)
+        // Taffy's root has no parent node. Its authored percentage uses the
+        // supplied viewport. Retained local roots are already pinned to their
+        // parent-assigned absolute width by the renderer.
+        if (rootInput.widthFraction.present) {
+            rootInput.width = Present(std::min(availableWidth,
+                rootInput.widthFraction.value * availableWidth));
+            rootInput.widthFraction = {};
+        }
+        if (fillAutoRootWidth && !root.width && !root.widthFraction)
             rootInput.width = Present(availableWidth);
         else if (rootInput.width.present)
             rootInput.width.value = std::min(rootInput.width.value, availableWidth);
@@ -162,7 +170,7 @@ public:
                 &MeasureThunk, this, outputs_.data(), outputs_.size());
         };
         auto status = compute();
-        if (status == WRAIL_TAFFY_OK && !fillAutoRootWidth && !root.width &&
+        if (status == WRAIL_TAFFY_OK && !fillAutoRootWidth && !root.width && !root.widthFraction &&
             root.layoutMode != LayoutMode::ResponsiveGrid) {
             const auto& first = outputs_[rootIndex];
             const auto shrinkWidth = std::clamp(
@@ -353,6 +361,8 @@ private:
             ? WRAIL_TAFFY_OVERFLOW_CLIP : WRAIL_TAFFY_OVERFLOW_VISIBLE;
         input.width = ResolveOptionalForBridge(
             element.width, element.id, "width", 0.0F, kMaximumCoordinate);
+        input.widthFraction = ResolveOptionalForBridge(
+            element.widthFraction, element.id, "widthFraction", 0.0F, kMaximumCoordinate);
         input.height = ResolveOptionalForBridge(
             element.height, element.id, "height", 0.0F, kMaximumCoordinate);
         input.minWidth = ResolveOptionalForBridge(
@@ -383,7 +393,7 @@ private:
         // the typed basis into size only for this generic aspect-ratio case;
         // flexbox still owns final distribution.
         if (input.aspectRatio.present && input.flexBasis.present && parentDirection) {
-            if (*parentDirection == LayoutDirection::Row && !input.width.present)
+            if (*parentDirection == LayoutDirection::Row && !input.width.present && !input.widthFraction.present)
                 input.width = input.flexBasis;
             else if (*parentDirection == LayoutDirection::Column && !input.height.present)
                 input.height = input.flexBasis;
@@ -427,7 +437,7 @@ private:
         input.stretchCrossAxis = element.stretchCrossAxis ? 1U : 0U;
         if (element.layoutMode == LayoutMode::ResponsiveGrid &&
             parentScrollAxis == ScrollAxis::Horizontal &&
-            !element.width) {
+            !element.width && !element.widthFraction) {
             input.flexGrow = std::max(1.0F, input.flexGrow);
             input.flexShrink = 0.0F;
         }

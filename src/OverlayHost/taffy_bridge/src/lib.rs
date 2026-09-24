@@ -6,7 +6,7 @@ use taffy::geometry::{Point, Rect, Size};
 use taffy::prelude::*;
 use taffy::style::Overflow;
 
-const ABI_VERSION: u32 = 3;
+const ABI_VERSION: u32 = 4;
 const OK: i32 = 0;
 const INVALID_ARGUMENT: i32 = 1;
 const INVALID_TREE: i32 = 2;
@@ -59,6 +59,7 @@ pub struct NodeInput {
     grid_maximum_columns: u32,
     grid_start_index: i32,
     stretch_cross_axis: u32,
+    width_fraction: OptionalFloat,
 }
 
 #[repr(C)]
@@ -151,6 +152,13 @@ fn cross_alignment(value: u32) -> Option<AlignItems> {
 }
 
 fn node_style(input: &NodeInput) -> Option<Style> {
+    if input.width_fraction.present != 0
+        && (input.width.present != 0
+            || !input.width_fraction.value.is_finite()
+            || input.width_fraction.value < 0.0)
+    {
+        return None;
+    }
     let display = match input.layout_mode {
         0 => Display::Flex,
         1 => Display::Grid,
@@ -190,7 +198,11 @@ fn node_style(input: &NodeInput) -> Option<Style> {
             y: overflow,
         },
         size: Size {
-            width: dimension(input.width),
+            width: if input.width_fraction.present != 0 {
+                percent(input.width_fraction.value)
+            } else {
+                dimension(input.width)
+            },
             height: dimension(input.height),
         },
         min_size: Size {
@@ -503,11 +515,33 @@ mod tests {
     fn c_abi_sizes_are_stable() {
         assert_eq!(core::mem::size_of::<OptionalFloat>(), 8);
         assert_eq!(core::mem::size_of::<Edges>(), 16);
-        assert_eq!(core::mem::size_of::<NodeInput>(), 160);
+        assert_eq!(core::mem::size_of::<NodeInput>(), 168);
         assert_eq!(core::mem::size_of::<MeasureInput>(), 32);
         assert_eq!(core::mem::size_of::<MeasuredSize>(), 8);
         assert_eq!(core::mem::size_of::<NodeOutput>(), 40);
-        assert_eq!(wrail_taffy_abi_version(), 2);
+        assert_eq!(wrail_taffy_abi_version(), 4);
+    }
+
+    #[test]
+    fn percentage_widths_are_typed_and_invalid_values_are_rejected() {
+        let mut node = NodeInput {
+            width_fraction: OptionalFloat {
+                present: 1,
+                value: 0.5,
+            },
+            ..NodeInput::default()
+        };
+        assert_eq!(node_style(&node).unwrap().size.width, percent(0.5_f32));
+        for value in [f32::NAN, f32::INFINITY, -0.5] {
+            node.width_fraction.value = value;
+            assert!(node_style(&node).is_none());
+        }
+        node.width_fraction.value = 1.0;
+        node.width = OptionalFloat {
+            present: 1,
+            value: 100.0,
+        };
+        assert!(node_style(&node).is_none());
     }
 
     #[test]

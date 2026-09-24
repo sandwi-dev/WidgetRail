@@ -924,6 +924,17 @@ struct DeclarativeRenderer::RenderPass final {
                     ? LayoutDirection::Row
                     : LayoutDirection::Column);
         element.width = style.widthPx();
+        // Grid/flex distribution determines the containing block. Baking a
+        // percentage into a guessed pixel width here makes full and retained
+        // layouts disagree, especially through nested poster content.
+        if (const auto width = node.baseStyle.find(L"width");
+            element.width && width != node.baseStyle.end() &&
+            width->second.kind == L"length" && width->second.unit == L"%" &&
+            width->second.number && std::isfinite(*width->second.number)) {
+            element.widthFraction = static_cast<float>(std::clamp(
+                *width->second.number / 100.0, 0.0, 1'000'000.0));
+            element.width.reset();
+        }
         element.height = style.heightPx();
         element.minWidth = style.minWidthPx();
         element.minHeight = style.minHeightPx();
@@ -965,7 +976,7 @@ struct DeclarativeRenderer::RenderPass final {
         if (node.kind == L"mediaViewport" && snapshot->embeddedMediaSession &&
             node.mediaSessionId == snapshot->embeddedMediaSession->id) {
             const auto& media = *snapshot->embeddedMediaSession;
-            if (!element.width && media.surface.preferredWidth)
+            if (!element.width && !element.widthFraction && media.surface.preferredWidth)
                 element.width = static_cast<float>(*media.surface.preferredWidth);
             if (media.surface.minimumWidth)
                 element.minWidth = std::max(
@@ -999,6 +1010,7 @@ struct DeclarativeRenderer::RenderPass final {
                 ? 16.0F
                 : node.indicatorSize == L"large" ? 32.0F : 24.0F;
             element.width = semanticSize;
+            element.widthFraction.reset();
             element.height = semanticSize;
             element.minWidth = semanticSize;
             element.minHeight = semanticSize;
@@ -2968,6 +2980,11 @@ struct DeclarativeRenderer::RenderPass final {
                 // The retained border box already excludes the parent's
                 // allocation for this node's margins.
                 root.margin = {};
+                if (root.widthFraction) {
+                    // This boundary already has its parent-assigned width.
+                    root.width = localViewport.width;
+                    root.widthFraction.reset();
+                }
                 return ComputeTimedLayout(
                     root,
                     localViewport,

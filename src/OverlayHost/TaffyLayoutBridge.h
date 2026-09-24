@@ -6,7 +6,7 @@
 // Stable, product-owned C ABI. The Rust implementation is pinned and built as
 // a static library; no Rust types or allocator ownership cross this boundary.
 
-#define WRAIL_TAFFY_ABI_VERSION 3U
+#define WRAIL_TAFFY_ABI_VERSION 4U
 
 enum WidgetRailTaffyResult : std::int32_t {
     WRAIL_TAFFY_OK = 0,
@@ -96,6 +96,7 @@ struct WidgetRailTaffyNodeInput {
     std::uint32_t gridMaximumColumns{};
     std::int32_t gridStartIndex{};
     std::uint32_t stretchCrossAxis{1};
+    WidgetRailTaffyOptionalFloat widthFraction;
 };
 
 struct WidgetRailTaffyMeasureInput {
@@ -129,7 +130,7 @@ struct WidgetRailTaffyNodeOutput {
 
 static_assert(sizeof(WidgetRailTaffyOptionalFloat) == 8);
 static_assert(sizeof(WidgetRailTaffyEdges) == 16);
-static_assert(sizeof(WidgetRailTaffyNodeInput) == 160);
+static_assert(sizeof(WidgetRailTaffyNodeInput) == 168);
 static_assert(sizeof(WidgetRailTaffyMeasureInput) == 32);
 static_assert(sizeof(WidgetRailTaffyMeasuredSize) == 8);
 static_assert(sizeof(WidgetRailTaffyNodeOutput) == 40);

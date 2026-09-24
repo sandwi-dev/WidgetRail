@@ -41,3 +41,12 @@ The bridge maps generic semantic layout properties to Taffy Flexbox and CSS
 Grid. Responsive grids derive an explicit capped track count from the admitted
 content width, then let Taffy perform final track sizing and placement. There
 are no widget-identity branches in the bridge.
+
+Authored percentage `width` values remain typed fractions through the native
+bridge so Taffy resolves them against the actual parent after grid/flex sizing.
+They must not be frozen to pixels using an earlier layout estimate: nested
+poster scrims and text would otherwise change width between full layout,
+right-stick scrolling and D-pad focus reveal. A local relayout root keeps its
+already assigned border-box width; the percentage is not applied a second time.
+The internal C ABI is version 4, with matching native/Rust size checks. This
+does not change the Widget SDK, WRSS syntax or widget wire protocol.
