@@ -17921,8 +17921,6 @@ private:
                 *snapshot, interactionSession_.focusedElementId(), &lastWidgetRenderResult_);
         }
         return widgetrail::guide::BuildOpenWidgetLine(
-            widgetrail::ResolveControllerGuideDensity(
-                availableWidth, CurrentTextScale()),
             authority,
             rootScope || nestedBack || hostBack.has_value(),
             availableWidth,

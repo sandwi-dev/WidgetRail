@@ -58,16 +58,23 @@ std::wstring Sanitize(const std::wstring_view value) {
 }
 
 std::wstring BuildContextual(
-    const std::vector<OpenWidgetAction>& actions,
-    const std::vector<std::wstring>& labels) {
+    const std::vector<OpenWidgetAction>& actions) {
     std::wstring result;
     for (std::size_t index = 0; index < actions.size(); ++index) {
         if (!result.empty()) result += L"   ";
         result += DisplayButton(actions[index].button);
         result += L' ';
-        result += labels[index];
+        result += actions[index].label;
     }
     return result;
+}
+
+std::wstring_view PairedButton(const std::wstring_view button) noexcept {
+    if (button == L"leftTrigger") return L"rightTrigger";
+    if (button == L"rightTrigger") return L"leftTrigger";
+    if (button == L"leftBumper") return L"rightBumper";
+    if (button == L"rightBumper") return L"leftBumper";
+    return {};
 }
 
 bool Fits(
@@ -168,7 +175,6 @@ OpenWidgetAuthority ResolveOpenWidgetAuthority(
 }
 
 OpenWidgetLine BuildOpenWidgetLine(
-    const ControllerGuideDensity density,
     const OpenWidgetAuthority& authority,
     const bool hasBack,
     const float availableWidth,
@@ -181,57 +187,58 @@ OpenWidgetLine BuildOpenWidgetLine(
     ControllerGuideHints hostHints;
     if (hasBack) hostHints.push_back({L"B",L"Back"});
     hostHints.push_back({viewMenuShortcut ? L"View + Menu" : L"Guide",L"Close"});
-    const auto reserved = measureText
-        ? measureText(result.host + L"   ")
-        : std::nullopt;
-    const float contextualWidth = reserved && std::isfinite(*reserved)
-        ? std::max(0.0F, availableWidth - *reserved)
-        : 0.0F;
-    const std::size_t actionBudget =
-        density == ControllerGuideDensity::Full ? 4U :
-        density == ControllerGuideDensity::Compact ? 3U : 0U;
-
-    std::vector<OpenWidgetAction> actions;
-    actions.reserve(actionBudget);
+    std::vector<OpenWidgetAction> candidates;
+    candidates.reserve(authority.actions.size());
     for (const auto& action : authority.actions) {
-        if (actions.size() >= actionBudget) break;
         const auto label = Sanitize(action.label);
-        if (!label.empty()) actions.push_back({action.button, label});
+        if (!label.empty()) candidates.push_back({action.button, label, action.contextMenu});
     }
-    std::vector<std::wstring> labels;
-    labels.reserve(actions.size());
-    for (const auto& action : actions) labels.push_back(action.label);
 
-    const auto fitsActions = [&](const std::vector<OpenWidgetAction>& proposed, std::wstring_view text) {
-        if (!measureHints) return Fits(text,contextualWidth,measureText);
+    const auto fitsActions = [&](const std::vector<OpenWidgetAction>& proposed) {
+        if (!std::isfinite(availableWidth) || availableWidth <= 0.0F) return false;
+        if (!measureHints) {
+            auto text = BuildContextual(proposed);
+            if (!text.empty()) text += L"   ";
+            text += result.host;
+            return Fits(text, availableWidth, measureText);
+        }
         ControllerGuideHints candidate;
         for (const auto& action: proposed) candidate.push_back({action.button,action.label});
         candidate.insert(candidate.end(),hostHints.begin(),hostHints.end());
         const auto width=measureHints(candidate);
-        return width && std::isfinite(*width) && *width<=availableWidth;
+        return width && std::isfinite(*width) && *width >= 0.0F && *width<=availableWidth;
     };
-    while (!actions.empty()) {
-        const auto line = BuildContextual(actions, labels);
-        if (fitsActions(actions,line)) {
-            result.contextual = line;
-            break;
+
+    std::vector<OpenWidgetAction> actions;
+    std::vector<bool> considered(candidates.size());
+    for (std::size_t index = 0; index < candidates.size(); ++index) {
+        if (considered[index]) continue;
+        considered[index] = true;
+        auto proposed = actions;
+        proposed.push_back(candidates[index]);
+        const auto partner = PairedButton(candidates[index].button);
+        if (!partner.empty() && !candidates[index].contextMenu) {
+            for (std::size_t other = index + 1; other < candidates.size(); ++other) {
+                if (!considered[other] && !candidates[other].contextMenu &&
+                    candidates[other].button == partner) {
+                    proposed.push_back(candidates[other]);
+                    considered[other] = true;
+                    break;
+                }
+            }
         }
-        actions.pop_back();
-        labels.pop_back();
+        // Consider each group once in resolved priority order. A pair either
+        // fits together or leaves room for a smaller, lower-priority hint.
+        if (fitsActions(proposed)) actions = std::move(proposed);
     }
 
-    if (authority.focusedActivation && actions.size() < actionBudget) {
-        auto withActivation = result.contextual;
-        if (!withActivation.empty()) withActivation += L"   ";
-        withActivation += L"A Select";
+    if (authority.focusedActivation) {
         auto proposed=actions;
         proposed.push_back({L"a",L"Select"});
-        if (fitsActions(proposed,withActivation)) {
-            result.contextual = std::move(withActivation);
-            actions=std::move(proposed);
-        }
+        if (fitsActions(proposed)) actions=std::move(proposed);
     }
 
+    result.contextual = BuildContextual(actions);
     for (const auto& action : actions) result.hints.push_back({action.button,action.label});
     result.hints.insert(result.hints.end(),hostHints.begin(),hostHints.end());
     result.accessible = result.contextual;

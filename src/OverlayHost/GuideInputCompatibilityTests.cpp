@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <utility>
 
 namespace {
@@ -20,9 +21,80 @@ void Check(const bool condition, const char* message) {
     }
 }
 
+void CheckWidthBasedGuideFitting() {
+    using namespace widgetrail;
+    guide::OpenWidgetAuthority authority;
+    authority.focusedActivation = true;
+    authority.actions = {
+        {L"menu", L"Options", true}, {L"x", L"Play or pause"},
+        {L"leftTrigger", L"Previous tab"}, {L"rightTrigger", L"Next tab"},
+        {L"leftBumper", L"Previous song"}, {L"rightBumper", L"Next song"},
+        {L"y", L"Settings"}};
+    const auto text = [](std::wstring_view value) -> std::optional<float> {
+        return static_cast<float>(value.size());
+    };
+    const auto cards = [](std::span<const ControllerGuideHint> hints) -> std::optional<float> {
+        return static_cast<float>(hints.size()) * 100.0F;
+    };
+    const auto has = [](const guide::OpenWidgetLine& line, std::wstring_view button) {
+        return std::ranges::any_of(line.hints, [&](const auto& hint) { return hint.button == button; });
+    };
+    const auto fit = [&](float width) {
+        return guide::BuildOpenWidgetLine(authority, true, width, text, false, cards);
+    };
+    const auto wide = fit(1000);
+    Check(wide.hints.size() == 10 && has(wide, L"rightBumper") && has(wide, L"a"),
+        "wide guide includes every music shortcut, Options, activation and host escapes without a count cap");
+    Check(wide.contextual == L"Menu Options   X Play or pause   LT Previous tab   RT Next tab   LB Previous song   RB Next song   Y Settings   A Select",
+        "wide guide preserves resolved priority and keeps generic activation last");
+    const auto constrained = fit(700);
+    Check(has(constrained, L"leftTrigger") && has(constrained, L"rightTrigger") &&
+        !has(constrained, L"leftBumper") && !has(constrained, L"rightBumper"),
+        "bumper pair is omitted together when only one member would fit");
+    Check(has(constrained, L"y") && !has(constrained, L"a"),
+        "smaller lower-priority shortcut can use remaining space before generic Select");
+    const auto narrow = fit(500);
+    Check(!has(narrow, L"leftTrigger") && !has(narrow, L"rightTrigger") &&
+        !has(narrow, L"leftBumper") && !has(narrow, L"rightBumper") && has(narrow, L"y"),
+        "both pairs remain atomic when there is room only for individual hints");
+    Check(fit(300).contextual == L"Menu Options" && fit(200).contextual.empty(),
+        "Options has priority while Back and Close always retain their space");
+
+    authority.actions.erase(authority.actions.begin());
+    const auto noMenu = fit(900);
+    Check(noMenu.hints.size() == 9 && has(noMenu, L"rightBumper"),
+        "now-playing focus retains both songs as well as tab shortcuts when they fit");
+    const auto scaled = guide::BuildOpenWidgetLine(authority, true, 900, text, false,
+        [&](std::span<const ControllerGuideHint> hints) { return std::optional<float>{*cards(hints) * 2.0F}; });
+    Check(has(scaled, L"x") && has(scaled, L"y") && !has(scaled, L"leftTrigger") && !has(scaled, L"rightBumper"),
+        "larger measured glyphs and text reduce hint count while preserving whole pairs");
+
+    authority.actions = {{L"rightBumper", L"Next song"}};
+    Check(fit(300).contextual == L"RB Next song", "unpaired right bumper remains individually eligible");
+    authority.actions = {{L"leftTrigger", L"Previous tab"}, {L"rightTrigger", L"  \n "}};
+    Check(fit(300).contextual == L"LT Previous tab", "unlabeled partner does not suppress an available lone trigger");
+    authority.actions = {{L"leftBumper", L"Previous song"}, {L"rightBumper", L"Next song"}};
+    const auto fallback = guide::BuildOpenWidgetLine(authority, true, 200, text);
+    const auto exact = guide::BuildOpenWidgetLine(authority, true,
+        static_cast<float>(fallback.accessible.size()), text);
+    Check(exact.accessible == fallback.accessible && has(exact, L"a"),
+        "plain-text measurement fits the same complete accessible line at the exact boundary");
+    for (const auto width : {0.0F, -1.0F, std::numeric_limits<float>::infinity(),
+             std::numeric_limits<float>::quiet_NaN()}) {
+        const auto invalid = fit(width);
+        Check(invalid.hints.size() == 2 && invalid.contextual.empty(),
+            "invalid width retains only host escapes");
+    }
+    const auto unmeasurable = guide::BuildOpenWidgetLine(authority, true, 1000, text, true,
+        [](std::span<const ControllerGuideHint>) -> std::optional<float> { return std::nullopt; });
+    Check(unmeasurable.contextual.empty() && unmeasurable.host == L"B Back   View + Menu Close",
+        "measurement failure preserves the configured close chord without advertising unfitted actions");
+}
+
 } // namespace
 
 int main() {
+    CheckWidthBasedGuideFitting();
     widgetrail::input::GuideEdgeTracker tracker;
     std::array<bool, XUSER_MAX_COUNT> state{};
     Check(tracker.Update(state) == 0, "initial neutral state is only a baseline");
@@ -84,7 +156,7 @@ int main() {
     Check(selectAuthority.focusedActivation,
           "focused Select publishes one exact activation guide authority");
     const auto selectLine = widgetrail::guide::BuildOpenWidgetLine(
-        widgetrail::ControllerGuideDensity::Full, selectAuthority, true, 500.0F,
+        selectAuthority, true, 500.0F,
         [](const std::wstring_view value) {
             return std::optional<float>{static_cast<float>(value.size() * 7U)};
         });
@@ -97,7 +169,7 @@ int main() {
     const auto disabledSelectAuthority =
         widgetrail::guide::ResolveOpenWidgetAuthority(snapshot, L"density");
     const auto disabledSelectLine = widgetrail::guide::BuildOpenWidgetLine(
-        widgetrail::ControllerGuideDensity::Full, disabledSelectAuthority, true,
+        disabledSelectAuthority, true,
         500.0F, [](const std::wstring_view value) {
             return std::optional<float>{static_cast<float>(value.size() * 7U)};
         });
@@ -111,7 +183,7 @@ int main() {
     const auto busySelectAuthority =
         widgetrail::guide::ResolveOpenWidgetAuthority(snapshot, L"density");
     const auto busySelectLine = widgetrail::guide::BuildOpenWidgetLine(
-        widgetrail::ControllerGuideDensity::Full, busySelectAuthority, true,
+        busySelectAuthority, true,
         500.0F, [](const std::wstring_view value) {
             return std::optional<float>{static_cast<float>(value.size() * 7U)};
         });
@@ -164,7 +236,7 @@ int main() {
           "an unlabeled owner never borrows dashboard QuickAction text");
 
     const auto chordLine = widgetrail::guide::BuildOpenWidgetLine(
-        widgetrail::ControllerGuideDensity::Full, {}, true, 500.0F,
+        {}, true, 500.0F,
         [](std::wstring_view text) { return std::optional<float>(static_cast<float>(text.size()) * 6); }, true);
     Check(chordLine.host == L"B Back   View + Menu Close" &&
           chordLine.accessible.find(L"View + Menu Close") != std::wstring::npos,
@@ -176,14 +248,14 @@ int main() {
         authority.actions={{L"leftBumper",L"Previous"},{L"rightTrigger",L"  Next\npage "},{L"view",L"Details"}};
         const auto measure=[](std::wstring_view text)->std::optional<float> {return static_cast<float>(text.size());};
         const auto cards=[](std::span<const ControllerGuideHint> hints)->std::optional<float> {return hints.size()*100.0F;};
-        const auto fitted=guide::BuildOpenWidgetLine(ControllerGuideDensity::Full,authority,true,400,measure,true,cards);
+        const auto fitted=guide::BuildOpenWidgetLine(authority,true,400,measure,true,cards);
         Check(fitted.hints.size()==4,"card measurement retains only whole contextual hints plus host escapes");
         Check(fitted.hints[0].button==L"leftBumper" && fitted.hints[1].button==L"rightTrigger",
             "structured hints preserve exact resolved button priority");
         Check(fitted.hints[1].label==L"Next page","structured hints sanitize labels consistently");
         Check(fitted.hints[2].button==L"B" && fitted.hints[3].button==L"View + Menu",
             "host Back and configured Close chord remain separate structured hints");
-        const auto changed=guide::BuildOpenWidgetLine(ControllerGuideDensity::Full,{},false,400,measure,false,cards);
+        const auto changed=guide::BuildOpenWidgetLine({},false,400,measure,false,cards);
         Check(changed.hints.size()==1 && changed.hints[0].button==L"Guide",
             "changing focused authority cannot retain a stale contextual hint");
     }
@@ -207,7 +279,7 @@ int main() {
             "legacy tile Menu binding is advertised ahead of ordinary shortcuts");
         const auto measure = [](std::wstring_view text) -> std::optional<float> { return static_cast<float>(text.size()); };
         const auto cards = [](std::span<const ControllerGuideHint> hints) -> std::optional<float> { return hints.size() * 100.0F; };
-        const auto line = guide::BuildOpenWidgetLine(ControllerGuideDensity::Compact, resolved, true, 300, measure, false, cards);
+        const auto line = guide::BuildOpenWidgetLine(resolved, true, 300, measure, false, cards);
         Check(line.hints.size() == 3 && line.hints[0].button == L"menu" && line.hints[0].label == L"Options" &&
             line.hints[1].button == L"B" && line.hints[2].button == L"Guide", "Options survives a one-context-hint budget with both host escapes");
         Check(line.accessible.find(L"Menu Options") != std::wstring::npos, "Options is included in guide accessibility text");

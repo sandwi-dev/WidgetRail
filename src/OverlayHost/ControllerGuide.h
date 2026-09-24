@@ -45,9 +45,9 @@ using MeasureOpenWidgetText =
 /// Builds one bounded, whitespace-sanitized line while always retaining the
 /// host escape actions. Contextual actions are removed by deterministic
 /// priority when complete labels do not fit; labels are never truncated.
+/// Matching trigger/bumper hints fit as pairs. There is no fixed hint count.
 /// Accessibility text is the same complete resolved line.
 [[nodiscard]] OpenWidgetLine BuildOpenWidgetLine(
-    ControllerGuideDensity density,
     const OpenWidgetAuthority& authority,
     bool hasBack,
     float availableWidth,

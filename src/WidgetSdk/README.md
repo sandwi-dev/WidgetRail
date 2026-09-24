@@ -936,6 +936,9 @@ existing full-widget context menu and action-validation path.
 The host guide automatically advertises **Options** with the actual Menu, X or Y
 binding when the resolved menu has an available action. These hints take priority
 over ordinary shortcuts when space is limited; host Back/Close hints remain.
+The guide fits complete hints to the measured available width with no fixed
+hint-count limit. If both LT/RT or both LB/RB have available labeled shortcuts,
+the host treats them as a pair for fitting; lone bindings remain eligible.
 This applies to both focused action surfaces and visible container menus.
 Only the focused action surface gets a small themed ellipsis indicator. It is
 decorative, does not resize the tile or add a focus stop, and disappears when

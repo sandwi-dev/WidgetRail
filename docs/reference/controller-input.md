@@ -21,6 +21,13 @@ show a small ellipsis indicator; unfocused tiles do not. The guide covers menus
 declared on non-focusable containers as well. A menu hint takes priority over
 general shortcuts when guide space is limited.
 
+Widget hints use the available width rather than a fixed hint count. Back and
+Close retain their space; the remaining hints are considered in button priority
+order: Options, X, LT/RT, LB/RB, then other shortcuts and generic A Select.
+When both triggers or both bumpers have hints, each pair is shown together or
+omitted together. A lone trigger or bumper hint can appear individually. Labels
+remain complete, and smaller lower-priority hints can use any remaining space.
+
 ## DualSense controllers
 
 DualSense input is read directly over USB or Bluetooth. Cross activates the
