@@ -2,16 +2,16 @@
   "manifestVersion": 1,
   "id": "widgetrail.samples.ytmusic",
   "publisher": "widgetrail.samples",
-  "name": "YouTube Music",
-  "version": "0.3.0",
-  "pinningSupported": true,
+  "name": "YT Music",
+  "version": "0.2.12",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
   },
   "entrypoint": {
-    "runtime": "full-trust-application-v1",
-    "executable": "payload/YtMusicApplication.exe"
+    "runtime": "dotnet-worker",
+    "assembly": "payload/YtMusicWidget.dll",
+    "type": "WidgetRail.Samples.YtMusicWidget.YtMusicWidget"
   },
   "presentation": {
     "icon": "music",
@@ -20,17 +20,22 @@
   "iconAssets": {
     "ytmusic.mark": { "path": "assets/icons/yt-music.svg" }
   },
-  "permissions": [],
-  "optionalPermissions": [],
+  "permissions": [
+    "network.loopback:13091"
+  ],
+  "optionalPermissions": [
+    "storage.private-secrets.v1"
+  ],
   "residencyPolicy": {
     "schemaVersion": 1,
-    "mode": "keep-alive"
+    "mode": "suspend-when-hidden"
   },
   "resourceRequest": {
     "memoryMb": 48,
     "updateHz": 5
   },
   "architectures": [
-    "x64"
+    "x64",
+    "arm64"
   ]
 }

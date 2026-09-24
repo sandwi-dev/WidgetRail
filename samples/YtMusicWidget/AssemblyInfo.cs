@@ -1,3 +1,4 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("YtMusicWidget.Tests")]
+[assembly: InternalsVisibleTo("YtMusicPlaybackHost")]
+[assembly: InternalsVisibleTo("YtMusicStandalone.Tests")]

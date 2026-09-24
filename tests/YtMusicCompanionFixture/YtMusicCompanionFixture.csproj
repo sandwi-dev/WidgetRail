@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <AssemblyName>YtMusicWidget</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/WidgetSdk/WidgetSdk.csproj" />
+    <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="styles/default.wrss" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

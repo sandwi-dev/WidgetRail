@@ -1,0 +1,68 @@
+[
+  {
+    "name": "certifi-2026.7.22-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/certifi-2026.7.22-py3-none-any.whl",
+    "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
+    "kind": "wheel"
+  },
+  {
+    "name": "charset_normalizer-3.5.1-cp313-cp313-win_amd64.whl",
+    "url": "https://files.pythonhosted.org/packages/8a/33/56d97ade41c8db611e727168c52ae46c9224c362ec28d4b65d7e9869e8da/charset_normalizer-3.5.1-cp313-cp313-win_amd64.whl",
+    "sha256": "aea996a6aba25260827c9ea511d1addfde2da9eb686ac961838509086188b7e6",
+    "kind": "wheel"
+  },
+  {
+    "name": "idna-3.20-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl",
+    "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+    "kind": "wheel"
+  },
+  {
+    "name": "requests-2.34.2-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl",
+    "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",
+    "kind": "wheel"
+  },
+  {
+    "name": "urllib3-2.8.0-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl",
+    "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+    "kind": "wheel"
+  },
+  {
+    "name": "websocket_client-1.9.2-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/d5/d2/cc4dc1271e464942db7ee278baae2daa99ee77cb2af744025c04da585a3e/websocket_client-1.9.2-py3-none-any.whl",
+    "sha256": "e1a673830a9c7bfa47b1cd3d5e4178f4c9651d80a4eab02c9c23a1c3ec6250ce",
+    "kind": "wheel"
+  },
+  {
+    "name": "ytmusicapi-1.12.3-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/29/ad/6d471ea9d81e1f59a4d01badda21e7f3f508b94ed171c677b6547b292f73/ytmusicapi-1.12.3-py3-none-any.whl",
+    "sha256": "f65db840907a43ca23b29bd563951a1e390fbe2089d7aa4ddbe2043824b2acd9",
+    "kind": "wheel"
+  },
+  {
+    "name": "yt_dlp-2026.8.19-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/69/b2/8cd1613f56eed7ceb64fbd4df3f1c01246bfb098e6f398228bafda22b80b/yt_dlp-2026.8.19-py3-none-any.whl",
+    "sha256": "1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf",
+    "kind": "wheel"
+  },
+  {
+    "name": "yt_dlp_ejs-0.8.0-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/e3/bd/520769863744b669440a924271a6159ddd82ad5ae26b4ac4d4b69e9f8d44/yt_dlp_ejs-0.8.0-py3-none-any.whl",
+    "sha256": "79300e5fca7f937a1eeede11f0456862c1b41107ce1d726871e0207424f4bdb4",
+    "kind": "wheel"
+  },
+  {
+    "name": "python-3.13.12-embed-amd64.zip",
+    "url": "https://www.python.org/ftp/python/3.13.12/python-3.13.12-embed-amd64.zip",
+    "sha256": "76f238f606250c87c6beac75dccd35ee99070a13490555936abb6cb64ecce3d0",
+    "kind": "python"
+  },
+  {
+    "name": "qjs.exe",
+    "url": "https://github.com/quickjs-ng/quickjs/releases/download/v0.17.0/qjs-windows-x86_64.exe",
+    "sha256": "2aeabf0092c3262d6b2609824418f7dd7ed1f1df939f73b2b15645230cac0d77",
+    "kind": "executable"
+  }
+]

@@ -6,6 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Application\**;PlaybackHost\**" />
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
   </ItemGroup>
   <ItemGroup>
@@ -13,4 +14,3 @@
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
-

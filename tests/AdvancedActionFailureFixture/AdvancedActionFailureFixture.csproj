@@ -10,6 +10,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
     <ProjectReference Include="..\..\src\WidgetRuntime\WidgetRuntime.csproj" />
-    <ProjectReference Include="..\..\samples\YtMusicWidget\YtMusicWidget.csproj" />
+    <ProjectReference Include="..\YtMusicCompanionFixture\YtMusicCompanionFixture.csproj" />
   </ItemGroup>
 </Project>

@@ -3839,7 +3839,7 @@ file sealed class Deployment : IDisposable
                             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
                 }
 
-                var ytProjectRoot = Path.Combine(repo, "samples", "YtMusicWidget");
+                var ytProjectRoot = Path.Combine(repo, "tests", "YtMusicCompanionFixture");
                 var ytManifest = ManifestJson.Deserialize(
                     await File.ReadAllBytesAsync(Path.Combine(ytProjectRoot, "manifest.json")));
                 if (communityRecoveryOnly)
@@ -3903,7 +3903,7 @@ file sealed class Deployment : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(version);
         var repo = FindRepositoryRoot();
-        var projectRoot = Path.Combine(repo, "samples", "YtMusicWidget");
+        var projectRoot = Path.Combine(repo, "tests", "YtMusicCompanionFixture");
         var output = Path.Combine(_root.Path, $"ytmusic-community-{version}");
         await RunCommunityPackageScriptAsync(
             Path.Combine(projectRoot, "Build-CommunityPackage.ps1"),

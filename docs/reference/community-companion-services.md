@@ -5,8 +5,9 @@ widgets use the host's exact-port JSON service rather than opening arbitrary
 sockets. This page documents that service and its secret-handling boundary.
 
 Start with [Core concepts](../developers/concepts.md) if the host/widget distinction
-is new. The [YT Music example](../../samples/YtMusicWidget/README.md) demonstrates
-a complete integration. Full-access application widgets use a different trust model.
+is new. The [YT Music companion fixture](../../tests/YtMusicCompanionFixture/README.md)
+retains a complete integration for regression tests. The current standalone
+YouTube Music application uses the full-access application trust model instead.
 
 ## Manifest declarations
 

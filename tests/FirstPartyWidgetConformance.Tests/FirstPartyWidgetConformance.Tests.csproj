@@ -15,7 +15,7 @@
     <ProjectReference Include="..\..\samples\PlayniteLibraryWidget\PlayniteLibraryWidget.csproj" />
     <ProjectReference Include="..\..\src\FirstPartyWidgets\SettingsWidget\SettingsWidget.csproj" />
     <ProjectReference Include="..\..\samples\SpotifyWidget\SpotifyWidget.csproj" />
-    <ProjectReference Include="..\..\samples\YtMusicWidget\YtMusicWidget.csproj" />
+    <ProjectReference Include="..\YtMusicCompanionFixture\YtMusicCompanionFixture.csproj" />
     <ProjectReference Include="..\..\samples\FullApplicationWidget\FullApplicationWidget.csproj" />
     <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
     <ProjectReference Include="..\..\src\WindowsAppLibraryProvider\WindowsAppLibraryProvider.csproj" />

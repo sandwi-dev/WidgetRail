@@ -1,0 +1,252 @@
+:root {
+  --media-accent: #fc3f6c;
+  --media-focus: #ff89a5;
+  --media-surface: #171a22;
+  --media-control: #292e3a;
+  --media-control-hover: #353b49;
+}
+
+.ytmusic-widget {
+  width: 100%;
+  min-width: 0px;
+  min-height: 100%;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  background: var(--media-surface);
+  color: var(--text);
+}
+
+#header {
+  gap: 2px;
+  margin: 0 0 2px;
+}
+
+.widget-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  max-lines: 1;
+  text-transform: uppercase;
+}
+
+.connection-status,
+.loading-detail,
+.track-artist,
+.track-album,
+.time {
+  color: var(--text-muted);
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+
+.connection-help {
+  color: var(--text-muted);
+  max-lines: 2;
+  text-overflow: ellipsis;
+}
+
+.connection-status {
+  font-size: 13px;
+}
+
+.connection-status.is-connected {
+  color: var(--success);
+}
+
+.connection-status.is-disconnected {
+  color: var(--warning);
+}
+
+.pairing-code {
+  color: var(--media-accent);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+#media-layout {
+  width: 100%;
+  min-height: 128px;
+  flex-grow: 1;
+  gap: 10px 16px;
+  padding: 12px;
+  background: var(--surface-raised);
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+  border-width: 1px;
+  corner-radius: 12px;
+  flex-wrap: wrap;
+  align: center;
+  justify: start;
+}
+
+.artwork-frame,
+.artwork-image,
+.artwork-placeholder {
+  width: 128px;
+  height: 128px;
+  corner-radius: 10px;
+  overflow: clip;
+}
+
+.artwork-frame,
+.artwork-placeholder {
+  background: var(--surface-raised);
+}
+
+.artwork-placeholder {
+  color: var(--text-muted);
+  padding: 39px;
+}
+
+#media-details {
+  min-width: 320px;
+  flex-basis: 320px;
+  flex-grow: 1;
+  gap: 10px;
+  padding: 0;
+}
+
+#track-details {
+  width: 100%;
+  min-width: 0px;
+  gap: 3px;
+}
+
+.track-title {
+  color: var(--text);
+  font-size: 23px;
+  font-weight: 600;
+  max-lines: 2;
+  text-overflow: ellipsis;
+}
+
+.track-artist {
+  font-size: 15px;
+}
+
+.track-album {
+  color: var(--text-subdued);
+  font-size: 12px;
+}
+
+#progress-row {
+  width: 100%;
+  min-width: 0px;
+  gap: 10px;
+  align: center;
+}
+
+.time {
+  width: 42px;
+  font-size: 11px;
+}
+
+#duration-text {
+  text-align: end;
+}
+
+.track-progress {
+  min-width: 120px;
+  height: 5px;
+  flex-grow: 1;
+  color: var(--media-accent);
+  background: #3a3e49;
+}
+
+#primary-actions {
+  width: 100%;
+  min-width: 0px;
+  height: 56px;
+  gap: 12px;
+  align: center;
+  justify: center;
+}
+
+#secondary-actions {
+  width: 100%;
+  min-width: 0px;
+  height: 40px;
+  gap: 10px;
+  align: center;
+  justify: center;
+}
+
+.transport-action,
+.refresh-action,
+.secondary-action,
+.play-action {
+  padding: 10px;
+  color: var(--text);
+  background: var(--media-control);
+  border-width: 0;
+  shape: circle;
+  transition-duration: 120ms;
+  transition-easing: ease-out;
+}
+
+.transport-action,
+.refresh-action {
+  width: 46px;
+  height: 46px;
+}
+
+.play-action {
+  width: 56px;
+  height: 56px;
+  padding: 11px;
+  background: var(--media-accent);
+}
+
+.secondary-action {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 8px;
+}
+
+.transport-action:focused,
+.refresh-action:focused,
+.secondary-action:focused {
+  background: var(--media-control-hover);
+  outline-color: var(--media-focus);
+  outline-width: 2px;
+  outline-offset: -3px;
+  scale: 1;
+}
+
+.play-action:focused {
+  background: var(--media-accent);
+  outline-color: #ffb0c2;
+  outline-width: 2px;
+  outline-offset: -3px;
+  scale: 1;
+}
+
+.secondary-action.is-active {
+  color: var(--media-accent);
+}
+
+#connection-actions {
+  gap: 12px;
+  margin: 10px 0 0;
+}
+
+.primary-action,
+.connection-action {
+  min-height: 44px;
+  padding: 12px 18px;
+  background: var(--media-control);
+  border-width: 0;
+  corner-radius: 9px;
+}
+
+.primary-action:focused,
+.connection-action:focused {
+  background: var(--media-accent);
+  outline-color: var(--media-focus);
+  outline-width: 2px;
+  outline-offset: -3px;
+  scale: 1;
+}
