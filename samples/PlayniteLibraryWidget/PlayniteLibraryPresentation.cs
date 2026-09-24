@@ -24,6 +24,7 @@ internal sealed record PlayniteLibraryPresentationState(
     internal string? ActiveCategoryId { get; init; }
     internal bool SearchExpanded { get; init; }
     internal string? BrowseInitialFocusId { get; init; }
+    internal long ContentEntryRequestId { get; init; }
     internal bool BrowseRetained { get; init; }
     internal int? MatchingGameCount { get; init; }
     internal IReadOnlyList<PlayniteLibraryCollectionOption> Collections { get; init; } = [];
@@ -597,6 +598,26 @@ internal static class PlayniteLibraryPresentation
                         .Classes("playnite-library-footer"))
                 .Classes("playnite-library-content");
         }
+        FocusGroupEntryRequest? contentEntry = null;
+        if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse &&
+            content is ContainerElement contentGroup)
+        {
+            // Only results belong to this group. Header and filter controls must
+            // never become the remembered destination when entering a library.
+            var target = WidgetFocusTargetLookup.Resolve(contentGroup, initialFocus, contentGroup.Id);
+            if (!target.IsEnabled)
+                target = WidgetFocusTargetLookup.First(contentGroup, contentGroup.Id);
+            if (target.IsEnabled && target.Id is { } contentFocusId)
+            {
+                content = contentGroup.RememberChildFocus(contentFocusId);
+                if (state.ContentEntryRequestId > 0 && !state.BrowseRetained &&
+                    snapshot.Status is WidgetPagedResourceStatus.Ready or WidgetPagedResourceStatus.Error)
+                {
+                    initialFocus = contentFocusId;
+                    contentEntry = new() { RequestId = state.ContentEntryRequestId, GroupId = contentGroup.Id };
+                }
+            }
+        }
         content = content.AddClasses("playnite-library-main");
         if (state.ActionFeedback is { } actionFeedback)
             content = UI.Stack("playnite-library.category.feedback.scope",
@@ -695,7 +716,7 @@ internal static class PlayniteLibraryPresentation
         }
         if (state.Route == PlayniteLibraryRoute.Browse &&
             state.BrowseInitialFocusId is null &&
-            !catalogPage)
+            !catalogPage && contentEntry is null)
             initialFocus = "playnite-library.search";
         if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
             root = ((ContainerElement)root).Shortcut(ControllerButton.Y, PlayniteLibraryActions.Refresh, label: "Refresh");
@@ -704,7 +725,7 @@ internal static class PlayniteLibraryPresentation
             PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse => CinematicSurface,
             PlayniteLibraryRoute.Categories or PlayniteLibraryRoute.Hidden => CategoriesSurface,
             _ => Surface,
-        });
+        }) { FocusGroupEntryRequest = contentEntry };
     }
 
     private static string BrowseStatus(PlayniteLibraryPresentationState state)

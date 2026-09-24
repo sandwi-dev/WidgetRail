@@ -13,6 +13,47 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed class PlayniteLibraryTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task HeaderNavigationAndBrowseBackRequestOnlyGameContentOnce()
+    {
+        var host = new FakeHost(20);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var home = Snapshot(widget, 99_200);
+        var homeGroup = Nodes(home.Root).Single(node => node.Id == "playnite-library.content");
+        Assert.IsNotNull(homeGroup.InitialChildFocusId, "Remember games before the user moves up to the header.");
+        Assert.IsFalse(Nodes(homeGroup).Any(node => node.Id.StartsWith("playnite-library.nav.", StringComparison.Ordinal)));
+        await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "playnite-library.nav.library"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "Library header entry");
+        var browse = Snapshot(widget, 99_201);
+        var browseRequest = AssertContentEntry(browse);
+        Assert.AreEqual(browseRequest, Snapshot(widget, 99_202).FocusGroupEntryRequest!.RequestId,
+            "Ordinary renders must not issue a fresh focus request.");
+        await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "playnite-library.nav.library"));
+        var repeated = Snapshot(widget, 99_203);
+        Assert.IsTrue(AssertContentEntry(repeated) > browseRequest, "A on the active destination still enters its content.");
+        Assert.IsTrue(await Route(widget, repeated, ControllerButton.B, repeated.InitialFocusId!));
+        await Bounded(widget.WhenLibraryIdleAsync(), "Back to Home game content");
+        var returned = Snapshot(widget, 99_204);
+        Assert.IsTrue(AssertContentEntry(returned) > browseRequest);
+        await Background(widget);
+        Assert.IsNull(Snapshot(widget, 99_205).FocusGroupEntryRequest, "Hidden widgets must retire pending focus entry.");
+
+        static long AssertContentEntry(ViewSnapshot snapshot)
+        {
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            var request = snapshot.FocusGroupEntryRequest;
+            Assert.IsNotNull(request);
+            var group = Nodes(snapshot.Root).Single(node => node.Id == request.GroupId);
+            Assert.IsFalse(Nodes(group).Any(node => node.Id.StartsWith("playnite-library.nav.", StringComparison.Ordinal) ||
+                node.Id.StartsWith("playnite-library.filter.", StringComparison.Ordinal)));
+            Assert.IsTrue(Nodes(group).Any(node => node.Id == group.InitialChildFocusId &&
+                node.ActionId == PlayniteLibraryActions.Launch));
+            return request.RequestId;
+        }
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task HomeNavigationReturnsFromBrowseWithoutResettingItsQuery()
     {
         var host = new FakeHost(20);
@@ -896,8 +937,9 @@ public sealed class PlayniteLibraryTests
                 node.Id == PlayniteLibraryPresentation.HomeRailId);
             Assert.AreEqual(expectedAnchor.Value, rail.CollectionAnchorKey,
                 phase + " must retain the exact collection anchor.");
-            Assert.AreEqual("playnite-library.nav.library", snapshot.InitialFocusId,
-                phase + " restores the visible navigation control that opened Browse.");
+            if (snapshot.FocusGroupEntryRequest is not null)
+                Assert.AreEqual(posters[0].Id, snapshot.InitialFocusId,
+                    phase + " enters the game content rather than a header button.");
             var returnTarget = nodes.Single(node => node.Id == snapshot.InitialFocusId);
             Assert.IsTrue(returnTarget.IsFocusable,
                 phase + " return target must remain focusable in the current Home scope.");
@@ -1329,8 +1371,11 @@ public sealed class PlayniteLibraryTests
         var reopenedBrowse = AssertValidSnapshot(50_003, "directly reopened Browse");
         Assert.AreEqual(firstBrowseScrollId, BrowseScrollId(reopenedBrowse),
             "Reopening retained Browse keeps its stable viewport identity.");
-        Assert.AreEqual(restoredTile.Id, reopenedBrowse.InitialFocusId,
-            "Reopening Browse without refreshing must preserve the navigator's return focus.");
+        Assert.IsNotNull(reopenedBrowse.FocusGroupEntryRequest);
+        var reentryGroup = Nodes(reopenedBrowse.Root).Single(node =>
+            node.Id == reopenedBrowse.FocusGroupEntryRequest.GroupId);
+        Assert.IsTrue(Nodes(reentryGroup).Any(node => node.Id == restoredTile.Id),
+            "The remembered game remains eligible for host-owned content focus restoration.");
         var resetBeforeSearch = widget.BrowseCollection.ResetGeneration;
         await CommitSearch("Game", "replace Browse query while retaining matching results");
         var restoredBrowse = AssertValidSnapshot(50_004, "navigator-owned restored Browse");
@@ -1789,7 +1834,7 @@ public sealed class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task BrowseReentryPreservesDisabledFocusUntilSearchResetsCollection()
+    public async Task BrowseNavigationEntersGamesInsteadOfRestoringDisabledFilterFocus()
     {
         var host = new FakeHost(3);
         var widget = Create(host);
@@ -1812,8 +1857,11 @@ public sealed class PlayniteLibraryTests
         await widget.OnActionAsync(new("playnite-library.browse.open",
             "playnite-library.library.menu"));
         var reopened = Snapshot(widget, 50_103);
-        Assert.AreEqual(disabledTarget, reopened.InitialFocusId,
-            "Ordinary Browse reentry retains a valid disabled-but-focusable target.");
+        Assert.IsNotNull(reopened.FocusGroupEntryRequest);
+        var reentryGroup = Nodes(reopened.Root).Single(node => node.Id == reopened.FocusGroupEntryRequest.GroupId);
+        Assert.IsFalse(Nodes(reentryGroup).Any(node => node.Id == disabledTarget));
+        Assert.IsTrue(Nodes(reentryGroup).Any(node => node.Id == reopened.InitialFocusId &&
+            node.ActionId == PlayniteLibraryActions.Launch), "Explicit navigation enters the games, not the disabled filter.");
         await widget.OnActionAsync(new WidgetActionEvent(
             "playnite-library.search.commit", "playnite-library.search")
             { CommittedText = "Game" });

@@ -43,7 +43,9 @@ You can reopen connection settings through **Menu → Playnite connection**.
 | B | Return from a nested page |
 
 Use **Home** and **Library** in the header to switch views. Home shows installed
-games; Library opens Browse, which includes uninstalled games too. Its **Installed**
+games; Library opens Browse, which includes uninstalled games too. Selecting either
+destination enters its game list. B from Library returns to the remembered Home
+game, or the first available game. The **Installed**
 filter narrows the list. Install those games through Playnite, then refresh the widget.
 
 The interface follows your selected WidgetRail theme. Categories open by selecting

@@ -133,6 +133,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                     error: phase == WidgetPagedResourceStatus.Error ? new("unavailable", "Start Playnite and try again.") : null),
                     organization, route, []) with
                 {
+                    ContentEntryRequestId = 1,
                     HiddenRows = items,
                     Organization = route == PlayniteLibraryRoute.Hidden
                         ? organization with { ExcludedSavedIds = items.Select(item => item.Value.SavedId).ToArray() }
@@ -147,6 +148,8 @@ public sealed partial class PlayniteLibraryLayoutTests
                     Assert.AreEqual(2, navigation.Children.Count);
                     Assert.AreEqual(1, navigation.Children.Count(node => node.IsSelected == true));
                 }
+                if (phase == WidgetPagedResourceStatus.Loading)
+                    Assert.IsNull(snapshot.FocusGroupEntryRequest, "Do not enter loading placeholders before games arrive.");
                 ExportFixture(route + "-" + phase, snapshot);
             }
         }

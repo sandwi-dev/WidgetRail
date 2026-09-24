@@ -10,8 +10,13 @@ does not copy a product app-library provider into the package.
 ## Navigation and library behavior
 
 Home and Library are focusable header destinations. Library opens Browse; Home
-returns to the installed-game rail without resetting Browse's query. B retains
-ordinary nested-page Back behavior. Y refreshes, Menu opens Categories, Hidden
+returns to the installed-game rail without resetting Browse's query. A on either
+destination and B from Browse request entry into the destination's results-only
+focus group. The host restores the remembered game when still eligible, otherwise
+the first available game. Header and filter buttons are outside these groups.
+Requests wait for loading to finish, remain stable across renders, and retire on
+other actions or when the widget stops being interactive. Other nested pages keep
+ordinary Back behavior. Y refreshes, Menu opens Categories, Hidden
 games, and Playnite connection, and X opens the focused game's options. These
 controller hints remain non-focusable. Category rows are single action surfaces.
 

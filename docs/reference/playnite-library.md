@@ -16,6 +16,11 @@ and Browse. Y refreshes; Menu opens Categories, Hidden games, and connection
 settings. X opens options for the focused game, including Favorite. The controller
 hints remain separate from focusable navigation and posters.
 
+Selecting Home or Library enters its game list. B from Library also returns to
+Home's game list. Each list remembers its own game focus; header and filter
+buttons cannot replace it. If that game is no longer available, focus falls back
+to an available result. Loading completes before this focus entry is requested.
+
 Panels, controls, text, and focus follow the selected global theme. The Home
 summary separates game metadata from status badges, with a compact presentation
 on smaller surfaces. Posters without covers show readable titles.
