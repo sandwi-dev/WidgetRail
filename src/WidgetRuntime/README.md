@@ -70,13 +70,18 @@ exact immutable version, then supplies that version root through
 `ReadOnlyPaths`. A different unsigned version receives a different profile and
 cannot inherit the prior version's broker consent.
 `HostTrustedJobOnly` remains a temporary platform-owned exception for bundled
-Settings and YT Music workers that need desktop-user resources. The ordinary
+Settings, which needs desktop-user resources. The ordinary
 installed-worker path selects `RequireAppContainer`. A
 `full-trust-application-v1` package instead receives the dedicated
 `FullTrustCommunity` policy only after catalog trust approval; it receives no
 AppContainer, broker channel, capability grants, isolation key, or package ACL
 projection. Both policies remain host-selected consequences of the validated
 manifest rather than worker command-line input.
+
+The standalone YouTube Music application uses `FullTrustCommunity`, as does
+Spotify. The former sandboxed YT Music companion client is retained only in
+[`tests/YtMusicCompanionFixture`](../../tests/YtMusicCompanionFixture/README.md)
+for worker and companion-broker regression tests.
 
 On Windows, `RequireAppContainer` opens or creates one stable profile derived
 from that isolation key, grants its SID read/execute access only to the worker

@@ -393,11 +393,13 @@ CoreCLR DLL initialization failure (`0xC0000142`). Job Object UI restrictions
 remain enabled.
 
 Trusted bundled Settings temporarily remains Job-only for desktop-user
-resources not yet brokered. YT Music is no longer an entry in this trusted
-section: it installs through the Community catalog and uses the generic worker,
-AppContainer, loopback/secret broker, lifecycle, and consent path. The Settings
-exception is host policy and cannot be introduced through catalog JSON or a
-package manifest.
+resources not yet brokered. The standalone
+[YouTube Music application](../../samples/YtMusicWidget/README.md) installs through
+the Community catalog as `full-trust-application-v1`, with explicit full-trust
+approval. Its package owns authentication, catalogue access and local playback;
+it does not use the sandboxed worker's AppContainer or companion broker.
+The Settings exception is host policy and cannot be introduced through catalog
+JSON or a package manifest.
 
 Audio Mixer, Network Controls, Games & Apps, and Now Playing are
 `bundledWidgets`, not trusted-worker shortcuts. A Windows conformance suite
@@ -406,9 +408,12 @@ builds and installs those same four package layouts, merges them through
 AppContainer, drives lifecycle, validates a snapshot, and observes a simulated
 brokered action. `wrail dev` points `--installed-catalog-root` at a unique
 session catalog, so local author builds traverse this same bridge path without
-mutating the user's installed catalog. YT Music adds a fifth Community-package
-conformance case built and installed by the public CLI rather than appearing in
-`bundledWidgets`.
+mutating the user's installed catalog. The legacy
+[YT Music companion fixture](../../tests/YtMusicCompanionFixture/README.md) adds
+a Community-package AppContainer conformance case built and installed by the
+public CLI rather than appearing in `bundledWidgets`. This fixture does not test
+the standalone YouTube Music application; its checks are documented in the
+[standalone development notes](../../samples/YtMusicWidget/DEVELOPMENT.md#verification).
 
 The bridge watches current-user catalog state and package changes without
 polling, publishes complete semantic revisions, preserves compatible workers,
