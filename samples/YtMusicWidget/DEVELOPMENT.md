@@ -74,7 +74,9 @@ are outside the repository's control.
 builds deterministic empty/playing/library/Home snapshots, uses the production Bridge style
 projection, and checks their actual native-renderer geometry at 980×700 and 620×400.
 It verifies the bounded player width, separate browsing pane, full-height cards,
-centered empty state and transport containment without opening or controlling the overlay.
+centered empty state, transport containment, and nonoverlapping square Home tiles
+with per-tile focus bounds. Fixtures include artwork nodes and the full default + Neon
+Circuit + package theme cascade. The probe does not open or control the overlay.
 Use the library from a native build of this checkout's pinned Taffy source.
 
 Before acceptance, install the candidate, sign in, browse a private playlist,

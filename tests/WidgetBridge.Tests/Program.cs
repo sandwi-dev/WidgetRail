@@ -24,7 +24,9 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 {
     var snapshot = SnapshotJson.Deserialize(await File.ReadAllBytesAsync(snapshotPath));
     var package = WrssPackageLoader.LoadFile(Path.GetFullPath(stylePath), Path.GetDirectoryName(Path.GetFullPath(stylePath))!);
-    var compiled = WrssThemeCompiler.Compile(package);
+    var catalog = new ThemeCatalog(new PlatformSettingsPaths(Path.GetDirectoryName(Path.GetFullPath(outputPath))!));
+    var compiled = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package, package,
+        catalog.Load(ThemeIdentity.BuiltInNeonCircuit, ThemeIdentity.BuiltInNeonCircuitVersion).Package);
     if (!compiled.IsValid) throw new InvalidOperationException(string.Join("\n", compiled.Diagnostics));
     using var document = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
     var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };

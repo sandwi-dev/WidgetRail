@@ -69,7 +69,7 @@
 
 .music-home-section { width: 100%; min-width: 0px; gap: 8px; flex-shrink: 0; }
 .music-home-grid { width: 100%; min-width: 0px; gap: 12px; flex-shrink: 0; }
-.music-home-poster { width: 100%; min-width: 0px; aspect-ratio: 1; min-height: 0px; padding: 0px; border-width: 1px; border-color: transparent; corner-radius: 10px; background: var(--surface); overflow: clip; }
+.music-home-poster { min-width: 0px; flex-grow: 0; flex-shrink: 1; aspect-ratio: 1; min-height: 0px; padding: 0px; border-width: 1px; border-color: transparent; corner-radius: 10px; background: var(--surface); overflow: clip; }
 .music-home-poster:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .wrail-poster-tile__artwork { width: 100%; height: 100%; corner-radius: 10px; }
 .wrail-poster-tile__scrim { width: 100%; padding: 8px; background: rgba(0, 0, 0, 0.7); }

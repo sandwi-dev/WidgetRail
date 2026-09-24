@@ -55,9 +55,14 @@ int Run(int argc, wchar_t** argv) {
             if (result.elementRects.contains(L"home.grid.0")) {
                 const auto& first = result.elementRects.at(L"item.0");
                 const auto& second = result.elementRects.at(L"item.1");
+                std::cout << "home tiles first=" << first.x << "," << first.y << "," << first.width << "," << first.height
+                    << " second=" << second.x << "," << second.y << "," << second.width << "," << second.height << '\n';
                 Require(std::abs(first.width - first.height) < 1, "Home poster is not square");
                 if (size.width > 900) {
-                    Require(second.x > first.x && std::abs(first.y - second.y) < 1, "Home posters are not in a row of the section grid");
+                    Require(second.x >= first.x + first.width + 11 && std::abs(first.y - second.y) < 1, "Home posters overlap or lack their grid gap");
+                    Require(first.width < browse.width / 2, "Home tile takes the width of the whole grid");
+                    const auto& focus = result.focusRects.at(L"item.0");
+                    Require(focus.width <= first.width + 1, "Focus covers more than the selected tile");
                 }
                 if (result.elementRects.contains(L"home.section.4"))
                     Require(result.elementRects.at(L"home.section.4").y >= first.y + first.height,
