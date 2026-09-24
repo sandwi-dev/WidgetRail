@@ -13,7 +13,7 @@ namespace widgetrail::guide {
 using controller::Control;
 using controller::SetPlayStationControls;
 using controller::PromptCharacter;
-using controller::PromptFont;
+using controller::DrawPrompt;
 using controller::ResolveControl;
 using controller::ControlParts;
 using controller::ControlWidth;

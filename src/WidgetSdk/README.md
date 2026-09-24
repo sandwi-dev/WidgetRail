@@ -932,7 +932,8 @@ event-only consumers.
 `UI.ControllerHint(ControllerButton.Y, "Refresh", "refresh.hint")` pairs a native
 controller glyph with an ordinary label. `UI.ControllerGlyph(button, id,
 accessibilityLabel: null)` emits only the symbol. Both are presentational and
-never bind input or enter focus traversal. The host supplies PromptFont,
+never bind input or enter focus traversal. The host supplies Kenney Input Prompts
+(with PromptFont for the PS-logo button),
 controller-specific Xbox/PlayStation symbols, and accessible button names.
 
 For movement, use the `ControllerPrompt` overload, for example

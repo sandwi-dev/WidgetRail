@@ -8,7 +8,13 @@
     "public_suffix_list.dat",
     "assets/fonts/promptfont/promptfont.ttf",
     "assets/fonts/promptfont/LICENSE.txt",
-    "assets/fonts/promptfont/NOTICE.txt"
+    "assets/fonts/promptfont/NOTICE.txt",
+    "assets/fonts/kenney/kenney_input_xbox_series.ttf",
+    "assets/fonts/kenney/kenney_input_playstation_series.ttf",
+    "assets/fonts/kenney/kenney_input_xbox_series_map.txt",
+    "assets/fonts/kenney/kenney_input_playstation_series_map.txt",
+    "assets/fonts/kenney/LICENSE.txt",
+    "assets/fonts/kenney/NOTICE.txt"
   ],
   "hostRuntimeDirectories": [
     "Bridge",

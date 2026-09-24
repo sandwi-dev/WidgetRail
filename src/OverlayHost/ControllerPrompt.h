@@ -11,48 +11,59 @@ inline bool SetPlayStationControls(bool enabled) noexcept {
     return playStationControls.exchange(enabled, std::memory_order_relaxed) != enabled;
 }
 inline bool UsePlayStationControls() noexcept { return playStationControls.load(std::memory_order_relaxed); }
+// Kenney Input Prompts 1.5A: named source mappings are shipped with the fonts.
+// PS Guide is the only PromptFont fallback; Kenney has no PS-logo symbol.
 inline std::uint32_t PromptCharacter(Control control, bool playStation = UsePlayStationControls()) noexcept {
     if (playStation) {
         switch (control) {
-        case Control::A: return 0x21E3;
-        case Control::B: return 0x21E2;
-        case Control::X: return 0x21E0;
-        case Control::Y: return 0x21E1;
-        case Control::LB: return 0x21B0;
-        case Control::RB: return 0x21B1;
-        case Control::LT: return 0x21B2;
-        case Control::RT: return 0x21B3;
-        case Control::L3: return 0x21EF;
-        case Control::R3: return 0x21F0;
-        case Control::View: return 0x2206;
-        case Control::Menu: return 0x2208;
+        case Control::A: return 0xE04C;
+        case Control::B: return 0xE042;
+        case Control::X: return 0xE052;
+        case Control::Y: return 0xE054;
+        case Control::LB: return 0xE07B;
+        case Control::RB: return 0xE083;
+        case Control::LT: return 0xE07F;
+        case Control::RT: return 0xE087;
+        case Control::L3: return 0xE04E;
+        case Control::R3: return 0xE050;
+        case Control::LeftStick: return 0xE064;
+        case Control::RightStick: return 0xE06C;
+        case Control::DPad: return 0xE055;
+        case Control::Horizontal: return 0xE05A;
+        case Control::Vertical: return 0xE063;
+        case Control::Up: return 0xE061;
+        case Control::Down: return 0xE058;
+        case Control::Left: return 0xE05C;
+        case Control::Right: return 0xE05F;
+        case Control::View: return 0xE020;
+        case Control::Menu: return 0xE026;
         case Control::Guide: return 0xE000;
-        default: break;
+        default: return 0;
         }
     }
     switch (control) {
-    case Control::A: return 0x21D3;
-    case Control::B: return 0x21D2;
-    case Control::X: return 0x21D0;
-    case Control::Y: return 0x21D1;
-    case Control::LB: return 0x2198;
-    case Control::RB: return 0x2199;
-    case Control::LT: return 0x2196;
-    case Control::RT: return 0x2197;
-    case Control::L3: return 0x21BA;
-    case Control::R3: return 0x21BB;
-    case Control::LeftStick: return 0x21CB;
-    case Control::RightStick: return 0x21CC;
-    case Control::DPad: return 0x21CE;
-    case Control::Horizontal: return 0x21A2;
-    case Control::Vertical: return 0x21A3;
-    case Control::Up: return 0x219F;
-    case Control::Down: return 0x21A1;
-    case Control::Left: return 0x219E;
-    case Control::Right: return 0x21A0;
-    case Control::View: return 0x21FA;
-    case Control::Menu: return 0x21FB;
-    case Control::Guide: return 0x21F9;
+    case Control::A: return 0xE005;
+    case Control::B: return 0xE007;
+    case Control::X: return 0xE01F;
+    case Control::Y: return 0xE021;
+    case Control::LB: return 0xE044;
+    case Control::RB: return 0xE04A;
+    case Control::LT: return 0xE048;
+    case Control::RT: return 0xE04E;
+    case Control::L3: return 0xE046;
+    case Control::R3: return 0xE04C;
+    case Control::LeftStick: return 0xE04F;
+    case Control::RightStick: return 0xE057;
+    case Control::DPad: return 0xE022;
+    case Control::Horizontal: return 0xE027;
+    case Control::Vertical: return 0xE038;
+    case Control::Up: return 0xE036;
+    case Control::Down: return 0xE025;
+    case Control::Left: return 0xE029;
+    case Control::Right: return 0xE02C;
+    case Control::View: return 0xE01D;
+    case Control::Menu: return 0xE015;
+    case Control::Guide: return 0xE042;
     default: return 0;
     }
 }

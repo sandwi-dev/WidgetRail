@@ -1,0 +1,4 @@
+Kenney Input Prompts 1.5A by Kenney (https://kenney.nl).
+Source: https://kenney.nl/assets/input-prompts
+Xbox Series and PlayStation Series fonts and character maps are unmodified.
+Licensed under CC0 1.0; see LICENSE.txt. Attribution is voluntary.

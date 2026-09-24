@@ -29,7 +29,7 @@ UI.ControllerGlyph(ControllerButton.LeftTrigger, "section.previous", "Previous s
 UI.ControllerHint(ControllerPrompt.RightStickMove, "Scroll", "scroll.hint");
 ```
 
-The native host draws its bundled PromptFont and selects Xbox or PlayStation
+The native host draws bundled Kenney Input Prompts and selects Xbox or PlayStation
 symbols from the last active controller family. Symbols remain non-focusable:
 these components document controls without registering shortcuts. A hint may
 still own a container context menu, or be presentational content inside an
@@ -56,7 +56,8 @@ centered at its font size instead of enlarging it to fill the row. Glyphs honor 
 scaling and high contrast. Font family, weight, letter spacing, and line height
 do not reshape symbols; those properties continue to apply normally to labels.
 The host centers each symbol's visible ink and provides a readable drawn fallback
-if PromptFont cannot be loaded.
+if a font cannot be loaded. Kenney's outlined buttons and triggers are used by
+default; the PS-logo button uses PromptFont because it is absent from Kenney's set.
 
 Glyph nodes require snapshot protocol 54. Rebuild packages to adopt the new
 `ControllerHint` rendering; old packages continue emitting their old text nodes.

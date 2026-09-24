@@ -4836,8 +4836,7 @@ struct DeclarativeRenderer::RenderPass final {
                 const auto bounds = D2D1::RectF(
                     box.x + (box.width - width) * .5F, box.y + (box.height - size) * .5F,
                     box.x + (box.width + width) * .5F, box.y + (box.height + size) * .5F);
-                if (!controller::PromptFont().Draw(target,
-                        controller::PromptCharacter(control, options.playStationControls), bounds, brush.Get())) {
+                if (!controller::DrawPrompt(target, control, bounds, brush.Get(), options.playStationControls)) {
                     // A missing private font must never turn the prompt into an
                     // unrelated Unicode character from a system fallback font.
                     ComPtr<IDWriteTextFormat> fallback;

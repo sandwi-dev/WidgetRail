@@ -29,7 +29,7 @@ inline float ControlsWidth(std::wstring_view value,float size) {
     return width;
 }
 inline void DrawControl(ID2D1RenderTarget* target, IDWriteTextFormat* format,
-    Control control, D2D1_RECT_F bounds, ID2D1SolidColorBrush* brush, float progress=-1, bool playStation = UsePlayStationControls(), bool usePromptFont = true) {
+    Control control, D2D1_RECT_F bounds, ID2D1SolidColorBrush* brush, float progress=-1, bool playStation = UsePlayStationControls(), bool useFont = true) {
     const float x=bounds.left,y=bounds.top,w=bounds.right-x,h=bounds.bottom-y;
     const float cx=x+w*.5F,cy=y+h*.5F,stroke=std::max(1.2F,h*.065F);
     const auto line=[&](float x1,float y1,float x2,float y2) {
@@ -38,7 +38,7 @@ inline void DrawControl(ID2D1RenderTarget* target, IDWriteTextFormat* format,
     const auto ring=[&](float radius) { target->DrawEllipse({{cx,cy},radius,radius},brush,stroke); };
     std::wstring_view label;
     auto labelBounds = bounds;
-    if (!usePromptFont || !PromptFont().Draw(target, PromptCharacter(control, playStation), bounds, brush)) {
+    if (!useFont || !DrawPrompt(target, control, bounds, brush, playStation)) {
     switch(control) {
     case Control::A:
         if (playStation) { line(.25F,.25F,.75F,.75F); line(.75F,.25F,.25F,.75F); }

@@ -520,7 +520,7 @@ void CheckControllerGlyphs(ID2D1Factory* d2d, IWICImagingFactory* wic) {
         "glyph test creates DirectWrite factory");
     for (const bool playStation : {false, true}) {
     (void)widgetrail::guide::SetPlayStationControls(playStation);
-    Check(widgetrail::guide::PromptCharacter(widgetrail::guide::Control::A) == (playStation ? 0x21E3U : 0x21D3U),
+    Check(widgetrail::guide::PromptCharacter(widgetrail::guide::Control::A) == (playStation ? 0xE04CU : 0xE005U),
         "active controller changes Cross versus A glyph");
     for (const auto [size, fontSize] : {std::pair{24.0F,14.0F}, {28.0F,14.0F}, {36.0F,21.0F}}) {
         const auto render = [&](widgetrail::guide::Control control) {
@@ -543,7 +543,7 @@ void CheckControllerGlyphs(ID2D1Factory* d2d, IWICImagingFactory* wic) {
             target->BeginDraw();
             target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
             target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
-            Check(widgetrail::guide::PromptFont().Draw(target.Get(), widgetrail::guide::PromptCharacter(control),
+            Check(widgetrail::guide::DrawPrompt(target.Get(), control,
                 {4,4,4+size,4+size}, brush.Get()), "bundled font contains the controller glyph");
             target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
             widgetrail::guide::DrawControl(target.Get(), format.Get(), control,

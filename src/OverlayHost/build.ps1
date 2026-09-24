@@ -384,6 +384,13 @@ foreach ($fontFile in @('promptfont.ttf', 'LICENSE.txt', 'NOTICE.txt')) {
     Copy-Item -LiteralPath (Join-Path $projectDirectory "..\..\assets\fonts\promptfont\$fontFile") `
         -Destination $promptFontOutput -Force
 }
+$kenneyFontOutput = Join-Path $outputDirectory 'assets\fonts\kenney'
+New-Item -ItemType Directory -Force -Path $kenneyFontOutput | Out-Null
+foreach ($fontFile in @('kenney_input_xbox_series.ttf', 'kenney_input_playstation_series.ttf',
+    'kenney_input_xbox_series_map.txt', 'kenney_input_playstation_series_map.txt', 'LICENSE.txt', 'NOTICE.txt')) {
+    Copy-Item -LiteralPath (Join-Path $projectDirectory "..\..\assets\fonts\kenney\$fontFile") `
+        -Destination $kenneyFontOutput -Force
+}
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\third_party\public_suffix_list\public_suffix_list.dat') `
     -Destination (Join-Path $outputDirectory 'public_suffix_list.dat') -Force
 

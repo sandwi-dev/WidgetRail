@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ControllerPrompt.h"
 #include <Windows.h>
 #include <d2d1.h>
 #include <dwrite.h>
@@ -11,16 +12,16 @@
 namespace widgetrail::controller {
 
 // Private font face, loaded once without registering a system font. Direct glyph
-// runs avoid text fallback interpreting PromptFont's Unicode mappings as arrows.
+// runs use explicit font faces and never substitute ordinary text glyphs.
 class ControllerPromptFont final {
 public:
-    ControllerPromptFont() noexcept {
+    explicit ControllerPromptFont(const std::filesystem::path& relativePath) noexcept {
         try {
             wchar_t executable[32768]{};
             const DWORD length = GetModuleFileNameW(nullptr, executable, 32768);
             if (!length || length >= 32768) return;
             const auto path = std::filesystem::path(executable).parent_path() /
-                L"assets" / L"fonts" / L"promptfont" / L"promptfont.ttf";
+                L"assets" / L"fonts" / relativePath;
             Microsoft::WRL::ComPtr<IDWriteFactory> factory;
             if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
                 reinterpret_cast<IUnknown**>(factory.GetAddressOf())))) return;
@@ -65,9 +66,23 @@ private:
     DWRITE_FONT_METRICS metrics_{};
 };
 
-inline const ControllerPromptFont& PromptFont() {
-    static const ControllerPromptFont font;
-    return font;
+// One private face per family, loaded lazily. No system registration, image
+// decoding, or per-widget asset lifetime is involved.
+inline bool DrawPrompt(ID2D1RenderTarget* target, Control control,
+    D2D1_RECT_F bounds, ID2D1Brush* brush,
+    bool playStation = UsePlayStationControls()) noexcept {
+    const auto character = PromptCharacter(control, playStation);
+    if (!character) return false;
+    if (playStation && control == Control::Guide) {
+        static const ControllerPromptFont fallback(L"promptfont/promptfont.ttf");
+        return fallback.Draw(target, character, bounds, brush);
+    }
+    if (playStation) {
+        static const ControllerPromptFont font(L"kenney/kenney_input_playstation_series.ttf");
+        return font.Draw(target, character, bounds, brush);
+    }
+    static const ControllerPromptFont font(L"kenney/kenney_input_xbox_series.ttf");
+    return font.Draw(target, character, bounds, brush);
 }
 
 } // namespace widgetrail::controller

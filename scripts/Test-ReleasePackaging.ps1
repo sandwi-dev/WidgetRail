@@ -87,6 +87,10 @@ foreach ($editionRoot in @($production, $dev)) {
     foreach ($fontFile in @('promptfont.ttf', 'LICENSE.txt', 'NOTICE.txt')) {
         Check (Test-Path (Join-Path $editionRoot "assets/fonts/promptfont/$fontFile")) 'Controller font or attribution missing.'
     }
+    foreach ($fontFile in @('kenney_input_xbox_series.ttf', 'kenney_input_playstation_series.ttf',
+        'kenney_input_xbox_series_map.txt', 'kenney_input_playstation_series_map.txt', 'LICENSE.txt', 'NOTICE.txt')) {
+        Check (Test-Path (Join-Path $editionRoot "assets/fonts/kenney/$fontFile")) 'Kenney controller font or attribution missing.'
+    }
     Check ((Test-Path (Join-Path $editionRoot 'tools/wrail/templates/ControllerWidget/template.json')) -and (Test-Path (Join-Path $editionRoot 'wrail.cmd'))) 'Shared CLI or launcher missing.'
 }
 Check (!(Test-Path (Join-Path $production 'DoNotShipTests.exe')) -and !(Test-Path (Join-Path $production 'developer-machine.env')) -and

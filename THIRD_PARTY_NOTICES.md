@@ -3,13 +3,22 @@
 WidgetRail includes or uses the third-party components below. These retain
 their own licenses; the project license does not replace these terms.
 
+## Kenney Input Prompts 1.5A
+
+Created by Kenney, available at https://kenney.nl/assets/input-prompts
+
+License: Creative Commons Zero (CC0 1.0). The unmodified Xbox Series and
+PlayStation Series fonts, character maps, license, and attribution are bundled
+in `assets/fonts/kenney`. WidgetRail loads these privately for controller hints;
+they are not installed as system fonts.
+
 ## PromptFont
 
 PromptFont by Shinmera (Yukari Hafner), available at https://shinmera.com/promptfont
 
 License: SIL Open Font License 1.1. The unmodified font and its complete license
 are bundled in `assets/fonts/promptfont`. WidgetRail loads it privately for
-controller hints; it is not installed as a system font.
+the PS-logo button missing from the Kenney set; it is not installed as a system font.
 
 ## Microsoft .NET 8 base and Windows Desktop runtimes
 
