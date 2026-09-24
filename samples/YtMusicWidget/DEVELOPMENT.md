@@ -4,7 +4,9 @@
 the declarative widget, queue and private helper clients. `PlaybackHost` owns one
 hidden WebView2 audio element. `Service/service.py` owns catalogue calls, session
 protection, stream resolution and an authenticated-by-random-path audio proxy.
-No Spotify or native-host implementation is changed.
+Provider logic remains package-owned. The shared Bridge caches widget styles by
+package identity as well as appearance revision, so replacing a package applies
+its current WRSS without restarting the overlay.
 
 ## State and lifetime
 
@@ -29,8 +31,7 @@ collection. Library remembers its last filter.
 Library focus memory belongs to the results scroll, excluding the filter toolbar.
 New results enter at the first item; returning to a loaded list restores its last
 focused result. Loading stays on the selected filter, and Up returns to that filter.
-One reusable detail slot bounds
-playlist/album/artist state; Back reuses the parent section or reloads older detail
+One reusable detail slot bounds playlist/album/artist state; Back reuses the parent section or reloads older detail
 routes around their saved entry. This state is in memory, not persisted across restarts.
 
 - Page operations use the SDK's Active lifetime and latest-request cancellation.
@@ -81,9 +82,11 @@ the sealed installation; environment flags alone are ignored under `-I`. yt-dlp 
 ## Verification
 
 The default managed verification includes `ytmusic-standalone-tests`. It checks
-valid snapshots, queue rules, stale responses, independent transport, sign-in lifetime,
-hidden-input rejection and bounded IPC. `test_service.py` adds isolated Python
-checks for DPAPI, session deletion, proxy admission, radio requests and caching.
+valid snapshots, song/playlist queue insertion and capacity rules, shuffle occurrence
+identity, retained section focus, stale responses, independent transport, sign-in
+lifetime, hidden-input rejection and bounded IPC. `test_service.py` adds isolated
+Python checks for DPAPI, session deletion, proxy admission, radio artwork, bounded
+playlist fetching and caching.
 `test_player.py` runs the real WebView2 helper with a muted local WAV fixture.
 
 The managed test executable also accepts `--package-root <installed-package-directory>`
@@ -99,11 +102,13 @@ Live provider tests are not CI gates: YouTube service and account availability
 are outside the repository's control.
 
 `tests/YtMusicStandalone.Tests/Test-Layout.ps1 -TaffyLibrary <built-wrail_taffy_layout.lib>`
-builds deterministic empty/playing/library/Home snapshots, uses the production Bridge style
+builds deterministic empty/playing/library/Home/Search snapshots, uses the production Bridge style
 projection, and checks their actual native-renderer geometry at 980×700 and 620×400.
 It verifies the bounded player width, separate browsing pane, full-height cards,
 centered empty state, transport containment, and nonoverlapping square Home tiles
-with per-tile focus bounds. Fixtures include artwork nodes and the full default + Neon
+with per-tile focus bounds. It also checks the Search focus outline against its clip,
+Library toolbar placement, and production focus-memory restoration after tab changes
+and Refresh. Fixtures include artwork nodes and the full default + Neon
 Circuit + package theme cascade. The probe does not open or control the overlay.
 Use the library from a native build of this checkout's pinned Taffy source.
 

@@ -9,6 +9,12 @@ It is not the distributed YouTube Music application.
 explicit legacy conformance routes. Ordinary builds and releases use the
 [standalone widget](../../samples/YtMusicWidget/README.md).
 
+`scripts/Test-YtMusicCommunityAddon.ps1` and the YT Music portion of
+`scripts/Test-CommunityAddonRecovery.ps1` exercise this legacy fixture, not the
+standalone player. See the standalone widget's
+[verification notes](../../samples/YtMusicWidget/DEVELOPMENT.md#verification)
+for its managed, Python, rendering and live-package checks.
+
 The fixture also illustrates the host's
 [exact-port companion and private-secret contract](../../docs/reference/community-companion-services.md).
 It requires the host loopback capability; it does not grant arbitrary networking

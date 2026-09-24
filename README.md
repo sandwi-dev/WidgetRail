@@ -99,7 +99,7 @@ included in either installer.
 |---|---|---|
 | [Spotify](samples/SpotifyWidget/README.md) | Search tracks, albums, artists, and playlists; browse playlists and the queue; add individual tracks to the queue; choose a playback device or use **Play here**; pin playback controls. | Spotify account, a developer app, and Premium for streaming and playback control. |
 | [YouTube Video](samples/YouTubeWidget/README.md) | Search public videos, play a link, seek, adjust volume and playback speed, loop, and use pinned or fullscreen playback. | A Google API key for search. Playing a public link does not require a search key. |
-| [YouTube Music](samples/YtMusicWidget/README.md) | Browse Home, search music, access your library, play locally, start song radio, manage the queue, and pin playback controls. | Full-trust approval; Edge or Chrome for account sign-in. Unofficial integration; Windows x64. |
+| [YouTube Music](samples/YtMusicWidget/README.md) | Browse Home and your library, search music, play locally, start song radio, queue songs or playlists with **Play next**, and pin playback controls. | Full-trust approval; Chrome or Edge for account sign-in. No companion app required. Unofficial integration; Windows x64. |
 | [Playnite Library](samples/PlayniteLibraryWidget/README.md) | Browse and search games, filter the library, launch installed games, and manage favorites, categories, hidden games, and completion status. | Playnite running with a compatible Playnite Bridge and a configured connection token. |
 
 Each widget's README covers installation, screenshots, and service-specific

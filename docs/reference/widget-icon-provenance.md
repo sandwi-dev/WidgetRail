@@ -15,12 +15,18 @@ not derive from an external icon library:
 | Audio Mixer | `audio-mixer.mark` | `src/FirstPartyWidgets/AudioMixerWidget/assets/icons/audio-mixer.svg` |
 | Network Controls | `network-controls.mark` | `src/FirstPartyWidgets/NetworkControlsWidget/assets/icons/network-controls.svg` |
 | Embedded Media Sample | `embedded-media.mark` | `samples/EmbeddedMediaWidget/assets/icons/embedded-media.svg` |
-| YT Music | `ytmusic.mark` | `samples/YtMusicWidget/assets/icons/yt-music.svg` |
 | Playnite Library | `playnite-library.mark` | `samples/PlayniteLibraryWidget/assets/icons/playnite-library.svg` |
 | Clock | `clock.mark` | `samples/ClockWidget/assets/icons/clock.svg` |
 | Full Application Reference | `full-application.mark` | `samples/FullApplicationWidget/assets/icons/full-application.svg` |
 
-The YouTube package uses the user-supplied red digital YouTube icon. The supplied
+YouTube Music uses `ytmusic.mark` from
+`samples/YtMusicWidget/assets/icons/yt-music.svg`: a project-authored geometric
+rendering of the YouTube Music red disc, white ring and play triangle. It replaces
+the original generic music-note artwork and contains no raster image or external
+icon-library dependency. The YouTube Music brand belongs to Google; the widget is
+an unofficial client.
+
+The YouTube Video package uses the user-supplied red digital YouTube icon. The supplied
 Illustrator file is a one-page PDF 1.6 vector document created by Adobe
 Illustrator 29.0. `samples/YouTubeWidget/assets/icons/youtube-red.svg` is a direct
 static-vector transcription of its two painted paths, original `#ff0033` and

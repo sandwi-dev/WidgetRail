@@ -2,8 +2,8 @@
 
 Browse music and listen directly through WidgetRail. The standalone widget includes
 Home recommendations in square artwork grids under YouTube Music’s section headings,
-Search, your Library,
-a local Queue, and a compact pinned player. **Mixed for you** appears first when available.
+Search, your Library, a local Queue, and a compact pinned player.
+**Mixed for you** appears first when available.
 Collections scroll continuously as you browse.
 Switching tabs or Library filters remembers your highlighted item while the widget
 is running. Use **Refresh** to reload a collection from the beginning.
@@ -41,7 +41,8 @@ The standalone package currently supports Windows x64.
 - Pin **Compact now playing** to keep controls beside your game.
 
 **LT / RT** changes the four browsing tabs, **X** plays or pauses, and **LB / RB**
-selects the previous or next song. **Y** opens Settings; **B** returns to your music.
+selects the previous or next song. **Y** opens Settings; **B** returns from Settings
+or a playlist, album or artist page.
 While signing in, **Cancel sign-in** closes the temporary browser session without
 stopping playback. Music continues when the overlay closes. Windows media controls and
 WidgetRail's Now Playing widget can control the local player.
