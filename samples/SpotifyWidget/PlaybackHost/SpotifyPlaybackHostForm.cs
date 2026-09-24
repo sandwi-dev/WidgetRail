@@ -1,4 +1,5 @@
 using System.Text;
+using System.Diagnostics;
 using System.Text.Json;
 using WidgetRail.SpotifyPlayback;
 using Microsoft.Web.WebView2.Core;
@@ -13,7 +14,9 @@ internal sealed class SpotifyPlaybackHostForm : Form
     private static readonly Uri SdkOrigin = new("https://sdk.scdn.co");
 
     private readonly WebView2 _webView = new() { Dock = DockStyle.Fill };
-    private readonly EphemeralUserDataDirectory _userData = new();
+    private readonly string _profilePath;
+    private Process? _browser;
+    private bool _stopping;
     private readonly SpotifyPlaybackStateMachine _lifecycle = new();
     private readonly HashSet<string> _pendingTokenRequests = new(StringComparer.Ordinal);
     private readonly PendingPageResponses _pendingPageResponses = new();
@@ -21,9 +24,10 @@ internal sealed class SpotifyPlaybackHostForm : Form
     private readonly Action<SpotifyPlaybackEvent> _emit;
     private bool _initialized;
 
-    internal SpotifyPlaybackHostForm(Action<SpotifyPlaybackEvent> emit)
+    internal SpotifyPlaybackHostForm(Action<SpotifyPlaybackEvent> emit, string profilePath)
     {
         _emit = emit ?? throw new ArgumentNullException(nameof(emit));
+        _profilePath = profilePath;
         AutoScaleMode = AutoScaleMode.None;
         ClientSize = new Size(1, 1);
         FormBorderStyle = FormBorderStyle.None;
@@ -60,15 +64,41 @@ internal sealed class SpotifyPlaybackHostForm : Form
             _sdkLoadTimeout.Stop();
             _sdkLoadTimeout.Dispose();
             _webView.Dispose();
-            _userData.Dispose();
+            _browser?.Dispose();
         }
         base.Dispose(disposing);
+    }
+
+    internal async void Stop()
+    {
+        if (_stopping) return;
+        _stopping = true;
+        _sdkLoadTimeout.Stop();
+        _webView.Dispose();
+        if (_browser is not null)
+        {
+            try
+            {
+                await _browser.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch (TimeoutException)
+            {
+                // This browser is exclusive to our freshly allocated profile.
+                try { _browser.Kill(entireProcessTree: true); }
+                catch (InvalidOperationException) { }
+                await _browser.WaitForExitAsync();
+            }
+        }
+        Close();
     }
 
     internal void HandleRequest(SpotifyPlaybackRequest request)
     {
         try
         {
+            if (_stopping)
+                throw new SpotifyPlaybackProtocolException(
+                    "host_stopping", "The Spotify playback host is shutting down.");
             if (!_initialized && request.Type != "shutdown")
                 throw new SpotifyPlaybackProtocolException(
                     "host_not_ready", "The Spotify playback host is still initializing.");
@@ -126,7 +156,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
                     RequireEmpty(request);
                     Transition(SpotifyPlaybackSignal.Shutdown);
                     Emit("command_completed", request.RequestId, new { });
-                    Close();
+                    Stop();
                     break;
                 default:
                     throw new SpotifyPlaybackProtocolException(
@@ -150,9 +180,11 @@ internal sealed class SpotifyPlaybackHostForm : Form
         try
         {
             var environment = await CoreWebView2Environment.CreateAsync(
-                userDataFolder: _userData.RootPath).ConfigureAwait(true);
+                userDataFolder: _profilePath).ConfigureAwait(true);
             await _webView.EnsureCoreWebView2Async(environment).ConfigureAwait(true);
             var core = _webView.CoreWebView2;
+            _browser = Process.GetProcessById(checked((int)core.BrowserProcessId));
+            _ = _browser.SafeHandle; // Retain this process identity rather than a reusable PID.
             Harden(core);
             core.AddWebResourceRequestedFilter(
                 SpotifyPlaybackPage.TopLevelUri,
@@ -203,7 +235,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
                     code = "webview_process_failed",
                     message = "The secure Spotify playback process stopped unexpectedly."
                 });
-                Close();
+                Stop();
             };
             try
             {
@@ -217,7 +249,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
                     code = "autoplay_permission_configuration_failed",
                     message = "Spotify autoplay permission could not be configured safely."
                 });
-                Close();
+                Stop();
                 return;
             }
             _initialized = true;
@@ -233,7 +265,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
                 code = "host_initialization_error",
                 message = "The secure Spotify playback surface could not be initialized."
             });
-            Close();
+            Stop();
         }
     }
 
@@ -486,7 +518,7 @@ internal sealed class SpotifyPlaybackHostForm : Form
             code = "sdk_load_timeout",
             message = "The Spotify playback SDK did not load in time."
         });
-        Close();
+        Stop();
     }
 
     private static void RequireEmpty(SpotifyPlaybackRequest request)
