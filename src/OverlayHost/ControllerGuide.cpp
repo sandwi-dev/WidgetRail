@@ -1,5 +1,7 @@
 #include "ControllerGuide.h"
 #include "ControllerShortcutResolver.h"
+#include "FocusNavigation.h"
+#include "WidgetContextMenuAuthority.h"
 
 #include <algorithm>
 #include <cmath>
@@ -83,12 +85,28 @@ bool Fits(
 
 OpenWidgetAuthority ResolveOpenWidgetAuthority(
     const WidgetSnapshot& snapshot,
-    const std::wstring_view focusedElementId) {
+    const std::wstring_view focusedElementId,
+    const RenderResult* renderResult) {
     OpenWidgetAuthority result;
     if (snapshot.activeInputScopeId.empty()) return result;
     const auto* scopeRoot = widgetrail::input::FindControllerShortcutScopeRoot(
         snapshot.root, snapshot.activeInputScopeId);
     if (!scopeRoot) return result;
+
+    std::vector<std::wstring> consumedButtons;
+    if (renderResult) {
+        for (const auto button : {L"menu", L"x", L"y"}) {
+            const auto sourceId = widgetrail::input::ResolveContextMenuSource(
+                snapshot, focusedElementId, button, *renderResult);
+            if (!sourceId) continue;
+            // Context menus own input before ordinary widget shortcuts, even
+            // when all menu entries are unavailable. Match that precedence.
+            consumedButtons.emplace_back(button);
+            const auto source = widgetrail::input::CaptureContextMenuSource(snapshot, *sourceId);
+            if (source && widgetrail::input::HasAvailableContextMenuActions(source->actions))
+                result.actions.push_back({button, L"Options", true});
+        }
+    }
 
     std::vector<const WidgetNode*> path;
     const std::optional<std::wstring_view> shortcutFocus =
@@ -110,7 +128,6 @@ OpenWidgetAuthority ResolveOpenWidgetAuthority(
         (focused->kind == L"button" || focused->kind == L"slider" ||
          focused->kind == L"actionSurface");
 
-    std::vector<std::wstring> consumedButtons;
     for (auto cursor = path.rbegin(); cursor != path.rend(); ++cursor) {
         for (const auto& shortcut : (*cursor)->shortcuts) {
             if (shortcut.phase != L"pressed" || shortcut.actionId.empty() ||
@@ -144,6 +161,7 @@ OpenWidgetAuthority ResolveOpenWidgetAuthority(
     std::stable_sort(
         result.actions.begin(), result.actions.end(),
         [](const OpenWidgetAction& left, const OpenWidgetAction& right) {
+            if (left.contextMenu != right.contextMenu) return left.contextMenu;
             return ButtonPriority(left.button) < ButtonPriority(right.button);
         });
     return result;

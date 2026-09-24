@@ -3140,9 +3140,9 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         return Effect::Authority | Effect::Interaction |
             Effect::Paint | Effect::Accessibility;
     }
-    if (property == L"contextMenuButton")
+    if (property == L"contextMenuButton" || property == L"contextActions")
         return Effect::Authority | Effect::Paint | Effect::Interaction | Effect::Accessibility;
-    if (property == L"actionId" || property == L"contextActions" ||
+    if (property == L"actionId" ||
         property == L"valueChangedActionId" ||
         property == L"focus" || property == L"focusPersistenceId" ||
         property == L"scrollNearStartActionId" ||

@@ -147,7 +147,9 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.CollectionResetGeneration => PresentationPropertyImpact.MeasureLayout | PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
-        PresentationProperty.ContextMenuButton => PresentationPropertyImpact.Authority | PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
+        PresentationProperty.ContextMenuButton or PresentationProperty.ContextActions =>
+            PresentationPropertyImpact.Authority | PresentationPropertyImpact.Paint |
+            PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
         PresentationProperty.CollectionLoading => PresentationPropertyImpact.Paint,
         PresentationProperty.CollectionGeneration => PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
         PresentationProperty.ActiveInputScopeId or
@@ -215,7 +217,6 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.ActionId or
-        PresentationProperty.ContextActions or
         PresentationProperty.ValueChangedActionId or
         PresentationProperty.Shortcuts or
         PresentationProperty.InputScopeId or

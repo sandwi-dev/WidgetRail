@@ -15,6 +15,12 @@ meaningful actions for the currently active view.
 F1 is the desktop toggle fallback. Settings lets the user choose one controller
 opening shortcut at a time; View + Menu is the default.
 
+When options are available, the guide shows **Options** beside the button that
+opens them (Menu, X or Y, with the current controller's glyph). Focused tiles also
+show a small ellipsis indicator; unfocused tiles do not. The guide covers menus
+declared on non-focusable containers as well. A menu hint takes priority over
+general shortcuts when guide space is limited.
+
 ## DualSense controllers
 
 DualSense input is read directly over USB or Bluetooth. Cross activates the

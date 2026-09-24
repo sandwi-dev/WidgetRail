@@ -4,6 +4,7 @@
 #include "NativeIcons.h"
 #include "NativeTextLayout.h"
 #include "RemoteImageCache.h"
+#include "WidgetContextMenuAuthority.h"
 
 #include <algorithm>
 #include <array>
@@ -4843,6 +4844,34 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
+    void DrawContextMenuIndicator(const WidgetNode& node, const NativeRenderStyle& style,
+        const Rect rect, const float opacity) {
+        if (!target || node.kind != L"actionSurface" || node.id != focusedId ||
+            !input::HasAvailableContextMenuActions(node.contextActions) ||
+            !input::CaptureContextMenuSource(*snapshot, node.id)) return;
+        const auto& presented = presentation.at(NarrowStableId(node.id));
+        const Rect badge{rect.x + rect.width - 29.0F, rect.y + 5.0F, 24.0F, 16.0F};
+        const auto visible = Intersection(badge, presented.visibleBox);
+        if (visible.width < badge.width - .5F || visible.height < badge.height - .5F) return;
+        const auto background = prepared.at(NarrowStableId(node.id)).effectiveBackground.value_or(kDefaultButton);
+        auto fill = Brush(target, WithOpacity(background, opacity));
+        auto ink = Brush(target, WithOpacity(style.outlineColor().value_or(
+            style.foreground().value_or(kDefaultText)), opacity));
+        if (!fill || !ink) return;
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        result.contextMenuIndicatorRects.insert_or_assign(node.id, badge);
+#endif
+        target->PushAxisAlignedClip(D2DRect(presented.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        const auto shape = D2D1::RoundedRect(D2DRect(badge), 8.0F, 8.0F);
+        target->FillRoundedRectangle(shape, fill.Get());
+        target->DrawRoundedRectangle(shape, ink.Get(), 1.0F);
+        for (const float offset : {-5.0F, 0.0F, 5.0F})
+            target->FillEllipse(D2D1::Ellipse(
+                D2D1::Point2F(badge.x + badge.width * .5F + offset, badge.y + badge.height * .5F),
+                1.3F, 1.3F), ink.Get());
+        target->PopAxisAlignedClip();
+    }
+
     void DrawDeferredFocus() {
         if (deferredFocusNode && deferredFocusStyle) {
             if (deferredFocusClip) {
@@ -4851,6 +4880,8 @@ struct DeclarativeRenderer::RenderPass final {
             }
             DrawFocus(*deferredFocusNode, *deferredFocusStyle,
                       deferredFocusRect, deferredFocusOpacity);
+            DrawContextMenuIndicator(*deferredFocusNode, *deferredFocusStyle,
+                deferredFocusRect, deferredFocusOpacity);
             if (deferredFocusClip) target->PopAxisAlignedClip();
         }
     }

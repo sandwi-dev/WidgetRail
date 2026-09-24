@@ -735,6 +735,7 @@ function Invoke-ControllerGuideTests {
         -Sources @(
             (Join-Path $projectDirectory 'GuideInputCompatibilityTests.cpp'),
             (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
+            (Join-Path $projectDirectory 'FocusNavigation.cpp'),
             (Join-Path $projectDirectory 'ControllerGuide.cpp')) `
         -Libraries @('user32.lib')
 }
@@ -2609,6 +2610,7 @@ if (-not $SkipTests) {
     $guideTestArguments = $common + @(
         (Join-Path $projectDirectory 'GuideInputCompatibilityTests.cpp'),
         (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
+        (Join-Path $projectDirectory 'FocusNavigation.cpp'),
         (Join-Path $projectDirectory 'ControllerGuide.cpp'),
         "/Fo:$guideTestObjectDirectory\",
         "/Fe:$outputDirectory\GuideInputCompatibilityTests.exe",

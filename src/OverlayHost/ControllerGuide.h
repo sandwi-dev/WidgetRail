@@ -9,11 +9,14 @@
 #include <string_view>
 #include <vector>
 
+namespace widgetrail { struct RenderResult; }
+
 namespace widgetrail::guide {
 
 struct OpenWidgetAction final {
     std::wstring button;
     std::wstring label;
+    bool contextMenu{};
 };
 
 struct OpenWidgetAuthority final {
@@ -22,10 +25,12 @@ struct OpenWidgetAuthority final {
 };
 
 /// Resolves presentation metadata only for the exact action path admitted by
-/// the current active input scope. Input remains owned by the SDK/Bridge route.
+/// the current active input scope. Rendered menu sources use the same native
+/// resolver as dispatch; ordinary shortcuts retain their SDK/Bridge route.
 [[nodiscard]] OpenWidgetAuthority ResolveOpenWidgetAuthority(
     const WidgetSnapshot& snapshot,
-    std::wstring_view focusedElementId);
+    std::wstring_view focusedElementId,
+    const RenderResult* renderResult = nullptr);
 
 struct OpenWidgetLine final {
     std::wstring contextual;

@@ -1345,6 +1345,75 @@ void NestedPercentagePostersKeepBoundsAcrossScrollPaths() {
     }
 }
 
+void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "context indicator native resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    ok(wic->CreateBitmap(400, 320, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), nullptr);
+    auto snapshot = PosterTileSnapshot(L"First poster");
+    snapshot.root.kind = L"row";
+    snapshot.root.children[0].contextActions = {{L"next", L"Play next"}};
+    snapshot.root.children[0].focusedStyle[L"outline-color"] = Color(L"#00ff00");
+    auto neighbor = snapshot.root.children[0];
+    const auto rename = [&](const auto& self, WidgetNode& node) -> void {
+        node.id += L".second";
+        for (auto& child : node.children) self(self, child);
+    };
+    rename(rename, neighbor);
+    snapshot.root.children.push_back(std::move(neighbor));
+    auto& tile = snapshot.root.children[0];
+    const Rect viewport{0, 0, 400, 320};
+    DeclarativeRenderOptions options;
+    options.accessibility.reducedMotion = true;
+    const auto draw = [&](std::wstring_view focus) {
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        const auto result = renderer.Render(target.Get(), snapshot, focus, viewport, options);
+        ok(target->EndDraw());
+        Check(result.succeeded, "context indicator frame succeeds");
+        Check(result.focusRects.size() == 2 && result.hitRegions.size() == 2, "decorative badge adds no focus or pointer target");
+        return result;
+    };
+    const auto plain = draw(L"");
+    Check(plain.contextMenuIndicatorRects.empty(), "unfocused tiles never display indicators");
+    const auto first = draw(L"poster.card");
+    Check(first.contextMenuIndicatorRects.size() == 1 && first.contextMenuIndicatorRects.contains(L"poster.card"),
+        "only the focused tile displays its available menu");
+    const auto badge = first.contextMenuIndicatorRects.at(L"poster.card");
+    {
+        ComPtr<IWICBitmapLock> lock;
+        const WICRect area{static_cast<INT>(badge.x + badge.width * .5F), static_cast<INT>(badge.y + badge.height * .5F), 1, 1};
+        ok(canvas->Lock(&area, WICBitmapLockRead, lock.GetAddressOf()));
+        UINT count{}; BYTE* bytes{};
+        ok(lock->GetDataPointer(&count, &bytes));
+        Check(count >= 4 && bytes[1] > 180 && bytes[2] < 40, "ellipsis actually paints with the themed focus color");
+    }
+    Near(first.elementRects.at(L"poster.card").width, plain.elementRects.at(L"poster.card").width,
+        "indicator does not resize the tile");
+    Check(renderer.PlanFocusUpdate(snapshot, L"poster.card", L"poster.card.second", viewport).has_value(), "focus change has retained repaint plan");
+    const auto moved = draw(L"poster.card.second");
+    Check(moved.fullLayoutBuildCount == 0 && moved.contextMenuIndicatorRects.size() == 1 && moved.contextMenuIndicatorRects.contains(L"poster.card.second"),
+        "indicator follows retained focus change and leaves other tiles unmarked");
+    tile.contextActions[0].isDisabled = true;
+    Check(draw(L"poster.card").contextMenuIndicatorRects.empty(), "all-disabled menu has no indicator");
+    tile.contextActions[0].isDisabled = false; tile.contextActions[0].isBusy = true;
+    Check(draw(L"poster.card").contextMenuIndicatorRects.empty(), "all-busy menu has no indicator");
+    tile.contextActions[0].isBusy = false; snapshot.root.isDisabled = true;
+    Check(draw(L"poster.card").contextMenuIndicatorRects.empty(), "disabled ancestor suppresses indicator");
+    snapshot.root.isDisabled = false; tile.contextActions.clear();
+    Check(draw(L"poster.card").contextMenuIndicatorRects.empty(), "tile without actions has no indicator");
+}
+
 void PosterTileUsesFixedFullBleedGeometry() {
     using Microsoft::WRL::ComPtr;
     ComPtr<IDWriteFactory> write;
@@ -7050,6 +7119,7 @@ int main() {
     SliderPlanningAndAccessibilityTargets();
     ActionSurfacePlanningAndInteractionGeometry();
     NestedPercentagePostersKeepBoundsAcrossScrollPaths();
+    ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles();
     PosterTileUsesFixedFullBleedGeometry();
     RetainedPosterPaintPreservesArtwork();
     ScrollIndicatorsRespectViewportAndRetainedPaint();

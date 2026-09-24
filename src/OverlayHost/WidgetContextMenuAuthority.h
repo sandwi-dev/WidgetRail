@@ -1,11 +1,18 @@
 #pragma once
 #include "WidgetBridgeClient.h"
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace widgetrail::input {
+inline bool HasAvailableContextMenuActions(const std::vector<WidgetContextAction>& actions) {
+    return std::ranges::any_of(actions, [](const WidgetContextAction& action) {
+        return !action.isDisabled && !action.isBusy;
+    });
+}
+
 // Retain the source identity, not a whole snapshot. Progress, artwork and
 // unrelated layout updates do not change the authority of an open menu.
 struct WidgetContextMenuSource final {

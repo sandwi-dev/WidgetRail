@@ -1,7 +1,9 @@
 #include "GuideInputCompatibility.h"
 #include "ControllerGuide.h"
+#include "DeclarativeRenderer.h"
 
 #include <array>
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <utility>
@@ -184,6 +186,63 @@ int main() {
         const auto changed=guide::BuildOpenWidgetLine(ControllerGuideDensity::Full,{},false,400,measure,false,cards);
         Check(changed.hints.size()==1 && changed.hints[0].button==L"Guide",
             "changing focused authority cannot retain a stale contextual hint");
+    }
+    {
+        using namespace widgetrail;
+        WidgetSnapshot menus;
+        menus.activeInputScopeId = L"root";
+        menus.root.id = L"root"; menus.root.kind = L"stack"; menus.root.inputScopeId = L"root";
+        menus.root.shortcuts = {{L"x", L"play", L"pressed", L"none", L"Play"},
+            {L"leftTrigger", L"prev", L"pressed", L"none", L"Previous tab"},
+            {L"rightTrigger", L"next", L"pressed", L"none", L"Next tab"},
+            {L"y", L"setup", L"pressed", L"none", L"Settings"}};
+        WidgetNode tile; tile.id = L"tile"; tile.kind = L"actionSurface"; tile.actionId = L"open";
+        tile.contextActions = {{L"queue", L"Play next"}};
+        menus.root.children = {tile};
+        RenderResult rendered;
+        rendered.focusRects[L"tile"] = {0, 0, 150, 150};
+        const auto authority = [&] { return guide::ResolveOpenWidgetAuthority(menus, L"tile", &rendered); };
+        auto resolved = authority();
+        Check(!resolved.actions.empty() && resolved.actions.front().button == L"menu" && resolved.actions.front().label == L"Options" && resolved.actions.front().contextMenu,
+            "legacy tile Menu binding is advertised ahead of ordinary shortcuts");
+        const auto measure = [](std::wstring_view text) -> std::optional<float> { return static_cast<float>(text.size()); };
+        const auto cards = [](std::span<const ControllerGuideHint> hints) -> std::optional<float> { return hints.size() * 100.0F; };
+        const auto line = guide::BuildOpenWidgetLine(ControllerGuideDensity::Compact, resolved, true, 300, measure, false, cards);
+        Check(line.hints.size() == 3 && line.hints[0].button == L"menu" && line.hints[0].label == L"Options" &&
+            line.hints[1].button == L"B" && line.hints[2].button == L"Guide", "Options survives a one-context-hint budget with both host escapes");
+        Check(line.accessible.find(L"Menu Options") != std::wstring::npos, "Options is included in guide accessibility text");
+        menus.root.children[0].contextMenuButton = L"x";
+        resolved = authority();
+        Check(resolved.actions.front().button == L"x" && resolved.actions.front().label == L"Options" &&
+            std::count_if(resolved.actions.begin(), resolved.actions.end(), [](const auto& a) { return a.button == L"x"; }) == 1,
+            "X context menu replaces conflicting playback hint");
+        menus.root.children[0].contextActions[0].isDisabled = true;
+        resolved = authority();
+        Check(std::none_of(resolved.actions.begin(), resolved.actions.end(), [](const auto& a) { return a.button == L"x"; }),
+            "all-disabled menu suppresses both Options and the shortcut it consumes");
+        menus.root.children[0].contextActions[0].isDisabled = false;
+        menus.root.children[0].contextActions[0].isBusy = true;
+        Check(!authority().actions.front().contextMenu, "all-busy menu is not advertised");
+        menus.root.children[0].contextActions[0].isBusy = false;
+        rendered.focusRects.clear();
+        Check(!authority().actions.front().contextMenu, "offscreen tile does not advertise a menu");
+        WidgetNode container; container.id = L"library.options"; container.kind = L"row";
+        container.contextMenuButton = L"y"; container.contextActions = {{L"library", L"Library"}};
+        menus.root.children.push_back(container);
+        rendered.contextMenuRects[container.id] = {160, 0, 50, 30};
+        resolved = authority();
+        Check(resolved.actions.front().button == L"y" && resolved.actions.front().contextMenu,
+            "visible non-focusable container menu is advertised with its actual binding");
+        auto otherMenu = container; otherMenu.id = L"other.options";
+        menus.root.children.push_back(otherMenu);
+        rendered.contextMenuRects[otherMenu.id] = {220, 0, 50, 30};
+        Check(!authority().actions.front().contextMenu, "ambiguous container menus are not advertised");
+        menus.root.children.pop_back();
+        menus.root.children[1].inputScopeId = L"other";
+        Check(!authority().actions.front().contextMenu, "container menu cannot cross input scopes");
+        menus.root.children[1].inputScopeId.clear();
+        menus.root.isDisabled = true;
+        Check(authority().actions.empty(), "disabled ancestor cannot advertise context or ordinary actions");
     }
     std::cout << "GuideInputCompatibilityTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

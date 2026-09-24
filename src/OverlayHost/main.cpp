@@ -17918,7 +17918,7 @@ private:
         widgetrail::guide::OpenWidgetAuthority authority;
         if (snapshot) {
             authority = widgetrail::guide::ResolveOpenWidgetAuthority(
-                *snapshot, interactionSession_.focusedElementId());
+                *snapshot, interactionSession_.focusedElementId(), &lastWidgetRenderResult_);
         }
         return widgetrail::guide::BuildOpenWidgetLine(
             widgetrail::ResolveControllerGuideDensity(

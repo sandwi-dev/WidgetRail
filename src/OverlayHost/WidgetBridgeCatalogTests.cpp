@@ -1529,6 +1529,16 @@ int main(int argc, char** argv) {
         std::wstring menuError;
         const auto parsed=widgetrail::testing::ParseWidgetSnapshotResponse(menu,menuError);
         Require(parsed && parsed->root.contextMenuButton==L"menu", "nonfocusable menu metadata crosses native parser");
+        auto changed = menu;
+        changed.replace(changed.find("\"sequence\":1"), std::string{"\"sequence\":1"}.size(), "\"sequence\":2");
+        changed.replace(changed.find("\"label\":\"Library\""), std::string{"\"label\":\"Library\""}.size(),
+            "\"label\":\"Library\",\"isDisabled\":true");
+        const auto disabled = widgetrail::testing::ParseWidgetSnapshotResponse(changed, menuError);
+        Require(disabled.has_value(), "disabled context action parses");
+        const auto impact = widgetrail::CompareWidgetSnapshots(*parsed, *disabled);
+        Require(impact && widgetrail::HasWidgetPresentationEffect(impact->effects, widgetrail::WidgetPresentationEffect::Paint) &&
+            !widgetrail::HasWidgetPresentationEffect(impact->effects, widgetrail::WidgetPresentationEffect::MeasureLayout),
+            "context action availability repaints affordances without layout");
         auto old=menu; old.replace(old.find("51"),2,"50"); menuError.clear();
         Require(!widgetrail::testing::ParseWidgetSnapshotResponse(old,menuError), "legacy protocol rejects explicit menu trigger");
     }

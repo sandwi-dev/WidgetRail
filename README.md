@@ -37,6 +37,9 @@ left stick. The right stick scrolls content, and a contextual guide shows the
 actions available for the current selection. Text fields support an on-screen
 controller keyboard.
 
+When a selection has additional actions, the guide shows **Options** with its
+controller button. Tiles also show a small **⋯** indicator while focused.
+
 - **Controller support:** Xbox-compatible controllers and native DualSense input over USB or Bluetooth. Controller hints use Xbox or PlayStation glyphs according to the detected input.
 - **Keyboard navigation:** arrows, Enter, and Escape provide focus, selection, and Back actions.
 - **Optional Exclusive control:** keep a supported controller's input in WidgetRail while the overlay is open. This requires HidHide and ViGEmBus; review the [compatibility notes](docs/users/known-limitations.md#games-and-controller-input) before enabling it.

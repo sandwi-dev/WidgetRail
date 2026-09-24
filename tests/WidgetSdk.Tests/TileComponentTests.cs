@@ -254,6 +254,10 @@ internal static class TileComponentTests
         Equal(ProtocolConstants.ContextMenuTriggerVersion, menu.ProtocolVersion);
         True(PresentationPropertyMetadata.Impact(PresentationProperty.ContextMenuButton).HasFlag(PresentationPropertyImpact.Paint),
             "Changing a menu trigger must rebuild its visible popup anchor geometry.");
+        var actionsImpact = PresentationPropertyMetadata.Impact(PresentationProperty.ContextActions);
+        True(actionsImpact.HasFlag(PresentationPropertyImpact.Paint) &&
+            !actionsImpact.HasFlag(PresentationPropertyImpact.MeasureLayout),
+            "Changing menu availability must repaint the indicator without relayout.");
         Equal(0, ViewSnapshotValidator.Validate(menu).Count);
         True(!menu.Root.Children[0].IsFocusable, "A menu hint must stay outside controller focus traversal.");
         Equal(ControllerButton.Menu, menu.Root.Children[0].ContextMenuButton);

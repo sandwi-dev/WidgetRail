@@ -933,6 +933,15 @@ precedence over a container menu for the same button. Disabled/busy owners and
 other input scopes cannot capture the trigger. These declarations use the
 existing full-widget context menu and action-validation path.
 
+The host guide automatically advertises **Options** with the actual Menu, X or Y
+binding when the resolved menu has an available action. These hints take priority
+over ordinary shortcuts when space is limited; host Back/Close hints remain.
+This applies to both focused action surfaces and visible container menus.
+Only the focused action surface gets a small themed ellipsis indicator. It is
+decorative, does not resize the tile or add a focus stop, and disappears when
+focus moves or all menu actions become unavailable. No extra authored hint is
+required. Changing context actions requests a paint update so the cue stays current.
+
 ### Live window content
 
 Use `UI.WindowPreview` by itself or pass it to the content overload of
