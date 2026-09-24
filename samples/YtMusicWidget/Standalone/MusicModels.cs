@@ -1,6 +1,6 @@
 namespace WidgetRail.Samples.YtMusicWidget.Standalone;
 
-public sealed record MusicItem(string Id, string Kind, string Title, string Subtitle = "", string Artwork = "");
+public sealed record MusicItem(string Id, string Kind, string Title, string Subtitle = "", string Artwork = "", string Section = "");
 public sealed record MusicPage(string Title, IReadOnlyList<MusicItem> Items);
 public sealed record PlayerState(string TrackId = "", bool Playing = false, bool Buffering = false,
     double Position = 0, double Duration = 0, double Volume = .5, string? Error = null);

@@ -1,7 +1,8 @@
 # YouTube Music
 
 Browse music and listen directly through WidgetRail. The standalone widget includes
-Home, Search, your Library, a local Queue, and a compact pinned player.
+Home recommendations grouped by YouTube Music’s section headings, Search, your Library,
+a local Queue, and a compact pinned player. Collections scroll continuously as you browse.
 **YTMDesktop is not required.**
 
 <!-- Screenshot: add screenshots/library-player.png showing the library and player. -->
@@ -56,9 +57,14 @@ profile and does not inspect your existing browser profile.
 encrypted for your Windows account. **Settings → Disconnect** removes it. To remove it
 manually, quit WidgetRail and delete only that application's directory.
 
-**Why is my very large library incomplete?** This first version loads up to 500 entries
-per collection and displays 12 at a time. Search can reach music outside that loaded window.
+**Why is my very large library incomplete?** This version loads up to 500 entries
+per collection. Cursor scrolling keeps only a bounded window in the UI. Search can reach
+music outside that loaded collection.
 Radio queues are finite; when they finish, playback stops unless repeat is enabled.
+
+**What audio quality does it use?** The player requests the best available M4A/AAC
+stream, falling back to other available audio formats. There is no bitrate selector;
+the actual quality depends on formats YouTube makes available for that track and account.
 
 ## Development
 

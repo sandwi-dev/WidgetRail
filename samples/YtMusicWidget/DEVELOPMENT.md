@@ -8,7 +8,11 @@ No Spotify or native-host implementation is changed.
 
 ## State and lifetime
 
-Browsing uses four horizontal tabs and one rich focus target per result. Song
+Browsing uses four horizontal tabs and one rich focus target per result.
+A `WidgetCursorResource` pages through the provider’s bounded in-memory collection
+in 24-entry windows, targeting 72 retained entries with a hard cap of 96. This is
+UI windowing; it does not bypass the provider’s 500-entry fetch cap. Home retains
+provider section titles and order. Song
 radio is a host-owned Menu context action. The SDK compact navigation sits above a persistent left player and right browsing pane,
 following the Spotify widget. Settings is a compact secondary page. Explicit focus-group
 entry requests enter newly loaded pages and restore collection selection on Back.
@@ -63,7 +67,7 @@ Live provider tests are not CI gates: YouTube service and account availability
 are outside the repository's control.
 
 `tests/YtMusicStandalone.Tests/Test-Layout.ps1 -TaffyLibrary <built-wrail_taffy_layout.lib>`
-builds deterministic empty/playing snapshots, uses the production Bridge style
+builds deterministic empty/playing/library/Home snapshots, uses the production Bridge style
 projection, and checks their actual native-renderer geometry at 980×700 and 620×400.
 It verifies the bounded player width, separate browsing pane, full-height cards,
 centered empty state and transport containment without opening or controlling the overlay.

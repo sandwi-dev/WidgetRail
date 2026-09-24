@@ -75,6 +75,17 @@ class ServiceTests(unittest.TestCase):
         self.service.disconnect({})
         self.assertEqual({}, self.service.cache)
 
+    def test_home_preserves_provider_sections_and_order(self):
+        class Fake:
+            def get_home(self, limit):
+                assert limit == 6
+                return [{"title": "Quick picks", "contents": [{"videoId": "M7lc1UVf-VE", "title": "First"}]},
+                        {"title": "For you", "contents": [{"playlistId": "PLtest", "title": "Mix"}]}]
+        self.service.client = lambda: Fake()
+        result = self.service.browse({"kind": "home", "value": ""})
+        self.assertEqual(["Quick picks", "For you"], [item["section"] for item in result["items"]])
+        self.assertEqual(["First", "Mix"], [item["title"] for item in result["items"]])
+
     def test_normalization_bounds_content_and_rejects_non_https_art(self):
         item = music.normalize({"videoId": "M7lc1UVf-VE", "title": "x" * 1000,
             "thumbnails": [{"url": "http://localhost/private"}]})

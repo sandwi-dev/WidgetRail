@@ -249,7 +249,12 @@ class MusicService:
         client = self.client()
         if kind == "home":
             shelves = client.get_home(limit=6)
-            result = {"title": "Home", "items": items([v for shelf in shelves for v in shelf.get("contents", [])])}
+            entries = []
+            for shelf in shelves:
+                for entry in items(shelf.get("contents", [])):
+                    entry["section"] = str(shelf.get("title") or "Recommendations")[:160]
+                    entries.append(entry)
+            result = {"title": "Home", "items": entries[:MAX_ITEMS]}
         elif kind == "search":
             if not value.strip():
                 return {"title": "Search", "items": []}
