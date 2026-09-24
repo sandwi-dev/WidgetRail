@@ -24,7 +24,8 @@ Use this index to find one API family at a time. For a first project, start with
 |---|---|
 | [`WidgetModel<TState>`](widget-model-reference.md) | Store related immutable UI state |
 | [`WidgetResource<TValue>`](async-work.md) | Load and cache one result |
-| [`WidgetCursorResource<TItem>`](collections.md) | Fetch a window of pages while browsing |
+| [`WidgetCursorResource<TItem>`](collections.md) | Fetch a continuous window of adjacent pages |
+| [`WidgetPagedResource<TItem>`](collections.md) | Load and cache one offset-based page at a time |
 | [`WidgetNavigator<TRoute>`](routes.md) | Keep the route stack and route lifetimes |
 | [`WidgetOperations`](async-work.md) | Coordinate asynchronous work by key |
 | [`WidgetOptimisticCommand`](async-work.md) | Show a provisional change and reconcile its result |

@@ -37,11 +37,13 @@ whether there is a new value to publish.
 |---|---|
 | A few related UI values | `WidgetModel<TState>` |
 | One fetched result and its loading state | `WidgetResource<TValue>` |
-| A paged collection | `WidgetCursorResource<TItem>` |
+| A continuous collection window | `WidgetCursorResource<TItem>` |
+| One offset-based page at a time | `WidgetPagedResource<TItem>` |
 | Which page is open | `WidgetNavigator<TRoute>` |
 
 These helpers solve different problems. You do not need to put every resource
 or route inside another model. Give each piece of state one clear owner.
+See [Collections](../reference/collections.md) for loading and caching differences.
 
 ## Reopening and refreshing are different
 

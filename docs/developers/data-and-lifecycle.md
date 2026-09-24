@@ -11,8 +11,11 @@ an error, and a retry action. If you already have useful data, consider keeping
 it visible while refreshing instead of replacing the whole page with a spinner.
 
 `WidgetResource<TValue>` helps own an asynchronous result. Use it for a device
-list or another result that can be loaded as one value. For long collections,
-use `WidgetCursorResource<TItem>` to fetch pages as people browse.
+list or another result that can be loaded as one value. For continuous browsing,
+use `WidgetCursorResource<TItem>` to fetch pages as people scroll. For a UI that
+replaces one page with the next, use `WidgetPagedResource<TItem>` when the provider
+supports offsets and a total count. An already-loaded list can be divided into
+pages locally without either resource. See [Collections](../reference/collections.md).
 
 ## A cursor is a loaded window into a collection
 

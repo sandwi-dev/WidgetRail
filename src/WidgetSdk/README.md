@@ -503,8 +503,8 @@ Presentation-only delayed feedback remains a separate `WidgetTimedMutation`
 when it has a different lifecycle—for example, a Busy threshold may retire on
 deactivation while the actual media command remains pending for its adapter.
 
-For a bounded offset/limit collection, create one
-`WidgetPagedResource<TItem>` with `CreatePagedResource` instead of maintaining
+For an offset/limit provider with a known total and a UI that displays one page
+at a time, create `WidgetPagedResource<TItem>` with `CreatePagedResource` instead of maintaining
 page tasks, generations, caches, and focus calculations independently. Supply
 `WidgetPagedResourceOptions<TItem>` with `PageSize`, `MaximumCachedPages`,
 `MaximumCachedItems`, `LoadPage`, `MapError`, and one or more
@@ -522,15 +522,25 @@ consumed entering-edge focus request. `Reset` cancels and clears the resource;
 its optional non-invalidating form is only for one immediately composed widget
 state update. `WhenIdleAsync` supports deterministic tests.
 
+Next/Previous replace the displayed page; there is no built-in arbitrary page
+jump. `Refresh()` reloads the current offset and bypasses its cached page.
+`EnsureLoaded()` reuses a ready page only while its cache entry is fresh;
+otherwise it loads offset zero. This differs from CursorResource, whose refresh
+starts at the beginning and whose ready data has no automatic expiry.
+
 Statuses are `NotLoaded`, `Loading`, `Ready`, `Refreshing`,
 `LoadingAdjacent`, and `Error`. Bounds are page size 1–100, cached pages 1–8,
 cached items 1–512 (and at least one page), pagination threshold 1–8, and error
 messages up to 256 visible characters. The lifetime defaults to `Active`, cache
-duration to five minutes, and last-good retention to enabled. This API remains
-offset-based with replacement-window compatibility.
+duration to five minutes, and last-good retention to enabled.
 
 For continuous feeds, use `WidgetCursorResource<TItem>` with opaque cursors and
-stable item keys. Capture one immutable presentation before constructing rows:
+stable item keys. Offset APIs can also be adapted to this model, as Spotify does.
+Both resource types are supported; choose by provider contract and browsing
+behavior. Already-loaded local lists generally need only scrolling or local
+pagination. See [Collections](../../docs/reference/collections.md) for the comparison.
+
+Capture one immutable cursor presentation before constructing rows:
 
 ```csharp
 var collection = resource.Capture();

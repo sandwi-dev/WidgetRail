@@ -52,8 +52,11 @@ short and avoid creating competing owners for the same state.
 ## Choose one owner
 
 Use a model for related UI state, a `WidgetResource<TValue>` for one loaded result,
-a `WidgetCursorResource<TItem>` for a collection, and a `WidgetNavigator<TRoute>`
-for routes. Do not copy each helper's state into another model just to group fields.
+a `WidgetCursorResource<TItem>` for a continuous collection, and a
+`WidgetPagedResource<TItem>` for one offset-based page at a time. Use
+`WidgetNavigator<TRoute>` for routes. See [Collections](collections.md) to choose
+between the collection resources. Do not copy each helper's state into another
+model just to group fields.
 
 For provisional changes, see [Optimistic commands](async-work.md#optimistic-actions).
 Exact signatures and behavior are documented in
