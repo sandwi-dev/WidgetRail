@@ -192,6 +192,42 @@ class ServiceTests(unittest.TestCase):
         self.service.disconnect({})
         self.assertEqual({}, self.service.cache)
 
+    def test_library_album_uses_browse_id_and_tracks_inherit_album_artwork(self):
+        class Fake:
+            def get_library_playlists(self, **_): return []
+            def get_library_songs(self, **_): return []
+            def get_library_artists(self, **_): return []
+            def get_library_albums(self, **_):
+                return [{"browseId": "MPRE_album", "playlistId": "OLAK_playback", "title": "Album"}]
+            def get_album(self, browse_id):
+                assert browse_id == "MPRE_album"
+                return {"title": "Album", "thumbnails": [{"url": "https://example.invalid/cover.jpg", "width": 300}],
+                        "tracks": [
+                            {"videoId": "M7lc1UVf-VE", "title": "First", "thumbnails": None},
+                            {"videoId": "AAAAAAAAAAA", "title": "Second"},
+                            {"videoId": "BBBBBBBBBBB", "title": "Third", "thumbnails": [
+                                {"url": "https://example.invalid/track.jpg", "width": 300}]}]}
+        self.service.client = lambda: Fake()
+        album = self.service.browse({"kind": "library", "value": "albums"})["items"][0]
+        result = self.service.browse({"kind": album["kind"], "value": album["id"]})
+        self.assertEqual(["First", "Second", "Third"], [track["title"] for track in result["items"]])
+        self.assertEqual(["https://example.invalid/cover.jpg", "https://example.invalid/cover.jpg",
+                          "https://example.invalid/track.jpg"], [track["artwork"] for track in result["items"]])
+        self.assertTrue(all(track["kind"] == "song" for track in result["items"]))
+
+    def test_album_identity_and_cover_fallback_do_not_change_playlists_or_admit_unsafe_art(self):
+        album = {"browseId": "MPRE_album", "playlistId": "OLAK_playback", "type": "Album"}
+        self.assertEqual("MPRE_album", music.normalize(album)["id"])
+        playlist = {"browseId": "VLplaylist", "playlistId": "PLplaylist", "type": "Playlist"}
+        self.assertEqual("PLplaylist", music.normalize(playlist)["id"])
+        class Fake:
+            def get_album(self, _):
+                return {"thumbnails": [{"url": "http://localhost/private"}],
+                        "tracks": [{"videoId": "M7lc1UVf-VE", "title": "Song", "thumbnails": []}]}
+        self.service.client = lambda: Fake()
+        result = self.service.browse({"kind": "album", "value": "MPRE_album"})
+        self.assertEqual("", result["items"][0]["artwork"])
+
     def test_large_playlist_is_bounded_in_provider_order(self):
         class Fake:
             def get_playlist(self, playlist_id, limit):

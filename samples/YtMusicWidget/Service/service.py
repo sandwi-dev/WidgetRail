@@ -206,31 +206,39 @@ class StreamUrlCache:
                 except OSError: pass
 
 
-def normalize(item, kind=None):
-    if not isinstance(item, dict):
-        return None
-    video = str(item.get("videoId") or "")
-    key = video or str(item.get("playlistId") or item.get("browseId") or "")
-    if not key or len(key) > 256:
-        return None
-    inferred = str(item.get("resultType") or item.get("type") or "").lower()
-    if not inferred:
-        inferred = "album" if key.startswith("MPRE") else "artist" if key.startswith("UC") else "playlist"
-    kind = "song" if VIDEO_ID.fullmatch(video) else kind or inferred
-    if kind not in {"song", "album", "artist", "playlist"}:
-        return None
-    title = str(item.get("title") or item.get("artist") or "Untitled")[:160]
-    artists = item.get("artists") or []
-    subtitle = ", ".join(str(a.get("name", "")) for a in artists if isinstance(a, dict))[:180]
+def artwork(item):
     # Watch/radio tracks use singular "thumbnail"; catalogue results use "thumbnails".
     thumbnail_values = item.get("thumbnails") or item.get("thumbnail") or []
     thumbnails = [t for t in thumbnail_values if isinstance(t, dict) and str(t.get("url", "")).startswith("https://")]
     image = min(thumbnails, key=lambda t: abs(int(t.get("width") or 300) - 300), default={})
-    return dict(id=key, kind=kind, title=title, subtitle=subtitle, artwork=str(image.get("url", ""))[:2048])
+    return str(image.get("url", ""))[:2048]
 
 
-def items(values, kind=None):
-    return [entry for value in (values or [])[:MAX_ITEMS] if (entry := normalize(value, kind))]
+def normalize(item, kind=None, *, fallback_artwork=""):
+    if not isinstance(item, dict):
+        return None
+    video = str(item.get("videoId") or "")
+    browse_id = str(item.get("browseId") or "")
+    playlist_id = str(item.get("playlistId") or "")
+    inferred = str(item.get("resultType") or item.get("type") or "").lower()
+    if not inferred:
+        inferred = "album" if browse_id.startswith("MPRE") else "artist" if browse_id.startswith("UC") else "playlist"
+    kind = "song" if VIDEO_ID.fullmatch(video) else kind or inferred
+    if kind not in {"song", "album", "artist", "playlist"}:
+        return None
+    # Library albums include a playback playlistId as well as their browseId.
+    # get_album requires the latter; a playlist ID cannot open an album page.
+    key = video if kind == "song" else browse_id if kind in {"album", "artist"} else playlist_id or browse_id
+    if not key or len(key) > 256:
+        return None
+    title = str(item.get("title") or item.get("artist") or "Untitled")[:160]
+    artists = item.get("artists") or []
+    subtitle = ", ".join(str(a.get("name", "")) for a in artists if isinstance(a, dict))[:180]
+    return dict(id=key, kind=kind, title=title, subtitle=subtitle, artwork=artwork(item) or fallback_artwork)
+
+
+def items(values, kind=None, *, fallback_artwork=""):
+    return [entry for value in (values or [])[:MAX_ITEMS] if (entry := normalize(value, kind, fallback_artwork=fallback_artwork))]
 
 
 def make_downloader(auth):
@@ -521,7 +529,8 @@ class MusicService:
             result = {"title": str(page.get("title", "Playlist"))[:160], "items": items(page.get("tracks"))}
         elif kind == "album":
             page = client.get_album(value)
-            result = {"title": str(page.get("title", "Album"))[:160], "items": items(page.get("tracks"))}
+            result = {"title": str(page.get("title", "Album"))[:160],
+                      "items": items(page.get("tracks"), "song", fallback_artwork=artwork(page))}
         elif kind == "artist":
             page = client.get_artist(value)
             contents = [v for section in ("songs", "albums", "singles") for v in (page.get(section) or {}).get("results", [])]
