@@ -1,6 +1,7 @@
 #include "DeclarativeRenderer.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetSurfaceFocus.h"
+#include "NativeStyle.h"
 #include <dwrite.h>
 #include <wrl/client.h>
 #include <filesystem>
@@ -12,7 +13,7 @@
 
 void Require(bool condition, const char* message) { if (!condition) throw std::runtime_error(message); }
 int Run(int argc, wchar_t** argv) {
-    if (argc != 7) return 2;
+    if (argc != 8) return 2;
     Microsoft::WRL::ComPtr<IDWriteFactory> factory;
     Require(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(factory.GetAddressOf()))), "DirectWrite unavailable");
     widgetrail::DeclarativeRenderer renderer{nullptr, factory.Get(), nullptr};
@@ -27,7 +28,22 @@ int Run(int argc, wchar_t** argv) {
         for (const auto size : {widgetrail::declarative::Size{980, 700}, widgetrail::declarative::Size{620, 400}}) {
             widgetrail::DeclarativeRenderOptions options;
             options.responsiveViewport = size;
-            const auto result = renderer.Render(nullptr, *snapshot, L"item.0", {0, 0, size.width, size.height}, options);
+            const auto result = renderer.Render(nullptr, *snapshot, fixture == L"search" ? L"search" : L"item.0", {0, 0, size.width, size.height}, options);
+            if (fixture == L"search") {
+                const auto* field = widgetrail::input::FindNodeInInputScope(*snapshot, L"search", snapshot->activeInputScopeId);
+                Require(field != nullptr && result.currentFocusRect.has_value(), "Search field is not focusable");
+                const auto style = widgetrail::NativeStyleAdapter::Adapt(widgetrail::ResolveDeclarativeComputedStyle(*field, true, false), {}).style;
+                const auto& rect = *result.currentFocusRect;
+                const auto clip = result.currentFocusOutlineClip.value_or(widgetrail::declarative::Rect{0, 0, size.width, size.height});
+                const auto outward = style.outlineOffsetPx() + std::max(2.0F, style.outlineWidthPx());
+                std::cout << "search ring rect=" << rect.x << "," << rect.y << "," << rect.width << "," << rect.height
+                    << " outward=" << outward << " clip=" << clip.x << "," << clip.y << "," << clip.width << "," << clip.height << '\n';
+                Require(rect.x - outward >= clip.x - .1F && rect.y - outward >= clip.y - .1F &&
+                    rect.x + rect.width + outward <= clip.x + clip.width + .1F &&
+                    rect.y + rect.height + outward <= clip.y + clip.height + .1F,
+                    "Search focus outline is clipped by its browsing container");
+                Require(rect.height >= 47, "Search field collapsed under compact layout");
+            }
             if (fixture == L"library") {
                 widgetrail::input::WidgetFocusGroupMemory filterFocus;
                 filterFocus.Remember(L"ytmusic", *snapshot, L"library.playlists");

@@ -30,6 +30,8 @@ if (args is ["--export-layout", var directory])
         await widget.OnActionAsync(new("refresh", "test"));
         await Until(() => widget.Render().FocusGroupEntryRequest is not null);
         await File.WriteAllBytesAsync(Path.Combine(directory, "library-refresh.snapshot.json"), SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 3)));
+        await widget.OnActionAsync(new("tab.search", "test"));
+        await File.WriteAllBytesAsync(Path.Combine(directory, "search.snapshot.json"), SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 4)));
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
     return 0;

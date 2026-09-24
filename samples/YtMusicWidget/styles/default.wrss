@@ -25,7 +25,8 @@
 .music-filter:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .music-refresh { width: 36px; height: 36px; padding: 8px; flex-shrink: 0; background: transparent; border-width: 0px; corner-radius: 6px; }
 .music-refresh:focused { background: var(--surface-active, #262623); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
-.music-search { width: 100%; min-height: 48px; }
+.music-search { width: 100%; min-width: 0px; min-height: 48px; flex-shrink: 0; padding: 10px 12px; font-size: 15px; color: var(--text); background: var(--surface); border-width: 1px; border-color: var(--border, #343431); corner-radius: 8px; }
+.music-search:focused { background: var(--surface-raised); border-color: var(--accent); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 
 .music-navigation-header { width: 100%; min-width: 0px; gap: 12px; align: center; flex-shrink: 0; }
 .music-navigation-tabs { min-width: 0px; flex-grow: 1; flex-shrink: 1; }
