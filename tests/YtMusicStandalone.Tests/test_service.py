@@ -162,12 +162,19 @@ class ServiceTests(unittest.TestCase):
             def get_watch_playlist(self, **kwargs):
                 self.calls += 1
                 assert kwargs == dict(videoId="M7lc1UVf-VE", radio=True, limit=100)
-                return {"tracks": [{"videoId": "M7lc1UVf-VE", "title": "Seed"}]}
+                return {"tracks": [
+                    {"videoId": "M7lc1UVf-VE", "title": "Seed", "thumbnail": [
+                        {"url": "https://example.invalid/seed-small.jpg", "width": 60},
+                        {"url": "https://example.invalid/seed.jpg", "width": 300}]},
+                    {"videoId": "AAAAAAAAAAA", "title": "Next", "thumbnail": [
+                        {"url": "https://example.invalid/next.jpg", "width": 300}]}]}
         fake = Fake()
         self.service.client = lambda: fake
         for _ in range(2):
             result = self.service.browse({"kind": "radio", "value": "M7lc1UVf-VE"})
             self.assertEqual("Seed", result["items"][0]["title"])
+            self.assertEqual(["https://example.invalid/seed.jpg", "https://example.invalid/next.jpg"],
+                             [item["artwork"] for item in result["items"]])
         self.assertEqual(2, fake.calls)
 
     def test_catalogue_cache_is_bounded_and_disconnect_invalidates_it(self):
@@ -231,6 +238,21 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual("", item["artwork"])
         self.assertEqual("song", item["kind"])
         self.assertIsNone(music.normalize({"title": "no identity"}))
+
+    def test_normalization_accepts_catalogue_and_radio_artwork_without_relaxing_url_policy(self):
+        for field in ("thumbnails", "thumbnail"):
+            with self.subTest(field=field):
+                item = {"videoId": "M7lc1UVf-VE", field: [
+                    {"url": "http://localhost/private", "width": 300},
+                    {"url": "https://example.invalid/art.jpg", "width": 320}]}
+                self.assertEqual("https://example.invalid/art.jpg", music.normalize(item)["artwork"])
+                item[field] = [{"url": "file:///private", "width": 300}, {"url": "http://localhost/private"}]
+                self.assertEqual("", music.normalize(item)["artwork"])
+                item[field] = None
+                self.assertEqual("", music.normalize(item)["artwork"])
+        self.assertEqual("https://example.invalid/radio.jpg", music.normalize({
+            "videoId": "M7lc1UVf-VE", "thumbnails": [],
+            "thumbnail": [{"url": "https://example.invalid/radio.jpg", "width": 300}]})["artwork"])
 
     def test_selection_joins_inflight_prefetch(self):
         import concurrent.futures

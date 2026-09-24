@@ -222,7 +222,9 @@ def normalize(item, kind=None):
     title = str(item.get("title") or item.get("artist") or "Untitled")[:160]
     artists = item.get("artists") or []
     subtitle = ", ".join(str(a.get("name", "")) for a in artists if isinstance(a, dict))[:180]
-    thumbnails = [t for t in item.get("thumbnails", []) if isinstance(t, dict) and str(t.get("url", "")).startswith("https://")]
+    # Watch/radio tracks use singular "thumbnail"; catalogue results use "thumbnails".
+    thumbnail_values = item.get("thumbnails") or item.get("thumbnail") or []
+    thumbnails = [t for t in thumbnail_values if isinstance(t, dict) and str(t.get("url", "")).startswith("https://")]
     image = min(thumbnails, key=lambda t: abs(int(t.get("width") or 300) - 300), default={})
     return dict(id=key, kind=kind, title=title, subtitle=subtitle, artwork=str(image.get("url", ""))[:2048])
 
