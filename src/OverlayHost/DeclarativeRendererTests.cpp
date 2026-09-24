@@ -1509,6 +1509,126 @@ void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
     Check(draw(L"poster.card").contextMenuIndicatorRects.empty(), "tile without actions has no indicator");
 }
 
+void TileDescendantsRespectResolvedShapeAndOverflow() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "tile clipping native resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    ok(wic->CreateBitmap(360, 390, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
+    RemoteImageCache cache({}, {}, [](std::wstring_view, std::stop_token, const RemoteImageLimits&) {
+        RemoteDecodedImage image;
+        image.width = image.height = 1; image.stride = 4;
+        image.premultipliedBgra = {0, 255, 0, 255};
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    });
+    const std::wstring source = L"https://example.test/tile-clip.png";
+    (void)cache.Request(source);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (cache.GetState(source) != RemoteImageState::Ready && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    Check(cache.GetState(source) == RemoteImageState::Ready, "tile clip artwork fixture ready");
+    for (const float pixelScale : {1.0F, 1.5F})
+    for (const bool poster : {false, true}) for (const float radius : {0.0F, 24.0F}) {
+        DeclarativeRenderer renderer(d2d.Get(), write.Get(), &cache);
+        auto snapshot = PosterTileSnapshot(L"");
+        auto& tile = snapshot.root.children.front();
+        snapshot.root.baseStyle = {{L"padding", LengthList(L"20px")}, {L"overflow", Keyword(L"visible")}};
+        tile.baseStyle = {{L"width", Length(120)}, {L"height", Length(160)},
+            {L"padding", LengthList(L"0px")}, {L"gap", Length(0)}, {L"flex-shrink", Number(0)},
+            {L"justify", Keyword(L"end")}, {L"overflow", Keyword(L"clip")},
+            {L"corner-radius", Length(radius)}, {L"background", Color(L"rgba(0, 0, 0, 0)")}};
+        tile.focusedStyle = {{L"outline-color", Color(L"#0000ff")}, {L"outline-offset", Length(4)}, {L"outline-width", Length(2)}};
+        auto content = Node(L"clip.content", L"stack");
+        content.baseStyle = {{L"width", Length(180)}, {L"height", Length(poster ? 80 : 160)},
+            {L"flex-shrink", Number(0)}, {L"background", Color(L"#ff0000")}};
+        auto descendant = Node(L"clip.descendant", L"stack");
+        descendant.baseStyle = content.baseStyle;
+        content.children.push_back(std::move(descendant));
+        if (poster) {
+            tile.children[0].imageSource = source;
+            tile.children[0].baseStyle[L"corner-radius"] = Length(60);
+            tile.children[1] = std::move(content);
+        } else {
+            tile.actionSurfacePresentation.clear();
+            tile.children = {std::move(content)};
+        }
+        DeclarativeRenderOptions options;
+        options.accessibility.reducedMotion = true;
+        options.pixelScale = pixelScale;
+        const Rect viewport{0, 0, 240, 260};
+        const auto draw = [&](std::wstring_view focus = L"") {
+            target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0.0F));
+            target->SetTransform(D2D1::Matrix3x2F::Scale(pixelScale, pixelScale));
+            auto result = renderer.Render(target.Get(), snapshot, focus, viewport, options);
+            ok(target->EndDraw());
+            Check(result.succeeded, "tile descendant frame succeeds");
+            return result;
+        };
+        const auto pixel = [&](int x, int y) {
+            std::array<BYTE, 4> value{};
+            const WICRect point{static_cast<int>((x + .5F) * pixelScale),
+                static_cast<int>((y + .5F) * pixelScale), 1, 1};
+            ok(canvas->CopyPixels(&point, 4, 4, value.data()));
+            return value;
+        };
+        const auto initial = draw();
+        const auto bounds = initial.elementRects.at(tile.id);
+        const int x = static_cast<int>(bounds.x), y = static_cast<int>(bounds.y);
+        Check(pixel(x + 60, y + 140)[2] > 240, "descendant content remains visible inside the tile");
+        Check(pixel(x + 130, y + 140)[3] == 0, "clipped tile content cannot paint beyond its right edge");
+        Check(pixel(x + 1, y + 159)[3] == (radius > 0 ? 0 : 255),
+            "root radius clips scrim and nested content, including fully square corners");
+        if (poster) {
+            Check(pixel(x + 5, y + 24)[1] > 240, "poster artwork does not keep its independent larger corner radius");
+            Check(pixel(x + 1, y + 1)[3] == (radius > 0 ? 0 : 255),
+                "poster artwork shares the root's square or rounded outer shape");
+        }
+        Check(initial.tileClipLayerCreates == (radius > 0 ? 1U : 0U),
+            "square tiles need no layer and rounded tiles allocate one reusable layer");
+        Check(renderer.PlanFocusUpdate(snapshot, L"", tile.id, viewport).has_value(), "tile focus plans a retained paint");
+        const auto focused = draw(tile.id);
+        Check(focused.fullLayoutBuildCount == 0 && focused.tileClipLayerCreates == 0 && focused.tileClipGeometryCreates == 0,
+            "focus repaint reuses layout and rounded clip resources");
+        Check(pixel(x + 60, y - 5)[0] > 100, "deferred focus outline remains visible outside the content clip");
+        tile.isSelected = true;
+        tile.pressedStyle[L"corner-radius"] = Length(30);
+        options.pressedElementId = tile.id;
+        const auto pressed = draw(tile.id);
+        Check(pixel(x + 1, y + 159)[2] == 0 && pixel(x + 60, y - 5)[0] > 100,
+            "selected and pressed tiles use the resolved shape while retaining focus visibility");
+        tile.pressedStyle[L"scale"] = Number(.9);
+        (void)draw(tile.id);
+        Check(pixel(x + 60, y + 155)[2] == 0 && pixel(x + 60, y + 3)[0] > 100,
+            "scaled pressed shape clips child content and keeps its translated outer focus ring");
+        options.pressedElementId.clear();
+        tile.isSelected = false;
+        auto& overflowContent = tile.children.back();
+        overflowContent.baseStyle[L"translate-x"] = Length(20);
+        (void)draw();
+        Check(pixel(x + 130, y + 140)[3] == 0, "clip contains translated descendants within the original tile");
+        tile.baseStyle[L"overflow"] = Keyword(L"visible");
+        const auto visible = draw();
+        Check(pixel(x + 130, y + 140)[2] > 240 && visible.tileClipPushes == 0,
+            "overflow visible lets decorative content extend outside the tile");
+        Near(visible.hitRegions.front().rect.width, bounds.width,
+            "overflow visible does not expand the tile's interactive target");
+        tile.baseStyle[L"overflow"] = Keyword(L"clip");
+        overflowContent.baseStyle.erase(L"translate-x");
+        renderer.DiscardTargetResources();
+        const auto recovered = draw();
+        Check(recovered.tileClipLayerCreates == (radius > 0 ? 1U : 0U) && pixel(x + 130, y + 140)[3] == 0,
+            "target-resource recovery recreates only the necessary clip and preserves clipping");
+    }
+}
+
 void PosterTileUsesFixedFullBleedGeometry() {
     using Microsoft::WRL::ComPtr;
     ComPtr<IDWriteFactory> write;
@@ -1835,6 +1955,10 @@ void RetainedPosterPaintPreservesArtwork() {
         return RemoteImageFetchResult{S_OK, std::move(image), {}};
     });
     auto snapshot = PosterAdmissionSnapshot(L"retained", L"vertical");
+    for (auto& poster : snapshot.root.children) {
+        poster.baseStyle[L"corner-radius"] = Length(16);
+        poster.children.front().baseStyle[L"corner-radius"] = Length(45);
+    }
     for (const auto& poster : snapshot.root.children)
         (void)cache.Request(poster.children.front().imageSource);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
@@ -1882,11 +2006,20 @@ void RetainedPosterPaintPreservesArtwork() {
                   std::abs(int(pixel[2]) - 0xe0) <= 2,
                 "visible poster pixels survive retained focus and scroll repaint");
             ++sampled;
+            const auto full = result.elementRects.at(poster.id);
+            if (full.y >= 0 && full.y + full.height <= 450) {
+                const auto* corner = pixels + static_cast<UINT>(full.y + 1) * stride +
+                    static_cast<UINT>(full.x + 1) * 4;
+                Check(corner[2] < 20 && corner[1] < 20,
+                    "rounded poster corners stay clipped during full and retained scrolling");
+            }
         }
         Check(sampled >= 3, "regression samples at least three visible poster rows");
         return result;
     };
-    (void)draw();
+    const auto firstFrame = draw();
+    Check(firstFrame.tileClipPushes == 3 && firstFrame.tileClipLayerCreates == 1 && firstFrame.tileClipGeometryCreates == 1,
+        "only visible posters push masks and equal-sized posters share clip resources");
     for (const auto next : {L"retained.poster.1", L"retained.poster.2", L"retained.poster.1"}) {
         const auto plan = renderer.PlanFocusUpdate(snapshot, focus, next, viewport);
         Check(plan && plan->work == IncrementalPresentationWork::PaintOnly,
@@ -7217,6 +7350,7 @@ int main() {
     ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles();
     ContextMenuVisualsCenterTextAndRespectThemes();
     PosterTileUsesFixedFullBleedGeometry();
+    TileDescendantsRespectResolvedShapeAndOverflow();
     RetainedPosterPaintPreservesArtwork();
     ScrollIndicatorsRespectViewportAndRetainedPaint();
     ScrollIndicatorStylePolicies();

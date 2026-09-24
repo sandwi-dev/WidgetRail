@@ -54,6 +54,12 @@ for exact selectors, properties, variables, and cascade behavior.
 Controller hints and common components use shared theme classes. Widget-specific
 artwork can retain its own colors; do not assume a brand logo is monochrome.
 
+Tile and PosterTile roots own their outer content shape. With `overflow: clip`,
+their resolved corner radius also clips descendants; zero gives square corners.
+Poster artwork uses that shared boundary instead of independent rounding on its
+generated image layer. `overflow: visible` permits decorative overflow, while
+focus outlines and interactive bounds remain separate from content clipping.
+
 Widget context menus, tray menus, and Select dropdowns share native popup styling:
 vertically centered labels, inset selection rows with a short leading accent,
 and theme-derived depth. A subdued outer border keeps emphasis on the selected row. Their

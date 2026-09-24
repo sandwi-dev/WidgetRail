@@ -532,6 +532,7 @@ struct DeclarativeRenderer::RenderPass final {
     std::unordered_map<std::string, PresentationNode> presentation;
     declarative::LayoutResult layout;
     RenderResult result;
+    std::size_t tileClipDepth{};
     std::set<std::wstring, std::less<>> diagnosticKeys;
     const WidgetNode* deferredFocusNode{};
     const NativeRenderStyle* deferredFocusStyle{};
@@ -998,8 +999,8 @@ struct DeclarativeRenderer::RenderPass final {
             element.minHeight = std::max(element.minHeight.value_or(0.0F), kMinimumControlSize);
         } else if (node.kind == L"actionSurface") {
             // A rich tile is one controller and pointer target. Enforce the
-            // platform's minimum target and clip its presentational subtree so
-            // painted content can never extend beyond the actionable bounds.
+            // platform's minimum target; authored overflow controls content
+            // clipping without changing that single actionable boundary.
             element.minWidth = std::max(element.minWidth.value_or(0.0F), kMinimumControlSize);
             element.minHeight = std::max(element.minHeight.value_or(0.0F), kMinimumControlSize);
         } else if (node.kind == L"backgroundSurface") {
@@ -1023,7 +1024,7 @@ struct DeclarativeRenderer::RenderPass final {
         element.overflow = style.overflow() == NativeOverflow::Clip
             ? declarative::OverflowBehavior::Clip
             : declarative::OverflowBehavior::Visible;
-        if (node.kind == L"actionSurface" || node.kind == L"windowPreview" || node.kind == L"mediaViewport" ||
+        if (node.kind == L"windowPreview" || node.kind == L"mediaViewport" ||
             node.kind == L"backgroundSurface")
             element.overflow = declarative::OverflowBehavior::Clip;
         if (node.kind == L"scroll") {
@@ -1161,7 +1162,7 @@ struct DeclarativeRenderer::RenderPass final {
     [[nodiscard]] static bool ClipsDescendants(
         const WidgetNode& node,
         const NativeRenderStyle& style) noexcept {
-        return node.kind == L"scroll" || node.kind == L"actionSurface" ||
+        return node.kind == L"scroll" ||
             node.kind == L"backgroundSurface" ||
             style.overflow() == NativeOverflow::Clip;
     }
@@ -3272,8 +3273,9 @@ struct DeclarativeRenderer::RenderPass final {
     void DrawBackgroundSurfaceOverlays(
         const NativeRenderStyle& style,
         const Rect rect,
-        const float opacity) {
-        const auto radius = RadiusFor(style, rect);
+        const float opacity,
+        const bool useImageShape = true) {
+        const auto radius = useImageShape ? RadiusFor(style, rect) : 0.0F;
         ComPtr<ID2D1Layer> layer;
         ComPtr<ID2D1RoundedRectangleGeometry> geometry;
         bool rounded{};
@@ -3320,9 +3322,10 @@ struct DeclarativeRenderer::RenderPass final {
         const Rect rect,
         const float opacity,
         const bool focused,
-        const bool drawOverlays = true) {
+        const bool drawOverlays = true,
+        const bool useImageShape = true) {
         if (!target || !committedBitmap) return false;
-        const auto radius = RadiusFor(style, rect);
+        const auto radius = useImageShape ? RadiusFor(style, rect) : 0.0F;
 
         ComPtr<ID2D1Layer> layer;
         ComPtr<ID2D1RoundedRectangleGeometry> geometry;
@@ -3354,7 +3357,7 @@ struct DeclarativeRenderer::RenderPass final {
         // Tint and scrim are surface styling, not texture content. Apply them
         // once after the two image layers so their authored opacity remains
         // stable throughout the blend.
-        if (drawOverlays) DrawBackgroundSurfaceOverlays(style, rect, opacity);
+        if (drawOverlays) DrawBackgroundSurfaceOverlays(style, rect, opacity, useImageShape);
         if (pushed) target->PopLayer();
         else target->PopAxisAlignedClip();
         return true;
@@ -3579,7 +3582,8 @@ struct DeclarativeRenderer::RenderPass final {
         const bool focused,
         const bool drawFailureFallback = true,
         ComPtr<ID2D1Bitmap>* const resolvedBitmap = nullptr,
-        ImagePresentationState* const resolvedState = nullptr) {
+        ImagePresentationState* const resolvedState = nullptr,
+        const bool useImageShape = true) {
         if (!target) return false;
         auto presentationState = ImagePresentationState::Pending;
         auto bitmap = owner->GetImageBitmap(
@@ -3636,7 +3640,7 @@ struct DeclarativeRenderer::RenderPass final {
         if (resolvedBitmap) *resolvedBitmap = bitmap;
         return DrawResolvedImageLayers(
             node, bitmap.Get(), false, nullptr, nullptr, 0.0F,
-            style, rect, opacity, focused);
+            style, rect, opacity, focused, true, useImageShape);
     }
 
     void DrawBackgroundSurfaceImage(
@@ -4568,6 +4572,47 @@ struct DeclarativeRenderer::RenderPass final {
         target->PopAxisAlignedClip();
     }
 
+    bool PushTileContentClip(const Rect rect, const float radius) {
+        if (!owner->d2dFactory_ || radius <= 0.0F || rect.width <= 0 || rect.height <= 0) return false;
+        if (owner->tileClipTarget_ != target) {
+            owner->tileClipResources_.clear();
+            owner->tileClipTarget_ = target;
+        }
+        if (owner->tileClipResources_.size() <= tileClipDepth)
+            owner->tileClipResources_.resize(tileClipDepth + 1);
+        auto& cached = owner->tileClipResources_[tileClipDepth];
+        if (!cached.layer) {
+            if (FAILED(target->CreateLayer(nullptr, cached.layer.GetAddressOf()))) return false;
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+            ++result.tileClipLayerCreates;
+#endif
+        }
+        if (!cached.geometry || cached.width != rect.width || cached.height != rect.height || cached.radius != radius) {
+            cached.geometry.Reset();
+            if (FAILED(owner->d2dFactory_->CreateRoundedRectangleGeometry(
+                {D2D1::RectF(0, 0, rect.width, rect.height), radius, radius}, cached.geometry.GetAddressOf()))) return false;
+            cached.width = rect.width;
+            cached.height = rect.height;
+            cached.radius = radius;
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+            ++result.tileClipGeometryCreates;
+#endif
+        }
+        // Local geometry survives scrolling translations; one reusable layer
+        // per active nesting depth avoids allocating a mask for every poster.
+        auto parameters = D2D1::LayerParameters();
+        parameters.contentBounds = D2DRect(rect);
+        parameters.geometricMask = cached.geometry.Get();
+        parameters.maskAntialiasMode = D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
+        parameters.maskTransform = D2D1::Matrix3x2F::Translation(rect.x, rect.y);
+        target->PushLayer(parameters, cached.layer.Get());
+        ++tileClipDepth;
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        ++result.tileClipPushes;
+#endif
+        return true;
+    }
+
     void DrawNode(
         const WidgetNode& node,
         const std::wstring_view inheritedInputScope = {}) {
@@ -4676,6 +4721,16 @@ struct DeclarativeRenderer::RenderPass final {
             !compositorBackground)
             DrawSurface(node, style, paintRect, opacity);
 
+        const bool clipTileContent = node.kind == L"actionSurface" &&
+            preparedNode->second.baseStyle.overflow() == NativeOverflow::Clip;
+        bool roundedTileClip{};
+        if (clipTileContent && visibleRect.width > .5F && visibleRect.height > .5F &&
+            RadiusFor(style, paintRect) > 0.0F) {
+            roundedTileClip = PushTileContentClip(paintRect, RadiusFor(style, paintRect));
+            if (!roundedTileClip)
+                Add(node.id, L"tile_clip_fallback", L"Rounded tile content clip could not be created; using rectangular clipping.");
+        }
+
         if (node.kind == L"backgroundSurface" && !compositorBackground)
             DrawBackgroundSurfaceImage(node, style, paintRect, opacity);
         else if (compositorBackground)
@@ -4690,7 +4745,10 @@ struct DeclarativeRenderer::RenderPass final {
                         preparedArtwork != prepared.end()) {
                         DrawImage(
                             artwork, preparedArtwork->second.paintStyle,
-                            paintRect, opacity, false);
+                            paintRect, opacity, false, true, nullptr, nullptr,
+                            // Full-bleed artwork shares the poster's shape,
+                            // independently of decode sizing or image caching.
+                            false);
                     }
                 }
             } else {
@@ -4808,7 +4866,7 @@ struct DeclarativeRenderer::RenderPass final {
         // their precomputed presentation clips so overflow-visible containers
         // do not accidentally become clipping ancestors merely because the
         // renderer recurses through them.
-        target->PopAxisAlignedClip();
+        if (!clipTileContent) target->PopAxisAlignedClip();
         if (node.kind == L"focusPresentationSurface") {
             const auto selection = ResolveFocusPresentationSelection(
                 snapshot->root, focusedId);
@@ -4835,6 +4893,11 @@ struct DeclarativeRenderer::RenderPass final {
         // Defer the focus ring until the entire tree is out of its nested
         // overflow clips. An outline is presentation, not child content, and
         // clipping it at a row/root boundary produces broken half-rings.
+        if (roundedTileClip) {
+            target->PopLayer();
+            --tileClipDepth;
+        }
+        if (clipTileContent) target->PopAxisAlignedClip();
         if (focused) {
             deferredFocusNode = &node;
             deferredFocusStyle = &style;
@@ -6038,6 +6101,8 @@ void DeclarativeRenderer::DiscardTargetResources() noexcept {
     surfaceClipTarget_ = nullptr;
     surfaceClipRect_ = {};
     surfaceClipRadius_ = 0.0F;
+    tileClipResources_.clear();
+    tileClipTarget_ = nullptr;
     // Surface-space rebases are exact only for the geometry on which they were
     // produced. Source bitmaps remain reusable and will recompute object-fit on
     // the resized target; a flattened transition is retired instead.

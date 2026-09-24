@@ -212,6 +212,9 @@ struct RenderResult final {
     std::map<std::wstring, std::uint32_t, std::less<>> textLineCounts;
     std::map<std::wstring, std::wstring, std::less<>> backgroundArtworkHandles;
     std::size_t fullLayoutBuildCount{};
+    std::size_t tileClipLayerCreates{};
+    std::size_t tileClipGeometryCreates{};
+    std::size_t tileClipPushes{};
     std::size_t focusFollowPassCount{};
     bool focusFollowConverged{};
     bool focusFollowNoProgress{};
@@ -751,6 +754,13 @@ private:
     float surfaceClipRadius_{};
     Microsoft::WRL::ComPtr<ID2D1Layer> surfaceClipLayer_;
     Microsoft::WRL::ComPtr<ID2D1RoundedRectangleGeometry> surfaceClipGeometry_;
+    struct TileClipResources final {
+        float width{}, height{}, radius{};
+        Microsoft::WRL::ComPtr<ID2D1Layer> layer;
+        Microsoft::WRL::ComPtr<ID2D1RoundedRectangleGeometry> geometry;
+    };
+    ID2D1RenderTarget* tileClipTarget_{};
+    std::vector<TileClipResources> tileClipResources_;
     std::unordered_map<std::wstring, BitmapCacheEntry> bitmaps_;
     std::size_t bitmapBytes_{};
     std::uint64_t bitmapAccessClock_{};

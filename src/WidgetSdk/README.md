@@ -270,6 +270,15 @@ visible copy therefore never changes the outer card geometry, while the
 complete untruncated strings remain in the poster's accessible name. Customize
 the stable `wrail-poster-tile__*` classes rather than adding nested controls.
 
+Tile and PosterTile content follows the root's resolved shape when `overflow`
+is `clip` (the default): artwork, scrim, and decorative descendants stay inside
+that boundary. Set `corner-radius: 0` for square corners. PosterTile's full-bleed
+artwork shares the root shape, so its generated artwork class does not need a
+matching radius; ordinary Tile thumbnails can still have their own rounding.
+The focus outline is painted outside the content clip. Explicit `overflow: visible`
+allows decorative overflow without expanding the tile's focus or pointer target.
+Theme and widget style precedence is unchanged.
+
 Use `UI.Toast` for brief feedback that must not steal focus. Tone is paired
 with visible text, duration is bounded to 2–30 seconds (five by default), and
 the widget—not the host or component—owns removal through normal lifecycle-
