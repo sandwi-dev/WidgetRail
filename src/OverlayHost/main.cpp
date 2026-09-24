@@ -46,6 +46,7 @@
 #include "TrayLayout.h"
 #include "RadialInput.h"
 #include "RadialTrayVisual.h"
+#include "PopupMenuVisual.h"
 
 #include <Windows.h>
 #include <d2d1_1.h>
@@ -9441,13 +9442,11 @@ private:
         }
     }
 
-    static constexpr float kTrayContextMenuItemHeightDip = 48.0F;
     static constexpr float kTrayContextMenuGapDip = 8.0F;
     static constexpr std::size_t kTrayContextMenuMaximumItems = 3;
     static constexpr float kTrayContextMenuHeadroomDip =
         kTrayContextMenuGapDip +
-        kTrayContextMenuItemHeightDip *
-            static_cast<float>(kTrayContextMenuMaximumItems);
+        widgetrail::shell::PopupMenuHeight(kTrayContextMenuMaximumItems);
     static constexpr float kPanelToGuideGapDip = 3.0F;
 
     [[nodiscard]] static float DashboardGuideContentBottomDip(
@@ -9515,8 +9514,10 @@ private:
         if (!WidgetContextMenuAuthorityCurrent() ||
             widgetContextMenu_->actions.empty()) return std::nullopt;
         const float menuWidth = std::min(320.0F, std::max(1.0F, width - 16.0F));
-        const float menuHeight = kTrayContextMenuItemHeightDip *
-            static_cast<float>(widgetContextMenu_->actions.size());
+        const float menuHeight = std::min(widgetrail::shell::PopupMenuHeight(widgetContextMenu_->actions.size()),
+            std::max(1.0F, height - 16.0F));
+        const float inset = std::min({widgetrail::shell::kPopupMenuInset, menuWidth * .25F, menuHeight * .25F});
+        const float rowHeight = (menuHeight - inset * 2) / static_cast<float>(widgetContextMenu_->actions.size());
         const float left = std::clamp(
             widgetContextMenu_->anchor.x + widgetContextMenu_->anchor.width * 0.5F -
                 menuWidth * 0.5F,
@@ -9541,8 +9542,7 @@ private:
                 action.label,
                 action.isBusy ? L"Busy" : action.style == L"danger" ? L"Danger" : L"",
                 widgetContextMenu_->sourceNodeId,
-                {left, top + kTrayContextMenuItemHeightDip * static_cast<float>(index),
-                 menuWidth, kTrayContextMenuItemHeightDip},
+                widgetrail::shell::PopupMenuItemBounds(result.bounds, index, rowHeight, inset),
                 widgetrail::accessibility::HostAction::InvokeWidgetContextAction,
                 !action.isDisabled && !action.isBusy,
                 index == selected,
@@ -9664,7 +9664,7 @@ private:
         if (tile == tray.tiles.end()) return std::nullopt;
         const float menuWidth = std::min(286.0F, std::max(1.0F, width - 16.0F));
         const float menuHeight =
-            kTrayContextMenuItemHeightDip * static_cast<float>(actions.size());
+            widgetrail::shell::PopupMenuHeight(actions.size());
         const float left = std::clamp(
             tile->bounds.x + tile->bounds.width * 0.5F - menuWidth * 0.5F,
             8.0F, std::max(8.0F, width - menuWidth - 8.0F));
@@ -9687,9 +9687,7 @@ private:
                 action.name,
                 action.value,
                 action.targetId,
-                {left, top +
-                    kTrayContextMenuItemHeightDip * static_cast<float>(index),
-                 menuWidth, kTrayContextMenuItemHeightDip},
+                widgetrail::shell::PopupMenuItemBounds(result.bounds, index),
                 hostAction,
                 action.enabled,
                 index == selectedItem,
@@ -17708,44 +17706,16 @@ private:
         if (!layout->radialBounds && layout->nextOverflow) drawOverflow(*layout->nextOverflow);
         if (const auto menu = CurrentTrayContextMenuLayout(
                 *layout, CurrentTrayViewportWidthDip(width))) {
-            const D2D1_ROUNDED_RECT panel{
-                D2D1::RectF(
-                    menu->bounds.x, menu->bounds.y,
-                    menu->bounds.x + menu->bounds.width,
-                    menu->bounds.y + menu->bounds.height),
-                trayItemCornerRadius_, trayItemCornerRadius_};
-            renderTarget_->FillRoundedRectangle(panel, backgroundBrush_.Get());
-            renderTarget_->DrawRoundedRectangle(
-                panel, focusBrush_.Get(), focusOutlineWidth_);
+            const widgetrail::shell::PopupMenuColors colors{
+                backgroundBrush_->GetColor(), accentBrush_->GetColor(),
+                trayItemTextBrush_->GetColor(), selectedTextBrush_->GetColor(), dashboardSecondaryBrush_->GetColor(),
+                focusBrush_->GetColor(), HighContrastSurfacePolicy()};
+            widgetrail::shell::DrawPopupMenuPanel(renderTarget_.Get(), menu->bounds,
+                colors, trayItemCornerRadius_, focusOutlineWidth_);
             for (const auto& item : menu->semantics.items) {
-                const auto& bounds = item.bounds;
-                if (item.selected) {
-                    const D2D1_ROUNDED_RECT selection{
-                        D2D1::RectF(
-                            bounds.x + 3.0F, bounds.y + 3.0F,
-                            bounds.x + bounds.width - 3.0F,
-                            bounds.y + bounds.height - 3.0F),
-                        trayItemCornerRadius_ * 0.65F,
-                        trayItemCornerRadius_ * 0.65F};
-                    renderTarget_->FillRoundedRectangle(selection, accentBrush_.Get());
-                }
-                DrawTextLine(
-                    item.name, hintFormat_.Get(),
-                    D2D1::RectF(
-                        bounds.x + 14.0F, bounds.y + 5.0F,
-                        bounds.x + bounds.width - 12.0F,
-                        bounds.y + 25.0F),
-                    item.enabled ? trayItemTextBrush_.Get()
-                                 : dashboardSecondaryBrush_.Get());
-                if (!item.value.empty()) {
-                    DrawTextLine(
-                        item.value, hintFormat_.Get(),
-                        D2D1::RectF(
-                            bounds.x + 14.0F, bounds.y + 25.0F,
-                            bounds.x + bounds.width - 12.0F,
-                            bounds.y + bounds.height - 4.0F),
-                        dashboardSecondaryBrush_.Get());
-                }
+                widgetrail::shell::DrawPopupMenuRow(renderTarget_.Get(), writeFactory_.Get(),
+                    hintFormat_.Get(), item.bounds, item.name, item.value, item.selected,
+                    item.enabled, colors, trayItemCornerRadius_);
             }
         }
         if (publishAccessibility)
@@ -18007,39 +17977,20 @@ private:
         const auto menu = CurrentWidgetContextMenuLayout(width, height);
         if (!menu) return;
         widgetContextMenuPixelsPending_ = true;
-        const D2D1_ROUNDED_RECT panel{
-            D2D1::RectF(
-                menu->bounds.x, menu->bounds.y,
-                menu->bounds.x + menu->bounds.width,
-                menu->bounds.y + menu->bounds.height),
-            trayItemCornerRadius_, trayItemCornerRadius_};
-        renderTarget_->FillRoundedRectangle(panel, backgroundBrush_.Get());
-        renderTarget_->DrawRoundedRectangle(
-            panel, focusBrush_.Get(), focusOutlineWidth_);
-        for (std::size_t index = 0;
-             index < menu->semantics.items.size(); ++index) {
+        const widgetrail::shell::PopupMenuColors colors{
+            backgroundBrush_->GetColor(), accentBrush_->GetColor(),
+            textBrush_->GetColor(), selectedTextBrush_->GetColor(), secondaryBrush_->GetColor(),
+            focusBrush_->GetColor(), HighContrastSurfacePolicy()};
+        widgetrail::shell::DrawPopupMenuPanel(renderTarget_.Get(), menu->bounds,
+            colors, trayItemCornerRadius_, focusOutlineWidth_);
+        for (std::size_t index = 0; index < menu->semantics.items.size(); ++index) {
             const auto& item = menu->semantics.items[index];
             const auto& action = widgetContextMenu_->actions[index];
-            const auto& bounds = item.bounds;
-            if (item.selected) {
-                const D2D1_ROUNDED_RECT selection{
-                    D2D1::RectF(
-                        bounds.x + 3.0F, bounds.y + 3.0F,
-                        bounds.x + bounds.width - 3.0F,
-                        bounds.y + bounds.height - 3.0F),
-                    trayItemCornerRadius_ * 0.65F,
-                    trayItemCornerRadius_ * 0.65F};
-                renderTarget_->FillRoundedRectangle(selection, accentBrush_.Get());
-            }
             const std::wstring visual = action.style == L"danger"
                 ? L"Danger · " + item.name : item.name;
-            DrawTextLine(
-                visual, hintFormat_.Get(),
-                D2D1::RectF(
-                    bounds.x + 14.0F, bounds.y + 10.0F,
-                    bounds.x + bounds.width - 12.0F,
-                    bounds.y + bounds.height - 8.0F),
-                item.enabled ? textBrush_.Get() : secondaryBrush_.Get());
+            widgetrail::shell::DrawPopupMenuRow(renderTarget_.Get(), writeFactory_.Get(),
+                hintFormat_.Get(), item.bounds, visual, L"", item.selected,
+                item.enabled, colors, trayItemCornerRadius_);
         }
     }
 
@@ -18050,18 +18001,12 @@ private:
         const auto layout = CurrentSelectPopupLayout(width, height);
         const auto& popup = interactionSession_.selectPopup();
         if (!layout || !popup || layout->items.empty()) return;
-        const D2D1_ROUNDED_RECT panel{
-            D2D1::RectF(
-                layout->bounds.x, layout->bounds.y,
-                layout->bounds.x + layout->bounds.width,
-                layout->bounds.y + layout->bounds.height),
-            trayItemCornerRadius_, trayItemCornerRadius_};
-        renderTarget_->FillRoundedRectangle(panel, backgroundBrush_.Get());
-        renderTarget_->DrawRoundedRectangle(
-            panel, focusBrush_.Get(), focusOutlineWidth_);
-        const auto priorParagraphAlignment = hintFormat_->GetParagraphAlignment();
-        const bool popupTextCentered = SUCCEEDED(hintFormat_->SetParagraphAlignment(
-            DWRITE_PARAGRAPH_ALIGNMENT_CENTER));
+        const widgetrail::shell::PopupMenuColors colors{
+            backgroundBrush_->GetColor(), accentBrush_->GetColor(),
+            textBrush_->GetColor(), selectedTextBrush_->GetColor(), secondaryBrush_->GetColor(),
+            focusBrush_->GetColor(), HighContrastSurfacePolicy()};
+        widgetrail::shell::DrawPopupMenuPanel(renderTarget_.Get(), layout->bounds,
+            colors, trayItemCornerRadius_, focusOutlineWidth_);
         widgetrail::DeclarativeRenderOptions iconOptions;
         const auto* iconDescriptor = sessions_.FindDescriptor(state_.activeWidget());
         if (iconDescriptor) {
@@ -18076,16 +18021,11 @@ private:
         for (const auto& item : layout->items) {
             if (item.optionIndex >= popup->options.size()) continue;
             const auto& option = popup->options[item.optionIndex];
-            if (item.optionIndex == popup->highlightedOption) {
-                const D2D1_ROUNDED_RECT selected{
-                    D2D1::RectF(
-                        item.bounds.x + 3.0F, item.bounds.y + 3.0F,
-                        item.bounds.x + item.bounds.width - 3.0F,
-                        item.bounds.y + item.bounds.height - 3.0F),
-                    trayItemCornerRadius_ * 0.65F,
-                    trayItemCornerRadius_ * 0.65F};
-                renderTarget_->FillRoundedRectangle(selected, accentBrush_.Get());
-            }
+            auto* optionInk = option.isDisabled || option.isBusy ? secondaryBrush_.Get()
+                : item.optionIndex == popup->highlightedOption ? selectedTextBrush_.Get() : textBrush_.Get();
+            if (item.optionIndex == popup->highlightedOption)
+                widgetrail::shell::DrawPopupMenuSelection(renderTarget_.Get(), item.bounds,
+                    colors, trayItemCornerRadius_);
             widgetrail::icons::NativeIcon icon{};
             const bool hasSemanticIcon = !option.glyph.empty() &&
                 widgetrail::icons::TryParseNativeIcon(option.glyph, icon);
@@ -18094,18 +18034,14 @@ private:
                 item.bounds, option.isSelected, hasIcon, 12.0F, 10.0F);
             if (content.checkmarkBounds) {
                 const auto& bounds = *content.checkmarkBounds;
-                DrawTextLine(
-                    L"✓", hintFormat_.Get(),
-                    D2D1::RectF(
-                        bounds.x, bounds.y,
-                        bounds.x + bounds.width, bounds.y + bounds.height),
-                    option.isDisabled || option.isBusy
-                        ? secondaryBrush_.Get() : textBrush_.Get());
+                widgetrail::shell::DrawPopupMenuText(renderTarget_.Get(), writeFactory_.Get(),
+                    hintFormat_.Get(), bounds, L"✓", L"",
+                    optionInk,
+                    secondaryBrush_.Get());
             }
             if (content.glyphBounds) {
                 const auto& bounds = *content.glyphBounds;
-                auto* brush = option.isDisabled || option.isBusy
-                    ? secondaryBrush_.Get() : textBrush_.Get();
+                auto* brush = optionInk;
                 const auto tint = brush->GetColor();
                 const bool painted = option.packageIcon && declarativeRenderer_ &&
                     declarativeRenderer_->PaintPackageIcon(
@@ -18120,18 +18056,10 @@ private:
                         brush, 1.7F);
                 }
             }
-            const auto& labelBounds = content.labelBounds;
-            DrawTextLine(
-                option.label, hintFormat_.Get(),
-                D2D1::RectF(
-                    labelBounds.x, labelBounds.y,
-                    labelBounds.x + labelBounds.width,
-                    labelBounds.y + labelBounds.height),
-                option.isDisabled || option.isBusy
-                    ? secondaryBrush_.Get() : textBrush_.Get());
-        }
-        if (popupTextCentered) {
-            (void)hintFormat_->SetParagraphAlignment(priorParagraphAlignment);
+            widgetrail::shell::DrawPopupMenuText(renderTarget_.Get(), writeFactory_.Get(),
+                hintFormat_.Get(), content.labelBounds, option.label, L"",
+                optionInk,
+                secondaryBrush_.Get());
         }
     }
 

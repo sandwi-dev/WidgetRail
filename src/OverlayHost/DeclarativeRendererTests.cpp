@@ -1,4 +1,5 @@
 #include "ControllerGuideVisual.h"
+#include "PopupMenuVisual.h"
 #include "DeclarativeRenderer.h"
 #include "NativeIcons.h"
 #include "RemoteImageCache.h"
@@ -1342,6 +1343,83 @@ void NestedPercentagePostersKeepBoundsAcrossScrollPaths() {
         const auto rebuilt = draw(L"tile.11");
         Near(rebuilt.elementRects.at(L"tile.11.title").width, moving.elementRects.at(L"tile.11.title").width,
             "fresh and incremental paths agree on title width");
+    }
+}
+
+void ContextMenuVisualsCenterTextAndRespectThemes() {
+    using Microsoft::WRL::ComPtr;
+    using namespace widgetrail::shell;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "context menu visual resource succeeds"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    ok(wic->CreateBitmap(360, 168, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
+    target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+    const Rect bounds{20, 20, 320, PopupMenuHeight(2)};
+    const auto row = PopupMenuItemBounds(bounds, 0);
+    const auto second = PopupMenuItemBounds(bounds, 1);
+    Near(row.height, 48, "menu retains controller target height");
+    Near(second.y, row.y + row.height, "menu row input bounds stay contiguous");
+    for (const bool light : {false, true}) {
+        for (const bool highContrast : {false, true}) {
+            const PopupMenuColors colors{
+                D2D1::ColorF(light ? 0xF2EFE7 : 0x251B32),
+                D2D1::ColorF(light ? 0xC6D7CC : 0x4C385E),
+                D2D1::ColorF(light ? 0x14261A : 0xF3ECFA),
+                D2D1::ColorF(light ? 0x14261A : 0xF3ECFA),
+                D2D1::ColorF(light ? 0x536A5A : 0xAF9EBB),
+                D2D1::ColorF(light ? 0x2F6644 : 0xD8BAEE), highContrast};
+            for (const float fontSize : {14.0F, 21.0F}) {
+                ComPtr<IDWriteTextFormat> font;
+                ok(write->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                    DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize, L"en-us", font.GetAddressOf()));
+                font->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
+                const auto draw = [&](std::wstring_view label, std::wstring_view detail) {
+                    target->BeginDraw();
+                    target->Clear(D2D1::ColorF(0, 0.0F));
+                    DrawPopupMenuPanel(target.Get(), bounds, colors, 16, 2);
+                    DrawPopupMenuRow(target.Get(), write.Get(), font.Get(), row,
+                        label, detail, true, true, colors, 16);
+                    ok(target->EndDraw());
+                    std::vector<BYTE> pixels(360 * 168 * 4);
+                    ok(canvas->CopyPixels(nullptr, 360 * 4, static_cast<UINT>(pixels.size()), pixels.data()));
+                    return pixels;
+                };
+                const auto plain = draw(L"", L"");
+                for (const auto detail : {L"", L"50%"}) {
+                    const auto pixels = draw(detail[0] ? L"Opacity" : L"Play next", detail);
+                    int firstY = 168, lastY = -1;
+                    for (int y = 0; y < 168; ++y) for (int x = 0; x < 360; ++x) {
+                        const auto offset = static_cast<std::size_t>((y * 360 + x) * 4);
+                        if (!std::equal(pixels.begin() + offset, pixels.begin() + offset + 4, plain.begin() + offset)) {
+                            firstY = std::min(firstY, y);
+                            lastY = std::max(lastY, y);
+                        }
+                    }
+                    Check(lastY >= firstY, "menu paints readable label pixels in each palette");
+                    Check(std::abs((firstY + lastY + 1) * .5F - (row.y + row.height * .5F)) <= 4.0F,
+                        "single and two-line menu labels are vertically centered");
+                    Check(firstY >= row.y && lastY < row.y + row.height,
+                        "scaled menu text stays in its input row");
+                }
+                Check(font->GetParagraphAlignment() == DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
+                    "menu alignment does not modify the shared guide text format");
+                bool outsidePaint{};
+                for (int y = 0; y < 168; ++y) for (int x = 0; x < 360; ++x) {
+                    if (x < bounds.x || x >= bounds.x + bounds.width || y < bounds.y || y >= bounds.y + bounds.height)
+                        outsidePaint |= plain[(y * 360 + x) * 4 + 3] != 0;
+                }
+                Check(!outsidePaint, "menu shadow and border stay inside reserved repaint bounds");
+                Check((plain[(80 * 360 + 23) * 4 + 3] == 0) == highContrast,
+                    "high contrast omits decorative shadow while ordinary themes retain depth");
+            }
+        }
     }
 }
 
@@ -7120,6 +7198,7 @@ int main() {
     ActionSurfacePlanningAndInteractionGeometry();
     NestedPercentagePostersKeepBoundsAcrossScrollPaths();
     ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles();
+    ContextMenuVisualsCenterTextAndRespectThemes();
     PosterTileUsesFixedFullBleedGeometry();
     RetainedPosterPaintPreservesArtwork();
     ScrollIndicatorsRespectViewportAndRetainedPaint();

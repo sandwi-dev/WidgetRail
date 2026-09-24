@@ -1,4 +1,5 @@
 #include "WidgetInteractionSession.h"
+#include "PopupMenuMetrics.h"
 
 #include <algorithm>
 #include <cmath>
@@ -11,21 +12,23 @@ SelectPopupLayout ComputeSelectPopupLayout(
     const declarative::Rect anchor,
     const declarative::Rect viewport,
     const SelectPopupBinding& popup) {
-    constexpr float kRowHeight = 38.0F;
+    constexpr float kRowHeight = shell::kPopupMenuRowHeight;
     constexpr float kMinimumWidth = 220.0F;
     constexpr float kGap = 4.0F;
     constexpr std::size_t kMaximumVisibleRows = 8;
     SelectPopupLayout result;
     if (popup.options.empty() || viewport.width <= 1.0F || viewport.height <= 1.0F)
         return result;
+    const float inset = std::min({shell::kPopupMenuInset, viewport.width * .25F, viewport.height * .25F});
+    const float contentHeight = viewport.height - inset * 2;
     const auto rowsThatFit = std::max<std::size_t>(
-        1U, static_cast<std::size_t>(std::floor(viewport.height / kRowHeight)));
+        1U, static_cast<std::size_t>(std::floor(contentHeight / kRowHeight)));
     const auto visibleCount = std::min(
         {kMaximumVisibleRows, popup.options.size(), rowsThatFit});
     const float rowHeight = std::min(
-        kRowHeight, viewport.height / static_cast<float>(visibleCount));
+        kRowHeight, contentHeight / static_cast<float>(visibleCount));
     const float width = std::min(viewport.width, std::max(anchor.width, kMinimumWidth));
-    const float height = rowHeight * static_cast<float>(visibleCount);
+    const float height = rowHeight * static_cast<float>(visibleCount) + inset * 2;
     float x = std::clamp(anchor.x, viewport.x, viewport.x + viewport.width - width);
     float y = anchor.y + anchor.height + kGap;
     if (y + height > viewport.y + viewport.height)
@@ -41,7 +44,7 @@ SelectPopupLayout ComputeSelectPopupLayout(
     for (std::size_t row = 0; row < visibleCount; ++row) {
         result.items.push_back({
             first + row,
-            {x, y + static_cast<float>(row) * rowHeight, width, rowHeight},
+            shell::PopupMenuItemBounds(result.bounds, row, rowHeight, inset),
         });
     }
     return result;

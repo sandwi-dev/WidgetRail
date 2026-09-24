@@ -54,6 +54,12 @@ for exact selectors, properties, variables, and cascade behavior.
 Controller hints and common components use shared theme classes. Widget-specific
 artwork can retain its own colors; do not assume a brand logo is monochrome.
 
+Widget context menus, tray menus, and Select dropdowns share native popup styling:
+vertically centered labels, inset selection rows, and theme-derived depth. Their
+surface, selection, selected text, and focus colors follow the existing host
+theme styles. Shadows and decorative shading are omitted in high-contrast mode.
+Dropdowns retain their checkmarks, icons, and value-selection behavior.
+
 ## Theme packages and updates
 
 A theme is a data-only `.wrtheme` package. It has its own manifest and immutable

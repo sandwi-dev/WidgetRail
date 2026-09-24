@@ -1,5 +1,6 @@
 #include "WidgetInteractionSession.h"
 #include "WidgetSessionCoordinator.h"
+#include "PopupMenuMetrics.h"
 
 #include <algorithm>
 #include <cmath>
@@ -416,10 +417,12 @@ void HostFocusRestorationUsesPresentationAuthority() {
     Check(input.is_open(), "the host focus-restoration source is available");
     std::ostringstream buffer;
     buffer << input.rdbuf();
-    const auto source = buffer.str();
+    auto source = buffer.str();
+    // Git checkouts on Windows may use CRLF; source boundaries are logical lines.
+    std::erase(source, '\r');
 
     const auto helperBegin = source.find(
-        "const widgetrail::WidgetSnapshot* FocusRestorationSnapshotFor(");
+        "const widgetrail::WidgetSnapshot* PresentationSnapshotFor(");
     const auto helperEnd = source.find(
         "const widgetrail::WidgetSnapshot* DashboardActionSnapshotFor(",
         helperBegin);
@@ -445,9 +448,9 @@ void HostFocusRestorationUsesPresentationAuthority() {
     const auto remember = source.substr(rememberBegin, restoreBegin - rememberBegin);
     const auto restore = source.substr(restoreBegin, restoreEnd - restoreBegin);
     Check(remember.find("InteractionSnapshotFor(widgetId)") != std::string::npos &&
-              remember.find("FocusRestorationSnapshotFor(widgetId)") == std::string::npos,
+              remember.find("PresentationSnapshotFor(widgetId)") == std::string::npos,
           "remembering focus still requires exact Interactive input authority");
-    Check(restore.find("FocusRestorationSnapshotFor(widgetId)") != std::string::npos &&
+    Check(restore.find("PresentationSnapshotFor(widgetId)") != std::string::npos &&
               restore.find("InteractionSnapshotFor(widgetId)") == std::string::npos,
           "the active-surface restore path consumes only the presentation-authority selector");
 
@@ -2297,13 +2300,21 @@ void AnchoredSelectPopupIsExactAndBounded() {
         {40.0F, 120.0F, 180.0F, 44.0F},
         {32.0F, 80.0F, 260.0F, 304.0F},
         *longSession.selectPopup());
-    Check(scrolled.items.size() == 8 &&
-              scrolled.items.front().optionIndex == 2 &&
+    Check(scrolled.items.size() == 5 &&
+              scrolled.items.front().optionIndex == 5 &&
               scrolled.items.back().optionIndex == 9 &&
               scrolled.bounds.x >= 32.0F && scrolled.bounds.y >= 80.0F &&
               scrolled.bounds.x + scrolled.bounds.width <= 292.0F &&
               scrolled.bounds.y + scrolled.bounds.height <= 384.0F,
-          "wheel-reachable rows scroll beyond eight while staying inside content bounds");
+          "shared popup row height and padding preserve the highlighted option inside content bounds");
+    Check(scrolled.items.front().bounds.height == widgetrail::shell::kPopupMenuRowHeight &&
+              scrolled.items.front().bounds.y == scrolled.bounds.y + widgetrail::shell::kPopupMenuInset &&
+              !widgetrail::input::HitTestSelectPopup(scrolled, scrolled.bounds.x + 1, scrolled.bounds.y + 1),
+          "dropdown uses shared menu spacing without making its shadow or padding an option target");
+    const auto tall = ComputeSelectPopupLayout(
+        {40.0F, 120.0F, 180.0F, 44.0F}, {32.0F, 80.0F, 260.0F, 408.0F}, *longSession.selectPopup());
+    Check(tall.items.size() == 8 && tall.items.front().optionIndex == 2 && tall.items.back().optionIndex == 9,
+          "tall dropdown retains its eight-row bound and scrolls to the highlighted option");
 }
 
 } // namespace
