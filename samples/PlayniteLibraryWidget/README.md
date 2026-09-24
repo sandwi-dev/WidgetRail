@@ -14,14 +14,19 @@ to play, and launch it with your controller without leaving the overlay.
 
 ## Connect your library
 
-This widget connects to **Playnite Bridge**, a separate local service. Installing
-the widget does not install Playnite or configure the bridge for you.
+This widget connects to [**Playnite Bridge**](https://github.com/rollacode/playnite-bridge)
+by [rollacode](https://github.com/rollacode), a Playnite plugin that provides a
+local API. Install the plugin separately from the WidgetRail widget.
 
 1. Install Playnite Library's `.wrwidget` from [WidgetRail releases](https://github.com/sandwi-dev/WidgetRail/releases) through **Settings → Widgets**. Review the full-trust prompt and enable it.
-2. Install and enable Playnite Bridge in Playnite, and keep Playnite running.
-3. Copy the token from Playnite Bridge settings.
-4. In WidgetRail, select **Set up connection**, paste the token, and save it.
-5. Confirm the connection, then select **Back** to load your library.
+2. Download the `PlayniteBridge_vX.X.X.pext` plugin from [Playnite Bridge releases](https://github.com/rollacode/playnite-bridge/releases).
+3. Drag the `.pext` file onto Playnite, follow its installation prompts, and restart Playnite. Keep Playnite running while using the widget.
+4. In Playnite, open **Settings → Plugins → Playnite Bridge** and copy the API token.
+5. In WidgetRail, select **Set up connection**, paste the token, and save it.
+6. Confirm the connection, then select **Back** to load your library.
+
+WidgetRail uses the plugin's local API. The optional Playnite Bridge sync backend
+is not required.
 
 The supported bridge listens on `localhost:19821` and must provide the compatible
 games API. Tokens are stored privately in Windows Credential Manager.
