@@ -177,6 +177,7 @@ public sealed partial class StandaloneMusicWidget
                 // Grid navigation owns horizontal neighbours between Home posters.
                 if (!home && state.Current is not null) row = row.FocusLeft("player.main.toggle");
                 if (item.Kind == "song") row = row.ContextMenuShortcut(ControllerButton.Menu)
+                    .ContextAction("next." + index, "Play next")
                     .ContextAction("radio." + index, "Start radio");
                 var presented = collection.PresentItem(entry, row);
                 if (home)

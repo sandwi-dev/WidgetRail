@@ -14,6 +14,32 @@ music = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(music)
 
 
+class FakeDownloader:
+    def __init__(self, auth, on_extract=None):
+        self.auth = dict(auth)
+        self.on_extract = on_extract
+        self.calls = 0
+        self.active = False
+        self.closed = False
+
+    def extract_info(self, url, download=False):
+        if self.active or self.closed:
+            raise AssertionError("Extractor reused concurrently or after disposal")
+        self.active = True
+        self.calls += 1
+        try:
+            if self.on_extract:
+                self.on_extract(self, url)
+            return {"url": "https://fixture.googlevideo.com/audio", "http_headers": {}}
+        finally:
+            self.active = False
+
+    def close(self):
+        if self.active:
+            raise AssertionError("Disposed an in-flight extractor")
+        self.closed = True
+
+
 class ServiceTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
@@ -127,7 +153,7 @@ class ServiceTests(unittest.TestCase):
         import threading
         entered, release, joined = threading.Event(), threading.Event(), threading.Event()
         calls = []
-        def resolve_uncached(video, auth, generation):
+        def resolve_uncached(video, auth, generation, **_):
             calls.append(video)
             entered.set()
             if not release.wait(3):
@@ -167,7 +193,7 @@ class ServiceTests(unittest.TestCase):
         import threading
         entered, release = threading.Event(), threading.Event()
         calls = []
-        def resolve(args):
+        def resolve(args, **_):
             calls.append(args["videoId"])
             entered.set()
             release.wait(3)
@@ -180,6 +206,120 @@ class ServiceTests(unittest.TestCase):
             release.set()
             self.service.prefetch.shutdown(wait=True)
         self.assertEqual(["M7lc1UVf-VE"], calls)
+
+    def test_resolver_reuses_separate_foreground_and_prefetch_instances(self):
+        instances = []
+        def create(auth):
+            instance = FakeDownloader(auth)
+            instances.append(instance)
+            return instance
+        with patch.object(music, "make_downloader", side_effect=create):
+            for video in ("AAAAAAAAAAA", "BBBBBBBBBBB"):
+                self.service.resolve({"videoId": video})
+            for video in ("CCCCCCCCCCC", "DDDDDDDDDDD"):
+                self.service.resolve({"videoId": video}, speculative=True)
+            self.service.resolve({"videoId": "EEEEEEEEEEE"})
+        self.assertEqual(2, len(instances))
+        self.assertEqual([3, 2], [instance.calls for instance in instances])
+        self.assertFalse(any(instance.closed for instance in instances))
+        self.service.close()
+        self.assertTrue(all(instance.closed for instance in instances))
+
+    def test_busy_foreground_does_not_delay_a_new_selection(self):
+        import concurrent.futures
+        import threading
+        entered, release = threading.Event(), threading.Event()
+        instances = []
+        def extracting(instance, url):
+            if url.endswith("AAAAAAAAAAA"):
+                entered.set()
+                if not release.wait(3): raise TimeoutError("Fixture not released")
+        def create(auth):
+            instance = FakeDownloader(auth, extracting)
+            instances.append(instance)
+            return instance
+        with patch.object(music, "make_downloader", side_effect=create):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                old = executor.submit(self.service.resolve, {"videoId": "AAAAAAAAAAA"})
+                try:
+                    self.assertTrue(entered.wait(3))
+                    new = executor.submit(self.service.resolve, {"videoId": "BBBBBBBBBBB"})
+                    new.result(timeout=2)
+                    self.assertFalse(old.done(), "Fixture did not hold the old extraction")
+                    self.assertEqual(2, len(instances))
+                    self.assertTrue(instances[1].closed, "Temporary contender was retained")
+                    self.assertFalse(instances[0].closed, "Busy extractor was disposed")
+                finally:
+                    release.set()
+                old.result(timeout=2)
+            self.service.resolve({"videoId": "CCCCCCCCCCC"})
+        self.assertEqual(2, len(instances))
+        self.assertEqual(2, instances[0].calls)
+
+    def test_disconnect_retires_both_idle_instances_and_old_streams(self):
+        instances = []
+        def create(auth):
+            instance = FakeDownloader(auth)
+            instances.append(instance)
+            return instance
+        self.service.auth = {"cookie": "fixture=old-account"}
+        with patch.object(music, "make_downloader", side_effect=create):
+            self.service.resolve({"videoId": "AAAAAAAAAAA"})
+            self.service.resolve({"videoId": "BBBBBBBBBBB"}, speculative=True)
+            self.service.disconnect({})
+            self.assertTrue(all(instance.closed for instance in instances))
+            self.assertEqual({}, self.service.streams)
+            self.service.resolve({"videoId": "AAAAAAAAAAA"})
+        self.assertEqual(3, len(instances))
+        self.assertEqual({}, instances[2].auth)
+
+    def test_account_change_during_extraction_discards_old_result_safely(self):
+        import concurrent.futures
+        import threading
+        entered, release = threading.Event(), threading.Event()
+        instances = []
+        def extracting(instance, url):
+            if url.endswith("AAAAAAAAAAA"):
+                entered.set()
+                if not release.wait(3): raise TimeoutError("Fixture not released")
+        def create(auth):
+            instance = FakeDownloader(auth, extracting)
+            instances.append(instance)
+            return instance
+        self.service.auth = {"cookie": "fixture=old-account"}
+        with patch.object(music, "make_downloader", side_effect=create):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                old = executor.submit(self.service.resolve, {"videoId": "AAAAAAAAAAA"})
+                try:
+                    self.assertTrue(entered.wait(3))
+                    executor.submit(self.service.disconnect, {}).result(timeout=2)
+                    self.assertFalse(instances[0].closed)
+                    executor.submit(self.service.resolve, {"videoId": "BBBBBBBBBBB"}).result(timeout=2)
+                    self.assertEqual({}, instances[1].auth)
+                finally:
+                    release.set()
+                with self.assertRaisesRegex(RuntimeError, "session_changed"): old.result(timeout=2)
+        self.assertTrue(instances[0].closed)
+        self.assertNotIn("AAAAAAAAAAA", self.service.stream_keys)
+        self.assertEqual({}, self.service.resolving)
+
+    def test_reusable_extractor_is_recycled_after_failure_or_use_limit(self):
+        instances = []
+        def create(auth):
+            instance = FakeDownloader(auth)
+            instances.append(instance)
+            if len(instances) == 1:
+                instance.on_extract = lambda *_: (_ for _ in ()).throw(RuntimeError("fixture failure"))
+            return instance
+        with patch.object(music, "make_downloader", side_effect=create):
+            with self.assertRaises(RuntimeError): self.service.resolve({"videoId": "AAAAAAAAAAA"})
+            self.assertTrue(instances[0].closed)
+            for index in range(music.ResolverLane.MAX_EXTRACTIONS + 1):
+                self.service.resolve({"videoId": f"{index:011d}"})
+        self.assertEqual(3, len(instances))
+        self.assertEqual(music.ResolverLane.MAX_EXTRACTIONS, instances[1].calls)
+        self.assertTrue(instances[1].closed)
+        self.assertEqual(1, instances[2].calls)
 
     def test_invalid_stream_id_never_reaches_extractor(self):
         with patch("yt_dlp.YoutubeDL") as downloader:

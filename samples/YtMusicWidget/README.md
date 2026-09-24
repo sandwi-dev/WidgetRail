@@ -31,8 +31,9 @@ The standalone package currently supports Windows x64.
 ## Playback and radio
 
 - Select a song to play it and queue the songs in that collection.
-- Focus a song, press **Menu**, and choose **Start radio** to replace the queue with recommendations based on it.
-- Use **Queue** to select a different queued song.
+- Focus a song, press **Menu**, and choose **Play next** to insert it after the current song. The rest of the queue stays in place; an empty queue starts playback immediately.
+- Choose **Start radio** to replace the queue with recommendations based on it.
+- Use **Queue** to select a different queued song. The current song stays highlighted while you browse.
 - Use the player on the left for playback, seeking, volume, shuffle and repeat while browsing on the right.
 - Pin **Compact now playing** to keep controls beside your game.
 

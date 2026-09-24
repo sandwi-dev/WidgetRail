@@ -255,7 +255,7 @@ public sealed partial class StandaloneMusicWidget : Widget
             }, WidgetOperationLifetime.Widget);
         }
         else if (id == "disconnect") RunPlayback(token => _service.DisconnectAsync(token));
-        else if (id.StartsWith("item.", StringComparison.Ordinal) || id.StartsWith("radio.", StringComparison.Ordinal))
+        else if (id.StartsWith("item.", StringComparison.Ordinal) || id.StartsWith("radio.", StringComparison.Ordinal) || id.StartsWith("next.", StringComparison.Ordinal))
         {
             var separator = id.IndexOf('.');
             if (!int.TryParse(id[(separator + 1)..], out var index)) return ValueTask.CompletedTask;
@@ -263,7 +263,25 @@ public sealed partial class StandaloneMusicWidget : Widget
             lock (_gate) items = (_tab == "queue" ? _service.State.Queue : _page.Items).ToArray();
             if (index < 0 || index >= items.Length) return ValueTask.CompletedTask;
             var item = items[index];
-            if (id.StartsWith("radio.", StringComparison.Ordinal) && item.Kind == "song")
+            if (id.StartsWith("next.", StringComparison.Ordinal) && item.Kind == "song")
+            {
+                Operations.RunSerial("music.queue", async context =>
+                {
+                    if (_service.State.Queue.Count >= MusicQueue.MaximumItems)
+                    {
+                        SetStatus("Queue is full (500 songs). Start a new song or collection first.");
+                        return;
+                    }
+                    try
+                    {
+                        await _service.PlayNextAsync(item, context.CancellationToken);
+                        SetStatus("Added to play next");
+                    }
+                    catch (Exception error) when (error is IOException or OperationCanceledException or ArgumentException)
+                    { SetStatus("Could not add the song to the queue. Try again."); }
+                }, WidgetOperationLifetime.Widget);
+            }
+            else if (id.StartsWith("radio.", StringComparison.Ordinal) && item.Kind == "song")
                 RunPlayback(token => _service.RadioAsync(item, token));
             else if (_tab == "queue") RunPlayback(token => _service.CommandAsync("queue", index, token));
             else if (item.Kind == "song")

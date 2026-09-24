@@ -78,3 +78,5 @@
 .wrail-poster-tile__subtitle { width: 100%; color: #d1dae5; font-size: 11px; max-lines: 1; text-overflow: ellipsis; }
 .wrail-poster-tile__details { width: 100%; min-width: 0px; }
 .wrail-poster-tile__state { color: #d1dae5; font-size: 10px; max-lines: 1; }
+
+.music-track:selected { background: var(--surface-active, #262623); border-color: var(--accent); border-width: 2px; }

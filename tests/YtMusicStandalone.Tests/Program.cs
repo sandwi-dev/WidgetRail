@@ -31,6 +31,8 @@ if (args is ["--export-layout", var directory])
 var tests = new List<(string, Func<Task>)>
 {
     ("Queue ends, repeats one only on automatic end, and wraps only with repeat all", QueuePolicy),
+    ("Play next inserts after the current song and preserves the remaining queue", QueueInsertion),
+    ("Song menus expose Play next and dispatch without starting radio", PlayNextAction),
     ("Shuffle preserves current and played entries and retains every occurrence", ShufflePolicy),
     ("All pages and pinned layout produce valid bounded snapshots", Snapshots),
     ("Radio selection acknowledges immediately and leaves transport enabled", RadioDoesNotBlock),
@@ -72,6 +74,40 @@ static Task QueuePolicy()
     Check(MusicQueue.Next(3, 1, "one", false) == 2, "Explicit next escapes repeat one");
     return Task.CompletedTask;
 }
+static Task QueueInsertion()
+{
+    var songs = Enumerable.Range(0, 4).Select(i => new MusicItem(i.ToString(), "song", "Song " + i)).ToArray();
+    var added = new MusicItem("added", "song", "Added");
+    var next = MusicQueue.InsertNext(songs, 1, added);
+    Check(next.SequenceEqual(new[] { songs[0], songs[1], added, songs[2], songs[3] }), "Play next reordered or replaced the existing queue");
+    Check(MusicQueue.InsertNext([], -1, added).SequenceEqual(new[] { added }), "Empty queue insertion failed");
+    try
+    {
+        MusicQueue.InsertNext(Enumerable.Repeat(added, MusicQueue.MaximumItems).ToArray(), 0, added);
+        throw new Exception("Queue exceeded its bound");
+    }
+    catch (ArgumentException) { }
+    return Task.CompletedTask;
+}
+
+static async Task PlayNextAction()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        var first = Nodes(widget.Render().CreateSnapshot("next", 1).Root).Single(n => n.Id == "item.0");
+        Check(first.ContextActions.Any(action => action.ActionId == "next.0" && action.Label == "Play next"), "Play next is missing from song options");
+        await widget.OnActionAsync(new("next.0", "item.0"));
+        await Until(() => service.NextSongs.Count == 1);
+        Check(service.NextSongs.Single().Title == "Song 0" && service.RadioCalls == 0, "Play next started radio or selected another song");
+        await widget.OnActionAsync(new("tab.queue", "test"));
+        await Until(() => Nodes(widget.Render().CreateSnapshot("next", 2).Root).Any(n => n.Id == "item.0"));
+        var playing = Nodes(widget.Render().CreateSnapshot("next", 3).Root).Single(n => n.Id == "item.0");
+        Check(playing.IsSelected == true && Nodes(playing).Any(n => n.Text == "Now playing"), "Queue lost its persistent current-item state");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
 static Task ShufflePolicy()
 {
     var items = Enumerable.Range(0, 100).Select(i => new MusicItem(i.ToString(), "song", "Song")).ToArray();
@@ -201,6 +237,12 @@ static Task Theme()
     Check(parsed.IsValid, string.Join("\n", parsed.Diagnostics));
     var compiled = WrssThemeCompiler.Compile([parsed.Document]);
     Check(compiled.IsValid, string.Join("\n", compiled.Diagnostics));
+    var classes = new HashSet<string> { "music-track" };
+    var idle = compiled.Theme!.Resolve(new WrssElement("actionSurface", StyleClasses: classes));
+    var current = compiled.Theme.Resolve(new WrssElement("actionSurface", StyleClasses: classes,
+        PseudoStates: new HashSet<WrssPseudoState> { WrssPseudoState.Selected }));
+    Check(idle.Get("background")?.Text != current.Get("background")?.Text && current.Get("border-width")?.Text == "2px",
+        "Current queue item has no persistent visual highlight");
     return Task.CompletedTask;
 }
 
@@ -462,6 +504,24 @@ static async Task LivePackage(string root)
     }
     Check(service.State.Queue.Count > 1, "Radio did not populate a queue");
     Check(service.State.Player.Volume == 0, "Test playback was not muted");
+    var firstOccurrence = service.State.Current!;
+    await service.PlayNextAsync(firstOccurrence, timeout.Token);
+    await service.CommandAsync("next", null, timeout.Token);
+    Check(!ReferenceEquals(firstOccurrence, service.State.Current), "Repeated song lost its queue occurrence identity");
+    var previous = service.State;
+    var queued = results.Items.First(item => item.Kind == "song" && item.Id != song.Id);
+    await service.CommandAsync("shuffle", null, timeout.Token);
+    previous = service.State;
+    await service.PlayNextAsync(queued, timeout.Token);
+    Check(service.State.Current == previous.Current && service.State.Queue[service.State.Index + 1] == queued,
+        "Play next interrupted the current track or inserted at the wrong location");
+    Check(service.State.Queue.Where((_, index) => index != service.State.Index + 1).SequenceEqual(previous.Queue),
+        "Play next changed the remaining queue");
+    await service.CommandAsync("shuffle", null, timeout.Token);
+    Check(ReferenceEquals(service.State.Current, previous.Current), "Turning shuffle off jumped to an earlier occurrence of the same song");
+    Check(service.State.Queue[service.State.Index + 1] == queued, "Turning shuffle off lost Play next placement");
+    await service.CommandAsync("next", null, timeout.Token);
+    await Until(() => service.State.Player.TrackId == queued.Id && service.State.Player.Playing && service.State.Player.Duration > 0);
     await service.CommandAsync("pause", null, timeout.Token);
     await Until(() => !service.State.Player.Playing);
     await service.CommandAsync("toggle", null, timeout.Token);
@@ -490,6 +550,7 @@ sealed class FakeService : IMusicService
     public double? LastValue;
     public MusicPage? PageOverride;
     public readonly System.Collections.Concurrent.ConcurrentBag<string> Commands = [];
+    public readonly System.Collections.Concurrent.ConcurrentBag<MusicItem> NextSongs = [];
     public Task InitializeAsync(CancellationToken token) => Task.CompletedTask;
     public Task<string> SignInAsync(CancellationToken token) { AuthCalls++; AuthToken = token; return PendingAuth?.Task.WaitAsync(token) ?? Task.FromResult("Connected"); }
     public Task CancelSignInAsync(CancellationToken token) { CancelCalls++; return Task.CompletedTask; }
@@ -502,6 +563,7 @@ sealed class FakeService : IMusicService
         return Task.FromResult(new MusicPage("Home", Enumerable.Range(0, 30).Select(i => new MusicItem(i.ToString(), "song", "Song " + i)).ToArray()));
     }
     public Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token) => Task.CompletedTask;
+    public Task PlayNextAsync(MusicItem song, CancellationToken token) { NextSongs.Add(song); return Task.CompletedTask; }
     public Task RadioAsync(MusicItem song, CancellationToken token) { RadioCalls++; return PendingRadio?.Task.WaitAsync(token) ?? Task.CompletedTask; }
     public Task CommandAsync(string command, double? value, CancellationToken token) { LastValue = value; Commands.Add(command); return Task.CompletedTask; }
     public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }

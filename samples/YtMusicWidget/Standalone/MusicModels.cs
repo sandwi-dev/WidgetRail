@@ -22,12 +22,24 @@ public interface IMusicService : IAsyncDisposable
     Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token);
     Task PlayAsync(IReadOnlyList<MusicItem> tracks, int index, CancellationToken token);
     Task RadioAsync(MusicItem song, CancellationToken token);
+    Task PlayNextAsync(MusicItem song, CancellationToken token);
     Task CommandAsync(string command, double? value, CancellationToken token);
 }
 
 // Queue movement is independent of page navigation and never wraps unless repeat permits it.
 public static class MusicQueue
 {
+    public const int MaximumItems = 500;
+
+    public static MusicItem[] InsertNext(IReadOnlyList<MusicItem> queue, int index, MusicItem song)
+    {
+        if (song.Kind != "song" || index < -1 || index >= queue.Count || queue.Count >= MaximumItems)
+            throw new ArgumentException("Select a song for a queue with available capacity.");
+        var result = queue.ToList();
+        result.Insert(index + 1, song);
+        return result.ToArray();
+    }
+
     public static int Next(int count, int index, string repeat, bool ended) =>
         count == 0 ? -1 : ended && repeat == "one" ? index :
         index + 1 < count ? index + 1 : repeat == "all" ? 0 : -1;

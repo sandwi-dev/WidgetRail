@@ -101,6 +101,39 @@ public sealed class MusicService : IMusicService
         await SelectAsync(token).ConfigureAwait(false);
     }
 
+    public async Task PlayNextAsync(MusicItem song, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        // Each queued occurrence retains its own identity when the same song is
+        // added again, including while switching between shuffled/original order.
+        song = song with { };
+        bool startPlayback;
+        lock (_gate)
+        {
+            var current = _state.Current;
+            startPlayback = current is null;
+            if (startPlayback)
+            {
+                _originalQueue = MusicQueue.InsertNext([], -1, song);
+                _state = _state with { Queue = _originalQueue, Index = 0 };
+            }
+            else
+            {
+                var queue = MusicQueue.InsertNext(_state.Queue, _state.Index, song);
+                var originalIndex = Array.FindIndex(_originalQueue, item => ReferenceEquals(item, current));
+                _originalQueue = _state.Shuffle
+                    ? MusicQueue.InsertNext(_originalQueue, originalIndex, song) : queue;
+                _state = _state with { Queue = queue };
+            }
+        }
+        if (startPlayback) await SelectAsync(token).ConfigureAwait(false);
+        else
+        {
+            Changed?.Invoke();
+            if (_backend is not null) await PrefetchAsync(song.Id, token).ConfigureAwait(false);
+        }
+    }
+
     private async Task EnsurePlayerAsync(CancellationToken token)
     {
         await _initialization.WaitAsync(token).ConfigureAwait(false);
@@ -239,7 +272,7 @@ public sealed class MusicService : IMusicService
                     var queue = enabled ? MusicQueue.Shuffled(_state.Queue, _state.Index, Random.Shared) : _originalQueue;
                     var current = _state.Current;
                     _state = _state with { Shuffle = enabled, Queue = queue,
-                        Index = enabled ? _state.Index : Array.FindIndex(queue, item => item == current) };
+                        Index = enabled ? _state.Index : Array.FindIndex(queue, item => ReferenceEquals(item, current)) };
                 }
             }
             Changed?.Invoke();

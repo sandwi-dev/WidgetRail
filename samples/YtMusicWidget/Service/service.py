@@ -100,6 +100,96 @@ def items(values, kind=None):
     return [entry for value in (values or [])[:MAX_ITEMS] if (entry := normalize(value, kind))]
 
 
+def make_downloader(auth):
+    from yt_dlp import YoutubeDL
+    import http.cookiejar
+
+    class Quiet:
+        def debug(self, *_): pass
+        def warning(self, *_): pass
+        def error(self, *_): pass
+
+    downloader = YoutubeDL({"quiet": True, "no_warnings": True, "logger": Quiet(),
+                           "format": "bestaudio[ext=m4a]/bestaudio/best", "noplaylist": True,
+                           "socket_timeout": 12, "retries": 1, "extractor_retries": 1,
+                           "cachedir": False, "skip_download": True,
+                           "js_runtimes": {"quickjs": {"path": str(Path(sys.executable).parent / "qjs.exe")}}})
+    for part in auth.get("cookie", "").split(";"):
+        name, separator, value = part.strip().partition("=")
+        if separator:
+            downloader.cookiejar.set_cookie(http.cookiejar.Cookie(0, name, value, None, False,
+                ".youtube.com", True, True, "/", True, True, None, True, None, None, {}))
+    return downloader
+
+
+class ResolverLane:
+    """One reusable mutable extractor, never entered concurrently.
+
+    Contending foreground requests use request-local instances, bounded by the
+    existing service worker pool, rather than queueing behind an older selection.
+    """
+    MAX_EXTRACTIONS = 32
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.downloader = None
+        self.generation = None
+        self.uses = 0
+
+    @staticmethod
+    def dispose(downloader):
+        if downloader is not None:
+            try: downloader.close()
+            except Exception: pass
+
+    def clear(self):
+        downloader, self.downloader = self.downloader, None
+        self.generation, self.uses = None, 0
+        self.dispose(downloader)
+
+    def retire(self, generation=None):
+        # An in-flight extractor owns its resources until its finally block.
+        if self.lock.acquire(blocking=False):
+            try:
+                if generation is None or generation != self.generation:
+                    self.clear()
+            finally:
+                self.lock.release()
+
+    def extract(self, video, auth, generation, is_current):
+        if not is_current(generation):
+            raise RuntimeError("session_changed")
+        url = "https://music.youtube.com/watch?v=" + video
+        if not self.lock.acquire(blocking=False):
+            temporary = make_downloader(auth)
+            try:
+                if not is_current(generation):
+                    raise RuntimeError("session_changed")
+                return temporary.extract_info(url, download=False)
+            finally:
+                self.dispose(temporary)
+        try:
+            if not is_current(generation):
+                raise RuntimeError("session_changed")
+            if self.generation != generation or self.uses >= self.MAX_EXTRACTIONS:
+                self.clear()
+            if self.downloader is None:
+                self.downloader = make_downloader(auth)
+                self.generation = generation
+            if not is_current(generation):
+                raise RuntimeError("session_changed")
+            self.uses += 1
+            return self.downloader.extract_info(url, download=False)
+        except Exception:
+            # Do not retain partially failed extractor state for the next song.
+            self.clear()
+            raise
+        finally:
+            if not is_current(generation):
+                self.clear()
+            self.lock.release()
+
+
 class MusicService:
     def __init__(self, root):
         self.root = Path(root)
@@ -120,11 +210,21 @@ class MusicService:
         self.stream_keys = {}
         self.resolving = {}
         self.prefetch_work = None
+        self.foreground_resolver = ResolverLane()
+        self.prefetch_resolver = ResolverLane()
         self.stopping = threading.Event()
         self.prefetch = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self.secret = secrets.token_urlsafe(32)
         self.server = self.create_server()
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def is_current_session(self, generation):
+        with self.lock:
+            return generation == self.generation and not self.stopping.is_set()
+
+    def retire_resolvers(self, generation=None):
+        self.foreground_resolver.retire(generation)
+        self.prefetch_resolver.retire(generation)
 
     def client(self):
         with self.lock:
@@ -146,6 +246,8 @@ class MusicService:
                 self.streams.clear()
                 self.stream_keys.clear()
                 self.auth_path.unlink(missing_ok=True)
+                generation = self.generation
+            self.retire_resolvers(generation)
         self.stopping.clear()
         return self.status({})
 
@@ -217,6 +319,10 @@ class MusicService:
                         self.auth = headers
                         self.generation += 1
                         self.cache.clear()
+                        self.streams.clear()
+                        self.stream_keys.clear()
+                        generation = self.generation
+                    self.retire_resolvers(generation)
                     return {"connected": True}
                 raise RuntimeError("signin_timeout")
             finally:
@@ -296,7 +402,7 @@ class MusicService:
                 self.cache[key] = (time.monotonic() + 300, result)
         return result
 
-    def resolve(self, args):
+    def resolve(self, args, *, speculative=False):
         video = str(args.get("videoId", ""))
         if not VIDEO_ID.fullmatch(video):
             raise ValueError("invalid_video")
@@ -317,7 +423,7 @@ class MusicService:
             # repeating YouTube requests and the JavaScript signature solver.
             return pending.result(timeout=40)
         try:
-            result = self.resolve_uncached(video, auth, generation)
+            result = self.resolve_uncached(video, auth, generation, speculative=speculative)
             pending.set_result(result)
             return result
         except Exception as error:
@@ -328,25 +434,9 @@ class MusicService:
                 if self.resolving.get(identity) is pending:
                     del self.resolving[identity]
 
-    def resolve_uncached(self, video, auth, generation):
-        from yt_dlp import YoutubeDL
-        import http.cookiejar
-        # A package-owned browser engine decodes audio; no FFmpeg process or audio downloads.
-        class Quiet:
-            def debug(self, *_): pass
-            def warning(self, *_): pass
-            def error(self, *_): pass
-        with YoutubeDL({"quiet": True, "no_warnings": True, "logger": Quiet(),
-                        "format": "bestaudio[ext=m4a]/bestaudio/best", "noplaylist": True,
-                        "socket_timeout": 12, "retries": 1, "extractor_retries": 1,
-                        "cachedir": False, "skip_download": True,
-                        "js_runtimes": {"quickjs": {"path": str(Path(sys.executable).parent / "qjs.exe")}}}) as downloader:
-            for part in auth.get("cookie", "").split(";"):
-                name, separator, value = part.strip().partition("=")
-                if separator:
-                    downloader.cookiejar.set_cookie(http.cookiejar.Cookie(0, name, value, None, False,
-                        ".youtube.com", True, True, "/", True, True, None, True, None, None, {}))
-            info = downloader.extract_info("https://music.youtube.com/watch?v=" + video, download=False)
+    def resolve_uncached(self, video, auth, generation, *, speculative=False):
+        lane = self.prefetch_resolver if speculative else self.foreground_resolver
+        info = lane.extract(video, auth, generation, self.is_current_session)
         url = str(info.get("url", ""))
         parsed = urlparse(url)
         if parsed.scheme != "https" or not (parsed.hostname or "").endswith(".googlevideo.com"):
@@ -354,7 +444,7 @@ class MusicService:
         key = secrets.token_urlsafe(24)
         headers = {k: v for k, v in info.get("http_headers", {}).items() if k.lower() in {"user-agent", "referer", "origin"}}
         with self.lock:
-            if generation != self.generation:
+            if generation != self.generation or self.stopping.is_set():
                 raise RuntimeError("session_changed")
             if len(self.streams) >= 32:
                 self.streams.pop(next(iter(self.streams)))
@@ -419,12 +509,13 @@ class MusicService:
         return getattr(self, method)(args)
 
     def safe_prefetch(self, args):
-        try: self.resolve(args)
+        try: self.resolve(args, speculative=True)
         except Exception: pass
 
     def close(self):
         self.auth_cancel.set()
         self.stopping.set()
+        self.retire_resolvers()
         self.server.shutdown()
         self.server.server_close()
         self.prefetch.shutdown(wait=False, cancel_futures=True)

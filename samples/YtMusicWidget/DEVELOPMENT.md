@@ -14,7 +14,8 @@ in 24-entry windows, targeting 72 retained entries with a hard cap of 96. This i
 UI windowing; it does not bypass the provider’s 500-entry fetch cap. Home retains
 provider section titles, with one responsive square-poster grid per section.
 “Mixed for you” is promoted first when present; other sections retain provider order. Song
-radio is a host-owned Menu context action. The SDK compact navigation sits above a persistent left player and right browsing pane,
+radio and Play next are host-owned Menu context actions. Play next inserts into both
+the active queue and its unshuffled order, without changing the current song. The SDK compact navigation sits above a persistent left player and right browsing pane,
 following the Spotify widget. Settings is a compact secondary page. Explicit focus-group
 entry requests enter newly loaded pages and restore collection selection on Back.
 
@@ -32,6 +33,12 @@ entry requests enter newly loaded pages and restore collection selection on Back
   Foreground requests join an in-flight resolution for the same track and session;
   speculative work has no unbounded backlog. Player startup and stream resolution
   run concurrently, but loading still waits for both and checks the selected generation.
+- Foreground resolution and speculative prefetch each retain their own yt-dlp instance.
+  An instance is never used concurrently: a contending foreground request gets a
+  temporary instance within the existing worker-pool bound. Instances are retired
+  after extraction failures, after 32 extractions, on account changes, and on exit.
+  Busy old-session instances close after their request finishes; their results cannot
+  become playable in a newer session. No persistent resolver disk cache is used.
 - The player stops on parent exit or stdin closure. Application disposal closes
   both helpers, with bounded forced cleanup if they do not exit. The player drains
   its dedicated browser process; the parent removes its temporary profile after
