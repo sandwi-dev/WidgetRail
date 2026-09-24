@@ -980,20 +980,21 @@ WidgetRailOverlayPlatformPrimeController(
     return WidgetRailOverlayPlatformStatus::Ok;
 }
 
-std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformNativeShortcutButtons(
+WidgetRailOverlayPlatformNativeShortcutSource WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformNativeShortcutButtons(
     WidgetRailOverlayPlatformHandle* handle, std::uint16_t* buttons) noexcept {
-    if (!buttons) return WRAIL_OVERLAY_PLATFORM_FALSE;
+    using Source = WidgetRailOverlayPlatformNativeShortcutSource;
+    if (!buttons) return Source::Unavailable;
     *buttons = 0;
-    if (ValidateHandle(handle) != WidgetRailOverlayPlatformStatus::Ok) return WRAIL_OVERLAY_PLATFORM_FALSE;
+    if (ValidateHandle(handle) != WidgetRailOverlayPlatformStatus::Ok) return Source::Unavailable;
     if (handle->controllerIsolation.active()) {
         // Poll is the bounded host queue consumer, so do not drain it for a
         // shortcut. The isolation owner exposes only its latest sampled buttons.
-        return handle->controllerIsolation.NativeShortcutButtons(*buttons) ? WRAIL_OVERLAY_PLATFORM_TRUE : WRAIL_OVERLAY_PLATFORM_FALSE;
+        return handle->controllerIsolation.NativeShortcutButtons(*buttons) ? Source::Isolated : Source::Unavailable;
     }
     widgetrail::isolation::SelectedControllerCurrent sample;
-    if (!handle->dualSense.Sample(sample)) return WRAIL_OVERLAY_PLATFORM_FALSE;
+    if (!handle->dualSense.Sample(sample)) return Source::Unavailable;
     *buttons = sample.state.buttons;
-    return WRAIL_OVERLAY_PLATFORM_TRUE;
+    return Source::Shared;
 }
 
 WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL

@@ -76,37 +76,40 @@ void ControllerOpenShortcut::Stop() noexcept {
     impl_->active = false;
 }
 bool ControllerOpenShortcut::consumed() const noexcept { return impl_->tracker.consumed(); }
-bool ControllerOpenShortcut::Poll(std::optional<std::uint16_t> nativeButtons) {
+bool ControllerOpenShortcut::Poll(std::optional<std::uint16_t> nativeButtons,
+    OpenShortcutSampling sampling) {
     if (!impl_->active) return false;
+    std::optional<OpenShortcutSample> native;
     if (nativeButtons) {
-        const OpenShortcutSample native{static_cast<std::uintptr_t>(-1), static_cast<std::uint8_t>(
+        native = OpenShortcutSample{static_cast<std::uintptr_t>(-1), static_cast<std::uint8_t>(
             ((*nativeButtons & XINPUT_GAMEPAD_BACK) ? 1 : 0) |
             ((*nativeButtons & XINPUT_GAMEPAD_START) ? 2 : 0))};
-        return impl_->tracker.Update(std::span(&native, 1));
     }
-    std::array<OpenShortcutSample, 20> samples{};
-    std::size_t count{};
-    for (DWORD slot = 0; slot < XUSER_MAX_COUNT; ++slot) {
-        XINPUT_STATE state{};
-        if (XInputGetState(slot, &state) == ERROR_SUCCESS) {
-            samples[count++] = {slot + 1, static_cast<std::uint8_t>(
-                ((state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) ? 1 : 0) |
-                ((state.Gamepad.wButtons & XINPUT_GAMEPAD_START) ? 2 : 0))};
-        }
-    }
-    std::array<Impl::Device, 16> devices;
-    std::size_t deviceCount{};
-    { std::scoped_lock lock(impl_->mutex); for (const auto& [key, device] : impl_->devices) devices[deviceCount++] = device; }
-    for (std::size_t index = 0; index < deviceCount; ++index) {
-        Microsoft::WRL::ComPtr<IGameInputReading> reading;
-        GameInputGamepadState state{};
-        if (impl_->input && SUCCEEDED(impl_->input->GetCurrentReading(GameInputKindGamepad,
-            devices[index].Get(), reading.GetAddressOf())) && reading->GetGamepadState(&state)) {
-            samples[count++] = {reinterpret_cast<std::uintptr_t>(devices[index].Get()), static_cast<std::uint8_t>(
-                ((state.buttons & GameInputGamepadView) ? 1 : 0) |
-                ((state.buttons & GameInputGamepadMenu) ? 2 : 0))};
-        }
-    }
-    return impl_->tracker.Update(std::span(samples.data(), count));
+    return PollViewMenuSources(impl_->tracker, native, sampling,
+        [&](std::span<OpenShortcutSample> samples) {
+            std::size_t count{};
+            for (DWORD slot = 0; slot < XUSER_MAX_COUNT; ++slot) {
+                XINPUT_STATE state{};
+                if (XInputGetState(slot, &state) == ERROR_SUCCESS) {
+                    samples[count++] = {slot + 1, static_cast<std::uint8_t>(
+                        ((state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) ? 1 : 0) |
+                        ((state.Gamepad.wButtons & XINPUT_GAMEPAD_START) ? 2 : 0))};
+                }
+            }
+            std::array<Impl::Device, 16> devices;
+            std::size_t deviceCount{};
+            { std::scoped_lock lock(impl_->mutex); for (const auto& [key, device] : impl_->devices) devices[deviceCount++] = device; }
+            for (std::size_t index = 0; index < deviceCount; ++index) {
+                Microsoft::WRL::ComPtr<IGameInputReading> reading;
+                GameInputGamepadState state{};
+                if (impl_->input && SUCCEEDED(impl_->input->GetCurrentReading(GameInputKindGamepad,
+                    devices[index].Get(), reading.GetAddressOf())) && reading->GetGamepadState(&state)) {
+                    samples[count++] = {reinterpret_cast<std::uintptr_t>(devices[index].Get()), static_cast<std::uint8_t>(
+                        ((state.buttons & GameInputGamepadView) ? 1 : 0) |
+                        ((state.buttons & GameInputGamepadMenu) ? 2 : 0))};
+                }
+            }
+            return count;
+    });
 }
 }

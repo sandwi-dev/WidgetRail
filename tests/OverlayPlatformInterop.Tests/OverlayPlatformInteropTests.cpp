@@ -320,8 +320,8 @@ int main() {
           "controller settings reject missing owner without driver mutation");
     std::uint16_t nativeButtons = 0xFFFF;
     Check(GetProcAddress(importedModule, "WidgetRailOverlayPlatformNativeShortcutButtons") != nullptr &&
-          WidgetRailOverlayPlatformNativeShortcutButtons(nullptr, &nativeButtons) == WRAIL_OVERLAY_PLATFORM_FALSE &&
-          nativeButtons == 0 && WidgetRailOverlayPlatformNativeShortcutButtons(nullptr, nullptr) == WRAIL_OVERLAY_PLATFORM_FALSE,
+          WidgetRailOverlayPlatformNativeShortcutButtons(nullptr, &nativeButtons) == WidgetRailOverlayPlatformNativeShortcutSource::Unavailable &&
+          nativeButtons == 0 && WidgetRailOverlayPlatformNativeShortcutButtons(nullptr, nullptr) == WidgetRailOverlayPlatformNativeShortcutSource::Unavailable,
           "native shortcuts are exported and invalid reads clear output safely");
     Check(sizeof(WidgetRailOverlayPlatformControllerFrame) == 84 &&
               offsetof(WidgetRailOverlayPlatformControllerFrame, state) == 20 &&

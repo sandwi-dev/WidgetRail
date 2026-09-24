@@ -1,6 +1,6 @@
 # OverlayPlatformInterop
 
-`OverlayPlatformInterop` is the version-3 native presentation-platform boundary.
+`OverlayPlatformInterop` is the version-4 native presentation-platform boundary.
 It owns the single production Microsoft GameInput instance, supported Guide
 callback, quarantined legacy Guide adapter, controller device/sample lifecycle,
 repeat and neutral priming, Guide debounce, foreground-target memory, and safe
@@ -13,6 +13,13 @@ marshals event callbacks onto that window's UI thread. ABI structures carry
 `WRAIL_OVERLAY_PLATFORM_ABI_VERSION`. Controller frames carry the last active
 controller family separately from the input backend so glyphs also identify
 DualSense readings delivered through GameInput.
+
+Native View + Menu sampling distinguishes unavailable, shared, and isolated
+input. A shared DualSense sample supplements the host's per-controller GameInput
+and XInput shortcut samples; it never masks another connected controller.
+An isolated native sample remains authoritative and suppresses those public
+reads. Version 4 prevents mixing a host that expects this distinction with an
+older platform DLL that reports only sample availability.
 
 Shutdown is idempotent. It stops and unregisters GameInput callbacks, closes
 callback admission, waits for in-flight callbacks, clears queued events, then

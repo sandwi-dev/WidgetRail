@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <type_traits>
 
-inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 3;
+inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 4;
 inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_FALSE = 0;
 inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_TRUE = 1;
 
@@ -154,6 +154,12 @@ struct WidgetRailOverlayPlatformCreateOptions final {
 
 struct WidgetRailOverlayPlatformHandle;
 
+enum class WidgetRailOverlayPlatformNativeShortcutSource : std::uint32_t {
+    Unavailable = 0,
+    Shared = 1,
+    Isolated = 2,
+};
+
 extern "C" {
 
 WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
@@ -165,8 +171,9 @@ WRAIL_OVERLAY_PLATFORM_API void WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformConfigureControllerIsolation(std::uint32_t enabled) noexcept;
 
 // Host-only shortcut sampling from the same native physical reader as navigation.
-// Returns false when no live DualSense is selected; buttons use the existing ABI mask.
-WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
+// Shared input supplements GameInput/XInput; isolated input is authoritative.
+// Unavailable leaves ordinary readers in use. Buttons use the existing ABI mask.
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformNativeShortcutSource WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformNativeShortcutButtons(WidgetRailOverlayPlatformHandle* handle,
     std::uint16_t* buttons) noexcept;
 

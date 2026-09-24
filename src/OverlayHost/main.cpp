@@ -6544,8 +6544,13 @@ private:
     bool PollOpenShortcut() {
         if (!viewMenuShortcutEnabled_) return false;
         std::uint16_t buttons{};
-        const bool native = WidgetRailOverlayPlatformNativeShortcutButtons(platform_, &buttons) != WRAIL_OVERLAY_PLATFORM_FALSE;
-        if (!openShortcut_.Poll(native ? std::optional<std::uint16_t>{buttons} : std::nullopt)) return false;
+        const auto source = WidgetRailOverlayPlatformNativeShortcutButtons(platform_, &buttons);
+        using Source = WidgetRailOverlayPlatformNativeShortcutSource;
+        const auto sampling = source == Source::Isolated
+            ? widgetrail::input::OpenShortcutSampling::NativeOnly
+            : widgetrail::input::OpenShortcutSampling::AllControllers;
+        if (!openShortcut_.Poll(source != Source::Unavailable
+                ? std::optional<std::uint16_t>{buttons} : std::nullopt, sampling)) return false;
         AppendDiagnostic(L"View + Menu shortcut dispatched on window thread");
         Dispatch(widgetrail::Command::ToggleOverlay);
         return true;
