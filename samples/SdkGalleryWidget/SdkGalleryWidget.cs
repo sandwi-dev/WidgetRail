@@ -283,7 +283,7 @@ public sealed class SdkGalleryWidget : Widget
     }
 
     private StackElement RootNavigation(GalleryPage page) =>
-        UI.NavigationShell(
+        UI.NavigationShellParts(
             "gallery.shell",
             TabId(page),
             NavigationContentEntryFocus(page),
@@ -296,7 +296,7 @@ public sealed class SdkGalleryWidget : Widget
                 .Classes("gallery-section-bumper-key"),
             compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper,
                     "gallery.hint.section.next", "Next section")
-                .Classes("gallery-section-bumper-key"));
+                .Classes("gallery-section-bumper-key")).WithTransitions().Compose();
 
     private StackElement OverviewPage() => UI.Stack("gallery.overview",
         UI.SectionHeader(

@@ -19,6 +19,8 @@ internal enum SettingsPreferenceKind
     AnimateWidgetSwitching,
     SectionAnimation,
     AnimateWidgetModals,
+    AnimationSpeedDecrease,
+    AnimationSpeedIncrease,
     WidgetSwitcher,
     OverlayPosition,
     Theme,
@@ -141,6 +143,16 @@ internal readonly record struct SettingsPreferenceMutation(
         {
             AnimateWidgetModals = !appearance.AnimateWidgetModals,
         },
+        SettingsPreferenceKind.AnimationSpeedDecrease => appearance with
+        {
+            WidgetAnimationSpeed = Step(appearance.WidgetAnimationSpeed, -0.25,
+                AppearanceSettings.MinimumWidgetAnimationSpeed, AppearanceSettings.MaximumWidgetAnimationSpeed),
+        },
+        SettingsPreferenceKind.AnimationSpeedIncrease => appearance with
+        {
+            WidgetAnimationSpeed = Step(appearance.WidgetAnimationSpeed, 0.25,
+                AppearanceSettings.MinimumWidgetAnimationSpeed, AppearanceSettings.MaximumWidgetAnimationSpeed),
+        },
         SettingsPreferenceKind.WidgetSwitcher => appearance with
         {
             WidgetSwitcher = appearance.WidgetSwitcher == WidgetSwitcherLayout.Rail
@@ -219,6 +231,8 @@ internal static class SettingsPreferencePolicy
             "section-animation.none" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
                 SectionAnimation: WidgetSectionAnimation.None),
             "widget-modal-animation.toggle" => new(SettingsPreferenceKind.AnimateWidgetModals, "Dialog animation preference saved"),
+            "widget-animation-speed.decrease" => new(SettingsPreferenceKind.AnimationSpeedDecrease, "Animation speed saved"),
+            "widget-animation-speed.increase" => new(SettingsPreferenceKind.AnimationSpeedIncrease, "Animation speed saved"),
             "overlay-position.cycle" => new(SettingsPreferenceKind.OverlayPosition, "Overlay position saved"),
             "widget-switch-animation.toggle" => new(
                 SettingsPreferenceKind.AnimateWidgetSwitching,

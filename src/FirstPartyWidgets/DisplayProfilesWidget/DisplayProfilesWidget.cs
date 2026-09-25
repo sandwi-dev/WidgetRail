@@ -373,7 +373,9 @@ public sealed class DisplayProfilesWidget : Widget
             if (_state?.PendingRestore is not null) root = root.Shortcut(ControllerButton.B, "revert", "Revert");
             else if (_editor is not null || _confirm is not null) root = root.Shortcut(ControllerButton.B, "cancel", "Cancel");
             else if (_state is not null) root = root.Shortcut(ControllerButton.Y, "name-new", "Save current setup");
-            return new(root, _focus, ActiveInputScopeId: scope, Surface: new WidgetSurfaceHints
+            return new(root.TransitionContent("display.pages", scope,
+                _state?.PendingRestore is not null ? 2 : _editor is not null || _confirm is not null ? 1 : 0),
+                _focus, ActiveInputScopeId: scope, Surface: new WidgetSurfaceHints
             { HeightMode = WidgetSurfaceAxisMode.Content, PreferredWidth = 780, PreferredHeight = 700, MinimumWidth = 640, MinimumHeight = 420 });
         }
     }

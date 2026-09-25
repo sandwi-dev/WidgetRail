@@ -52,6 +52,8 @@ public sealed record AppearanceSettings
     public const double MaximumTextScale = 1.5;
     public const double MinimumBackdropOpacity = 0;
     public const double MaximumBackdropOpacity = 0.8;
+    public const double MinimumWidgetAnimationSpeed = 0.5;
+    public const double MaximumWidgetAnimationSpeed = 2;
 
     [JsonRequired]
     public required string ThemeId { get; init; }
@@ -94,9 +96,11 @@ public sealed record AppearanceSettings
     /// </summary>
     public bool AnimateWidgetSwitching { get; init; }
     /// <summary>Host-owned transitions between sections within a widget.</summary>
-    public WidgetSectionAnimation SectionAnimation { get; init; } = WidgetSectionAnimation.Paging;
+    public WidgetSectionAnimation SectionAnimation { get; init; } = WidgetSectionAnimation.Slide;
     /// <summary>Host-owned opening and closing motion for widget dialogs.</summary>
     public bool AnimateWidgetModals { get; init; } = true;
+    /// <summary>Shared speed multiplier for widget sections, navigation and dialogs.</summary>
+    public double WidgetAnimationSpeed { get; init; } = 1;
     // Missing values in existing settings retain Rail; fresh installations
     // receive the explicit combined-mode value in Default below.
     public WidgetSwitcherLayout WidgetSwitcher { get; init; } = WidgetSwitcherLayout.Rail;
@@ -269,6 +273,8 @@ public static class PlatformSettingsValidator
             Add("$.appearance.widgetSwitcher", "invalid_enum", "Widget switcher layout is invalid.");
         if (!Enum.IsDefined(appearance.SectionAnimation))
             Add("$.appearance.sectionAnimation", "invalid_enum", "Section animation is invalid.");
+        Range(appearance.WidgetAnimationSpeed, AppearanceSettings.MinimumWidgetAnimationSpeed,
+            AppearanceSettings.MaximumWidgetAnimationSpeed, "$.appearance.widgetAnimationSpeed");
         if (!Enum.IsDefined(appearance.OverlayPosition))
             Add("$.appearance.overlayPosition", "invalid_enum", "Overlay position is invalid.");
         if (!Enum.IsDefined(appearance.Contrast))

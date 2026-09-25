@@ -2,6 +2,10 @@
 
 [User guide and setup](README.md)
 
+Discover/Player navigation opts into shared host transitions. Live embedded-video
+surfaces retain the host's stationary fallback, preserving playback placement and
+input alignment. Search refreshes keep the same section key.
+
 This full-trust Community package searches public YouTube videos through the
 YouTube Data API v3 and retains the existing link-to-play route. Playback uses
 YouTube's official IFrame Player API inside WidgetRail's host-owned

@@ -732,7 +732,7 @@ public sealed partial class YouTubeVideoWidget
             compactTrailingAdornment: configured
                 ? CompactControllerKey(
                     ControllerButton.RightBumper, "Right bumper, next section", "youtube.section.next.hint")
-                : null);
+                : null).WithTransitions();
         var header = UI.Row(
                 "youtube.section.header",
                 parts.CompactNavigation.AddClasses("youtube-section-navigation"),

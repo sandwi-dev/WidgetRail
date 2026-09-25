@@ -196,9 +196,10 @@ public sealed class SettingsWidget : Widget
             error,
             selectedTheme,
             themePickerFocusId, startupStatus, display, loading);
-        if (SettingsPresentation.TryRender(presentation, out var view)) return view;
+        if (SettingsPresentation.TryRender(presentation, out var view))
+            return SettingsPresentation.AnimatePage(view, page, loading);
         var header = SettingsPresentation.Header(presentation);
-        return page switch
+        view = page switch
         {
             SettingsPage.InstalledWidgets =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
@@ -234,6 +235,7 @@ public sealed class SettingsWidget : Widget
                     header, busy, permissionState),
             _ => throw new InvalidOperationException($"Unsupported Settings page {page}."),
         };
+        return SettingsPresentation.AnimatePage(view, page, loading);
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)

@@ -51,6 +51,17 @@ public sealed record NavigationShellParts(
 {
     internal WidgetTransition? SectionTransition { get; init; }
 
+    /// <summary>Composes these parts into the standard themed navigation shell.</summary>
+    public StackElement Compose()
+    {
+        var transition = SectionTransition ?? throw new InvalidOperationException(
+            "Create navigation parts using UI.NavigationShellParts before composing them.");
+        return new StackElement(transition.GroupId, [CompactNavigation, Body])
+        {
+            RequiredStyleClasses = ["wrail-navigation-shell"],
+        };
+    }
+
     /// <summary>
     /// Enables coordinated section and navigation motion. Existing overloads
     /// remain unchanged; custom arrangements can opt in without changing scopes.
@@ -210,14 +221,7 @@ public static partial class UI
             expandedPaneEntryFocusId,
             compactLeadingAdornment,
             compactTrailingAdornment);
-        return new StackElement(id,
-        [
-            parts.CompactNavigation,
-            parts.Body,
-        ])
-        {
-            RequiredStyleClasses = ["wrail-navigation-shell"],
-        };
+        return parts.Compose();
     }
 
     /// <summary>

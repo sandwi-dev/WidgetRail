@@ -234,3 +234,6 @@ Home and Library opt into the shared navigation transition group
 `playnite-library.destinations`. The header stays in place while its selected
 destination and lower content animate together. Cursor changes keep the section
 key; details use the host's ordinary modal entrance/exit motion.
+Overview, Achievements, and Activity also share a transition group inside the
+details dialog. Only their lower content moves; the poster and action controls
+remain stationary. Data refreshes preserve the selected tab's transition key.

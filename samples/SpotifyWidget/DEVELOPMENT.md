@@ -76,6 +76,11 @@ authority and preserve the package's authored IDs and controller graph.
 
 ## Navigation
 
+Navigation uses the shared host transitions. The player remains stationary while
+sections, playlist details, and setup change in the browse pane. Transition keys
+come from routes, so playback ticks and cursor updates do not replay navigation.
+Effect, speed, and reduced motion follow the user's Overlay settings.
+
 The destination selector is one horizontal tab row at every responsive size;
 the persistent player and selected browse page share the remaining pane. LT/RT
 switch Devices, Search, Queue, and Playlists, including from playlist detail. A

@@ -1528,7 +1528,17 @@ static async ValueTask<bool> Route(
 static ViewSnapshot Snapshot(NetworkControlsWidget widget, long sequence)
 {
     var snapshot = widget.RenderSnapshot("network.test", sequence);
+    var transitions = Nodes(snapshot.Root).Where(node => node.Transition is not null).ToArray();
+    if (transitions.Length > 0)
+    {
+        var selectedTab = transitions.Single(node => node.IsSelected == true);
+        Assert.Equal(selectedTab.Id == "network.tab.wifi" ? "wifi" : "bluetooth", selectedTab.Transition!.Key);
+        Assert.Equal(1, transitions.Count(node => node.Transition!.Kind == WidgetTransitionKind.Content));
+        Assert.True(transitions.All(node => node.Transition!.Key == selectedTab.Transition.Key),
+            "Provider updates must not change the selected tab's transition identity.");
+    }
     Assert.Equal(
+        Nodes(snapshot.Root).Any(node => node.Transition is not null) ? ProtocolConstants.WidgetTransitionVersion :
         Nodes(snapshot.Root).Any(node => node.Shortcuts?.Any(shortcut => shortcut.Label is not null) == true)
             ? ProtocolConstants.ControllerShortcutLabelVersion
             : Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.TextEntry)

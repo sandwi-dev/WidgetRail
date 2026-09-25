@@ -18460,6 +18460,7 @@ private:
                     widgetContextMenu_.has_value() || interactionSession_.selectPopup().has_value();
                 if (const auto& appearance = appearanceState_.current()) {
                     options.widgetAnimations.section = widgetrail::animation::ParseSectionStyle(appearance->sectionAnimation);
+                    options.widgetAnimations.speed = appearance->widgetAnimationSpeed;
                     options.widgetAnimations.modal = appearance->animateWidgetModals
                         ? widgetrail::animation::ModalStyle::Lift : widgetrail::animation::ModalStyle::None;
                 }

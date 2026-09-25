@@ -470,7 +470,7 @@ internal static class SpotifyPresentation
             compactLeadingAdornment: CompactControllerKey(
                 ControllerButton.LeftTrigger, "Left trigger, previous section", "spotify.section.previous.hint"),
             compactTrailingAdornment: CompactControllerKey(
-                ControllerButton.RightTrigger, "Right trigger, next section", "spotify.section.next.hint"));
+                ControllerButton.RightTrigger, "Right trigger, next section", "spotify.section.next.hint")).WithTransitions();
 
         var header = Header(presentation.Status, presentation.ViewState);
         var content = new List<WidgetElement> { header };
@@ -511,7 +511,9 @@ internal static class SpotifyPresentation
                 PlayerPanel(
                     playback, pending, "wide", pane: true,
                     controlsEnabled: !setup),
-                pageGroup)
+                pageGroup.TransitionContent("spotify.pages", route.Route.ToString(), setup ? destinations.Length * 2 :
+                    Array.FindIndex(destinations, item => item.Id == DestinationToken(destination)) * 2 +
+                        (route.Route == SpotifyRoute.PlaylistDetail ? 1 : 0)))
             .Classes("spotify-connected-panes"));
         var root = UI.Stack("spotify.root", content.ToArray())
             .Classes("spotify-widget", "is-ready");

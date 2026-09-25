@@ -80,7 +80,7 @@ internal static class PlayniteLibraryDetailsPresentation
         var navigation = UI.NavigationShellParts(Prefix + "navigation", tabName, NavigationShellContentEntry.Unavailable,
             UI.Stack(Prefix + "navigation.unused"), tabs,
             compactLeadingAdornment: UI.ControllerGlyph(ControllerButton.LeftBumper, Prefix + "previous.key").Classes("playnite-library-tab-key"),
-            compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper, Prefix + "next.key").Classes("playnite-library-tab-key"));
+            compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper, Prefix + "next.key").Classes("playnite-library-tab-key")).WithTransitions();
         var navigationRail = navigation.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always)
             .AddClasses("playnite-library-details-tabs");
         var content = new List<WidgetElement>
@@ -90,14 +90,17 @@ internal static class PlayniteLibraryDetailsPresentation
         };
         if (extras.OperationMessage is { } message) content.Add(Copy(message, "operation.message"));
         if (extras.CompletionStatusesError is { } completionError) content.Add(Copy(completionError, "completion.error"));
+        var tabContent = new List<WidgetElement>();
         if (extras.Tab == PlayniteDetailsTab.Overview)
         {
-            if (loading) content.Add(Loading("Loading game details..."));
-            if (error is not null) content.Add(Copy(error, "load.error"));
-            AddOverview(content, item, game, loading, error, busy);
+            if (loading) tabContent.Add(Loading("Loading game details..."));
+            if (error is not null) tabContent.Add(Copy(error, "load.error"));
+            AddOverview(tabContent, item, game, loading, error, busy);
         }
-        else if (extras.Tab == PlayniteDetailsTab.Achievements) AddAchievements(content, extras);
-        else AddActivity(content, extras);
+        else if (extras.Tab == PlayniteDetailsTab.Achievements) AddAchievements(tabContent, extras);
+        else AddActivity(tabContent, extras);
+        content.Add(UI.Stack(Prefix + "tab.content", tabContent.ToArray()).Classes("playnite-library-details-content")
+            .TransitionContent(Prefix + "navigation", tabName, (int)extras.Tab));
         var body = UI.Stack(ContentId, content.ToArray()).Classes("playnite-library-details-content")
             .Shortcut(ControllerButton.LeftBumper, Prefix + "tab.previous", "Previous details tab")
             .Shortcut(ControllerButton.RightBumper, Prefix + "tab.next", "Next details tab")

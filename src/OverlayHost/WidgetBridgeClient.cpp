@@ -851,6 +851,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     if (required.HasKey(L"overlayPosition")) required.Remove(L"overlayPosition");
     if (required.HasKey(L"sectionAnimation")) required.Remove(L"sectionAnimation");
     if (required.HasKey(L"animateWidgetModals")) required.Remove(L"animateWidgetModals");
+    if (required.HasKey(L"widgetAnimationSpeed")) required.Remove(L"widgetAnimationSpeed");
     if (!HasOnlyProperties(required,
             {L"revision", L"themeId", L"themeVersion", L"interfaceScale", L"textScale",
              L"backdropOpacity", L"motion", L"contrast", L"boldText",
@@ -882,6 +883,17 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     }
 
     PlatformAppearance appearance;
+    if (payload.HasKey(L"widgetAnimationSpeed")) {
+        const auto value = payload.GetNamedValue(L"widgetAnimationSpeed");
+        if (value.ValueType() != JsonValueType::Number) {
+            error = L"Invalid widget animation speed."; return std::nullopt;
+        }
+        appearance.widgetAnimationSpeed = value.GetNumber();
+        if (!std::isfinite(appearance.widgetAnimationSpeed) || appearance.widgetAnimationSpeed < .5 ||
+            appearance.widgetAnimationSpeed > 2) {
+            error = L"Invalid widget animation speed."; return std::nullopt;
+        }
+    }
     if (payload.HasKey(L"sectionAnimation")) {
         const auto value = payload.GetNamedValue(L"sectionAnimation");
         if (value.ValueType() != JsonValueType::String) {

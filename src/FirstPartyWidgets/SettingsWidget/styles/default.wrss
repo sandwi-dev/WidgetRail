@@ -11,6 +11,7 @@
 .theme-picker { gap: 8px; }
 
 .settings-header { flex-shrink: 0; }
+.settings-page-motion { flex-grow: 1; min-height: 0; min-width: 0; }
 .theme-row {
   min-height: 52px;
   min-width: 0;

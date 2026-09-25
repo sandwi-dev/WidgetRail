@@ -19,10 +19,12 @@ Accessibility settings can adjust text and contrast, motion, and transparency.
 Try changes in a widget you use often so you can see how they affect real content.
 
 **Settings → Overlay → Section animation** controls page changes inside widgets:
-**Paging** (default) raises the next page while the previous page recedes;
-**Slide** moves pages horizontally; **None** changes pages immediately.
+**Slide** (default) moves pages horizontally; **Paging** raises the next page
+while the previous page recedes; **None** changes pages immediately.
 **Animate widget dialogs** independently controls opening and closing motion.
-These preferences apply immediately and survive restarts. Reduced motion,
+**Widget animation speed** ranges from **0.5×** (slower) to **2×** (faster), with
+**1×** as normal speed. It scales section, navigation-indicator and dialog timing
+together. These preferences apply immediately and survive restarts. Reduced motion,
 including the Windows preference when followed, overrides both without changing
 your saved choices. Tray widget-switch animation remains in **Settings → Appearance**.
 

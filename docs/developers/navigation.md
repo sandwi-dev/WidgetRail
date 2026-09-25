@@ -86,6 +86,11 @@ var parts = UI.NavigationShellParts(
 var root = UI.Stack("library.root", parts.CompactNavigation, parts.Body);
 ```
 
+For the standard shell layout, use `parts.Compose()` instead of arranging its
+parts manually. Custom segmented tabs can use `TransitionSelection` on each tab
+control with the same group/key/order as the content; the selected surface moves
+while labels remain stationary.
+
 `TransitionLayout(groupId, sectionKey, sectionOrder)` opts another element into
 position motion on that same timeline. Group/key identities are stable identifiers;
 order is a bounded integer (-1024 to 1024), normally the destination's index.
@@ -94,11 +99,12 @@ completion and loading-state updates keep the same key and do not restart it.
 The first committed presentation snaps into place. A section needing data can
 show its loading content immediately; navigation never waits for a provider.
 
-The default Paging preset uses a shared 260 ms timeline with gentle acceleration
-and deceleration. The incoming page rises from below while the outgoing page
-recedes to 96% of its size and moves slightly upward. Both pages keep their
-original opacity. A coordinated reveal clip prevents the outgoing page from
-showing through transparent incoming content. The themed selection surface moves
+The default Slide preset moves full pages horizontally without a crossfade.
+At normal speed, sections share a 260 ms timeline with gentle acceleration and
+deceleration. Paging is an alternative: the incoming page rises from below while
+the outgoing page recedes to 96% of its size and moves slightly upward. Both pages
+keep their original opacity, with coordinated reveal clipping to prevent old
+content showing through transparent incoming content. The themed selection surface moves
 behind stationary labels; the labels and their input targets do not move merely
 because selection changed. Actual layout position changes use the same clock.
 Rapid navigation retargets from the
@@ -139,16 +145,18 @@ CPU sampling and DirectComposition polynomial emission share the same curve;
 interruption capture and pointer mapping use the same transform definition.
 
 `DeclarativeRenderOptions.widgetAnimations` carries host preferences into each
-scene. Section presets have stable settings IDs: `paging` (default), `slide`
-(directional full-page movement without fading), and `none`. The policy parser
-defaults unknown IDs to Paging; settings validation and bridge admission reject
+scene. Section presets have stable settings IDs: `slide` (default), `paging`,
+and `none`. The policy parser defaults unknown IDs to Slide; settings validation and bridge admission reject
 unsupported values. The options also allow modal motion to be disabled independently.
 Changing preferences settles the current scene and discards old motion. Reduced
 motion takes precedence over every preset. **Settings → Overlay** exposes the
 Section animation dropdown and Animate widget dialogs switch. The platform
 settings document persists `appearance.sectionAnimation` and
-`appearance.animateWidgetModals`; existing documents default to Paging and
-enabled dialog motion. The bridge publishes the section choice using its stable
+`appearance.animateWidgetModals`. Missing values default to Slide and enabled
+dialog motion; explicit saved choices remain respected. `appearance.widgetAnimationSpeed`
+is a global multiplier from 0.5 to 2, defaulting to 1. Duration is divided by this
+value for sections, navigation and modals together; invalid values are rejected.
+The bridge publishes the section choice using its stable
 lowercase ID and delivers updates through the existing appearance-revision path.
 Widgets continue to declare semantic transitions rather than choosing host effects.
 
@@ -159,7 +167,7 @@ page (presentation protocol 55). Retain the page and its stable element IDs;
 return it without `WithModal` when the dismiss action runs.
 
 The host fades the themed backdrop and slides the panel by 14 DIP on the same
-180 ms timeline when opening or closing. Closing changes input authority
+260 ms smoothstep timeline at normal speed when opening or closing. Closing changes input authority
 immediately; only panel pixels survive until the exit finishes. Reopening during
 exit continues from the displayed opacity. A modal already present on the first
 frame after resuming or resizing does not replay its entrance. No worker timers

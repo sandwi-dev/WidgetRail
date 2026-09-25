@@ -8,6 +8,7 @@
   overflow: clip;
 }
 
+.network-page-motion { flex-grow: 1; min-height: 120px; min-width: 0px; }
 .network-view-scroll {
   min-height: 120px;
   min-width: 0px;

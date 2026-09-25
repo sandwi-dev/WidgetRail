@@ -32,6 +32,19 @@ internal static class WidgetTransitionTests
             "navigation shares one section key and direction");
         Check(navigation.Root.StyleClasses.Contains("wrail-navigation-shell__compact"),
             "animation wrappers preserve semantic theme classes");
+        var plain = UI.Stack("plain", UI.Button("Play", "play", "play"));
+        NavigationShellDestination[] destinations = [new("home", "Home", "home", WidgetGlyph.Play),
+            new("library", "Library", "library", WidgetGlyph.Music)];
+        var parts = UI.NavigationShellParts("composed", "home", "play", plain, destinations);
+        var legacy = new WidgetView(UI.NavigationShell("composed", "home", "play", plain, destinations)).CreateSnapshot("same", 1);
+        var composed = new WidgetView(parts.Compose()).CreateSnapshot("same", 1);
+        Check(SnapshotJson.Serialize(legacy).SequenceEqual(SnapshotJson.Serialize(composed)), "Compose preserves the existing shell contract");
+        var animated = new WidgetView(parts.WithTransitions().Compose()).CreateSnapshot("animated", 1);
+        Check(ViewSnapshotValidator.Validate(animated).Count == 0, "composed animated shell validates");
+        var selected = new WidgetView((UI.Button("Home", "home", "home") with { IsSelected = true })
+            .TransitionSelection("custom", "home", 0)).CreateSnapshot("custom", 1);
+        Check(selected.Root.Transition?.Kind == WidgetTransitionKind.Selection && selected.Root.IsSelected == true,
+            "custom tab selection retains its selected state");
         var conflicting = new WidgetView(UI.Stack("root",
             UI.Stack("one").TransitionContent("tabs", "home", 0),
             UI.Stack("two").TransitionContent("tabs", "library", 1)));

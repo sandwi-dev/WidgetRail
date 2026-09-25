@@ -44,7 +44,7 @@ static async Task PageCoverage()
 {
     var widget = new SdkGalleryWidget();
     var overview = Snapshot(widget, 1);
-    Assert.Equal(ProtocolConstants.ControllerGlyphVersion, overview.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.WidgetTransitionVersion, overview.ProtocolVersion);
     Assert.Equal("gallery.refresh", overview.InitialFocusId);
     Assert.Equal(widget.Navigation.InputScopeId, overview.ActiveInputScopeId);
     Assert.Equal(WidgetSurfaceMode.Standard, overview.Surface!.Mode);
@@ -75,6 +75,7 @@ static async Task PageCoverage()
     Assert.True(disabledIcon.IsFocusable && disabledIcon.IsDisabled == true);
     var compactNavigation = Find(overview, "gallery.shell.compact");
     var expandedNavigation = Find(overview, "gallery.shell.rail");
+    Assert.Equal(WidgetTransitionKind.Content, Find(overview, "gallery.shell.content").Transition!.Kind);
     Assert.Equal(ResponsiveVisibility.CompactOnly, compactNavigation.VisibleWhen);
     Assert.Equal(ResponsiveVisibility.ExpandedOnly, expandedNavigation.VisibleWhen);
     Assert.Equal(1, Nodes(overview.Root).Count(node => node.Id == "gallery.page-scroll"));
@@ -127,7 +128,7 @@ static async Task PageCoverage()
 
     await Act(widget, "gallery.tab.tiles");
     var tiles = Snapshot(widget, 3);
-    Assert.Equal(ProtocolConstants.ControllerGlyphVersion, tiles.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.WidgetTransitionVersion, tiles.ProtocolVersion);
     Assert.Equal(4, Nodes(tiles.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface));
     Assert.Equal(2, Nodes(tiles.Root).Count(node =>
         node.StyleClasses.SequenceEqual(["wrail-action-surface", "wrail-tile"])));
@@ -318,7 +319,7 @@ static async Task TrustedArtwork()
     var snapshot = Snapshot(widget, 1);
     var artworkHandle = Find(snapshot, "gallery.app.artwork").ArtworkHandle;
     Assert.True(artworkHandle is not null);
-    Assert.Equal(ProtocolConstants.ControllerGlyphVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.WidgetTransitionVersion, snapshot.ProtocolVersion);
     Assert.Equal(ViewNodeKind.BackgroundSurface, snapshot.Root.Kind);
     Assert.True(snapshot.Root.StyleClasses.SequenceEqual(
         ["wrail-background-surface", "gallery-root-background"]));
@@ -576,7 +577,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.19", manifest.Version);
+    Assert.Equal("0.1.22", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
@@ -653,7 +654,7 @@ static Task StyleContract()
         "row", StyleClasses: new HashSet<string>(
             ["wrail-controller-glyph", "gallery-section-bumper-key"])))!;
     Assert.Equal("24px", bumperKey.Get("font-size")?.Text);
-    Assert.Equal("#f7f7fa", bumperKey.Get("color")?.Text);
+    Assert.Equal("#aeb5c3", bumperKey.Get("color")?.Text);
     Assert.Equal("0", bumperKey.Get("flex-shrink")?.Text);
     var grid = compiled.Theme.Resolve(new WrssElement(
         "grid", StyleClasses: new HashSet<string>(["wrail-responsive-grid"])))!;

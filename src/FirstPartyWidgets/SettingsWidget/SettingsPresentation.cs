@@ -55,6 +55,16 @@ internal static class SettingsPresentation
         return view is not null;
     }
 
+    internal static WidgetView AnimatePage(WidgetView view, SettingsPage page, bool loading)
+    {
+        if (loading || view.Root is not StackElement { Id: "settings-root" } root || root.Children.Count < 2)
+            return view;
+        var children = root.Children.ToArray();
+        children[1] = UI.Stack("settings.page-motion", children[1]).Classes("settings-page-motion")
+            .TransitionContent("settings.pages", page.ToString(), (int)page);
+        return view with { Root = root with { Children = children } };
+    }
+
     public static StackElement Header(SettingsPresentationState state)
     {
         var children = new List<WidgetElement>
@@ -369,16 +379,23 @@ internal static class SettingsPresentation
                     .Busy(busy).Classes("setting-row"),
                 UI.Select("Section animation", new SelectOption[]
                 {
-                    new("paging", "Paging", "section-animation.paging", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Paging),
                     new("slide", "Slide", "section-animation.slide", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Slide),
+                    new("paging", "Paging", "section-animation.paging", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Paging),
                     new("none", "None", "section-animation.none", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.None),
                 }, "overlay.section-animation", "Section animation")
                     .FocusUp("overlay.widget-switcher").FocusDown("overlay.animate-dialogs")
                     .Busy(busy).AddClasses("setting-row"),
                 UI.Switch("Animate widget dialogs", appearance.AnimateWidgetModals,
                     "widget-modal-animation.toggle", "overlay.animate-dialogs")
-                    .FocusUp("overlay.section-animation").Busy(busy).AddClasses("setting-row"),
-                UI.Text("Section animations apply when switching pages inside widgets. Reduced motion overrides section and dialog animations.",
+                    .FocusUp("overlay.section-animation").FocusDown("overlay.animation-speed.decrement")
+                    .Busy(busy).AddClasses("setting-row"),
+                LinkStepper(UI.Stepper("Widget animation speed",
+                    appearance.WidgetAnimationSpeed.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "×",
+                    "widget-animation-speed.decrease", "widget-animation-speed.increase", "overlay.animation-speed",
+                    appearance.WidgetAnimationSpeed > AppearanceSettings.MinimumWidgetAnimationSpeed,
+                    appearance.WidgetAnimationSpeed < AppearanceSettings.MaximumWidgetAnimationSpeed),
+                    "overlay.animate-dialogs", null, busy),
+                UI.Text("Section animations apply inside supported widgets. Speed ranges from 0.5× (slower) to 2× (faster). Reduced motion overrides section and dialog animations.",
                     "overlay.animations.help").Classes("page-help"),
                 UI.Text(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial
                         ? "B at the widget's top level opens the radial.\nLeft stick previews widgets and their shortcuts; right stick changes pages without changing the preview. A enters, B returns.\nMove down past the widget's bottom row for the rail. B on the rail closes the overlay."

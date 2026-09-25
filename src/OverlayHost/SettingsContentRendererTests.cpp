@@ -111,8 +111,8 @@ void Run(const std::filesystem::path& fixturePath) {
         ReadUtf8(fixturePath), error);
     Check(parsed.has_value(), "production native bridge parses the managed Settings fixture");
     const auto& snapshot = *parsed;
-    Check(snapshot.protocolVersion == 46,
-          "Settings home publishes the package-icon protocol");
+    Check(snapshot.protocolVersion == 58,
+          "Settings home publishes the widget-transition protocol");
     Check(snapshot.activeInputScopeId == L"settings-root" &&
               snapshot.initialFocusId == L"category.appearance",
           "Settings root scope and initial focus remain unchanged");

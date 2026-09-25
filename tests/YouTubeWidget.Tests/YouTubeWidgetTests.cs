@@ -625,7 +625,7 @@ public sealed partial class YouTubeWidgetTests
             "youtube.search.open-route", "youtube.root"));
         var hidden = widget.RenderSnapshot("youtube-test", 3);
         var requiredProtocolVersion = Math.Max(
-            ProtocolConstants.ControllerGlyphVersion,
+            ProtocolConstants.WidgetTransitionVersion,
             Math.Max(
                 ProtocolConstants.EmbeddedMediaSessionVersion,
                 ProtocolConstants.RememberedChildFocusGroupVersion));

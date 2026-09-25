@@ -89,6 +89,8 @@ internal static class NetworkControlsPresentation
             ? wifiInitialFocus
             : bluetoothInitialFocus;
 
+        var sectionKey = state.ActiveTab == NetworkControlsTab.Wifi ? "wifi" : "bluetooth";
+        var sectionOrder = state.ActiveTab == NetworkControlsTab.Wifi ? 0 : 1;
         var tabs = UI.SegmentedTabs("network.tabs",
             state.ActiveTab == NetworkControlsTab.Wifi
                 ? "network.tab.wifi" : "network.tab.bluetooth",
@@ -100,6 +102,7 @@ internal static class NetworkControlsPresentation
         {
             Children = tabs.Children.Select(child => child is ButtonElement button
                 ? button.FocusUp("network.details.open").FocusDown(activeInitialFocus)
+                    .TransitionSelection("network.tabs", sectionKey, sectionOrder)
                 : child).ToArray(),
         };
 
@@ -168,6 +171,8 @@ internal static class NetworkControlsPresentation
                 .Classes("network-view-scroll", "network-wifi-view"));
         }
 
+        content[^1] = UI.Stack("network.page-motion", content[^1]).Classes("network-page-motion")
+            .TransitionContent("network.tabs", sectionKey, sectionOrder);
         var root = UI.Stack("network.root", content.ToArray())
             .InputScope("network-controls")
             .Shortcut(ControllerButton.LeftBumper, "network.tab.previous", label: "Previous tab")

@@ -608,6 +608,7 @@ method WidgetRail.WidgetSdk.NavigationShellDestination.Equals(object? obj) -> bo
 method WidgetRail.WidgetSdk.NavigationShellDestination.GetHashCode() -> int
 method WidgetRail.WidgetSdk.NavigationShellDestination.ToString() -> string
 method WidgetRail.WidgetSdk.NavigationShellParts.<Clone>$() -> WidgetRail.WidgetSdk.NavigationShellParts
+method WidgetRail.WidgetSdk.NavigationShellParts.Compose() -> WidgetRail.WidgetSdk.StackElement
 method WidgetRail.WidgetSdk.NavigationShellParts.Deconstruct(out WidgetRail.WidgetSdk.WidgetElement CompactNavigation, out WidgetRail.WidgetSdk.WidgetElement Body) -> void
 method WidgetRail.WidgetSdk.NavigationShellParts.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.NavigationShellParts.GetHashCode() -> int
@@ -1979,6 +1980,7 @@ method static WidgetRail.WidgetSdk.WidgetTestHost.SetLifecycleStateAsync(WidgetR
 method static WidgetRail.WidgetSdk.WidgetTicker.RunWhileActiveAsync(System.TimeSpan interval, System.Func<System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> tickAsync, System.Threading.CancellationToken activeLifetime, bool tickImmediately = false, System.TimeProvider? timeProvider = null) -> System.Threading.Tasks.Task
 method static WidgetRail.WidgetSdk.WidgetTransitionExtensions.TransitionContent(WidgetRail.WidgetSdk.WidgetElement element, string groupId, string sectionKey, int sectionOrder) -> WidgetRail.WidgetSdk.WidgetElement
 method static WidgetRail.WidgetSdk.WidgetTransitionExtensions.TransitionLayout(WidgetRail.WidgetSdk.WidgetElement element, string groupId, string sectionKey, int sectionOrder) -> WidgetRail.WidgetSdk.WidgetElement
+method static WidgetRail.WidgetSdk.WidgetTransitionExtensions.TransitionSelection(WidgetRail.WidgetSdk.WidgetElement element, string groupId, string sectionKey, int sectionOrder) -> WidgetRail.WidgetSdk.WidgetElement
 method static WidgetRail.WidgetSdk.WidgetView.PinnedLayout(string id, string name, WidgetRail.WidgetProtocol.WidgetSurfaceHints surface, WidgetRail.WidgetSdk.WidgetElement? root = null, string? initialFocusId = null, string? activeInputScopeId = null) -> WidgetRail.WidgetProtocol.PinnedPresentationLayout
 method static WidgetRail.WidgetSdk.WidgetView.op_Equality(WidgetRail.WidgetSdk.WidgetView? left, WidgetRail.WidgetSdk.WidgetView? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetView.op_Inequality(WidgetRail.WidgetSdk.WidgetView? left, WidgetRail.WidgetSdk.WidgetView? right) -> bool

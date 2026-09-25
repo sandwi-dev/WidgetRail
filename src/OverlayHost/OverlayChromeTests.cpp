@@ -1213,10 +1213,20 @@ void CheckWidgetAnimationPolicies() {
     for (const auto preset : SectionPresets)
         Check(ParseSectionStyle(preset.id) == preset.style && SectionStyleId(preset.style) == preset.id,
               "preset settings IDs round-trip independently of enum ordinals");
-    Check(ParseSectionStyle(L"future-unknown") == SectionStyle::Paging,
+    Check(ParseSectionStyle(L"future-unknown") == SectionStyle::Slide,
           "unknown settings ID has a safe default");
     Check(ModalEnter(ModalStyle::None, bounds, bounds, 0, false).milliseconds == 0,
           "modal preference independently disables modal motion");
+    Check(Options{}.section == SectionStyle::Slide && SectionPresets.front().style == SectionStyle::Slide,
+        "Slide is the default and first preset");
+    for (const auto speed : {.5, 1.0, 2.0}) {
+        const auto page = Section(SectionStyle::Slide,bounds,bounds,bounds,1).incoming.Start(0,1000,speed);
+        const auto modal = ModalEnter(ModalStyle::Lift,bounds,bounds,0,false).Start(0,1000,speed);
+        Check(page.duration == static_cast<std::int64_t>(260/speed) && modal.duration == page.duration,
+            "bounded speed controls page and gentler modal timing consistently");
+        Check(std::abs(Sample(modal,modal.duration/2).opacity-.5F)<.001F,
+            "modal uses gentle acceleration instead of the old fast initial fade");
+    }
     const Pose oldLabel{{5, 10, 80, 40}, 1, bounds};
     const auto label = Layout(SectionStyle::Paging, bounds, bounds, oldLabel, false);
     const auto selection = Layout(SectionStyle::Paging, bounds, bounds, oldLabel, true);
@@ -1248,6 +1258,7 @@ void CheckWidgetCompositorPixels() {
     const auto makeScene = [](const wchar_t *key, D2D1_COLOR_F color) {
         auto scene = std::make_shared<WidgetCompositionScene>();
         scene->authority = L"motion.test";
+        scene->animations.section = animation::SectionStyle::Paging;
         scene->viewport = {0, 0, 128, 128};
         WidgetCompositionNode background;
         background.id = L"background";
@@ -1375,7 +1386,7 @@ void CheckWidgetCompositorPixels() {
         return scene;
     };
     commit(modalScene());
-    Sleep(210);
+    Sleep(290);
     DwmFlush();
     Check(GetRValue(pixel()) > 220, "modal pixels are above their backdrop");
     const auto outsideModal = surface.MapWidgetCompositionInput({18, 18});
@@ -1391,7 +1402,7 @@ void CheckWidgetCompositorPixels() {
     DwmFlush();
     Check(surface.paintCounters().content == closingPaints, "modal exit needs no UI-thread paint");
     commit(modalScene());
-    Sleep(210);
+    Sleep(290);
     DwmFlush();
     Check(GetRValue(pixel()) > 220, "an interrupted modal exit reopens correctly");
     auto reduced = makeScene(L"home", D2D1::ColorF(D2D1::ColorF::Lime));
@@ -1450,6 +1461,18 @@ void CheckWidgetCompositorPixels() {
         "outgoing capture fills its physical extent at enlarged overlay scale");
     Sleep(210); DwmFlush();
     Check(GetGValue(pixel())>220,"scaled paging settles to the incoming page");
+    auto slowHome = makeScene(L"home",D2D1::ColorF(D2D1::ColorF::Red));
+    slowHome->animations = {animation::SectionStyle::Slide,animation::ModalStyle::Lift,.5};
+    commit(slowHome);
+    auto slowLibrary = makeScene(L"library",D2D1::ColorF(D2D1::ColorF::Lime));
+    slowLibrary->animations = slowHome->animations;
+    commit(slowLibrary);
+    const auto speedPaints = surface.paintCounters().content;
+    Sleep(180); DwmFlush();
+    Check(GetRValue(pixel())>220,"half-speed slide is still on its outgoing half after 180ms");
+    Sleep(390); DwmFlush();
+    Check(GetGValue(pixel())>220 && surface.paintCounters().content==speedPaints,
+        "half-speed motion reaches its endpoint without UI-thread painting");
     surface.Reset();
     DestroyWindow(window);
     UnregisterClassW(name, wc.hInstance);

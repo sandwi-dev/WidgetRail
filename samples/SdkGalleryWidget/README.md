@@ -22,7 +22,7 @@ The five pages cover:
   content; it does not imply clipboard behavior.
 
 The sample is also the production-style reference for the public responsive
-navigation and stable-ID coordination APIs. `UI.NavigationShell` renders one
+navigation and stable-ID coordination APIs. `UI.NavigationShellParts(...).WithTransitions().Compose()` renders one
 five-destination model as compact tabs or an expanded rail around one shared
 page subtree. Compact and rail controls receive distinct stable element IDs but
 share one protocol-v13 focus-persistence identity per logical destination. The

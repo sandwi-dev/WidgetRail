@@ -20,25 +20,26 @@ struct SectionPreset {
     SectionStyle style;
 };
 inline constexpr std::array SectionPresets{
-    SectionPreset{L"paging", L"Paging", SectionStyle::Paging},
     SectionPreset{L"slide", L"Slide", SectionStyle::Slide},
+    SectionPreset{L"paging", L"Paging", SectionStyle::Paging},
     SectionPreset{L"none", L"None", SectionStyle::None},
 };
 constexpr SectionStyle ParseSectionStyle(std::wstring_view id) noexcept {
     for (const auto &preset : SectionPresets)
         if (preset.id == id)
             return preset.style;
-    return SectionStyle::Paging;
+    return SectionStyle::Slide;
 }
 constexpr std::wstring_view SectionStyleId(SectionStyle style) noexcept {
     for (const auto &preset : SectionPresets)
         if (preset.style == style)
             return preset.id;
-    return L"paging";
+    return L"slide";
 }
 struct Options {
-    SectionStyle section{SectionStyle::Paging};
+    SectionStyle section{SectionStyle::Slide};
     ModalStyle modal{ModalStyle::Lift};
+    double speed{1};
     bool operator==(const Options &) const = default;
 };
 
@@ -100,8 +101,9 @@ struct Recipe {
     Pose from, to;
     unsigned milliseconds{};
     Curve curve{Smooth};
-    Motion Start(std::int64_t now, std::int64_t ticksPerSecond) const noexcept {
-        return {from, to, now, ticksPerSecond * milliseconds / 1000, curve};
+    Motion Start(std::int64_t now, std::int64_t ticksPerSecond, double speed = 1) const noexcept {
+        const double boundedSpeed = std::isfinite(speed) ? std::clamp(speed,.5,2.0) : 1;
+        return {from, to, now, static_cast<std::int64_t>(ticksPerSecond * milliseconds / (1000 * boundedSpeed)), curve};
     }
 };
 inline Recipe Stationary(Rect bounds, Rect clip) noexcept {
@@ -155,8 +157,8 @@ inline Recipe Layout(SectionStyle style, Rect bounds, Rect clip, Pose previous, 
 }
 inline Recipe ModalEnter(ModalStyle style, Rect bounds, Rect clip, float opacity, bool scrim) noexcept {
     auto recipe = Stationary(bounds, clip);
-    recipe.milliseconds = style == ModalStyle::None ? 0 : 180;
-    recipe.curve = EaseOut;
+    recipe.milliseconds = style == ModalStyle::None ? 0 : 260;
+    recipe.curve = Smooth;
     recipe.from.opacity = opacity;
     if (!scrim)
         recipe.from.bounds.y += 14 * (1 - opacity);
@@ -164,8 +166,8 @@ inline Recipe ModalEnter(ModalStyle style, Rect bounds, Rect clip, float opacity
 }
 inline Recipe ModalExit(ModalStyle style, Rect bounds, Rect clip, float opacity, bool scrim) noexcept {
     auto recipe = Stationary(bounds, clip);
-    recipe.milliseconds = style == ModalStyle::None ? 0 : 180;
-    recipe.curve = EaseOut;
+    recipe.milliseconds = style == ModalStyle::None ? 0 : 260;
+    recipe.curve = Smooth;
     recipe.from.opacity = scrim ? opacity : 1;
     recipe.to.opacity = 0;
     if (!scrim)

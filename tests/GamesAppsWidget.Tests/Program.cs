@@ -1476,7 +1476,7 @@ static async Task ResolvedIconRenders()
     Assert.True(artwork.ImageSource is null);
     Assert.Equal(ImageFit.Contain, artwork.ImageFit);
     Assert.True(artwork.Glyph is null);
-    Assert.Equal(ProtocolConstants.ControllerGlyphVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.WidgetTransitionVersion, snapshot.ProtocolVersion);
     Assert.Valid(snapshot);
     await Background(widget);
 }

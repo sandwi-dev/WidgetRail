@@ -362,7 +362,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
             group.exit =
                 animation::ModalExit(scene->animations.modal, group.previous.node.bounds, group.node.clip,
                                      opacity, group.node.kind == WidgetCompositionKind::Scrim)
-                    .Start(now, Frequency());
+                    .Start(now, Frequency(), scene->animations.speed);
         }
     scene_ = std::move(scene);
     if (!root_) {
@@ -468,7 +468,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
                     // A same-key layout update changes geometry, not the
                     // animation clock. Rebuild both paths together so the
                     // outgoing reveal stays aligned with the incoming edge.
-                    group.exit = plan.outgoing.Start(changed ? now : previousMotion.start, Frequency());
+                    group.exit = plan.outgoing.Start(changed ? now : previousMotion.start, Frequency(), scene_->animations.speed);
                 }
             } else if (node.kind == WidgetCompositionKind::Modal ||
                        node.kind == WidgetCompositionKind::Scrim) {
@@ -481,7 +481,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
                 recipe = animation::Layout(scene_->animations.section, node.bounds, node.clip, previous,
                     node.kind == WidgetCompositionKind::Selection);
             }
-            group.motion = recipe.Start(now, Frequency());
+            group.motion = recipe.Start(now, Frequency(), scene_->animations.speed);
             if (!changed) {
                 if (node.kind == WidgetCompositionKind::Content && previousEnd > now) {
                     group.motion.start = previousMotion.start;

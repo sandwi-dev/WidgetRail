@@ -119,6 +119,8 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(DetailAction + "tab.activity", "tab"));
         await Bounded(widget.WhenDetailsIdleAsync(), "loaded details");
         var before = Snapshot(widget, 127_002);
+        var tabMotion = Nodes(before.Root).Single(n => n.Id == DetailAction + "tab.content").Transition;
+        Assert.AreEqual("activity", tabMotion!.Key);
         Assert.AreEqual("Not Played", Nodes(before.Root).Single(n => n.Id == DetailAction + "completion.value").Text);
         var full = widget.RenderState.Value.DetailsExtras.Full;
         var activity = widget.RenderState.Value.DetailsExtras.Activity;
@@ -129,6 +131,8 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(selected.ActionId, dropdown.Id));
         await Bounded(widget.WhenDetailsIdleAsync(), "completion action");
         var after = Snapshot(widget, 127_003);
+        Assert.AreEqual(tabMotion, Nodes(after.Root).Single(n => n.Id == DetailAction + "tab.content").Transition,
+            "Completion and provider updates must not replay the details tab transition.");
         Assert.AreEqual(reject ? "Not Played" : "On hold",
             Nodes(after.Root).Single(n => n.Id == DetailAction + "completion.value").Text);
         Assert.AreEqual(("saved-00000", "On hold"), application.CompletionRequests.Single());

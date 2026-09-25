@@ -21,6 +21,11 @@ public static class WidgetTransitionExtensions
         string groupId, string sectionKey, int sectionOrder) =>
         new TransitionElement(element, new(groupId, sectionKey, sectionOrder, WidgetTransitionKind.Layout));
 
+    /// <summary>Moves a selected control's surface behind stationary labels in a custom tab row.</summary>
+    public static WidgetElement TransitionSelection(this WidgetElement element,
+        string groupId, string sectionKey, int sectionOrder) =>
+        new TransitionElement(element, new(groupId, sectionKey, sectionOrder, WidgetTransitionKind.Selection));
+
     private sealed record TransitionElement : WidgetElement
     {
         private readonly WidgetElement _child;

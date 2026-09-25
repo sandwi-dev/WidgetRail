@@ -318,7 +318,7 @@ static async Task ControllerScrollSurface()
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
     var root = Snapshot(widget);
-    Assert.Equal(ProtocolConstants.PackageSvgIconVersion, root.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.WidgetTransitionVersion, root.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Standard, root.Surface?.Mode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.WidthMode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.HeightMode);
@@ -405,6 +405,13 @@ static async Task AnimationPreferences()
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
     await Action(widget, "open.overlay");
+    var initialOptions = Nodes(Snapshot(widget).Root).Single(node => node.Id == "overlay.section-animation").SelectOptions!;
+    Assert.Equal("slide", initialOptions[0].Id);
+    Assert.Equal(true, initialOptions[0].IsSelected);
+    for (var i = 0; i < 10; i++) await Action(widget, "widget-animation-speed.decrease");
+    Assert.Equal(0.5d, (await Store(temp.Path).LoadAsync()).Appearance.WidgetAnimationSpeed);
+    for (var i = 0; i < 10; i++) await Action(widget, "widget-animation-speed.increase");
+    Assert.Equal(2d, (await Store(temp.Path).LoadAsync()).Appearance.WidgetAnimationSpeed);
     foreach (var (id, expected) in new[]
     {
         ("slide", WidgetSectionAnimation.Slide),
@@ -3196,6 +3203,7 @@ file static class Assert
         Equal(expected.Appearance.AnimateWidgetSwitching, actual.Appearance.AnimateWidgetSwitching);
         Equal(expected.Appearance.SectionAnimation, actual.Appearance.SectionAnimation);
         Equal(expected.Appearance.AnimateWidgetModals, actual.Appearance.AnimateWidgetModals);
+        Equal(expected.Appearance.WidgetAnimationSpeed, actual.Appearance.WidgetAnimationSpeed);
         Equal(expected.Appearance.WidgetSurfaceAppearance, actual.Appearance.WidgetSurfaceAppearance);
         SequenceEqual(
             expected.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(

@@ -781,8 +781,9 @@ struct PlatformAppearance final {
     bool boldText{};
     PlatformTransparencyPreference transparency{PlatformTransparencyPreference::Full};
     bool animateWidgetSwitching{};
-    std::wstring sectionAnimation{L"paging"};
+    std::wstring sectionAnimation{L"slide"};
     bool animateWidgetModals{true};
+    double widgetAnimationSpeed{1};
     bool radialWidgetSwitcher{};
     OverlayPosition overlayPosition{OverlayPosition::Center};
     PlatformSurfaceAppearanceOverride widgetSurfaceAppearance{

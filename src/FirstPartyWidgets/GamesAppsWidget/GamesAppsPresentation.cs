@@ -92,7 +92,7 @@ internal static class GamesAppsPresentation
             compactTrailingAdornment: SectionBumperBadge(
                 ControllerButton.RightBumper,
                 "Next section",
-                "games.section.next.hint"));
+                "games.section.next.hint")).WithTransitions();
         var header = RenderHeader(state, parts.CompactNavigation);
         var initialFocus = entry is null ? null : InitialFocusId(state, entry);
         var root = UI.Stack(

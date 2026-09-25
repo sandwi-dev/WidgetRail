@@ -1006,12 +1006,15 @@ elements can use `TransitionLayout` with the same group/key/order. Stable keys
 prevent data refreshes and cursor loading from replaying navigation. These
 optional declarations require protocol 58 and preserve existing input scopes.
 The Windows host animates separate DirectComposition layers, so section motion
-does not require per-frame widget rendering. Its default paging effect moves
+does not require per-frame widget rendering. Its default slide effect moves
 pages without a section-wide fade; host presets can change that effect without
 changing widget code. Reduced motion and hosts without
 composition show the destination immediately.
 See [coordinated section transitions](../../docs/developers/navigation.md#coordinated-section-transitions)
 for clipping, interruption, reduced motion and resource bounds.
+Use `.WithTransitions().Compose()` for a standard navigation shell; custom tab
+controls can share `TransitionSelection` with their content group. Host settings
+choose the effect and speed, so widgets do not hard-code animation timing.
 
 ### Modal views
 

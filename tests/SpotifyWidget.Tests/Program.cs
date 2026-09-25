@@ -326,6 +326,9 @@ static async Task ConfiguredReadySetupAction()
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     var ready = widget.RenderSnapshot("spotify.setup.ready", 1);
+    Assert.Equal("spotify.pages", Find(ready.Root, "spotify.connected.panes").Children[1].Transition!.GroupId);
+    Assert.True(Find(ready.Root, "spotify.connected.panes").Children[0].Transition is null,
+        "Persistent player must not move with section content.");
     AssertShortcut(ready.Root, ControllerButton.Y, "spotify.setup.open");
     Assert.Equal("Settings",
         Find(ready.Root, "spotify.navigation.settings.hint.label").Text);
@@ -333,6 +336,7 @@ static async Task ConfiguredReadySetupAction()
     await widget.OnActionAsync(new WidgetActionEvent(
         "spotify.setup.open", ready.Root.Id));
     var setup = widget.RenderSnapshot("spotify.setup.ready", 2);
+    Assert.Equal("Setup", Find(setup.Root, "spotify.page.setup").Transition!.Key);
     Assert.Equal("spotify.setup", setup.ActiveInputScopeId);
     var input = Find(setup.Root, "spotify.setup.client-id");
     Assert.Equal("spotify.setup.client-id", input.ActionId);

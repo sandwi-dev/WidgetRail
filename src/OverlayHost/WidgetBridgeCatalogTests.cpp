@@ -2779,7 +2779,18 @@ int main(int argc, char** argv) {
     CHECK(appearance->boldText);
     CHECK(appearance->transparency == widgetrail::PlatformTransparencyPreference::Reduced);
     CHECK(!appearance->animateWidgetSwitching);
-    CHECK(appearance->sectionAnimation == L"paging");
+    CHECK(appearance->sectionAnimation == L"slide");
+    CHECK(appearance->widgetAnimationSpeed == 1);
+    for (const auto value : {"0.5", "1.5", "2", "0.49", "2.01", "true"}) {
+        std::string source(ValidAppearance);
+        source.insert(1, std::string("\"widgetAnimationSpeed\":") + value + ",");
+        error.clear();
+        const auto parsed = widgetrail::testing::ParsePlatformAppearance(source, error);
+        const auto option = std::string_view(value);
+        const bool valid = option == "0.5" || option == "1.5" || option == "2";
+        CHECK(parsed.has_value() == valid);
+        if (parsed) CHECK(parsed->widgetAnimationSpeed == std::stod(value));
+    }
     CHECK(appearance->animateWidgetModals);
     for (const auto value : {"\"paging\"", "\"slide\"", "\"none\"", "\"unknown\"", "false"}) {
         std::string source(ValidAppearance);

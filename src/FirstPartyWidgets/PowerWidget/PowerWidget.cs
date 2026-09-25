@@ -175,7 +175,7 @@ public sealed class PowerWidget : Widget
             if (_toast is not null) children.Add(UI.Toast("Power", _toast, _tone, "power.toast"));
             var root = UI.Stack("power.root", children.ToArray()).InputScope(scope).Classes("power-widget");
             if (_pending is not null) root = root.Shortcut(ControllerButton.B, "cancel");
-            return new(root, _focus, Surface: new WidgetSurfaceHints
+            return new(root.TransitionContent("power.pages", scope, _pending is null ? 0 : 1), _focus, Surface: new WidgetSurfaceHints
             {
                 Mode = WidgetSurfaceMode.Standard, PreferredWidth = 680, PreferredHeight = 380,
                 MinimumWidth = 540, MinimumHeight = 380,
