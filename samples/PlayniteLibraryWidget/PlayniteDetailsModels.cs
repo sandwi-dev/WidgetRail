@@ -23,6 +23,9 @@ internal sealed record PlayniteDetailsExtras
     // A confirmed mutation wins over a detail read that may already be in flight.
     // Explicit Refresh creates new extras and reads the provider's current value.
     internal string? ConfirmedCompletionStatus { get; init; }
+    internal IReadOnlyList<string>? CompletionStatuses { get; init; }
+    internal bool CompletionStatusesLoading { get; init; }
+    internal string? CompletionStatusesError { get; init; }
     internal string? ResolveCompletionStatus(string? catalogStatus) =>
         ConfirmedCompletionStatus ?? (Full?.Game is { } game ? game.CompletionStatus : catalogStatus);
     internal PlayniteDetailsTab Tab { get; init; }

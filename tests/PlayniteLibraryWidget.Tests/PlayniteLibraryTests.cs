@@ -4536,6 +4536,8 @@ public sealed partial class PlayniteLibraryTests
         IPlayniteLibraryApplicationService
     {
         internal bool RejectCompletionChanges { get; set; }
+        internal List<(string Id, string Status)> CompletionRequests { get; } = [];
+        internal Func<CancellationToken, ValueTask<IReadOnlyList<string>>>? CompletionStatusesHandler { get; set; }
         internal Func<string, CancellationToken, ValueTask<PlayniteGameDetails?>>? DetailsHandler { get; set; }
         internal Func<string, bool, CancellationToken, ValueTask<bool>>? InstallationHandler { get; set; }
         public async ValueTask<PlayniteGameDetails?> GetGameDetailsAsync(string gameId, CancellationToken token)
@@ -4639,6 +4641,7 @@ public sealed partial class PlayniteLibraryTests
         public async ValueTask<WidgetAppLibraryItem?> SetCompletionStatusAsync(
             string gameId, string completionStatus, CancellationToken cancellationToken)
         {
+            CompletionRequests.Add((gameId, completionStatus));
             if (RejectCompletionChanges) return null;
             host.SetCompletionStatus(gameId, completionStatus);
             return (await ResolveSavedAsync([gameId], cancellationToken)).SingleOrDefault();
@@ -4655,7 +4658,7 @@ public sealed partial class PlayniteLibraryTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult<IReadOnlyList<string>>(
+            return CompletionStatusesHandler?.Invoke(cancellationToken) ?? ValueTask.FromResult<IReadOnlyList<string>>(
                 ["Not Played", "Playing", "Completed"]);
         }
 

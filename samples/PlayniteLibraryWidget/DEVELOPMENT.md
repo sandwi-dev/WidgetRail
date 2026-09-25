@@ -209,3 +209,12 @@ Uninstall requires in-modal confirmation, with B canceling it. An acknowledgment
 the request was passed to Playnite, not that installation completed. Metadata links allow
 only HTTP(S), are revalidated against freshly fetched game data, and open in the user's
 browser. User guide links describe the optional companion extensions.
+
+The completion control uses the SDK's native Select dropdown. Available statuses
+load independently of game metadata and are cached for the open details instance.
+Each option action contains the details generation and a hash of its exact status
+name; dispatch resolves against the current list, so stale options cannot target a
+new game. Mutations set the selected name directly. Empty/failed lists disable the
+control with feedback; interrupted reads retry on resume. The list reserves one of
+the protocol's 128 slots for an unset or unlisted current value; larger provider
+lists show an explicit error rather than silently hiding statuses.

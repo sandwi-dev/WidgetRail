@@ -253,7 +253,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 state.Organization.FavoriteSavedIds.Contains(details.Value.SavedId),
                 state.OrganizationBusy || state.BrowseRetained,
                 local.DetailsExtras.ResolveCompletionStatus(
-                    state.CompletionStatuses.GetValueOrDefault(details.Value.SavedId)) ?? string.Empty));
+                    state.CompletionStatuses.GetValueOrDefault(details.Value.SavedId)) ?? string.Empty,
+                local.DetailsGeneration));
         }
         return page;
     }
@@ -1910,8 +1911,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         return applied;
     }
 
-    private async Task<string?> CycleCompletionStatusAsync(
-        string sourceElementId,
+    private async Task<string?> SetCompletionStatusAsync(
+        string sourceElementId, string selectedStatus,
         CancellationToken cancellationToken)
     {
         var display = DisplayForSource(sourceElementId);
@@ -1920,25 +1921,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         var status = "Completion status could not be changed. Refresh and try again.";
         try
         {
-            var statuses = await _application.GetCompletionStatusesAsync(cancellationToken)
-                .ConfigureAwait(false);
-            if (statuses.Count == 0)
-            {
-                status = "No Playnite completion statuses are available";
-                return null;
-            }
-            string? current;
-            lock (_gate)
-            {
-                if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return null;
-                current = authority.CompletionStatuses.GetValueOrDefault(display.SavedId);
-                var details = _model.Value;
-                if (details.DetailsItem?.Value.SavedId == display.SavedId)
-                    current = details.DetailsExtras.ResolveCompletionStatus(current);
-            }
-            var index = current is null ? -1 : statuses.ToList().FindIndex(value =>
-                string.Equals(value, current, StringComparison.OrdinalIgnoreCase));
-            var next = statuses[(index + 1) % statuses.Count];
+            var next = selectedStatus;
             var changed = await _application.SetCompletionStatusAsync(
                     display.SavedId, next, cancellationToken).ConfigureAwait(false);
             if (changed is null) return null;
@@ -2260,6 +2243,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             DetailsLoading = true, DetailsError = null, DetailsExtras = new() { Tab = tab },
         });
         LoadDetailsOverview(item, generation);
+        LoadCompletionStatuses();
         LoadDetailsSection(tab);
     }
 
@@ -2297,7 +2281,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         Task.WhenAll(Operations.WhenIdleAsync("playnite-library.details", cancellationToken),
             Operations.WhenIdleAsync("playnite-library.details.achievements", cancellationToken),
             Operations.WhenIdleAsync("playnite-library.details.activity", cancellationToken),
-            Operations.WhenIdleAsync("playnite-library.details.operation", cancellationToken));
+            Operations.WhenIdleAsync("playnite-library.details.operation", cancellationToken),
+            Operations.WhenIdleAsync("playnite-library.details.statuses", cancellationToken));
 
     private string? ResolveActionSource(string sourceElementId)
     {

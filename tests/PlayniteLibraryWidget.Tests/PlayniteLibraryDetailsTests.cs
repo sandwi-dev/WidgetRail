@@ -41,6 +41,61 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task CompletionDropdownRejectsASelectionFromAnotherOpening()
+    {
+        var host = new FakeHost(3);
+        var widget = Create(host, out TestApplicationService application);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var games = Nodes(Snapshot(widget, 129_001).Root)
+            .Where(node => node.ActionId == PlayniteLibraryActions.DetailsOpen).Take(2).ToArray();
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, games[0].Id));
+        await Bounded(widget.WhenDetailsIdleAsync(), "first details");
+        var before = Snapshot(widget, 129_002);
+        var dropdown = Nodes(before.Root).Single(node => node.Id == DetailAction + "completion.action");
+        var stale = dropdown.SelectOptions.Single(option => option.Label == "Completed");
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsClose, "close"));
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, games[1].Id));
+        await Bounded(widget.WhenDetailsIdleAsync(), "second details");
+        await widget.OnActionAsync(new(stale.ActionId, dropdown.Id));
+        Assert.AreEqual(0, application.CompletionRequests.Count);
+        var after = Snapshot(widget, 129_003);
+        var current = Nodes(after.Root).Single(node => node.Id == dropdown.Id).SelectOptions
+            .Single(option => option.Label == "Completed");
+        Assert.AreNotEqual(stale.ActionId, current.ActionId);
+        await widget.OnActionAsync(new(current.ActionId, dropdown.Id));
+        Assert.AreEqual(("saved-00001", "Completed"), application.CompletionRequests.Single());
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    [DataRow("empty")]
+    [DataRow("failure")]
+    [DataRow("oversized")]
+    public async Task UnavailableCompletionListsLeaveADisabledDropdown(string scenario)
+    {
+        var host = new FakeHost(1);
+        var widget = Create(host, out TestApplicationService application);
+        application.CompletionStatusesHandler = _ => scenario == "failure"
+            ? throw new InvalidOperationException("Fixture failure")
+            : ValueTask.FromResult<IReadOnlyList<string>>(scenario == "empty" ? []
+                : Enumerable.Range(0, 128).Select(index => "Status " + index).ToArray());
+        await Interactive(widget);
+        await Ready(widget, host);
+        var game = Nodes(Snapshot(widget, 130_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+        await Bounded(widget.WhenDetailsIdleAsync(), "status list failure");
+        var view = Snapshot(widget, 130_002);
+        var select = Nodes(view.Root).Single(node => node.Id == DetailAction + "completion.action");
+        Assert.IsTrue(select.IsDisabled == true);
+        Assert.AreEqual(1, select.SelectOptions.Count);
+        Assert.IsTrue(select.SelectOptions[0].IsSelected);
+        Assert.IsNotNull(widget.RenderState.Value.DetailsExtras.CompletionStatusesError);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(view).Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     [DataRow(false)]
     [DataRow(true)]
     public async Task CompletionControlUpdatesVisibleValueWithoutReloadingDetails(bool reject)
@@ -49,6 +104,8 @@ public sealed partial class PlayniteLibraryTests
         host.SetCompletionStatus("saved-00000", "Not Played");
         var widget = Create(host, out TestApplicationService application);
         application.RejectCompletionChanges = reject;
+        application.CompletionStatusesHandler = _ => ValueTask.FromResult<IReadOnlyList<string>>(
+            ["Not Played", "Playing", "Completed", "On hold"]);
         var detailReads = 0;
         application.DetailsHandler = async (id, token) =>
         {
@@ -65,11 +122,18 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual("Not Played", Nodes(before.Root).Single(n => n.Id == DetailAction + "completion.value").Text);
         var full = widget.RenderState.Value.DetailsExtras.Full;
         var activity = widget.RenderState.Value.DetailsExtras.Activity;
-        await widget.OnActionAsync(new(DetailAction + "completion", DetailAction + "completion.action"));
+        var dropdown = Nodes(before.Root).Single(node => node.Id == DetailAction + "completion.action");
+        Assert.AreEqual(ViewNodeKind.Select, dropdown.Kind);
+        Assert.AreEqual("Not Played", dropdown.SelectOptions.Single(option => option.IsSelected).Label);
+        var selected = dropdown.SelectOptions.Single(option => option.Label == "On hold");
+        await widget.OnActionAsync(new(selected.ActionId, dropdown.Id));
         await Bounded(widget.WhenDetailsIdleAsync(), "completion action");
         var after = Snapshot(widget, 127_003);
-        Assert.AreEqual(reject ? "Not Played" : "Playing",
+        Assert.AreEqual(reject ? "Not Played" : "On hold",
             Nodes(after.Root).Single(n => n.Id == DetailAction + "completion.value").Text);
+        Assert.AreEqual(("saved-00000", "On hold"), application.CompletionRequests.Single());
+        Assert.AreEqual(reject ? "Not Played" : "On hold", Nodes(after.Root)
+            .Single(node => node.Id == dropdown.Id).SelectOptions.Single(option => option.IsSelected).Label);
         Assert.AreEqual(1, detailReads, "Changing completion must not refetch and clear the modal.");
         Assert.AreSame(full, widget.RenderState.Value.DetailsExtras.Full);
         Assert.AreSame(activity, widget.RenderState.Value.DetailsExtras.Activity);
@@ -144,6 +208,7 @@ public sealed partial class PlayniteLibraryTests
     [DataRow("overview")]
     [DataRow("achievements")]
     [DataRow("activity")]
+    [DataRow("statuses")]
     public async Task InterruptedDetailsReadsRestartOnResume(string section)
     {
         var host = new FakeHost(3);
@@ -167,6 +232,11 @@ public sealed partial class PlayniteLibraryTests
             await WaitFirst(token);
             return PlayniteAchievements.Unavailable;
         };
+        else if (section == "statuses") application.CompletionStatusesHandler = async token =>
+        {
+            await WaitFirst(token);
+            return ["Not Played", "Completed"];
+        };
         else application.ActivityHandler = async (_, token) =>
         {
             await WaitFirst(token);
@@ -176,7 +246,7 @@ public sealed partial class PlayniteLibraryTests
         await Ready(widget, host);
         var game = Nodes(Snapshot(widget, 125_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
         await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
-        if (section != "overview") await widget.OnActionAsync(new(DetailAction + "tab." + section, "tab"));
+        if (section is "achievements" or "activity") await widget.OnActionAsync(new(DetailAction + "tab." + section, "tab"));
         await Bounded(started.Task, "details request started");
         var scope = Snapshot(widget, 125_002).ActiveInputScopeId;
         await Background(widget);
@@ -186,6 +256,7 @@ public sealed partial class PlayniteLibraryTests
         Assert.IsFalse(widget.RenderState.Value.DetailsLoading);
         Assert.IsFalse(widget.RenderState.Value.DetailsExtras.AchievementsLoading);
         Assert.IsFalse(widget.RenderState.Value.DetailsExtras.ActivityLoading);
+        Assert.IsFalse(widget.RenderState.Value.DetailsExtras.CompletionStatusesLoading);
         Assert.AreEqual(scope, Snapshot(widget, 125_003).ActiveInputScopeId);
         await Background(widget);
     }
@@ -438,8 +509,8 @@ public sealed partial class PlayniteLibraryLayoutTests
             var nodes = Nodes(snapshot.Root.Children[1]).ToArray();
             Assert.AreEqual(ProtocolConstants.MaximumContextActionCount,
                 nodes.Single(node => node.Id == PlayniteLibraryDetailsPresentation.OptionsId).ContextActions.Count);
-            var button = nodes.Single(node => node.ActionId == "playnite-library.details.completion");
-            Assert.AreEqual(ViewNodeKind.Button, button.Kind);
+            var button = nodes.Single(node => node.Id == "playnite-library.details.completion.action");
+            Assert.AreEqual(ViewNodeKind.Select, button.Kind);
             if (tab == PlayniteDetailsTab.Overview && completion is not null)
             {
                 Assert.IsTrue(nodes.Any(node => node.Text == completion));

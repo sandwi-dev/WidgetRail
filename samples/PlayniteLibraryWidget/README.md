@@ -60,8 +60,9 @@ Long details scroll inside the panel. Hiding and reopening the overlay preserves
 the open details, tab, focus, and scroll position while the widget remains loaded.
 Interrupted reads resume; installation requests are never replayed automatically.
 Source and the current completion status appear together beside the poster; the
-Completion status button cycles through Playnite's statuses and shows the confirmed
-value without reloading the dialog. Descriptions preserve paragraphs and bullet lists.
+Completion dropdown lists Playnite's statuses, including custom ones, with the
+current value selected. Choose a status to apply it; the confirmed value updates
+without reloading the dialog. Descriptions preserve paragraphs and bullet lists.
 B dismisses details explicitly. After the five-minute unload or an application
 restart, the widget returns to its ordinary page.
 

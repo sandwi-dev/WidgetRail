@@ -19,6 +19,7 @@ public sealed partial class PlayniteLibraryWidget
             {
                 AchievementsLoading = false,
                 ActivityLoading = false,
+                CompletionStatusesLoading = false,
                 OperationBusy = false,
                 ConfirmUninstall = false,
                 OperationMessage = state.DetailsExtras.OperationBusy
@@ -38,18 +39,54 @@ public sealed partial class PlayniteLibraryWidget
             _model.Update(value => value with { DetailsLoading = true });
             LoadDetailsOverview(item, state.DetailsGeneration);
         }
+        LoadCompletionStatuses();
         LoadDetailsSection(state.DetailsExtras.Tab);
     }
 
     private void CancelDetailsOperations()
     {
         foreach (var key in new[] { "playnite-library.details", "playnite-library.details.achievements",
-                     "playnite-library.details.activity", "playnite-library.details.operation" }) Operations.Cancel(key);
+                     "playnite-library.details.activity", "playnite-library.details.operation", "playnite-library.details.statuses" }) Operations.Cancel(key);
     }
 
     private void UpdateDetails(long generation, Func<PlayniteDetailsExtras, PlayniteDetailsExtras> update) =>
         _model.Update(state => state.DetailsItem is null || state.DetailsGeneration != generation
             ? state : state with { DetailsExtras = update(state.DetailsExtras) });
+
+    private void LoadCompletionStatuses()
+    {
+        var state = _model.Value;
+        if (state.DetailsItem is null || state.DetailsExtras.CompletionStatuses is not null ||
+            state.DetailsExtras.CompletionStatusesLoading) return;
+        var generation = state.DetailsGeneration;
+        UpdateDetails(generation, value => value with { CompletionStatusesLoading = true, CompletionStatusesError = null });
+        var route = _navigation.Value.RouteCancellationToken;
+        _ = Operations.RunLatest(DetailsPrefix + "statuses", async context =>
+        {
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, route);
+            try
+            {
+                var values = (await _application.GetCompletionStatusesAsync(lifetime.Token).ConfigureAwait(false))
+                    .Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                lifetime.Token.ThrowIfCancellationRequested();
+                // Reserve one slot for a current/unset value not in the provider's list.
+                var oversized = values.Length >= ProtocolConstants.MaximumSelectOptionCount;
+                UpdateDetails(generation, value => value with
+                {
+                    CompletionStatuses = oversized ? [] : values,
+                    CompletionStatusesLoading = false,
+                    CompletionStatusesError = oversized ? "Too many completion statuses to display. Manage them in Playnite."
+                        : values.Length == 0 ? "No completion statuses are available in Playnite." : null,
+                });
+            }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+            catch (Exception)
+            {
+                UpdateDetails(generation, value => value with { CompletionStatusesLoading = false,
+                    CompletionStatusesError = "Completion statuses could not be loaded. Refresh to retry." });
+            }
+        }, WidgetOperationLifetime.Active);
+    }
 
     private void LoadDetailsSection(PlayniteDetailsTab tab)
     {
@@ -143,10 +180,14 @@ public sealed partial class PlayniteLibraryWidget
             UpdateDetails(state.DetailsGeneration, value => value with { ConfirmUninstall = false });
             return true;
         }
-        if (name == "completion" && ResolveActionSource(PlayniteLibraryDetailsPresentation.PlayId) is { } source)
+        if (name.StartsWith("completion.", StringComparison.Ordinal))
         {
-            if (state.OrganizationBusy || state.DetailsExtras.OperationBusy) return true;
-            var completion = await CycleCompletionStatusAsync(source, token).ConfigureAwait(false);
+            if (state.OrganizationBusy || state.DetailsExtras.OperationBusy || state.LaunchingSavedId is not null ||
+                ResolveActionSource(PlayniteLibraryDetailsPresentation.PlayId) is not { } source) return true;
+            var selected = state.DetailsExtras.CompletionStatuses?.FirstOrDefault(value =>
+                PlayniteLibraryDetailsPresentation.CompletionAction(state.DetailsGeneration, value) == action.ActionId);
+            if (selected is null) return true;
+            var completion = await SetCompletionStatusAsync(source, selected, token).ConfigureAwait(false);
             var message = _model.Value.Status;
             UpdateDetails(state.DetailsGeneration, value => value with
             {

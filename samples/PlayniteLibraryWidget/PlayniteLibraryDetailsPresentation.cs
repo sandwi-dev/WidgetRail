@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -16,7 +18,7 @@ internal static class PlayniteLibraryDetailsPresentation
         string? launchingSavedId, string status, PlayniteLibraryLaunchState? launchState,
         bool loading = false, string? error = null, PlayniteDetailsExtras? extras = null,
         IReadOnlyList<PlayniteLibraryCategory>? categories = null, string? openingId = null,
-        bool favorite = false, bool organizationBusy = false, string? completionStatus = null)
+        bool favorite = false, bool organizationBusy = false, string? completionStatus = null, long generation = 0)
     {
         extras ??= new();
         var modalId = openingId ?? "playnite-library.details";
@@ -43,7 +45,7 @@ internal static class PlayniteLibraryDetailsPresentation
             .Disabled(!current || (!availability.Launchable && !uninstalled))
             .Busy(busy).Classes("playnite-library-details-play");
         var buttons = UI.Stack(Prefix + "actions", play,
-            UI.Button("Completion status", Prefix + "completion", Prefix + "completion.action").Disabled(!current || busy).Classes("playnite-library-details-button"),
+            CompletionSelect(extras, completionStatus ?? game?.CompletionStatus, generation, !current || busy),
             UI.Button("Uninstall", Prefix + "uninstall", Prefix + "uninstall").Disabled(!current || !installed || busy).Classes("playnite-library-details-button"))
             .Classes("playnite-library-details-buttons");
         var artwork = presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile);
@@ -87,6 +89,7 @@ internal static class PlayniteLibraryDetailsPresentation
             navigationRail,
         };
         if (extras.OperationMessage is { } message) content.Add(Copy(message, "operation.message"));
+        if (extras.CompletionStatusesError is { } completionError) content.Add(Copy(completionError, "completion.error"));
         if (extras.Tab == PlayniteDetailsTab.Overview)
         {
             if (loading) content.Add(Loading("Loading game details..."));
@@ -110,6 +113,30 @@ internal static class PlayniteLibraryDetailsPresentation
                 UI.ControllerHint(ControllerButton.B, "Close", Prefix + "close.hint"))
                 .Classes("playnite-library-details-header-hints"),
         };
+    }
+
+    internal static string CompletionAction(long generation, string status) =>
+        Prefix + "completion." + generation.ToString(CultureInfo.InvariantCulture) + "." +
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(status))).ToLowerInvariant();
+
+    private static WidgetElement CompletionSelect(PlayniteDetailsExtras extras, string? current,
+        long generation, bool disabled)
+    {
+        var statuses = extras.CompletionStatuses ?? [];
+        var options = statuses.Select(value => new SelectOption(
+            CompletionAction(generation, value), value, CompletionAction(generation, value),
+            IsSelected: string.Equals(value, current, StringComparison.OrdinalIgnoreCase))).ToList();
+        if (!options.Any(option => option.IsSelected))
+        {
+            var label = extras.CompletionStatusesLoading ? "Loading..."
+                : extras.CompletionStatusesError is not null ? "Unavailable"
+                : !string.IsNullOrWhiteSpace(current) ? current : "Not set";
+            options.Insert(0, new(Prefix + "completion.current", label, Prefix + "completion.current",
+                IsSelected: true, IsDisabled: true));
+        }
+        return UI.Select("Completion", options, Prefix + "completion.action", "Completion status")
+            .Disabled(disabled || statuses.Count == 0)
+            .AddClasses("playnite-library-details-button");
     }
 
     private static void AddOverview(List<WidgetElement> content, PlayniteLibraryItem item, PlayniteBridgeGame? game,
