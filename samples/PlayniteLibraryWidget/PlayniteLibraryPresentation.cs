@@ -891,7 +891,8 @@ internal static class PlayniteLibraryPresentation
                 CollectionLoading = collectionAnchorKey is null ? null : snapshot.LoadingState,
             };
         if (nearStartActionId is not null || nearEndActionId is not null)
-            scroll = scroll.Paginate(nearStartActionId, nearEndActionId, 2);
+            scroll = scroll.Paginate(nearStartActionId, nearEndActionId,
+                PlayniteLibraryWidget.BrowsePaginationThreshold);
         return scroll;
     }
 
