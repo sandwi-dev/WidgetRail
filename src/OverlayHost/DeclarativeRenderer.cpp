@@ -3992,7 +3992,7 @@ struct DeclarativeRenderer::RenderPass final {
         return;
     }
 
-    void RetireAbsentFocusBackgroundSurfaces() {
+    void RetireInactiveFocusBackgroundTransitions() {
         const std::wstring authorityId = options.artworkAuthorityId.empty()
             ? options.artworkWidgetId
             : options.artworkAuthorityId;
@@ -4040,8 +4040,14 @@ struct DeclarativeRenderer::RenderPass final {
                 retained.widgetInstanceId != snapshot->instanceId) {
                 return false;
             }
+            // Once the compositor owns this surface, its old content-renderer
+            // transition is no longer displayed. Keeping it would replay stale
+            // artwork when a modal changes painter order back to this path.
+            // Semantic selection remains in the shared resolver; a later handoff
+            // resolves its current image through the bounded decoded cache.
+            const bool compositorOwned = retained.sessionId == compositorBackgroundId;
             const bool retire = retained.authorityId != authorityId ||
-                !present.contains(retained.sessionId);
+                !present.contains(retained.sessionId) || compositorOwned;
             if (retire) {
                 Add(
                     retained.sessionId, L"background_crossfade_retirement",
@@ -4050,6 +4056,7 @@ struct DeclarativeRenderer::RenderPass final {
                         L" surface=" + retained.sessionId +
                         (retained.authorityId != authorityId
                             ? L" reason=authority-changed"
+                            : compositorOwned ? L" reason=compositor-owned"
                             : L" reason=surface-removed"),
                     RenderDiagnosticSeverity::Information);
             }
@@ -5705,7 +5712,7 @@ RenderResult DeclarativeRenderer::Render(
         pass.ResolveSelections();
         selectedPresentationSources_ = SelectionSources(pass.selections);
         focusSelectionMemory_ = std::move(pass.selectionMemory);
-        pass.RetireAbsentFocusBackgroundSurfaces();
+        pass.RetireInactiveFocusBackgroundTransitions();
         focusBackgrounds_ = std::move(pass.focusBackgrounds);
         RecalculateFocusBackgroundCompositeBytes();
         focusBackgroundAccessClock_ = pass.focusBackgroundAccessClock;

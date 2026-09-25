@@ -1209,6 +1209,61 @@ int wmain() {
                         composition.paintCounters().panelBackground == panelBeforeTransition,
                     "background retirement removed or repainted the independent host panel");
             std::cout << "Compositor ordinary-focus retention and panel lifetime checks passed\n";
+
+            // Opening a modal changes painter order, moving the same background
+            // from the compositor into the content renderer. A second opening
+            // must not replay the first modal's target-local transition cache.
+            {
+                widgetrail::DeclarativeRenderer modalRenderer{d2d.Get(), write.Get(), &retargetCache};
+                auto modalSnapshot = *retargetSnapshot;
+                modalSnapshot.root.inputScopeId = L"parent.scope";
+                const auto parent = modalSnapshot.root;
+                auto modalOptions = retargetOptions;
+                modalOptions.compositorBackgroundAvailable = true;
+                const auto drawModalFrame = [&](std::wstring_view focus) {
+                    target->BeginDraw();
+                    target->Clear(D2D1::ColorF(0, 0, 0, 0));
+                    auto result = modalRenderer.Render(target.Get(), modalSnapshot, focus, viewport, modalOptions);
+                    Require(SUCCEEDED(target->EndDraw()) && result.succeeded,
+                        "modal background handoff frame failed");
+                    return result;
+                };
+                const auto openModal = [&] {
+                    widgetrail::WidgetNode dialog;
+                    dialog.id = L"dialog";
+                    dialog.kind = L"stack";
+                    dialog.inputScopeId = L"dialog.scope";
+                    modalSnapshot.root = {};
+                    modalSnapshot.root.id = L"modal";
+                    modalSnapshot.root.kind = L"modalLayer";
+                    modalSnapshot.root.children = {parent, dialog};
+                    modalSnapshot.activeInputScopeId = L"dialog.scope";
+                    ++modalSnapshot.sequence;
+                };
+                Require(drawModalFrame(L"background.retarget.red").compositorBackground.has_value(),
+                    "parent background was not compositor eligible");
+                openModal();
+                Require(!drawModalFrame(L"").compositorBackground,
+                    "modal did not exercise content-renderer fallback");
+                const auto firstModalPixel = ReadPixel(canvas.Get(), 620, 400);
+                Require(firstModalPixel[2] > firstModalPixel[0] + 100U,
+                    "first modal did not retain red artwork");
+
+                modalSnapshot.root = parent;
+                modalSnapshot.activeInputScopeId = L"parent.scope";
+                ++modalSnapshot.sequence;
+                const auto secondPoster = drawModalFrame(L"background.retarget.blue");
+                Require(secondPoster.compositorBackground &&
+                        secondPoster.compositorBackground->artworkHandle == L"background.retarget.blue",
+                    "second poster did not select blue compositor artwork");
+                openModal();
+                const auto secondModal = drawModalFrame(L"");
+                const auto secondModalPixel = ReadPixel(canvas.Get(), 620, 400);
+                Require(secondModalPixel[0] > secondModalPixel[2] + 100U &&
+                        !secondModal.backgroundSurfaceAnimationDamage,
+                    "second modal replayed stale first-modal artwork before the current poster");
+                std::cout << "Modal background rendering-path handoff pixels passed\n";
+            }
             composition.Reset();
             DestroyWindow(compositionWindow);
             retargetCache.Shutdown();
