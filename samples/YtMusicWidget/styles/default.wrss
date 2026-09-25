@@ -70,7 +70,8 @@
 .music-shelf-title { font-size: 16px; font-weight: 600; max-lines: 1; text-overflow: ellipsis; padding: 8px 0 2px; flex-shrink: 0; }
 
 .music-home-section { width: 100%; min-width: 0px; gap: 8px; flex-shrink: 0; }
-.music-home-grid { width: 100%; min-width: 0px; gap: 12px; flex-shrink: 0; }
+/* Poster margins already provide 12px between items. */
+.music-home-grid { width: 100%; min-width: 0px; gap: 0px; flex-shrink: 0; }
 /* Leave room for focused artwork at the edges of the scroll viewport. */
 .music-home-poster { min-width: 0px; flex-grow: 0; flex-shrink: 1; aspect-ratio: 1; min-height: 0px; padding: 0px; margin: 6px; scale: 1; transition-duration: 140ms; transition-easing: ease-in-out; border-width: 1px; border-color: transparent; corner-radius: 10px; background: var(--surface); overflow: clip; }
 .music-home-poster:focused { scale: 1.04; outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }

@@ -67,7 +67,8 @@
 
 
 .category-grid {
-  gap: 8px 10px;
+  /* The cards' margins already provide 12px between items. */
+  gap: 0px;
   min-width: 0;
 }
 

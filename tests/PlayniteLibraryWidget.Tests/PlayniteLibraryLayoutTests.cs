@@ -262,7 +262,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(topActions.Children[^1].Children.All(node =>
             !node.IsFocusable));
         StringAssert.Contains(styles,
-            ".playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; padding: 4px 6px 10px; }");
+            ".playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 0px; padding: 4px 6px 10px; }");
         StringAssert.Contains(styles,
             ".playnite-library-footer { min-height: 28px; flex-shrink: 0; flex-wrap: wrap; gap: 6px; }");
         StringAssert.Contains(styles,
@@ -548,7 +548,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         var styles = File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
             "styles", "default.wrss"));
         StringAssert.Contains(styles,
-            ".playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 16px 14px; padding: 4px; justify: center; }");
+            ".playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 4px 2px; padding: 4px; justify: center; }");
         StringAssert.Contains(styles,
             ".playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px;");
         var theme = CompileStyles();
