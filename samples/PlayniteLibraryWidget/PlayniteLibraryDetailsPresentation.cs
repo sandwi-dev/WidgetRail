@@ -50,7 +50,7 @@ internal static class PlayniteLibraryDetailsPresentation
             .Classes("playnite-library-details-buttons");
         var artwork = presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile);
         WidgetElement poster = artwork is { Handle.Length: > 0 }
-            ? UI.Artwork(new WidgetArtworkHandle(artwork.Handle), Prefix + "poster", presentation.DisplayName, ImageFit.Contain)
+            ? UI.Artwork(new WidgetArtworkHandle(artwork.Handle), Prefix + "poster", presentation.DisplayName, ImageFit.Cover)
             : UI.Icon(WidgetGlyph.Play, Prefix + "poster", presentation.DisplayName);
         poster = poster.Classes("playnite-library-details-poster");
         var completion = completionStatus ?? game?.CompletionStatus;
