@@ -1219,6 +1219,7 @@ void CheckWidgetAnimationPolicies() {
           "modal preference independently disables modal motion");
     Check(Options{}.section == SectionStyle::Slide && SectionPresets.front().style == SectionStyle::Slide,
         "Slide is the default and first preset");
+    Check(Options{}.modal == ModalStyle::Zoom, "Zoom is the default dialog preset");
     for (const auto speed : {.5, 1.0, 2.0}) {
         const auto page = Section(SectionStyle::Slide,bounds,bounds,bounds,1).incoming.Start(0,1000,speed);
         const auto modal = ModalEnter(ModalStyle::Lift,bounds,bounds,0,false).Start(0,1000,speed);

@@ -41,7 +41,7 @@ constexpr std::wstring_view SectionStyleId(SectionStyle style) noexcept {
 }
 struct Options {
     SectionStyle section{SectionStyle::Slide};
-    ModalStyle modal{ModalStyle::Lift};
+    ModalStyle modal{ModalStyle::Zoom};
     double speed{1};
     bool operator==(const Options &) const = default;
 };

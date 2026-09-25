@@ -408,6 +408,9 @@ static async Task AnimationPreferences()
     var initialOptions = Nodes(Snapshot(widget).Root).Single(node => node.Id == "overlay.section-animation").SelectOptions!;
     Assert.Equal("slide", initialOptions[0].Id);
     Assert.Equal(true, initialOptions[0].IsSelected);
+    var initialDialogs = Nodes(Snapshot(widget).Root).Single(node => node.Id == "overlay.modal-animation").SelectOptions!;
+    Assert.Equal("zoom", initialDialogs[0].Id);
+    Assert.Equal(true, initialDialogs[0].IsSelected);
     for (var i = 0; i < 10; i++) await Action(widget, "widget-animation-speed.decrease");
     Assert.Equal(0.5d, (await Store(temp.Path).LoadAsync()).Appearance.WidgetAnimationSpeed);
     for (var i = 0; i < 10; i++) await Action(widget, "widget-animation-speed.increase");

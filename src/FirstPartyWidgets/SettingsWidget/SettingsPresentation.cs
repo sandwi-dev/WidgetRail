@@ -364,6 +364,8 @@ internal static class SettingsPresentation
             PageScope("overlay.page",
                 UI.Text("Overlay", "overlay.heading", "Overlay settings")
                     .Classes("page-heading"),
+                UI.Text("Choose how WidgetRail looks and when it starts.",
+                    "overlay.help", "Overlay settings help").Classes("page-help"),
                 DisplayHint(display), interfaceScale, opacity,
                 UI.Button($"Position: {settings.Appearance.OverlayPosition switch
                     {
@@ -377,6 +379,10 @@ internal static class SettingsPresentation
                 UI.Button($"Widget switcher: {(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial ? "Radial + rail" : "Rail")}",
                     "widget-switcher.toggle", "overlay.widget-switcher").FocusDown("overlay.section-animation")
                     .Busy(busy).Classes("setting-row"),
+                UI.Text(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial
+                        ? "B at the widget's top level opens the radial.\nLeft stick previews widgets and their shortcuts; right stick changes pages without changing the preview. A enters, B returns.\nMove down past the widget's bottom row for the rail. B on the rail closes the overlay."
+                        : "Move down past the widget's bottom row, or press B at its top level, to enter the rail.\nLeft/right previews widgets and their shortcuts. A or Up enters the widget; B on the rail closes the overlay.",
+                    "overlay.widget-switcher.help").Classes("page-help", "widget-switcher-help"),
                 UI.Select("Section animation", new SelectOption[]
                 {
                     new("slide", "Slide", "section-animation.slide", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Slide),
@@ -394,8 +400,8 @@ internal static class SettingsPresentation
                     .Busy(busy).AddClasses("setting-row"),
                 UI.Select("Dialog animation", new SelectOption[]
                 {
-                    new("lift", "Lift", "modal-animation.lift", IsSelected: appearance.ModalAnimation == WidgetModalAnimation.Lift),
                     new("zoom", "Zoom", "modal-animation.zoom", IsSelected: appearance.ModalAnimation == WidgetModalAnimation.Zoom),
+                    new("lift", "Lift", "modal-animation.lift", IsSelected: appearance.ModalAnimation == WidgetModalAnimation.Lift),
                 }, "overlay.modal-animation", "Dialog animation")
                     .FocusUp("overlay.animate-dialogs").FocusDown("overlay.animation-speed.decrement")
                     .Busy(busy).AddClasses("setting-row"),
@@ -407,17 +413,11 @@ internal static class SettingsPresentation
                     "overlay.modal-animation", null, busy),
                 UI.Text("Section animations apply inside supported widgets. Speed ranges from 0.5× (slower) to 2× (faster). Reduced motion overrides section and dialog animations.",
                     "overlay.animations.help").Classes("page-help"),
-                UI.Text(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial
-                        ? "B at the widget's top level opens the radial.\nLeft stick previews widgets and their shortcuts; right stick changes pages without changing the preview. A enters, B returns.\nMove down past the widget's bottom row for the rail. B on the rail closes the overlay."
-                        : "Move down past the widget's bottom row, or press B at its top level, to enter the rail.\nLeft/right previews widgets and their shortcuts. A or Up enters the widget; B on the rail closes the overlay.",
-                    "overlay.widget-switcher.help").Classes("page-help", "widget-switcher-help"),
                 UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
                     "startup.toggle", "overlay.startup").Busy(busy).Disabled(startup?.CanChange != true)
                     .AddClasses("setting-row"),
                 UI.Text("Status — " + (startup?.Message ?? "Startup settings unavailable."),
-                    "overlay.startup.status", "Startup status").Classes("page-help"),
-                UI.Text("Choose how WidgetRail looks and when it starts.",
-                    "overlay.help", "Overlay settings help").Classes("page-help")),
+                    "overlay.startup.status", "Startup status").Classes("page-help")),
             "interface.stepper.decrement",
             "overlay.page");
     }

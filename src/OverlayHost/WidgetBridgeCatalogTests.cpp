@@ -2792,7 +2792,7 @@ int main(int argc, char** argv) {
         if (parsed) CHECK(parsed->widgetAnimationSpeed == std::stod(value));
     }
     CHECK(appearance->animateWidgetModals);
-    CHECK(appearance->modalAnimation == L"lift");
+    CHECK(appearance->modalAnimation == L"zoom");
     for (const auto value : {"\"lift\"", "\"zoom\"", "\"unknown\"", "false"}) {
         std::string source(ValidAppearance);
         source.insert(1, std::string("\"modalAnimation\":") + value + ",");

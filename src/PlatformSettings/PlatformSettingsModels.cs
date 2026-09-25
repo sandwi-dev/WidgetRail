@@ -103,7 +103,7 @@ public sealed record AppearanceSettings
     /// <summary>Host-owned opening and closing motion for widget dialogs.</summary>
     public bool AnimateWidgetModals { get; init; } = true;
     /// <summary>Motion recipe used when widget dialog animations are enabled.</summary>
-    public WidgetModalAnimation ModalAnimation { get; init; } = WidgetModalAnimation.Lift;
+    public WidgetModalAnimation ModalAnimation { get; init; } = WidgetModalAnimation.Zoom;
     /// <summary>Shared speed multiplier for widget sections, navigation and dialogs.</summary>
     public double WidgetAnimationSpeed { get; init; } = 1;
     // Missing values in existing settings retain Rail; fresh installations

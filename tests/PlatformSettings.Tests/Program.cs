@@ -81,7 +81,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(WidgetSectionAnimation.Slide, settings.Appearance.SectionAnimation);
         Assert.Equal(1d, settings.Appearance.WidgetAnimationSpeed);
         Assert.Equal(true, settings.Appearance.AnimateWidgetModals);
-        Assert.Equal(WidgetModalAnimation.Lift, settings.Appearance.ModalAnimation);
+        Assert.Equal(WidgetModalAnimation.Zoom, settings.Appearance.ModalAnimation);
         Assert.Equal(WidgetSwitcherLayout.Radial, settings.Appearance.WidgetSwitcher);
         Assert.Equal(OverlayPosition.Center, settings.Appearance.OverlayPosition);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
@@ -96,6 +96,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(false, (await store.LoadAsync()).Appearance.AnimateWidgetSwitching);
         Assert.Equal(WidgetSectionAnimation.Slide, (await store.LoadAsync()).Appearance.SectionAnimation);
         Assert.Equal(true, (await store.LoadAsync()).Appearance.AnimateWidgetModals);
+        Assert.Equal(WidgetModalAnimation.Zoom, (await store.LoadAsync()).Appearance.ModalAnimation);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.BoldText);
         Assert.Equal(WidgetSwitcherLayout.Rail, (await store.LoadAsync()).Appearance.WidgetSwitcher);
         Assert.Equal(OverlayPosition.Center, (await store.LoadAsync()).Appearance.OverlayPosition);
@@ -123,7 +124,7 @@ static async Task SettingsRoundTrip()
             SectionAnimation = WidgetSectionAnimation.Slide,
             WidgetAnimationSpeed = 1.5,
             AnimateWidgetModals = false,
-            ModalAnimation = WidgetModalAnimation.Zoom,
+            ModalAnimation = WidgetModalAnimation.Lift,
             WidgetSwitcher = WidgetSwitcherLayout.Radial,
             OverlayPosition = OverlayPosition.BottomRight,
         },
@@ -137,7 +138,7 @@ static async Task SettingsRoundTrip()
     Assert.Equal(WidgetSectionAnimation.Slide, reloaded.Appearance.SectionAnimation);
     Assert.Equal(1.5d, reloaded.Appearance.WidgetAnimationSpeed);
     Assert.Equal(false, reloaded.Appearance.AnimateWidgetModals);
-    Assert.Equal(WidgetModalAnimation.Zoom, reloaded.Appearance.ModalAnimation);
+    Assert.Equal(WidgetModalAnimation.Lift, reloaded.Appearance.ModalAnimation);
     Assert.Equal(WidgetSwitcherLayout.Radial, reloaded.Appearance.WidgetSwitcher);
     Assert.Equal(OverlayPosition.BottomRight, reloaded.Appearance.OverlayPosition);
     foreach (var position in new[] { OverlayPosition.BottomLeft, OverlayPosition.Center })

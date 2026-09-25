@@ -159,7 +159,7 @@ motion takes precedence over every preset. **Settings → Overlay** exposes the
 Section animation and Dialog animation dropdowns and Animate widget dialogs switch.
 The platform settings document persists `appearance.sectionAnimation`,
 `appearance.modalAnimation` (`Lift` or `Zoom`), and `appearance.animateWidgetModals`.
-Missing values default to Slide, Lift and enabled dialog motion;
+Missing values default to Slide, Zoom and enabled dialog motion;
 explicit saved choices remain respected. `appearance.widgetAnimationSpeed`
 is a global multiplier from 0.5 to 2, defaulting to 1. Duration is divided by this
 value for sections, navigation and modals together; invalid values are rejected.

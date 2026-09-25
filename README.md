@@ -121,7 +121,7 @@ display; they do not change Windows display scaling.
 | **Interface size** | 50%–125%, saved per display. |
 | **Text size** | 85%–150%, saved per display, under **Settings → Accessibility**. |
 | **Themes** | Built-in themes and installable theme packages. Shared controls and controller hints follow the selected theme. |
-| **Animations** | Choose Slide (default), Paging, Vertical slide, Reveal, Cover slide, or None for widget sections; choose Lift or Zoom for dialogs; adjust widget animation speed from 0.5× to 2×; toggle dialog and widget-switch animations; follow Windows motion preferences or select Reduced motion. |
+| **Animations** | Choose Slide (default), Paging, Vertical slide, Reveal, Cover slide, or None for widget sections; choose Zoom (default) or Lift for dialogs; adjust widget animation speed from 0.5× to 2×; toggle dialog and widget-switch animations; follow Windows motion preferences or select Reduced motion. |
 | **Contrast and readability** | Follow Windows high contrast, enable High contrast, use Bold text, or reduce transparency. |
 | **Backdrop** | Adjust backdrop opacity from 0% to 80%. |
 | **Startup** | Start WidgetRail quietly when signing in to Windows. |

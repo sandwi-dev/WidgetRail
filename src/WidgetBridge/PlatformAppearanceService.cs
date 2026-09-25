@@ -23,7 +23,7 @@ public sealed record BridgePlatformAppearance
     public required bool AnimateWidgetSwitching { get; init; }
     public string SectionAnimation { get; init; } = "slide";
     public bool AnimateWidgetModals { get; init; } = true;
-    public string ModalAnimation { get; init; } = "lift";
+    public string ModalAnimation { get; init; } = "zoom";
     public double WidgetAnimationSpeed { get; init; } = 1;
     public WidgetSwitcherLayout WidgetSwitcher { get; init; } = WidgetSwitcherLayout.Rail;
     public OverlayPosition OverlayPosition { get; init; } = OverlayPosition.Center;
