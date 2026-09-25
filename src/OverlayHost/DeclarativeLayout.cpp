@@ -552,7 +552,14 @@ private:
             ResolveNumber(element.scrollOffset, element.id, "scrollOffset",
                 0.0F, kMaximumCoordinate, 0.0F),
             0.0F, raw.maximumScrollOffset);
-        return raw.hasDescendants ? Union(raw.border, raw.descendants) : raw.border;
+        // Taffy's content extent can stop at the final border box. Preserve
+        // authored trailing margin in the overflow passed to scroll ancestors;
+        // it may reserve room for focus decoration or visual enlargement.
+        // This changes scroll reach only, never the element's layout box.
+        const Rect outerBounds{raw.border.x, raw.border.y,
+            raw.border.width + std::max(0.0F, input.margin.right),
+            raw.border.height + std::max(0.0F, input.margin.bottom)};
+        return raw.hasDescendants ? Union(outerBounds, raw.descendants) : outerBounds;
     }
 
     void Publish(

@@ -2048,6 +2048,17 @@ struct DeclarativeRenderer::RenderPass final {
         };
     }
 
+    [[nodiscard]] Rect FocusRevealBounds(const Rect& layoutBounds) const {
+        const auto style = prepared.find(NarrowStableId(focusedId));
+        if (style == prepared.end()) return layoutBounds;
+        // Reveal the authored endpoint, not the current animation sample. The
+        // compositor can enlarge a control without another UI-thread paint.
+        // Retain its logical extent when shrinking so navigation stays stable.
+        const float scale = std::max({1.0F, style->second.baseStyle.scale(),
+                                     style->second.paintStyle.scale()});
+        return ScaleRect(layoutBounds, scale);
+    }
+
     [[nodiscard]] bool ApplyFocusedDescendantFollow(
         const bool usePresentationGeometry = false) {
         if (focusedId.empty()) return false;
@@ -2072,9 +2083,9 @@ struct DeclarativeRenderer::RenderPass final {
             const auto viewportBox = usePresentationGeometry
                 ? presentedScroll->second.contentBox
                 : scrollBox->contentBox;
-            const auto targetRect = usePresentationGeometry
+            const auto targetRect = FocusRevealBounds(usePresentationGeometry
                 ? presentedFocus->second.borderBox
-                : focusBox->borderBox;
+                : focusBox->borderBox);
             const auto [atLeadingBoundary, atTrailingBoundary] =
                 FocusedBoundaryOf(scroll);
             RecordFocusFollowNodeMetadata(
@@ -2225,9 +2236,9 @@ struct DeclarativeRenderer::RenderPass final {
             const auto viewportBox = usePresentationGeometry
                 ? presentedScroll->second.contentBox
                 : scrollBox->contentBox;
-            auto targetRect = usePresentationGeometry
+            auto targetRect = FocusRevealBounds(usePresentationGeometry
                 ? presentedFocus->second.borderBox
-                : focusBox->borderBox;
+                : focusBox->borderBox);
             const float offsetDelta = scrollBox->scrollOffset - offset;
             if (scrollBox->scrollAxis == declarative::ScrollAxis::Vertical)
                 targetRect.y += offsetDelta;
@@ -5215,31 +5226,43 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
+    [[nodiscard]] static Rect ContextMenuIndicatorBounds(const Rect& tile) noexcept {
+        constexpr float size = 26.0F;
+        constexpr float inset = 5.0F;
+        return {tile.x + tile.width - inset - size, tile.y + inset, size, size};
+    }
+
     void DrawContextMenuIndicator(const WidgetNode& node, const NativeRenderStyle& style,
         const Rect rect, const float opacity) {
         if (!target || node.kind != L"actionSurface" || node.id != focusedId ||
             !input::HasAvailableContextMenuActions(node.contextActions) ||
             !input::CaptureContextMenuSource(*snapshot, node.id)) return;
         const auto& presented = presentation.at(NarrowStableId(node.id));
-        const Rect badge{rect.x + rect.width - 29.0F, rect.y + 5.0F, 24.0F, 16.0F};
+        const auto badge = ContextMenuIndicatorBounds(rect);
         const auto visible = Intersection(badge, presented.visibleBox);
         if (visible.width < badge.width - .5F || visible.height < badge.height - .5F) return;
         const auto background = prepared.at(NarrowStableId(node.id)).effectiveBackground.value_or(kDefaultButton);
         auto fill = Brush(target, WithOpacity(background, opacity));
-        auto ink = Brush(target, WithOpacity(style.outlineColor().value_or(
-            style.foreground().value_or(kDefaultText)), opacity));
+        auto ink = Brush(target, WithOpacity(style.foreground().value_or(kDefaultText), opacity));
         if (!fill || !ink) return;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         result.contextMenuIndicatorRects.insert_or_assign(node.id, badge);
 #endif
         target->PushAxisAlignedClip(D2DRect(presented.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-        const auto shape = D2D1::RoundedRect(D2DRect(badge), 8.0F, 8.0F);
+        const auto shape = D2D1::RoundedRect(D2DRect(badge), 6.0F, 6.0F);
         target->FillRoundedRectangle(shape, fill.Get());
-        target->DrawRoundedRectangle(shape, ink.Get(), 1.0F);
-        for (const float offset : {-5.0F, 0.0F, 5.0F})
-            target->FillEllipse(D2D1::Ellipse(
-                D2D1::Point2F(badge.x + badge.width * .5F + offset, badge.y + badge.height * .5F),
-                1.3F, 1.3F), ink.Get());
+        const auto control = node.contextMenuButton.empty()
+            ? controller::Control::Menu : controller::ResolveControl(node.contextMenuButton);
+        const auto glyphBounds = D2DRect(Inset(badge, 3.0F));
+        if (!controller::DrawPrompt(target, control, glyphBounds, ink.Get(), options.playStationControls) &&
+            owner->writeFactory_) {
+            ComPtr<IDWriteTextFormat> fallback;
+            if (SUCCEEDED(owner->writeFactory_->CreateTextFormat(L"Segoe UI", nullptr,
+                    DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+                    12.0F, L"", fallback.GetAddressOf())))
+                controller::DrawControl(target, fallback.Get(), control, glyphBounds, ink.Get(),
+                    -1.0F, options.playStationControls, false);
+        }
         target->PopAxisAlignedClip();
     }
 

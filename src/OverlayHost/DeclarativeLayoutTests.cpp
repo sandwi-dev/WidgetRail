@@ -230,6 +230,31 @@ void ScrollProjectionKeepsSizesAndRelativeTextPositions() {
     }
 }
 
+void ScrollExtentPreservesTrailingItemMargins() {
+    for (const bool horizontal : {false, true}) {
+        auto scroll = Element("margin-scroll", horizontal ? LayoutDirection::Row : LayoutDirection::Column);
+        scroll.scrollAxis = horizontal ? ScrollAxis::Horizontal : ScrollAxis::Vertical;
+        scroll.scrollOffset = 999.0F;
+        for (int index = 0; index < 2; ++index) {
+            auto tile = Element("margin-tile-" + std::to_string(index));
+            tile.width = 80.0F;
+            tile.height = 80.0F;
+            tile.flexShrink = 0.0F;
+            tile.margin = BoxSpacing::Four(6, 6, 6, 6);
+            scroll.children.push_back(std::move(tile));
+        }
+        const auto result = ComputeLayout(scroll, {0, 0, 120, 120});
+        Check(result.valid(), "margin-aware scroll layout is valid");
+        Near(result.Find("margin-scroll")->maximumScrollOffset, 64,
+            "scroll extent includes the last item's trailing margin on either axis");
+        const auto tile = result.Find("margin-tile-1")->borderBox;
+        Near(horizontal ? tile.x + tile.width : tile.y + tile.height, 114,
+            "trailing scroll boundary preserves reserved enlargement clearance");
+        Near(tile.width, 80, "scroll clearance does not resize the tile width");
+        Near(tile.height, 80, "scroll clearance does not resize the tile height");
+    }
+}
+
 void ScrollOffsetsAreBoundedAndClipped() {
     auto scroll = Element("sessions");
     scroll.scrollAxis = ScrollAxis::Vertical;
@@ -1110,6 +1135,7 @@ int main() {
     NestedPaddingAndMargins();
     OverflowClipping();
     ScrollOffsetsAreBoundedAndClipped();
+    ScrollExtentPreservesTrailingItemMargins();
     ScrollProjectionKeepsSizesAndRelativeTextPositions();
     ResponsiveViewports();
     ResponsiveRowsWrapAtStableItemBoundaries();

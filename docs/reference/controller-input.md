@@ -17,7 +17,9 @@ opening shortcut at a time; View + Menu is the default.
 
 When options are available, the guide shows **Options** beside the button that
 opens them (Menu, X or Y, with the current controller's glyph). Focused tiles also
-show a small ellipsis indicator; unfocused tiles do not. The guide covers menus
+show that shortcut's controller glyph on a small borderless background; unfocused
+tiles do not. The indicator moves and scales with the focus decoration and uses
+the same Kenney glyphs as the guide. The guide covers menus
 declared on non-focusable containers as well. A menu hint takes priority over
 general shortcuts when guide space is limited.
 

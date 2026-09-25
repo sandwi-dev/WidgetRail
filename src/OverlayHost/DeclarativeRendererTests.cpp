@@ -1459,6 +1459,7 @@ void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
     snapshot.root.kind = L"row";
     snapshot.root.children[0].contextActions = {{L"next", L"Play next"}};
     snapshot.root.children[0].focusedStyle[L"outline-color"] = Color(L"#00ff00");
+    snapshot.root.children[0].focusedStyle[L"color"] = Color(L"#00ff00");
     snapshot.root.children[0].focusedStyle[L"background"] = Color(L"#aa000080");
     auto neighbor = snapshot.root.children[0];
     const auto rename = [&](const auto& self, WidgetNode& node) -> void {
@@ -1486,14 +1487,35 @@ void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
     Check(first.contextMenuIndicatorRects.size() == 1 && first.contextMenuIndicatorRects.contains(L"poster.card"),
         "only the focused tile displays its available menu");
     const auto badge = first.contextMenuIndicatorRects.at(L"poster.card");
-    {
-        ComPtr<IWICBitmapLock> lock;
-        const WICRect area{static_cast<INT>(badge.x + badge.width * .5F), static_cast<INT>(badge.y + badge.height * .5F), 1, 1};
-        ok(canvas->Lock(&area, WICBitmapLockRead, lock.GetAddressOf()));
-        UINT count{}; BYTE* bytes{};
-        ok(lock->GetDataPointer(&count, &bytes));
-        Check(count >= 4 && bytes[1] > 180 && bytes[2] < 40, "ellipsis actually paints with the themed focus color");
+    const auto badgePixels = [&] {
+        const WICRect area{static_cast<INT>(badge.x), static_cast<INT>(badge.y),
+            static_cast<INT>(badge.width), static_cast<INT>(badge.height)};
+        const auto stride = static_cast<UINT>(area.Width * 4);
+        std::vector<BYTE> pixels(stride * area.Height);
+        ok(canvas->CopyPixels(&area, stride, static_cast<UINT>(pixels.size()), pixels.data()));
+        std::size_t glyphPixels{};
+        for (std::size_t index = 0; index < pixels.size(); index += 4)
+            if (pixels[index + 1] > 180 && pixels[index + 2] < 40) ++glyphPixels;
+        Check(glyphPixels > 10, "controller shortcut glyph paints with the themed text color");
+        const auto edge = static_cast<std::size_t>(area.Height / 2) * stride;
+        Check(pixels[edge + 1] < 180, "indicator has no extra bright pill border");
+        return pixels;
+    };
+    const auto xboxMenu = badgePixels();
+    options.playStationControls = true;
+    (void)draw(L"poster.card");
+    Check(badgePixels() != xboxMenu, "menu badge follows the active controller glyph family");
+    for (const bool playStation : {false, true}) {
+        options.playStationControls = playStation;
+        tile.contextMenuButton = L"x";
+        (void)draw(L"poster.card");
+        const auto xPixels = badgePixels();
+        tile.contextMenuButton = L"y";
+        (void)draw(L"poster.card");
+        Check(badgePixels() != xPixels, "badge reflects the authored X or Y menu shortcut");
     }
+    tile.contextMenuButton.clear();
+    options.playStationControls = false;
     Near(first.elementRects.at(L"poster.card").width, plain.elementRects.at(L"poster.card").width,
         "indicator does not resize the tile");
     options.compositorWidgetTransitions = true;
@@ -1502,12 +1524,20 @@ void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
         "poster focus works without explicit transition declarations");
     Check(composited.widgetComposition->focusTargets[0].movable,
         "poster artwork does not disable the accepted travelling outline");
-    const auto stationaryBadge = std::find_if(composited.widgetComposition->nodes.begin(),
+    const auto focusBadge = std::find_if(composited.widgetComposition->nodes.begin(),
         composited.widgetComposition->nodes.end(), [&](const auto &node) {
             return node.bitmap && animation::SameFocusRect(node.bounds, badge);
         });
-    Check(stationaryBadge != composited.widgetComposition->nodes.end() && stationaryBadge->parent != L"$focus",
-        "options badge uses a small stationary raster outside the moving focus outline");
+    Check(focusBadge != composited.widgetComposition->nodes.end() && focusBadge->parent == L"$focus",
+        "options badge shares the focus outline's compositor timeline");
+    tile.focusedStyle.insert_or_assign(L"scale", Number(1.04));
+    const auto scaled = draw(L"poster.card");
+    const auto scaledFocus = std::find_if(scaled.widgetComposition->nodes.begin(),
+        scaled.widgetComposition->nodes.end(), [](const auto& node) { return node.id == L"$focus"; });
+    Check(scaledFocus != scaled.widgetComposition->nodes.end() &&
+          scaledFocus->parent == L"control/poster.card",
+        "outline and badge inherit the same whole-tile scale transform");
+    tile.focusedStyle.erase(L"scale");
     options.compositorWidgetTransitions = false;
     Check(renderer.PlanFocusUpdate(snapshot, L"poster.card", L"poster.card.second", viewport).has_value(), "focus change has retained repaint plan");
     const auto moved = draw(L"poster.card.second");
@@ -4219,6 +4249,77 @@ void OversizedFocusFollowUsesOneAxisSymmetricRevealOwner() {
           mixedResult.focusFollowPassCount <= 2U &&
           !mixedResult.focusFollowCycle && !mixedResult.focusFollowBoundHit,
         "mixed Tile and PosterTile grid shape converges through generic geometry");
+}
+
+void FocusFollowRevealsAuthoredScaleWithoutAnimationChasing() {
+    for (const bool horizontal : {false, true}) {
+        for (const bool compositor : {false, true}) {
+            for (const float pixelScale : {1.0F, 1.25F, 1.5F}) {
+                WidgetSnapshot snapshot;
+                snapshot.instanceId = L"scaled-reveal";
+                snapshot.activeInputScopeId = L"scaled-scroll";
+                snapshot.root = Node(L"scaled-scroll", L"scroll");
+                snapshot.root.inputScopeId = snapshot.activeInputScopeId;
+                snapshot.root.scrollAxis = horizontal ? L"horizontal" : L"vertical";
+                for (int index = 0; index < 6; ++index) {
+                    auto tile = FixedButton((L"scaled-" + std::to_wstring(index)).c_str(), 80);
+                    if (!horizontal) tile.kind = L"actionSurface";
+                    tile.baseStyle.insert_or_assign(L"width", Length(80));
+                    tile.baseStyle.insert_or_assign(L"margin", LengthList(L"6px"));
+                    tile.baseStyle.insert_or_assign(L"transition-duration", Duration(140));
+                    tile.focusedStyle.insert_or_assign(L"scale", Number(1.1));
+                    snapshot.root.children.push_back(std::move(tile));
+                }
+                DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+                widgetrail::DeclarativeRenderOptions options;
+                options.compositorWidgetTransitions = compositor;
+                options.pixelScale = pixelScale;
+                options.animationTimestampMilliseconds = 100;
+                const Rect viewport{0, 0, 120, 120};
+                // Approach both edges from either direction, including the
+                // true first/last item and a middle row at the viewport edge.
+                for (const int index : {0, 3, 1, 5, 0}) {
+                    const auto id = L"scaled-" + std::to_wstring(index);
+                    *options.animationTimestampMilliseconds += 20;
+                    const auto result = renderer.Render(nullptr, snapshot, id, viewport, options);
+                    const auto rect = result.navigationRects.at(id);
+                    const float start = horizontal ? rect.x : rect.y;
+                    const float extent = horizontal ? rect.width : rect.height;
+                    const auto scrollViewport = result.scrollViewports.at(L"scaled-scroll").rect;
+                    const float clipStart = horizontal ? scrollViewport.x : scrollViewport.y;
+                    const float clipExtent = horizontal ? scrollViewport.width : scrollViewport.height;
+                    const bool contained = start - extent * .05F >= clipStart - .01F &&
+                        start + extent * 1.05F <= clipStart + clipExtent + .01F;
+                    if (!contained)
+                        std::cerr << "scaled reveal axis=" << horizontal << " compositor=" << compositor
+                            << " pixelScale=" << pixelScale << " item=" << index << " start=" << start
+                            << " extent=" << extent << " clip=" << clipStart << ',' << clipExtent
+                            << " offset=" << result.scrollOffsets.at(L"scaled-scroll") << '\n';
+                    Check(contained,
+                        "focus-follow contains the entire final scaled tile at both scroll edges");
+                    Near(rect.width, 80, "focus scaling preserves logical target width");
+                    Near(rect.height, 80, "focus scaling preserves logical target height");
+                    Check(result.focusFollowConverged && !result.focusFollowCycle &&
+                          !result.focusFollowBoundHit,
+                        "scaled reveal converges without repaint cycles");
+                    const auto offset = result.scrollOffsets.at(L"scaled-scroll");
+                    *options.animationTimestampMilliseconds += 160;
+                    const auto settled = renderer.Render(nullptr, snapshot, id, viewport, options);
+                    Near(settled.scrollOffsets.at(L"scaled-scroll"), offset,
+                        "animation completion does not chase the scaled target with another scroll");
+                }
+                options.suppressFocusedDescendantFollow = true;
+                const auto free = renderer.Render(nullptr, snapshot, L"scaled-3", viewport, options);
+                Near(free.scrollOffsets.at(L"scaled-scroll"), 0,
+                    "right-stick free scrolling retains suppression of scaled focus-follow");
+                options.suppressFocusedDescendantFollow = false;
+                options.accessibility.reducedMotion = true;
+                const auto reduced = renderer.Render(nullptr, snapshot, L"scaled-3", viewport, options);
+                Check(reduced.focusFollowConverged && !reduced.focusFollowCycle,
+                    "reduced motion still reveals the authored scale endpoint");
+            }
+        }
+    }
 }
 
 void IrrevealableClipsDoNotBecomeFocusTraps() {
@@ -8211,6 +8312,7 @@ int main() {
     ScrollFocusReachesTrueContentBoundaries();
     NestedScrollFocusFollowReachesFixedPoint();
     OversizedFocusFollowUsesOneAxisSymmetricRevealOwner();
+    FocusFollowRevealsAuthoredScaleWithoutAnimationChasing();
     IrrevealableClipsDoNotBecomeFocusTraps();
     ScrollStateCapEvictsOnlyInactiveLruEntries();
     DeferredFocusOutlineUsesEffectiveVisibilityClip();

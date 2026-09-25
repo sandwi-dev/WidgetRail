@@ -290,10 +290,11 @@ bool DrawWidgetComposition() {
                 std::max(options.accessibility.minimumFocusRingPx, std::max(2.0F, style.outlineWidthPx())));
             op(*sceneFocus, 3, focusGroup, Intersection(Inset(paintBox, -outset), shown.ancestorClip));
             split();
-            // Discoverability badges belong to the destination, not the moving outline.
+            // Keep the badge on the same focus timeline as the outline. This
+            // also inherits a scaled control's transform through focusGroup.
             if (sceneFocus->kind == L"actionSurface" && input::HasAvailableContextMenuActions(sceneFocus->contextActions)) {
-                const Rect badge{paintBox.x + paintBox.width - 29, paintBox.y + 5, 24, 16};
-                op(*sceneFocus, 4, focusParents.at(focusedId), Intersection(badge, shown.visibleBox));
+                const auto badge = ContextMenuIndicatorBounds(paintBox);
+                op(*sceneFocus, 4, focusGroup, Intersection(badge, shown.visibleBox));
             }
         }
     }

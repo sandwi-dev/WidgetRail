@@ -171,8 +171,8 @@ Widgets continue to declare semantic transitions rather than choosing host effec
 
 The native host moves the themed focus decoration between nearby controls using
 DirectComposition. Widgets need no transition declaration for this behavior.
-Text, artwork and the options badge change to the destination immediately.
-The outline and focus border move over a 140 ms smoothstep timeline at 1x.
+Text and artwork change to the destination immediately. The options badge,
+outline and focus border move over a 140 ms smoothstep timeline at 1x.
 Normal and focused backgrounds are revealed through complementary compositor
 clips on that same clock, behind each control's content. Every surface pixel
 is painted once, preserving translucent colors instead of overlaying a second
@@ -208,6 +208,10 @@ normal focus travel while the controls are at rest. Base, focused and pressed st
 pressed scale replaces focused scale rather than multiplying another transform.
 Layout and input rectangles stay fixed. Authors must provide room inside ancestor
 clips for enlargement; paint order and clipping are preserved.
+Focus-follow reveals the final scaled bounds without chasing animation frames.
+Trailing item margins remain part of the scroll extent, so that reserved room is
+reachable at the end of a list or rail. Right-stick free scrolling still suppresses
+focus-follow.
 
 Use `transition-duration` and `transition-easing` with `scale`. Linear, ease-out
 and ease-in-out control-scale curves run in the compositor and honor the widget
