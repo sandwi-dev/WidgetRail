@@ -94,8 +94,11 @@ completion and loading-state updates keep the same key and do not restart it.
 The first committed presentation snaps into place. A section needing data can
 show its loading content immediately; navigation never waits for a provider.
 
-The host uses a shared 180 ms ease-out timeline, a 24 DIP content slide and fade,
-and position interpolation for navigation. The themed selection surface moves
+The default Paging preset uses a shared 260 ms timeline with gentle acceleration
+and deceleration. The incoming page rises from below while the outgoing page
+recedes to 96% of its size and moves slightly upward. Both pages keep their
+original opacity. A coordinated reveal clip prevents the outgoing page from
+showing through transparent incoming content. The themed selection surface moves
 behind stationary labels; the labels and their input targets do not move merely
 because selection changed. Actual layout position changes use the same clock.
 Rapid navigation retargets from the
@@ -124,8 +127,26 @@ come from the ordinary theme; no animation-specific color palette is introduced.
 Reduced motion snaps to the destination and drops retained transition pixels.
 Hiding, replacing runtime authority, resizing/scaling or losing the graphics
 device retires obsolete motion. Hosts without composition render the destination
-immediately. Section declarations require protocol 58; moving from raster-driven
-animation to DirectComposition does not change the widget API.
+immediately. Section declarations require protocol 58; animation presets do not
+change the widget API.
+
+### Host animation policy
+
+`WidgetAnimationPolicy.h` owns animation recipes: incoming/outgoing geometry,
+opacity, reveal clips, duration and easing. The compositor presenter owns the
+visual resources and lifecycle, without embedding preset-specific movement.
+CPU sampling and DirectComposition polynomial emission share the same curve;
+interruption capture and pointer mapping use the same transform definition.
+
+`DeclarativeRenderOptions.widgetAnimations` carries host preferences into each
+scene. Section presets have stable settings IDs: `paging` (default), `slide`
+(directional full-page movement without fading), and `none`. Unknown IDs resolve
+to Paging. The options also allow modal motion to be disabled independently.
+Changing preferences settles the current scene and discards old motion. Reduced
+motion takes precedence over every preset. This is the configuration boundary
+for a future settings selector; no new Settings UI or persisted preference is
+introduced yet. Widgets continue to declare semantic transitions rather than
+choosing host animation effects.
 
 ## Widget modals
 

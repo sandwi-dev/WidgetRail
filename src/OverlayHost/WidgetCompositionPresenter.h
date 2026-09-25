@@ -33,14 +33,8 @@ class WidgetCompositionPresenter final {
   private:
     template <class T> using Ptr = Microsoft::WRL::ComPtr<T>;
     using Rect = declarative::Rect;
-    struct Pose {
-        Rect bounds;
-        float opacity{1};
-    };
-    struct Motion {
-        Pose from, to;
-        std::int64_t start{}, duration{};
-    };
+    using Pose = animation::Pose;
+    using Motion = animation::Motion;
     struct Raster {
         WidgetCompositionNode node;
         Ptr<IDCompositionSurface> surface;
@@ -49,10 +43,11 @@ class WidgetCompositionPresenter final {
     };
     struct Group {
         WidgetCompositionNode node;
-        Ptr<IDCompositionVisual3> root, incoming, outgoing;
+        Ptr<IDCompositionVisual3> root, incoming, outgoing, incomingClip, outgoingClip;
         Motion motion, exit;
         Raster previous;
         bool closing{};
+        int direction{1};
         float resumeOpacity{1};
         std::size_t paintOrder{};
     };
@@ -66,10 +61,11 @@ class WidgetCompositionPresenter final {
     Counters counters_;
     bool attached_{};
     static std::int64_t Now() noexcept;
-    static std::int64_t Duration() noexcept;
-    static Pose Sample(const Motion &motion, std::int64_t now) noexcept;
+    static std::int64_t Frequency() noexcept;
+    static Rect CaptureBounds(const Group &group, std::int64_t now) noexcept;
     HRESULT Upload(Raster &raster, const WidgetCompositionNode &node);
-    HRESULT Animate(IDCompositionVisual3 *visual, const Motion &motion, Rect basis, bool resize);
+    HRESULT Animate(IDCompositionVisual3 *visual, IDCompositionVisual3 *clipVisual, const Motion &motion,
+                    Rect basis);
     HRESULT Capture(const std::wstring &group, Raster &result, std::int64_t now);
     void DrawGroup(ID2D1RenderTarget *target, const std::wstring &group, D2D1_MATRIX_3X2_F transform,
                    float opacity, std::int64_t now) const;

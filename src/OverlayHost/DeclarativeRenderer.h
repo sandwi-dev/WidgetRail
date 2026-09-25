@@ -343,6 +343,7 @@ struct FocusedFreeScrollPlanDiagnostic final {
 struct DeclarativeRenderOptions final {
     bool compositorWidgetTransitions{};
     bool suppressWidgetCompositionMotion{};
+    animation::Options widgetAnimations;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     bool rasterWidgetTransitionsForTesting{};
 #endif

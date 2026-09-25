@@ -65,6 +65,7 @@ add_executable(OverlayHost WIN32
     DeveloperInspectorWindow.cpp
     MediaSessionManager.cpp
     OverlayCompositionSurface.cpp
+    WidgetCompositionPresenter.cpp
     CompositorBackgroundSurfaceCoordinator.cpp
     OverlayProcessOwner.cpp
     OverlayState.cpp
@@ -299,12 +300,18 @@ if(WRAIL_BUILD_TESTS)
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME OverlayTransitionTests COMMAND OverlayTransitionTests)
 
-    add_executable(OverlayChromeTests OverlayChromeTests.cpp OverlayChrome.cpp)
+    add_executable(OverlayChromeTests OverlayChromeTests.cpp OverlayChrome.cpp
+        OverlayCompositionSurface.cpp WidgetCompositionPresenter.cpp OverlayState.cpp TrayLayout.cpp)
     target_compile_features(OverlayChromeTests PRIVATE cxx_std_20)
     target_compile_options(OverlayChromeTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(OverlayChromeTests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(OverlayChromeTests PRIVATE d2d1 windowscodecs ole32)
+    target_link_libraries(OverlayChromeTests PRIVATE d2d1 d3d11 dxgi dcomp windowscodecs ole32 user32)
+    add_custom_command(TARGET OverlayChromeTests POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../assets/fonts"
+            "$<TARGET_FILE_DIR:OverlayChromeTests>/assets/fonts"
+        VERBATIM)
     add_test(NAME OverlayChromeTests COMMAND OverlayChromeTests)
 
     add_executable(GuideInputCompatibilityTests
@@ -429,6 +436,7 @@ if(WRAIL_BUILD_TESTS)
         BackgroundSurfaceHostTests.cpp WidgetBridgeClient.cpp
         PublicSuffixDomainAuthority.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
         CompositorBackgroundSurfaceCoordinator.cpp OverlayCompositionSurface.cpp
+        WidgetCompositionPresenter.cpp
         NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp
         RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp)
     target_compile_features(BackgroundSurfaceHostTests PRIVATE cxx_std_20)

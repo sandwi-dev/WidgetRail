@@ -1,0 +1,175 @@
+#pragma once
+
+#include "DeclarativeLayout.h"
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <string_view>
+
+namespace widgetrail::animation {
+using Rect = declarative::Rect;
+
+enum class SectionStyle { Paging, Slide, None };
+enum class ModalStyle { Lift, None };
+
+// Host preferences, independent of widget declarations and graphics resources.
+// Stable IDs can be persisted by settings without serializing enum ordinals.
+struct SectionPreset {
+    std::wstring_view id, label;
+    SectionStyle style;
+};
+inline constexpr std::array SectionPresets{
+    SectionPreset{L"paging", L"Paging", SectionStyle::Paging},
+    SectionPreset{L"slide", L"Slide", SectionStyle::Slide},
+    SectionPreset{L"none", L"None", SectionStyle::None},
+};
+constexpr SectionStyle ParseSectionStyle(std::wstring_view id) noexcept {
+    for (const auto &preset : SectionPresets)
+        if (preset.id == id)
+            return preset.style;
+    return SectionStyle::Paging;
+}
+constexpr std::wstring_view SectionStyleId(SectionStyle style) noexcept {
+    for (const auto &preset : SectionPresets)
+        if (preset.style == style)
+            return preset.id;
+    return L"paging";
+}
+struct Options {
+    SectionStyle section{SectionStyle::Paging};
+    ModalStyle modal{ModalStyle::Lift};
+    bool operator==(const Options &) const = default;
+};
+
+// Both CPU sampling and DirectComposition consume this normalized polynomial.
+// Keeping the coefficients shared prevents capture/input from drifting away
+// from the pixels displayed by DWM.
+struct Curve {
+    double linear{}, quadratic{3}, cubic{-2}; // smoothstep: gentle at both ends
+    constexpr bool operator==(const Curve &) const = default;
+    double Evaluate(double t) const noexcept {
+        t = std::clamp(t, 0.0, 1.0);
+        return ((cubic * t + quadratic) * t + linear) * t;
+    }
+    std::array<float, 4> Coefficients(float from, float to, double seconds) const noexcept {
+        if (seconds <= 0)
+            return {to, 0, 0, 0};
+        const double delta = static_cast<double>(to) - from;
+        return {from, static_cast<float>(delta * linear / seconds),
+                static_cast<float>(delta * quadratic / (seconds * seconds)),
+                static_cast<float>(delta * cubic / (seconds * seconds * seconds))};
+    }
+};
+inline constexpr Curve Smooth{0, 3, -2};
+inline constexpr Curve EaseOut{3, -3, 1};
+
+struct Pose {
+    Rect bounds;
+    float opacity{1};
+    Rect clip;
+};
+struct Motion {
+    Pose from, to;
+    std::int64_t start{}, duration{};
+    Curve curve{Smooth};
+};
+inline Pose Sample(const Motion &motion, std::int64_t now) noexcept {
+    if (motion.duration <= 0 || now >= motion.start + motion.duration)
+        return motion.to;
+    const auto p =
+        static_cast<float>(motion.curve.Evaluate(static_cast<double>(now - motion.start) / motion.duration));
+    const auto mix = [p](float a, float b) { return a + (b - a) * p; };
+    const auto rect = [&](Rect a, Rect b) {
+        return Rect{mix(a.x, b.x), mix(a.y, b.y), mix(a.width, b.width), mix(a.height, b.height)};
+    };
+    return {rect(motion.from.bounds, motion.to.bounds), mix(motion.from.opacity, motion.to.opacity),
+            rect(motion.from.clip, motion.to.clip)};
+}
+
+struct Transform {
+    float scaleX{1}, scaleY{1}, offsetX{}, offsetY{};
+};
+inline Transform Map(Rect basis, Rect pose) noexcept {
+    const float sx = basis.width > 0 ? pose.width / basis.width : 1;
+    const float sy = basis.height > 0 ? pose.height / basis.height : 1;
+    return {sx, sy, pose.x - basis.x * sx, pose.y - basis.y * sy};
+}
+
+struct Recipe {
+    Pose from, to;
+    unsigned milliseconds{};
+    Curve curve{Smooth};
+    Motion Start(std::int64_t now, std::int64_t ticksPerSecond) const noexcept {
+        return {from, to, now, ticksPerSecond * milliseconds / 1000, curve};
+    }
+};
+inline Recipe Stationary(Rect bounds, Rect clip) noexcept {
+    return {{bounds, 1, clip}, {bounds, 1, clip}, 0, Smooth};
+}
+inline unsigned SectionDuration(SectionStyle style) noexcept {
+    return style == SectionStyle::None ? 0 : 260;
+}
+struct SectionPlan {
+    Recipe incoming, outgoing;
+};
+inline SectionPlan Section(SectionStyle style, Rect bounds, Rect clip, Rect outgoing,
+                           int direction) noexcept {
+    SectionPlan plan{Stationary(bounds, clip), Stationary(outgoing, clip)};
+    plan.incoming.milliseconds = plan.outgoing.milliseconds = SectionDuration(style);
+    if (style == SectionStyle::None)
+        return plan;
+    if (style == SectionStyle::Slide) {
+        const float travel = std::max(bounds.width, clip.width) * (direction < 0 ? -1 : 1);
+        plan.incoming.from.bounds.x += travel;
+        plan.outgoing.to.bounds.x -= travel;
+        return plan;
+    }
+    // The new page rises from below; the old page recedes behind it. Neither
+    // changes opacity. A moving reveal edge prevents translucent page content
+    // from showing old text through the incoming page.
+    const float travel = std::max(bounds.height, clip.height);
+    plan.incoming.from.bounds.y += travel;
+    constexpr float depthScale = .96F;
+    auto &back = plan.outgoing.to.bounds;
+    back.x += back.width * (1 - depthScale) * .5F;
+    back.y += back.height * (1 - depthScale) * .5F - travel * .08F;
+    back.width *= depthScale;
+    back.height *= depthScale;
+    const float top = std::min(bounds.y, clip.y);
+    plan.outgoing.from.clip = {clip.x, top, clip.width, plan.incoming.from.bounds.y - top};
+    plan.outgoing.to.clip = {clip.x, top, clip.width, bounds.y - top};
+    return plan;
+}
+inline Recipe Layout(SectionStyle style, Rect bounds, Rect clip, Pose previous, bool resize) noexcept {
+    auto recipe = Stationary(bounds, clip);
+    recipe.from.bounds = previous.bounds;
+    // Labels move without stretching their glyphs. Selection surfaces may
+    // interpolate their size to fit the newly selected label.
+    if (!resize) {
+        recipe.from.bounds.width = bounds.width;
+        recipe.from.bounds.height = bounds.height;
+    }
+    recipe.milliseconds = SectionDuration(style);
+    return recipe;
+}
+inline Recipe ModalEnter(ModalStyle style, Rect bounds, Rect clip, float opacity, bool scrim) noexcept {
+    auto recipe = Stationary(bounds, clip);
+    recipe.milliseconds = style == ModalStyle::None ? 0 : 180;
+    recipe.curve = EaseOut;
+    recipe.from.opacity = opacity;
+    if (!scrim)
+        recipe.from.bounds.y += 14 * (1 - opacity);
+    return recipe;
+}
+inline Recipe ModalExit(ModalStyle style, Rect bounds, Rect clip, float opacity, bool scrim) noexcept {
+    auto recipe = Stationary(bounds, clip);
+    recipe.milliseconds = style == ModalStyle::None ? 0 : 180;
+    recipe.curve = EaseOut;
+    recipe.from.opacity = scrim ? opacity : 1;
+    recipe.to.opacity = 0;
+    if (!scrim)
+        recipe.to.bounds.y += 14 * opacity;
+    return recipe;
+}
+} // namespace widgetrail::animation

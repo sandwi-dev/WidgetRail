@@ -20,10 +20,9 @@ bool Contains(Rect r, D2D1_POINT_2F p) {
 D2D1::Matrix3x2F Matrix(D2D1_MATRIX_3X2_F value) {
     return {value._11, value._12, value._21, value._22, value._31, value._32};
 }
-D2D1::Matrix3x2F Transform(Rect basis, Rect pose, bool resize) {
-    const auto sx = resize && basis.width > 0 ? pose.width / basis.width : 1;
-    const auto sy = resize && basis.height > 0 ? pose.height / basis.height : 1;
-    return {sx, 0, 0, sy, pose.x - basis.x * sx, pose.y - basis.y * sy};
+D2D1::Matrix3x2F Transform(Rect basis, Rect pose) {
+    const auto value = animation::Map(basis, pose);
+    return {value.scaleX, 0, 0, value.scaleY, value.offsetX, value.offsetY};
 }
 } // namespace
 
@@ -36,23 +35,10 @@ std::int64_t WidgetCompositionPresenter::Now() noexcept {
     QueryPerformanceCounter(&v);
     return v.QuadPart;
 }
-std::int64_t WidgetCompositionPresenter::Duration() noexcept {
+std::int64_t WidgetCompositionPresenter::Frequency() noexcept {
     LARGE_INTEGER v{};
     QueryPerformanceFrequency(&v);
-    return v.QuadPart * 180 / 1000;
-}
-
-WidgetCompositionPresenter::Pose WidgetCompositionPresenter::Sample(const Motion &motion,
-                                                                    std::int64_t now) noexcept {
-    if (motion.duration <= 0 || now >= motion.start + motion.duration)
-        return motion.to;
-    const auto t = std::clamp(static_cast<double>(now - motion.start) / motion.duration, 0.0, 1.0);
-    const auto p = static_cast<float>(1 - (1 - t) * (1 - t) * (1 - t));
-    const auto mix = [p](float a, float b) { return a + (b - a) * p; };
-    return {{mix(motion.from.bounds.x, motion.to.bounds.x), mix(motion.from.bounds.y, motion.to.bounds.y),
-             mix(motion.from.bounds.width, motion.to.bounds.width),
-             mix(motion.from.bounds.height, motion.to.bounds.height)},
-            mix(motion.from.opacity, motion.to.opacity)};
+    return v.QuadPart;
 }
 
 HRESULT WidgetCompositionPresenter::Upload(Raster &raster, const WidgetCompositionNode &node) {
@@ -116,15 +102,19 @@ HRESULT WidgetCompositionPresenter::Upload(Raster &raster, const WidgetCompositi
     return hr;
 }
 
-HRESULT WidgetCompositionPresenter::Animate(IDCompositionVisual3 *visual, const Motion &motion, Rect basis,
-                                            bool resize) {
-    const auto from = Transform(basis, motion.from.bounds, resize);
-    const auto to = Transform(basis, motion.to.bounds, resize);
+HRESULT WidgetCompositionPresenter::Animate(IDCompositionVisual3 *visual, IDCompositionVisual3 *clipVisual,
+                                            const Motion &motion, Rect basis) {
+    const auto from = Transform(basis, motion.from.bounds);
+    const auto to = Transform(basis, motion.to.bounds);
     const auto scale = scene_->scale;
     if (!motion.duration) {
         D2D_MATRIX_3X2_F matrix{to._11, 0, 0, to._22, to._31 * scale, to._32 * scale};
         auto hr = static_cast<IDCompositionVisual2 *>(visual)->SetTransform(matrix);
-        return FAILED(hr) ? hr : visual->SetOpacity(motion.to.opacity);
+        if (SUCCEEDED(hr))
+            hr = visual->SetOpacity(motion.to.opacity);
+        if (SUCCEEDED(hr))
+            hr = clipVisual->SetClip(Box(motion.to.clip, scale));
+        return hr;
     }
     Ptr<IDCompositionMatrixTransform> transform;
     auto hr = device_->CreateMatrixTransform(transform.GetAddressOf());
@@ -134,15 +124,13 @@ HRESULT WidgetCompositionPresenter::Animate(IDCompositionVisual3 *visual, const 
     const auto animate = [&](float a, float b, IDCompositionAnimation **output) {
         Ptr<IDCompositionAnimation> animation;
         auto result = device_->CreateAnimation(animation.GetAddressOf());
-        const auto delta = static_cast<double>(b - a);
+        const auto polynomial = motion.curve.Coefficients(a, b, seconds);
         LARGE_INTEGER begin{};
         begin.QuadPart = motion.start;
         if (SUCCEEDED(result))
             result = animation->SetAbsoluteBeginTime(begin);
         if (SUCCEEDED(result))
-            result = animation->AddCubic(0, a, static_cast<float>(3 * delta / seconds),
-                                         static_cast<float>(-3 * delta / (seconds * seconds)),
-                                         static_cast<float>(delta / (seconds * seconds * seconds)));
+            result = animation->AddCubic(0, polynomial[0], polynomial[1], polynomial[2], polynomial[3]);
         if (SUCCEEDED(result))
             result = animation->End(seconds, b);
         if (SUCCEEDED(result))
@@ -165,6 +153,26 @@ HRESULT WidgetCompositionPresenter::Animate(IDCompositionVisual3 *visual, const 
         hr = animate(motion.from.opacity, motion.to.opacity, opacity.GetAddressOf());
     if (SUCCEEDED(hr))
         hr = visual->SetOpacity(opacity.Get());
+    if (SUCCEEDED(hr) && Same(motion.from.clip, motion.to.clip))
+        hr = clipVisual->SetClip(Box(motion.to.clip, scale));
+    else if (SUCCEEDED(hr)) {
+        Ptr<IDCompositionRectangleClip> clip;
+        hr = device_->CreateRectangleClip(clip.GetAddressOf());
+        const auto first = Box(motion.from.clip, scale), last = Box(motion.to.clip, scale);
+        using Setter = HRESULT (STDMETHODCALLTYPE IDCompositionRectangleClip::*)(IDCompositionAnimation *);
+        const Setter setters[]{&IDCompositionRectangleClip::SetLeft, &IDCompositionRectangleClip::SetTop,
+                               &IDCompositionRectangleClip::SetRight, &IDCompositionRectangleClip::SetBottom};
+        const float fromEdges[]{first.left, first.top, first.right, first.bottom};
+        const float toEdges[]{last.left, last.top, last.right, last.bottom};
+        for (int i = 0; SUCCEEDED(hr) && i < 4; ++i) {
+            Ptr<IDCompositionAnimation> edge;
+            hr = animate(fromEdges[i], toEdges[i], edge.GetAddressOf());
+            if (SUCCEEDED(hr))
+                hr = (clip.Get()->*setters[i])(edge.Get());
+        }
+        if (SUCCEEDED(hr))
+            hr = clipVisual->SetClip(clip.Get());
+    }
     if (SUCCEEDED(hr))
         ++counters_.animationStarts;
     return hr;
@@ -181,15 +189,17 @@ void WidgetCompositionPresenter::DrawGroup(ID2D1RenderTarget *target, const std:
     target->PushAxisAlignedClip(Box(group.node.clip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
     if (group.previous.node.bitmap) {
         const auto exit = Sample(group.exit, now);
-        target->SetTransform(Transform(group.previous.node.bounds, exit.bounds, false) * Matrix(inherited));
+        target->PushAxisAlignedClip(Box(exit.clip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        target->SetTransform(Transform(group.previous.node.bounds, exit.bounds) * Matrix(inherited));
         target->DrawBitmap(group.previous.node.bitmap.Get(), Box(group.previous.node.bounds),
                            opacity * exit.opacity);
+        target->SetTransform(inherited);
+        target->PopAxisAlignedClip();
     }
     if (!group.closing) {
         const auto pose = Sample(group.motion, now);
-        const auto matrix =
-            Transform(group.node.bounds, pose.bounds, group.node.kind == WidgetCompositionKind::Selection) *
-            Matrix(inherited);
+        target->PushAxisAlignedClip(Box(pose.clip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        const auto matrix = Transform(group.node.bounds, pose.bounds) * Matrix(inherited);
         for (const auto &node : scene_->nodes) {
             if (node.parent != id)
                 continue;
@@ -208,9 +218,26 @@ void WidgetCompositionPresenter::DrawGroup(ID2D1RenderTarget *target, const std:
                 }
             }
         }
+        target->SetTransform(inherited);
+        target->PopAxisAlignedClip();
     }
     target->SetTransform(inherited);
     target->PopAxisAlignedClip();
+}
+
+WidgetCompositionPresenter::Rect WidgetCompositionPresenter::CaptureBounds(const Group &group,
+                                                                           std::int64_t now) noexcept {
+    if (group.node.kind == WidgetCompositionKind::Content)
+        return group.node.clip;
+    auto bounds = group.node.bounds;
+    const auto pose = Sample(group.motion, now).bounds;
+    const auto right = std::max(bounds.x + bounds.width, pose.x + pose.width);
+    const auto bottom = std::max(bounds.y + bounds.height, pose.y + pose.height);
+    bounds.x = std::min(bounds.x, pose.x);
+    bounds.y = std::min(bounds.y, pose.y);
+    bounds.width = right - bounds.x;
+    bounds.height = bottom - bounds.y;
+    return bounds;
 }
 
 HRESULT WidgetCompositionPresenter::Capture(const std::wstring &id, Raster &raster, std::int64_t now) {
@@ -222,17 +249,7 @@ HRESULT WidgetCompositionPresenter::Capture(const std::wstring &id, Raster &rast
             if (node.parent == id && node.solid)
                 return Upload(raster, node);
     }
-    auto bounds = found->second.node.kind == WidgetCompositionKind::Content ? found->second.node.clip
-                                                                            : found->second.node.bounds;
-    if (found->second.node.kind == WidgetCompositionKind::Modal) {
-        const auto pose = Sample(found->second.motion, now).bounds;
-        const auto right = std::max(bounds.x + bounds.width, pose.x + pose.width),
-                   bottom = std::max(bounds.y + bounds.height, pose.y + pose.height);
-        bounds.x = std::min(bounds.x, pose.x);
-        bounds.y = std::min(bounds.y, pose.y);
-        bounds.width = right - bounds.x;
-        bounds.height = bottom - bounds.y;
-    }
+    const auto bounds = CaptureBounds(found->second, now);
     const auto width = std::ceil(bounds.width * scene_->scale),
                height = std::ceil(bounds.height * scene_->scale);
     if (width <= 0 || height <= 0 || width > 8192 || height > 8192 ||
@@ -251,6 +268,9 @@ HRESULT WidgetCompositionPresenter::Capture(const std::wstring &id, Raster &rast
     if (FAILED(hr))
         return hr;
     context->SetTarget(bitmap.Get());
+    // A bitmap's DPI metadata does not set the device context's drawing DPI.
+    // Captured poses are in DIPs, just like the live scene, at every UI scale.
+    context->SetDpi(96 * scene_->scale,96 * scene_->scale);
     context->BeginDraw();
     context->Clear(D2D1::ColorF(0, 0));
     DrawGroup(context.Get(), id, D2D1::Matrix3x2F::Translation(-bounds.x, -bounds.y), 1, now);
@@ -281,7 +301,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         scene->scale <= 0)
         return E_INVALIDARG;
     const bool cold = !scene_ || scene_->authority != scene->authority || scene_->scale != scene->scale ||
-                      !Same(scene_->viewport, scene->viewport);
+                      !Same(scene_->viewport, scene->viewport) || scene_->animations != scene->animations;
     if (cold || scene->directContent)
         Clear();
     const auto now = Now();
@@ -294,14 +314,15 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         const auto next = std::find_if(scene->nodes.begin(), scene->nodes.end(),
                                        [&](const auto &node) { return node.id == id; });
         const bool replacement = next != scene->nodes.end() && next->key != group.node.key &&
-                                 group.node.kind == WidgetCompositionKind::Content;
-        const bool dismissal =
-            next == scene->nodes.end() && group.node.kind == WidgetCompositionKind::Modal && !group.closing;
+                                 group.node.kind == WidgetCompositionKind::Content &&
+                                 scene->animations.section != animation::SectionStyle::None;
+        const bool dismissal = next == scene->nodes.end() &&
+                               group.node.kind == WidgetCompositionKind::Modal && !group.closing &&
+                               scene->animations.modal != animation::ModalStyle::None;
         if (replacement || dismissal) {
-            const auto bounds = replacement ? group.node.clip : group.node.bounds;
-            retainedBytes += static_cast<std::size_t>(
-                std::ceil(bounds.width * scene->scale) *
-                std::ceil((bounds.height + (dismissal ? 14 : 0)) * scene->scale) * 4);
+            const auto bounds = CaptureBounds(group, now);
+            retainedBytes += static_cast<std::size_t>(std::ceil(bounds.width * scene->scale) *
+                                                      std::ceil(bounds.height * scene->scale) * 4);
         } else if (group.previous.node.bitmap) {
             const auto pixels = group.previous.node.bitmap->GetPixelSize();
             retainedBytes += static_cast<std::size_t>(pixels.width) * pixels.height * 4;
@@ -318,14 +339,15 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         if (node.kind != WidgetCompositionKind::Raster) {
             desired.insert(node.id);
             const auto old = groups_.find(node.id);
-            if (!cold && !scene->reducedMotion && old != groups_.end() && old->second.node.key != node.key &&
-                node.kind == WidgetCompositionKind::Content) {
+            if (!cold && !scene->reducedMotion &&
+                scene->animations.section != animation::SectionStyle::None && old != groups_.end() &&
+                old->second.node.key != node.key && node.kind == WidgetCompositionKind::Content) {
                 const auto hr = Capture(node.id, outgoing[node.id], now);
                 if (FAILED(hr))
                     return hr;
             }
         }
-    if (!cold && !scene->reducedMotion)
+    if (!cold && !scene->reducedMotion && scene->animations.modal != animation::ModalStyle::None)
         for (auto &[id, group] : groups_) {
             if (desired.contains(id) || group.closing ||
                 (group.node.kind != WidgetCompositionKind::Modal &&
@@ -337,13 +359,10 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
                 return hr;
             group.closing = true;
             group.resumeOpacity = group.node.kind == WidgetCompositionKind::Modal ? opacity : 1;
-            group.exit = {
-                {group.previous.node.bounds, group.node.kind == WidgetCompositionKind::Scrim ? opacity : 1},
-                {group.previous.node.bounds, 0},
-                now,
-                Duration()};
-            if (group.node.kind == WidgetCompositionKind::Modal)
-                group.exit.to.bounds.y += 14 * opacity;
+            group.exit =
+                animation::ModalExit(scene->animations.modal, group.previous.node.bounds, group.node.clip,
+                                     opacity, group.node.kind == WidgetCompositionKind::Scrim)
+                    .Start(now, Frequency());
         }
     scene_ = std::move(scene);
     if (!root_) {
@@ -407,16 +426,21 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         const bool existed = old != groups_.end();
         auto &group = groups_[node.id];
         const bool changed = !existed || group.node.key != node.key || group.closing;
-        const bool boundsChanged = !existed || !Same(group.node.bounds, node.bounds);
+        const bool boundsChanged =
+            !existed || !Same(group.node.bounds, node.bounds) || !Same(group.node.clip, node.clip);
         auto previous = group.closing ? Sample(group.exit, now) : Sample(group.motion, now);
         const bool reopening = group.closing;
         if (reopening)
             previous.opacity *= group.resumeOpacity;
         const auto previousEnd = group.motion.start + group.motion.duration;
+        const auto previousMotion = group.motion;
         const auto priorOrder = group.node.order;
+        if (changed)
+            group.direction = node.order >= priorOrder ? 1 : -1;
         if (!group.root)
-            for (auto *destination : {std::addressof(group.root), std::addressof(group.incoming),
-                                      std::addressof(group.outgoing)}) {
+            for (auto *destination :
+                 {std::addressof(group.root), std::addressof(group.incoming), std::addressof(group.outgoing),
+                  std::addressof(group.incomingClip), std::addressof(group.outgoingClip)}) {
                 Ptr<IDCompositionVisual2> visual;
                 auto hr = device_->CreateVisual(visual.GetAddressOf());
                 if (SUCCEEDED(hr))
@@ -435,41 +459,45 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         if (auto captured = outgoing.find(node.id); captured != outgoing.end())
             group.previous = std::move(captured->second);
         if (changed || boundsChanged || scene_->reducedMotion) {
-            const auto duration = cold || scene_->reducedMotion ? 0
-                                  : changed ? Duration()
-                                            : std::max<std::int64_t>(0, previousEnd - now);
-            group.motion = {{node.bounds, 1}, {node.bounds, 1}, now, duration};
+            auto recipe = animation::Stationary(node.bounds, node.clip);
             if (node.kind == WidgetCompositionKind::Content) {
-                if (existed && changed && duration) {
-                    group.motion.from.bounds.x += (node.order >= priorOrder ? 24 : -24);
-                    group.motion.from.opacity = 0;
-                } else if (!changed && duration)
-                    group.motion.from = previous;
-                else
-                    group.motion.duration = 0;
+                if (existed && (changed || previousEnd > now)) {
+                    const auto plan = animation::Section(scene_->animations.section, node.bounds, node.clip,
+                                                         group.previous.node.bounds, group.direction);
+                    recipe = plan.incoming;
+                    // A same-key layout update changes geometry, not the
+                    // animation clock. Rebuild both paths together so the
+                    // outgoing reveal stays aligned with the incoming edge.
+                    group.exit = plan.outgoing.Start(changed ? now : previousMotion.start, Frequency());
+                }
             } else if (node.kind == WidgetCompositionKind::Modal ||
                        node.kind == WidgetCompositionKind::Scrim) {
-                group.motion.from.opacity = existed ? previous.opacity : cold ? 1 : 0;
-                if (node.kind == WidgetCompositionKind::Modal)
-                    group.motion.from.bounds.y += 14 * (1 - group.motion.from.opacity);
-            } else if (existed)
-                group.motion.from.bounds = previous.bounds;
-            else
+                recipe = animation::ModalEnter(scene_->animations.modal, node.bounds, node.clip,
+                                               existed ? previous.opacity
+                                               : cold  ? 1
+                                                       : 0,
+                                               node.kind == WidgetCompositionKind::Scrim);
+            } else if (existed) {
+                recipe = animation::Layout(scene_->animations.section, node.bounds, node.clip, previous,
+                    node.kind == WidgetCompositionKind::Selection);
+            }
+            group.motion = recipe.Start(now, Frequency());
+            if (!changed) {
+                if (node.kind == WidgetCompositionKind::Content && previousEnd > now) {
+                    group.motion.start = previousMotion.start;
+                    group.motion.duration = previousMotion.duration;
+                } else
+                    group.motion.duration = std::max<std::int64_t>(0, previousEnd - now);
+            }
+            if (cold || scene_->reducedMotion)
                 group.motion.duration = 0;
-            auto hr = Animate(group.incoming.Get(), group.motion, node.bounds,
-                              node.kind == WidgetCompositionKind::Selection);
+            auto hr = Animate(group.incoming.Get(), group.incomingClip.Get(), group.motion, node.bounds);
             if (FAILED(hr))
                 return hr;
-            if (changed && group.previous.node.bitmap) {
-                group.exit = {{group.previous.node.bounds, 1},
-                              {group.previous.node.bounds, 0},
-                              now,
-                              group.motion.duration};
-                group.exit.to.bounds.x -= (node.order >= priorOrder ? 24 : -24);
-            }
         }
         if ((changed || boundsChanged || scene_->reducedMotion) && group.previous.visual) {
-            const auto hr = Animate(group.outgoing.Get(), group.exit, group.previous.node.bounds, false);
+            const auto hr = Animate(group.outgoing.Get(), group.outgoingClip.Get(), group.exit,
+                                    group.previous.node.bounds);
             if (FAILED(hr))
                 return hr;
         }
@@ -502,21 +530,30 @@ HRESULT WidgetCompositionPresenter::Rebuild(IDCompositionVisual2 *) {
     for (auto &[_, group] : groups_) {
         hr = group.root->RemoveAllVisuals();
         if (SUCCEEDED(hr))
+            hr = group.incomingClip->RemoveAllVisuals();
+        if (SUCCEEDED(hr))
+            hr = group.outgoingClip->RemoveAllVisuals();
+        if (SUCCEEDED(hr))
             hr = group.incoming->RemoveAllVisuals();
         if (SUCCEEDED(hr))
             hr = group.outgoing->RemoveAllVisuals();
         if (SUCCEEDED(hr) && group.previous.visual)
             hr = group.outgoing->AddVisual(group.previous.visual.Get(), TRUE, nullptr);
         if (SUCCEEDED(hr))
-            hr = group.root->AddVisual(group.outgoing.Get(), TRUE, nullptr);
+            hr = group.outgoingClip->AddVisual(group.outgoing.Get(), FALSE, nullptr);
+        if (SUCCEEDED(hr))
+            hr = group.root->AddVisual(group.outgoingClip.Get(), FALSE, nullptr);
         if (FAILED(hr))
             return hr;
         if (!group.closing) {
-            hr = group.root->AddVisual(group.incoming.Get(), TRUE, group.outgoing.Get());
+            hr = group.incomingClip->AddVisual(group.incoming.Get(), FALSE, nullptr);
+            if (SUCCEEDED(hr))
+                hr = group.root->AddVisual(group.incomingClip.Get(), TRUE, group.outgoingClip.Get());
             if (FAILED(hr))
                 return hr;
         } else {
-            hr = Animate(group.outgoing.Get(), group.exit, group.previous.node.bounds, false);
+            hr = Animate(group.outgoing.Get(), group.outgoingClip.Get(), group.exit,
+                         group.previous.node.bounds);
             if (FAILED(hr))
                 return hr;
         }
@@ -618,7 +655,8 @@ D2D1_POINT_2F WidgetCompositionPresenter::MapInput(D2D1_POINT_2F point) const no
                 return {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
             if (it->kind == WidgetCompositionKind::Content && Contains(it->clip, point))
                 movingContent = true;
-            if (pose.opacity > .01F && Contains(it->clip, point) && Contains(pose.bounds, point)) {
+            if (pose.opacity > .01F && Contains(it->clip, point) && Contains(pose.clip, point) &&
+                Contains(pose.bounds, point)) {
                 match = &group->second;
                 break;
             }
@@ -629,8 +667,11 @@ D2D1_POINT_2F WidgetCompositionPresenter::MapInput(D2D1_POINT_2F point) const no
             break;
         }
         const auto pose = Sample(match->motion, now);
-        point.x -= pose.bounds.x - match->node.bounds.x;
-        point.y -= pose.bounds.y - match->node.bounds.y;
+        const auto transform = animation::Map(match->node.bounds, pose.bounds);
+        if (transform.scaleX <= 0 || transform.scaleY <= 0)
+            return {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
+        point.x = (point.x - transform.offsetX) / transform.scaleX;
+        point.y = (point.y - transform.offsetY) / transform.scaleY;
         parent = match->node.id;
     }
     return point;

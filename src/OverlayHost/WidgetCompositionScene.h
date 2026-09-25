@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DeclarativeLayout.h"
+#include "WidgetAnimationPolicy.h"
 #include <d2d1.h>
 #include <wrl/client.h>
 #include <memory>
@@ -31,6 +32,7 @@ struct WidgetCompositionScene final {
     float scale{1}, cornerRadius{};
     bool reducedMotion{};
     bool directContent{};
+    animation::Options animations;
     std::vector<WidgetCompositionNode> nodes;
     std::size_t rasterBytes{};
 };

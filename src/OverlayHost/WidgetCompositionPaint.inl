@@ -18,6 +18,7 @@ bool DrawWidgetComposition() {
     scene->scale = options.pixelScale;
     scene->cornerRadius = options.surfaceCornerRadiusPx;
     scene->reducedMotion = options.accessibility.reducedMotion || options.suppressWidgetCompositionMotion;
+    scene->animations = options.widgetAnimations;
     const auto hasLiveSurface = [&](const auto &self, const WidgetNode &node) -> bool {
         return node.kind == L"mediaViewport" || node.kind == L"windowPreview" ||
                std::any_of(node.children.begin(), node.children.end(),

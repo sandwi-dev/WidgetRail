@@ -1169,15 +1169,73 @@ void CheckFixedChromeWindowPolicy() {
     UnregisterClassW(className, windowClass.hInstance);
 }
 
+void CheckWidgetAnimationPolicies() {
+    using namespace widgetrail::animation;
+    const Rect bounds{20, 30, 200, 120};
+    const auto plan = Section(SectionStyle::Paging, bounds, bounds, bounds, 1);
+    Check(plan.incoming.milliseconds == 260 && plan.outgoing.milliseconds == 260,
+          "paging has one shared duration");
+    const auto incoming = plan.incoming.Start(100, 1000), outgoing = plan.outgoing.Start(100, 1000);
+    for (int tick = 0; tick <= 260; ++tick) {
+        const auto front = Sample(incoming, 100 + tick), back = Sample(outgoing, 100 + tick);
+        Check(front.opacity == 1 && back.opacity == 1, "paging never fades either page");
+        Check(std::abs(back.clip.y + back.clip.height - front.bounds.y) < .001F,
+              "reveal boundary follows incoming page without translucent overlap");
+        Check(back.bounds.width <= bounds.width && back.bounds.width >= bounds.width * .96F - .001F,
+              "outgoing page recedes only slightly");
+        const auto matrix = Map(bounds, back.bounds);
+        const float screenX = 95 * matrix.scaleX + matrix.offsetX;
+        Check(std::abs((screenX - matrix.offsetX) / matrix.scaleX - 95) < .001F,
+              "input inverse matches the scaled interruption pose");
+    }
+    for (const auto curve : {Smooth, EaseOut}) {
+        const auto coefficients = curve.Coefficients(12, 91, .26);
+        for (int i = 0; i <= 100; ++i) {
+            const double t = i / 100.0, seconds = t * .26;
+            const auto emitted =
+                ((coefficients[3] * seconds + coefficients[2]) * seconds + coefficients[1]) * seconds +
+                coefficients[0];
+            Check(std::abs(emitted - (12 + 79 * curve.Evaluate(t))) < .001,
+                  "DComp polynomial and CPU sample share identical easing");
+        }
+    }
+    for (int direction : {-1, 1}) {
+        const auto slide = Section(SectionStyle::Slide, bounds, bounds, bounds, direction);
+        Check(slide.incoming.from.opacity == 1 && slide.incoming.to.opacity == 1 &&
+                  slide.outgoing.from.opacity == 1 && slide.outgoing.to.opacity == 1,
+              "slide preset does not retain the rejected crossfade");
+        Check(slide.incoming.from.bounds.x == bounds.x + direction * bounds.width &&
+                  slide.outgoing.to.bounds.x == bounds.x - direction * bounds.width,
+              "slide travels a complete page in navigation order");
+    }
+    Check(Section(SectionStyle::None, bounds, bounds, bounds, 1).incoming.milliseconds == 0,
+          "none preset has no motion");
+    for (const auto preset : SectionPresets)
+        Check(ParseSectionStyle(preset.id) == preset.style && SectionStyleId(preset.style) == preset.id,
+              "preset settings IDs round-trip independently of enum ordinals");
+    Check(ParseSectionStyle(L"future-unknown") == SectionStyle::Paging,
+          "unknown settings ID has a safe default");
+    Check(ModalEnter(ModalStyle::None, bounds, bounds, 0, false).milliseconds == 0,
+          "modal preference independently disables modal motion");
+    const Pose oldLabel{{5, 10, 80, 40}, 1, bounds};
+    const auto label = Layout(SectionStyle::Paging, bounds, bounds, oldLabel, false);
+    const auto selection = Layout(SectionStyle::Paging, bounds, bounds, oldLabel, true);
+    Check(label.from.bounds.x == oldLabel.bounds.x && label.from.bounds.width == bounds.width &&
+              selection.from.bounds.width == oldLabel.bounds.width,
+          "layout motion moves text without scaling it while selection surfaces can resize");
+}
+
 void CheckWidgetCompositorPixels() {
     using namespace widgetrail;
+    Check(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)!=0,
+        "pixel fixture uses physical screen coordinates");
     const wchar_t *name = L"WidgetRail.CompositorMotionPixelTest";
     WNDCLASSW wc{};
     wc.lpfnWndProc = DefWindowProcW;
     wc.hInstance = GetModuleHandleW(nullptr);
     wc.lpszClassName = name;
     Check(RegisterClassW(&wc) != 0, "compositor pixel class");
-    HWND window = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_NOREDIRECTIONBITMAP, name,
+    HWND window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_NOREDIRECTIONBITMAP, name,
                                   L"Widget motion test", WS_POPUP, 40, 40, 128, 128, nullptr, nullptr,
                                   wc.hInstance, nullptr);
     Check(window != nullptr, "compositor pixel window");
@@ -1191,6 +1249,11 @@ void CheckWidgetCompositorPixels() {
         auto scene = std::make_shared<WidgetCompositionScene>();
         scene->authority = L"motion.test";
         scene->viewport = {0, 0, 128, 128};
+        WidgetCompositionNode background;
+        background.id = L"background";
+        background.bounds = background.clip = scene->viewport;
+        background.solid = D2D1::ColorF(D2D1::ColorF::Black);
+        scene->nodes.push_back(background);
         WidgetCompositionNode group;
         group.id = L"section";
         group.kind = WidgetCompositionKind::Content;
@@ -1217,8 +1280,8 @@ void CheckWidgetCompositorPixels() {
         OverlayCompositionSurface::CommitTiming timing;
         Check(SUCCEEDED(surface.CommitFrame(frame, true, timing)), "motion scene commits");
     };
-    const auto pixel = [&] {
-        POINT position{64, 64};
+    const auto pixel = [&](int x = 64, int y = 64) {
+        POINT position{x, y};
         ClientToScreen(window, &position);
         const auto desktop = GetDC(nullptr);
         const auto value = GetPixel(desktop, position.x, position.y);
@@ -1227,26 +1290,31 @@ void CheckWidgetCompositorPixels() {
         return value;
     };
     commit(makeScene(L"home", D2D1::ColorF(D2D1::ColorF::Red)));
-    SetWindowPos(window, HWND_TOPMOST, 40, 40, 128, 128, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    ShowWindow(window,SW_SHOWNOACTIVATE);
+    Check(SetWindowPos(window, HWND_TOPMOST, 40, 40, 128, 128, SWP_NOACTIVATE | SWP_SHOWWINDOW)!=0,
+        "pixel test window is shown");
     DwmFlush();
     Sleep(50);
     DwmFlush();
     Check(GetRValue(pixel()) > 220, "initial compositor section is red");
     commit(makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Lime)));
     const auto movingInput = surface.MapWidgetCompositionInput({64, 64});
-    Check(movingInput.x >= 40 && movingInput.x <= 64 && movingInput.y == 64,
-          "pointer coordinates follow only the incoming section transform");
+    Check(!std::isfinite(movingInput.x) || (movingInput.x == 64 && movingInput.y <= 64),
+          "outgoing page has no input while incoming page enters from below");
     DwmFlush();
     const auto initial = pixel();
     const auto paints = surface.paintCounters().content;
     const auto counters = surface.widgetCompositionCounters();
     // Deliberately no message pumping, painting, scene updates or animation
     // samples on this thread. DWM must advance the submitted visual curves.
-    Sleep(90);
+    Sleep(160);
     DwmFlush();
     const auto advanced = pixel();
     Check(GetGValue(advanced) > GetGValue(initial) + 10,
           "DWM advances widget pixels while the application thread sleeps");
+    const auto enteringInput = surface.MapWidgetCompositionInput({64, 64});
+    Check(enteringInput.x == 64 && enteringInput.y >= 16 && enteringInput.y <= 64,
+          "incoming paging input follows the same compositor transform");
     Check(surface.paintCounters().content == paints &&
               surface.widgetCompositionCounters().rasterUploads == counters.rasterUploads,
           "motion produces zero application raster uploads");
@@ -1257,6 +1325,23 @@ void CheckWidgetCompositorPixels() {
     DwmFlush();
     Check(GetBValue(pixel()) > 220, "updated section reaches its original animation endpoint");
     Check(SUCCEEDED(surface.AdvanceWidgetComposition()), "completed visuals retire without drawing");
+    commit(makeScene(L"home", D2D1::ColorF(0, 1, 0, .5F)));
+    Sleep(160);
+    DwmFlush();
+    const auto transparentPixel = pixel();
+    Check(GetBValue(transparentPixel) < 10 && GetGValue(transparentPixel) > 110 &&
+              GetGValue(transparentPixel) < 145,
+          "transparent incoming page reveals its background, never the old page");
+    const auto captures = surface.widgetCompositionCounters().interruptionCaptures;
+    commit(makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue)));
+    Check(surface.widgetCompositionCounters().interruptionCaptures == captures + 1,
+          "rapid paging captures the displayed scale and reveal once");
+    DwmFlush();
+    Check(GetBValue(pixel()) < 10 && GetGValue(pixel()) > 110,
+          "interruption preserves the already revealed transparent page without old-color flash");
+    Sleep(290);
+    DwmFlush();
+    Check(GetBValue(pixel()) > 220, "interrupted paging converges to the latest page");
     const auto modalScene = [&] {
         auto scene = makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue));
         WidgetCompositionNode scrim;
@@ -1320,6 +1405,51 @@ void CheckWidgetCompositorPixels() {
     commit(scaled);
     Check(surface.widgetCompositionCounters().animationStarts == starts,
           "scale change cannot resume stale widget animations");
+    commit(makeScene(L"home", D2D1::ColorF(D2D1::ColorF::Red)));
+    commit(makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Lime)));
+    const auto preferenceStarts = surface.widgetCompositionCounters().animationStarts;
+    auto slide = makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Lime));
+    slide->animations.section = animation::SectionStyle::Slide;
+    commit(slide);
+    DwmFlush();
+    Check(surface.widgetCompositionCounters().animationStarts == preferenceStarts && GetGValue(pixel()) > 220,
+          "changing animation preference during paging settles the current page");
+    auto slidingBack = makeScene(L"home", D2D1::ColorF(D2D1::ColorF::Red));
+    slidingBack->animations.section = animation::SectionStyle::Slide;
+    commit(slidingBack);
+    Sleep(160);
+    DwmFlush();
+    Check(GetRValue(pixel()) > 220 && GetGValue(pixel()) < 10,
+          "slide preset uses opaque pages instead of the rejected crossfade");
+    auto disabled = makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue));
+    disabled->animations.section = animation::SectionStyle::None;
+    const auto disableStarts = surface.widgetCompositionCounters().animationStarts;
+    commit(disabled);
+    DwmFlush();
+    Check(GetBValue(pixel()) > 220 && surface.widgetCompositionCounters().animationStarts == disableStarts,
+          "None preset immediately retires a running transition");
+    commit(makeScene(L"home", D2D1::ColorF(D2D1::ColorF::Red)));
+    commit(makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Lime)));
+    Sleep(160);
+    auto resizedContent = makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue));
+    resizedContent->nodes[1].bounds = {16, 12, 96, 100};
+    resizedContent->nodes[2].bounds = resizedContent->nodes[1].bounds;
+    commit(resizedContent);
+    Sleep(110);
+    DwmFlush();
+    Check(GetBValue(pixel()) > 220, "same-section geometry update preserves the original paging end time");
+    auto scaledHome = makeScene(L"home",D2D1::ColorF(D2D1::ColorF::Red));
+    scaledHome->scale = 1.25F;
+    commit(scaledHome);
+    DwmFlush();
+    Check(GetRValue(pixel(124,30))>220,"scaled live page fills its physical extent before capture");
+    auto scaledLibrary = makeScene(L"library",D2D1::ColorF(D2D1::ColorF::Lime));
+    scaledLibrary->scale = 1.25F;
+    commit(scaledLibrary); Sleep(70); DwmFlush();
+    Check(GetRValue(pixel(124,30))>220,
+        "outgoing capture fills its physical extent at enlarged overlay scale");
+    Sleep(210); DwmFlush();
+    Check(GetGValue(pixel())>220,"scaled paging settles to the incoming page");
     surface.Reset();
     DestroyWindow(window);
     UnregisterClassW(name, wc.hInstance);
@@ -1330,6 +1460,7 @@ void CheckWidgetCompositorPixels() {
 } // namespace
 
 int main(int argc, char** argv) {
+    CheckWidgetAnimationPolicies();
     if (argc==2 && std::string_view(argv[1])=="--widget-motion-pixels") {
         Check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_MULTITHREADED)),"pixel proof COM initialization");
         CheckWidgetCompositorPixels(); CoUninitialize(); return EXIT_SUCCESS;
