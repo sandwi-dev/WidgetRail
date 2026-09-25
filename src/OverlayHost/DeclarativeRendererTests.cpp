@@ -7407,6 +7407,173 @@ void CursorWindowRegression(bool suppress, bool virtualGap=false) {
         "new window preserves visible position with focus-follow both enabled and disabled");
 }
 
+void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf())), "transition D2D factory");
+    Check(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.GetAddressOf()))), "transition text factory");
+    Check(SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.GetAddressOf()))), "transition WIC factory");
+    Check(SUCCEEDED(wic->CreateBitmap(300, 300, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad,
+        canvas.GetAddressOf())), "transition canvas");
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf())), "transition target");
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"transition.test"; snapshot.protocolVersion = 58; snapshot.sequence = 1;
+    snapshot.root = Node(L"page", L"stack");
+    auto header = Node(L"header", L"button");
+    header.text = L"Home";
+    header.baseStyle = {{L"width", Length(60)}, {L"height", Length(30)}};
+    header.transition = WidgetNode::Transition{L"tabs", L"home", 0, true};
+    auto content = Node(L"content", L"stack");
+    content.baseStyle = {{L"width", Length(240)}, {L"height", Length(180)}, {L"background", Color(L"#ff0000")}};
+    content.transition = WidgetNode::Transition{L"tabs", L"home", 0, false};
+    content.children = {FixedButton(L"old.action")};
+    snapshot.root.children = {header, content};
+    DeclarativeRenderOptions options;
+    std::wstring transitionTestFocus;
+    const auto draw = [&](std::uint64_t time, bool retained = false) {
+        options.animationTimestampMilliseconds = time;
+        if (retained) Check(renderer.PlanRetainedPaint(snapshot).has_value(), "transition retains layout plan");
+        target->BeginDraw(); target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        auto result = renderer.Render(target.Get(), snapshot, transitionTestFocus, {0,0,300,300}, options);
+        Check(SUCCEEDED(target->EndDraw()) && result.succeeded, "transition frame commits");
+        if (retained) Check(result.fullLayoutBuildCount == 0, "animation frame never rebuilds layout");
+        return result;
+    };
+    const auto pixel = [&](int x, int y) {
+        ComPtr<IWICBitmapLock> lock; const WICRect rect{x,y,1,1};
+        Check(SUCCEEDED(canvas->Lock(&rect, WICBitmapLockRead, lock.GetAddressOf())), "transition pixel lock");
+        UINT count{}; BYTE* bytes{};
+        Check(SUCCEEDED(lock->GetDataPointer(&count, &bytes)), "transition pixel read");
+        return std::array<int,3>{bytes[2],bytes[1],bytes[0]};
+    };
+    auto first = draw(100);
+    Check(!first.animationActive, "initial sections do not animate");
+    snapshot.root.children[0].focusedStyle = snapshot.root.children[0].baseStyle;
+    snapshot.root.children[0].focusedStyle[L"outline-color"] = Color(L"#00ffff");
+    snapshot.root.children[0].focusedStyle[L"outline-width"] = Length(2);
+    transitionTestFocus = L"header";
+    draw(101);
+    const auto focusPixel = pixel(61,15);
+    Check(focusPixel[1] > 200 && focusPixel[2] > 200,
+        "capturing section content preserves the navigation focus outline on the main target");
+    transitionTestFocus.clear();
+    ++snapshot.sequence;
+    snapshot.root.children[0].baseStyle[L"margin"] = LengthList(L"0px 0px 0px 100px");
+    snapshot.root.children[0].transition->key = L"library";
+    snapshot.root.children[0].transition->order = 1;
+    snapshot.root.children[1].transition->key = L"library";
+    snapshot.root.children[1].transition->order = 1;
+    snapshot.root.children[1].baseStyle[L"background"] = Color(L"#00ff00");
+    snapshot.root.children[1].children = {FixedButton(L"new.action")};
+    options.animationTimestampMilliseconds = 190;
+    options.failAfterNodeDrawForTesting = true;
+    target->BeginDraw();
+    const auto rejected = renderer.Render(target.Get(), snapshot, L"", {0,0,300,300}, options);
+    Check(SUCCEEDED(target->EndDraw()) && !rejected.succeeded, "failed transition frame is rejected");
+    options.failAfterNodeDrawForTesting = false;
+    auto start = draw(200);
+    Check(start.animationActive, "section change starts coordinated motion");
+    Near(start.elementRects.at(L"header").x, first.elementRects.at(L"header").x, "header starts at its previous position");
+    Check(!start.focusRects.contains(L"old.action") && start.focusRects.contains(L"new.action"), "outgoing pixels retain no focus or action geometry");
+    Check(pixel(100,150)[0] > 240, "outgoing section pixels survive tree replacement");
+    auto middle = draw(290, true);
+    Check(middle.elementRects.at(L"header").x > 70 && middle.elementRects.at(L"header").x < 100,
+        "header follows shared eased progress");
+    Check(pixel(100,150)[1] > 150, "incoming pixels replace outgoing pixels during motion");
+    // Data and artwork-style updates with the same section key cannot restart it.
+    ++snapshot.sequence;
+    auto settled = draw(380);
+    Check(!settled.animationActive, "same-section update does not restart transition");
+    Near(settled.elementRects.at(L"header").x, 100, "header settles at final layout");
+    Check(pixel(100,150)[1] == 255, "settled section is fully opaque");
+    auto reuse = draw(390, true);
+    Check(reuse.transitionSurfaceCreates == 0 && reuse.transitionSurfaceReuses == 1,
+        "settled redraws reuse bounded capture targets rather than reallocating");
+    Check(reuse.transitionRetainedBytes <= 64U * 1024U * 1024U, "transition buffers stay within their byte budget");
+    ++snapshot.sequence;
+    snapshot.root.children[0].transition->key = L"home";
+    snapshot.root.children[1].transition->key = L"home";
+    draw(400);
+    auto interrupted = draw(440, true);
+    ++snapshot.sequence;
+    snapshot.root.children[0].transition->key = L"queue";
+    snapshot.root.children[1].transition->key = L"queue";
+    snapshot.root.children[0].baseStyle[L"margin"] = LengthList(L"0px 0px 0px 160px");
+    auto redirected = draw(440);
+    Near(redirected.elementRects.at(L"header").x, interrupted.elementRects.at(L"header").x,
+        "rapid navigation retargets from the displayed position");
+    options.accessibility.reducedMotion = true;
+    Check(!draw(450).animationActive, "reduced motion cancels coordinated transitions");
+    options.accessibility.reducedMotion = false;
+    renderer.CancelWidgetTransitions();
+    Check(!draw(460).animationActive, "reopening a surface cannot resume stale section pixels");
+
+    auto page = snapshot.root;
+    auto dialog = Node(L"dialog", L"stack");
+    dialog.baseStyle = {{L"width", Length(180)}, {L"height", Length(180)}, {L"background", Color(L"#0000ff")}};
+    dialog.children = {FixedButton(L"modal.action")};
+    snapshot.root = Node(L"modal", L"modalLayer");
+    snapshot.root.children = {page, dialog};
+    ++snapshot.sequence;
+    Check(draw(500).animationActive, "modal opening starts panel and backdrop together");
+    Check(!draw(680, true).animationActive, "modal settles without idle work");
+    snapshot.root = page; ++snapshot.sequence;
+    auto closing = draw(700);
+    Check(closing.animationActive && !closing.focusRects.contains(L"modal.action"),
+        "closing modal has retained pixels but no stale input");
+    Check(pixel(150,150)[2] > 240, "closing panel remains above parent pixels");
+    Check(!draw(880, true).animationActive, "closing modal releases its motion");
+    Check(pixel(150,150)[2] == 0, "closed modal pixels are retired");
+    snapshot.root = Node(L"modal", L"modalLayer"); snapshot.root.children = {page, dialog}; ++snapshot.sequence;
+    draw(900);
+    draw(950, true);
+    snapshot.root = page; ++snapshot.sequence;
+    draw(950);
+    auto closingPixel = pixel(150,150);
+    snapshot.root = Node(L"modal", L"modalLayer"); snapshot.root.children = {page, dialog}; ++snapshot.sequence;
+    draw(950);
+    const auto reopenedPixel = pixel(150,150);
+    Check(std::abs(reopenedPixel[2] - closingPixel[2]) <= 2, "reopening an exiting modal preserves its visible opacity");
+    options.pixelScale = 1.25F;
+    auto resized = draw(960);
+    Check(!resized.animationActive, "scale change cancels obsolete transition geometry");
+    renderer.CancelWidgetTransitions();
+    auto resumed = draw(970);
+    Check(!resumed.animationActive, "a modal already present on resume does not replay entrance motion");
+    renderer.CancelWidgetTransitions(); options.pixelScale = 1;
+    snapshot.root = Node(L"navigation", L"row");
+    auto left = FixedButton(L"tab.home"); auto right = FixedButton(L"tab.library");
+    left.baseStyle = right.baseStyle = {{L"width", Length(100)}, {L"height", Length(50)}, {L"background", Color(L"#ff0000")}};
+    left.baseStyle[L"background"] = Color(L"#0000ff"); left.isSelected = true;
+    left.transition = right.transition = WidgetNode::Transition{L"navigation", L"home", 0, true, true};
+    snapshot.root.children = {left, right}; ++snapshot.sequence;
+    const auto navInitial = draw(1000);
+    snapshot.root.children[0].isSelected = false; snapshot.root.children[1].isSelected = true;
+    snapshot.root.children[0].baseStyle[L"background"] = Color(L"#ff0000");
+    snapshot.root.children[1].baseStyle[L"background"] = Color(L"#0000ff");
+    for (auto& tab : snapshot.root.children) { tab.transition->key = L"library"; tab.transition->order = 1; }
+    ++snapshot.sequence;
+    const auto navStart = draw(1100);
+    Near(navStart.elementRects.at(L"tab.home").x, navInitial.elementRects.at(L"tab.home").x,
+        "selection animation keeps the old tab label and input target in place");
+    Near(navStart.elementRects.at(L"tab.library").x, navInitial.elementRects.at(L"tab.library").x,
+        "selection animation does not move the destination label over the old label");
+    Check(pixel(10,45)[2] > 240, "selection surface starts beneath the old label even with opaque idle backgrounds");
+    renderer.ForgetWidgetState(L"another.widget");
+    draw(1190, true);
+    Check(pixel(10,45)[0] > 240 && pixel(110,45)[2] > 240, "selection surface slides independently behind stationary labels");
+    renderer.ForgetWidgetState(snapshot.instanceId);
+    Check(!draw(1200).animationActive, "retiring the actual widget cancels its transition pixels and timeline");
+}
+
 void ModalLayersPaintAboveThePageAndKeepIndependentScroll() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -7800,6 +7967,7 @@ int main() {
     PosterTileUsesFixedFullBleedGeometry();
     TileDescendantsRespectResolvedShapeAndOverflow();
     RetainedPosterPaintPreservesArtwork();
+    CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
     ModalLayersPaintAboveThePageAndKeepIndependentScroll();
     ScrollIndicatorsRespectViewportAndRetainedPaint();
     ScrollIndicatorStylePolicies();

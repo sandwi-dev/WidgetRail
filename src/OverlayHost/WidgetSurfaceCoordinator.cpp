@@ -2291,7 +2291,9 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
                 return 0;
             }
             std::optional<declarative::Rect> damage =
-                lastRenderResult_.backgroundSurfaceAnimationDamage;
+                lastRenderResult_.widgetTransitionAnimationDamage
+                    ? lastRenderResult_.widgetTransitionAnimationDamage
+                    : lastRenderResult_.backgroundSurfaceAnimationDamage;
             if (!damage && lastRenderResult_.backgroundSurfaceSettleWake) {
                 const auto now = GetTickCount64();
                 const auto deadline = lastRenderResult_
@@ -2912,7 +2914,7 @@ void WidgetSurfaceCoordinator::Paint() {
         }
         if (!renderResult.succeeded) {
             KillTimer(window_, kBackgroundSurfaceAnimationTimer);
-        } else if (renderResult.backgroundSurfaceAnimationDamage) {
+        } else if (renderResult.backgroundSurfaceAnimationDamage || renderResult.widgetTransitionAnimationDamage) {
             if (SetTimer(
                     window_, kBackgroundSurfaceAnimationTimer,
                     kBackgroundSurfaceAnimationTimerMilliseconds, nullptr) == 0) {

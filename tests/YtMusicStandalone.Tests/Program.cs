@@ -49,6 +49,27 @@ if (args is ["--export-layout", var directory])
 
 var tests = new List<(string, Func<Task>)>
 {
+    ("Section content and navigation share motion identity without moving the player", async () =>
+    {
+        var (widget, service) = await Start();
+        try
+        {
+            foreach (var section in new[] { "home", "library", "queue" })
+            {
+                await widget.OnActionAsync(new("tab." + section, "test"));
+                var snapshot = widget.Render().CreateSnapshot("motion", 1);
+                var nodes = Nodes(snapshot.Root).ToArray();
+                var motions = nodes.Where(node => node.Transition is not null).Select(node => node.Transition!).ToArray();
+                Check(motions.Count(motion => motion.Kind == WidgetTransitionKind.Content) == 1, "one browsing transition");
+                Check(motions.All(motion => motion.GroupId == "music.nav" && motion.Key == section), "shared section clock");
+                service.SetPlayback(true);
+                var updated = widget.Render().CreateSnapshot("motion", 2);
+                Check(Nodes(updated.Root).Where(node => node.Transition is not null).All(node => node.Transition!.Key == section), "playback retains section identity");
+                Check(nodes.Where(node => node.Id.Contains("player", StringComparison.Ordinal)).All(node => node.Transition is null), "player stays stationary");
+            }
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }),
     ("Queue ends, repeats one only on automatic end, and wraps only with repeat all", QueuePolicy),
     ("Play next inserts after the current song and preserves the remaining queue", QueueInsertion),
     ("Playlist insertion preserves order and current occurrences within the queue limit", PlaylistInsertion),

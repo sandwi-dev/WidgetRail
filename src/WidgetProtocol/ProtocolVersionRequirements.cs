@@ -365,6 +365,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.RetainLastPresentation is not null)
                 Add("focus-presentation-retention", ProtocolConstants.FocusPresentationRetentionVersion,
                     $"{path}.retainLastPresentation", "Explicit focus-presentation retention requires protocol version 56 or later.");
+            if (node.Transition is not null)
+                Add("widget-transition", ProtocolConstants.WidgetTransitionVersion,
+                    $"{path}.transition", "Widget transitions require protocol version 58 or later.");
             if (node.FocusBackgroundArtworkHandle is not null ||
                 node.UsesFocusedDescendantArtwork is true)
                 Add(

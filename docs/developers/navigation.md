@@ -71,11 +71,63 @@ For API signatures and detailed targeting rules, see
 [UI elements](../reference/declarative-ui.md).
 
 
+## Coordinated section transitions
+
+Use `UI.NavigationShellParts(...).WithTransitions()` to animate navigation
+positions and the shell-owned content together. Existing navigation overloads
+keep their static presentation. For a custom arrangement, apply
+`TransitionContent(shellId, selectedSectionId, selectedIndex)` to the changing
+content container; keep persistent players, toolbars and navigation outside it.
+
+```csharp
+var parts = UI.NavigationShellParts(
+    "library.nav", selectedSection, contentEntryId, content, destinations)
+    .WithTransitions();
+var root = UI.Stack("library.root", parts.CompactNavigation, parts.Body);
+```
+
+`TransitionLayout(groupId, sectionKey, sectionOrder)` opts another element into
+position motion on that same timeline. Group/key identities are stable identifiers;
+order is a bounded integer (-1024 to 1024), normally the destination's index.
+Only a changed section key starts motion. Playback ticks, cursor pages, artwork
+completion and loading-state updates keep the same key and do not restart it.
+The first committed presentation snaps into place. A section needing data can
+show its loading content immediately; navigation never waits for a provider.
+
+The host uses a shared 180 ms ease-out timeline, a 24 DIP content slide and fade,
+and position interpolation for navigation. The themed selection surface moves
+behind stationary labels; the labels and their input targets do not move merely
+because selection changed. Actual layout position changes use the same clock.
+Rapid navigation retargets from the
+visible presentation. The destination owns input immediately; retained outgoing
+pixels have no actions, accessibility nodes or focus memory. Existing scopes and
+cursor restoration remain authoritative. Motion uses final layout geometry and
+cached layout for subsequent frames, so focus-follow cannot compensate for a slide.
+
+Content motion clips to its container. Use a stack, row, grid or
+focus-presentation surface. Content transition containers cannot be nested; each
+group has one content container and at most one selected surface per responsive mode. A presentation supports
+seven section groups and 64 moving layout elements. Pixel retention uses a
+separate 64 MiB aggregate cap, including reusable staging targets. Oversized or
+unavailable capture targets fall back to ordinary rendering. Live embedded-media
+and window-preview subtrees are not captured. Colors, typography and surfaces
+come from the ordinary theme; no animation-specific color palette is introduced.
+Reduced motion snaps to the destination and drops retained transition pixels.
+Hiding, replacing runtime authority, resizing/scaling or losing the graphics
+device retires obsolete motion. Section declarations require protocol 58.
+
 ## Widget modals
 
 Use `WidgetView.WithModal(new WidgetModal(...))` for a dialog above the current
 page (presentation protocol 55). Retain the page and its stable element IDs;
 return it without `WithModal` when the dismiss action runs.
+
+The host fades the themed backdrop and slides the panel by 14 DIP on the same
+180 ms timeline when opening or closing. Closing changes input authority
+immediately; only panel pixels survive until the exit finishes. Reopening during
+exit continues from the displayed opacity. A modal already present on the first
+frame after resuming or resizing does not replay its entrance. No worker timers
+or new modal API are needed, and reduced motion disables these transitions.
 
 ```csharp
 var page = new WidgetView(BuildLibrary(), "library.first");

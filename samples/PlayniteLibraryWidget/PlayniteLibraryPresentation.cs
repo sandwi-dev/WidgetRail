@@ -631,12 +631,14 @@ internal static class PlayniteLibraryPresentation
             var homeForeground = catalogPage
                 ? UI.Stack("playnite-library.home.foreground",
                     header,
-                    UI.FocusPresentationSurface(
+                    (UI.FocusPresentationSurface(
                         homeContent,
                         DefaultFocusedGameSummary(),
                         "playnite-library.home.focus-summary") with { RetainLastPresentation = true })
+                        .TransitionContent("playnite-library.destinations", "home", 0))
                     .Classes("playnite-library-home-foreground", "playnite-library-common-frame")
-                : UI.Stack("playnite-library.home.foreground", header, queryControls, content)
+                : UI.Stack("playnite-library.home.foreground", header, queryControls,
+                    content.TransitionContent("playnite-library.destinations", "home", 0))
                     .Classes("playnite-library-home-foreground", "playnite-library-home-fallback", "playnite-library-common-frame");
             var homeStage = CinematicStage(
                 "playnite-library.home.stage", homeForeground,
@@ -666,7 +668,8 @@ internal static class PlayniteLibraryPresentation
                         label: "Next collection");
             var browseStage = CinematicStage(
                 "playnite-library.browse.stage",
-                UI.Stack("playnite-library.browse.frame", header, page).Classes("playnite-library-common-frame"),
+                UI.Stack("playnite-library.browse.frame", header,
+                    page.TransitionContent("playnite-library.destinations", "library", 1)).Classes("playnite-library-common-frame"),
                 "playnite-library-browse-stage");
             root = UI.Stack("playnite-library.root",
                     UI.BackgroundSurface(browseStage, "playnite-library.browse.cinematic",
@@ -1160,7 +1163,7 @@ internal static class PlayniteLibraryPresentation
                 "playnite-library.nav.previous", "Previous tab").Classes("playnite-library-tab-key"),
             compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper,
                 "playnite-library.nav.next", "Next tab").Classes("playnite-library-tab-key"))
-            .CompactNavigation.VisibleWhen(ResponsiveVisibility.Always)
+            .WithTransitions().CompactNavigation.VisibleWhen(ResponsiveVisibility.Always)
             .AddClasses("playnite-library-tabs");
 
     private static ContainerElement LibraryNavigation(

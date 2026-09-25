@@ -472,6 +472,19 @@ struct DeclarativeRenderer::RenderPass final {
     std::unordered_map<std::wstring, ScrollStateEntry>* scrollState{};
     std::uint64_t* scrollAccessClock{};
     DeclarativeMotionTimeline* motionTimeline{};
+    WidgetTransitionCoordinator transitions;
+    std::map<std::wstring, TransitionVisual> transitionVisuals;
+    std::map<std::wstring, WidgetTransitionCoordinator::Sample> transitionSamples;
+    std::map<std::wstring, WidgetTransitionCoordinator::Offset> transitionOffsets;
+    std::map<std::wstring, Rect> transitionSelections, transitionSelectionTargets;
+    std::set<std::wstring> transitionSurfacesPainted;
+    std::wstring modalId;
+    float modalOpacity{1};
+    bool applyTransitions{};
+    bool capturingTransition{};
+    bool capturingModal{};
+    std::size_t transientCaptureBytes{};
+    std::set<std::wstring> nonAnimatedContent;
     ID2D1RenderTarget* target{};
     const WidgetSnapshot* snapshot{};
     std::wstring focusedId;
@@ -1144,10 +1157,17 @@ struct DeclarativeRenderer::RenderPass final {
             style.transitionDurationMilliseconds(),
             style.transitionEasing(),
             options.accessibility.reducedMotion);
-        const auto translationX = AddBoundedTranslation(
+        auto translationX = AddBoundedTranslation(
             inheritedTranslationX, motion.value.translationX);
-        const auto translationY = AddBoundedTranslation(
+        auto translationY = AddBoundedTranslation(
             inheritedTranslationY, motion.value.translationY);
+        if (applyTransitions) {
+            const auto offset = transitionOffsets.find(node.id);
+            if (offset != transitionOffsets.end()) {
+                translationX = AddBoundedTranslation(translationX, offset->second.x);
+                translationY = AddBoundedTranslation(translationY, offset->second.y);
+            }
+        }
         const auto borderBox = TranslateRect(box->borderBox, translationX, translationY);
         const auto contentBox = TranslateRect(box->contentBox, translationX, translationY);
         const auto visibleBox = Intersection(borderBox, ancestorClip);
@@ -1159,7 +1179,11 @@ struct DeclarativeRenderer::RenderPass final {
             motion,
         });
 
-        const auto childClip = ClipsDescendants(node, preparedNode->second.baseStyle)
+        const auto childClip = node.transition && !node.transition->layout
+            ? Intersection(ancestorClip, TranslateRect(box->borderBox,
+                AddBoundedTranslation(inheritedTranslationX, motion.value.translationX),
+                AddBoundedTranslation(inheritedTranslationY, motion.value.translationY)))
+            : ClipsDescendants(node, preparedNode->second.baseStyle)
             ? Intersection(ancestorClip, contentBox)
             : ancestorClip;
         if (node.kind == L"focusPresentationSurface") {
@@ -1222,6 +1246,80 @@ struct DeclarativeRenderer::RenderPass final {
             static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::steady_clock::now() - started).count()));
+    }
+
+    void PrepareWidgetTransitions() {
+        // Focus-follow uses the final layout, never the temporary animation
+        // displacement, otherwise a slide could cause a compensating scroll.
+        const auto collect = [&](const auto& self, const WidgetNode& node) -> void {
+            if (!IsResponsiveVisible(node)) return;
+            if (node.transition) {
+                const auto& spec = *node.transition;
+                transitionSamples[spec.groupId] = transitions.Observe(spec.groupId, spec.key, spec.order);
+                const auto liveSurface = [&](const auto& visit, const WidgetNode& child) -> bool {
+                    if (child.kind == L"mediaViewport" || child.kind == L"windowPreview") return true;
+                    return std::any_of(child.children.begin(), child.children.end(),
+                        [&](const auto& nested) { return visit(visit, nested); });
+                };
+                if (!spec.layout && liveSurface(liveSurface, node)) {
+                    nonAnimatedContent.insert(node.id);
+                    transitionVisuals.erase(spec.groupId);
+                }
+            }
+            for (const auto& child : node.children) self(self, child);
+        };
+        collect(collect, snapshot->root);
+        const bool hasModal = snapshot->root.kind == L"modalLayer" && snapshot->root.children.size() == 2;
+        modalId = hasModal ? snapshot->root.children[1].id : L"";
+        // A modal already present in the first frame (resume, resize or device
+        // recovery) is not a new opening. Only a committed identity change animates.
+        transitionSamples[L"$modal"] = transitions.Observe(L"$modal", modalId, hasModal ? 1 : 0);
+        if (hasModal || transitionVisuals.contains(L"$modal")) {
+            auto& visual = transitionVisuals[L"$modal"];
+            const auto sample = transitionSamples.at(L"$modal");
+            if (visual.revision != sample.revision) {
+                visual.fromOpacity = visual.opacity;
+                visual.revision = sample.revision;
+            }
+            visual.opacity = visual.fromOpacity + ((hasModal ? 1.0F : 0.0F) - visual.fromOpacity) * sample.progress;
+            modalOpacity = visual.opacity;
+        }
+        const auto position = [&](const auto& self, const WidgetNode& node) -> void {
+            if (!IsResponsiveVisible(node)) return;
+            const auto found = presentation.find(NarrowStableId(node.id));
+            if (found == presentation.end()) return;
+            if (node.transition && !nonAnimatedContent.contains(node.id)) {
+                const auto& spec = *node.transition;
+                const auto sample = transitionSamples.at(spec.groupId);
+                result.animationActive = result.animationActive || sample.active;
+                if (sample.active) result.widgetTransitionAnimationDamage = viewport;
+                if (spec.layout) {
+                    const auto identity = spec.groupId + L"\x1f" + node.id;
+                    const auto offset = transitions.LayoutOffset(identity, found->second.borderBox, sample);
+                    if (offset.x != 0 || offset.y != 0) transitionOffsets[node.id] = offset;
+                    if (spec.selection && node.isSelected) {
+                        transitionSelections[node.id] = transitions.SelectionRect(spec.groupId + L"\x1f$selected",
+                            found->second.borderBox, sample);
+                        transitionSelectionTargets[node.id] = found->second.borderBox;
+                    }
+                } else if (sample.active) {
+                    transitionOffsets[node.id] = {WidgetTransitionCoordinator::ContentTravel * sample.direction * (1 - sample.progress), 0};
+                }
+            }
+            if (hasModal && node.id == modalId) {
+                const auto sample = transitionSamples.at(L"$modal");
+                if (modalOpacity < 1) transitionOffsets[node.id] = {0, WidgetTransitionCoordinator::ModalTravel * (1 - modalOpacity)};
+                result.animationActive = result.animationActive || sample.active;
+                if (sample.active) result.widgetTransitionAnimationDamage = viewport;
+            }
+            for (const auto& child : node.children) self(self, child);
+        };
+        position(position, snapshot->root);
+        if (!transitionOffsets.empty()) {
+            applyTransitions = true;
+            presentation.clear();
+            ResolvePresentation(snapshot->root, 0.0F, 0.0F, viewport);
+        }
     }
 
     void VisitScrollNodes(
@@ -4558,7 +4656,165 @@ struct DeclarativeRenderer::RenderPass final {
         return true;
     }
 
-    void DrawNode(
+    void PaintTransitionBitmap(ID2D1Bitmap* bitmap, Rect bounds, float opacity, Rect clip) {
+        if (!target || !bitmap || opacity <= 0) return;
+        target->PushAxisAlignedClip(D2DRect(clip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        target->DrawBitmap(bitmap, D2DRect(bounds), opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+        target->PopAxisAlignedClip();
+    }
+
+    bool DrawTransition(const WidgetNode& node, std::wstring_view inputScope, bool modal) {
+        if (!target || (capturingTransition && !capturingModal) || options.accessibility.reducedMotion) return false;
+        const auto presented = presentation.find(NarrowStableId(node.id));
+        if (presented == presentation.end()) return false;
+        auto stationary = presented->second.borderBox;
+        if (const auto offset = transitionOffsets.find(node.id); offset != transitionOffsets.end()) {
+            stationary.x -= offset->second.x;
+            stationary.y -= offset->second.y;
+        }
+        const auto bounds = Intersection(stationary, presented->second.ancestorClip);
+        const auto scale = std::isfinite(options.pixelScale) && options.pixelScale > 0 ? options.pixelScale : 1.0F;
+        const auto width = std::ceil(bounds.width * scale);
+        const auto height = std::ceil(bounds.height * scale);
+        // Two retained frames per region, bounded independently of artwork.
+        // Refuse oversized surfaces before allocating; ordinary paint remains valid.
+        constexpr auto maximumBytes = WidgetTransitionCoordinator::MaximumBitmapBytes;
+        if (width < 1 || height < 1 || width > 8192 || height > 8192 ||
+            width * height * 4 > maximumBytes / 3) return false;
+        const auto bytes = static_cast<std::size_t>(width * height * 4);
+        const auto group = modal ? std::wstring(L"$modal") : node.transition->groupId;
+        const auto key = modal ? modalId : node.transition->key;
+        auto& visual = transitionVisuals[group];
+        visual.seen = true;
+        const auto sample = transitionSamples.at(group);
+        if (visual.key != key) {
+            visual.outgoing = modal ? nullptr : visual.current;
+            visual.outgoingTarget = modal ? nullptr : visual.currentTarget;
+            visual.outgoingBounds = visual.bounds;
+            visual.outgoingBytes = modal ? 0 : visual.bytes;
+            if (!modal) {
+                visual.current.Reset();
+                visual.currentTarget.Reset();
+                visual.bytes = 0;
+            }
+            visual.key = key;
+        }
+        if (!sample.active) { visual.outgoing.Reset(); visual.outgoingTarget.Reset(); visual.outgoingBytes = 0; }
+        const auto desiredSize = D2D1::SizeF(bounds.width, bounds.height);
+        const auto desiredPixels = D2D1::SizeU(static_cast<UINT32>(width), static_cast<UINT32>(height));
+        if (visual.spareTarget && (visual.spareTarget->GetPixelSize().width != desiredPixels.width ||
+            visual.spareTarget->GetPixelSize().height != desiredPixels.height ||
+            std::abs(visual.spareTarget->GetSize().width - desiredSize.width) > .01F ||
+            std::abs(visual.spareTarget->GetSize().height - desiredSize.height) > .01F)) {
+            visual.spareTarget.Reset(); visual.spareBytes = 0;
+        }
+        const auto allocationBytes = visual.spareTarget ? std::size_t{0} : bytes;
+        std::size_t retainedBytes = allocationBytes + transientCaptureBytes;
+        for (const auto& [_, entry] : transitionVisuals)
+            retainedBytes += entry.bytes + entry.outgoingBytes + entry.spareBytes;
+        if (retainedBytes > maximumBytes) { visual = {}; return false; }
+        // Ping-pong capture targets; never overwrite the committed or outgoing
+        // image. A failed paint therefore cannot mutate the last valid visual.
+        ComPtr<ID2D1BitmapRenderTarget> surface = visual.spareTarget;
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        if (surface) ++result.transitionSurfaceReuses;
+        else ++result.transitionSurfaceCreates;
+#endif
+        if (!surface && FAILED(target->CreateCompatibleRenderTarget(&desiredSize,
+            &desiredPixels, nullptr,
+            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, surface.GetAddressOf()))) return false;
+        transientCaptureBytes += allocationBytes;
+        surface->BeginDraw();
+        surface->Clear(D2D1::ColorF(0, 0));
+        surface->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+        surface->SetTransform(D2D1::Matrix3x2F::Translation(-bounds.x,
+            -bounds.y - (modal ? WidgetTransitionCoordinator::ModalTravel * (1 - modalOpacity) : 0)));
+        auto* destination = target;
+        target = surface.Get();
+        if (visual.outgoing && sample.active) {
+            auto outgoingBounds = visual.outgoingBounds;
+            outgoingBounds.x -= modal ? 0 : WidgetTransitionCoordinator::ContentTravel * sample.direction * sample.progress;
+            PaintTransitionBitmap(visual.outgoing.Get(), outgoingBounds, 1 - sample.progress, bounds);
+        }
+        D2D1_LAYER_PARAMETERS parameters = D2D1::LayerParameters();
+        parameters.opacity = !modal && sample.active ? sample.progress : 1.0F;
+        // The opacity applies to the subtree as one image, not independently to
+        // every overlapping child. No extra dimming at nested surfaces.
+        target->PushLayer(parameters, nullptr);
+        const auto wasCapturing = capturingTransition;
+        const auto wasModal = capturingModal;
+        const auto previousFocusNode = deferredFocusNode;
+        const auto previousFocusStyle = deferredFocusStyle;
+        const auto previousFocusRect = deferredFocusRect;
+        const auto previousFocusOpacity = deferredFocusOpacity;
+        const auto previousFocusClip = deferredFocusClip;
+        deferredFocusNode = nullptr;
+        deferredFocusStyle = nullptr;
+        capturingTransition = true;
+        capturingModal = modal;
+        ++owner->compatiblePaintDepth_;
+        DrawNodeBody(node, inputScope);
+        DrawDeferredFocus();
+        deferredFocusNode = previousFocusNode;
+        deferredFocusStyle = previousFocusStyle;
+        deferredFocusRect = previousFocusRect;
+        deferredFocusOpacity = previousFocusOpacity;
+        deferredFocusClip = previousFocusClip;
+        capturingTransition = wasCapturing;
+        capturingModal = wasModal;
+        --owner->compatiblePaintDepth_;
+        target->PopLayer();
+        target = destination;
+        const auto status = surface->EndDraw();
+        transientCaptureBytes -= allocationBytes;
+        ComPtr<ID2D1Bitmap> bitmap;
+        if (FAILED(status) || FAILED(surface->GetBitmap(bitmap.GetAddressOf()))) {
+            visual = {};
+            Add(node.id, L"transition_surface_failed", L"Transition surface paint failed; retain the last committed frame.",
+                RenderDiagnosticSeverity::Error);
+            return true;
+        }
+        visual.current = std::move(bitmap);
+        visual.spareTarget = visual.currentTarget;
+        visual.spareBytes = visual.bytes;
+        visual.currentTarget = std::move(surface);
+        visual.bounds = bounds;
+        visual.bytes = bytes;
+        auto displayedBounds = bounds;
+        if (modal) displayedBounds.y += WidgetTransitionCoordinator::ModalTravel * (1 - modalOpacity);
+        PaintTransitionBitmap(visual.current.Get(), displayedBounds, modal ? modalOpacity : 1, viewport);
+        return true;
+    }
+
+    void DrawClosingModal() {
+        if (!modalId.empty() || !target) return;
+        auto found = transitionVisuals.find(L"$modal");
+        if (found == transitionVisuals.end()) return;
+        auto& visual = found->second;
+        const auto sample = transitionSamples.at(L"$modal");
+        if (!sample.active || options.accessibility.reducedMotion) {
+            transitionVisuals.erase(found);
+            return;
+        }
+        visual.seen = true;
+        result.animationActive = true;
+        result.widgetTransitionAnimationDamage = viewport;
+        const auto opacity = modalOpacity;
+        auto scrim = Brush(target, WithOpacity(visual.scrim, opacity));
+        if (scrim) target->FillRectangle(D2DRect(viewport), scrim.Get());
+        auto bounds = visual.bounds;
+        bounds.y += WidgetTransitionCoordinator::ModalTravel * (1 - modalOpacity);
+        PaintTransitionBitmap(visual.current.Get(), bounds, opacity, viewport);
+    }
+
+    void DrawNode(const WidgetNode& node, const std::wstring_view inheritedInputScope = {}) {
+        const bool modal = !modalId.empty() && node.id == modalId;
+        if ((modal || (node.transition && !node.transition->layout && !nonAnimatedContent.contains(node.id))) &&
+            DrawTransition(node, inheritedInputScope, modal)) return;
+        DrawNodeBody(node, inheritedInputScope);
+    }
+
+    void DrawNodeBody(
         const WidgetNode& node,
         const std::wstring_view inheritedInputScope = {}) {
         const std::wstring_view inputScope = !node.inputScopeId.empty()
@@ -4671,7 +4927,7 @@ struct DeclarativeRenderer::RenderPass final {
         // control surface; the Slider itself stays visually lightweight.
         const bool compositorBackground = node.kind == L"backgroundSurface" &&
             TrySelectCompositorBackground(node, style, paintRect, opacity);
-        if (node.kind != L"modalLayer" && node.kind != L"slider" && node.kind != L"loadingIndicator" &&
+        if (!transitionSurfacesPainted.contains(node.id) && node.kind != L"modalLayer" && node.kind != L"slider" && node.kind != L"loadingIndicator" &&
             !compositorBackground)
             DrawSurface(node, style, paintRect, opacity);
 
@@ -4845,13 +5101,46 @@ struct DeclarativeRenderer::RenderPass final {
         // do not accidentally become clipping ancestors merely because the
         // renderer recurses through them.
         if (!clipTileContent) target->PopAxisAlignedClip();
+        // Paint a shared selection surface before any sibling labels. Moving
+        // the selected button itself would overlap the previous label and move
+        // its input target to the wrong tab during the transition.
+        for (const auto& child : node.children) {
+            if (!child.transition || !child.transition->selection) continue;
+            const auto childStyle = prepared.find(NarrowStableId(child.id));
+            const auto childPresentation = presentation.find(NarrowStableId(child.id));
+            if (childStyle == prepared.end() || childPresentation == presentation.end()) continue;
+            transitionSurfacesPainted.insert(child.id);
+            if (child.isSelected) continue;
+            target->PushAxisAlignedClip(D2DRect(childPresentation->second.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            DrawSurface(child, childStyle->second.paintStyle, childPresentation->second.borderBox,
+                childPresentation->second.motion.value.opacity);
+            target->PopAxisAlignedClip();
+        }
+        for (const auto& child : node.children) {
+            const auto selection = transitionSelections.find(child.id);
+            if (selection == transitionSelections.end()) continue;
+            const auto childStyle = prepared.find(NarrowStableId(child.id));
+            const auto childPresentation = presentation.find(NarrowStableId(child.id));
+            if (childStyle == prepared.end() || childPresentation == presentation.end()) continue;
+            auto bounds = selection->second;
+            const auto initial = transitionSelectionTargets.at(child.id);
+            const auto offset = transitionOffsets.find(child.id);
+            const auto own = offset == transitionOffsets.end() ? WidgetTransitionCoordinator::Offset{} : offset->second;
+            bounds.x += childPresentation->second.borderBox.x - initial.x - own.x;
+            bounds.y += childPresentation->second.borderBox.y - initial.y - own.y;
+            target->PushAxisAlignedClip(D2DRect(presented.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            DrawSurface(child, childStyle->second.paintStyle, bounds, childPresentation->second.motion.value.opacity);
+            target->PopAxisAlignedClip();
+        }
         if (node.kind == L"focusPresentationSurface") {
             const auto* fragment = PresentationFor(node);
             if (fragment) DrawNode(*fragment, inputScope);
         }
         for (std::size_t index = 0; index < node.children.size(); ++index) {
             if (node.kind == L"modalLayer" && index == 1U) {
-                auto scrim = Brush(target, style.background().value_or(NativeColor{0, 0, 0, 0.60F}));
+                const auto color = style.background().value_or(NativeColor{0, 0, 0, 0.60F});
+                transitionVisuals[L"$modal"].scrim = color;
+                auto scrim = Brush(target, WithOpacity(color, modalOpacity));
                 if (scrim) target->FillRectangle(D2DRect(presented.visibleBox), scrim.Get());
             }
             DrawNode(node.children[index], inputScope);
@@ -4930,6 +5219,10 @@ struct DeclarativeRenderer::RenderPass final {
 
 DeclarativeRenderer::~DeclarativeRenderer() {
     if (imageCache_) imageCache_->ReleaseImageProtection(this);
+}
+void DeclarativeRenderer::CancelWidgetTransitions() noexcept {
+    widgetTransitions_.Clear();
+    transitionVisuals_.clear();
 }
 void DeclarativeRenderer::PublishImageProtection() {
     if (!imageCache_) return;
@@ -5682,6 +5975,16 @@ RenderResult DeclarativeRenderer::Render(
     // from the prior render target.
     pass.focusBackgrounds = focusBackgrounds_;
     pass.focusBackgroundAccessClock = focusBackgroundAccessClock_;
+    pass.transitions = widgetTransitions_;
+    pass.transitionVisuals = transitionVisuals_;
+    const auto transitionAuthority = snapshot.instanceId + L"\x1f" + options.artworkAuthorityId +
+        L"\x1f" + options.artworkRuntimeGeneration + L"\x1f" + options.packageContentDigest +
+        L"\x1f" + std::to_wstring(options.rootFontSizePx) + L":" + std::to_wstring(options.accessibility.textScale) +
+        L":" + std::to_wstring(options.accessibility.reducedTransparency);
+    if (pass.transitions.Begin(transitionAuthority, viewport, options.pixelScale,
+        animationTimestamp, options.accessibility.reducedMotion) || options.accessibility.reducedMotion)
+        pass.transitionVisuals.clear();
+    for (auto& [_, visual] : pass.transitionVisuals) visual.seen = false;
     const auto preparationOptionsMatch = [&]() {
         if (!incrementalLayoutCache_) return false;
         const auto& previous = incrementalLayoutCache_->options;
@@ -5732,6 +6035,7 @@ RenderResult DeclarativeRenderer::Render(
     }
     const auto preparationFinished = std::chrono::steady_clock::now();
     pass.ResolvePresentationWithFocusFollow();
+    pass.PrepareWidgetTransitions();
     const auto presentationFinished = std::chrono::steady_clock::now();
     const auto cornerRadius = std::isfinite(options.surfaceCornerRadiusPx)
         ? std::clamp(options.surfaceCornerRadiusPx, 0.0F,
@@ -5777,9 +6081,12 @@ RenderResult DeclarativeRenderer::Render(
 #endif
     const auto nodeDrawFinished = std::chrono::steady_clock::now();
     pass.DrawDeferredFocus();
+    pass.DrawClosingModal();
     const auto deferredFocusFinished = std::chrono::steady_clock::now();
-    const bool otherAnimationActive =
-        pass.result.animationActive || motionTimeline_.EndFrame();
+    // Always retire unseen style-motion nodes, including frames already kept
+    // alive by a section, modal or loading indicator.
+    const auto styleAnimationActive = motionTimeline_.EndFrame();
+    const bool otherAnimationActive = pass.result.animationActive || styleAnimationActive;
     pass.result.animationActive =
         otherAnimationActive || pass.backgroundSurfaceAnimationActive;
     if (pass.backgroundSurfaceAnimationActive && !otherAnimationActive)
@@ -5795,6 +6102,14 @@ RenderResult DeclarativeRenderer::Render(
         });
     pass.result.succeeded = !hasErrors && pass.layout.valid() && renderTarget;
     if (pass.result.succeeded) {
+        pass.transitions.End();
+        widgetTransitions_ = std::move(pass.transitions);
+        std::erase_if(pass.transitionVisuals, [](const auto& entry) { return !entry.second.seen; });
+        transitionVisuals_ = std::move(pass.transitionVisuals);
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        for (const auto& [_, visual] : transitionVisuals_)
+            pass.result.transitionRetainedBytes += visual.bytes + visual.outgoingBytes + visual.spareBytes;
+#endif
         pass.ResolveSelections();
         selectedPresentationSources_ = SelectionSources(pass.selections);
         focusSelectionMemory_ = std::move(pass.selectionMemory);
@@ -6159,6 +6474,9 @@ ImageBitmapCacheStats DeclarativeRenderer::GetImageBitmapCacheStats() const noex
 bool DeclarativeRenderer::BindBitmapResourceDomain(
     ID2D1RenderTarget* renderTarget) noexcept {
     if (!renderTarget) return false;
+    // CreateCompatibleRenderTarget guarantees resource sharing with its parent.
+    // Its COM identity is different on WIC/legacy targets, not a device loss.
+    if (compatiblePaintDepth_ != 0) return true;
 
     ComPtr<IUnknown> identity;
     bool isDevice = false;
@@ -6190,6 +6508,7 @@ void DeclarativeRenderer::ClearBitmapCache(
     bitmaps_.clear();
     bitmapBytes_ = 0;
     if (resourceInvalidation) {
+        CancelWidgetTransitions();
         // Transition bitmaps belong to the same Direct2D resource domain.
         // Device/target replacement retires both sides atomically; the exact
         // current proposal can be resolved again on the replacement target.
@@ -6288,6 +6607,7 @@ bool DeclarativeRenderer::EnsureSurfaceClip(
 void DeclarativeRenderer::ForgetWidgetState(
     const std::wstring_view widgetInstanceId) noexcept {
     if (widgetInstanceId.empty()) return;
+    if (widgetTransitions_.OwnsInstance(widgetInstanceId)) CancelWidgetTransitions();
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     ++gRendererWidgetStateRetirementCount;
     gLastRetiredRendererWidgetInstance = widgetInstanceId;

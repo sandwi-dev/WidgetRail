@@ -10,6 +10,11 @@ its current WRSS without restarting the overlay.
 
 ## State and lifetime
 
+Home, Search, Library and Queue use the shared `music.nav` transition group.
+The navigation selection and right browsing pane animate together; the player
+stays stationary. Provider results, cursor loading and playback updates keep the
+section key and cannot restart a transition. Reduced motion is host-controlled.
+
 Browsing uses four horizontal tabs and one rich focus target per result.
 A `WidgetCursorResource` pages through the provider’s bounded in-memory collection
 in 24-entry windows, targeting 72 retained entries with a hard cap of 96. This is

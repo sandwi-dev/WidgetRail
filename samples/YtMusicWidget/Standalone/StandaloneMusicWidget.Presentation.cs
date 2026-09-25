@@ -26,12 +26,13 @@ public sealed partial class StandaloneMusicWidget
                 var parts = UI.NavigationShellParts("music.nav", _tab, entry, group,
                     Tabs.Select(tab => new NavigationShellDestination(tab, Title(tab), "tab." + tab, WidgetGlyph.Music)).ToArray(),
                     compactLeadingAdornment: CompactControllerKey(ControllerButton.LeftTrigger, "Left trigger, previous section", "tabs.previous"),
-                    compactTrailingAdornment: CompactControllerKey(ControllerButton.RightTrigger, "Right trigger, next section", "tabs.next"));
+                    compactTrailingAdornment: CompactControllerKey(ControllerButton.RightTrigger, "Right trigger, next section", "tabs.next")).WithTransitions();
                 children.Add(UI.Row("music.navigation.header",
                     parts.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always).AddClasses("music-navigation-tabs"),
                     UI.ControllerHint(ControllerButton.Y, "Settings", "hint.settings").Classes("music-settings-hint"))
                     .Classes("music-navigation-header"));
-                children.Add(UI.Row("music.panes", Player(state, "main", entry), group).Classes("music-panes"));
+                children.Add(UI.Row("music.panes", Player(state, "main", entry),
+                    group.TransitionContent("music.nav", _tab, Array.IndexOf(Tabs, _tab))).Classes("music-panes"));
             }
             var root = UI.Stack("music.root", children.ToArray()).InputScope("music.root").Classes("music-root");
             if (panel is not null) root = root.Shortcut(ControllerButton.B, "panel.back", label: "Back to music");

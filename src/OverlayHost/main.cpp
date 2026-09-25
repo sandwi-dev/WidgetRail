@@ -8220,6 +8220,7 @@ private:
         ClearAccessibilityTree();
         lastForegroundOwnership_.reset();
         declarativeMotionActive_ = false;
+        if (declarativeRenderer_) declarativeRenderer_->CancelWidgetTransitions();
         pendingContentRevealWidget_.clear();
         awaitingSuccessfulOpenPaint_ = false;
         nextOpenPaintRetryAt_ = 0;
@@ -12487,10 +12488,10 @@ private:
         // is stopped altogether while the overlay is hidden.
         if (declarativeMotionActive_ &&
             !HasExactRefreshRetainedVisualCheckpoint() &&
-            (!lastWidgetRenderResult_.backgroundSurfaceAnimationDamage ||
-             !SubmitBackgroundSurfaceDamage(
-                 *lastWidgetRenderResult_
-                     .backgroundSurfaceAnimationDamage))) {
+            !(lastWidgetRenderResult_.widgetTransitionAnimationDamage
+                ? SubmitRetainedWidgetPaint(*lastWidgetRenderResult_.widgetTransitionAnimationDamage)
+                : lastWidgetRenderResult_.backgroundSurfaceAnimationDamage &&
+                    SubmitBackgroundSurfaceDamage(*lastWidgetRenderResult_.backgroundSurfaceAnimationDamage))) {
             pendingContentRenderPlan_.reset();
             if (declarativeRenderer_)
                 declarativeRenderer_->CancelPresentationUpdatePlan();

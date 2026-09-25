@@ -1332,6 +1332,23 @@ WidgetNode ParseNode(const JsonObject& source) {
         node.visibleWhen != L"compactOnly" && node.visibleWhen != L"expandedOnly")
         throw winrt::hresult_invalid_argument();
     node.inputScopeId = OptionalString(source, L"inputScopeId");
+    if (source.HasKey(L"transition")) {
+        const auto value = source.GetNamedObject(L"transition");
+        if (!HasNoUnknownProperties(value, {L"groupId", L"key", L"order", L"kind"}))
+            throw winrt::hresult_invalid_argument(L"Invalid transition fields.");
+        auto kind = OptionalString(value, L"kind");
+        std::transform(kind.begin(), kind.end(), kind.begin(), ::towlower);
+        const auto order = value.GetNamedNumber(L"order");
+        WidgetNode::Transition transition{OptionalString(value, L"groupId"), OptionalString(value, L"key"), 0,
+            kind == L"layout" || kind == L"selection", kind == L"selection"};
+        if (!IsIdentifier(transition.groupId) || !IsIdentifier(transition.key) ||
+            !std::isfinite(order) || std::floor(order) != order || std::abs(order) > protocol_contract::MaximumWidgetTransitionOrder ||
+            (kind != L"content" && kind != L"layout" && kind != L"selection") ||
+            (!transition.layout && node.kind != L"stack" && node.kind != L"row" && node.kind != L"grid" && node.kind != L"focusPresentationSurface"))
+            throw winrt::hresult_invalid_argument(L"Invalid widget transition.");
+        transition.order = static_cast<int>(order);
+        node.transition = std::move(transition);
+    }
     node.initialChildFocusId = OptionalString(source, L"initialChildFocusId");
     if (!node.initialChildFocusId.empty() &&
         !IsIdentifier(node.initialChildFocusId))
@@ -1897,6 +1914,34 @@ void ValidatePosterTiles(const WidgetNode& root, const int protocolVersion) {
 }
 
 void ValidateBackgroundSurfaces(const WidgetNode& root, const int protocolVersion) {
+    for (const bool compact : {true, false}) {
+        struct Group { std::wstring key; int order{}; bool content{}, selection{}; };
+        std::map<std::wstring, Group> groups;
+        std::size_t layoutNodes{};
+        const auto validate = [&](const auto& self, const WidgetNode& node, bool insideContent) -> void {
+            if (node.visibleWhen == (compact ? L"expandedOnly" : L"compactOnly")) return;
+            if (node.transition) {
+                const auto& motion = *node.transition;
+                const auto found = groups.find(motion.groupId);
+                if (found != groups.end() && (found->second.key != motion.key || found->second.order != motion.order ||
+                    (!motion.layout && found->second.content) || (motion.selection && node.isSelected && found->second.selection)))
+                    throw winrt::hresult_invalid_argument(L"Conflicting transition group.");
+                auto& group = groups[motion.groupId];
+                group.key = motion.key; group.order = motion.order;
+                if (!motion.layout && insideContent)
+                    throw winrt::hresult_invalid_argument(L"Nested content transitions are unsupported.");
+                group.content = group.content || !motion.layout;
+                group.selection = group.selection || (motion.selection && node.isSelected);
+                insideContent = insideContent || !motion.layout;
+                if (motion.layout) ++layoutNodes;
+            }
+            for (const auto& child : node.children) self(self, child, insideContent);
+        };
+        validate(validate, root, false);
+        if (groups.size() > protocol_contract::MaximumWidgetTransitionGroups ||
+            layoutNodes > protocol_contract::MaximumWidgetTransitionLayoutNodes)
+            throw winrt::hresult_invalid_argument(L"Widget transition capacity exceeded.");
+    }
     const auto visit = [&](const auto& self, const WidgetNode& node) -> void {
         if (node.kind == L"modalLayer" &&
             (protocolVersion < protocol_contract::ModalLayerVersion || &node != &root ||
@@ -1911,6 +1956,8 @@ void ValidateBackgroundSurfaces(const WidgetNode& root, const int protocolVersio
             throw winrt::hresult_invalid_argument(L"Invalid widget modal layer.");
         if (node.retainLastPresentation.has_value() && protocolVersion < protocol_contract::FocusPresentationRetentionVersion)
             throw winrt::hresult_invalid_argument(L"Presentation retention requires protocol version 56.");
+        if (node.transition && protocolVersion < protocol_contract::WidgetTransitionVersion)
+            throw winrt::hresult_invalid_argument(L"Widget transitions require protocol version 58.");
         if (node.showScrollbar.has_value() && protocolVersion < protocol_contract::ScrollbarVisibilityVersion)
             throw winrt::hresult_invalid_argument(L"Scrollbar visibility requires protocol version 53.");
         if (node.kind == L"backgroundSurface" &&
@@ -1967,7 +2014,7 @@ void ValidateFocusPresentations(const WidgetNode& root, const int protocolVersio
             !node.focusDown.empty() || !node.focusLeft.empty() ||
             !node.focusRight.empty() || !node.inputScopeId.empty() ||
             !node.initialChildFocusId.empty() || node.usesFocusedDescendantArtwork || node.retainLastPresentation.has_value() ||
-            !node.focusPresentation.empty() || !node.defaultFocusPresentation.empty() ||
+            !node.focusPresentation.empty() || !node.defaultFocusPresentation.empty() || node.transition.has_value() ||
             !node.scrollAxis.empty() || node.showScrollbar.has_value() || !node.scrollNearStartActionId.empty() ||
             !node.scrollNearEndActionId.empty() || node.scrollPaginationThreshold != 0 ||
             node.collectionResetGeneration || node.collectionGeneration || node.collectionStartIndex || node.virtualCollectionWindow || !node.collectionAnchorKey.empty() ||
@@ -2580,7 +2627,8 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 59> properties{
+    static constexpr std::array<std::wstring_view, 60> properties{
+        L"transition",
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextMenuButton", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
@@ -2624,7 +2672,7 @@ bool ValidateWidgetDocumentStructure(
             return false;
         }
         if (!HasNoUnknownProperties(node,
-                {L"id", L"kind", L"visibleWhen", L"text",
+                {L"id", L"kind", L"visibleWhen", L"text", L"transition",
                  L"accessibilityLabel", L"accessibilityValue", L"actionId", L"contextMenuButton", L"contextActions", L"selectOptions",
                  L"textEntryValue", L"textEntryPlaceholder",
                  L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum",
@@ -3135,6 +3183,8 @@ WidgetPresentationEffect ImpactForPresentationProperty(
     }
     if (property == L"showScrollbar")
         return Effect::MeasureLayout | Effect::Paint | Effect::Interaction | Effect::Accessibility;
+    if (property == L"transition")
+        return Effect::Paint | Effect::Interaction | Effect::Accessibility;
     if (property == L"text" || property == L"textEntryValue" ||
         property == L"textEntryPlaceholder") {
         return Effect::MeasureLayout | Effect::Paint | Effect::Accessibility;

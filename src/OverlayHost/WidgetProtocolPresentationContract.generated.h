@@ -26,7 +26,7 @@ inline constexpr std::int32_t ControllerGlyphVersion = 54;
 inline constexpr std::int32_t ControllerShortcutLabelVersion = 43;
 inline constexpr std::int32_t CurrentHostApiMajor = 1;
 inline constexpr std::int32_t CurrentManifestVersion = 1;
-inline constexpr std::int32_t CurrentVersion = 57;
+inline constexpr std::int32_t CurrentVersion = 58;
 inline constexpr std::int32_t CursorCollectionVersion = 14;
 inline constexpr std::int32_t CursorRetentionVersion = 57;
 inline constexpr std::int32_t DashboardGestureAuthorityVersion = 4;
@@ -111,6 +111,9 @@ inline constexpr double MaximumVirtualCollectionExtent = 1000000.0;
 inline constexpr double MaximumVirtualCollectionItemExtent = 512.0;
 inline constexpr std::int32_t MaximumVirtualCollectionItems = 1000000;
 inline constexpr std::int64_t MaximumVirtualCollectionRequestGeneration = 9007199254740991LL;
+inline constexpr std::int32_t MaximumWidgetTransitionGroups = 7;
+inline constexpr std::int32_t MaximumWidgetTransitionLayoutNodes = 64;
+inline constexpr std::int32_t MaximumWidgetTransitionOrder = 1024;
 inline constexpr std::int32_t MediaViewportVersion = 23;
 inline constexpr double MinimumEmbeddedMediaPlaybackRate = 0.5;
 inline constexpr double MinimumGridColumnWidth = 44.0;
@@ -143,6 +146,7 @@ inline constexpr std::int32_t SurfaceHintsVersion = 2;
 inline constexpr std::int32_t TextEntryVersion = 15;
 inline constexpr std::int32_t TrustedEncodedArtworkVersion = 36;
 inline constexpr std::int32_t VirtualCollectionWindowVersion = 19;
+inline constexpr std::int32_t WidgetTransitionVersion = 58;
 inline constexpr std::int32_t WindowPreviewVersion = 52;
 
 struct ControllerShortcutRepeatMatchRule final {

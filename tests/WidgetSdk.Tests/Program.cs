@@ -8,6 +8,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Widget transitions preserve scopes and coordinate navigation", WidgetTransitionTests.Run),
     ("Controller glyphs are semantic versioned input-inert content", ControllerGlyphTests.Run),
     ("Window previews are additive bounded view-only poster content", WindowPreviewScenarios.Contract),
     ("Snapshot serialization is deterministic and round-trips", SnapshotRoundTrip),

@@ -997,6 +997,17 @@ The separate read/control permissions, confirmation guidance, and Windows behavi
 are documented in [Power widget](../../docs/reference/power-widget.md).
 
 
+### Section transitions
+
+For animated sections, `UI.NavigationShellParts(...).WithTransitions()` coordinates
+navigation movement with its content. In custom layouts, use
+`content.TransitionContent(shellId, selectedSectionId, selectedIndex)`; additional
+elements can use `TransitionLayout` with the same group/key/order. Stable keys
+prevent data refreshes and cursor loading from replaying navigation. These
+optional declarations require protocol 58 and preserve existing input scopes.
+See [coordinated section transitions](../../docs/developers/navigation.md#coordinated-section-transitions)
+for clipping, interruption, reduced motion and resource bounds.
+
 ### Modal views
 
 `page.WithModal(new WidgetModal(id, title, content, initialFocusId, dismissActionId))`
@@ -1011,6 +1022,10 @@ returning the original page. Protocol 55 is required only while a modal is prese
 Pinned surfaces omit the modal safely. One modal is supported; nested widget modals
 and embedded media sessions are rejected. See [modal navigation](../../docs/developers/navigation.md#widget-modals)
 for focus restoration, lifecycle ownership, and theme classes.
+
+Modal entrance/exit motion is host-owned and follows reduced-motion policy.
+Returning the original page dismisses input immediately; outgoing panel pixels
+may remain briefly while the exit animation finishes.
 
 ### Retained focus presentations
 

@@ -44,6 +44,24 @@ void VerifyFocusRetentionContract() {
     CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(invalid, error));
 }
 
+void VerifyWidgetTransitionContract() {
+    const std::string wire = R"json({"snapshot":{"protocolVersion":58,"sequence":1,
+      "widgetInstanceId":"transition.test","activeInputScopeId":"page",
+      "root":{"id":"page","kind":"stack","transition":{"groupId":"tabs","key":"home","order":0,"kind":"Content"},
+      "children":[{"id":"action","kind":"button","text":"Play","actionId":"play",
+      "transition":{"groupId":"tabs","key":"home","order":0,"kind":"Layout"}}]}},"renderStyles":{}})json";
+    std::wstring error;
+    const auto parsed = widgetrail::testing::ParseWidgetSnapshotResponse(wire, error);
+    CHECK(parsed && parsed->root.transition && !parsed->root.transition->layout);
+    CHECK(parsed->root.children[0].transition->layout);
+    auto old = wire; old.replace(old.find("58"), 2, "57");
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(old, error));
+    auto conflict = wire; conflict.replace(conflict.rfind("home"), 4, "library");
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(conflict, error));
+    auto invalid = wire; invalid.replace(invalid.find("\"order\":0"), 9, "\"order\":2000");
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(invalid, error));
+}
+
 void VerifyModalLayerContract() {
     const std::string wire = R"json({"snapshot":{"protocolVersion":55,"sequence":1,
       "widgetInstanceId":"modal.test","activeInputScopeId":"dialog.scope","initialFocusId":"play",
@@ -1599,6 +1617,7 @@ int main(int argc, char** argv) {
 
     VerifyModalLayerContract();
     VerifyFocusRetentionContract();
+    VerifyWidgetTransitionContract();
     VerifyWindowPreviewAuthority();
     VerifySnapshotComparison();
     MeasureFullSnapshotComparison();

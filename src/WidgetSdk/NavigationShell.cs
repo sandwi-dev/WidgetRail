@@ -47,7 +47,49 @@ public readonly struct NavigationShellContentEntry
 /// </summary>
 public sealed record NavigationShellParts(
     WidgetElement CompactNavigation,
-    WidgetElement Body);
+    WidgetElement Body)
+{
+    internal WidgetTransition? SectionTransition { get; init; }
+
+    /// <summary>
+    /// Enables coordinated section and navigation motion. Existing overloads
+    /// remain unchanged; custom arrangements can opt in without changing scopes.
+    /// Use the shell ID as the group for separately placed content.
+    /// </summary>
+    public NavigationShellParts WithTransitions()
+    {
+        var transition = SectionTransition ?? throw new InvalidOperationException(
+            "Create navigation parts using UI.NavigationShellParts before enabling transitions.");
+        return this with
+        {
+            CompactNavigation = new AnimatedPart(CompactNavigation, transition),
+            Body = new AnimatedPart(Body, transition),
+        };
+    }
+
+    private sealed record AnimatedPart : WidgetElement
+    {
+        private WidgetElement Child { get; }
+        private WidgetTransition Transition { get; }
+        internal AnimatedPart(WidgetElement child, WidgetTransition transition) : base(child.Id)
+        {
+            Child = child;
+            Transition = transition;
+            RequiredStyleClasses = child.RequiredStyleClasses;
+            AuthorStyleClasses = child.AuthorStyleClasses;
+        }
+        internal override ViewNode ToProtocolNode() => Annotate(Child.ToProtocolNode()) with { StyleClasses = StyleClasses };
+
+        private ViewNode Annotate(ViewNode node) => node with
+        {
+            Transition = node.StyleClasses.Contains("wrail-navigation-shell__content") ? Transition :
+                node.StyleClasses.Contains("wrail-navigation-shell__compact-item") ||
+                node.StyleClasses.Contains("wrail-navigation-shell__rail-item")
+                    ? Transition with { Kind = WidgetTransitionKind.Selection } : node.Transition,
+            Children = node.Children.Select(Annotate).ToArray(),
+        };
+    }
+}
 
 public static partial class UI
 {
@@ -348,6 +390,7 @@ public static partial class UI
         var compactChildren = new List<WidgetElement>(destinations.Count + 2);
         if (compactLeadingAdornment is not null)
             compactChildren.Add(compactLeadingAdornment);
+        var selectedOrder = destinations.ToList().FindIndex(destination => destination.Id == selectedDestinationId);
         compactChildren.AddRange(compactButtons);
         if (compactTrailingAdornment is not null)
             compactChildren.Add(compactTrailingAdornment);
@@ -378,7 +421,10 @@ public static partial class UI
         {
             RequiredStyleClasses = ["wrail-navigation-shell__body"],
         };
-        return new NavigationShellParts(compact, body);
+        return new NavigationShellParts(compact, body)
+        {
+            SectionTransition = new(id, selectedDestinationId, selectedOrder),
+        };
     }
 
     private static void ValidateCompactAdornment(
@@ -396,7 +442,7 @@ public static partial class UI
                 node.ActionId is not null || node.ValueChangedActionId is not null ||
                 node.ContextMenuButton is not null || (node.ContextActions?.Count ?? 0) != 0 ||
                 (node.SelectOptions?.Count ?? 0) != 0 || node.Focus is not null ||
-                node.FocusPersistenceId is not null || node.InputScopeId is not null ||
+                node.FocusPersistenceId is not null || node.Transition is not null || node.InputScopeId is not null ||
                 node.InitialChildFocusId is not null ||
                 (node.Shortcuts?.Count ?? 0) != 0 || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                 node.ScrollNearStartActionId is not null ||

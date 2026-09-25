@@ -408,6 +408,13 @@ struct VirtualCollectionWindow final {
 };
 
 struct WidgetNode final {
+    struct Transition final {
+        std::wstring groupId, key;
+        int order{};
+        bool layout{};
+        bool selection{};
+    };
+    std::optional<Transition> transition;
     std::wstring id;
     std::wstring kind;
     std::wstring text;

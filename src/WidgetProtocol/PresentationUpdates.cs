@@ -83,6 +83,7 @@ public enum PresentationProperty
     PreviewAspectRatio,
     ShowScrollbar,
     RetainLastPresentation,
+    Transition,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -145,6 +146,8 @@ public static class PresentationPropertyMetadata
 {
     public static PresentationPropertyImpact Impact(PresentationProperty property) => property switch
     {
+        PresentationProperty.Transition => PresentationPropertyImpact.Paint |
+            PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
         PresentationProperty.ShowScrollbar => PresentationPropertyImpact.MeasureLayout |
             PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,

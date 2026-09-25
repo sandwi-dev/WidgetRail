@@ -21,7 +21,11 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 57;
+    public const int CurrentVersion = 58;
+    public const int WidgetTransitionVersion = 58;
+    public const int MaximumWidgetTransitionGroups = 7;
+    public const int MaximumWidgetTransitionLayoutNodes = 64;
+    public const int MaximumWidgetTransitionOrder = 1024;
     public const int CursorRetentionVersion = 57;
     public const int FocusPresentationRetentionVersion = 56;
     public const int ModalLayerVersion = 55;

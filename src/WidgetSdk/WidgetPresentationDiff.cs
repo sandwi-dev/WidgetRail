@@ -409,6 +409,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.DefaultFocusPresentation, before.DefaultFocusPresentation, after.DefaultFocusPresentation);
         Add(PresentationProperty.ScrollAxis, before.ScrollAxis, after.ScrollAxis);
         Add(PresentationProperty.ShowScrollbar, before.ShowScrollbar, after.ShowScrollbar);
+        Add(PresentationProperty.Transition, before.Transition, after.Transition);
         Add(PresentationProperty.ScrollNearStartActionId, before.ScrollNearStartActionId, after.ScrollNearStartActionId);
         Add(PresentationProperty.ScrollNearEndActionId, before.ScrollNearEndActionId, after.ScrollNearEndActionId);
         Add(PresentationProperty.ScrollPaginationThreshold, before.ScrollPaginationThreshold, after.ScrollPaginationThreshold);

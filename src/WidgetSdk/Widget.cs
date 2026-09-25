@@ -136,7 +136,7 @@ public sealed record WidgetView(
     {
         ResponsiveBranchElement branch => RootScopeId(branch.Child),
         ContainerElement container => container.InputScopeId ?? container.Id,
-        _ => root.Id,
+        _ => root.ToProtocolNode().InputScopeId ?? root.Id,
     };
 }
 

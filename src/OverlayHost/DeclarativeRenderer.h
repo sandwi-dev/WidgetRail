@@ -5,6 +5,7 @@
 
 #include "DeclarativeLayout.h"
 #include "DeclarativeMotion.h"
+#include "WidgetTransitions.h"
 #include "NativeStyle.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
@@ -177,6 +178,8 @@ struct RenderResult final {
     /// True only while at least one paint-only node transition requires a
     /// future frame. The renderer never owns a timer or animation thread.
     bool animationActive{};
+    /// Coordinated section/modal motion reuses committed layout for each frame.
+    std::optional<declarative::Rect> widgetTransitionAnimationDamage;
     /// Exact logical damage for a BackgroundSurface-only animation. Empty
     /// means another declarative animation also needs a frame and the host
     /// must use its conservative full-content wakeup.
@@ -198,6 +201,7 @@ struct RenderResult final {
     std::vector<RenderMediaViewportRegion> mediaViewportRegions;
     std::vector<RenderWindowPreviewRegion> windowPreviewRegions;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+    std::size_t transitionSurfaceCreates{}, transitionSurfaceReuses{}, transitionRetainedBytes{};
     // Test-only exact geometry seam. Production results intentionally retain
     // only interactive geometry so ordinary paints do not allocate two maps
     // for every decorative and structural node.
@@ -418,6 +422,8 @@ struct DeclarativeRenderOptions final {
 
 class DeclarativeRenderer final {
 public:
+    /// Cancels pixel-only transitions when a surface loses presentation authority.
+    void CancelWidgetTransitions() noexcept;
     using ArtworkRenderDiagnosticCallback =
         std::function<void(std::wstring_view message)>;
 
@@ -786,6 +792,20 @@ private:
     std::unordered_map<std::wstring, ScrollStateEntry> scrollOffsets_;
     std::uint64_t scrollStateAccessClock_{};
     DeclarativeMotionTimeline motionTimeline_;
+    WidgetTransitionCoordinator widgetTransitions_;
+    struct TransitionVisual final {
+        Microsoft::WRL::ComPtr<ID2D1Bitmap> current, outgoing;
+        Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> currentTarget, outgoingTarget, spareTarget;
+        declarative::Rect bounds, outgoingBounds;
+        std::wstring key;
+        std::size_t bytes{}, outgoingBytes{}, spareBytes{};
+        NativeColor scrim{0, 0, 0, .60F};
+        float opacity{}, fromOpacity{};
+        std::uint64_t revision{};
+        bool seen{};
+    };
+    std::map<std::wstring, TransitionVisual> transitionVisuals_;
+    std::size_t compatiblePaintDepth_{};
     std::optional<IncrementalLayoutCache> incrementalLayoutCache_;
     std::optional<PendingIncrementalPlan> pendingIncrementalPlan_;
 };

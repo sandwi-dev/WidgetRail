@@ -227,3 +227,10 @@ matching the native focused-background policy. Both resolve retained source IDs
 against the current view and item keys; cursor overlap keeps the source, while
 window eviction or filtering it out uses the authored defaults. No worker-side
 focus cache, cursor refresh, or background input admission is added.
+
+## Section motion
+
+Home and Library opt into the shared navigation transition group
+`playnite-library.destinations`. The header stays in place while its selected
+destination and lower content animate together. Cursor changes keep the section
+key; details use the host's ordinary modal entrance/exit motion.
