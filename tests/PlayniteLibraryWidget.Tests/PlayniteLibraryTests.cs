@@ -10,7 +10,7 @@ using LauncherWidget = WidgetRail.Samples.PlayniteLibrary.PlayniteLibraryWidget;
 namespace WidgetRail.Tests.PlayniteLibrary;
 
 [TestClass]
-public sealed class PlayniteLibraryTests
+public sealed partial class PlayniteLibraryTests
 {
     [TestMethod, Timeout(30_000)]
     public async Task DetailsFetchFullDescriptionWithoutReplacingLibraryProjection()
@@ -37,7 +37,8 @@ public sealed class PlayniteLibraryTests
         Assert.IsNull(widget.HomeCollection.Items.First().Presentation.Metadata?.Description);
         var hero = Nodes(modal.Root).Single(node => node.Id == "playnite-library.details.hero");
         Assert.AreEqual(ViewNodeKind.BackgroundSurface, hero.Kind);
-        Assert.IsTrue(Nodes(hero).Any(node => node.Id == PlayniteLibraryDetailsPresentation.PlayId));
+        Assert.IsFalse(Nodes(hero).Any(node => node.Id == PlayniteLibraryDetailsPresentation.PlayId));
+        Assert.IsTrue(Nodes(modal.Root).Any(node => node.Id == PlayniteLibraryDetailsPresentation.PlayId));
         await Background(widget);
     }
 
@@ -288,7 +289,7 @@ public sealed class PlayniteLibraryTests
             node.ActionId == PlayniteLibraryActions.DetailsOpen && node.AccessibilityLabel!.StartsWith("Game 00001", StringComparison.Ordinal));
         Assert.IsFalse(tile.IsDisabled == true, "The game remains navigable and its X options remain available.");
         StringAssert.Contains(tile.AccessibilityLabel!, "Not installed");
-        Assert.AreEqual(ControllerButton.Menu, tile.ContextMenuButton);
+        Assert.AreEqual(ControllerButton.X, tile.ContextMenuButton);
         Assert.IsTrue(tile.ContextActions.Where(action => action.ActionId != PlayniteLibraryActions.Launch).All(action => !action.IsDisabled));
         Assert.IsTrue(tile.ContextActions.Single(action => action.ActionId == PlayniteLibraryActions.Launch).IsDisabled);
         Assert.IsTrue(Nodes(tile).Any(node => node.Text == "Not installed"),
@@ -4532,6 +4533,21 @@ public sealed class PlayniteLibraryTests
         FakeHost host) :
         IPlayniteLibraryApplicationService
     {
+        internal Func<string, CancellationToken, ValueTask<PlayniteAchievements>>? AchievementsHandler { get; set; }
+        internal Func<string, CancellationToken, ValueTask<PlayniteActivity>>? ActivityHandler { get; set; }
+        internal List<(string Id, bool Install)> InstallationRequests { get; } = [];
+
+        public ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token) =>
+            AchievementsHandler?.Invoke(gameId, token) ?? ValueTask.FromResult(PlayniteAchievements.Unavailable);
+        public ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token) =>
+            ActivityHandler?.Invoke(gameId, token) ?? ValueTask.FromResult(PlayniteActivity.Unavailable);
+        public ValueTask<bool> ChangeInstallationAsync(string gameId, bool install, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            InstallationRequests.Add((gameId, install));
+            return ValueTask.FromResult(true);
+        }
+
         public bool OwnsArtworkContent => false;
         internal string[] LastPinnedArtworkHandles { get; private set; } = [];
 

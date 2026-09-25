@@ -29,6 +29,10 @@ internal enum PlayniteBridgeCommandKind
     Probe,
     QueryGames,
     ResolveGame,
+    Achievements,
+    Activity,
+    Install,
+    Uninstall,
     ResolveArtwork,
     Launch,
     SetFavorite,
@@ -101,6 +105,20 @@ internal sealed record PlayniteBridgeGame(
     long? LastActivityUnixMilliseconds)
 {
     internal string? Description { get; init; }
+    internal string? Notes { get; init; }
+    internal IReadOnlyList<string> Developers { get; init; } = [];
+    internal IReadOnlyList<string> Publishers { get; init; } = [];
+    internal IReadOnlyList<string> Features { get; init; } = [];
+    internal IReadOnlyList<string> Tags { get; init; } = [];
+    internal IReadOnlyList<string> Series { get; init; } = [];
+    internal IReadOnlyList<string> AgeRatings { get; init; } = [];
+    internal IReadOnlyList<PlayniteGameLink> Links { get; init; } = [];
+    internal string? ReleaseDate { get; init; }
+    internal long? InstallSize { get; init; }
+    internal long? PlayCount { get; init; }
+    internal int? CommunityScore { get; init; }
+    internal int? CriticScore { get; init; }
+    internal int? UserScore { get; init; }
     internal string? Version { get; init; }
 }
 
@@ -147,6 +165,9 @@ internal interface IPlayniteLibraryBridgeClient : IAsyncDisposable
         PlayniteBridgeArtworkKind kind,
         CancellationToken cancellationToken);
     ValueTask<bool> LaunchAsync(string gameId, CancellationToken cancellationToken);
+    ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteAchievements.Unavailable);
+    ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteActivity.Unavailable);
+    ValueTask<bool> ChangeInstallationAsync(string gameId, bool install, CancellationToken token) => ValueTask.FromResult(false);
     ValueTask<PlayniteBridgeGame?> SetFavoriteAsync(
         string gameId, bool favorite, CancellationToken cancellationToken);
     ValueTask<PlayniteBridgeGame?> SetHiddenAsync(
@@ -168,7 +189,7 @@ internal interface IPlayniteLibraryBridgeClient : IAsyncDisposable
 /// Bounded client for the package-owned Playnite connection and library workflow.
 /// No caller can provide a URI, HTTP header, or arbitrary HTTP method.
 /// </summary>
-internal sealed class PlayniteBridgeClient(
+internal sealed partial class PlayniteBridgeClient(
     IPlayniteBridgeTransport transport,
     IPlayniteCredentialStore credentials) : IPlayniteBridgeClient, IPlayniteLibraryBridgeClient
 {
@@ -273,7 +294,7 @@ internal sealed class PlayniteBridgeClient(
             .ConfigureAwait(false);
         if (response.StatusCode == 404) return null;
         EnsureSuccess(response);
-        return TryParseGameDocument(response, out var game)
+        return TryParseGameDocument(response, out var game) && game!.Id == id
             ? game
             : throw new PlayniteBridgeDataException("invalid_playnite_data");
     }
@@ -696,6 +717,15 @@ internal sealed class PlayniteBridgeClient(
             Description = value.TryGetProperty("description", out var description) && description.ValueKind == JsonValueKind.String
                 ? PlayniteDescriptionText.Normalize(description.GetString()) : null,
             Version = OptionalString(value, "version", 128),
+            Notes = value.TryGetProperty("notes", out var notes) && notes.ValueKind == JsonValueKind.String
+                ? PlayniteDescriptionText.Normalize(notes.GetString()) : null,
+            Developers = OptionalNames(value, "developers"), Publishers = OptionalNames(value, "publishers"),
+            Tags = OptionalNames(value, "tags"), Features = OptionalNames(value, "features"),
+            Series = OptionalNames(value, "series"), AgeRatings = OptionalNames(value, "ageRatings"),
+            Links = ParseLinks(value), ReleaseDate = OptionalString(value, "releaseDate", 32),
+            InstallSize = OptionalCount(value, "installSize"), PlayCount = OptionalCount(value, "playCount"),
+            CommunityScore = OptionalScore(value, "communityScore"), CriticScore = OptionalScore(value, "criticScore"),
+            UserScore = OptionalScore(value, "userScore"),
         };
         return true;
     }
@@ -870,6 +900,7 @@ internal sealed class PlayniteBridgeClient(
 internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
 {
     internal const int MaximumJsonBytes = 96 * 1024;
+    internal const int MaximumDetailBytes = 2 * 1024 * 1024;
     internal const int MaximumArtworkBytes =
         WidgetRail.WidgetProtocol.ProtocolConstants.MaximumEncodedArtworkBytes;
     private static readonly Uri Origin = new(
@@ -957,6 +988,14 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
                 (HttpMethod.Get, PlayniteBridgeClient.CompatibilityPath[1..], MaximumJsonBytes),
             PlayniteBridgeCommandKind.QueryGames when command.Query is { } query =>
                 (HttpMethod.Get, QueryPath(query), MaximumJsonBytes),
+            PlayniteBridgeCommandKind.Achievements =>
+                (HttpMethod.Get, Game(command.GameId) + "/achievements", MaximumDetailBytes),
+            PlayniteBridgeCommandKind.Activity =>
+                (HttpMethod.Get, Game(command.GameId) + "/activity", MaximumDetailBytes),
+            PlayniteBridgeCommandKind.Install =>
+                (HttpMethod.Post, Game(command.GameId) + "/install", MaximumJsonBytes),
+            PlayniteBridgeCommandKind.Uninstall =>
+                (HttpMethod.Post, Game(command.GameId) + "/uninstall", MaximumJsonBytes),
             PlayniteBridgeCommandKind.ResolveGame =>
                 (HttpMethod.Get, Game(command.GameId), MaximumJsonBytes),
             PlayniteBridgeCommandKind.ResolveArtwork =>

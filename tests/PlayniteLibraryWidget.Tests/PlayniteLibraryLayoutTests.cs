@@ -203,7 +203,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                     "playnite-library.collection.hint.next" ||
                 node.Text is "Previous collection" or "Next collection"),
             "Home must not advertise previous/next collection trigger hints.");
-        Assert.IsTrue(launchTiles.All(node => node.ContextMenuButton == ControllerButton.Menu),
+        Assert.IsTrue(launchTiles.All(node => node.ContextMenuButton == ControllerButton.X),
             "X opens the focused game's options.");
         Assert.IsTrue(nodes.SelectMany(node => node.Shortcuts).Any(shortcut =>
             shortcut.Button == ControllerButton.Y && shortcut.ActionId == PlayniteLibraryActions.Refresh));
@@ -530,11 +530,11 @@ public sealed partial class PlayniteLibraryLayoutTests
             "playnite-library-surface-stage");
         CollectionAssert.Contains(browseStage.StyleClasses.ToArray(),
             "playnite-library-browse-stage");
-        Assert.AreEqual("playnite-library.browse.page",
+        Assert.AreEqual("playnite-library.browse.frame",
             browseStage.Children.Single().Id);
         Assert.IsTrue(Nodes(browse.Root).Single(node =>
-                node.Id == "playnite-library.header").StyleClasses.Contains(
-                "playnite-library-browse-header", StringComparer.Ordinal));
+                node.Id == "playnite-library.home.actions").StyleClasses.Contains(
+                "playnite-library-home-actions", StringComparer.Ordinal));
         Assert.IsFalse(browse.Root.StyleClasses.Contains(
                 "playnite-library-widget", StringComparer.Ordinal),
             "Browse must not inherit the bounded ordinary widget root.");
@@ -548,7 +548,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         StringAssert.Contains(styles,
             ".playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 16px 14px; padding: 4px; justify: center; }");
         StringAssert.Contains(styles,
-            ".playnite-library-browse-foreground { width: 100%; height: 100%; min-width: 0px; min-height: 0px; max-width: 1120px;");
+            ".playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px;");
         var theme = CompileStyles();
         var browseStyle = theme.Resolve(new WrssElement("stack", null,
             new HashSet<string>(
@@ -556,7 +556,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                 "playnite-library-browse-foreground",
                 "playnite-library-main",
             ], StringComparer.Ordinal)));
-        Assert.AreEqual("1120px", browseStyle.Get("max-width")?.Text);
+        Assert.IsNull(browseStyle.Get("max-width"));
         Assert.IsNull(browseStyle.Get("max-height"),
             "Browse must not inherit the retired 680-DIP page-scroll cap.");
         var browseBackgroundStyle = theme.Resolve(new WrssElement("background-surface", null,
@@ -770,13 +770,17 @@ public sealed partial class PlayniteLibraryLayoutTests
             CollectionAssert.Contains(stage.StyleClasses.ToArray(),
                 "playnite-library-browse-stage", phase);
             Assert.AreEqual(1, stage.Children.Count, phase);
-            Assert.AreEqual("playnite-library.browse.page",
+            Assert.AreEqual("playnite-library.browse.frame",
                 stage.Children[0].Id, phase);
             var foreground = nodes.Single(node =>
                 node.Id == "playnite-library.browse.page");
             CollectionAssert.Contains(foreground.StyleClasses.ToArray(),
                 "playnite-library-browse-foreground", phase);
-            Assert.IsTrue(nodes.Any(node => node.Id == "playnite-library.header"), phase);
+            Assert.IsTrue(nodes.Any(node => node.Id == "playnite-library.home.actions"), phase);
+            Assert.IsFalse(nodes.Any(node => node.Text == "Browse games"), phase);
+            var filters = nodes.Single(node => node.Id == "playnite-library.query.clear");
+            var filterRow = nodes.Single(node => node.Children.Contains(filters));
+            Assert.AreEqual("playnite-library.status", filterRow.Children[filterRow.Children.ToList().IndexOf(filters) + 1].Id);
             var query = nodes.Single(node => node.Id == "playnite-library.query");
             Assert.IsNull(query.InitialChildFocusId,
                 phase + " must leave native Select popup ownership outside the query row.");

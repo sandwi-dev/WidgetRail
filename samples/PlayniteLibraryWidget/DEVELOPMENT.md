@@ -17,8 +17,8 @@ the first available game. Header and filter buttons are outside these groups.
 Requests wait for loading to finish, remain stable across renders, and retire on
 other actions or when the widget stops being interactive. Other nested pages keep
 ordinary Back behavior; B at Home or Library returns to the host tray. Y refreshes.
-Menu opens the focused game's options or page-level Categories, Hidden games, and
-Playnite connection when focus is elsewhere. These
+X opens the focused game's options. Menu opens page-level Categories, Hidden games, and
+Playnite connection, including when a game is focused. These
 controller hints remain non-focusable. Category rows are single action surfaces.
 
 Package WRSS owns layout and uses shared theme tokens for colors, fonts, borders,
@@ -33,8 +33,9 @@ Browse includes installed and uninstalled games by default. The Installed toggle
 beside Favorites limits Browse to installed games
 and combines with Favorites; Clear turns it off. Uninstalled games show "Not installed"
 on a visible poster badge and keep their game options, but cannot be launched.
-Pressing A opens details with installation guidance; install through Playnite and
-then refresh. Home lists installed games only.
+Pressing A opens details with an Install action for uninstalled games. Installation
+and uninstallation are delegated to Playnite; refresh after the launcher finishes.
+Home lists installed games only.
 
 Home orders the full provider collection by favorites, most recently played,
 name, and stable game ID before splitting it into pages. The rail preserves
@@ -75,8 +76,8 @@ actionable setup screen; no environment variable is part of the product flow.
 The transport is structurally limited to `localhost:19821`, disables proxy,
 redirect, cookie, and decompression behavior, and exposes only the fixed routes
 needed for bounded library reads, artwork, launch request admission, favorites,
-hidden state, categories, and completion status. It does not expose arbitrary
-methods or paths, install/uninstall, metadata refresh, deletion, evaluation, or
+hidden state, categories, completion status, installation/uninstallation, achievements,
+and activity. It does not expose arbitrary methods or paths, metadata refresh, deletion, evaluation, or
 account operations.
 
 ## Data and authority
@@ -164,4 +165,26 @@ opaque identity and displays current provider metadata, rechecking current membe
 before enabling Play. Launch still uses the existing fresh provider revalidation.
 B dismisses the modal; background page geometry and scroll are unchanged. Deactivation
 clears details state. The host/Bridge/SDK must support protocol 55 to display details.
-The Bridge exposes installation and optional achievement/activity endpoints; their widget integration is planned separately.
+Opening details resolves the full game record separately from compact catalog pages.
+HTML descriptions and notes become bounded plain text; they are never rendered as HTML.
+Home and Library use the same navigation header and frame; Library filters/results occupy
+a separate panel below it. The game count follows Clear, and RS Search is shown in its footer.
+
+Achievements (`GET /api/games/{id}/achievements`) and activity
+(`GET /api/games/{id}/activity`) load lazily and are retained only while that modal stays
+open. Refresh invalidates those results. Requests are bound to the exact game and modal
+generation; closing, deactivation, or switching games retires them. An HTTP 200 with
+`installed:false` means no saved plugin data for this game, not an empty collection or
+proof that the companion extension is absent. These reads do not trigger plugin sync.
+
+Optional responses are limited to 2 MiB, with at most 4,000 achievements or 10,000 sessions.
+Details render 20 optional entries at a time to bound the view tree. Locked secret
+achievement names and descriptions are omitted from visible and accessibility text until
+revealed. Session dates/durations, achievement unlock dates, rarity, and points display
+when supplied. No achievement images are exposed by this Bridge API.
+
+Install/uninstall commands use fixed routes and freshly resolve the exact game first.
+Uninstall requires in-modal confirmation, with B canceling it. An acknowledgment means
+the request was passed to Playnite, not that installation completed. Metadata links allow
+only HTTP(S), are revalidated against freshly fetched game data, and open in the user's
+browser. User guide links describe the optional companion extensions.

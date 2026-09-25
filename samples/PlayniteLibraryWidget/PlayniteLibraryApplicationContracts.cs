@@ -36,6 +36,16 @@ internal sealed record PlayniteLibraryQueryResult(
 internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
 {
     bool OwnsArtworkContent { get; }
+    async ValueTask<PlayniteGameDetails?> GetGameDetailsAsync(string gameId, CancellationToken token)
+    {
+        var items = await ResolveSavedAsync([gameId], token).ConfigureAwait(false);
+        var item = items.SingleOrDefault(value => value.SavedId == gameId);
+        return item is null ? null : new(item);
+    }
+    ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteAchievements.Unavailable);
+    ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteActivity.Unavailable);
+    ValueTask<bool> ChangeInstallationAsync(string gameId, bool install, CancellationToken token) => ValueTask.FromResult(false);
+    ValueTask<bool> OpenGameLinkAsync(string gameId, string url, CancellationToken token) => ValueTask.FromResult(false);
 
     ValueTask<WidgetAppLibraryPage> QueryAsync(
         WidgetAppLibraryQuery query,

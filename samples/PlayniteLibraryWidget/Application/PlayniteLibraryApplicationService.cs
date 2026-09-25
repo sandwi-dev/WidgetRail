@@ -4,7 +4,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
-internal sealed class PlayniteLibraryApplicationService(
+internal sealed partial class PlayniteLibraryApplicationService(
     IPlayniteLibraryBridgeClient client,
     PlayniteLibraryStateFileStore state,
     IPlayniteLibraryArtworkDiagnostics? artworkDiagnostics = null,

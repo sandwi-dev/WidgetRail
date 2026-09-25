@@ -95,7 +95,7 @@ internal static class PlayniteLibraryPresentation
                 UI.Text(headerStatus, "playnite-library.status", headerStatus)
                     .Classes("playnite-library-status"))
             .Classes("playnite-library-header");
-        if (state.Route == PlayniteLibraryRoute.Library)
+        if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
             header = UI.Row("playnite-library.home.actions",
                     NavigationTabs(state),
                     UI.Row("playnite-library.home.utilities",
@@ -103,19 +103,6 @@ internal static class PlayniteLibraryPresentation
                             LibraryNavigation(state, renderActionsEnabled))
                         .Classes("playnite-library-home-utilities"))
                 .Classes("playnite-library-home-actions");
-        if (state.Route == PlayniteLibraryRoute.Browse)
-            header = UI.Stack("playnite-library.header",
-                    UI.Row("playnite-library.browse.toolbar",
-                            NavigationTabs(state),
-                            LibraryNavigation(state, renderActionsEnabled))
-                        .Classes("playnite-library-browse-toolbar"),
-                    UI.Row("playnite-library.browse.title-row",
-                            UI.Text(routeTitle, "playnite-library.title", routeTitle)
-                                .Classes("playnite-library-title"),
-                            UI.Text(headerStatus, "playnite-library.status", headerStatus)
-                                .Classes("playnite-library-status"))
-                        .Classes("playnite-library-browse-title-row"))
-                .Classes("playnite-library-browse-header");
         if (state.Route == PlayniteLibraryRoute.Categories)
             header = UI.Row("playnite-library.categories.header",
                     UI.Stack("playnite-library.categories.heading",
@@ -227,6 +214,8 @@ internal static class PlayniteLibraryPresentation
                 .AddClasses("playnite-library-control", "playnite-library-filter-control"));
         }
 
+        if (state.Route == PlayniteLibraryRoute.Browse)
+            filterControls.Add(UI.Text(headerStatus, "playnite-library.status").Classes("playnite-library-result-count"));
         WidgetElement queryControls;
         if (state.Route is PlayniteLibraryRoute.Categories or
             PlayniteLibraryRoute.Library)
@@ -584,6 +573,7 @@ internal static class PlayniteLibraryPresentation
             var hints = new List<WidgetElement>
             {
                 UI.ControllerHint(ControllerButton.Y, "Refresh", "playnite-library.browse.hint.refresh"),
+                UI.ControllerHint(ControllerButton.RightStick, "Search", "playnite-library.browse.hint.search"),
             };
             if (snapshot.Items.Count != 0)
                 hints.Add(StableControllerHint(ControllerButton.X, "Game options",
@@ -645,9 +635,9 @@ internal static class PlayniteLibraryPresentation
                         homeContent,
                         DefaultFocusedGameSummary(),
                         "playnite-library.home.focus-summary"))
-                    .Classes("playnite-library-home-foreground")
+                    .Classes("playnite-library-home-foreground", "playnite-library-common-frame")
                 : UI.Stack("playnite-library.home.foreground", header, queryControls, content)
-                    .Classes("playnite-library-home-foreground", "playnite-library-home-fallback");
+                    .Classes("playnite-library-home-foreground", "playnite-library-home-fallback", "playnite-library-common-frame");
             var homeStage = CinematicStage(
                 "playnite-library.home.stage", homeForeground,
                 "playnite-library-home-stage");
@@ -663,7 +653,7 @@ internal static class PlayniteLibraryPresentation
         else if (state.Route == PlayniteLibraryRoute.Browse)
         {
             var page = UI.Stack("playnite-library.browse.page",
-                    header, queryControls, content)
+                    queryControls, content)
                 .Classes("playnite-library-browse-foreground");
             if (state.Organization.Categories.Count != 0 && renderActionsEnabled &&
                 !state.OrganizationBusy)
@@ -675,7 +665,8 @@ internal static class PlayniteLibraryPresentation
                         actionId: PlayniteLibraryActions.CollectionNext,
                         label: "Next collection");
             var browseStage = CinematicStage(
-                "playnite-library.browse.stage", page,
+                "playnite-library.browse.stage",
+                UI.Stack("playnite-library.browse.frame", header, page).Classes("playnite-library-common-frame"),
                 "playnite-library-browse-stage");
             root = UI.Stack("playnite-library.root",
                     UI.BackgroundSurface(browseStage, "playnite-library.browse.cinematic",
@@ -1126,7 +1117,7 @@ internal static class PlayniteLibraryPresentation
         {
             var actionEnabled = PlayniteLibraryAvailabilityPresentation.CanManage(current);
             tile = tile
-                .ContextMenuShortcut(ControllerButton.Menu)
+                .ContextMenuShortcut(ControllerButton.X)
                 .ContextAction(PlayniteLibraryActions.Launch, "Play", disabled: !availability.Launchable)
                 .ContextAction(PlayniteLibraryActions.Favorite,
                     favorite ? "Remove favorite" : "Add favorite", disabled: !actionEnabled)

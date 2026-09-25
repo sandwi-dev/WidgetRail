@@ -12,6 +12,77 @@ namespace PlayniteLibraryCommunityApplication.Tests;
 public sealed class PlayniteBridgeTests
 {
     [TestMethod]
+    public async Task FullDetailsRejectAnotherGameAndFilterUnsafeMetadataLinks()
+    {
+        const string id = "00000000-0000-0000-0000-000000000001";
+        var transport = new FakeTransport
+        {
+            Response = new(200, JsonSerializer.Serialize(new
+            {
+                id, name = "Test game", isInstalled = true, favorite = false, hidden = false,
+                categories = Array.Empty<string>(), genres = Array.Empty<string>(), platforms = Array.Empty<string>(), playtime = 0,
+                links = new[]
+                {
+                    new { name = "Website", url = "https://example.com/game" },
+                    new { name = "Local file", url = "file:///C:/game.exe" },
+                    new { name = "Credentials", url = "https://user:pass@example.com/" },
+                },
+            })),
+        };
+        using var client = new PlayniteBridgeClient(transport, new FakeCredentialStore { Secret = "fake-token" });
+        var game = await client.ResolveGameAsync(id, default);
+        Assert.IsNotNull(game);
+        Assert.AreEqual("https://example.com/game", game.Links.Single().Url);
+        await Assert.ThrowsAsync<PlayniteBridgeDataException>(async () =>
+            await client.ResolveGameAsync("00000000-0000-0000-0000-000000000002", default));
+    }
+
+    [TestMethod]
+    public async Task OptionalGameDataDistinguishesUnavailableFromEmptyAndRejectsWrongIdentity()
+    {
+        const string id = "00000000-0000-0000-0000-000000000001";
+        var transport = new FakeTransport();
+        using var client = new PlayniteBridgeClient(transport, new FakeCredentialStore { Secret = "fake-token" });
+        transport.Response = new(200, "{\"gameId\":\"" + id + "\",\"installed\":false}");
+        Assert.IsFalse((await client.GetAchievementsAsync(id, default)).Available);
+        transport.Response = new(200, "{\"gameId\":\"" + id + "\",\"installed\":true,\"total\":0,\"unlocked\":0,\"achievements\":[]}");
+        var empty = await client.GetAchievementsAsync(id, default);
+        Assert.IsTrue(empty.Available);
+        Assert.AreEqual(0, empty.Total);
+        transport.Response = new(200, "{\"gameId\":\"00000000-0000-0000-0000-000000000002\",\"installed\":false}");
+        await Assert.ThrowsAsync<PlayniteBridgeDataException>(async () => await client.GetAchievementsAsync(id, default));
+        transport.Response = new(200, "{\"gameId\":\"" + id + "\",\"installed\":true,\"totalSeconds\":0,\"sessions\":[]}");
+        Assert.IsTrue((await client.GetActivityAsync(id, default)).Available);
+        transport.Response = new(200, "{\"error\":\"Plugin data could not be read\",\"code\":500}");
+        await Assert.ThrowsAsync<PlayniteBridgeDataException>(async () => await client.GetActivityAsync(id, default));
+    }
+
+    [TestMethod]
+    public async Task AchievementAndActivityPayloadsAreTypedAndInstallationRequiresAcknowledgement()
+    {
+        const string id = "00000000-0000-0000-0000-000000000001";
+        var transport = new FakeTransport();
+        using var client = new PlayniteBridgeClient(transport, new FakeCredentialStore { Secret = "fake-token" });
+        transport.Response = new(200, JsonSerializer.Serialize(new { gameId = id, installed = true, total = 2, unlocked = 1,
+            achievements = new[] {
+                new { name = "First", description = "Done", unlocked = true, dateUnlocked = (string?)"2026-09-24T12:00:00Z", percent = (double?)12.5, gamerScore = 10, isHidden = false },
+                new { name = "Spoiler", description = "Secret", unlocked = false, dateUnlocked = (string?)null, percent = (double?)null, gamerScore = 20, isHidden = true } } }));
+        var achievements = await client.GetAchievementsAsync(id, default);
+        Assert.AreEqual(2, achievements.Total);
+        Assert.IsTrue(achievements.Items[1].Hidden);
+        Assert.IsNull(achievements.Items[1].Percent);
+        transport.Response = new(200, JsonSerializer.Serialize(new { gameId = id, installed = true, totalSeconds = 7200,
+            sessions = new[] { new { date = "2026-09-24T12:00:00Z", elapsedSeconds = 7200, action = "Play" } } }));
+        Assert.AreEqual(7200, (await client.GetActivityAsync(id, default)).Sessions.Single().Seconds);
+        transport.Response = new(200, "{\"error\":\"unsupported\"}");
+        Assert.IsFalse(await client.ChangeInstallationAsync(id, true, default));
+        transport.Response = new(200, "{\"ok\":true,\"action\":\"install_started\"}");
+        Assert.IsTrue(await client.ChangeInstallationAsync(id, true, default));
+        Assert.AreEqual("api/games/" + id + "/install", PlayniteBridgeHttpTransport.Resolve(transport.ObservedCommand!).RelativePath);
+        Assert.AreEqual(HttpMethod.Post, PlayniteBridgeHttpTransport.Resolve(new(PlayniteBridgeCommandKind.Uninstall, id)).Method);
+    }
+
+    [TestMethod]
     public async Task FixedProbeUsesProtectedCredentialAndMapsClosedResponses()
     {
         var credentials = new FakeCredentialStore { Secret = "fake-playnite-token-one" };
@@ -136,10 +207,13 @@ public sealed class PlayniteBridgeTests
             .ToArray();
         CollectionAssert.AreEqual(new[]
         {
+            nameof(PlayniteBridgeClient.ChangeInstallationAsync),
             nameof(PlayniteBridgeClient.CreateCategoryAsync),
             nameof(PlayniteBridgeClient.DeleteCredentialAsync),
             nameof(IDisposable.Dispose),
             nameof(IAsyncDisposable.DisposeAsync),
+            nameof(PlayniteBridgeClient.GetAchievementsAsync),
+            nameof(PlayniteBridgeClient.GetActivityAsync),
             nameof(PlayniteBridgeClient.LaunchAsync),
             nameof(PlayniteBridgeClient.ListCategoriesAsync),
             nameof(PlayniteBridgeClient.ListCompletionStatusesAsync),

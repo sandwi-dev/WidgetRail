@@ -70,6 +70,7 @@ internal sealed record PlayniteLibraryRenderState
     internal string? PendingRestoredSavedId { get; init; }
     internal bool PreferLibraryContentFocus { get; init; }
     internal PlayniteLibraryItem? DetailsItem { get; init; }
+    internal PlayniteDetailsExtras DetailsExtras { get; init; } = new();
     internal long DetailsGeneration { get; init; }
     internal bool DetailsLoading { get; init; }
     internal string? DetailsError { get; init; }

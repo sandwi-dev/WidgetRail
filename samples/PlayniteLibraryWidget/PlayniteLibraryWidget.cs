@@ -248,7 +248,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             return page.WithModal(PlayniteLibraryDetailsPresentation.Create(
                 details, current is not null, local.LaunchingSavedId, local.Status,
                 state.LaunchStates.TryGetValue(details.Value.SavedId, out var launchState) ? launchState : null,
-                local.DetailsLoading, local.DetailsError));
+                local.DetailsLoading, local.DetailsError, local.DetailsExtras, state.Organization.Categories));
         }
         return page;
     }
@@ -375,6 +375,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _model.Update(state => state with
         {
             DetailsItem = null,
+            DetailsExtras = new(),
+            DetailsLoading = false,
+            DetailsError = null,
             SearchFocusPending = false,
             LaunchingSavedId = null,
             PlayniteBusy = false,
@@ -434,7 +437,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
             _model.Update(state => state.SearchFocusPending ? state with { SearchFocusPending = false } : state);
         if (action.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen or
             PlayniteLibraryActions.HiddenOpen or PlayniteLibraryActions.CategoriesOpen or PlayniteOpenActionId)
-            _model.Update(state => state.DetailsItem is null ? state : state with { DetailsItem = null });
+        {
+            CancelDetailsOperations();
+            _model.Update(state => state.DetailsItem is null ? state : state with
+            { DetailsItem = null, DetailsExtras = new(), DetailsLoading = false, DetailsError = null });
+        }
+        if (await TryHandleDetailsActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
         var feedbackBeforeAction = _model.Value.ActionFeedback;
         try
         {
@@ -458,8 +466,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         if (TryResolveCategoryMembershipAction(action.ActionId, out var categoryId))
         {
+            var categorySource = action.SourceElementId.StartsWith(DetailsPrefix + "category.", StringComparison.Ordinal)
+                ? ResolveActionSource(PlayniteLibraryDetailsPresentation.PlayId) : action.SourceElementId;
+            if (categorySource is null) return;
             await ToggleCategoryMembershipAsync(
-                    categoryId, action.SourceElementId, cancellationToken)
+                    categoryId, categorySource, cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
@@ -536,8 +547,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 if (details is not null) OpenDetails(details);
                 return;
             case PlayniteLibraryActions.DetailsClose:
-                Operations.Cancel("playnite-library.details");
-                _model.Update(state => state with { DetailsItem = null, DetailsLoading = false });
+                CancelDetailsOperations();
+                _model.Update(state => state with
+                { DetailsItem = null, DetailsExtras = new(), DetailsLoading = false, DetailsError = null });
                 RequestContentEntry();
                 return;
             case PlayniteLibraryActions.SearchFocus:
@@ -2230,13 +2242,15 @@ public sealed partial class PlayniteLibraryWidget : Widget
         };
     }
 
-    private void OpenDetails(PlayniteLibraryItem item)
+    private void OpenDetails(PlayniteLibraryItem item, bool preserveTab = false)
     {
+        CancelDetailsOperations();
+        var tab = preserveTab ? _model.Value.DetailsExtras.Tab : PlayniteDetailsTab.Overview;
         var generation = _model.Value.DetailsGeneration + 1;
         _model.Update(state => state with
         {
             DetailsItem = item, DetailsGeneration = generation,
-            DetailsLoading = true, DetailsError = null,
+            DetailsLoading = true, DetailsError = null, DetailsExtras = new() { Tab = tab },
         });
         var routeLifetime = _navigation.Value.RouteCancellationToken;
         _ = Operations.RunLatest("playnite-library.details", async context =>
@@ -2245,14 +2259,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 context.CancellationToken, routeLifetime);
             try
             {
-                var resolved = await _application.ResolveSavedAsync([item.Value.SavedId], lifetime.Token)
+                var full = await _application.GetGameDetailsAsync(item.Value.SavedId, lifetime.Token)
                     .ConfigureAwait(false);
                 lifetime.Token.ThrowIfCancellationRequested();
-                var full = resolved.SingleOrDefault(value => value.SavedId == item.Value.SavedId);
                 _model.Update(state => state.DetailsGeneration != generation || state.DetailsItem is null
                     ? state : state with
                     {
-                        DetailsItem = full is null ? item : PlayniteLibraryItem.From(full),
+                        DetailsItem = full is null ? item : PlayniteLibraryItem.From(full.Item),
+                        DetailsExtras = state.DetailsExtras with { Full = full },
                         DetailsLoading = false,
                         DetailsError = full is null ? "This game is no longer available from Playnite." : null,
                     });
@@ -2264,10 +2278,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     ? state : state with { DetailsLoading = false, DetailsError = "Game details could not be loaded. Close and reopen to retry." });
             }
         }, WidgetOperationLifetime.Active);
+        LoadDetailsSection(tab);
     }
 
     internal Task WhenDetailsIdleAsync(CancellationToken cancellationToken = default) =>
-        Operations.WhenIdleAsync("playnite-library.details", cancellationToken);
+        Task.WhenAll(Operations.WhenIdleAsync("playnite-library.details", cancellationToken),
+            Operations.WhenIdleAsync("playnite-library.details.achievements", cancellationToken),
+            Operations.WhenIdleAsync("playnite-library.details.activity", cancellationToken),
+            Operations.WhenIdleAsync("playnite-library.details.operation", cancellationToken));
 
     private string? ResolveActionSource(string sourceElementId)
     {
