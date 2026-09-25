@@ -365,7 +365,21 @@ internal static class SettingsPresentation
                 UI.Text("Choose Center, Bottom left, or Bottom right. Corner layouts keep the outside edge fixed when widgets resize.",
                     "overlay.position.help").Classes("page-help"),
                 UI.Button($"Widget switcher: {(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial ? "Radial + rail" : "Rail")}",
-                    "widget-switcher.toggle", "overlay.widget-switcher").Busy(busy).Classes("setting-row"),
+                    "widget-switcher.toggle", "overlay.widget-switcher").FocusDown("overlay.section-animation")
+                    .Busy(busy).Classes("setting-row"),
+                UI.Select("Section animation", new SelectOption[]
+                {
+                    new("paging", "Paging", "section-animation.paging", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Paging),
+                    new("slide", "Slide", "section-animation.slide", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Slide),
+                    new("none", "None", "section-animation.none", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.None),
+                }, "overlay.section-animation", "Section animation")
+                    .FocusUp("overlay.widget-switcher").FocusDown("overlay.animate-dialogs")
+                    .Busy(busy).AddClasses("setting-row"),
+                UI.Switch("Animate widget dialogs", appearance.AnimateWidgetModals,
+                    "widget-modal-animation.toggle", "overlay.animate-dialogs")
+                    .FocusUp("overlay.section-animation").Busy(busy).AddClasses("setting-row"),
+                UI.Text("Section animations apply when switching pages inside widgets. Reduced motion overrides section and dialog animations.",
+                    "overlay.animations.help").Classes("page-help"),
                 UI.Text(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial
                         ? "B at the widget's top level opens the radial.\nLeft stick previews widgets and their shortcuts; right stick changes pages without changing the preview. A enters, B returns.\nMove down past the widget's bottom row for the rail. B on the rail closes the overlay."
                         : "Move down past the widget's bottom row, or press B at its top level, to enter the rail.\nLeft/right previews widgets and their shortcuts. A or Up enters the widget; B on the rail closes the overlay.",

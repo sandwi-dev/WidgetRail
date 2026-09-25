@@ -21,6 +21,8 @@ public sealed record BridgePlatformAppearance
     public required bool BoldText { get; init; }
     public required TransparencyPreference Transparency { get; init; }
     public required bool AnimateWidgetSwitching { get; init; }
+    public string SectionAnimation { get; init; } = "paging";
+    public bool AnimateWidgetModals { get; init; } = true;
     public WidgetSwitcherLayout WidgetSwitcher { get; init; } = WidgetSwitcherLayout.Rail;
     public OverlayPosition OverlayPosition { get; init; } = OverlayPosition.Center;
     public required WidgetSurfaceAppearanceOverride WidgetSurfaceAppearance { get; init; }
@@ -135,6 +137,8 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             BoldText = appearance.BoldText,
             Transparency = appearance.Transparency,
             AnimateWidgetSwitching = appearance.AnimateWidgetSwitching,
+            SectionAnimation = appearance.SectionAnimation.ToString().ToLowerInvariant(),
+            AnimateWidgetModals = appearance.AnimateWidgetModals,
             WidgetSwitcher = appearance.WidgetSwitcher,
             OverlayPosition = appearance.OverlayPosition,
             WidgetSurfaceAppearance = appearance.WidgetSurfaceAppearance,

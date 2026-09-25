@@ -4344,7 +4344,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["activeDisplayId", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "interfaceScale", "motion", "overlayPosition", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides", "widgetSwitcher"],
+        ["activeDisplayId", "animateWidgetModals", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "interfaceScale", "motion", "overlayPosition", "revision", "sectionAnimation", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides", "widgetSwitcher"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
@@ -4357,6 +4357,8 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal(true, response.Payload.GetProperty("boldText").GetBoolean());
     Assert.Equal("reduced", response.Payload.GetProperty("transparency").GetString());
     Assert.Equal(true, response.Payload.GetProperty("animateWidgetSwitching").GetBoolean());
+    Assert.Equal("slide", response.Payload.GetProperty("sectionAnimation").GetString());
+    Assert.Equal(false, response.Payload.GetProperty("animateWidgetModals").GetBoolean());
     var shellStyles = response.Payload.GetProperty("shellStyles");
     Assert.Equal(12, shellStyles.EnumerateObject().Count());
     Assert.True(shellStyles.GetProperty("tray-item:focused")
@@ -7448,6 +7450,8 @@ file sealed class TemporaryAppearance : IAsyncDisposable
                 BoldText = true,
                 Transparency = TransparencyPreference.Reduced,
                 AnimateWidgetSwitching = true,
+                SectionAnimation = WidgetSectionAnimation.Slide,
+                AnimateWidgetModals = false,
                 OverlayPosition = OverlayPosition.BottomRight,
             },
         });

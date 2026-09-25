@@ -19,6 +19,7 @@ if (args is ["--export-renderer-fixture", var rendererFixturePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Animation controls persist each preset and independent dialog preference", AnimationPreferences),
     ("Package completion produces one themed expiring toast without navigation", SettingsToastScenarios.PackageCompletionUsesToast),
     ("Startup setting preserves focus and gates mutations", StartupSettingsScenarios.Run),
     ("Settings toast replaces feedback expires and retires without taking focus", SettingsToastScenarios.ExpiryAndReplacement),
@@ -397,6 +398,36 @@ static async Task GameSourceActionsAreRetired()
     Assert.True(!File.Exists(Store(temp.Path).Paths.SettingsFile),
         "A retired game-source action wrote platform settings.");
     Assert.Equal(SettingsPage.Root, widget.CurrentPage);
+}
+
+static async Task AnimationPreferences()
+{
+    using var temp = new TemporaryDirectory();
+    var widget = Create(temp.Path);
+    await Action(widget, "open.overlay");
+    foreach (var (id, expected) in new[]
+    {
+        ("slide", WidgetSectionAnimation.Slide),
+        ("none", WidgetSectionAnimation.None),
+        ("paging", WidgetSectionAnimation.Paging),
+    })
+    {
+        await Action(widget, "section-animation." + id);
+        var snapshot = Snapshot(widget);
+        Assert.Valid(snapshot);
+        var select = Nodes(snapshot.Root).Single(node => node.Id == "overlay.section-animation");
+        Assert.Equal("section-animation." + id, select.SelectOptions!.Single(option => option.IsSelected).ActionId);
+        Assert.Equal(expected, (await Store(temp.Path).LoadAsync()).Appearance.SectionAnimation);
+        Assert.Equal(SettingsPage.Overlay, widget.CurrentPage);
+    }
+    await Action(widget, "widget-modal-animation.toggle");
+    Assert.Equal(false, (await Store(temp.Path).LoadAsync()).Appearance.AnimateWidgetModals);
+    await Action(widget, "open.accessibility");
+    await Action(widget, "motion.reduced");
+    var persisted = (await Store(temp.Path).LoadAsync()).Appearance;
+    Assert.Equal(MotionPreference.Reduced, persisted.Motion);
+    Assert.Equal(WidgetSectionAnimation.Paging, persisted.SectionAnimation);
+    Assert.Equal(false, persisted.AnimateWidgetModals);
 }
 
 static async Task CompositeControls()
@@ -3163,6 +3194,8 @@ file static class Assert
         Equal(expected.Appearance.BoldText, actual.Appearance.BoldText);
         Equal(expected.Appearance.Transparency, actual.Appearance.Transparency);
         Equal(expected.Appearance.AnimateWidgetSwitching, actual.Appearance.AnimateWidgetSwitching);
+        Equal(expected.Appearance.SectionAnimation, actual.Appearance.SectionAnimation);
+        Equal(expected.Appearance.AnimateWidgetModals, actual.Appearance.AnimateWidgetModals);
         Equal(expected.Appearance.WidgetSurfaceAppearance, actual.Appearance.WidgetSurfaceAppearance);
         SequenceEqual(
             expected.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(

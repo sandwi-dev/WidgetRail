@@ -17,6 +17,8 @@ internal enum SettingsPreferenceKind
     BoldText,
     ReducedTransparency,
     AnimateWidgetSwitching,
+    SectionAnimation,
+    AnimateWidgetModals,
     WidgetSwitcher,
     OverlayPosition,
     Theme,
@@ -27,7 +29,8 @@ internal readonly record struct SettingsPreferenceMutation(
     string SuccessStatus,
     string? ThemeId = null,
     string? ThemeVersion = null,
-    string? DisplayId = null)
+    string? DisplayId = null,
+    WidgetSectionAnimation? SectionAnimation = null)
 {
     public bool IsScale => Kind is SettingsPreferenceKind.TextDecrease or SettingsPreferenceKind.TextIncrease
         or SettingsPreferenceKind.InterfaceDecrease or SettingsPreferenceKind.InterfaceIncrease;
@@ -130,6 +133,14 @@ internal readonly record struct SettingsPreferenceMutation(
         {
             AnimateWidgetSwitching = !appearance.AnimateWidgetSwitching,
         },
+        SettingsPreferenceKind.SectionAnimation when SectionAnimation is { } selected => appearance with
+        {
+            SectionAnimation = selected,
+        },
+        SettingsPreferenceKind.AnimateWidgetModals => appearance with
+        {
+            AnimateWidgetModals = !appearance.AnimateWidgetModals,
+        },
         SettingsPreferenceKind.WidgetSwitcher => appearance with
         {
             WidgetSwitcher = appearance.WidgetSwitcher == WidgetSwitcherLayout.Rail
@@ -201,6 +212,13 @@ internal static class SettingsPreferencePolicy
                 SettingsPreferenceKind.ReducedTransparency,
                 "Transparency preference saved"),
             "widget-switcher.toggle" => new(SettingsPreferenceKind.WidgetSwitcher, "Widget switcher layout saved"),
+            "section-animation.paging" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
+                SectionAnimation: WidgetSectionAnimation.Paging),
+            "section-animation.slide" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
+                SectionAnimation: WidgetSectionAnimation.Slide),
+            "section-animation.none" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
+                SectionAnimation: WidgetSectionAnimation.None),
+            "widget-modal-animation.toggle" => new(SettingsPreferenceKind.AnimateWidgetModals, "Dialog animation preference saved"),
             "overlay-position.cycle" => new(SettingsPreferenceKind.OverlayPosition, "Overlay position saved"),
             "widget-switch-animation.toggle" => new(
                 SettingsPreferenceKind.AnimateWidgetSwitching,

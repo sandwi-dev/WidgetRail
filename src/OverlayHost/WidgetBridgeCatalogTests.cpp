@@ -2779,6 +2779,26 @@ int main(int argc, char** argv) {
     CHECK(appearance->boldText);
     CHECK(appearance->transparency == widgetrail::PlatformTransparencyPreference::Reduced);
     CHECK(!appearance->animateWidgetSwitching);
+    CHECK(appearance->sectionAnimation == L"paging");
+    CHECK(appearance->animateWidgetModals);
+    for (const auto value : {"\"paging\"", "\"slide\"", "\"none\"", "\"unknown\"", "false"}) {
+        std::string source(ValidAppearance);
+        source.insert(1,std::string("\"sectionAnimation\":")+value+",");
+        error.clear();
+        const auto parsed = widgetrail::testing::ParsePlatformAppearance(source,error);
+        const bool invalid = std::string_view(value) == "false" || std::string_view(value) == "\"unknown\"";
+        CHECK(parsed.has_value() != invalid);
+        if (parsed) CHECK(parsed->sectionAnimation == (std::string_view(value)=="\"slide\"" ? L"slide" :
+            std::string_view(value)=="\"none\"" ? L"none" : L"paging"));
+    }
+    for (const auto value : {"true","false","\"false\""}) {
+        std::string source(ValidAppearance);
+        source.insert(1,std::string("\"animateWidgetModals\":")+value+",");
+        error.clear();
+        const auto parsed = widgetrail::testing::ParsePlatformAppearance(source,error);
+        CHECK(parsed.has_value() == (std::string_view(value)!="\"false\""));
+        if (parsed) CHECK(parsed->animateWidgetModals == (std::string_view(value)=="true"));
+    }
     CHECK(!appearance->radialWidgetSwitcher);
     CHECK(appearance->overlayPosition == widgetrail::OverlayPosition::Center);
     for (const auto value : {"\"center\"", "\"BottomLeft\"", "\"bottomRight\"", "false", "\"unknown\""}) {

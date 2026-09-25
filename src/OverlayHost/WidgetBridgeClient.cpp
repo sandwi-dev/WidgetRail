@@ -849,6 +849,8 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     if (required.HasKey(L"activeDisplayId")) required.Remove(L"activeDisplayId");
     if (required.HasKey(L"widgetSwitcher")) required.Remove(L"widgetSwitcher");
     if (required.HasKey(L"overlayPosition")) required.Remove(L"overlayPosition");
+    if (required.HasKey(L"sectionAnimation")) required.Remove(L"sectionAnimation");
+    if (required.HasKey(L"animateWidgetModals")) required.Remove(L"animateWidgetModals");
     if (!HasOnlyProperties(required,
             {L"revision", L"themeId", L"themeVersion", L"interfaceScale", L"textScale",
              L"backdropOpacity", L"motion", L"contrast", L"boldText",
@@ -880,6 +882,24 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     }
 
     PlatformAppearance appearance;
+    if (payload.HasKey(L"sectionAnimation")) {
+        const auto value = payload.GetNamedValue(L"sectionAnimation");
+        if (value.ValueType() != JsonValueType::String) {
+            error = L"Invalid section animation."; return std::nullopt;
+        }
+        appearance.sectionAnimation = value.GetString();
+        if (appearance.sectionAnimation != L"paging" && appearance.sectionAnimation != L"slide" &&
+            appearance.sectionAnimation != L"none") {
+            error = L"Invalid section animation."; return std::nullopt;
+        }
+    }
+    if (payload.HasKey(L"animateWidgetModals")) {
+        const auto value = payload.GetNamedValue(L"animateWidgetModals");
+        if (value.ValueType() != JsonValueType::Boolean) {
+            error = L"Invalid widget dialog animation preference."; return std::nullopt;
+        }
+        appearance.animateWidgetModals = value.GetBoolean();
+    }
     if (payload.HasKey(L"overlayPosition")) {
         const auto value = payload.GetNamedValue(L"overlayPosition");
         if (value.ValueType() != JsonValueType::String) {

@@ -78,6 +78,8 @@ static async Task DefaultsAreSafe()
         Assert.Equal(true, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
         Assert.Equal(true, settings.Appearance.AnimateWidgetSwitching);
+        Assert.Equal(WidgetSectionAnimation.Paging, settings.Appearance.SectionAnimation);
+        Assert.Equal(true, settings.Appearance.AnimateWidgetModals);
         Assert.Equal(WidgetSwitcherLayout.Radial, settings.Appearance.WidgetSwitcher);
         Assert.Equal(OverlayPosition.Center, settings.Appearance.OverlayPosition);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
@@ -90,6 +92,8 @@ static async Task DefaultsAreSafe()
         await File.WriteAllTextAsync(store.Paths.SettingsFile, SettingsJson());
         Assert.Equal(ThemeIdentity.BuiltInDefault, (await store.LoadAsync()).Appearance.ThemeId);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.AnimateWidgetSwitching);
+        Assert.Equal(WidgetSectionAnimation.Paging, (await store.LoadAsync()).Appearance.SectionAnimation);
+        Assert.Equal(true, (await store.LoadAsync()).Appearance.AnimateWidgetModals);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.BoldText);
         Assert.Equal(WidgetSwitcherLayout.Rail, (await store.LoadAsync()).Appearance.WidgetSwitcher);
         Assert.Equal(OverlayPosition.Center, (await store.LoadAsync()).Appearance.OverlayPosition);
@@ -114,6 +118,8 @@ static async Task SettingsRoundTrip()
             BoldText = true,
             Transparency = TransparencyPreference.Reduced,
             AnimateWidgetSwitching = true,
+            SectionAnimation = WidgetSectionAnimation.Slide,
+            AnimateWidgetModals = false,
             WidgetSwitcher = WidgetSwitcherLayout.Radial,
             OverlayPosition = OverlayPosition.BottomRight,
         },
@@ -124,6 +130,8 @@ static async Task SettingsRoundTrip()
     var reloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
     Assert.DocumentEqual(updated, reloaded);
     Assert.Equal(true, reloaded.Appearance.AnimateWidgetSwitching);
+    Assert.Equal(WidgetSectionAnimation.Slide, reloaded.Appearance.SectionAnimation);
+    Assert.Equal(false, reloaded.Appearance.AnimateWidgetModals);
     Assert.Equal(WidgetSwitcherLayout.Radial, reloaded.Appearance.WidgetSwitcher);
     Assert.Equal(OverlayPosition.BottomRight, reloaded.Appearance.OverlayPosition);
     foreach (var position in new[] { OverlayPosition.BottomLeft, OverlayPosition.Center })
@@ -291,6 +299,9 @@ static async Task SettingsRangesAreEnforced()
         SettingsJson(appearanceExtra: ",\"boldText\":1"),
         SettingsJson(appearanceExtra: ",\"overlayPosition\":\"unknown\""),
         SettingsJson(appearanceExtra: ",\"overlayPosition\":99"),
+        SettingsJson(appearanceExtra: ",\"sectionAnimation\":\"unknown\""),
+        SettingsJson(appearanceExtra: ",\"sectionAnimation\":99"),
+        SettingsJson(appearanceExtra: ",\"animateWidgetModals\":\"yes\""),
         SettingsJson(schemaVersion: 4),
     })
     {
@@ -1201,6 +1212,8 @@ file static class Assert
         Equal(expected.Appearance.BoldText, actual.Appearance.BoldText);
         Equal(expected.Appearance.Transparency, actual.Appearance.Transparency);
         Equal(expected.Appearance.AnimateWidgetSwitching, actual.Appearance.AnimateWidgetSwitching);
+        Equal(expected.Appearance.SectionAnimation, actual.Appearance.SectionAnimation);
+        Equal(expected.Appearance.AnimateWidgetModals, actual.Appearance.AnimateWidgetModals);
         Equal(expected.Appearance.WidgetSurfaceAppearance, actual.Appearance.WidgetSurfaceAppearance);
         SequenceEqual(
             expected.Appearance.WidgetSurfaceAppearanceOverrides.OrderBy(

@@ -140,13 +140,17 @@ interruption capture and pointer mapping use the same transform definition.
 
 `DeclarativeRenderOptions.widgetAnimations` carries host preferences into each
 scene. Section presets have stable settings IDs: `paging` (default), `slide`
-(directional full-page movement without fading), and `none`. Unknown IDs resolve
-to Paging. The options also allow modal motion to be disabled independently.
+(directional full-page movement without fading), and `none`. The policy parser
+defaults unknown IDs to Paging; settings validation and bridge admission reject
+unsupported values. The options also allow modal motion to be disabled independently.
 Changing preferences settles the current scene and discards old motion. Reduced
-motion takes precedence over every preset. This is the configuration boundary
-for a future settings selector; no new Settings UI or persisted preference is
-introduced yet. Widgets continue to declare semantic transitions rather than
-choosing host animation effects.
+motion takes precedence over every preset. **Settings → Overlay** exposes the
+Section animation dropdown and Animate widget dialogs switch. The platform
+settings document persists `appearance.sectionAnimation` and
+`appearance.animateWidgetModals`; existing documents default to Paging and
+enabled dialog motion. The bridge publishes the section choice using its stable
+lowercase ID and delivers updates through the existing appearance-revision path.
+Widgets continue to declare semantic transitions rather than choosing host effects.
 
 ## Widget modals
 
