@@ -145,6 +145,7 @@ struct XInputGuideCompatibility::Source final {
     std::array<XINPUT_STATE, XUSER_MAX_COUNT> cached{};
     std::array<bool, XUSER_MAX_COUNT> connected{};
     ULONGLONG completedAt{};
+    ULONGLONG sampledAt{};
     ~Source() { if (module) FreeLibrary(module); }
     std::uint8_t Poll() {
         std::array<XINPUT_STATE, XUSER_MAX_COUNT> states{};
@@ -163,6 +164,7 @@ struct XInputGuideCompatibility::Source final {
             cached = states;
             connected = live;
             completedAt = completed;
+            sampledAt = started;
         }
         return edges.Update(pressed);
     }
@@ -191,13 +193,16 @@ std::uint8_t XInputGuideCompatibility::PollRisingEdges() noexcept {
     return poller_ ? poller_->Poll() : 0;
 }
 
-bool XInputGuideCompatibility::TryReadState(DWORD slot, XINPUT_STATE& state) noexcept {
+bool XInputGuideCompatibility::TryReadState(
+    DWORD slot, XINPUT_STATE& state, std::uint64_t& sampledAtMilliseconds) noexcept {
+    sampledAtMilliseconds = 0;
     state = {};
     if (!poller_ || !source_ || slot >= XUSER_MAX_COUNT) return false;
     poller_->Request();
     std::scoped_lock lock(source_->mutex);
     if (GetTickCount64() - source_->completedAt > 250 || !source_->connected[slot]) return false;
     state = source_->cached[slot];
+    sampledAtMilliseconds = source_->sampledAt;
     return true;
 }
 

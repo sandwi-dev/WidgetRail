@@ -268,7 +268,7 @@ struct WidgetRailOverlayPlatformHandle final {
         if (visible) {
             const auto sample = controllerSelection.Poll([&](widgetrail::platform::ControllerSource source) {
                 return ReadControllerSource(source);
-            });
+            }, GetTickCount64());
             connected = sample.connected;
             state = sample.state;
             controllerGlyphs.Observe(sample.family, connected && controllerSelection.HasActivity(state));
@@ -322,7 +322,9 @@ struct WidgetRailOverlayPlatformHandle final {
             }
         } else if (requested.path == Path::XInputCompatibility) {
             XINPUT_STATE input{};
-            if (guideCompatibility.TryReadState(static_cast<DWORD>(requested.device), input)) {
+            std::uint64_t sampledAt{};
+            if (guideCompatibility.TryReadState(static_cast<DWORD>(requested.device), input, sampledAt)) {
+                sample.sampledAtMilliseconds = sampledAt;
                 const auto& pad = input.Gamepad;
                 sample.family = WidgetRailOverlayPlatformControllerFamily::Xbox;
                 sample.state = {pad.wButtons, pad.bLeftTrigger, pad.bRightTrigger,

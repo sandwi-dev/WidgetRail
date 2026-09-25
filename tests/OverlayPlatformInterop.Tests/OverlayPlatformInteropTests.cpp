@@ -169,6 +169,64 @@ void ControllerActivitySelectionKeepsHoldsAndReleases() {
     Check(frame.pressedButtons == 0, "mirrored release does not become a second action");
 }
 
+void CachedBackendCannotReplayAReleasedPress() {
+    using namespace widgetrail::platform;
+    using Path = widgetrail::input::ControllerReadPath;
+    ControllerActivitySelection selection;
+    ControllerFrameTracker tracker;
+    tracker.Prime(true, {}, 90);
+    ControllerActivitySample live{{Path::GameInputVisibleLease, 101}, {}, true};
+    ControllerActivitySample cached{{Path::XInputCompatibility, 0}, {}, true};
+    cached.sampledAtMilliseconds = 100;
+    live.state.buttons = cached.state.buttons = XINPUT_GAMEPAD_LEFT_SHOULDER;
+    const auto read = [&](ControllerSource source) {
+        if (source.path == Path::GameInputVisibleLease) return live;
+        if (source == cached.source) return cached;
+        return ControllerActivitySample{source};
+    };
+    const auto frame = [&](std::uint64_t now) {
+        const auto sample = selection.Poll(read, now);
+        return tracker.Update(sample.connected, sample.state, now);
+    };
+    Check(frame(100).pressedButtons == XINPUT_GAMEPAD_LEFT_SHOULDER,
+        "GameInput delivers the original bumper press");
+    live.state.buttons = 0;
+    Check(frame(120).releasedButtons == XINPUT_GAMEPAD_LEFT_SHOULDER,
+        "GameInput releases before asynchronous XInput catches up");
+    Check(frame(135).pressedButtons == 0,
+        "an old cached XInput hold cannot replay after GameInput release");
+    cached.sampledAtMilliseconds = 120;
+    Check(frame(150).pressedButtons == 0,
+        "equal-millisecond samples must not cross the release boundary");
+    cached.sampledAtMilliseconds = 160;
+    cached.state.buttons = 0;
+    Check(frame(170).pressedButtons == 0, "fresh neutral cache remains neutral");
+    cached.sampledAtMilliseconds = 180;
+    cached.state.buttons = XINPUT_GAMEPAD_A;
+    Check(frame(185).pressedButtons == XINPUT_GAMEPAD_A,
+        "a new cached input after release remains eligible");
+    Check(frame(190).pressedButtons == 0, "accepted cached holds do not repeat");
+    cached.connected = false;
+    Check(frame(200).releasedButtons == XINPUT_GAMEPAD_A, "disconnect releases cached owner");
+    cached.connected = true;
+    Check(frame(210).pressedButtons == 0, "pre-disconnect cache cannot reclaim ownership");
+    cached.sampledAtMilliseconds = 220;
+    Check(frame(225).pressedButtons == XINPUT_GAMEPAD_A, "fresh reconnect activity is admitted");
+    cached.state = {};
+    (void)frame(230);
+    live.state.buttons = XINPUT_GAMEPAD_LEFT_SHOULDER;
+    Check(frame(231).pressedButtons == XINPUT_GAMEPAD_LEFT_SHOULDER,
+        "live readers do not acquire an arbitrary debounce delay");
+    selection.Reset();
+    tracker.Reset();
+    tracker.Prime(true, {}, 0);
+    live.state = {};
+    cached.sampledAtMilliseconds = 0;
+    cached.state.buttons = XINPUT_GAMEPAD_B;
+    Check(frame(1).pressedButtons == XINPUT_GAMEPAD_B,
+        "reset removes the release boundary instead of inventing a timestamp-zero release");
+}
+
 void ControllerGlyphsFollowActivityNotBackend() {
     using namespace widgetrail::platform;
     using Family = WidgetRailOverlayPlatformControllerFamily;
@@ -299,6 +357,7 @@ void QueuedNavigationCannotRepeatAfterRenderingStall() {
 
 int main() {
     ControllerActivitySelectionKeepsHoldsAndReleases();
+    CachedBackendCannotReplayAReleasedPress();
     ControllerActivityThresholdsAndRepeats();
     ControllerGlyphsFollowActivityNotBackend();
     QueuedNavigationCannotRepeatAfterRenderingStall();

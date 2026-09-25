@@ -71,7 +71,7 @@ public:
     [[nodiscard]] bool Initialize() noexcept;
     void Shutdown() noexcept;
     [[nodiscard]] std::uint8_t PollRisingEdges() noexcept;
-    [[nodiscard]] bool TryReadState(DWORD slot, XINPUT_STATE& state) noexcept;
+    [[nodiscard]] bool TryReadState(DWORD slot, XINPUT_STATE& state, std::uint64_t& sampledAtMilliseconds) noexcept;
     [[nodiscard]] bool available() const noexcept { return guideAvailable_; }
 
 private:

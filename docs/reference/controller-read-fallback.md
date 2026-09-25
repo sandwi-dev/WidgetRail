@@ -40,3 +40,10 @@ waiting for a blocked driver. The callback retains its native library and data u
 it exits. Samples older than 250 ms are treated as disconnected, and a Guide edge
 from a scan taking more than 250 ms is discarded. Backend priority and deadzones
 are unchanged; polling may use the preceding completed sample.
+
+After an owner releases or disconnects, a cached backend can take over only with a
+sample whose acquisition began after that release was observed. This prevents an
+older XInput copy of the same held button from becoming a second press after a
+GameInput release. Live readers remain eligible immediately; there is no added
+button debounce delay, and fresh input from another controller still follows the
+normal backend priority.

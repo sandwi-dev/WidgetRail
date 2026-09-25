@@ -29,6 +29,9 @@ struct ControllerActivitySample final {
     WidgetRailOverlayPlatformRawControllerState state{};
     bool connected{};
     WidgetRailOverlayPlatformControllerFamily family{WidgetRailOverlayPlatformControllerFamily::Unknown};
+    // Asynchronous readers report when their sample began, not when the UI
+    // consumed it. Synchronous readers leave this unset.
+    std::optional<std::uint64_t> sampledAtMilliseconds;
 };
 
 // Device identity determines glyphs independently of its transport/backend.
@@ -73,17 +76,19 @@ public:
     // for that exact device. XInput identities are slots; HID identities are
     // connection generations. Readers must not substitute a different owner.
     template<class Reader>
-    ControllerActivitySample Poll(Reader&& read) noexcept {
+    ControllerActivitySample Poll(Reader&& read, std::uint64_t nowMilliseconds = 0) noexcept {
         using Path = input::ControllerReadPath;
         if (held_) {
             auto sample = read(*held_);
             if (!sample.connected || sample.source != *held_) {
                 const auto previous = *held_;
                 held_.reset();
+                releasedAtMilliseconds_ = nowMilliseconds;
                 return {previous, {}, false};
             }
             if (!HasActivity(sample.state)) {
                 held_.reset();
+                releasedAtMilliseconds_ = nowMilliseconds;
                 sample.state = {};
             }
             // Always deliver the old owner's release before considering another
@@ -95,6 +100,12 @@ public:
         const auto consider = [&](ControllerSource source) -> std::optional<ControllerActivitySample> {
             auto sample = read(source);
             if (!sample.connected) return std::nullopt;
+            // A mirrored backend may still cache the press we just released.
+            // It can become an owner only after acquiring a newer sample.
+            // This is a freshness boundary, not a button debounce interval.
+            if (sample.sampledAtMilliseconds && releasedAtMilliseconds_ &&
+                *sample.sampledAtMilliseconds <= *releasedAtMilliseconds_)
+                return std::nullopt;
             if (HasActivity(sample.state)) {
                 held_ = last_ = sample.source;
                 return sample;
@@ -110,10 +121,11 @@ public:
         return idle;
     }
 
-    void Reset() noexcept { held_.reset(); last_.reset(); }
+    void Reset() noexcept { held_.reset(); last_.reset(); releasedAtMilliseconds_.reset(); }
 
 private:
     ControllerActivityOptions options_{};
+    std::optional<std::uint64_t> releasedAtMilliseconds_;
     std::optional<ControllerSource> held_;
     std::optional<ControllerSource> last_;
 };
