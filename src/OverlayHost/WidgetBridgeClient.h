@@ -783,6 +783,7 @@ struct PlatformAppearance final {
     bool animateWidgetSwitching{};
     std::wstring sectionAnimation{L"slide"};
     bool animateWidgetModals{true};
+    std::wstring modalAnimation{L"lift"};
     double widgetAnimationSpeed{1};
     bool radialWidgetSwitcher{};
     OverlayPosition overlayPosition{OverlayPosition::Center};

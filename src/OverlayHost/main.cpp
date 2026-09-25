@@ -18462,7 +18462,9 @@ private:
                     options.widgetAnimations.section = widgetrail::animation::ParseSectionStyle(appearance->sectionAnimation);
                     options.widgetAnimations.speed = appearance->widgetAnimationSpeed;
                     options.widgetAnimations.modal = appearance->animateWidgetModals
-                        ? widgetrail::animation::ModalStyle::Lift : widgetrail::animation::ModalStyle::None;
+                        ? (appearance->modalAnimation == L"zoom" ? widgetrail::animation::ModalStyle::Zoom
+                                                                : widgetrail::animation::ModalStyle::Lift)
+                        : widgetrail::animation::ModalStyle::None;
                 }
                 options.retainedCompositorBackground = lastWidgetRenderResult_.compositorBackground;
                 if (descriptor) {

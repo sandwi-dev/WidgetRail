@@ -42,7 +42,10 @@ public enum WidgetSwitcherLayout { Rail, Radial }
 public enum OverlayPosition { Center, BottomLeft, BottomRight }
 
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetSectionAnimation>))]
-public enum WidgetSectionAnimation { Paging, Slide, None }
+public enum WidgetSectionAnimation { Paging, Slide, None, VerticalSlide, Reveal, CoverSlide }
+
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetModalAnimation>))]
+public enum WidgetModalAnimation { Lift, Zoom }
 
 public sealed record AppearanceSettings
 {
@@ -99,6 +102,8 @@ public sealed record AppearanceSettings
     public WidgetSectionAnimation SectionAnimation { get; init; } = WidgetSectionAnimation.Slide;
     /// <summary>Host-owned opening and closing motion for widget dialogs.</summary>
     public bool AnimateWidgetModals { get; init; } = true;
+    /// <summary>Motion recipe used when widget dialog animations are enabled.</summary>
+    public WidgetModalAnimation ModalAnimation { get; init; } = WidgetModalAnimation.Lift;
     /// <summary>Shared speed multiplier for widget sections, navigation and dialogs.</summary>
     public double WidgetAnimationSpeed { get; init; } = 1;
     // Missing values in existing settings retain Rail; fresh installations
@@ -271,6 +276,8 @@ public static class PlatformSettingsValidator
             Add("$.appearance.motion", "invalid_enum", "Motion preference is invalid.");
         if (!Enum.IsDefined(appearance.WidgetSwitcher))
             Add("$.appearance.widgetSwitcher", "invalid_enum", "Widget switcher layout is invalid.");
+        if (!Enum.IsDefined(appearance.ModalAnimation))
+            Add("$.appearance.modalAnimation", "invalid_enum", "Dialog animation is invalid.");
         if (!Enum.IsDefined(appearance.SectionAnimation))
             Add("$.appearance.sectionAnimation", "invalid_enum", "Section animation is invalid.");
         Range(appearance.WidgetAnimationSpeed, AppearanceSettings.MinimumWidgetAnimationSpeed,

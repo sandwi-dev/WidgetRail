@@ -19,6 +19,7 @@ internal enum SettingsPreferenceKind
     AnimateWidgetSwitching,
     SectionAnimation,
     AnimateWidgetModals,
+    ModalAnimation,
     AnimationSpeedDecrease,
     AnimationSpeedIncrease,
     WidgetSwitcher,
@@ -32,7 +33,8 @@ internal readonly record struct SettingsPreferenceMutation(
     string? ThemeId = null,
     string? ThemeVersion = null,
     string? DisplayId = null,
-    WidgetSectionAnimation? SectionAnimation = null)
+    WidgetSectionAnimation? SectionAnimation = null,
+    WidgetModalAnimation? ModalAnimation = null)
 {
     public bool IsScale => Kind is SettingsPreferenceKind.TextDecrease or SettingsPreferenceKind.TextIncrease
         or SettingsPreferenceKind.InterfaceDecrease or SettingsPreferenceKind.InterfaceIncrease;
@@ -139,6 +141,10 @@ internal readonly record struct SettingsPreferenceMutation(
         {
             SectionAnimation = selected,
         },
+        SettingsPreferenceKind.ModalAnimation when ModalAnimation is { } modal => appearance with
+        {
+            ModalAnimation = modal,
+        },
         SettingsPreferenceKind.AnimateWidgetModals => appearance with
         {
             AnimateWidgetModals = !appearance.AnimateWidgetModals,
@@ -228,6 +234,16 @@ internal static class SettingsPreferencePolicy
                 SectionAnimation: WidgetSectionAnimation.Paging),
             "section-animation.slide" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
                 SectionAnimation: WidgetSectionAnimation.Slide),
+            "section-animation.verticalslide" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
+                SectionAnimation: WidgetSectionAnimation.VerticalSlide),
+            "section-animation.reveal" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
+                SectionAnimation: WidgetSectionAnimation.Reveal),
+            "section-animation.coverslide" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
+                SectionAnimation: WidgetSectionAnimation.CoverSlide),
+            "modal-animation.lift" => new(SettingsPreferenceKind.ModalAnimation, "Dialog animation saved",
+                ModalAnimation: WidgetModalAnimation.Lift),
+            "modal-animation.zoom" => new(SettingsPreferenceKind.ModalAnimation, "Dialog animation saved",
+                ModalAnimation: WidgetModalAnimation.Zoom),
             "section-animation.none" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
                 SectionAnimation: WidgetSectionAnimation.None),
             "widget-modal-animation.toggle" => new(SettingsPreferenceKind.AnimateWidgetModals, "Dialog animation preference saved"),

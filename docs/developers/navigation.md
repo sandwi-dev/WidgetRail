@@ -100,7 +100,7 @@ The first committed presentation snaps into place. A section needing data can
 show its loading content immediately; navigation never waits for a provider.
 
 The default Slide preset moves full pages horizontally without a crossfade.
-At normal speed, sections share a 260 ms timeline with gentle acceleration and
+At normal speed, sections share a 208 ms timeline with gentle acceleration and
 deceleration. Paging is an alternative: the incoming page rises from below while
 the outgoing page recedes to 96% of its size and moves slightly upward. Both pages
 keep their original opacity, with coordinated reveal clipping to prevent old
@@ -146,14 +146,21 @@ interruption capture and pointer mapping use the same transform definition.
 
 `DeclarativeRenderOptions.widgetAnimations` carries host preferences into each
 scene. Section presets have stable settings IDs: `slide` (default), `paging`,
-and `none`. The policy parser defaults unknown IDs to Slide; settings validation and bridge admission reject
+`verticalslide`, `reveal`, `coverslide`, and `none`. All moving section presets
+use 208 ms smoothstep timing at normal speed, without page-wide fading.
+Slide and Vertical slide push both pages in navigation order; Paging lifts the
+new page while the old page recedes. Reveal clips stationary pages, while Cover
+slide moves the incoming page over the stationary outgoing page. Complementary
+clips prevent translucent incoming content from exposing the old page beneath it.
+The policy parser defaults unknown IDs to Slide; settings validation and bridge admission reject
 unsupported values. The options also allow modal motion to be disabled independently.
 Changing preferences settles the current scene and discards old motion. Reduced
 motion takes precedence over every preset. **Settings → Overlay** exposes the
-Section animation dropdown and Animate widget dialogs switch. The platform
-settings document persists `appearance.sectionAnimation` and
-`appearance.animateWidgetModals`. Missing values default to Slide and enabled
-dialog motion; explicit saved choices remain respected. `appearance.widgetAnimationSpeed`
+Section animation and Dialog animation dropdowns and Animate widget dialogs switch.
+The platform settings document persists `appearance.sectionAnimation`,
+`appearance.modalAnimation` (`Lift` or `Zoom`), and `appearance.animateWidgetModals`.
+Missing values default to Slide, Lift and enabled dialog motion;
+explicit saved choices remain respected. `appearance.widgetAnimationSpeed`
 is a global multiplier from 0.5 to 2, defaulting to 1. Duration is divided by this
 value for sections, navigation and modals together; invalid values are rejected.
 The bridge publishes the section choice using its stable
@@ -167,7 +174,10 @@ page (presentation protocol 55). Retain the page and its stable element IDs;
 return it without `WithModal` when the dismiss action runs.
 
 The host fades the themed backdrop and slides the panel by 14 DIP on the same
-260 ms smoothstep timeline at normal speed when opening or closing. Closing changes input authority
+260 ms smoothstep timeline at normal speed when opening or closing. The optional
+Zoom preset also grows the panel from 90% to full size, centered horizontally,
+and reverses that motion on closing. The backdrop never moves or scales.
+Closing changes input authority
 immediately; only panel pixels survive until the exit finishes. Reopening during
 exit continues from the displayed opacity. A modal already present on the first
 frame after resuming or resizing does not replay its entrance. No worker timers

@@ -381,20 +381,30 @@ internal static class SettingsPresentation
                 {
                     new("slide", "Slide", "section-animation.slide", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Slide),
                     new("paging", "Paging", "section-animation.paging", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Paging),
+                    new("verticalslide", "Vertical slide", "section-animation.verticalslide", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.VerticalSlide),
+                    new("reveal", "Reveal", "section-animation.reveal", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Reveal),
+                    new("coverslide", "Cover slide", "section-animation.coverslide", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.CoverSlide),
                     new("none", "None", "section-animation.none", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.None),
                 }, "overlay.section-animation", "Section animation")
                     .FocusUp("overlay.widget-switcher").FocusDown("overlay.animate-dialogs")
                     .Busy(busy).AddClasses("setting-row"),
                 UI.Switch("Animate widget dialogs", appearance.AnimateWidgetModals,
                     "widget-modal-animation.toggle", "overlay.animate-dialogs")
-                    .FocusUp("overlay.section-animation").FocusDown("overlay.animation-speed.decrement")
+                    .FocusUp("overlay.section-animation").FocusDown("overlay.modal-animation")
+                    .Busy(busy).AddClasses("setting-row"),
+                UI.Select("Dialog animation", new SelectOption[]
+                {
+                    new("lift", "Lift", "modal-animation.lift", IsSelected: appearance.ModalAnimation == WidgetModalAnimation.Lift),
+                    new("zoom", "Zoom", "modal-animation.zoom", IsSelected: appearance.ModalAnimation == WidgetModalAnimation.Zoom),
+                }, "overlay.modal-animation", "Dialog animation")
+                    .FocusUp("overlay.animate-dialogs").FocusDown("overlay.animation-speed.decrement")
                     .Busy(busy).AddClasses("setting-row"),
                 LinkStepper(UI.Stepper("Widget animation speed",
                     appearance.WidgetAnimationSpeed.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "×",
                     "widget-animation-speed.decrease", "widget-animation-speed.increase", "overlay.animation-speed",
                     appearance.WidgetAnimationSpeed > AppearanceSettings.MinimumWidgetAnimationSpeed,
                     appearance.WidgetAnimationSpeed < AppearanceSettings.MaximumWidgetAnimationSpeed),
-                    "overlay.animate-dialogs", null, busy),
+                    "overlay.modal-animation", null, busy),
                 UI.Text("Section animations apply inside supported widgets. Speed ranges from 0.5× (slower) to 2× (faster). Reduced motion overrides section and dialog animations.",
                     "overlay.animations.help").Classes("page-help"),
                 UI.Text(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial

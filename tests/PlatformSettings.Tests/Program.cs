@@ -81,6 +81,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(WidgetSectionAnimation.Slide, settings.Appearance.SectionAnimation);
         Assert.Equal(1d, settings.Appearance.WidgetAnimationSpeed);
         Assert.Equal(true, settings.Appearance.AnimateWidgetModals);
+        Assert.Equal(WidgetModalAnimation.Lift, settings.Appearance.ModalAnimation);
         Assert.Equal(WidgetSwitcherLayout.Radial, settings.Appearance.WidgetSwitcher);
         Assert.Equal(OverlayPosition.Center, settings.Appearance.OverlayPosition);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
@@ -122,6 +123,7 @@ static async Task SettingsRoundTrip()
             SectionAnimation = WidgetSectionAnimation.Slide,
             WidgetAnimationSpeed = 1.5,
             AnimateWidgetModals = false,
+            ModalAnimation = WidgetModalAnimation.Zoom,
             WidgetSwitcher = WidgetSwitcherLayout.Radial,
             OverlayPosition = OverlayPosition.BottomRight,
         },
@@ -135,6 +137,7 @@ static async Task SettingsRoundTrip()
     Assert.Equal(WidgetSectionAnimation.Slide, reloaded.Appearance.SectionAnimation);
     Assert.Equal(1.5d, reloaded.Appearance.WidgetAnimationSpeed);
     Assert.Equal(false, reloaded.Appearance.AnimateWidgetModals);
+    Assert.Equal(WidgetModalAnimation.Zoom, reloaded.Appearance.ModalAnimation);
     Assert.Equal(WidgetSwitcherLayout.Radial, reloaded.Appearance.WidgetSwitcher);
     Assert.Equal(OverlayPosition.BottomRight, reloaded.Appearance.OverlayPosition);
     foreach (var position in new[] { OverlayPosition.BottomLeft, OverlayPosition.Center })
@@ -304,6 +307,8 @@ static async Task SettingsRangesAreEnforced()
         SettingsJson(appearanceExtra: ",\"overlayPosition\":99"),
         SettingsJson(appearanceExtra: ",\"sectionAnimation\":\"unknown\""),
         SettingsJson(appearanceExtra: ",\"sectionAnimation\":99"),
+        SettingsJson(appearanceExtra: ",\"modalAnimation\":\"unknown\""),
+        SettingsJson(appearanceExtra: ",\"modalAnimation\":99"),
         SettingsJson(appearanceExtra: ",\"widgetAnimationSpeed\":0.49"),
         SettingsJson(appearanceExtra: ",\"widgetAnimationSpeed\":2.01"),
         SettingsJson(appearanceExtra: ",\"widgetAnimationSpeed\":\"fast\""),
@@ -1220,6 +1225,7 @@ file static class Assert
         Equal(expected.Appearance.AnimateWidgetSwitching, actual.Appearance.AnimateWidgetSwitching);
         Equal(expected.Appearance.SectionAnimation, actual.Appearance.SectionAnimation);
         Equal(expected.Appearance.AnimateWidgetModals, actual.Appearance.AnimateWidgetModals);
+        Equal(expected.Appearance.ModalAnimation, actual.Appearance.ModalAnimation);
         Equal(expected.Appearance.WidgetAnimationSpeed, actual.Appearance.WidgetAnimationSpeed);
         Equal(expected.Appearance.WidgetSurfaceAppearance, actual.Appearance.WidgetSurfaceAppearance);
         SequenceEqual(

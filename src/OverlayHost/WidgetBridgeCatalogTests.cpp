@@ -2792,15 +2792,27 @@ int main(int argc, char** argv) {
         if (parsed) CHECK(parsed->widgetAnimationSpeed == std::stod(value));
     }
     CHECK(appearance->animateWidgetModals);
-    for (const auto value : {"\"paging\"", "\"slide\"", "\"none\"", "\"unknown\"", "false"}) {
+    CHECK(appearance->modalAnimation == L"lift");
+    for (const auto value : {"\"lift\"", "\"zoom\"", "\"unknown\"", "false"}) {
+        std::string source(ValidAppearance);
+        source.insert(1, std::string("\"modalAnimation\":") + value + ",");
+        error.clear();
+        const auto parsed = widgetrail::testing::ParsePlatformAppearance(source, error);
+        const auto option = std::string_view(value);
+        CHECK(parsed.has_value() == (option == "\"lift\"" || option == "\"zoom\""));
+        if (parsed) CHECK(parsed->modalAnimation == (option == "\"zoom\"" ? L"zoom" : L"lift"));
+    }
+    for (const auto value : {"\"paging\"", "\"slide\"", "\"verticalslide\"", "\"reveal\"", "\"coverslide\"", "\"none\"", "\"unknown\"", "false"}) {
         std::string source(ValidAppearance);
         source.insert(1,std::string("\"sectionAnimation\":")+value+",");
         error.clear();
         const auto parsed = widgetrail::testing::ParsePlatformAppearance(source,error);
         const bool invalid = std::string_view(value) == "false" || std::string_view(value) == "\"unknown\"";
         CHECK(parsed.has_value() != invalid);
-        if (parsed) CHECK(parsed->sectionAnimation == (std::string_view(value)=="\"slide\"" ? L"slide" :
-            std::string_view(value)=="\"none\"" ? L"none" : L"paging"));
+        if (parsed) {
+            const std::string id(value + 1, std::char_traits<char>::length(value) - 2);
+            CHECK(parsed->sectionAnimation == std::wstring(id.begin(), id.end()));
+        }
     }
     for (const auto value : {"true","false","\"false\""}) {
         std::string source(ValidAppearance);

@@ -416,6 +416,9 @@ static async Task AnimationPreferences()
     {
         ("slide", WidgetSectionAnimation.Slide),
         ("none", WidgetSectionAnimation.None),
+        ("verticalslide", WidgetSectionAnimation.VerticalSlide),
+        ("reveal", WidgetSectionAnimation.Reveal),
+        ("coverslide", WidgetSectionAnimation.CoverSlide),
         ("paging", WidgetSectionAnimation.Paging),
     })
     {
@@ -426,6 +429,15 @@ static async Task AnimationPreferences()
         Assert.Equal("section-animation." + id, select.SelectOptions!.Single(option => option.IsSelected).ActionId);
         Assert.Equal(expected, (await Store(temp.Path).LoadAsync()).Appearance.SectionAnimation);
         Assert.Equal(SettingsPage.Overlay, widget.CurrentPage);
+    }
+    foreach (var (id, expected) in new[] { ("zoom", WidgetModalAnimation.Zoom), ("lift", WidgetModalAnimation.Lift) })
+    {
+        await Action(widget, "modal-animation." + id);
+        var snapshot = Snapshot(widget);
+        Assert.Valid(snapshot);
+        var select = Nodes(snapshot.Root).Single(node => node.Id == "overlay.modal-animation");
+        Assert.Equal(id, select.SelectOptions!.Single(option => option.IsSelected).Id);
+        Assert.Equal(expected, (await Store(temp.Path).LoadAsync()).Appearance.ModalAnimation);
     }
     await Action(widget, "widget-modal-animation.toggle");
     Assert.Equal(false, (await Store(temp.Path).LoadAsync()).Appearance.AnimateWidgetModals);
@@ -3203,6 +3215,7 @@ file static class Assert
         Equal(expected.Appearance.AnimateWidgetSwitching, actual.Appearance.AnimateWidgetSwitching);
         Equal(expected.Appearance.SectionAnimation, actual.Appearance.SectionAnimation);
         Equal(expected.Appearance.AnimateWidgetModals, actual.Appearance.AnimateWidgetModals);
+        Equal(expected.Appearance.ModalAnimation, actual.Appearance.ModalAnimation);
         Equal(expected.Appearance.WidgetAnimationSpeed, actual.Appearance.WidgetAnimationSpeed);
         Equal(expected.Appearance.WidgetSurfaceAppearance, actual.Appearance.WidgetSurfaceAppearance);
         SequenceEqual(

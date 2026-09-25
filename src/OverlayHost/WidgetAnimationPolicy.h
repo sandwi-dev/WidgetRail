@@ -10,8 +10,8 @@
 namespace widgetrail::animation {
 using Rect = declarative::Rect;
 
-enum class SectionStyle { Paging, Slide, None };
-enum class ModalStyle { Lift, None };
+enum class SectionStyle { Paging, Slide, None, VerticalSlide, Reveal, CoverSlide };
+enum class ModalStyle { Lift, None, Zoom };
 
 // Host preferences, independent of widget declarations and graphics resources.
 // Stable IDs can be persisted by settings without serializing enum ordinals.
@@ -22,6 +22,9 @@ struct SectionPreset {
 inline constexpr std::array SectionPresets{
     SectionPreset{L"slide", L"Slide", SectionStyle::Slide},
     SectionPreset{L"paging", L"Paging", SectionStyle::Paging},
+    SectionPreset{L"verticalslide", L"Vertical slide", SectionStyle::VerticalSlide},
+    SectionPreset{L"reveal", L"Reveal", SectionStyle::Reveal},
+    SectionPreset{L"coverslide", L"Cover slide", SectionStyle::CoverSlide},
     SectionPreset{L"none", L"None", SectionStyle::None},
 };
 constexpr SectionStyle ParseSectionStyle(std::wstring_view id) noexcept {
@@ -110,7 +113,7 @@ inline Recipe Stationary(Rect bounds, Rect clip) noexcept {
     return {{bounds, 1, clip}, {bounds, 1, clip}, 0, Smooth};
 }
 inline unsigned SectionDuration(SectionStyle style) noexcept {
-    return style == SectionStyle::None ? 0 : 260;
+    return style == SectionStyle::None ? 0 : 208;
 }
 struct SectionPlan {
     Recipe incoming, outgoing;
@@ -125,6 +128,22 @@ inline SectionPlan Section(SectionStyle style, Rect bounds, Rect clip, Rect outg
         const float travel = std::max(bounds.width, clip.width) * (direction < 0 ? -1 : 1);
         plan.incoming.from.bounds.x += travel;
         plan.outgoing.to.bounds.x -= travel;
+        return plan;
+    }
+    if (style == SectionStyle::VerticalSlide) {
+        const float travel = std::max(bounds.height, clip.height) * (direction < 0 ? -1 : 1);
+        plan.incoming.from.bounds.y += travel;
+        plan.outgoing.to.bounds.y -= travel;
+        return plan;
+    }
+    if (style == SectionStyle::Reveal || style == SectionStyle::CoverSlide) {
+        // Complementary clips keep translucent content from displaying both
+        // pages at once. Clips live in viewport coordinates, outside transforms.
+        const bool forward = direction >= 0;
+        plan.incoming.from.clip = {forward ? clip.x + clip.width : clip.x, clip.y, 0, clip.height};
+        plan.outgoing.to.clip = {forward ? clip.x : clip.x + clip.width, clip.y, 0, clip.height};
+        if (style == SectionStyle::CoverSlide)
+            plan.incoming.from.bounds.x += (forward ? 1 : -1) * std::max(bounds.width, clip.width);
         return plan;
     }
     // The new page rises from below; the old page recedes behind it. Neither
@@ -155,13 +174,24 @@ inline Recipe Layout(SectionStyle style, Rect bounds, Rect clip, Pose previous, 
     recipe.milliseconds = SectionDuration(style);
     return recipe;
 }
+inline Rect ModalPose(ModalStyle style, Rect bounds, float amount) noexcept {
+    if (style == ModalStyle::Zoom) {
+        const float inset = .05F * amount;
+        bounds.x += bounds.width * inset;
+        bounds.y += bounds.height * inset;
+        bounds.width *= 1 - 2 * inset;
+        bounds.height *= 1 - 2 * inset;
+    }
+    bounds.y += 14 * amount;
+    return bounds;
+}
 inline Recipe ModalEnter(ModalStyle style, Rect bounds, Rect clip, float opacity, bool scrim) noexcept {
     auto recipe = Stationary(bounds, clip);
     recipe.milliseconds = style == ModalStyle::None ? 0 : 260;
     recipe.curve = Smooth;
     recipe.from.opacity = opacity;
     if (!scrim)
-        recipe.from.bounds.y += 14 * (1 - opacity);
+        recipe.from.bounds = ModalPose(style, bounds, 1 - opacity);
     return recipe;
 }
 inline Recipe ModalExit(ModalStyle style, Rect bounds, Rect clip, float opacity, bool scrim) noexcept {
@@ -171,7 +201,7 @@ inline Recipe ModalExit(ModalStyle style, Rect bounds, Rect clip, float opacity,
     recipe.from.opacity = scrim ? opacity : 1;
     recipe.to.opacity = 0;
     if (!scrim)
-        recipe.to.bounds.y += 14 * opacity;
+        recipe.to.bounds = ModalPose(style, bounds, opacity);
     return recipe;
 }
 } // namespace widgetrail::animation

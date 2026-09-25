@@ -23,6 +23,7 @@ public sealed record BridgePlatformAppearance
     public required bool AnimateWidgetSwitching { get; init; }
     public string SectionAnimation { get; init; } = "slide";
     public bool AnimateWidgetModals { get; init; } = true;
+    public string ModalAnimation { get; init; } = "lift";
     public double WidgetAnimationSpeed { get; init; } = 1;
     public WidgetSwitcherLayout WidgetSwitcher { get; init; } = WidgetSwitcherLayout.Rail;
     public OverlayPosition OverlayPosition { get; init; } = OverlayPosition.Center;
@@ -140,6 +141,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             AnimateWidgetSwitching = appearance.AnimateWidgetSwitching,
             SectionAnimation = appearance.SectionAnimation.ToString().ToLowerInvariant(),
             AnimateWidgetModals = appearance.AnimateWidgetModals,
+            ModalAnimation = appearance.ModalAnimation.ToString().ToLowerInvariant(),
             WidgetAnimationSpeed = appearance.WidgetAnimationSpeed,
             WidgetSwitcher = appearance.WidgetSwitcher,
             OverlayPosition = appearance.OverlayPosition,

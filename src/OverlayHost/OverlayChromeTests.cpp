@@ -1173,10 +1173,10 @@ void CheckWidgetAnimationPolicies() {
     using namespace widgetrail::animation;
     const Rect bounds{20, 30, 200, 120};
     const auto plan = Section(SectionStyle::Paging, bounds, bounds, bounds, 1);
-    Check(plan.incoming.milliseconds == 260 && plan.outgoing.milliseconds == 260,
+    Check(plan.incoming.milliseconds == 208 && plan.outgoing.milliseconds == 208,
           "paging has one shared duration");
     const auto incoming = plan.incoming.Start(100, 1000), outgoing = plan.outgoing.Start(100, 1000);
-    for (int tick = 0; tick <= 260; ++tick) {
+    for (int tick = 0; tick <= 208; ++tick) {
         const auto front = Sample(incoming, 100 + tick), back = Sample(outgoing, 100 + tick);
         Check(front.opacity == 1 && back.opacity == 1, "paging never fades either page");
         Check(std::abs(back.clip.y + back.clip.height - front.bounds.y) < .001F,
@@ -1222,11 +1222,49 @@ void CheckWidgetAnimationPolicies() {
     for (const auto speed : {.5, 1.0, 2.0}) {
         const auto page = Section(SectionStyle::Slide,bounds,bounds,bounds,1).incoming.Start(0,1000,speed);
         const auto modal = ModalEnter(ModalStyle::Lift,bounds,bounds,0,false).Start(0,1000,speed);
-        Check(page.duration == static_cast<std::int64_t>(260/speed) && modal.duration == page.duration,
+        Check(page.duration == static_cast<std::int64_t>(208/speed) && modal.duration == static_cast<std::int64_t>(260/speed),
             "bounded speed controls page and gentler modal timing consistently");
         Check(std::abs(Sample(modal,modal.duration/2).opacity-.5F)<.001F,
             "modal uses gentle acceleration instead of the old fast initial fade");
     }
+    for (int direction : {-1, 1}) {
+        const auto vertical = Section(SectionStyle::VerticalSlide, bounds, bounds, bounds, direction);
+        Check(vertical.incoming.from.bounds.y == bounds.y + direction * bounds.height &&
+              vertical.outgoing.to.bounds.y == bounds.y - direction * bounds.height,
+              "vertical slide follows navigation direction across a complete page");
+        for (const auto style : {SectionStyle::Reveal, SectionStyle::CoverSlide}) {
+            const auto reveal = Section(style, bounds, bounds, bounds, direction);
+            const auto frontMotion = reveal.incoming.Start(0, 1000);
+            const auto backMotion = reveal.outgoing.Start(0, 1000);
+            for (int tick = 0; tick <= 208; ++tick) {
+                const auto front = Sample(frontMotion, tick), back = Sample(backMotion, tick);
+                const auto edge = direction > 0 ? back.clip.x + back.clip.width : front.clip.x + front.clip.width;
+                const auto other = direction > 0 ? front.clip.x : back.clip.x;
+                Check(std::abs(edge - other) < .001F &&
+                      std::abs(front.clip.width + back.clip.width - bounds.width) < .001F,
+                      "reveal and cover clips meet without gaps or translucent overlap");
+                Check(front.opacity == 1 && back.opacity == 1,
+                      "new section presets keep brightness constant");
+                Check(back.bounds.x == bounds.x && back.bounds.y == bounds.y,
+                      "cover and reveal leave the outgoing page stationary");
+                if (style == SectionStyle::Reveal)
+                    Check(front.bounds.x == bounds.x, "reveal clips instead of moving content");
+                else
+                    Check(std::abs((direction > 0 ? front.bounds.x : front.bounds.x + front.bounds.width) - edge) < .001F,
+                          "cover reveal edge tracks the moving incoming page");
+            }
+        }
+    }
+    const auto zoom = ModalEnter(ModalStyle::Zoom, bounds, bounds, 0, false);
+    Check(std::abs(zoom.from.bounds.width - bounds.width * .9F) < .001F &&
+          std::abs(zoom.from.bounds.x + zoom.from.bounds.width / 2 - (bounds.x + bounds.width / 2)) < .001F,
+          "modal zoom begins at a noticeable 90 percent with a centered horizontal anchor");
+    const auto zoomScrim = ModalEnter(ModalStyle::Zoom, bounds, bounds, 0, true);
+    Check(zoomScrim.from.bounds.width == bounds.width && zoomScrim.from.bounds.y == bounds.y,
+          "modal scrim fades without scaling or moving");
+    const auto zoomExit = ModalExit(ModalStyle::Zoom, bounds, bounds, 1, false);
+    Check(zoomExit.to.bounds.width == zoom.from.bounds.width && zoomExit.to.bounds.y == zoom.from.bounds.y,
+          "modal zoom exit returns to the entrance pose");
     const Pose oldLabel{{5, 10, 80, 40}, 1, bounds};
     const auto label = Layout(SectionStyle::Paging, bounds, bounds, oldLabel, false);
     const auto selection = Layout(SectionStyle::Paging, bounds, bounds, oldLabel, true);
@@ -1473,6 +1511,61 @@ void CheckWidgetCompositorPixels() {
     Sleep(390); DwmFlush();
     Check(GetGValue(pixel())>220 && surface.paintCounters().content==speedPaints,
         "half-speed motion reaches its endpoint without UI-thread painting");
+    for (const auto style : {animation::SectionStyle::VerticalSlide, animation::SectionStyle::Reveal,
+                             animation::SectionStyle::CoverSlide}) {
+        auto home = makeScene(L"home", D2D1::ColorF(D2D1::ColorF::Red));
+        home->animations = {style, animation::ModalStyle::Zoom, .5};
+        commit(home);
+        Sleep(450); DwmFlush();
+        for (bool reverse : {false, true}) {
+            auto page = makeScene(reverse ? L"home" : L"library", D2D1::ColorF(0, 1, 0, .5F));
+            page->animations = home->animations;
+            commit(page);
+            const auto pagePaints = surface.paintCounters().content;
+            const auto uploads = surface.widgetCompositionCounters().rasterUploads;
+            Sleep(280); DwmFlush();
+            const auto revealed = pixel();
+            Check(GetRValue(revealed) < 10 && GetGValue(revealed) > 110 && GetGValue(revealed) < 145,
+                  "new presets reveal transparent incoming content without old-page bleed in both directions");
+            const auto mapped = surface.MapWidgetCompositionInput({64, 64});
+            Check(std::isfinite(mapped.x) && std::isfinite(mapped.y),
+                  "revealed page accepts input through its compositor transform");
+            const auto priorCaptures = surface.widgetCompositionCounters().interruptionCaptures;
+            auto interrupted = makeScene(reverse ? L"library" : L"home", D2D1::ColorF(D2D1::ColorF::Blue));
+            interrupted->animations = home->animations;
+            Check(surface.paintCounters().content == pagePaints &&
+                  surface.widgetCompositionCounters().rasterUploads == uploads,
+                  "new presets animate without application paints or raster uploads");
+            commit(interrupted);
+            Check(surface.widgetCompositionCounters().interruptionCaptures == priorCaptures + 1,
+                  "new presets capture interrupted geometry once");
+            Sleep(450); DwmFlush();
+            Check(GetBValue(pixel()) > 220, "interrupted preset settles to the newest page");
+            // Restore the correct starting page for reverse navigation.
+            if (!reverse) {
+                auto library = makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Red));
+                library->animations = home->animations;
+                commit(library);
+                Sleep(450); DwmFlush();
+            }
+        }
+    }
+    auto zoomBase = makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue));
+    zoomBase->animations = {animation::SectionStyle::Slide, animation::ModalStyle::Zoom, .5};
+    commit(zoomBase);
+    auto zoomModal = modalScene();
+    zoomModal->animations = zoomBase->animations;
+    commit(zoomModal);
+    Sleep(140); DwmFlush();
+    Check(GetRValue(pixel(24, 64)) < 20 && GetRValue(pixel()) > 20,
+          "zoom modal starts visibly inset while its center appears");
+    commit(zoomBase);
+    Sleep(70); DwmFlush();
+    commit(zoomModal);
+    const auto zoomPaints = surface.paintCounters().content;
+    Sleep(550); DwmFlush();
+    Check(GetRValue(pixel(25, 64)) > 220 && surface.paintCounters().content == zoomPaints,
+          "interrupted zoom modal reaches full size without UI paints");
     surface.Reset();
     DestroyWindow(window);
     UnregisterClassW(name, wc.hInstance);
