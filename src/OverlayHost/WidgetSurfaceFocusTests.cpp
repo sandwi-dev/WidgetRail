@@ -1,6 +1,7 @@
 #include "DeclarativeRenderer.h"
 #include "ControllerNavigation.h"
 #include "WidgetSurfaceFocus.h"
+#include "InactiveWidgetProjection.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -581,6 +582,27 @@ int main() {
     cachedMiddlePage.initialFocusId = L"session.page.23";
     Check(memory.Restore(L"paged", cachedMiddlePage) == L"session.page.23",
           "reverse paging restores the cached page's leaving edge");
+
+    {
+        auto parent = Snapshot(L"library");
+        auto modal = parent;
+        modal.root = {};
+        modal.root.kind = L"modalLayer";
+        modal.root.id = L"details.layer";
+        modal.root.children = {parent.root, Button(L"play")};
+        modal.activeInputScopeId = L"details.scope";
+        modal.initialFocusId = L"play";
+        Check(!widgetrail::ProjectInactiveWidgetParent(modal, false),
+            "an active modal is always authored by its widget");
+        const auto retained = widgetrail::ProjectInactiveWidgetParent(modal, true);
+        Check(retained && retained->root.id == parent.root.id &&
+            retained->activeInputScopeId == parent.root.inputScopeId,
+            "inactive retained modal shows its parent before worker admission");
+        Check(modal.root.kind == L"modalLayer" && retained->sequence == modal.sequence,
+            "inactive projection never edits the retained protocol checkpoint");
+        Check(!widgetrail::ProjectInactiveWidgetParent(parent, true),
+            "ordinary retained pages are unchanged");
+    }
 
     std::cout << "WidgetSurfaceFocusTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;

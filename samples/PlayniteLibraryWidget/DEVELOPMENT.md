@@ -164,11 +164,18 @@ A poster opens a `WidgetModal` instead of launching. The modal retains the game'
 opaque identity and displays current provider metadata, rechecking current membership
 before enabling Play. Launch still uses the existing fresh provider revalidation.
 B dismisses the modal; background page geometry and scroll are unchanged. Deactivation
-clears details state. The host/Bridge/SDK must support protocol 55 to display details.
+clears details state. A widget-instance prefix plus monotonically increasing opening identity supplies
+the modal ID (and therefore its input scope and scroll-container ID). Loading, refresh,
+and tab changes retain that ID; another opening gets a new one. This uses the existing
+SDK modal contract without adding focus-reset APIs. The host/Bridge/SDK must support protocol 55 to display details.
 Opening details resolves the full game record separately from compact catalog pages.
 HTML descriptions and notes become bounded plain text; they are never rendered as HTML.
 Home and Library use the same navigation header and frame; Library filters/results occupy
-a separate panel below it. The game count follows Clear, and RS Search is shown in its footer.
+a separate panel below it. Both fill available height with 24 logical pixels of vertical
+padding. The themed count badge follows Clear, and RS Search is shown in its footer.
+The modal uses tile artwork beside source and controls. Its X menu shares the poster's
+action definition and current organization authority; categories are available there
+instead of a separate section.
 
 Achievements (`GET /api/games/{id}/achievements`) and activity
 (`GET /api/games/{id}/activity`) load lazily and are retained only while that modal stays

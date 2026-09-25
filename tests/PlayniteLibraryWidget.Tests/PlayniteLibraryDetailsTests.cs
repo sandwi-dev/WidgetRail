@@ -10,6 +10,49 @@ public sealed partial class PlayniteLibraryTests
     private const string DetailAction = "playnite-library.details.";
 
     [TestMethod, Timeout(30_000)]
+    public async Task EachOpeningGetsFreshScopeButLoadingRefreshAndTabsKeepIt()
+    {
+        var host = new FakeHost(3);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var page = Snapshot(widget, 123_001);
+        var games = Nodes(page.Root).Where(node => node.ActionId == PlayniteLibraryActions.DetailsOpen).Take(2).ToArray();
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, games[0].Id));
+        var first = Snapshot(widget, 123_002);
+        var firstScroll = Nodes(first.Root).Single(node => node.StyleClasses.Contains("wrail-modal__scroll")).Id;
+        Assert.AreEqual(PlayniteLibraryDetailsPresentation.PlayId, first.InitialFocusId);
+        await Bounded(widget.WhenDetailsIdleAsync(), "detail loading");
+        Assert.AreEqual(first.ActiveInputScopeId, Snapshot(widget, 123_003).ActiveInputScopeId);
+        await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+        await Bounded(widget.WhenDetailsIdleAsync(), "detail refresh");
+        Assert.AreEqual(first.ActiveInputScopeId, Snapshot(widget, 123_004).ActiveInputScopeId);
+        await widget.OnActionAsync(new(DetailAction + "tab.activity", "tab"));
+        await Bounded(widget.WhenDetailsIdleAsync(), "detail tab");
+        Assert.AreEqual(first.ActiveInputScopeId, Snapshot(widget, 123_005).ActiveInputScopeId);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsClose, "close"));
+        Assert.AreEqual(page.ActiveInputScopeId, Snapshot(widget, 123_006).ActiveInputScopeId);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, games[1].Id));
+        var second = Snapshot(widget, 123_007);
+        Assert.AreNotEqual(first.ActiveInputScopeId, second.ActiveInputScopeId);
+        Assert.AreNotEqual(firstScroll, Nodes(second.Root).Single(node => node.StyleClasses.Contains("wrail-modal__scroll")).Id);
+        Assert.AreEqual(PlayniteLibraryDetailsPresentation.PlayId, second.InitialFocusId);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(second).Count);
+        await Background(widget);
+        Assert.IsNull(widget.RenderState.Value.DetailsItem, "Details must retire on close, before any reopening.");
+        Assert.AreNotEqual(ViewNodeKind.ModalLayer, Snapshot(widget, 123_008).Root.Kind);
+        var restartedHost = new FakeHost(3);
+        var restarted = Create(restartedHost);
+        await Interactive(restarted);
+        await Ready(restarted, restartedHost);
+        var reloadedGame = Nodes(Snapshot(restarted, 123_009).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await restarted.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, reloadedGame.Id));
+        Assert.AreNotEqual(first.ActiveInputScopeId, Snapshot(restarted, 123_010).ActiveInputScopeId,
+            "A new worker must not reuse focus from an old worker's first opening.");
+        await Background(restarted);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task OptionalDetailsLoadLazilyAndCacheUntilRefresh()
     {
         var host = new FakeHost(3);
@@ -122,6 +165,28 @@ public sealed partial class PlayniteLibraryTests
 
 public sealed partial class PlayniteLibraryLayoutTests
 {
+    [TestMethod]
+    public void DetailsUsesPosterAndSameGameOptionsWithoutCategorySection()
+    {
+        var game = ArtworkItem("game-app", "game-id", "Test game", "Steam", "poster-handle", "hero-handle");
+        var organization = PlayniteLibraryPrivateState.Empty with
+        { Categories = [new("favorites", "My games", [game.Value.SavedId])], FavoriteSavedIds = [game.Value.SavedId] };
+        var page = PlayniteLibraryPresentation.Render(State(Snapshot(WidgetPagedResourceStatus.Ready, [game]),
+            organization, PlayniteLibraryRoute.Library, []));
+        var before = new PresentationWidget(page).RenderSnapshot("details.options", 1);
+        var tile = Nodes(before.Root).Single(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        var modal = PlayniteLibraryDetailsPresentation.Create(game, true, null, "Ready", null,
+            categories: organization.Categories, openingId: "details.opening.7", favorite: true);
+        var snapshot = new PresentationWidget(page.WithModal(modal)).RenderSnapshot("details.options", 2);
+        var nodes = Nodes(snapshot.Root.Children[1]).ToArray();
+        var options = nodes.Single(node => node.Id == PlayniteLibraryDetailsPresentation.ContentId);
+        CollectionAssert.AreEqual(tile.ContextActions.ToArray(), options.ContextActions.ToArray());
+        Assert.AreEqual(ControllerButton.X, options.ContextMenuButton);
+        Assert.AreEqual("poster-handle", nodes.Single(node => node.Id == "playnite-library.details." + "poster").ArtworkHandle);
+        Assert.IsFalse(nodes.Any(node => node.Id == "playnite-library.details." + "categories.title"));
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    }
+
     [TestMethod]
     public void RichDetailsRemainBoundedAndValidAcrossOptionalStates()
     {

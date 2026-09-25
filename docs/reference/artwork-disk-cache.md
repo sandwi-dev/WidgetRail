@@ -24,3 +24,9 @@ no-cache, private, unsupported Vary, Set-Cookie and automatic redirect responses
 are not persisted. Expired entries are fetched again. No conditional revalidation
 or stale-on-error serving is introduced. Cache IO exceptions do not escape the
 optional storage helper.
+
+Retiring an opaque-artwork request does not schedule its own repaint: the same
+retained view may still lack worker authority, so repainting immediately would loop.
+A newly admitted snapshot rearms the affected widget once, including admissions whose
+semantic changes otherwise need no raster work. Ready pixels remain reusable, and
+actual terminal failures keep their existing authority-scoped failure behavior.

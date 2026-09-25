@@ -21,7 +21,7 @@
 .playnite-library-surface-stage { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; overflow: clip; }
 .playnite-library-home-foreground { width: 100%; min-width: 520px; max-width: 1180px; height: 100%; min-height: 0px; flex-grow: 1; flex-shrink: 1; flex-basis: 0; overflow: clip; padding: 18px 20px 16px; }
 .playnite-library-home-content { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 0; flex-shrink: 0; gap: 14px; }
-.playnite-library-home-fallback { max-height: 760px; gap: 12px; }
+.playnite-library-home-fallback { gap: 12px; }
 .playnite-library-browse-surface { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; padding: 0px; background: rgba(0, 0, 0, 0); overflow: clip; }
 .playnite-library-browse-background { width: 100%; height: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; align: center; justify: center; background: var(--canvas, var(--surface)); overflow: clip; }
 .playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; flex-basis: 0; padding: 18px; gap: 12px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 16px; opacity: 0.84; }
@@ -58,7 +58,7 @@
 .playnite-library-query { min-width: 0px; flex-grow: 0; flex-shrink: 0; gap: 10px; padding: 4px; background: transparent; }
 .playnite-library-search { width: 100%; min-width: 0px; min-height: 42px; flex-grow: 1; flex-shrink: 1; font-weight: 400; text-align: start; }
 .playnite-library-collections,
-.playnite-library-filters { min-width: 0px; flex-shrink: 0; gap: 8px; }
+.playnite-library-filters { align: center; min-width: 0px; flex-shrink: 0; gap: 8px; }
 .playnite-library-main { width: 100%; min-width: 0px; min-height: 0; }
 .playnite-library-content { width: 100%; min-width: 0px; min-height: 0; flex-grow: 1; flex-basis: 0; gap: 10px; }
 .playnite-library-empty { width: 100%; min-width: 0px; max-width: 560px; flex-shrink: 0; gap: 8px; padding: 16px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
@@ -91,7 +91,6 @@
 .wrail-poster-tile__metadata { color: var(--text-muted); }
 .wrail-poster-tile__state { color: var(--accent); }
 .playnite-library-actions { min-width: 0px; flex-shrink: 0; gap: 8px; }
-.playnite-library-details-actions { min-width: 0px; flex-shrink: 0; align: center; justify: space-between; gap: 16px; }
 .playnite-library-footer { min-height: 28px; flex-shrink: 0; flex-wrap: wrap; gap: 6px; }
 .playnite-library-hint-unavailable { opacity: 0.64; }
 .playnite-library-warning { flex-shrink: 0; margin: 8px 0 0; }
@@ -165,8 +164,6 @@
 
 .playnite-library-tabs { min-width: 0px; max-width: 360px; gap: 12px; flex-shrink: 1; padding: 6px 12px; }
 .playnite-library-tab-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); flex-shrink: 0; }
-.playnite-library-details-hero { corner-radius: 12px; scrim-color: var(--poster-scrim, rgba(0, 0, 0, 0.65)); overflow: clip; }
-.playnite-library-details-hero-content { min-height: 160px; justify: end; gap: 10px; padding: 20px; }
 
 .playnite-library-details-toolbar { align: center; gap: 12px; min-width: 0; flex-shrink: 0; }
 .playnite-library-details-row { direction: column; min-width: 0; padding: 12px; gap: 6px; background: var(--surface-subtle, var(--surface-muted)); corner-radius: 10px; }
@@ -175,6 +172,11 @@
 .playnite-library-details-tabs { min-width: 0; flex-grow: 1; flex-basis: 0; flex-shrink: 1; gap: 8px; padding: 6px 10px; }
 .playnite-library-details-paragraphs { min-width: 0; gap: 6px; }
 
-.playnite-library-common-frame { width: 100%; height: 100%; min-width: 0px; min-height: 0px; max-width: 1180px; max-height: 760px; padding: 18px 20px 16px; flex-grow: 1; flex-basis: 0; gap: 12px; }
-.playnite-library-result-count { color: var(--text-muted); font-size: 13px; min-width: 0px; padding: 0px 8px; }
+.playnite-library-common-frame { width: 100%; height: 100%; min-width: 0px; min-height: 0px; max-width: 1180px; padding: 24px 20px; flex-grow: 1; flex-basis: 0; gap: 12px; }
+.playnite-library-result-count { color: var(--text); background: var(--surface-subtle, var(--surface-muted)); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 10px; font-size: 13px; font-weight: 600; min-width: 0px; padding: 9px 12px; margin: 0px 0px 0px 8px; }
 .playnite-library-details-value { padding: 4px 0px; }
+
+.playnite-library-details-header { min-width: 0; align: start; gap: 20px; flex-shrink: 0; }
+.playnite-library-details-poster { width: 144px; height: 216px; flex-shrink: 0; corner-radius: 12px; overflow: clip; background: var(--surface-muted); }
+.playnite-library-details-controls { min-width: 0; flex-grow: 1; flex-basis: 0; gap: 12px; }
+.playnite-library-details-buttons { min-width: 0; flex-wrap: wrap; gap: 10px; }

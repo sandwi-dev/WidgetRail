@@ -51,10 +51,13 @@ Use the **Home** and **Library** navigation tabs to switch between peer destinat
 Each keeps its own game focus, filters, and scroll position. Home shows installed
 games; Library includes uninstalled games too. Selecting either destination enters
 its game list. Game details appears inside the widget with the page dimmed behind
-it; B restores the selected game. Long details scroll inside the panel.
+it; B restores the selected game. Each opening starts at Play/Install, while
+refreshing or switching detail tabs preserves your position. The poster and primary
+controls share the top row. X offers the same game actions as the poster, including
+category membership. Long details scroll inside the panel.
 
 The **Installed** filter narrows Library. Game details offers **Install** for uninstalled
-games and **X → Uninstall** for installed games, with confirmation before requesting
+games and **Uninstall** for installed games, with confirmation before requesting
 uninstallation. Follow any Playnite or launcher prompts, then refresh to see the result.
 Pinned views keep showing the page without its modal.
 

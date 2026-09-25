@@ -248,7 +248,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
             return page.WithModal(PlayniteLibraryDetailsPresentation.Create(
                 details, current is not null, local.LaunchingSavedId, local.Status,
                 state.LaunchStates.TryGetValue(details.Value.SavedId, out var launchState) ? launchState : null,
-                local.DetailsLoading, local.DetailsError, local.DetailsExtras, state.Organization.Categories));
+                local.DetailsLoading, local.DetailsError, local.DetailsExtras, state.Organization.Categories,
+                local.DetailsScopePrefix + "." + local.DetailsOpening.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                state.Organization.FavoriteSavedIds.Contains(details.Value.SavedId),
+                state.OrganizationBusy || state.BrowseRetained));
         }
         return page;
     }
@@ -466,8 +469,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         if (TryResolveCategoryMembershipAction(action.ActionId, out var categoryId))
         {
-            var categorySource = action.SourceElementId.StartsWith(DetailsPrefix + "category.", StringComparison.Ordinal)
-                ? ResolveActionSource(PlayniteLibraryDetailsPresentation.PlayId) : action.SourceElementId;
+            var categorySource = ResolveActionSource(action.SourceElementId);
             if (categorySource is null) return;
             await ToggleCategoryMembershipAsync(
                     categoryId, categorySource, cancellationToken)
@@ -2250,6 +2252,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _model.Update(state => state with
         {
             DetailsItem = item, DetailsGeneration = generation,
+            DetailsOpening = preserveTab ? state.DetailsOpening : state.DetailsOpening + 1,
             DetailsLoading = true, DetailsError = null, DetailsExtras = new() { Tab = tab },
         });
         var routeLifetime = _navigation.Value.RouteCancellationToken;
@@ -2289,7 +2292,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     private string? ResolveActionSource(string sourceElementId)
     {
-        if (sourceElementId == PlayniteLibraryDetailsPresentation.PlayId &&
+        if (sourceElementId is PlayniteLibraryDetailsPresentation.PlayId or PlayniteLibraryDetailsPresentation.ContentId &&
             _model.Value.DetailsItem is { } details)
             sourceElementId = PlayniteLibraryIdentity.FocusId("grid", details.Key);
         var item = CurrentLibrary.Snapshot.Items.Concat(_model.Value.FixedRows.All)

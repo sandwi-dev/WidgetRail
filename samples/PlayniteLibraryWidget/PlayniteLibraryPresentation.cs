@@ -1115,22 +1115,11 @@ internal static class PlayniteLibraryPresentation
             tile = tile.AddClasses("playnite-library-browse-tile");
         if (interactive && current is not null && !launching)
         {
-            var actionEnabled = PlayniteLibraryAvailabilityPresentation.CanManage(current);
-            tile = tile
-                .ContextMenuShortcut(ControllerButton.X)
-                .ContextAction(PlayniteLibraryActions.Launch, "Play", disabled: !availability.Launchable)
-                .ContextAction(PlayniteLibraryActions.Favorite,
-                    favorite ? "Remove favorite" : "Add favorite", disabled: !actionEnabled)
-                .ContextAction(PlayniteLibraryActions.Hide, "Hide", disabled: !actionEnabled)
-                .ContextAction(PlayniteLibraryActions.RefreshSource, "Refresh source",
-                    disabled: !actionEnabled);
-            foreach (var category in (categories ?? []).Take(5))
+            tile = tile with
             {
-                var included = PlayniteLibraryCategoryPolicy.Contains(category, savedId);
-                tile = tile.ContextAction(PlayniteLibraryActions.CategoryMembership(category.Id),
-                    included ? $"Remove from {category.Name}" : $"Add to {category.Name}",
-                    disabled: !actionEnabled);
-            }
+                ContextMenuButton = ControllerButton.X,
+                ContextActions = PlayniteLibraryGameOptions.Create(current, favorite, categories),
+            };
         }
         WidgetElement result = tile;
         if (current is not null)

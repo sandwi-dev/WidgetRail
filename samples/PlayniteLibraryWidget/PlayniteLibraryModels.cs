@@ -72,6 +72,8 @@ internal sealed record PlayniteLibraryRenderState
     internal PlayniteLibraryItem? DetailsItem { get; init; }
     internal PlayniteDetailsExtras DetailsExtras { get; init; } = new();
     internal long DetailsGeneration { get; init; }
+    internal long DetailsOpening { get; init; }
+    internal string DetailsScopePrefix { get; init; } = "playnite-library.details." + Guid.NewGuid().ToString("N");
     internal bool DetailsLoading { get; init; }
     internal string? DetailsError { get; init; }
     internal bool SearchFocusPending { get; init; }

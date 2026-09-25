@@ -54,7 +54,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             var panelStyle = theme.Resolve(new WrssElement("stack", foreground.Id,
                 foreground.StyleClasses.ToHashSet(StringComparer.Ordinal)));
             Assert.AreEqual("1180px", panelStyle.Get("max-width")?.Text);
-            Assert.AreEqual("760px", panelStyle.Get("max-height")?.Text);
+            Assert.IsNull(panelStyle.Get("max-height"));
             Assert.IsFalse(Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.FocusPresentationSurface),
                 "Fallbacks must not show a stale selected-game summary.");
         }

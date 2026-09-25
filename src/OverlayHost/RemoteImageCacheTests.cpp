@@ -1276,13 +1276,18 @@ int main() {
         const auto key = RemoteImageCache::TrustedArtworkKey(
             L"resume-artwork", L"poster", L"stable-cover");
         assert(resumeCache.RequestTrustedArtwork(key, authority) == RemoteImageRequestResult::Queued);
+        const auto retiredDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (resumeCache.GetState(key) != RemoteImageState::Missing &&
+            std::chrono::steady_clock::now() < retiredDeadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        assert(resumeCache.GetState(key) == RemoteImageState::Missing);
         {
-            std::unique_lock lock(resumeMutex);
-            assert(resumeChanged.wait_for(lock, std::chrono::seconds(2), [&] {
-                return resumeState == RemoteImageState::Missing;
-            }));
+            std::scoped_lock lock(resumeMutex);
+            assert(resumeState == RemoteImageState::Loading); // No self-scheduling paint callback.
         }
         assert(resumeCache.GetStats().failedEntries == 0);
+        assert(resumeCache.ConsumeRetiredArtworkForSnapshot(L"resume-artwork"));
+        assert(!resumeCache.ConsumeRetiredArtworkForSnapshot(L"resume-artwork"));
         assert(resumeCache.RequestTrustedArtwork(key, authority) == RemoteImageRequestResult::Queued);
         {
             std::unique_lock lock(resumeMutex);

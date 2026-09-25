@@ -32,3 +32,11 @@ thread; the UI consumes a freshness-checked copy. Hidden GameInput/XInput
 navigation reads remain dormant. PS and Create + Options retain their existing
 opening shortcuts, using the native reader without another HID connection.
 View + Menu also retains its independent shortcut reader.
+
+Ordinary XInput slot reads and the legacy Guide compatibility scan share one
+asynchronous, demand-driven sample. The UI never calls XInput device enumeration
+synchronously. Only one scan can be outstanding; shutdown retires its owner without
+waiting for a blocked driver. The callback retains its native library and data until
+it exits. Samples older than 250 ms are treated as disconnected, and a Guide edge
+from a scan taking more than 250 ms is discarded. Backend priority and deadzones
+are unchanged; polling may use the preceding completed sample.

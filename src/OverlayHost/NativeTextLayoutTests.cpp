@@ -216,6 +216,28 @@ void RetainedPlansAreBoundedAndConstraintExact(IDWriteFactory* factory) {
     cache.Clear(); Check(cache.size()==0,"clear releases retained plans");
 }
 
+void FractionalScrollHeightKeepsCompleteLines(IDWriteFactory* factory) {
+    const auto style = Style(16.0F, 1.2F, 8);
+    for (const float delta : {0.0F, -0.00001F, -0.0001F}) {
+        const auto plan = widgetrail::CreateNativeTextLayoutPlan(factory,
+            L"First line\nSecond line\nThird line", style, 500.0F, 57.6F + delta);
+        DWRITE_LINE_METRICS lines[8]{};
+        UINT32 count{};
+        Check(plan.IsValid() && SUCCEEDED(plan.layout->GetLineMetrics(lines, 8, &count)),
+            "fractional description exposes line metrics");
+        Check(count == 3 && std::none_of(lines, lines + count,
+            [](const auto& line) { return line.isTrimmed != FALSE; }),
+            "floating point scroll geometry must not replace the last complete line with ellipsis");
+    }
+    const auto clipped = widgetrail::CreateNativeTextLayoutPlan(factory,
+        L"First line\nSecond line\nThird line", style, 500.0F, 56.0F);
+    DWRITE_LINE_METRICS lines[8]{};
+    UINT32 count{};
+    Check(SUCCEEDED(clipped.layout->GetLineMetrics(lines, 8, &count)) &&
+        std::any_of(lines, lines + count, [](const auto& line) { return line.isTrimmed != FALSE; }),
+        "genuine height overflow still trims");
+}
+
 void InvalidInputsFailClosed(IDWriteFactory* factory) {
     const auto style = Style(13.0F, 1.2F, 1);
     Check(!widgetrail::CreateNativeTextLayoutPlan(
@@ -245,6 +267,7 @@ int main() {
         ControlPlacementCentersTheCompletePlan(factory.Get());
         WrappingScaleAndAlignmentStayBounded(factory.Get());
         DiagnosticMetricRowsRemainCompleteAtMaximumScale(factory.Get());
+        FractionalScrollHeightKeepsCompleteLines(factory.Get());
         InvalidInputsFailClosed(factory.Get());
         RetainedPlansAreBoundedAndConstraintExact(factory.Get());
     }

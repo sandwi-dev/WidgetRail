@@ -104,13 +104,6 @@ public sealed partial class PlayniteLibraryWidget
             UpdateDetails(state.DetailsGeneration, value => value with { ConfirmUninstall = false });
             return true;
         }
-        if (name == "favorite" && ResolveActionSource(PlayniteLibraryDetailsPresentation.PlayId) is { } favoriteSource)
-        {
-            await ToggleFavoriteAsync(favoriteSource, token).ConfigureAwait(false);
-            if (_model.Value.DetailsGeneration == state.DetailsGeneration && _model.Value.DetailsItem is not null)
-                OpenDetails(item, preserveTab: true);
-            return true;
-        }
         if (name == "completion" && ResolveActionSource(PlayniteLibraryDetailsPresentation.PlayId) is { } source)
         {
             await CycleCompletionStatusAsync(source, token).ConfigureAwait(false);

@@ -145,10 +145,18 @@ NativeTextLayoutPlan CreateNativeTextLayoutPlan(
     const auto text = TransformText(std::wstring(sourceText), style.textTransform());
     const auto width = std::max(1.0F, maximumWidth);
     const auto lineHeight = std::max(1.0F, style.fontSizePx() * style.lineHeight());
-    const auto height = std::max(
+    auto height = std::max(
         lineHeight,
         std::min(maximumHeight,
             lineHeight * static_cast<float>(std::max(1, style.maxLines()))));
+    // Pixel snapping and scroll-local recomputation can put a complete line box
+    // a few float ULPs below its measured height. DirectWrite treats that as a
+    // real overflow and replaces a whole line with the trimming sign. Stabilize
+    // only near line boundaries; the caller still clips to its actual box.
+    constexpr float lineBoundaryTolerance = 0.001F;
+    const auto boundary = std::round(height / lineHeight) * lineHeight;
+    if (std::abs(height - boundary) <= lineBoundaryTolerance)
+        height = boundary + lineBoundaryTolerance;
     if (FAILED(factory->CreateTextLayout(
             text.data(),
             static_cast<UINT32>(text.size()),

@@ -322,7 +322,7 @@ struct WidgetRailOverlayPlatformHandle final {
             }
         } else if (requested.path == Path::XInputCompatibility) {
             XINPUT_STATE input{};
-            if (XInputGetState(static_cast<DWORD>(requested.device), &input) == ERROR_SUCCESS) {
+            if (guideCompatibility.TryReadState(static_cast<DWORD>(requested.device), input)) {
                 const auto& pad = input.Gamepad;
                 sample.family = WidgetRailOverlayPlatformControllerFamily::Xbox;
                 sample.state = {pad.wButtons, pad.bLeftTrigger, pad.bRightTrigger,

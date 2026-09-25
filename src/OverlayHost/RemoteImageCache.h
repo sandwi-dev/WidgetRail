@@ -249,6 +249,10 @@ public:
         std::wstring_view widgetId,
         std::wstring_view artworkHandle,
         const TrustedArtworkDemandAuthority& authority);
+    // A fresh admitted view is the retry trigger for retired artwork, even
+    // when its semantic diff would otherwise require no raster work.
+    [[nodiscard]] bool ConsumeRetiredArtworkForSnapshot(std::wstring_view widgetId);
+
     [[nodiscard]] RemoteImageRequestResult Retry(std::wstring url);
     [[nodiscard]] RemoteImageState GetState(std::wstring_view url) const;
     [[nodiscard]] RemoteImageState GetPackageIconState(
@@ -363,6 +367,7 @@ private:
     std::condition_variable artworkDemandCondition_;
     std::unordered_map<std::wstring, Entry> entries_;
     std::deque<ArtworkDemand> artworkDemandQueue_;
+    std::set<std::wstring> retiredArtworkWidgets_;
     std::deque<std::wstring> queue_;
     std::jthread artworkDemandWorker_;
     std::jthread worker_;

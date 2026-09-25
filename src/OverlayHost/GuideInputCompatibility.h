@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <set>
+#include <functional>
+#include <memory>
 
 namespace widgetrail::input {
 
@@ -39,6 +41,22 @@ private:
     std::set<DeviceId> devices_;
 };
 
+// One outstanding driver call, with no UI-thread wait. The callback owns its
+// state through shutdown, including any native resources captured by the poll.
+class GuidePollDispatcher final {
+public:
+    explicit GuidePollDispatcher(std::function<std::uint8_t()> poll);
+    ~GuidePollDispatcher();
+    GuidePollDispatcher(const GuidePollDispatcher&) = delete;
+    GuidePollDispatcher& operator=(const GuidePollDispatcher&) = delete;
+    [[nodiscard]] std::uint8_t Poll() noexcept;
+    void Request() noexcept;
+private:
+    struct State;
+    static void CALLBACK Run(PTP_CALLBACK_INSTANCE instance, void* context) noexcept;
+    std::shared_ptr<State> state_;
+};
+
 /// Compatibility adapter for Xbox-360-class drivers that omit Guide from
 /// GameInput callbacks. The ordinal is intentionally isolated here because it
 /// is not a Microsoft-supported production contract. GameInput remains the
@@ -53,13 +71,14 @@ public:
     [[nodiscard]] bool Initialize() noexcept;
     void Shutdown() noexcept;
     [[nodiscard]] std::uint8_t PollRisingEdges() noexcept;
-    [[nodiscard]] bool available() const noexcept { return getStateEx_ != nullptr; }
+    [[nodiscard]] bool TryReadState(DWORD slot, XINPUT_STATE& state) noexcept;
+    [[nodiscard]] bool available() const noexcept { return guideAvailable_; }
 
 private:
-    using GetStateEx = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
-    HMODULE module_{};
-    GetStateEx getStateEx_{};
-    GuideEdgeTracker edges_;
+    struct Source;
+    std::shared_ptr<Source> source_;
+    std::unique_ptr<GuidePollDispatcher> poller_;
+    bool guideAvailable_{};
 };
 
 } // namespace widgetrail::input

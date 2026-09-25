@@ -703,7 +703,6 @@ bool RemoteImageCache::RetireTrustedArtworkDemand(
     const std::wstring_view widgetId,
     const std::wstring_view artworkHandle,
     const TrustedArtworkDemandAuthority& authority) {
-    CompletionCallback completion;
     std::wstring transitionKey;
     {
         std::scoped_lock lock(mutex_);
@@ -717,17 +716,23 @@ bool RemoteImageCache::RetireTrustedArtworkDemand(
         });
         if (found == entries_.end()) return false;
         transitionKey = found->first;
+        retiredArtworkWidgets_.insert(std::wstring(widgetId));
+        if (retiredArtworkWidgets_.size() > limits_.maximumEntries)
+            retiredArtworkWidgets_.erase(retiredArtworkWidgets_.begin());
         entries_.erase(found);
         std::erase_if(artworkDemandQueue_, [&](const ArtworkDemand& pending) {
             return pending.key == transitionKey && pending.authority == authority;
         });
-        completion = completion_;
     }
-    if (completion) {
-        try { completion(transitionKey, RemoteImageState::Missing); }
-        catch (...) { }
-    }
+    // Retired authority has no new pixels. Waking paint here immediately
+    // retries the same unresolvable retained handle and can starve input.
+    // A newly admitted snapshot or another explicit paint may retry it.
     return true;
+}
+
+bool RemoteImageCache::ConsumeRetiredArtworkForSnapshot(std::wstring_view widgetId) {
+    std::scoped_lock lock(mutex_);
+    return retiredArtworkWidgets_.erase(std::wstring(widgetId)) != 0;
 }
 
 RemoteImageRequestResult RemoteImageCache::Retry(std::wstring url) {
@@ -1285,6 +1290,9 @@ void RemoteImageCache::CompleteArtworkDemand(
             return;
         }
         if (disposition == TrustedArtworkRequestDisposition::OriginRetired) {
+            retiredArtworkWidgets_.insert(demand.authority.widgetId);
+            if (retiredArtworkWidgets_.size() > limits_.maximumEntries)
+                retiredArtworkWidgets_.erase(retiredArtworkWidgets_.begin());
             entries_.erase(found);
             state = RemoteImageState::Missing;
         } else {
@@ -1292,7 +1300,7 @@ void RemoteImageCache::CompleteArtworkDemand(
             found->second.error = L"Trusted artwork is unavailable.";
             state = RemoteImageState::Failed;
         }
-        completion = completion_;
+        if (state != RemoteImageState::Missing) completion = completion_;
     }
     if (completion) {
         try { completion(demand.key, state); }

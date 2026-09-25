@@ -35,9 +35,9 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual("Full game description from the detail endpoint.",
             Nodes(modal.Root).Single(node => node.Id == "playnite-library.details.description").Text);
         Assert.IsNull(widget.HomeCollection.Items.First().Presentation.Metadata?.Description);
-        var hero = Nodes(modal.Root).Single(node => node.Id == "playnite-library.details.hero");
-        Assert.AreEqual(ViewNodeKind.BackgroundSurface, hero.Kind);
-        Assert.IsFalse(Nodes(hero).Any(node => node.Id == PlayniteLibraryDetailsPresentation.PlayId));
+        var poster = Nodes(modal.Root).Single(node => node.Id == "playnite-library.details.poster");
+        Assert.IsTrue(poster.Kind is ViewNodeKind.Image or ViewNodeKind.Icon);
+        Assert.IsFalse(Nodes(poster).Any(node => node.Id == PlayniteLibraryDetailsPresentation.PlayId));
         Assert.IsTrue(Nodes(modal.Root).Any(node => node.Id == PlayniteLibraryDetailsPresentation.PlayId));
         await Background(widget);
     }

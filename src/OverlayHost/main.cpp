@@ -42,6 +42,7 @@
 #include "WidgetSurfaceCoordinator.h"
 #include "WidgetInteractionSession.h"
 #include "WidgetScrollPaginationRoute.h"
+#include "InactiveWidgetProjection.h"
 #include "TextEntryModal.h"
 #include "TextEntryActionAdmission.h"
 #include "TrayLayout.h"
@@ -7135,6 +7136,8 @@ private:
                 interactionSession_.ReconcilePressedPresentation(*current);
             if (pressedVisualChanged)
                 InvalidateRect(window_, nullptr, FALSE);
+            if (imageCache_ && imageCache_->ConsumeRetiredArtworkForSnapshot(event.widgetId))
+                pendingWidgetPresentationImpact_.reset();
             const bool semanticOnlyImpact = pendingWidgetPresentationImpact_ &&
                 !widgetrail::HasWidgetPresentationEffect(
                     pendingWidgetPresentationImpact_->effects,
@@ -18249,6 +18252,10 @@ private:
                 : transitionRetainedSnapshot
                     ? &retainedPresentation->snapshot
                     : sessionPresentation.snapshot;
+            const auto inactiveParent = snapshot
+                ? widgetrail::ProjectInactiveWidgetParent(*snapshot, inertRetainedSnapshot)
+                : std::nullopt;
+            if (inactiveParent) snapshot = &*inactiveParent;
             const std::wstring_view renderedWidget = transitionRetainedSnapshot
                 ? std::wstring_view{retainedPresentation->widgetId}
                 : widget;
@@ -18287,6 +18294,8 @@ private:
             std::wstring renderedFocusId{widgetrail::ResolveWidgetContentFocusId(
                 contentAuthority,
                 {currentFocusId, refreshRetainedFocusId, retainedCommittedFocusId})};
+            if (inactiveParent)
+                renderedFocusId = interactionSession_.FocusRestoreCandidate(renderedWidget, *snapshot);
             if (snapshot && declarativeRenderer_) {
                 const widgetrail::declarative::Rect viewport{
                     geometry->widgetViewportX,
