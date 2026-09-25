@@ -78,10 +78,11 @@
 .playnite-library-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; }
 .playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 16px 14px; padding: 4px; justify: center; }
 .playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 12px; padding: 4px 6px 10px; }
-.playnite-library-tile { aspect-ratio: 2/3; min-height: 0px; background: var(--surface-subtle, var(--surface-muted)); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
+/* Tile margins keep the focused poster inside its rail/grid viewport. */
+.playnite-library-tile { aspect-ratio: 2/3; min-height: 0px; margin: 6px; scale: 1; transition-duration: 140ms; transition-easing: ease-in-out; background: var(--surface-subtle, var(--surface-muted)); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
 .playnite-library-fixed-tile { width: 28vh; min-width: 112px; max-width: 150px; flex-basis: 28vh; flex-grow: 0; flex-shrink: 0; }
 .playnite-library-browse-tile { min-width: 0px; flex-grow: 0; flex-shrink: 1; }
-.playnite-library-tile:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--focus); }
+.playnite-library-tile:focused { scale: 1.04; background: var(--surface-active, var(--surface-muted)); border-color: var(--focus); }
 .playnite-library-tile:disabled { background: var(--surface-subtle, var(--surface-muted)); color: var(--text-subdued); }
 .wrail-poster-tile__scrim { width: 100%; min-height: 0px; padding: 12px; background: var(--surface-subtle, var(--surface-muted)); corner-radius: 12px; overflow: clip; }
 .wrail-poster-tile__content { min-height: 0px; gap: 4px; overflow: clip; }

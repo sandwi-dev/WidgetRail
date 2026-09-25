@@ -139,6 +139,10 @@
 
 .category-card {
   padding: 16px;
+  margin: 6px;
+  scale: 1;
+  transition-duration: 140ms;
+  transition-easing: ease-in-out;
   gap: 16px;
   align: center;
   height: 20vh;
@@ -149,6 +153,8 @@
   border-color: var(--border, rgba(246, 240, 226, 0.12));
   corner-radius: 10px;
 }
+
+.category-card:focused { scale: 1.025; }
 
 
 .category-card:focused,

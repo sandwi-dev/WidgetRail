@@ -39,6 +39,10 @@ stationary on the current control. Reduced motion disables focus movement.
 Widget or theme authors can instead use WRSS scaling to enlarge a focused card
 with its text and artwork. This uses the existing styling rules, rather than a
 separate competing zoom setting.
+Games and Apps cards, Settings category cards, Playnite posters, YouTube Music
+Home posters, and the Spotify and YouTube Music play buttons use subtle focus
+enlargement. Their layout positions stay fixed. Animation speed applies to the
+effect; Reduced motion switches sizes immediately without animation.
 
 ## Arrange your tray
 

@@ -115,6 +115,8 @@
   min-height: 78px;
   gap: 10px;
   padding: 9px 10px;
+  /* Reserve space inside the scroll viewport for focused enlargement. */
+  margin: 6px;
   align: center;
   background: var(--surface-raised);
   color: var(--text);
@@ -124,11 +126,13 @@
   flex-grow: 0;
   flex-shrink: 0;
   overflow: clip;
-  transition-duration: 90ms;
-  transition-easing: ease-out;
+  scale: 1;
+  transition-duration: 140ms;
+  transition-easing: ease-in-out;
 }
 
 .games-app-tile:focused {
+  scale: 1.025;
   background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: 2px;
