@@ -424,7 +424,8 @@ public:
         ID2D1Factory* d2dFactory,
         IDWriteFactory* writeFactory,
         RemoteImageCache* imageCache,
-        ArtworkRenderDiagnosticCallback artworkRenderDiagnostic = {}) noexcept;
+        ArtworkRenderDiagnosticCallback artworkRenderDiagnostic = {},
+        std::shared_ptr<ScrollDiagnostics> scrollDiagnostics = {}) noexcept;
 
     ~DeclarativeRenderer();
     void SetChromeImageProtection(std::set<std::wstring> keys);
@@ -743,6 +744,9 @@ private:
     IDWriteFactory* writeFactory_{};
     RemoteImageCache* imageCache_{};
     ArtworkRenderDiagnosticCallback artworkRenderDiagnostic_;
+    std::shared_ptr<ScrollDiagnostics> scrollDiagnostics_;
+    long long scrollDiagnosticLastSequence_{};
+    std::uint64_t scrollDiagnosticLastGeometryTime_{};
     static constexpr std::size_t maximumArtworkDiagnosticRecords_{64};
     std::array<std::uint64_t, maximumArtworkDiagnosticRecords_>
         artworkDiagnosticKeys_{};

@@ -7542,7 +7542,8 @@ void RetainedPresentationPaintAndMeasurementAgree() {
     ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.ReleaseAndGetAddressOf())));
     ok(wic->CreateBitmap(600, 400, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, bitmap.ReleaseAndGetAddressOf()));
     ok(d2d->CreateWicBitmapRenderTarget(bitmap.Get(), D2D1::RenderTargetProperties(), target.ReleaseAndGetAddressOf()));
-    DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+    auto scrollTrace = std::make_shared<widgetrail::ScrollDiagnostics>();
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr, {}, scrollTrace};
     auto snapshot = RetainedPresentationSnapshot();
     widgetrail::DeclarativeRenderOptions options; options.collectAccessibility = true; options.accessibility.reducedMotion = true;
     const Rect viewport{0, 0, 600, 400};
@@ -7605,6 +7606,36 @@ void RetainedPresentationPaintAndMeasurementAgree() {
     auto evicted = draw(L"close");
     Check(evicted.elementRects.contains(L"summary.default") && !evicted.elementRects.contains(L"game.2.summary"),
         "cursor eviction under a modal cannot retain stale summary layout");
+    const auto trace = scrollTrace->Snapshot();
+    Check(std::ranges::any_of(trace.records, [](const auto& line) { return line.find("event=render ") != std::string::npos; }),
+        "opt-in scroll trace records render timing");
+    Check(std::ranges::any_of(trace.records, [](const auto& line) { return line.find("event=text-geometry ") != std::string::npos; }),
+        "opt-in scroll trace records actual text drawing geometry");
+    Check(std::ranges::none_of(trace.records, [](const auto& line) { return line.find("Close") != std::string::npos || line.find("game.2") != std::string::npos; }),
+        "scroll trace excludes authored text and raw node identifiers");
+}
+
+void ScrollDiagnosticBufferIsBoundedAndFaultContained() {
+    widgetrail::ScrollDiagnostics trace;
+    for (std::size_t index = 0; index < widgetrail::ScrollDiagnostics::MaximumRecords + 3; ++index)
+        trace.Record("test", [&](auto& out) { out << "index=" << index; });
+    auto capture = trace.Snapshot();
+    Check(capture.records.size() == widgetrail::ScrollDiagnostics::MaximumRecords && capture.dropped == 3,
+        "scroll diagnostics retain only a bounded tail and report dropped records");
+    Check(capture.records.front().ends_with("index=3"), "scroll diagnostic ring preserves chronological order");
+    trace.Record("large", [](auto& out) { out << std::string(4096, 'x'); });
+    trace.Record("failure", [](auto&) { throw std::runtime_error("diagnostic fixture"); });
+    capture = trace.Snapshot();
+    Check(capture.records.back().size() <= widgetrail::ScrollDiagnostics::MaximumRecordBytes &&
+        capture.records.back().ends_with("truncated=true"), "scroll diagnostic record size is bounded");
+    Check(capture.failures == 1, "diagnostic recording failures cannot escape into rendering");
+    const auto path = std::filesystem::temp_directory_path() /
+        (L"widgetrail-scroll-diagnostic-test-" + std::to_wstring(GetCurrentProcessId()) + L".log");
+    Check(trace.Save(path), "scroll diagnostic capture saves outside the hot path");
+    Check(std::filesystem::file_size(path) <=
+        widgetrail::ScrollDiagnostics::MaximumRecords * (widgetrail::ScrollDiagnostics::MaximumRecordBytes + 1) + 1024,
+        "scroll diagnostic capture file is bounded");
+    std::filesystem::remove(path);
 }
 
 } // namespace
@@ -7707,6 +7738,7 @@ int main() {
     FocusAssociatedPresentationUsesNativeFocusAuthority();
     RetainedSelectionReconcilesCursorIdentityAndScopes();
     RetainedPresentationPaintAndMeasurementAgree();
+    ScrollDiagnosticBufferIsBoundedAndFaultContained();
     ResponsiveVisibilityExcludesInactiveSubtrees();
     ResponsiveNavigationShellFitsBoundedSurfaces();
     SliderPlanningAndAccessibilityTargets();

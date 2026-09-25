@@ -1,5 +1,6 @@
 #pragma once
 #include "ImageDecodeSize.h"
+#include "ScrollDiagnostics.h"
 #include <set>
 #include <map>
 
@@ -211,7 +212,8 @@ public:
         FetchFunction fetch = {},
         ArtworkRequestFunction artworkRequest = {},
         ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic = {},
-        PackageIconRequestFunction packageIconRequest = {});
+        PackageIconRequestFunction packageIconRequest = {},
+        std::shared_ptr<ScrollDiagnostics> scrollDiagnostics = {});
     ~RemoteImageCache();
 
     RemoteImageCache(const RemoteImageCache&) = delete;
@@ -361,6 +363,7 @@ private:
     ArtworkRequestFunction artworkRequest_;
     ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic_;
     PackageIconRequestFunction packageIconRequest_;
+    std::shared_ptr<ScrollDiagnostics> scrollDiagnostics_;
     std::unique_ptr<ArtworkDecoderProcessOwner> artworkDecoder_;
     mutable std::mutex mutex_;
     std::condition_variable condition_;

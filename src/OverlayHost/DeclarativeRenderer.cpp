@@ -507,6 +507,9 @@ struct DeclarativeRenderer::RenderPass final {
     FocusSurfaceSelectionMemory selectionMemory;
     FocusSurfaceSelectionMemory::Selections selections;
     bool selectionsResolved{};
+    bool scrollDiagnosticGeometry{};
+    std::size_t scrollDiagnosticTextSamples{}, scrollDiagnosticItemSamples{}, scrollDiagnosticImageSamples{};
+    std::uint64_t scrollImageNanoseconds{}, scrollUploadMicroseconds{}, scrollImageHits{}, scrollImageMisses{};
 
     void ResolveSelections() {
         if (selectionsResolved) return;
@@ -2966,6 +2969,24 @@ struct DeclarativeRenderer::RenderPass final {
             Add(node.id, L"text_layout", L"DirectWrite could not create a text layout.");
             return;
         }
+        if (scrollDiagnosticGeometry && scrollDiagnosticTextSamples < 18) {
+            const auto shown = presentation.find(NarrowStableId(node.id));
+            if (shown != presentation.end() && shown->second.visibleBox.width > 0.5F &&
+                shown->second.visibleBox.height > 0.5F) {
+                ++scrollDiagnosticTextSamples;
+                owner->scrollDiagnostics_->Record("text-geometry", [&](auto& out) {
+                    DWRITE_TEXT_METRICS metrics{};
+                    const bool measured = SUCCEEDED(plan.layout->GetMetrics(&metrics));
+                    out << "instance=" << RemoteImageCache::OpaqueDiagnosticHash(snapshot->instanceId)
+                        << " seq=" << snapshot->sequence << " node=" << RemoteImageCache::OpaqueDiagnosticHash(node.id)
+                        << " rect=" << rect.x << ',' << rect.y << ',' << rect.width << ',' << rect.height
+                        << " origin-y=" << plan.LayoutOriginY(rect.y, rect.height, verticalAlignment)
+                        << " measured=" << measured << " lines=" << metrics.lineCount
+                        << " text-height=" << metrics.height << " text-width=" << metrics.width
+                        << " scale=" << options.pixelScale;
+                });
+            }
+        }
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         DWRITE_TEXT_METRICS textMetrics{};
         if (SUCCEEDED(plan.layout->GetMetrics(&textMetrics)))
@@ -4574,6 +4595,21 @@ struct DeclarativeRenderer::RenderPass final {
 
         CollectFocusGeometry(node, inputScope, presented);
 
+        if (scrollDiagnosticGeometry && scrollDiagnosticItemSamples < 18 &&
+            (node.kind == L"scroll" || !node.collectionItemKey.empty()) &&
+            visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
+            ++scrollDiagnosticItemSamples;
+            owner->scrollDiagnostics_->Record("item-geometry", [&](auto& out) {
+                out << "instance=" << RemoteImageCache::OpaqueDiagnosticHash(snapshot->instanceId)
+                    << " seq=" << snapshot->sequence << " node=" << RemoteImageCache::OpaqueDiagnosticHash(node.id)
+                    << " item=" << RemoteImageCache::OpaqueDiagnosticHash(node.collectionItemKey)
+                    << " generation=" << node.collectionGeneration.value_or(0)
+                    << " rect=" << paintRect.x << ',' << paintRect.y << ',' << paintRect.width << ',' << paintRect.height
+                    << " visible=" << visibleRect.x << ',' << visibleRect.y << ',' << visibleRect.width << ',' << visibleRect.height
+                    << " scale=" << options.pixelScale;
+            });
+        }
+
         const auto indicator = PrepareScrollIndicator(node, style, presented);
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         if (indicator) {
@@ -4880,11 +4916,13 @@ DeclarativeRenderer::DeclarativeRenderer(
     ID2D1Factory* d2dFactory,
     IDWriteFactory* writeFactory,
     RemoteImageCache* imageCache,
-    ArtworkRenderDiagnosticCallback artworkRenderDiagnostic) noexcept
+    ArtworkRenderDiagnosticCallback artworkRenderDiagnostic,
+    std::shared_ptr<ScrollDiagnostics> scrollDiagnostics) noexcept
     : d2dFactory_(d2dFactory),
       writeFactory_(writeFactory),
       imageCache_(imageCache),
-      artworkRenderDiagnostic_(std::move(artworkRenderDiagnostic)) {}
+      artworkRenderDiagnostic_(std::move(artworkRenderDiagnostic)),
+      scrollDiagnostics_(std::move(scrollDiagnostics)) {}
 
 void DeclarativeRenderer::ReportArtworkRenderDiagnostic(
     const WidgetNode& node,
@@ -4964,6 +5002,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::ResolveCompositorBackgroundBitmap(
     node.imageFit = background.imageFit;
     WidgetSnapshot snapshot;
     snapshot.instanceId = background.widgetInstanceId;
+    snapshot.sequence = background.snapshotSequence;
     RenderPass pass;
     pass.owner = this;
     pass.target = renderTarget;
@@ -5585,6 +5624,12 @@ RenderResult DeclarativeRenderer::Render(
         static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count()));
     pass.options.animationTimestampMilliseconds = animationTimestamp;
+    if (scrollDiagnostics_ && (snapshot.sequence != scrollDiagnosticLastSequence_ ||
+        animationTimestamp - scrollDiagnosticLastGeometryTime_ >= 250)) {
+        pass.scrollDiagnosticGeometry = true;
+        scrollDiagnosticLastSequence_ = snapshot.sequence;
+        scrollDiagnosticLastGeometryTime_ = animationTimestamp;
+    }
     motionTimeline_.BeginFrame(animationTimestamp);
 
     if (renderTarget && !BindBitmapResourceDomain(renderTarget)) {
@@ -5847,6 +5892,7 @@ RenderResult DeclarativeRenderer::Render(
     }
     const auto snapshotComparisonMicroseconds = pendingMatches ? pendingIncrementalPlan_->comparisonMicroseconds : 0;
     const auto updatePlanningMicroseconds = pendingMatches ? pendingIncrementalPlan_->planningMicroseconds : 0;
+    const auto diagnosticWork = pendingMatches ? static_cast<int>(pendingIncrementalPlan_->work) : -1;
     pendingIncrementalPlan_.reset();
     const auto finalizationFinished = std::chrono::steady_clock::now();
     const auto elapsed = [](const auto started, const auto finished) {
@@ -5894,6 +5940,21 @@ RenderResult DeclarativeRenderer::Render(
     }
     protectedImageKeys_ = pass.result.succeeded ? std::move(pass.visibleImageKeys) : priorImageProtection;
     PublishImageProtection();
+    if (scrollDiagnostics_) scrollDiagnostics_->Record("render", [&](auto& out) {
+        const auto& timing = pass.result.timing;
+        out << "instance=" << RemoteImageCache::OpaqueDiagnosticHash(snapshot.instanceId)
+            << " seq=" << snapshot.sequence << " success=" << pass.result.succeeded
+            << " work=" << diagnosticWork << " total-us=" << timing.totalMicroseconds
+            << " prepare-us=" << timing.preparationMicroseconds << " layout-us=" << timing.layoutMicroseconds
+            << " text-us=" << timing.textMeasurementMicroseconds << " style-us=" << timing.styleResolutionMicroseconds
+            << " present-us=" << timing.presentationMicroseconds << " draw-us=" << timing.nodeDrawMicroseconds
+            << " image-us=" << pass.scrollImageNanoseconds / 1000 << " upload-us=" << pass.scrollUploadMicroseconds
+            << " image-hits=" << pass.scrollImageHits << " image-misses=" << pass.scrollImageMisses
+            << " text-hits=" << timing.textLayoutCacheHits << " text-misses=" << timing.textLayoutCacheMisses
+            << " bitmap-bytes=" << bitmapBytes_ << " bitmap-entries=" << bitmaps_.size()
+            << " free-scroll=" << options.suppressFocusedDescendantFollow
+            << " scale=" << options.pixelScale << " sequence-changed=" << !timing.collectionAdmissionSummary.empty();
+    });
     return pass.result;
 }
 
@@ -6118,6 +6179,12 @@ bool DeclarativeRenderer::TrimBitmapCache(
             if (oldest == bitmaps_.end() || entry->second.lastUse < oldest->second.lastUse) oldest = entry;
         }
         if (oldest == bitmaps_.end()) return false;
+        if (scrollDiagnostics_) scrollDiagnostics_->Record("bitmap-eviction", [&](auto& out) {
+            out << "variant=" << RemoteImageCache::OpaqueDiagnosticHash(oldest->first)
+                << " reason=" << (bytePressure ? "bytes" : "count")
+                << " protected=" << ImageProtected(oldest->first)
+                << " bytes=" << oldest->second.bytes << " cache-bytes=" << bitmapBytes_;
+        });
         bitmapBytes_ -= oldest->second.bytes;
         bitmaps_.erase(oldest);
         ++bitmapEvictions_;
@@ -6221,6 +6288,8 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     const std::wstring_view artworkWidgetId,
     ImagePresentationState& presentationState) {
     presentationState = ImagePresentationState::Failed;
+    std::optional<PreparationTimer> imageTimer;
+    if (scrollDiagnostics_) imageTimer.emplace(pass.scrollImageNanoseconds);
     const bool trustedArtwork = !node.artworkHandle.empty() && node.imageSource.empty();
     const TrustedArtworkDemandAuthority artworkAuthority{
         std::wstring{artworkWidgetId},
@@ -6243,6 +6312,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     {
         existing->second.lastUse = ++bitmapAccessClock_;
         ++bitmapHits_;
+        if (scrollDiagnostics_) ++pass.scrollImageHits;
         presentationState = ImagePresentationState::Ready;
         if (ArtworkRenderDiagnosticsEnabled()) {
             const auto bitmapSize = existing->second.bitmap->GetSize();
@@ -6255,6 +6325,21 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     auto state = trustedArtwork
         ? imageCache_->GetTrustedArtworkState(source, artworkAuthority)
         : imageCache_->GetState(source);
+    if (scrollDiagnostics_) {
+        ++pass.scrollImageMisses;
+        if (pass.scrollDiagnosticImageSamples++ < 8) scrollDiagnostics_->Record("image-miss", [&](auto& out) {
+            const auto shown = pass.presentation.find(NarrowStableId(node.id));
+            const bool visible = shown != pass.presentation.end() && shown->second.visibleBox.width > .5F &&
+                shown->second.visibleBox.height > .5F;
+            out << "instance=" << RemoteImageCache::OpaqueDiagnosticHash(pass.snapshot->instanceId)
+                << " seq=" << pass.snapshot->sequence << " node=" << RemoteImageCache::OpaqueDiagnosticHash(node.id)
+                << " asset=" << RemoteImageCache::OpaqueDiagnosticHash(trustedArtwork ? node.artworkHandle : node.imageSource)
+                << " variant=" << RemoteImageCache::OpaqueDiagnosticHash(source)
+                << " size=" << decodeSize.width << 'x' << decodeSize.height
+                << " decoded-state=" << static_cast<int>(state) << " visible=" << visible
+                << " protected=" << ImageProtected(source);
+        });
+    }
     if (state == RemoteImageState::Failed && imageCache_->ReleaseBudgetRejection(source))
         state = RemoteImageState::Missing;
     if (state == RemoteImageState::Missing) {
@@ -6265,6 +6350,12 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         const auto request = trustedArtwork
             ? imageCache_->RequestTrustedArtwork(source, artworkAuthority, decodeSize)
             : imageCache_->Request(node.imageSource, decodeSize);
+        if (scrollDiagnostics_) scrollDiagnostics_->Record("image-request", [&](auto& out) {
+            out << "seq=" << pass.snapshot->sequence << " variant=" << RemoteImageCache::OpaqueDiagnosticHash(source)
+                << " asset=" << RemoteImageCache::OpaqueDiagnosticHash(trustedArtwork ? node.artworkHandle : node.imageSource)
+                << " size=" << decodeSize.width << 'x' << decodeSize.height
+                << " result=" << static_cast<int>(request);
+        });
         if (trustedArtwork &&
             imageCache_->GetTrustedArtworkState(source, artworkAuthority) ==
                 RemoteImageState::Failed) {
@@ -6297,8 +6388,10 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         return {};
     }
     ComPtr<ID2D1Bitmap> bitmap;
+    const auto uploadStarted = scrollDiagnostics_ ? ScrollDiagnostics::Clock::now() : ScrollDiagnostics::Clock::time_point{};
     const auto result = imageCache_->CreateBitmap(
         renderTarget, source, bitmap.ReleaseAndGetAddressOf());
+    if (scrollDiagnostics_) pass.scrollUploadMicroseconds += ScrollDiagnostics::Micros(ScrollDiagnostics::Clock::now() - uploadStarted);
     if (FAILED(result) || !bitmap) {
         if (ArtworkRenderDiagnosticsEnabled())
             ReportArtworkRenderDiagnostic(
@@ -6309,6 +6402,13 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     ++bitmapCreates_;
     presentationState = ImagePresentationState::Ready;
     const auto pixelSize = bitmap->GetPixelSize();
+    if (scrollDiagnostics_) scrollDiagnostics_->Record("bitmap-create", [&](auto& out) {
+        out << "seq=" << pass.snapshot->sequence << " node=" << RemoteImageCache::OpaqueDiagnosticHash(node.id)
+            << " asset=" << RemoteImageCache::OpaqueDiagnosticHash(trustedArtwork ? node.artworkHandle : node.imageSource)
+            << " variant=" << RemoteImageCache::OpaqueDiagnosticHash(source)
+            << " requested=" << decodeSize.width << 'x' << decodeSize.height
+            << " pixels=" << pixelSize.width << 'x' << pixelSize.height;
+    });
     if (ArtworkRenderDiagnosticsEnabled())
         ReportArtworkRenderDiagnostic(
             node, artworkWidgetId, L"gpu", L"created",

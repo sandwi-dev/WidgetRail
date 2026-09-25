@@ -32,6 +32,8 @@
 #include "RemoteImageCache.h"
 #include "RichMediaSurfaceCoordinator.h"
 #include "ScrollEvidenceProbe.h"
+#include "ScrollDiagnostics.h"
+#include <source_location>
 #include "LocalWidgetPackageImport.h"
 #include "MediaSessionManager.h"
 #include "WidgetBridgeClient.h"
@@ -372,6 +374,24 @@ void ClearStartupError() {
 }
 
 void AppendDiagnostic(const std::wstring_view message);
+// Initialized before workers start; immutable for the process lifetime.
+std::shared_ptr<widgetrail::ScrollDiagnostics> gScrollDiagnostics;
+bool gScrollDiagnosticsQuiet{};
+
+void SaveScrollDiagnostics() noexcept {
+    if (!gScrollDiagnostics) return;
+    try {
+        wchar_t localAppData[MAX_PATH]{};
+        const auto length = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH);
+        if (length == 0 || length >= MAX_PATH) return;
+        const auto path = std::filesystem::path(localAppData) / L"WidgetRail" / L"diagnostics" /
+            (L"scroll-" + std::to_wstring(GetCurrentProcessId()) + L".log");
+        gScrollDiagnostics->Record("capture", [](auto& out) { out << "boundary=hidden-or-exit"; });
+        if (!gScrollDiagnostics->Save(path)) AppendDiagnostic(L"Scroll diagnostic trace could not be saved.");
+    } catch (...) {
+        gScrollDiagnostics->Record("capture-failed", [](auto& out) { out << "reason=publication"; });
+    }
+}
 
 // WebView2 delivers controller, navigation, and message callbacks from
 // Chromium frames that are compiled without exception support. A C++ exception
@@ -393,6 +413,18 @@ void InvokeMediaCallbackGuarded(
 }
 
 void AppendDiagnostic(const std::wstring_view message) {
+    if (gScrollDiagnosticsQuiet && (
+        message.starts_with(L"Composition child sample") || message.starts_with(L"Widget presentation paint") ||
+        message.starts_with(L"Composition frame committed") || message.starts_with(L"Background compositor") ||
+        message.starts_with(L"Free scroll retained during refresh") ||
+        message.starts_with(L"Free scroll refresh authority restored") ||
+        (message.starts_with(L"Renderer ") &&
+            (message.find(L"background_crossfade_compositor-eligible") != std::wstring_view::npos ||
+             message.find(L"background_crossfade_compositor-fallback") != std::wstring_view::npos)))) {
+        if (gScrollDiagnostics) ++gScrollDiagnostics->suppressedLogs;
+        return;
+    }
+    widgetrail::ScrollDiagnosticLogTimer logTimer{gScrollDiagnostics.get()};
     static std::mutex logMutex;
     std::lock_guard lock(logMutex);
     constexpr std::uintmax_t maximumFileBytes = 4ULL * 1024ULL * 1024ULL;
@@ -1073,10 +1105,10 @@ public:
                 return {
                     widgetrail::PackageIconRequestDisposition::TerminalFailure,
                     {}};
-            });
+            }, gScrollDiagnostics);
         declarativeRenderer_ = std::make_unique<widgetrail::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get(),
-            std::move(renderDiagnostic));
+            std::move(renderDiagnostic), gScrollDiagnostics);
         const auto bitmapLimits = declarativeRenderer_->GetImageBitmapCacheStats();
         AppendDiagnostic(
             L"Image cache policy lifetime=process metadata-limit=" +
@@ -1381,6 +1413,10 @@ private:
                     return false;
                 }
                 artworkRenderDiagnostics_ = true;
+            } else if (_wcsicmp(__wargv[i], L"--scroll-diagnostics") == 0 ||
+                       _wcsicmp(__wargv[i], L"--scroll-diagnostics-quiet") == 0) {
+                scrollDiagnosticsRequested_ = true;
+                gScrollDiagnosticsQuiet = _wcsicmp(__wargv[i], L"--scroll-diagnostics-quiet") == 0;
             }
         }
         try {
@@ -1490,6 +1526,12 @@ private:
                 return false;
             }
             scrollEvidencePath_.reset();
+        }
+        if (scrollDiagnosticsRequested_) {
+            gScrollDiagnostics = std::make_shared<widgetrail::ScrollDiagnostics>();
+            gScrollDiagnostics->Record("session", [](auto& out) {
+                out << "pid=" << GetCurrentProcessId() << " quiet-log=" << gScrollDiagnosticsQuiet;
+            });
         }
         return true;
     }
@@ -2155,12 +2197,18 @@ private:
             HandlePlatformEvents();
             return 0;
         case kImageReadyMessage:
+            if (gScrollDiagnostics) gScrollDiagnostics->Record("image-ready", [&](auto& out) {
+                out << "variant=" << static_cast<std::uint64_t>(lParam) << " tray=" << (wParam != 0);
+            });
             if (widgetrail::shell::RequiresImageReadyRepaint(
                     wParam != 0,
                     AdvanceCompositorBackground(GetTickCount64()),
                     declarativeRenderer_ && declarativeRenderer_->VisibleContentImageCompleted(
                         static_cast<std::uint64_t>(lParam)))) {
-                if (wParam == 0 && SubmitRetainedWidgetPaint()) return 0;
+                if (wParam == 0 && SubmitRetainedWidgetPaint()) {
+                    if (gScrollDiagnostics) gScrollDiagnostics->Record("invalidate", [](auto& out) { out << "reason=image-ready plan=retained"; });
+                    return 0;
+                }
                 // Newly ready images may lie outside a queued scroll's
                 // damage. Without a current layout (or for tray artwork),
                 // retain the full repaint and the free-scroll offset.
@@ -2168,6 +2216,7 @@ private:
                 if (declarativeRenderer_)
                     declarativeRenderer_->CancelPresentationUpdatePlan();
                 InvalidateRect(window_, nullptr, FALSE);
+                if (gScrollDiagnostics) gScrollDiagnostics->Record("invalidate", [](auto& out) { out << "reason=image-ready plan=full"; });
             }
             return 0;
         case kCatalogRefreshMessage: {
@@ -2746,6 +2795,7 @@ private:
             DestroyWindow(window_);
             return 0;
         case WM_DESTROY:
+            SaveScrollDiagnostics();
             accessibilityProvider_.Detach();
             chromeAccessibilityProvider_.Detach();
             PostQuitMessage(0);
@@ -8214,6 +8264,7 @@ private:
     }
 
     void RetireCompositionMotionForHiddenState() {
+        SaveScrollDiagnostics();
         const bool retiredInFlightCompositionMotion =
             presentationTransaction_.RetireHidden();
         AppendDiagnostic(
@@ -11204,9 +11255,16 @@ private:
             widgetrail::input::FreeScrollAuthorityDisposition::Retained;
     }
 
-    void SetFreeScrollRefreshDeferred(const bool deferred) {
+    void SetFreeScrollRefreshDeferred(const bool deferred,
+        const std::source_location caller = std::source_location::current()) {
         if (!interactionSession_.SetRefreshDeferred(deferred)) return;
         const auto& binding = *interactionSession_.freeScrollBinding();
+        if (gScrollDiagnostics) gScrollDiagnostics->Record("refresh-state", [&](auto& out) {
+            const auto* snapshot = SnapshotFor(binding.widgetId);
+            out << "deferred=" << deferred << " caller-line=" << caller.line()
+                << " seq=" << (snapshot ? snapshot->sequence : 0)
+                << " scroll=" << widgetrail::RemoteImageCache::OpaqueDiagnosticHash(binding.scrollId);
+        });
         AppendDiagnostic(
             std::wstring{deferred
                 ? L"Free scroll retained during refresh widget="
@@ -11442,6 +11500,12 @@ private:
         (void)widgetrail::input::SurfaceInteractionTransactions::CommitFreeScroll(
             interactionSession_.freeScrollState(), authority,
             interactionSession_.focusedElementId(), *plan);
+        if (gScrollDiagnostics) gScrollDiagnostics->Record("scroll", [&](auto& out) {
+            out << "seq=" << snapshot->sequence
+                << " scroll=" << widgetrail::RemoteImageCache::OpaqueDiagnosticHash(plan->scrollId)
+                << " from=" << plan->priorOffset << " to=" << plan->offset
+                << " full-paint-pending=" << fullPaintPending << " work=" << static_cast<int>(plan->render.work);
+        });
 
         ObserveScrollPaginationIntent(
             widget, *snapshot, plan->scrollId, plan->axis,
@@ -17072,6 +17136,14 @@ private:
         auto nextTrayState = CurrentTrayPaintState(
             *trayLayout, chromeSession.trayWidth, chromeSession.trayHeight,
             chromeSession.pixelsPerDip);
+        if (gScrollDiagnostics) gScrollDiagnostics->Record("frame-plan", [&](auto& out) {
+            out << "replace-content=" << replaceContent << " menu=" << repaintWidgetMenu
+                << " refresh-retained=" << retainPendingRefreshPixels
+                << " snapshot-impact=" << pendingWidgetPresentationImpact_.has_value()
+                << " bounded-damage=" << contentUpdate.has_value() << " transport-promoted=" << promoteContentTransport
+                << " work=" << static_cast<int>(activeContentRenderPlan_->work)
+                << " surface=" << width << 'x' << height;
+        });
         if (!nextTrayState) return false;
         if (OverlayFullscreenMediaRequested()) nextTrayState->items.clear();
         if (retainPendingRefreshPixels) {
@@ -17479,6 +17551,14 @@ private:
                     fullscreen.sessionKey, fullscreen.geometry);
         }
         AppendCompositionCoordinateSample(0);
+        if (gScrollDiagnostics) gScrollDiagnostics->Record("frame-commit", [&](auto& out) {
+            out << "draw-us=" << drawMicroseconds << " commit-us=" << timing.commitMicroseconds
+                << " begin-us=" << frames.stageTiming.beginFrameMicroseconds
+                << " resource-us=" << frames.stageTiming.resourceSetupMicroseconds
+                << " end-us=" << frames.stageTiming.endFrameMicroseconds
+                << " surface=" << width << 'x' << height
+                << " normal-log-us=" << gScrollDiagnostics->logUs.load();
+        });
         const bool presentationChanged =
             priorPresentationPaintKey != lastWidgetPresentationPaintKey_;
         const bool hasFocusFollowSummary = frames.declarativeTiming &&
@@ -18985,6 +19065,7 @@ private:
     widgetrail::ScrollEvidenceProbe scrollEvidenceProbe_;
     bool richMediaProof_{};
     bool artworkRenderDiagnostics_{};
+    bool scrollDiagnosticsRequested_{};
     static constexpr std::uint32_t kMaximumArtworkRenderDiagnosticRecords = 64;
     std::atomic<std::uint32_t> artworkRenderDiagnosticRecordCount_{};
     std::wstring richMediaProfileDirectory_;

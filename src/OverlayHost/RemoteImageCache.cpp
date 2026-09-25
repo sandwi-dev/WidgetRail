@@ -318,14 +318,16 @@ RemoteImageCache::RemoteImageCache(
     FetchFunction fetch,
     ArtworkRequestFunction artworkRequest,
     ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic,
-    PackageIconRequestFunction packageIconRequest)
+    PackageIconRequestFunction packageIconRequest,
+    std::shared_ptr<ScrollDiagnostics> scrollDiagnostics)
     : limits_(limits),
       completion_(std::move(completion)),
       usesCustomFetch_(static_cast<bool>(fetch)),
       fetch_(fetch ? std::move(fetch) : FetchAndDecodeSource),
       artworkRequest_(std::move(artworkRequest)),
       artworkDecodeDiagnostic_(std::move(artworkDecodeDiagnostic)),
-      packageIconRequest_(std::move(packageIconRequest)) {
+      packageIconRequest_(std::move(packageIconRequest)),
+      scrollDiagnostics_(std::move(scrollDiagnostics)) {
     if (limits_.maximumEntries == 0 || limits_.maximumEntries > 1'024 ||
         limits_.maximumReadyEntries == 0 || limits_.maximumReadyEntries > 1'024 ||
         limits_.maximumPendingEntries == 0 || limits_.maximumPendingEntries > 1'024 ||
@@ -1028,6 +1030,13 @@ bool RemoteImageCache::EvictOneLocked(
             candidate = iterator;
     }
     if (candidate == entries_.end()) return false;
+    if (scrollDiagnostics_) scrollDiagnostics_->Record("decoded-eviction", [&](auto& out) {
+        out << "variant=" << OpaqueDiagnosticHash(candidate->first)
+            << " reason=" << (reason == EvictionReason::BytePressure ? "bytes" : "count")
+            << " protected=" << ProtectedLocked(candidate->first)
+            << " bytes=" << (candidate->second.image ? candidate->second.image->premultipliedBgra.size() : 0)
+            << " state=" << static_cast<int>(candidate->second.state);
+    });
     if (candidate->second.image)
         decodedBytes_ -= candidate->second.image->premultipliedBgra.size();
     entries_.erase(candidate);
@@ -1349,12 +1358,20 @@ void RemoteImageCache::CompleteLocked(const std::wstring& url, RemoteImageFetchR
             entry.error.clear();
             entry.state = RemoteImageState::Ready;
             decodedBytes_ += bytes;
+            if (scrollDiagnostics_) scrollDiagnostics_->Record("decoded-ready", [&](auto& out) {
+                out << "variant=" << OpaqueDiagnosticHash(url)
+                    << " pixels=" << entry.image->width << 'x' << entry.image->height
+                    << " bytes=" << bytes << " cache-bytes=" << decodedBytes_;
+            });
             return;
         }
     }
     entry.image.reset();
     entry.error = result.error.empty() ? L"Remote image request failed." : std::move(result.error);
     entry.state = RemoteImageState::Failed;
+    if (scrollDiagnostics_) scrollDiagnostics_->Record("decoded-failed", [&](auto& out) {
+        out << "variant=" << OpaqueDiagnosticHash(url) << " budget-rejected=" << entry.budgetRejected;
+    });
 }
 
 RemoteImageFetchResult RemoteImageCache::FetchAndDecodeSource(
