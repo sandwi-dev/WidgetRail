@@ -101,20 +101,31 @@ because selection changed. Actual layout position changes use the same clock.
 Rapid navigation retargets from the
 visible presentation. The destination owns input immediately; retained outgoing
 pixels have no actions, accessibility nodes or focus memory. Existing scopes and
-cursor restoration remain authoritative. Motion uses final layout geometry and
-cached layout for subsequent frames, so focus-follow cannot compensate for a slide.
+cursor restoration remain authoritative. The host paints content into separate
+DirectComposition layers and submits position and opacity curves together.
+Animation frames do not rerun widget layout, paint, or upload pixels. Content
+updates repaint the affected scene without restarting its timeline. An interrupted
+section transition captures its current appearance once before retargeting.
+Motion uses final layout geometry, so focus-follow cannot compensate for a slide.
+Pointer input is mapped through the current incoming transform; outgoing pixels
+are never interactive. Native context menus and dropdowns snap motion while open
+so their anchors remain stationary.
 
 Content motion clips to its container. Use a stack, row, grid or
 focus-presentation surface. Content transition containers cannot be nested; each
 group has one content container and at most one selected surface per responsive mode. A presentation supports
 seven section groups and 64 moving layout elements. Pixel retention uses a
-separate 64 MiB aggregate cap, including reusable staging targets. Oversized or
-unavailable capture targets fall back to ordinary rendering. Live embedded-media
+64 MiB source-scene budget and a bounded reusable capture pool. Source pixels plus
+retained outgoing pixels are also checked against 64 MiB; exceeding that budget
+snaps motion. Oversized scenes fall back to ordinary rendering. Graphics failures
+use the host's graphics recovery path. Live embedded-media
 and window-preview subtrees are not captured. Colors, typography and surfaces
 come from the ordinary theme; no animation-specific color palette is introduced.
 Reduced motion snaps to the destination and drops retained transition pixels.
 Hiding, replacing runtime authority, resizing/scaling or losing the graphics
-device retires obsolete motion. Section declarations require protocol 58.
+device retires obsolete motion. Hosts without composition render the destination
+immediately. Section declarations require protocol 58; moving from raster-driven
+animation to DirectComposition does not change the widget API.
 
 ## Widget modals
 

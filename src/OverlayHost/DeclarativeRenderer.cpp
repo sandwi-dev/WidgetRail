@@ -483,6 +483,17 @@ struct DeclarativeRenderer::RenderPass final {
     bool applyTransitions{};
     bool capturingTransition{};
     bool capturingModal{};
+    bool RasterWidgetMotionEnabled() const noexcept {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        return options.rasterWidgetTransitionsForTesting;
+#else
+        return false;
+#endif
+    }
+    int compositionBand{-1};
+    bool composingScene{};
+    std::map<std::pair<std::wstring, int>, std::size_t> compositionPhases;
+    std::map<std::size_t, std::set<std::wstring>> compositionBandNodes;
     std::size_t transientCaptureBytes{};
     std::set<std::wstring> nonAnimatedContent;
     ID2D1RenderTarget* target{};
@@ -4664,7 +4675,7 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     bool DrawTransition(const WidgetNode& node, std::wstring_view inputScope, bool modal) {
-        if (!target || (capturingTransition && !capturingModal) || options.accessibility.reducedMotion) return false;
+        if (!RasterWidgetMotionEnabled() || !target || (capturingTransition && !capturingModal) || options.accessibility.reducedMotion) return false;
         const auto presented = presentation.find(NarrowStableId(node.id));
         if (presented == presentation.end()) return false;
         auto stationary = presented->second.borderBox;
@@ -4807,7 +4818,13 @@ struct DeclarativeRenderer::RenderPass final {
         PaintTransitionBitmap(visual.current.Get(), bounds, opacity, viewport);
     }
 
+    #include "WidgetCompositionPaint.inl"
+
     void DrawNode(const WidgetNode& node, const std::wstring_view inheritedInputScope = {}) {
+        if (composingScene) {
+            if (compositionBand >= 0 && !compositionBandNodes[static_cast<std::size_t>(compositionBand)].contains(node.id)) return;
+            DrawNodeBody(node, inheritedInputScope); return;
+        }
         const bool modal = !modalId.empty() && node.id == modalId;
         if ((modal || (node.transition && !node.transition->layout && !nonAnimatedContent.contains(node.id))) &&
             DrawTransition(node, inheritedInputScope, modal)) return;
@@ -4854,12 +4871,12 @@ struct DeclarativeRenderer::RenderPass final {
                     });
             }
         }
-        if (node.kind == L"windowPreview") {
+        if ((!composingScene || compositionBand < 0) && node.kind == L"windowPreview") {
             const auto clip = Intersection(presented.contentBox, presented.ancestorClip);
             if (clip.width > 0.5F && clip.height > 0.5F)
                 result.windowPreviewRegions.push_back({node.id, node.windowId, presented.contentBox, clip});
         }
-        if (node.kind == L"mediaViewport") {
+        if ((!composingScene || compositionBand < 0) && node.kind == L"mediaViewport") {
             const auto mediaClip = Intersection(
                 presented.contentBox, presented.ancestorClip);
             if (presented.contentBox.width > 0.5F &&
@@ -4880,12 +4897,12 @@ struct DeclarativeRenderer::RenderPass final {
             node.kind == L"progress" || node.kind == L"windowPreview" || node.kind == L"mediaViewport" ||
             (node.kind == L"text" &&
                 (!node.text.empty() || !node.accessibilityLabel.empty()));
-        if (options.collectAccessibility && semanticNode &&
+        if ((!composingScene || compositionBand < 0) && options.collectAccessibility && semanticNode &&
             visibleRect.width > 0.5F && visibleRect.height > 0.5F) {
             result.accessibilityRegions.push_back({node.id, visibleRect});
         }
 
-        CollectFocusGeometry(node, inputScope, presented);
+        if (!composingScene || compositionBand < 0) CollectFocusGeometry(node, inputScope, presented);
 
         if (scrollDiagnosticGeometry && scrollDiagnosticItemSamples < 18 &&
             (node.kind == L"scroll" || !node.collectionItemKey.empty()) &&
@@ -4927,7 +4944,7 @@ struct DeclarativeRenderer::RenderPass final {
         // control surface; the Slider itself stays visually lightweight.
         const bool compositorBackground = node.kind == L"backgroundSurface" &&
             TrySelectCompositorBackground(node, style, paintRect, opacity);
-        if (!transitionSurfacesPainted.contains(node.id) && node.kind != L"modalLayer" && node.kind != L"slider" && node.kind != L"loadingIndicator" &&
+        if (PaintCompositionPhase(node.id, 0) && !transitionSurfacesPainted.contains(node.id) && node.kind != L"modalLayer" && node.kind != L"slider" && node.kind != L"loadingIndicator" &&
             !compositorBackground)
             DrawSurface(node, style, paintRect, opacity);
 
@@ -4941,6 +4958,7 @@ struct DeclarativeRenderer::RenderPass final {
                 Add(node.id, L"tile_clip_fallback", L"Rounded tile content clip could not be created; using rectangular clipping.");
         }
 
+        if (PaintCompositionPhase(node.id, 1)) {
         if (node.kind == L"backgroundSurface" && !compositorBackground)
             DrawBackgroundSurfaceImage(node, style, paintRect, opacity);
         else if (compositorBackground)
@@ -5100,6 +5118,7 @@ struct DeclarativeRenderer::RenderPass final {
         // their precomputed presentation clips so overflow-visible containers
         // do not accidentally become clipping ancestors merely because the
         // renderer recurses through them.
+        }
         if (!clipTileContent) target->PopAxisAlignedClip();
         // Paint a shared selection surface before any sibling labels. Moving
         // the selected button itself would overlap the previous label and move
@@ -5109,8 +5128,9 @@ struct DeclarativeRenderer::RenderPass final {
             const auto childStyle = prepared.find(NarrowStableId(child.id));
             const auto childPresentation = presentation.find(NarrowStableId(child.id));
             if (childStyle == prepared.end() || childPresentation == presentation.end()) continue;
+            if (child.isSelected && !transitionSelections.contains(child.id)) continue;
             transitionSurfacesPainted.insert(child.id);
-            if (child.isSelected) continue;
+            if (child.isSelected || !PaintCompositionPhase(child.id, 0)) continue;
             target->PushAxisAlignedClip(D2DRect(childPresentation->second.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             DrawSurface(child, childStyle->second.paintStyle, childPresentation->second.borderBox,
                 childPresentation->second.motion.value.opacity);
@@ -5118,16 +5138,18 @@ struct DeclarativeRenderer::RenderPass final {
         }
         for (const auto& child : node.children) {
             const auto selection = transitionSelections.find(child.id);
-            if (selection == transitionSelections.end()) continue;
+            if (selection == transitionSelections.end() || !PaintCompositionPhase(child.id, 0)) continue;
             const auto childStyle = prepared.find(NarrowStableId(child.id));
             const auto childPresentation = presentation.find(NarrowStableId(child.id));
             if (childStyle == prepared.end() || childPresentation == presentation.end()) continue;
             auto bounds = selection->second;
-            const auto initial = transitionSelectionTargets.at(child.id);
-            const auto offset = transitionOffsets.find(child.id);
-            const auto own = offset == transitionOffsets.end() ? WidgetTransitionCoordinator::Offset{} : offset->second;
-            bounds.x += childPresentation->second.borderBox.x - initial.x - own.x;
-            bounds.y += childPresentation->second.borderBox.y - initial.y - own.y;
+            if (!composingScene) {
+                const auto initial = transitionSelectionTargets.at(child.id);
+                const auto offset = transitionOffsets.find(child.id);
+                const auto own = offset == transitionOffsets.end() ? WidgetTransitionCoordinator::Offset{} : offset->second;
+                bounds.x += childPresentation->second.borderBox.x - initial.x - own.x;
+                bounds.y += childPresentation->second.borderBox.y - initial.y - own.y;
+            }
             target->PushAxisAlignedClip(D2DRect(presented.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             DrawSurface(child, childStyle->second.paintStyle, bounds, childPresentation->second.motion.value.opacity);
             target->PopAxisAlignedClip();
@@ -5137,7 +5159,7 @@ struct DeclarativeRenderer::RenderPass final {
             if (fragment) DrawNode(*fragment, inputScope);
         }
         for (std::size_t index = 0; index < node.children.size(); ++index) {
-            if (node.kind == L"modalLayer" && index == 1U) {
+            if (node.kind == L"modalLayer" && index == 1U && PaintCompositionPhase(node.id, 4)) {
                 const auto color = style.background().value_or(NativeColor{0, 0, 0, 0.60F});
                 transitionVisuals[L"$modal"].scrim = color;
                 auto scrim = Brush(target, WithOpacity(color, modalOpacity));
@@ -5145,6 +5167,7 @@ struct DeclarativeRenderer::RenderPass final {
             }
             DrawNode(node.children[index], inputScope);
         }
+        if (PaintCompositionPhase(node.id, 2)) {
         DrawCollectionLoading(node, style, Intersection(presented.contentBox, presented.visibleBox), opacity);
         if (indicator) {
             DrawScrollIndicator(*indicator, style, opacity);
@@ -5160,6 +5183,7 @@ struct DeclarativeRenderer::RenderPass final {
         // Defer the focus ring until the entire tree is out of its nested
         // overflow clips. An outline is presentation, not child content, and
         // clipping it at a row/root boundary produces broken half-rings.
+        }
         if (roundedTileClip) {
             target->PopLayer();
             --tileClipDepth;
@@ -5203,7 +5227,7 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     void DrawDeferredFocus() {
-        if (deferredFocusNode && deferredFocusStyle) {
+        if (deferredFocusNode && deferredFocusStyle && PaintCompositionPhase(deferredFocusNode->id, 3)) {
             if (deferredFocusClip) {
                 target->PushAxisAlignedClip(
                     D2DRect(*deferredFocusClip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
@@ -5223,6 +5247,8 @@ DeclarativeRenderer::~DeclarativeRenderer() {
 void DeclarativeRenderer::CancelWidgetTransitions() noexcept {
     widgetTransitions_.Clear();
     transitionVisuals_.clear();
+    compositionInstance_.clear();
+    compositionCaptures_.clear();
 }
 void DeclarativeRenderer::PublishImageProtection() {
     if (!imageCache_) return;
@@ -5982,7 +6008,7 @@ RenderResult DeclarativeRenderer::Render(
         L"\x1f" + std::to_wstring(options.rootFontSizePx) + L":" + std::to_wstring(options.accessibility.textScale) +
         L":" + std::to_wstring(options.accessibility.reducedTransparency);
     if (pass.transitions.Begin(transitionAuthority, viewport, options.pixelScale,
-        animationTimestamp, options.accessibility.reducedMotion) || options.accessibility.reducedMotion)
+        animationTimestamp, options.accessibility.reducedMotion || !pass.RasterWidgetMotionEnabled()) || options.accessibility.reducedMotion)
         pass.transitionVisuals.clear();
     for (auto& [_, visual] : pass.transitionVisuals) visual.seen = false;
     const auto preparationOptionsMatch = [&]() {
@@ -6035,7 +6061,11 @@ RenderResult DeclarativeRenderer::Render(
     }
     const auto preparationFinished = std::chrono::steady_clock::now();
     pass.ResolvePresentationWithFocusFollow();
-    pass.PrepareWidgetTransitions();
+    bool rasterTransitions{};
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+    rasterTransitions = options.rasterWidgetTransitionsForTesting;
+#endif
+    if (!options.compositorWidgetTransitions) pass.PrepareWidgetTransitions();
     const auto presentationFinished = std::chrono::steady_clock::now();
     const auto cornerRadius = std::isfinite(options.surfaceCornerRadiusPx)
         ? std::clamp(options.surfaceCornerRadiusPx, 0.0F,
@@ -6071,7 +6101,8 @@ RenderResult DeclarativeRenderer::Render(
         protectedImageKeys_.insert(pass.visibleImageKeys.begin(), pass.visibleImageKeys.end());
         PublishImageProtection();
     }
-    pass.DrawNode(snapshot.root);
+    const auto composed = pass.DrawWidgetComposition();
+    if (!composed) pass.DrawNode(snapshot.root);
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     if (options.failAfterNodeDrawForTesting) {
         pass.Add({}, L"forced_post_draw_failure",
@@ -6080,8 +6111,8 @@ RenderResult DeclarativeRenderer::Render(
     }
 #endif
     const auto nodeDrawFinished = std::chrono::steady_clock::now();
-    pass.DrawDeferredFocus();
-    pass.DrawClosingModal();
+    if (!composed) pass.DrawDeferredFocus();
+    if (rasterTransitions) pass.DrawClosingModal();
     const auto deferredFocusFinished = std::chrono::steady_clock::now();
     // Always retire unseen style-motion nodes, including frames already kept
     // alive by a section, modal or loading indicator.

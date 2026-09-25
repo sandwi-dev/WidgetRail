@@ -7438,6 +7438,7 @@ void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
     snapshot.root.children = {header, content};
     DeclarativeRenderOptions options;
     std::wstring transitionTestFocus;
+    options.rasterWidgetTransitionsForTesting = true;
     const auto draw = [&](std::uint64_t time, bool retained = false) {
         options.animationTimestampMilliseconds = time;
         if (retained) Check(renderer.PlanRetainedPaint(snapshot).has_value(), "transition retains layout plan");
@@ -7572,6 +7573,43 @@ void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
     Check(pixel(10,45)[0] > 240 && pixel(110,45)[2] > 240, "selection surface slides independently behind stationary labels");
     renderer.ForgetWidgetState(snapshot.instanceId);
     Check(!draw(1200).animationActive, "retiring the actual widget cancels its transition pixels and timeline");
+    // The production path exports neutral, ordered layers and requests no
+    // animation raster loop. Composite those layers at rest to verify pixels.
+    options.rasterWidgetTransitionsForTesting=false;
+    options.accessibility.reducedMotion=true;
+    auto ordinary=draw(1300);
+    const auto leftGolden=pixel(10,45), rightGolden=pixel(110,45);
+    options.compositorWidgetTransitions=true;
+    const auto layered=draw(1310);
+    Check(layered.widgetComposition && !layered.widgetComposition->directContent,
+        "opted-in navigation exports a composition scene");
+    Check(!layered.animationActive && !layered.widgetTransitionAnimationDamage,
+        "compositor motion never requests per-frame renderer work");
+    Check(layered.hitRegions.size()==ordinary.hitRegions.size(),"band painting publishes each input target once");
+    target->BeginDraw(); target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+    for (const auto& item : layered.widgetComposition->nodes) {
+        if (item.bitmap) target->DrawBitmap(item.bitmap.Get(),D2D1::RectF(item.bounds.x,item.bounds.y,
+            item.bounds.x+item.bounds.width,item.bounds.y+item.bounds.height));
+    }
+    Check(SUCCEEDED(target->EndDraw()),"composition scene rasters can be replayed");
+    Check(pixel(10,45)==leftGolden && pixel(110,45)==rightGolden,
+        "composition bands preserve navigation paint order and theme pixels");
+    options.accessibility.reducedMotion = false;
+    options.suppressWidgetCompositionMotion = true;
+    const auto popup = draw(1320);
+    Check(popup.widgetComposition && !popup.widgetComposition->directContent &&
+        popup.widgetComposition->reducedMotion,
+        "popup suppression retains scene ownership while snapping transforms");
+    auto preview = Node(L"external.preview", L"windowPreview");
+    preview.windowId = L"window-0";
+    preview.baseStyle = {{L"width", Length(40)}, {L"height", Length(40)}};
+    snapshot.root.children.push_back(preview);
+    ++snapshot.sequence;
+    options.suppressWidgetCompositionMotion = false;
+    const auto external = draw(1330);
+    Check(external.widgetComposition && external.widgetComposition->directContent &&
+        !external.animationActive && !external.windowPreviewRegions.empty(),
+        "external live surfaces preserve direct rendering and stationary placement");
 }
 
 void ModalLayersPaintAboveThePageAndKeepIndependentScroll() {
@@ -7636,6 +7674,28 @@ void ModalLayersPaintAboveThePageAndKeepIndependentScroll() {
     Check(result.focusScopes.at(L"game") == L"page.scope" && result.focusScopes.at(L"play") == L"dialog.scope",
         "modal and background retain distinct input geometry scopes");
     const auto before = result.elementRects.at(L"game");
+    options.compositorWidgetTransitions = true;
+    const auto composed = draw(L"play");
+    Check(composed.widgetComposition && !composed.widgetComposition->directContent,
+        "modal exports parent, scrim and dialog layers");
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+    for (const auto& node : composed.widgetComposition->nodes) {
+        const auto bounds = D2D1::RectF(node.bounds.x, node.bounds.y,
+            node.bounds.x + node.bounds.width, node.bounds.y + node.bounds.height);
+        if (node.bitmap) target->DrawBitmap(node.bitmap.Get(), bounds);
+        if (node.solid) {
+            ComPtr<ID2D1SolidColorBrush> brush;
+            ok(target->CreateSolidColorBrush(*node.solid, brush.GetAddressOf()));
+            target->FillRectangle(bounds, brush.Get());
+        }
+    }
+    ok(target->EndDraw());
+    Check(pixel(15,280) == under && pixel(150,65) == over,
+        "modal composition preserves scrim and panel theme pixels");
+    Check(composed.hitRegions.size() == result.hitRegions.size(),
+        "modal scene extraction does not duplicate input targets");
+    options.compositorWidgetTransitions = false;
     result = draw(L"control.11");
     Near(result.elementRects.at(L"game").y, before.y, "modal focus-follow never scrolls background");
     Check(result.elementVisibleRects.at(L"control.11").height > 0,

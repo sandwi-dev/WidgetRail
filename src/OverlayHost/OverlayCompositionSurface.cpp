@@ -220,6 +220,7 @@ bool OverlayCompositionSurface::InitializePinnedExternalContentEndpoint(
 }
 
 void OverlayCompositionSurface::Reset() noexcept {
+    widgetPresenter_.reset();
     if (pinnedExternalTarget_ && device_)
         (void)pinnedExternalTarget_->SetRoot(nullptr);
     if (chromeTarget_ && device_) {
@@ -933,6 +934,20 @@ HRESULT OverlayCompositionSurface::CommitFrames(
             result = state.visual->SetOffsetX(frame->visualOffsetX);
             if (SUCCEEDED(result))
                 result = state.visual->SetOffsetY(frame->visualOffsetY);
+            if (SUCCEEDED(result)) {
+                try {
+                    if (!widgetPresenter_)
+                        widgetPresenter_ = std::make_unique<WidgetCompositionPresenter>(
+                            device_.Get(), d2dDevice_.Get());
+                    result = widgetPresenter_->Apply(frame->widgetScene,
+                        presentationVisual_.Get(), content_.visual.Get(),
+                        frame->visualOffsetX, frame->visualOffsetY);
+                } catch (const std::bad_alloc&) {
+                    result = E_OUTOFMEMORY;
+                } catch (...) {
+                    result = E_FAIL;
+                }
+            }
         }
         if (FAILED(result)) break;
     }
@@ -944,6 +959,7 @@ HRESULT OverlayCompositionSurface::CommitFrames(
         result = content_.visual.As(&content);
         if (SUCCEEDED(result)) result = CreatePresentationAnimation(device_.Get(), 0.78F, 1.0F, 100, reveal.GetAddressOf());
         if (SUCCEEDED(result)) result = content->SetOpacity(reveal.Get());
+        if (SUCCEEDED(result) && widgetPresenter_) result = widgetPresenter_->SetOpacity(reveal.Get());
         if (SUCCEEDED(result)) contentRevealAnimation_ = std::move(reveal);
     }
     if (SUCCEEDED(result)) result = device_->Commit();
@@ -1023,6 +1039,7 @@ HRESULT OverlayCompositionSurface::SnapContentVisible() noexcept {
     ComPtr<IDCompositionVisual3> content;
     HRESULT result = content_.visual.As(&content);
     if (SUCCEEDED(result)) result = content->SetOpacity(1.0F);
+    if (SUCCEEDED(result) && widgetPresenter_) result = widgetPresenter_->SetOpacity(1.0F);
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) {
         contentRevealAnimation_.Reset();

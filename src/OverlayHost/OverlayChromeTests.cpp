@@ -6,6 +6,9 @@
 #pragma comment(lib, "dwrite.lib")
 
 #include <Windows.h>
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "gdi32.lib")
 #include <d2d1.h>
 #include <wincodec.h>
 #include <wrl/client.h>
@@ -1166,9 +1169,171 @@ void CheckFixedChromeWindowPolicy() {
     UnregisterClassW(className, windowClass.hInstance);
 }
 
+void CheckWidgetCompositorPixels() {
+    using namespace widgetrail;
+    const wchar_t *name = L"WidgetRail.CompositorMotionPixelTest";
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = DefWindowProcW;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = name;
+    Check(RegisterClassW(&wc) != 0, "compositor pixel class");
+    HWND window = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_NOREDIRECTIONBITMAP, name,
+                                  L"Widget motion test", WS_POPUP, 40, 40, 128, 128, nullptr, nullptr,
+                                  wc.hInstance, nullptr);
+    Check(window != nullptr, "compositor pixel window");
+    ComPtr<ID2D1Factory1> factory;
+    Check(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.GetAddressOf())),
+          "composition factory");
+    OverlayCompositionSurface surface;
+    std::wstring error;
+    Check(surface.Initialize(window, factory.Get(), error), "widget compositor initializes");
+    const auto makeScene = [](const wchar_t *key, D2D1_COLOR_F color) {
+        auto scene = std::make_shared<WidgetCompositionScene>();
+        scene->authority = L"motion.test";
+        scene->viewport = {0, 0, 128, 128};
+        WidgetCompositionNode group;
+        group.id = L"section";
+        group.kind = WidgetCompositionKind::Content;
+        group.clock = L"tabs";
+        group.key = key;
+        group.order = key[0] == L'h' ? 0 : 1;
+        group.bounds = group.clip = {16, 16, 96, 96};
+        scene->nodes.push_back(group);
+        WidgetCompositionNode pixels;
+        pixels.id = L"section.pixels";
+        pixels.parent = group.id;
+        pixels.bounds = group.bounds;
+        pixels.clip = group.clip;
+        pixels.solid = color;
+        scene->nodes.push_back(pixels);
+        return scene;
+    };
+    const auto commit = [&](std::shared_ptr<const WidgetCompositionScene> scene) {
+        OverlayCompositionSurface::Frame frame;
+        Check(SUCCEEDED(surface.BeginFrame(128, 128, frame)), "motion frame begins");
+        frame.target->Clear(D2D1::ColorF(0, 0));
+        frame.widgetScene = std::move(scene);
+        Check(SUCCEEDED(surface.EndFrame(frame)), "motion frame ends");
+        OverlayCompositionSurface::CommitTiming timing;
+        Check(SUCCEEDED(surface.CommitFrame(frame, true, timing)), "motion scene commits");
+    };
+    const auto pixel = [&] {
+        POINT position{64, 64};
+        ClientToScreen(window, &position);
+        const auto desktop = GetDC(nullptr);
+        const auto value = GetPixel(desktop, position.x, position.y);
+        ReleaseDC(nullptr, desktop);
+        Check(value != CLR_INVALID, "composition pixel is readable");
+        return value;
+    };
+    commit(makeScene(L"home", D2D1::ColorF(D2D1::ColorF::Red)));
+    SetWindowPos(window, HWND_TOPMOST, 40, 40, 128, 128, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    DwmFlush();
+    Sleep(50);
+    DwmFlush();
+    Check(GetRValue(pixel()) > 220, "initial compositor section is red");
+    commit(makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Lime)));
+    const auto movingInput = surface.MapWidgetCompositionInput({64, 64});
+    Check(movingInput.x >= 40 && movingInput.x <= 64 && movingInput.y == 64,
+          "pointer coordinates follow only the incoming section transform");
+    DwmFlush();
+    const auto initial = pixel();
+    const auto paints = surface.paintCounters().content;
+    const auto counters = surface.widgetCompositionCounters();
+    // Deliberately no message pumping, painting, scene updates or animation
+    // samples on this thread. DWM must advance the submitted visual curves.
+    Sleep(90);
+    DwmFlush();
+    const auto advanced = pixel();
+    Check(GetGValue(advanced) > GetGValue(initial) + 10,
+          "DWM advances widget pixels while the application thread sleeps");
+    Check(surface.paintCounters().content == paints &&
+              surface.widgetCompositionCounters().rasterUploads == counters.rasterUploads,
+          "motion produces zero application raster uploads");
+    commit(makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue)));
+    Check(surface.widgetCompositionCounters().animationStarts == counters.animationStarts,
+          "content update does not restart compositor motion");
+    Sleep(110);
+    DwmFlush();
+    Check(GetBValue(pixel()) > 220, "updated section reaches its original animation endpoint");
+    Check(SUCCEEDED(surface.AdvanceWidgetComposition()), "completed visuals retire without drawing");
+    const auto modalScene = [&] {
+        auto scene = makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue));
+        WidgetCompositionNode scrim;
+        scrim.id = L"modal.scrim";
+        scrim.kind = WidgetCompositionKind::Scrim;
+        scrim.clock = L"modal";
+        scrim.key = L"dialog";
+        scrim.bounds = scrim.clip = scene->viewport;
+        scene->nodes.push_back(scrim);
+        WidgetCompositionNode shade;
+        shade.id = L"scrim.pixels";
+        shade.parent = scrim.id;
+        shade.bounds = shade.clip = scene->viewport;
+        shade.solid = D2D1::ColorF(0, .6F);
+        scene->nodes.push_back(shade);
+        WidgetCompositionNode panel;
+        panel.id = L"modal.panel";
+        panel.kind = WidgetCompositionKind::Modal;
+        panel.clock = L"modal";
+        panel.key = L"dialog";
+        panel.bounds = {24, 24, 80, 80};
+        panel.clip = scene->viewport;
+        scene->nodes.push_back(panel);
+        WidgetCompositionNode panelPixels;
+        panelPixels.id = L"modal.pixels";
+        panelPixels.parent = panel.id;
+        panelPixels.bounds = panel.bounds;
+        panelPixels.clip = panel.clip;
+        panelPixels.solid = D2D1::ColorF(D2D1::ColorF::Red);
+        scene->nodes.push_back(panelPixels);
+        return scene;
+    };
+    commit(modalScene());
+    Sleep(210);
+    DwmFlush();
+    Check(GetRValue(pixel()) > 220, "modal pixels are above their backdrop");
+    const auto outsideModal = surface.MapWidgetCompositionInput({18, 18});
+    Check(!std::isfinite(outsideModal.x), "modal backdrop never maps input into the parent content");
+    commit(makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue)));
+    const auto dismissedInput = surface.MapWidgetCompositionInput({64, 64});
+    Check(dismissedInput.x == 64 && dismissedInput.y == 64,
+          "dismissed modal pixels immediately stop contributing input transforms");
+    DwmFlush();
+    Check(GetRValue(pixel()) > 150, "modal exit preserves panel-over-backdrop ordering");
+    const auto closingPaints = surface.paintCounters().content;
+    Sleep(55);
+    DwmFlush();
+    Check(surface.paintCounters().content == closingPaints, "modal exit needs no UI-thread paint");
+    commit(modalScene());
+    Sleep(210);
+    DwmFlush();
+    Check(GetRValue(pixel()) > 220, "an interrupted modal exit reopens correctly");
+    auto reduced = makeScene(L"home", D2D1::ColorF(D2D1::ColorF::Lime));
+    reduced->reducedMotion = true;
+    commit(reduced);
+    DwmFlush();
+    Check(GetGValue(pixel()) > 220, "reduced motion immediately removes outgoing and modal pixels");
+    auto scaled = makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue));
+    scaled->scale = 1.25F;
+    const auto starts = surface.widgetCompositionCounters().animationStarts;
+    commit(scaled);
+    Check(surface.widgetCompositionCounters().animationStarts == starts,
+          "scale change cannot resume stale widget animations");
+    surface.Reset();
+    DestroyWindow(window);
+    UnregisterClassW(name, wc.hInstance);
+    std::cout << "Widget compositor pixel proof passed: UI thread paused, zero animation rasters, update "
+                 "preserved timeline\n";
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc==2 && std::string_view(argv[1])=="--widget-motion-pixels") {
+        Check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_MULTITHREADED)),"pixel proof COM initialization");
+        CheckWidgetCompositorPixels(); CoUninitialize(); return EXIT_SUCCESS;
+    }
     for (const float scale : {0.75F, 1.0F, 1.25F, 1.5F, 2.0F}) {
         const RECT work{-1920, -100, 0, 980};
         const RECT window{-1500, 650, -420, 980};

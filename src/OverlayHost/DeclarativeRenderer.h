@@ -6,6 +6,7 @@
 #include "DeclarativeLayout.h"
 #include "DeclarativeMotion.h"
 #include "WidgetTransitions.h"
+#include "WidgetCompositionScene.h"
 #include "NativeStyle.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
@@ -172,6 +173,7 @@ struct ComputedCompositorBackground final {
 };
 
 struct RenderResult final {
+    std::shared_ptr<const WidgetCompositionScene> widgetComposition;
     bool playStationControls{};
     bool succeeded{};
     std::shared_ptr<const RenderInspection> inspection;
@@ -339,6 +341,11 @@ struct FocusedFreeScrollPlanDiagnostic final {
 };
 
 struct DeclarativeRenderOptions final {
+    bool compositorWidgetTransitions{};
+    bool suppressWidgetCompositionMotion{};
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+    bool rasterWidgetTransitionsForTesting{};
+#endif
     bool playStationControls{controller::UsePlayStationControls()};
     bool collectInspection{};
     std::function<Microsoft::WRL::ComPtr<ID2D1Bitmap1>(ID2D1RenderTarget*, std::wstring_view)> windowPreviewBitmap;
@@ -806,6 +813,13 @@ private:
     };
     std::map<std::wstring, TransitionVisual> transitionVisuals_;
     std::size_t compatiblePaintDepth_{};
+    std::wstring compositionInstance_;
+    struct CompositionCapture final {
+        Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> target;
+        std::weak_ptr<void> lease;
+        std::size_t bytes{};
+    };
+    std::vector<CompositionCapture> compositionCaptures_;
     std::optional<IncrementalLayoutCache> incrementalLayoutCache_;
     std::optional<PendingIncrementalPlan> pendingIncrementalPlan_;
 };

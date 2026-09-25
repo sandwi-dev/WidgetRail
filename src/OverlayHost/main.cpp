@@ -8221,6 +8221,7 @@ private:
         lastForegroundOwnership_.reset();
         declarativeMotionActive_ = false;
         if (declarativeRenderer_) declarativeRenderer_->CancelWidgetTransitions();
+        compositionSurface_.ClearWidgetComposition();
         pendingContentRevealWidget_.clear();
         awaitingSuccessfulOpenPaint_ = false;
         nextOpenPaintRetryAt_ = 0;
@@ -10067,8 +10068,9 @@ private:
             const std::wstring widget{state_.activeWidget()};
             const auto* snapshot = InteractionSnapshotFor(widget);
             if (snapshot) {
+                const auto widgetPoint = compositionSurface_.MapWidgetCompositionInput({x, y});
                 const auto hit = widgetrail::input::FindPointerHitTarget(
-                    x, y, snapshot->activeInputScopeId, lastWidgetRenderResult_);
+                    widgetPoint.x, widgetPoint.y, snapshot->activeInputScopeId, lastWidgetRenderResult_);
                 if (hit) {
                     if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
                         Dispatch(widgetrail::Command::Activate);
@@ -10193,8 +10195,10 @@ private:
                         metrics->viewportHeightDip);
                     popup && contains(contentX, contentY, popup->bounds))
                     return true;
+                const auto movingPoint = compositionSurface_.MapWidgetCompositionInput({contentX, contentY});
+                if (!std::isfinite(movingPoint.x) || !std::isfinite(movingPoint.y)) return true;
                 const auto authoredContains = [&](const auto& region) {
-                    return contains(contentX, contentY, region.rect);
+                    return contains(movingPoint.x, movingPoint.y, region.rect);
                 };
                 if (std::ranges::any_of(
                         lastWidgetRenderResult_.hitRegions, authoredContains) ||
@@ -12486,6 +12490,8 @@ private:
         // that bounded wakeup rather than owning an animation timer; settled
         // declarative content performs no paint invalidations, and this timer
         // is stopped altogether while the overlay is hidden.
+        if (FAILED(compositionSurface_.AdvanceWidgetComposition()))
+            DisableCompositionFallback(L"widget animation retirement failed");
         if (declarativeMotionActive_ &&
             !HasExactRefreshRetainedVisualCheckpoint() &&
             !(lastWidgetRenderResult_.widgetTransitionAnimationDamage
@@ -16994,6 +17000,8 @@ private:
         currentCompositionRenderTiming_.reset();
         const auto drawStarted = std::chrono::steady_clock::now();
         std::optional<widgetrail::CompositionUpdateRasterMapping> rasterMapping;
+        if (paintLayer == CompositionPaintLayer::Content)
+            pendingWidgetCompositionScene_.reset();
         DrawCurrentFrame(
             fullWidth, fullHeight, dpi, frame.updateOffset, frame.updateArea,
             paintLayer, trayLayout, guideBounds,
@@ -17001,6 +17009,8 @@ private:
                 ? &rasterMapping
                 : nullptr,
             deferFixedChromeAccessibilityPublication);
+        if (paintLayer == CompositionPaintLayer::Content)
+            frame.widgetScene = std::move(pendingWidgetCompositionScene_);
         if (paintLayer == CompositionPaintLayer::Content)
             set.contentRasterMapping = rasterMapping;
         if (paintLayer == CompositionPaintLayer::Content &&
@@ -17125,8 +17135,21 @@ private:
         // updates remain bounded. Promote only the transport rectangle; the
         // renderer keeps its independently validated incremental plan and
         // layout cache for the same presentation.
+        const auto needsWidgetLayers = [&](const auto& self, const widgetrail::WidgetNode& node) -> bool {
+            return node.transition || node.kind == L"modalLayer" ||
+                std::ranges::any_of(node.children, [&](const auto& child) { return self(self, child); });
+        };
+        const auto* compositionSnapshot = InteractionSnapshotFor(state_.activeWidget());
+        const bool layeredWidget =
+            (lastWidgetRenderResult_.widgetComposition &&
+                !lastWidgetRenderResult_.widgetComposition->directContent) ||
+            (compositionSnapshot && needsWidgetLayers(needsWidgetLayers, compositionSnapshot->root));
+        // A scene may switch between direct pixels and separate layers (for
+        // example when a modal first opens, or when its capture budget is
+        // exceeded). Clear the entire main surface so old direct pixels cannot
+        // cover the layers below. Keep the incremental layout plan unchanged.
         const bool promoteContentTransport = contentUpdate &&
-            ShouldPromoteLargeCompositionUpdate(*contentUpdate, width, height);
+            (layeredWidget || ShouldPromoteLargeCompositionUpdate(*contentUpdate, width, height));
         if (!contentUpdate && declarativeRenderer_)
             declarativeRenderer_->CancelPresentationUpdatePlan();
         if (contentUpdate && renderPlan) {
@@ -18431,6 +18454,10 @@ private:
                 }
                 options.compositorBackgroundAvailable =
                     compositionSurface_.available() && !inertRetainedSnapshot;
+                options.compositorWidgetTransitions = layer == CompositionPaintLayer::Content &&
+                    compositionSurface_.available() && !inertRetainedSnapshot && !snapshot->embeddedMediaSession;
+                options.suppressWidgetCompositionMotion =
+                    widgetContextMenu_.has_value() || interactionSession_.selectPopup().has_value();
                 options.retainedCompositorBackground = lastWidgetRenderResult_.compositorBackground;
                 if (descriptor) {
                     options.artworkAuthorityId =
@@ -18892,6 +18919,7 @@ private:
                     }
                 }
                 declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;
+                if (result.succeeded) pendingWidgetCompositionScene_ = result.widgetComposition;
                 if (WidgetOwnsInputFocus(renderedWidget) &&
                     !textEntryModal_.active() && !inertRetainedSnapshot &&
                     !focusGroupEntryWaiting) {
@@ -19199,6 +19227,7 @@ private:
     std::optional<widgetrail::IncrementalPresentationPlan>
         activeContentRenderPlan_;
     bool declarativeMotionActive_{};
+    std::shared_ptr<const widgetrail::WidgetCompositionScene> pendingWidgetCompositionScene_;
     widgetrail::OverlayTransitionTimeline overlayTransition_;
     widgetrail::OverlayTransitionSample overlayTransitionSample_{};
     widgetrail::OverlayPresentationTransaction presentationTransaction_;

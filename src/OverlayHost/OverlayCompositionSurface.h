@@ -1,6 +1,7 @@
 #pragma once
 
 #include "OverlayPosition.h"
+#include "WidgetCompositionPresenter.h"
 
 #include <Windows.h>
 #include <d2d1_1.h>
@@ -96,6 +97,7 @@ public:
     };
 
     struct Frame final {
+        std::shared_ptr<const WidgetCompositionScene> widgetScene;
         Layer layer{Layer::Content};
         Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
         Microsoft::WRL::ComPtr<ID2D1DeviceContext> target;
@@ -262,6 +264,14 @@ public:
     HRESULT SnapContentVisible() noexcept;
     HRESULT CommitShellZoom(float fromScale, bool opening, bool reducedMotion,
         OverlayPosition position = OverlayPosition::Center) noexcept;
+    HRESULT AdvanceWidgetComposition() { return widgetPresenter_ ? widgetPresenter_->Advance() : S_FALSE; }
+    void ClearWidgetComposition() noexcept { if (widgetPresenter_) widgetPresenter_->Clear(); }
+    [[nodiscard]] D2D1_POINT_2F MapWidgetCompositionInput(D2D1_POINT_2F point) const noexcept {
+        return widgetPresenter_ ? widgetPresenter_->MapInput(point) : point;
+    }
+    [[nodiscard]] WidgetCompositionPresenter::Counters widgetCompositionCounters() const noexcept {
+        return widgetPresenter_ ? widgetPresenter_->counters() : WidgetCompositionPresenter::Counters{};
+    }
     HRESULT SetShellZoomAnchor(float width, float height,
         OverlayPosition position = OverlayPosition::Center) noexcept;
     // Creates the only external content slot under this HWND's existing root.
@@ -305,6 +315,7 @@ public:
     void AbandonFrame(Frame& frame) noexcept;
 
 private:
+    std::unique_ptr<WidgetCompositionPresenter> widgetPresenter_;
     Microsoft::WRL::ComPtr<ID3D11Device> d3dDevice_;
     Microsoft::WRL::ComPtr<ID2D1Device> d2dDevice_;
     Microsoft::WRL::ComPtr<IDCompositionDesktopDevice> desktopDevice_;
