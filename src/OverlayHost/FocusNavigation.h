@@ -69,6 +69,7 @@ struct ScrollPaginationAction final {
     std::vector<std::wstring> visibleCollectionKeys;
     bool viewportUnderfilled{};
     std::optional<std::uint64_t> collectionGeneration;
+    std::vector<std::wstring> retainedCollectionKeys;
 };
 
 enum class FocusedScrollResolutionDisposition {

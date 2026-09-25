@@ -198,6 +198,38 @@ void OverflowClipping() {
     Near(result.Find("too-tall")->visibleBox.height, 100.0F, "visible box is intersected with clip");
 }
 
+void ScrollProjectionKeepsSizesAndRelativeTextPositions() {
+    auto scroll = Element("stable.scroll");
+    scroll.scrollAxis = ScrollAxis::Vertical;
+    for (int i = 0; i < 8; ++i) {
+        auto tile = Element("stable.tile." + std::to_string(i));
+        tile.height = tile.minHeight = 256.4F;
+        tile.width = 171.2F;
+        tile.flexShrink = 0;
+        auto text = Element("stable.text." + std::to_string(i));
+        text.height = 24.6F;
+        tile.children.push_back(text);
+        scroll.children.push_back(tile);
+    }
+    for (float scale : {0.85F, 1.0F, 1.25F, 1.5F, 2.0F}) {
+        widgetrail::declarative::LayoutOptions options;
+        options.pixelScale = scale;
+        scroll.scrollOffset = 0;
+        const auto initial = ComputeLayout(scroll, {0, 0, 500, 500}, {}, options);
+        const auto tile = initial.Find("stable.tile.1")->borderBox;
+        const auto text = initial.Find("stable.text.1")->borderBox;
+        for (int tick = 1; tick < 80; ++tick) {
+            scroll.scrollOffset = tick * 0.37F;
+            const auto moved = ComputeLayout(scroll, {0, 0, 500, 500}, {}, options);
+            const auto currentTile = moved.Find("stable.tile.1")->borderBox;
+            const auto currentText = moved.Find("stable.text.1")->borderBox;
+            Near(currentTile.height, tile.height, "scrolling cannot change poster height");
+            Near(currentText.y - currentTile.y, text.y - tile.y,
+                "scrolling preserves text position relative to its poster");
+        }
+    }
+}
+
 void ScrollOffsetsAreBoundedAndClipped() {
     auto scroll = Element("sessions");
     scroll.scrollAxis = ScrollAxis::Vertical;
@@ -1078,6 +1110,7 @@ int main() {
     NestedPaddingAndMargins();
     OverflowClipping();
     ScrollOffsetsAreBoundedAndClipped();
+    ScrollProjectionKeepsSizesAndRelativeTextPositions();
     ResponsiveViewports();
     ResponsiveRowsWrapAtStableItemBoundaries();
     ResponsiveGridUsesAvailableDipWidth();

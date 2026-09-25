@@ -354,6 +354,9 @@ int main() {
         const auto ahead = widgetrail::input::FindScrollPaginationActions(buffered, L"root", geometry);
         Check(ahead.size() == 1 && ahead[0].edge == widgetrail::input::ScrollPaginationEdge::After && ahead[0].lastVisibleIndex < 19,
             "positioned collections prefetch before the loaded trailing edge reaches the viewport");
+        Check(ahead.size() == 1 && ahead[0].retainedCollectionKeys.size() > ahead[0].visibleCollectionKeys.size() &&
+            std::ranges::find(ahead[0].retainedCollectionKeys, L"key.10") != ahead[0].retainedCollectionKeys.end(),
+            "pagination retains nearby pages beyond the prefetch threshold for direction reversals");
         geometry.scrollViewports[buffered.id].rect.y = 120 * scale;
         const auto behind = widgetrail::input::FindScrollPaginationActions(buffered, L"root", geometry);
         Check(behind.size() == 1 && behind[0].edge == widgetrail::input::ScrollPaginationEdge::Before && behind[0].firstVisibleIndex > 0,

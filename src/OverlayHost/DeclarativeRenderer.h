@@ -280,6 +280,7 @@ enum class IncrementalPresentationWork {
     PaintOnly,
     LocalLayout,
     FullRaster,
+    ScrollOnly,
 };
 
 struct IncrementalPresentationPlan final {
@@ -677,6 +678,7 @@ private:
         Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
         std::size_t bytes{};
         std::uint64_t lastUse{};
+        std::wstring imageIdentity;
     };
     struct FocusBackgroundEntry final {
         std::wstring widgetId;

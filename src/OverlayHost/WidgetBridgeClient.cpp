@@ -5438,7 +5438,8 @@ std::optional<bool> WidgetBridgeClient::SendAction(
     const std::wstring_view sourceElementId,
     const std::wstring_view inputScopeId,
     const std::optional<std::wstring_view> committedText,
-    const std::vector<std::wstring>* visibleCollectionKeys) {
+    const std::vector<std::wstring>* visibleCollectionKeys,
+    const std::vector<std::wstring>* retainedCollectionKeys) {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() || actionId.empty() ||
         sourceElementId.empty() || !IsIdentifier(widgetId) ||
@@ -5473,6 +5474,16 @@ std::optional<bool> WidgetBridgeClient::SendAction(
                 keys.Append(JsonValue::CreateStringValue(key));
             }
             action.Insert(L"visibleCollectionKeys", keys);
+        }
+        if (retainedCollectionKeys && !retainedCollectionKeys->empty()) {
+            if (retainedCollectionKeys->size() > protocol_contract::MaximumCursorCollectionItems)
+                throw winrt::hresult_invalid_argument();
+            JsonArray keys;
+            for (const auto& key : *retainedCollectionKeys) {
+                if (!IsIdentifier(key)) throw winrt::hresult_invalid_argument();
+                keys.Append(JsonValue::CreateStringValue(key));
+            }
+            action.Insert(L"retainedCollectionKeys", keys);
         }
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));

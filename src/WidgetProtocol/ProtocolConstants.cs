@@ -21,7 +21,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 56;
+    public const int CurrentVersion = 57;
+    public const int CursorRetentionVersion = 57;
     public const int FocusPresentationRetentionVersion = 56;
     public const int ModalLayerVersion = 55;
     public const int ControllerGlyphVersion = 54;

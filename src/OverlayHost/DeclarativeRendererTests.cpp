@@ -4787,10 +4787,12 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
         const auto animation =
             scrolling.PlanRetainedPaint(anchored, anchoredViewport);
         Check(animation && animation->work ==
-                  widgetrail::IncrementalPresentationWork::LocalLayout &&
+                  widgetrail::IncrementalPresentationWork::ScrollOnly &&
                   animation->damage.height == anchoredViewport.height,
               "background animation broadens damage without replacing scroll layout");
         const auto shown = draw();
+        Check(shown.fullLayoutBuildCount == 0 && shown.timing.layoutMicroseconds == 0,
+              "offset-only scrolling never invokes the layout engine");
         Near(shown.scrollOffsets.at(L"anchor.collection"), start + 16.0F,
              "animation scheduling does not undo an anchored rail scroll");
 
@@ -5069,7 +5071,7 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
         10'000.0F, freeScrollViewport);
     Check(deepestPlan.has_value() && deepestPlan->scrollId == L"inner-scroll" &&
               deepestPlan->render.work ==
-                  widgetrail::IncrementalPresentationWork::LocalLayout &&
+                  widgetrail::IncrementalPresentationWork::ScrollOnly &&
               deepestPlan->offset == deepestPlan->maximumOffset,
           "right-stick free scroll selects the deepest eligible scroll owner");
     Check(deepestPlan && deepestPlan->render.damage.width > 0.0F &&
@@ -7028,6 +7030,55 @@ void PosterArtworkLoadsAtDisplaySizeUnderPressure(bool trusted) {
     }
 }
 
+void ArtworkResizeKeepsReadyPixelsWithoutCrossingIdentity() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas; ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "artwork resize fixture resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.ReleaseAndGetAddressOf())));
+    ok(wic->CreateBitmap(200, 120, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.ReleaseAndGetAddressOf()));
+    std::atomic<bool> release{};
+    RemoteImageCache cache({}, {}, [&](std::wstring_view, std::stop_token stop, const RemoteImageLimits& request) {
+        while (request.decodeSize.width != 256 && !release && !stop.stop_requested())
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        RemoteDecodedImage image; image.width = image.height = 1; image.stride = 4;
+        image.premultipliedBgra = {0, 255, 0, 255};
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    });
+    WidgetSnapshot snapshot; snapshot.instanceId = L"resize"; snapshot.sequence = 1;
+    snapshot.root = Node(L"cover", L"image"); snapshot.root.imageSource = L"https://example.test/cover";
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), &cache);
+    DeclarativeRenderOptions options; options.sizeArtworkToDisplay = true;
+    const auto draw = [&] {
+        target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0, 0, 1));
+        const auto result = renderer.Render(target.Get(), snapshot, L"", {0, 0, 200, 120}, options);
+        ok(target->EndDraw()); Check(result.succeeded, "artwork resize render succeeds");
+        ComPtr<IWICBitmapLock> lock; WICRect pixel{100, 60, 1, 1};
+        ok(canvas->Lock(&pixel, WICBitmapLockRead, lock.ReleaseAndGetAddressOf()));
+        UINT count{}; BYTE* data{}; ok(lock->GetDataPointer(&count, &data));
+        return data[1];
+    };
+    (void)draw();
+    const auto key = RemoteImageCache::VariantKey(snapshot.root.imageSource, {256, 128});
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (cache.GetState(key) != RemoteImageState::Ready && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    Check(draw() > 240, "original artwork is painted");
+    options.pixelScale = 2.0F;
+    Check(draw() > 240, "pending resized artwork reuses ready same-image pixels");
+    options.artworkRuntimeGeneration = L"replacement-runtime";
+    Check(draw() == 0, "ready variant cannot cross runtime authority");
+    options.artworkRuntimeGeneration.clear();
+    snapshot.root.imageSource = L"https://example.test/different-cover"; ++snapshot.sequence;
+    Check(draw() == 0, "ready variant cannot cross image identity");
+    release = true;
+    cache.Shutdown();
+}
+
 void VisibleArtworkAndChromeSurviveCachePressure() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -7791,6 +7842,7 @@ int main() {
     PosterArtworkLoadsAtDisplaySizeUnderPressure(false);
     PosterArtworkLoadsAtDisplaySizeUnderPressure(true);
     VisibleArtworkAndChromeSurviveCachePressure();
+    ArtworkResizeKeepsReadyPixelsWithoutCrossingIdentity();
     ControllerGuideGlyphsAndTheme();
     WidgetControllerGlyphsRenderAndTrackControllerFamily();
     BitmapRetentionPolicyIsBounded();

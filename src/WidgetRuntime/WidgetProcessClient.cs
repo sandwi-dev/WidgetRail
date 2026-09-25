@@ -281,11 +281,18 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
+        // Packaged application workers carry their own strict JSON reader.
+        // Omit additive action metadata unless their view advertises support.
+        action = PrepareActionForWorker(action, Volatile.Read(ref _materializedSnapshot)?.ProtocolVersion);
         var response = await RequestAsync(MessageTypes.Action, action, cancellationToken).ConfigureAwait(false);
         if (response.Type != MessageTypes.Acknowledged)
             throw new WidgetProtocolViolationException($"Expected acknowledgement, received '{response.Type}'.");
         return ParseActionAdmission(response.Payload);
     }
+
+    internal static WidgetActionEvent PrepareActionForWorker(WidgetActionEvent action, int? protocolVersion) =>
+        protocolVersion is >= ProtocolConstants.CursorRetentionVersion
+            ? action : action with { RetainedCollectionKeys = null };
 
     internal async Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
         string artworkHandle,

@@ -2856,6 +2856,38 @@ struct DeclarativeRenderer::RenderPass final {
         visit(visit, snapshot->root, {}, options.rootFontSizePx, options.surfaceBackground);
     }
 
+    void ProjectScrollOffsets(const bool force = false) {
+        if (!force) {
+            bool changed{};
+            VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
+                const auto* box = layout.Find(NarrowStableId(scroll.id));
+                const auto state = ScrollState().find(ScrollStateKey(scroll.id));
+                if (box && state != ScrollState().end() && std::abs(box->scrollOffset - state->second.offset) > 0.001F)
+                    changed = true;
+            });
+            if (!changed) return;
+        }
+        const auto visit = [&](const auto& self, const WidgetNode& node,
+            float translatedX, float translatedY, Rect clip) -> void {
+            const auto found = layout.boxes.find(NarrowStableId(node.id));
+            if (found == layout.boxes.end()) return;
+            auto& box = found->second;
+            declarative::ProjectLayoutBox(box, translatedX, translatedY, clip, options.pixelScale);
+            if (box.clipsDescendants) clip = Intersection(clip, box.contentBox);
+            if (node.kind == L"scroll") {
+                if (const auto state = ScrollState().find(ScrollStateKey(node.id)); state != ScrollState().end())
+                    box.scrollOffset = std::clamp(state->second.offset, 0.0F, box.maximumScrollOffset);
+                if (box.scrollAxis == declarative::ScrollAxis::Horizontal) translatedX += box.scrollOffset;
+                if (box.scrollAxis == declarative::ScrollAxis::Vertical) translatedY += box.scrollOffset;
+            }
+            if (node.kind == L"focusPresentationSurface") {
+                if (const auto* fragment = PresentationFor(node)) self(self, *fragment, translatedX, translatedY, clip);
+            }
+            for (const auto& child : node.children) self(self, child, translatedX, translatedY, clip);
+        };
+        visit(visit, snapshot->root, 0.0F, 0.0F, viewport);
+    }
+
     [[nodiscard]] bool BuildLocalLayout(
         const std::vector<std::wstring>& boundaryIds,
         const std::map<std::wstring, IncrementalNodeState, std::less<>>& nodes) {
@@ -2897,9 +2929,7 @@ struct DeclarativeRenderer::RenderPass final {
                 priorBox->borderBox.height <= 0.0F) {
                 return false;
             }
-            const auto localViewport = priorBox->unroundedBorderBox.width > 0.0F &&
-                    priorBox->unroundedBorderBox.height > 0.0F
-                ? priorBox->unroundedBorderBox : priorBox->borderBox;
+            const auto localViewport = priorBox->unscrolledBorderBox;
             const auto parent = nodes.find(boundaryId);
             const auto narrowParent = parent == nodes.end()
                 ? std::string{}
@@ -2950,6 +2980,7 @@ struct DeclarativeRenderer::RenderPass final {
             for (auto& [id, box] : replacement.boxes)
                 layout.boxes.insert_or_assign(std::move(id), std::move(box));
         }
+        ProjectScrollOffsets(true);
         PrepareAgainstCurrentLayout();
         return true;
     }
@@ -3483,7 +3514,9 @@ struct DeclarativeRenderer::RenderPass final {
             return DisplayImageSize(poster->second.width, poster->second.height, options.pixelScale);
         const auto geometry = presentation.find(NarrowStableId(node.id));
         if (geometry == presentation.end()) return {};
-        return DisplayImageSize(geometry->second.borderBox.width, geometry->second.borderBox.height, options.pixelScale);
+        const auto* box = layout.Find(NarrowStableId(node.id));
+        const auto bounds = box ? box->unscrolledBorderBox : geometry->second.borderBox;
+        return DisplayImageSize(bounds.width, bounds.height, options.pixelScale);
     }
     std::wstring ImageKey(const WidgetNode& node, ImageDecodeSize size) const {
         return !node.artworkHandle.empty() && node.imageSource.empty()
@@ -3513,8 +3546,11 @@ struct DeclarativeRenderer::RenderPass final {
         const WidgetNode* posterArtwork = node.kind == L"actionSurface" &&
             node.actionSurfacePresentation == L"poster" && node.children.size() == 2U
             ? &node.children.front() : nullptr;
-        if (posterArtwork && geometry != presentation.end())
-            posterArtworkBounds.insert_or_assign(posterArtwork->id, geometry->second.borderBox);
+        if (posterArtwork && geometry != presentation.end()) {
+            const auto* box = layout.Find(NarrowStableId(node.id));
+            posterArtworkBounds.insert_or_assign(posterArtwork->id,
+                box ? box->unscrolledBorderBox : geometry->second.borderBox);
+        }
         if (geometry != presentation.end() && geometry->second.visibleBox.width > 0.5F && geometry->second.visibleBox.height > 0.5F) {
             if (posterArtwork)
                 track(ImageKey(*posterArtwork, CachedImageSize(*posterArtwork)));
@@ -5465,12 +5501,16 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
             return reject(FocusedFreeScrollPlanDisposition::EmptyDamage);
         }
         std::vector<std::wstring> boundaries{candidate.id};
+        auto work = IncrementalPresentationWork::ScrollOnly;
         if (pendingIncrementalPlan_ &&
             pendingIncrementalPlan_->instanceId == snapshot.instanceId &&
             pendingIncrementalPlan_->baseSequence == cache->sequence &&
             pendingIncrementalPlan_->sequence == snapshot.sequence &&
             pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster) {
             damage = UnionRect(damage, pendingIncrementalPlan_->damage);
+            if (pendingIncrementalPlan_->work == IncrementalPresentationWork::LocalLayout ||
+                pendingIncrementalPlan_->work == IncrementalPresentationWork::FullRaster)
+                work = pendingIncrementalPlan_->work;
             for (const auto& boundary : pendingIncrementalPlan_->layoutBoundaries)
                 if (std::ranges::find(boundaries, boundary) == boundaries.end())
                     boundaries.push_back(boundary);
@@ -5482,7 +5522,7 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
             snapshot.instanceId,
             snapshot.sequence,
             snapshot.sequence,
-            IncrementalPresentationWork::LocalLayout,
+            work,
             damage,
             std::move(boundaries),
         };
@@ -5490,7 +5530,7 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
         if (diagnostic) *diagnostic = localDiagnostic;
         return FocusedFreeScrollPlan{
             IncrementalPresentationPlan{
-                IncrementalPresentationWork::LocalLayout, damage},
+                work, damage},
             candidate.id,
             axis,
             visible->second.rect,
@@ -5668,8 +5708,9 @@ RenderResult DeclarativeRenderer::Render(
         pass.layout = incrementalLayoutCache_->layout;
         pass.textMeasurements = incrementalLayoutCache_->textMeasurements;
         pass.textMeasurementQueries = incrementalLayoutCache_->textMeasurementQueries;
-        if (pendingIncrementalPlan_->work ==
-            IncrementalPresentationWork::PaintOnly) {
+        if (pendingIncrementalPlan_->work == IncrementalPresentationWork::PaintOnly ||
+            pendingIncrementalPlan_->work == IncrementalPresentationWork::ScrollOnly) {
+            pass.ProjectScrollOffsets();
             pass.PrepareAgainstCurrentLayout();
         } else if (!pass.BuildLocalLayout(
                 pendingIncrementalPlan_->layoutBoundaries,
@@ -6322,6 +6363,30 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         }
         return existing->second.bitmap;
     }
+    const auto imageIdentity = FocusSelectionAuthority(pass.options) + L"\x1f" +
+        (trustedArtwork ? RemoteImageCache::TrustedArtworkKey(artworkWidgetId, node.id, node.artworkHandle)
+                        : node.imageSource);
+    const auto readyVariant = [&]() -> ComPtr<ID2D1Bitmap> {
+        if (!pass.options.sizeArtworkToDisplay || presentationState != ImagePresentationState::Pending) return {};
+        auto best = bitmaps_.end();
+        double bestDistance = std::numeric_limits<double>::max();
+        for (auto item = bitmaps_.begin(); item != bitmaps_.end(); ++item) {
+            if (item->second.imageIdentity != imageIdentity) continue;
+            const auto size = item->second.bitmap->GetPixelSize();
+            const auto distance = std::abs(double(size.width) * size.height - double(decodeSize.width) * decodeSize.height);
+            if (distance < bestDistance) { best = item; bestDistance = distance; }
+        }
+        if (best == bitmaps_.end()) return {};
+        best->second.lastUse = ++bitmapAccessClock_;
+        if (pass.visibleImageKeys.contains(source)) {
+            pass.visibleImageKeys.insert(best->first);
+            pass.visibleContentImageKeys.insert(best->first);
+            protectedImageKeys_.insert(best->first);
+            PublishImageProtection();
+        }
+        presentationState = ImagePresentationState::Ready;
+        return best->second.bitmap;
+    };
     auto state = trustedArtwork
         ? imageCache_->GetTrustedArtworkState(source, artworkAuthority)
         : imageCache_->GetState(source);
@@ -6345,7 +6410,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     if (state == RemoteImageState::Missing) {
         if (pass.options.sizeArtworkToDisplay && !imageCache_->CanPrefetch(source)) {
             presentationState = ImagePresentationState::Pending;
-            return {};
+            return readyVariant();
         }
         const auto request = trustedArtwork
             ? imageCache_->RequestTrustedArtwork(source, artworkAuthority, decodeSize)
@@ -6369,15 +6434,15 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         } else {
             presentationState = ImagePresentationState::Pending;
         }
-        return {};
+        return readyVariant();
     }
     if (state == RemoteImageState::Queued || state == RemoteImageState::Loading) {
         presentationState = ImagePresentationState::Pending;
-        return {};
+        return readyVariant();
     }
     if (state == RemoteImageState::Failed && imageCache_->BudgetRejected(source)) {
         presentationState = ImagePresentationState::Pending;
-        return {};
+        return readyVariant();
     }
     if (state == RemoteImageState::Failed) {
         if (trustedArtwork) {
@@ -6421,7 +6486,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         bitmapBytes_ += byteCount;
         bitmaps_.emplace(
             source,
-            BitmapCacheEntry{bitmap, byteCount, ++bitmapAccessClock_});
+            BitmapCacheEntry{bitmap, byteCount, ++bitmapAccessClock_, imageIdentity});
     }
     return bitmap;
 }

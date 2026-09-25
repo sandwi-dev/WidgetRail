@@ -372,6 +372,14 @@ void CollectScrollPaginationActions(
     }
     if (!firstVisible || !lastVisible) return;
 
+    const auto& viewportRect = viewport->second.rect;
+    const bool vertical = viewport->second.axis == declarative::ScrollAxis::Vertical;
+    const float viewportStart = vertical ? viewportRect.y : viewportRect.x;
+    const float viewportExtent = vertical ? viewportRect.height : viewportRect.width;
+    const float prefetchLead = viewportExtent * 2.0F;
+    // Retain one additional viewport beyond the prefetch horizon. This gives
+    // reversals headroom instead of evicting a page still requesting prefetch.
+    const float retentionLead = prefetchLead + viewportExtent;
     const auto append = [&](const ScrollPaginationEdge edge,
                             const std::wstring& actionId,
                             const std::size_t boundaryIndex) {
@@ -403,6 +411,16 @@ void CollectScrollPaginationActions(
             if (node.collectionStartIndex && !items[index]->collectionItemKey.empty())
                 actions.back().visibleCollectionKeys.push_back(items[index]->collectionItemKey);
         }
+        if (node.collectionStartIndex) for (std::size_t index = 0; index < items.size(); ++index) {
+            if (items[index]->collectionItemKey.empty()) continue;
+            const auto bounds = CollectionItemBounds(*items[index], activeScopeId, renderResult);
+            if (!bounds) continue;
+            const float start = vertical ? bounds->y : bounds->x;
+            const float extent = vertical ? bounds->height : bounds->width;
+            if (start + extent >= viewportStart - retentionLead &&
+                start <= viewportStart + viewportExtent + retentionLead)
+                actions.back().retainedCollectionKeys.push_back(items[index]->collectionItemKey);
+        }
     };
     bool nearBefore = *firstVisible < node.scrollPaginationThreshold;
     bool nearAfter = items.size() - *lastVisible <= node.scrollPaginationThreshold;
@@ -410,12 +428,11 @@ void CollectScrollPaginationActions(
         const auto first = CollectionItemBounds(*items.front(), activeScopeId, renderResult);
         const auto last = CollectionItemBounds(*items.back(), activeScopeId, renderResult);
         const auto& rect = viewport->second.rect;
-        const bool vertical = viewport->second.axis == declarative::ScrollAxis::Vertical;
         const float start = vertical ? rect.y : rect.x;
         const float extent = vertical ? rect.height : rect.width;
         // Two measured viewports provide lead time for remote cursor requests,
         // independent of tile size, grid columns, DPI, and transport page size.
-        const float lead = extent * 2.0F;
+        const float lead = prefetchLead;
         if (first) nearBefore = nearBefore || start - (vertical ? first->y : first->x) <= lead;
         if (last) nearAfter = nearAfter ||
             (vertical ? last->y + last->height : last->x + last->width) - start - extent <= lead;

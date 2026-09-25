@@ -562,24 +562,11 @@ private:
         const Rect ancestorClip) {
         const auto& element = *elements_[index];
         const auto& raw = raw_[index];
-        const Rect border{
-            raw.border.x - translatedX,
-            raw.border.y - translatedY,
-            raw.border.width,
-            raw.border.height,
-        };
-        const Rect content{
-            raw.content.x - translatedX,
-            raw.content.y - translatedY,
-            raw.content.width,
-            raw.content.height,
-        };
         LayoutBox box;
-        box.unroundedBorderBox = border;
-        box.borderBox = SnapRect(border);
-        box.contentBox = SnapRect(content);
-        box.visibleBox = SnapRect(Intersect(border, ancestorClip));
-        box.clippedByAncestor = !Contains(ancestorClip, border);
+        box.unscrolledBorderBox = raw.border;
+        box.unscrolledContentBox = raw.content;
+        box.clipsDescendants = element.overflow == OverflowBehavior::Clip || element.scrollAxis != ScrollAxis::None;
+        ProjectLayoutBox(box, translatedX, translatedY, ancestorClip, options_.pixelScale);
         box.overflowX = raw.overflowX;
         box.overflowY = raw.overflowY;
         box.scrollAxis = element.scrollAxis;
@@ -590,7 +577,7 @@ private:
         auto childClip = ancestorClip;
         if (element.overflow == OverflowBehavior::Clip ||
             element.scrollAxis != ScrollAxis::None) {
-            childClip = Intersect(ancestorClip, content);
+            childClip = Intersect(ancestorClip, box.contentBox);
         }
         auto childTranslatedX = translatedX;
         auto childTranslatedY = translatedY;
@@ -649,18 +636,6 @@ private:
         return result;
     }
 
-    [[nodiscard]] float Snap(const float value) const noexcept {
-        return std::round(value * options_.pixelScale) / options_.pixelScale;
-    }
-
-    [[nodiscard]] Rect SnapRect(const Rect value) const noexcept {
-        const auto left = Snap(value.x);
-        const auto top = Snap(value.y);
-        const auto right = Snap(value.x + value.width);
-        const auto bottom = Snap(value.y + value.height);
-        return {left, top, std::max(0.0F, right - left),
-            std::max(0.0F, bottom - top)};
-    }
 
     void AddIssue(
         const std::string_view id,
@@ -725,6 +700,25 @@ const LayoutBox* LayoutResult::Find(
     const std::string_view stableId) const noexcept {
     const auto found = boxes.find(stableId);
     return found == boxes.end() ? nullptr : &found->second;
+}
+
+void ProjectLayoutBox(LayoutBox& box, const float translatedX, const float translatedY,
+    const Rect ancestorClip, const float pixelScale) noexcept {
+    const float scale = std::isfinite(pixelScale) && pixelScale > 0 ? pixelScale : 1.0F;
+    const auto snap = [scale](float value) { return std::round(value * scale) / scale; };
+    const auto project = [&](Rect raw) {
+        const auto left = snap(raw.x), top = snap(raw.y);
+        return Rect{left - snap(translatedX), top - snap(translatedY),
+            std::max(0.0F, snap(raw.x + raw.width) - left),
+            std::max(0.0F, snap(raw.y + raw.height) - top)};
+    };
+    box.unroundedBorderBox = box.unscrolledBorderBox;
+    box.unroundedBorderBox.x -= translatedX;
+    box.unroundedBorderBox.y -= translatedY;
+    box.borderBox = project(box.unscrolledBorderBox);
+    box.contentBox = project(box.unscrolledContentBox);
+    box.visibleBox = Intersect(box.borderBox, ancestorClip);
+    box.clippedByAncestor = !Contains(ancestorClip, box.borderBox);
 }
 
 LayoutResult ComputeLayout(

@@ -106,7 +106,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         WidgetCollectionCursor? Cursor,
         WidgetCursorDirection? Direction,
         string? SourceScrollId,
-        bool Refresh, bool MoveFocus = false, string? OriginFocusId = null, IReadOnlySet<string>? ProtectedKeys = null);
+        bool Refresh, bool MoveFocus = false, string? OriginFocusId = null, IReadOnlySet<string>? ProtectedKeys = null,
+        IReadOnlySet<string>? RetainedKeys = null);
     private sealed record Segment(
         WidgetCursorPage<TItem> Page,
         WidgetCollectionCursor? RequestCursor, long StartIndex);
@@ -227,7 +228,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         return MoveCore(direction, sourceScrollId, true, action.FocusedElementId ?? action.SourceElementId);
     }
 
-    private WidgetOperationHandle MoveCore(WidgetCursorDirection direction, string sourceScrollId, bool moveFocus, string? originFocusId = null, IReadOnlySet<string>? protectedKeys = null)
+    private WidgetOperationHandle MoveCore(WidgetCursorDirection direction, string sourceScrollId, bool moveFocus, string? originFocusId = null, IReadOnlySet<string>? protectedKeys = null, IReadOnlySet<string>? retainedKeys = null)
     {
         if (!Enum.IsDefined(direction)) throw new ArgumentOutOfRangeException(nameof(direction));
         StableIdentifier.Validate(sourceScrollId, nameof(sourceScrollId));
@@ -244,7 +245,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                     return new(WidgetOperationAdmission.Joined, refresh.Completion.Task);
                 cursor = direction == WidgetCursorDirection.Before ? _snapshot.Before : _snapshot.After;
             }
-            return cursor is null ? Completed() : Start(new(cursor, direction, sourceScrollId, false, moveFocus, originFocusId, protectedKeys));
+            return cursor is null ? Completed() : Start(new(cursor, direction, sourceScrollId, false, moveFocus, originFocusId, protectedKeys, retainedKeys));
         }
     }
 
@@ -273,7 +274,15 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             foreach (var key in visible) StableIdentifier.Validate(key, nameof(action));
             protectedKeys = visible.ToHashSet(StringComparer.Ordinal);
         }
-        operation = MoveCore(direction.Value, action.SourceElementId, false, protectedKeys: protectedKeys);
+        IReadOnlySet<string>? retainedKeys = null;
+        if (action.RetainedCollectionKeys is { } retained)
+        {
+            if (retained.Count > MaximumRetainedItems)
+                throw new ArgumentException("Retained collection demand exceeds its bound.", nameof(action));
+            foreach (var key in retained) StableIdentifier.Validate(key, nameof(action));
+            retainedKeys = retained.ToHashSet(StringComparer.Ordinal);
+        }
+        operation = MoveCore(direction.Value, action.SourceElementId, false, protectedKeys: protectedKeys, retainedKeys: retainedKeys);
         return true;
     }
 
@@ -395,7 +404,9 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         _operations.WhenIdleAsync(_operationKey, token);
 
     private static bool SameIntent(Intent left, Intent right) =>
-        (left with { ProtectedKeys = null }) == (right with { ProtectedKeys = null }) &&
+        (left with { ProtectedKeys = null, RetainedKeys = null }) == (right with { ProtectedKeys = null, RetainedKeys = null }) &&
+        (left.RetainedKeys is null ? right.RetainedKeys is null || right.RetainedKeys.Count == 0 :
+            left.RetainedKeys.SetEquals(right.RetainedKeys ?? new HashSet<string>(StringComparer.Ordinal))) &&
         (left.ProtectedKeys is null ? right.ProtectedKeys is null || right.ProtectedKeys.Count == 0 :
             left.ProtectedKeys.SetEquals(right.ProtectedKeys ?? new HashSet<string>(StringComparer.Ordinal)));
 
@@ -450,7 +461,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 if (_windowGeneration >=
                     WidgetRail.WidgetProtocol.ProtocolConstants.MaximumVirtualCollectionRequestGeneration)
                     throw new InvalidOperationException("Virtual collection request generation is exhausted.");
-                var proposed = Merge(page, request.Intent.Cursor, request.Intent.Direction, request.Intent.ProtectedKeys);
+                var proposed = Merge(page, request.Intent.Cursor, request.Intent.Direction, request.Intent.ProtectedKeys, request.Intent.RetainedKeys);
                 var merged = new ReadOnlyCollection<TItem>(proposed.SelectMany(segment => segment.Page.Items).ToArray());
                 var anchor = request.Intent.Direction is null
                     ? merged.Count == 0 ? (WidgetCollectionItemKey?)null : KeyOf(merged[0])
@@ -549,7 +560,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
 
     private IReadOnlyList<Segment> Merge(WidgetCursorPage<TItem> page,
         WidgetCollectionCursor? requestCursor,
-        WidgetCursorDirection? direction, IReadOnlySet<string>? protectedKeys)
+        WidgetCursorDirection? direction, IReadOnlySet<string>? protectedKeys, IReadOnlySet<string>? retainedKeys)
     {
         var proposed = direction is null ? new List<Segment>() : _segments.ToList();
         var start = page.FirstItemIndex ?? (direction switch
@@ -579,6 +590,9 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             var removed = direction == WidgetCursorDirection.Before
                 ? proposed[^1] : proposed[0];
             if (protectedKeys is not null && removed.Page.Items.Any(item => protectedKeys.Contains(KeyOf(item).Value)))
+                break;
+            if (count <= _options.MaximumRetainedItems && retainedKeys is not null &&
+                removed.Page.Items.Any(item => retainedKeys.Contains(KeyOf(item).Value)))
                 break;
             if (direction == WidgetCursorDirection.Before) proposed.RemoveAt(proposed.Count - 1);
             else proposed.RemoveAt(0);

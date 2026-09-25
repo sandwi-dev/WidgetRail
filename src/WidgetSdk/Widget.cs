@@ -117,7 +117,16 @@ public sealed record WidgetView(
             Root = Root.ToProtocolNode(),
         };
         var requirements = ProtocolVersionRequirements.Calculate(snapshot);
-        snapshot = snapshot with { ProtocolVersion = requirements.RequiredVersion };
+        // Advertise support for the host's optional nearby-item action metadata.
+        // This is an SDK capability, not a new requirement imposed on older
+        // cursor snapshots, which remain valid and receive legacy action fields.
+        static bool HasCursor(ViewNode node) => node.CollectionStartIndex is not null ||
+            node.Children.Any(HasCursor);
+        var supportsCursorRetention = HasCursor(snapshot.Root) ||
+            snapshot.PinnedLayouts.Any(layout => layout.Root is { } root && HasCursor(root));
+        snapshot = snapshot with { ProtocolVersion = supportsCursorRetention
+            ? Math.Max(requirements.RequiredVersion, ProtocolConstants.CursorRetentionVersion)
+            : requirements.RequiredVersion };
         var errors = ViewSnapshotValidator.Validate(snapshot, requirements);
         if (errors.Count != 0) throw new ProtocolValidationException(errors);
         return snapshot;
@@ -152,6 +161,8 @@ public sealed record WidgetActionEvent(
     public string? FocusedElementId { get; init; }
     /// <summary>Host-observed visible collection keys protected by a pagination demand.</summary>
     public IReadOnlyList<string>? VisibleCollectionKeys { get; init; }
+    /// <summary>Host-observed nearby collection keys retained when capacity permits. Visible keys take priority.</summary>
+    public IReadOnlyList<string>? RetainedCollectionKeys { get; init; }
 }
 
 public enum ControllerInputContext

@@ -15,6 +15,7 @@ internal static class WidgetCursorResourceTests
         await PendingPagePreservesNewAnchor();
         await FailedFocusMappingDoesNotCommitSegments();
         await VisibleItemsCanExceedEvictionTarget();
+        await NearbyPagesSurviveReversalWithinCapacity();
         await TraversesTenThousandItemsWithinBound();
         await ProjectsVersionedTenThousandItemVirtualWindow();
         await HandlesEmptySparseFinalAndLastGoodError();
@@ -86,7 +87,7 @@ internal static class WidgetCursorResourceTests
         Equal<long?>(after.Snapshot.ResetGeneration, view.Root.CollectionResetGeneration);
         True(ViewSnapshotValidator.Validate(view with { ProtocolVersion = 49 }).Any(error => error.Code == "feature_requires_version"), "Reset metadata requires protocol 50.");
         True(ViewSnapshotValidator.Validate(view with { Root = view.Root with { CollectionResetGeneration = 0 } }).Count > 0, "Reset generation must be positive.");
-        Equal(ProtocolConstants.CollectionResetGenerationVersion, view.ProtocolVersion);
+        Equal(ProtocolConstants.CursorRetentionVersion, view.ProtocolVersion);
         Equal(PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
             PresentationPropertyMetadata.Impact(PresentationProperty.CollectionGeneration));
         True(ViewSnapshotValidator.Validate(view with { ProtocolVersion = 48 }).Any(error => error.Code == "feature_requires_version"),
@@ -192,7 +193,10 @@ internal static class WidgetCursorResourceTests
             }));
         await widget.Resource.EnsureLoaded().Completion;
         WidgetActionEvent Demand() => new("test.cursor.cursor.after", "items.list")
-            { VisibleCollectionKeys = widget.Resource.Snapshot.Items.Select(item => item.Id).ToArray() };
+            {
+                VisibleCollectionKeys = widget.Resource.Snapshot.Items.Select(item => item.Id).ToArray(),
+                RetainedCollectionKeys = widget.Resource.Snapshot.Items.Select(item => item.Id).Reverse().ToArray(),
+            };
         True(widget.Resource.TryHandlePagination(Demand(), out var first), "First protected demand is handled.");
         await started.Task;
         True(widget.Resource.TryHandlePagination(Demand(), out var second), "Second protected demand is handled.");
@@ -242,7 +246,7 @@ internal static class WidgetCursorResourceTests
         var loadingView = new WidgetView(loading.Present(UI.VerticalScroll("items.list", loadingRows)))
             .CreateSnapshot("loading.test", 1);
         Equal<CollectionLoadingState?>(CollectionLoadingState.After, loadingView.Root.CollectionLoading);
-        Equal(ProtocolConstants.CollectionResetGenerationVersion, loadingView.ProtocolVersion);
+        Equal(ProtocolConstants.CursorRetentionVersion, loadingView.ProtocolVersion);
         True(System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(loadingView))
             .Contains("\"collectionLoading\":\"after\"", StringComparison.Ordinal),
             "Collection loading must use canonical lowercase protocol values.");
@@ -293,6 +297,32 @@ internal static class WidgetCursorResourceTests
         }
         Equal(34, widget.Resource.Snapshot.Items.Count);
         True(!widget.Resource.Snapshot.HasAfter, "The partial final page did not end traversal.");
+        await StopAsync(widget);
+    }
+
+    private static async Task NearbyPagesSurviveReversalWithinCapacity()
+    {
+        var widget = await StartAsync(Options(200, pageSize: 6, maximumRetainedItems: 24) with
+            { RetainedItemTarget = 12 });
+        await widget.Resource.EnsureLoaded().Completion;
+        for (int page = 0; page < 3; ++page)
+        {
+            var retained = widget.Resource.Snapshot.Items.Select(item => item.Id).ToArray();
+            True(widget.Resource.TryHandlePagination(new("test.cursor.cursor.after", "items.list")
+                { VisibleCollectionKeys = retained.TakeLast(2).ToArray(), RetainedCollectionKeys = retained }, out var load),
+                "Host prefetch protection is accepted.");
+            Equal(WidgetOperationStatus.Succeeded, (await load.Completion).Status);
+        }
+        Equal(24, widget.Resource.Snapshot.Items.Count);
+        True(!widget.Resource.Snapshot.HasBefore, "Retained nearby pages must not become reverse requests.");
+        var before = widget.Resource.Snapshot.Items.Select(item => item.Id).ToArray();
+        widget.Resource.TryHandlePagination(new("test.cursor.cursor.after", "items.list")
+            { VisibleCollectionKeys = before.TakeLast(2).ToArray(), RetainedCollectionKeys = before }, out var next);
+        Equal(WidgetOperationStatus.Succeeded, (await next.Completion).Status);
+        Equal(24, widget.Resource.Snapshot.Items.Count);
+        True(widget.Resource.Snapshot.HasBefore, "Nearby protection must yield at the hard capacity.");
+        True(before.TakeLast(2).All(key => widget.Resource.Snapshot.Items.Any(item => item.Id == key)),
+            "Hard-cap eviction still preserves visible rows.");
         await StopAsync(widget);
     }
 
@@ -489,7 +519,7 @@ internal static class WidgetCursorResourceTests
         });
         await widget.Resource.EnsureLoaded().Completion;
         var initial = widget.Render().CreateSnapshot("virtual.fixture", 1);
-        Equal(ProtocolConstants.CollectionResetGenerationVersion, initial.ProtocolVersion);
+        Equal(ProtocolConstants.CursorRetentionVersion, initial.ProtocolVersion);
         var window = initial.Root.Children[0].VirtualCollectionWindow!;
         Equal(1L, window.RequestGeneration);
         Equal(VirtualCollectionWindowChange.Replace, window.Change);

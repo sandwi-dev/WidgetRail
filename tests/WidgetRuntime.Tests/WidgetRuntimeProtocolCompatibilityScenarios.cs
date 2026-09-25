@@ -10,6 +10,23 @@ internal static class WidgetRuntimeProtocolCompatibilityScenarios
 {
     internal static async Task FrozenV2ApplicationCheckpointCompatibility()
     {
+        var pagination = new WidgetActionEvent("page.after", "list")
+        {
+            VisibleCollectionKeys = ["visible"],
+            RetainedCollectionKeys = ["visible", "nearby"],
+        };
+        foreach (var version in new int?[] { null, ProtocolConstants.CursorRetentionVersion - 1 })
+        {
+            var wire = RuntimeJson.ToElement(WidgetProcessClient.PrepareActionForWorker(pagination, version));
+            True(!wire.TryGetProperty("retainedCollectionKeys", out _),
+                "Legacy strict worker payloads must omit new cursor metadata entirely.");
+            True(wire.GetProperty("visibleCollectionKeys").GetArrayLength() == 1,
+                "Legacy visible-row protection must remain present.");
+        }
+        var currentWire = RuntimeJson.ToElement(WidgetProcessClient.PrepareActionForWorker(
+            pagination, ProtocolConstants.CursorRetentionVersion));
+        True(currentWire.GetProperty("retainedCollectionKeys").GetArrayLength() == 2,
+            "Negotiated workers receive the nearby retention horizon.");
         using (var legacyDocument = JsonDocument.Parse("{}"))
         {
             var legacyRender = RuntimeJson.FromElement<RenderPayload>(legacyDocument.RootElement);

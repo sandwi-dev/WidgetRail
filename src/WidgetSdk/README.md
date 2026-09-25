@@ -572,11 +572,19 @@ remain host-owned.
 
 Whole provider segments evict from the opposite end. `MaximumRetainedItems` is
 still a hard bound (at most 256); optional `RetainedItemTarget` is a lower eviction
-target. Host pagination actions include visible collection keys, so filling a
-large viewport may retain more than the target. A configured hard bound that
+target. Host pagination actions include visible collection keys and optional
+`RetainedCollectionKeys` for the measured nearby prefetch region. These nearby
+pages may exceed the target to avoid refetching on direction reversals, but yield
+before the hard limit. Visible keys always take priority. Actions without nearby
+keys retain the existing visible-only behavior. A configured hard bound that
 cannot contain the protected window fails without partial publication or evicting
 those visible rows. Choose a hard bound sufficient for supported widget layouts;
 never use a tiny hard limit merely to force an eviction demonstration.
+
+The SDK advertises presentation protocol 57 for positioned cursor views. The
+host runtime uses this advertisement to include nearby retention metadata only
+for compatible workers; older packaged workers keep their existing strict action
+payloads. Older cursor snapshots remain valid on the new host.
 
 Protocol v47 collection positions keep responsive-grid columns aligned after
 opposite-edge eviction. The SDK supplies a stable relative index even when the

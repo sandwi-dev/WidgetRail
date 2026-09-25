@@ -377,6 +377,7 @@ void AppendDiagnostic(const std::wstring_view message);
 // Initialized before workers start; immutable for the process lifetime.
 std::shared_ptr<widgetrail::ScrollDiagnostics> gScrollDiagnostics;
 bool gScrollDiagnosticsQuiet{};
+bool gVerbosePresentationDiagnostics{};
 
 void SaveScrollDiagnostics() noexcept {
     if (!gScrollDiagnostics) return;
@@ -413,7 +414,7 @@ void InvokeMediaCallbackGuarded(
 }
 
 void AppendDiagnostic(const std::wstring_view message) {
-    if (gScrollDiagnosticsQuiet && (
+    if ((!gVerbosePresentationDiagnostics || gScrollDiagnosticsQuiet) && (
         message.starts_with(L"Composition child sample") || message.starts_with(L"Widget presentation paint") ||
         message.starts_with(L"Composition frame committed") || message.starts_with(L"Background compositor") ||
         message.starts_with(L"Free scroll retained during refresh") ||
@@ -1533,6 +1534,8 @@ private:
                 out << "pid=" << GetCurrentProcessId() << " quiet-log=" << gScrollDiagnosticsQuiet;
             });
         }
+        gVerbosePresentationDiagnostics = scrollDiagnosticsRequested_ || artworkRenderDiagnostics_ ||
+            performanceDiagnosticsPath_.has_value() || developmentReadyPath_.has_value();
         return true;
     }
 
@@ -9819,6 +9822,7 @@ private:
     }
 
     void AppendCompositionCoordinateSample(const std::size_t stepIndex) {
+        if (!gVerbosePresentationDiagnostics || gScrollDiagnosticsQuiet) return;
         const auto spaces = CurrentCompositionChildCoordinates();
         RECT windowBounds{};
         if (!spaces || !window_ || !GetWindowRect(window_, &windowBounds)) return;
@@ -10654,7 +10658,8 @@ private:
                     pending.request.widgetId,
                     pending.request.action.actionId,
                     pending.request.action.sourceElementId,
-                    pending.request.inputScopeId, std::nullopt, &pending.request.action.visibleCollectionKeys);
+                    pending.request.inputScopeId, std::nullopt, &pending.request.action.visibleCollectionKeys,
+                    &pending.request.action.retainedCollectionKeys);
                 dispatch.disposition = !handled
                     ? widgetrail::input::ScrollPaginationDispatchDisposition::
                         TransportFailure
@@ -13921,7 +13926,8 @@ private:
                     request->widgetId,
                     request->action.actionId,
                     request->action.sourceElementId,
-                    request->inputScopeId, std::nullopt, &request->action.visibleCollectionKeys);
+                    request->inputScopeId, std::nullopt, &request->action.visibleCollectionKeys,
+                    &request->action.retainedCollectionKeys);
                 dispatch.disposition = !handled
                     ? widgetrail::input::ScrollPaginationDispatchDisposition::
                         TransportFailure
@@ -16119,6 +16125,9 @@ private:
                 break;
             case widgetrail::IncrementalPresentationWork::FullRaster:
                 diagnostic += L"full-raster-fallback";
+                break;
+            case widgetrail::IncrementalPresentationWork::ScrollOnly:
+                diagnostic += L"retained-scroll-only";
                 break;
             }
         }
@@ -18335,7 +18344,10 @@ private:
                 ? std::wstring_view{retainedPresentation->widgetId}
                 : widget;
             const auto* descriptor = sessions_.FindDescriptor(renderedWidget);
-            const bool retainedRefresh = sessionPresentation.RefreshPending();
+            // Match InteractionSnapshotFor: ordinary replacement snapshots
+            // keep their committed Interactive authority during the refresh.
+            const bool retainedRefresh = sessionPresentation.RefreshPending() &&
+                !sessionPresentation.HasCommittedViewAuthority(widgetrail::WidgetCommittedViewUse::Interaction);
             const auto freeScrollDecision = snapshot && descriptor &&
                     renderedWidget == state_.activeWidget()
                 ? widgetrail::input::SurfaceInteractionTransactions::EvaluateFreeScroll(
@@ -18695,6 +18707,8 @@ private:
                                 return L"local-layout";
                             case widgetrail::IncrementalPresentationWork::FullRaster:
                                 return L"full";
+                            case widgetrail::IncrementalPresentationWork::ScrollOnly:
+                                return L"scroll-only";
                             }
                             return L"full";
                         }();

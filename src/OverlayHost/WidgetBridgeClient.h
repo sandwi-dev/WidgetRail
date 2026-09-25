@@ -1011,7 +1011,8 @@ public:
         std::wstring_view sourceElementId,
         std::wstring_view inputScopeId,
         std::optional<std::wstring_view> committedText = std::nullopt,
-        const std::vector<std::wstring>* visibleCollectionKeys = nullptr);
+        const std::vector<std::wstring>* visibleCollectionKeys = nullptr,
+        const std::vector<std::wstring>* retainedCollectionKeys = nullptr);
     [[nodiscard]] std::optional<std::wstring> ConnectProtectedWifi(
         std::wstring_view widgetId,
         std::wstring_view runtimeGeneration,

@@ -144,9 +144,17 @@ struct LayoutBox {
     ScrollAxis scrollAxis{ScrollAxis::None};
     float scrollOffset{};
     float maximumScrollOffset{};
-    // Retain the original pixel-grid phase when a subtree is laid out locally.
+    // Current viewport-space border before pixel snapping.
     Rect unroundedBorderBox;
+    // Content-space geometry is independent of scroll position. Projection
+    // translates these boxes without remeasuring or resnapping their sizes.
+    Rect unscrolledBorderBox;
+    Rect unscrolledContentBox;
+    bool clipsDescendants{};
 };
+
+void ProjectLayoutBox(LayoutBox& box, float translatedX, float translatedY,
+    Rect ancestorClip, float pixelScale) noexcept;
 
 enum class LayoutIssueSeverity {
     Warning,

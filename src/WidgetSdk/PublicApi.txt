@@ -2237,6 +2237,7 @@ property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.W
 property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.DefaultGateways { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.DnsServers { get; set; }
 property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.IpAddresses { get; set; }
+property System.Collections.Generic.IReadOnlyList<string>? WidgetRail.WidgetSdk.WidgetActionEvent.RetainedCollectionKeys { get; set; }
 property System.Collections.Generic.IReadOnlyList<string>? WidgetRail.WidgetSdk.WidgetActionEvent.VisibleCollectionKeys { get; set; }
 property System.DateTimeOffset WidgetRail.WidgetSdk.WidgetDisplayProfileRestore.Deadline { get; set; }
 property System.Exception WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.Exception { get; set; }

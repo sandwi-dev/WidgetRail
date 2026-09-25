@@ -2061,6 +2061,8 @@ void CursorBoundaryAndViewportDemand() {
     auto acquired = filling.AcquireScrollPaginationDispatch(authority, roomy, 11);
     Check(acquired.first && acquired.first->action.visibleCollectionKeys.size() == 5,
         "pagination demand protects every host-observed visible collection key");
+    Check(acquired.first && acquired.first->action.retainedCollectionKeys.size() == 5,
+        "pagination dispatch carries the independently computed retained horizon");
 }
 
 void PaginationPrefetchLifecycle() {

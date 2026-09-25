@@ -60,7 +60,10 @@ the widget application to release memory. Reopening then starts a fresh instance
 in-memory pages and navigation reset, while saved settings remain. This does not
 close Playnite itself or its Bridge extension.
 Refresh and query changes request fresh data explicitly. The retention target is 48 items for Home and 60 for Browse, with a hard maximum
-of 192; visible pages remain protected by the shared cursor policy.
+of 192. The shared cursor policy protects visible pages and retains nearby
+prefetched pages when capacity permits, so reversing direction does not immediately
+refetch them. Browse uses a pagination threshold of 4. The host also provides a
+measured viewport lead range and a wider retention range for reversal headroom.
 
 ## Setup and safety
 

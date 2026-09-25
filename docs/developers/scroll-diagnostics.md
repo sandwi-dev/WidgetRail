@@ -3,6 +3,10 @@
 The native host supports an opt-in, bounded scrolling trace. It does not change
 cursor admission, retention, scrolling, layout, or cache budgets.
 
+Ordinary launches omit high-frequency presentation logs. `--scroll-diagnostics`
+enables those logs for a controlled comparison; `--scroll-diagnostics-quiet`
+records the same trace with ordinary quiet logging.
+
 Launch the candidate host with `--show --scroll-diagnostics`. Reproduce a short
 scrolling sequence, then close the overlay with its normal controller shortcut.
 The host saves `%LOCALAPPDATA%\WidgetRail\diagnostics\scroll-<pid>.log` when the
@@ -32,6 +36,7 @@ contain titles, descriptions, artwork URLs, credentials, or provider responses.
   nested. `work=-1` means no matching incremental plan; other values correspond
   to `IncrementalPresentationWork`. Image hit/miss counts cover image lookups;
   `image-miss` details are limited to eight per render.
+  `work=4` is scroll-only projection of cached content geometry, without layout.
 - `bitmap-create`, `bitmap-eviction`, and `decoded-eviction` correlate resource
   variants, sizes, budgets, and protection status. Protection is the cache's
   current protection set, not proof that an image was visibly displayed.
