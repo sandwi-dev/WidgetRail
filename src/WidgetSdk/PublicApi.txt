@@ -2420,6 +2420,7 @@ property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.NavigationShell
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.ResponsiveBranchElement.Child { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetModal.Content { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetView.Root { get; set; }
+property WidgetRail.WidgetSdk.WidgetElement? WidgetRail.WidgetSdk.WidgetModal.HeaderActions { get; set; }
 property WidgetRail.WidgetSdk.WidgetFocusTargetState WidgetRail.WidgetSdk.WidgetFocusTargetResult.State { get; set; }
 property WidgetRail.WidgetSdk.WidgetHostServices WidgetRail.WidgetSdk.WidgetScenarioDefinition.HostServices { get; }
 property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.ActionSheetItem.Icon { get; set; }

@@ -10,6 +10,12 @@ public sealed record WidgetModal(
     string InitialFocusId,
     string DismissActionId)
 {
+    /// <summary>
+    /// Optional content to replace the header's Close button. The title and B-to-dismiss
+    /// shortcut remain. Use controller hints or ordinary controls with stable IDs.
+    /// </summary>
+    public WidgetElement? HeaderActions { get; init; }
+
     /// <summary>Shows the ordinary scroll indicator and reserves its gutter. Defaults to true.</summary>
     public bool ShowScrollbar { get; init; } = true;
 }

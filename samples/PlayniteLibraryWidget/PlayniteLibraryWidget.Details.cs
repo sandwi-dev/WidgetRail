@@ -7,6 +7,40 @@ public sealed partial class PlayniteLibraryWidget
 {
     private const string DetailsPrefix = "playnite-library.details.";
 
+    private void SuspendDetails()
+    {
+        // Fence late results even if a provider ignores cancellation. Keep the opening
+        // identity, completed data and tab so the host can restore focus and scrolling.
+        _model.Update(state => state.DetailsItem is null ? state : state with
+        {
+            DetailsGeneration = state.DetailsGeneration + 1,
+            DetailsLoading = false,
+            DetailsExtras = state.DetailsExtras with
+            {
+                AchievementsLoading = false,
+                ActivityLoading = false,
+                OperationBusy = false,
+                ConfirmUninstall = false,
+                OperationMessage = state.DetailsExtras.OperationBusy
+                    ? "Request interrupted. Refresh to check its outcome."
+                    : state.DetailsExtras.OperationMessage,
+            },
+        });
+        CancelDetailsOperations();
+    }
+
+    private void ResumeDetails()
+    {
+        var state = _model.Value;
+        if (state.DetailsItem is not { } item) return;
+        if (state.DetailsExtras.Full is null && state.DetailsError is null)
+        {
+            _model.Update(value => value with { DetailsLoading = true });
+            LoadDetailsOverview(item, state.DetailsGeneration);
+        }
+        LoadDetailsSection(state.DetailsExtras.Tab);
+    }
+
     private void CancelDetailsOperations()
     {
         foreach (var key in new[] { "playnite-library.details", "playnite-library.details.achievements",
@@ -78,7 +112,12 @@ public sealed partial class PlayniteLibraryWidget
             LoadDetailsSection(next);
             return true;
         }
-        if (name == "refresh") { OpenDetails(item, preserveTab: true); return true; }
+        if (name == "refresh")
+        {
+            if (!state.DetailsExtras.OperationBusy && !state.OrganizationBusy && state.LaunchingSavedId is null)
+                OpenDetails(item, preserveTab: true);
+            return true;
+        }
         if (name is "page.previous" or "page.next")
         {
             var count = state.DetailsExtras.Tab == PlayniteDetailsTab.Achievements

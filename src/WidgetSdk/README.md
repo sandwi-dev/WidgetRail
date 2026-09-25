@@ -992,7 +992,12 @@ are documented in [Power widget](../../docs/reference/power-widget.md).
 ### Modal views
 
 `page.WithModal(new WidgetModal(id, title, content, initialFocusId, dismissActionId))`
-displays ordinary widget UI above the current page, with a themed scrim and an
+accepts optional `HeaderActions` on the modal to replace its default Close button
+with authored controls or controller hints. B-to-dismiss remains available. Keep
+the modal ID stable across hide/reopen to retain focus and scroll position while
+loaded; the widget controls dismissal and resumes any interrupted reads.
+
+This composition displays ordinary widget UI above the current page, with a themed scrim and an
 independently scrollable panel bounded by the widget. Handle the dismiss action by
 returning the original page. Protocol 55 is required only while a modal is present.
 Pinned surfaces omit the modal safely. One modal is supported; nested widget modals

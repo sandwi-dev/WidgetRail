@@ -164,23 +164,30 @@ A poster opens a `WidgetModal` instead of launching. The modal retains the game'
 opaque identity and displays current provider metadata, rechecking current membership
 before enabling Play. Launch still uses the existing fresh provider revalidation.
 B dismisses the modal; background page geometry and scroll are unchanged. Deactivation
-clears details state. A widget-instance prefix plus monotonically increasing opening identity supplies
+retains the selected game, completed detail data, tab, and opening identity. It cancels
+active reads, fences late results with a new generation, clears busy/loading flags,
+and cancels uninstall confirmation. Activation retries interrupted reads, never
+installation or browser operations. Unloading still discards this in-memory state.
+A widget-instance prefix plus monotonically increasing opening identity supplies
 the modal ID (and therefore its input scope and scroll-container ID). Loading, refresh,
-and tab changes retain that ID; another opening gets a new one. This uses the existing
+tab changes, and hide/reopen retain that ID; another explicit opening gets a new one. This uses the existing
 SDK modal contract without adding focus-reset APIs. The host/Bridge/SDK must support protocol 55 to display details.
 Opening details resolves the full game record separately from compact catalog pages.
 HTML descriptions and notes become bounded plain text; they are never rendered as HTML.
 Home and Library use the same navigation header and frame; Library filters/results occupy
 a separate panel below it. Both fill available height with 24 logical pixels of vertical
 padding. The themed count badge follows Clear, and RS Search is shown in its footer.
-The modal uses tile artwork beside source and controls. Its X menu shares the poster's
+The modal uses tile artwork beside source and vertically stacked controls, with a
+full-width navigation rail beneath. `WidgetModal.HeaderActions` replaces the default
+Close button with controller hints; the ordinary B dismissal shortcut remains. Its X menu shares the poster's
 action definition and current organization authority; categories are available there
 instead of a separate section.
 
 Achievements (`GET /api/games/{id}/achievements`) and activity
 (`GET /api/games/{id}/activity`) load lazily and are retained only while that modal stays
 open. Refresh invalidates those results. Requests are bound to the exact game and modal
-generation; closing, deactivation, or switching games retires them. An HTTP 200 with
+generation; explicit dismissal or switching games retires them. Deactivation retains
+completed results and activation retries interrupted reads. An HTTP 200 with
 `installed:false` means no saved plugin data for this game, not an empty collection or
 proof that the companion extension is absent. These reads do not trigger plugin sync.
 

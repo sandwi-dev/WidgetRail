@@ -26,7 +26,10 @@ internal static class PlayniteLibraryDetailsPresentation
                         Prefix + "confirm.copy").Classes("playnite-library-details-description"),
                     UI.Button("Cancel", Prefix + "uninstall.cancel", Prefix + "uninstall.cancel"),
                     UI.Button("Uninstall", Prefix + "uninstall.confirm", Prefix + "uninstall.confirm")),
-                Prefix + "uninstall.cancel", Prefix + "uninstall.cancel");
+                Prefix + "uninstall.cancel", Prefix + "uninstall.cancel")
+            {
+                HeaderActions = UI.ControllerHint(ControllerButton.B, "Cancel", Prefix + "cancel.hint"),
+            };
         var game = extras.Full?.Game;
         var presentation = item.Presentation;
         var availability = PlayniteLibraryAvailabilityPresentation.Tile(item);
@@ -38,9 +41,9 @@ internal static class PlayniteLibraryDetailsPresentation
                 uninstalled ? Prefix + "install" : PlayniteLibraryActions.Launch, PlayId)
             .Disabled(!current || (!availability.Launchable && !uninstalled))
             .Busy(busy).Classes("playnite-library-details-play");
-        var buttons = UI.Row(Prefix + "actions", play,
-            UI.Button("Completion status", Prefix + "completion", Prefix + "completion.action").Disabled(!current || busy),
-            UI.Button("Uninstall", Prefix + "uninstall", Prefix + "uninstall").Disabled(!current || !installed || busy))
+        var buttons = UI.Stack(Prefix + "actions", play,
+            UI.Button("Completion status", Prefix + "completion", Prefix + "completion.action").Disabled(!current || busy).Classes("playnite-library-details-button"),
+            UI.Button("Uninstall", Prefix + "uninstall", Prefix + "uninstall").Disabled(!current || !installed || busy).Classes("playnite-library-details-button"))
             .Classes("playnite-library-details-buttons");
         var artwork = presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile);
         WidgetElement poster = artwork is { Handle.Length: > 0 }
@@ -48,7 +51,7 @@ internal static class PlayniteLibraryDetailsPresentation
             : UI.Icon(WidgetGlyph.Play, Prefix + "poster", presentation.DisplayName);
         poster = poster.Classes("playnite-library-details-poster");
         var controls = UI.Stack(Prefix + "controls",
-            UI.Text(presentation.Source.DisplayName, Prefix + "source").Classes("playnite-library-details-section-title"),
+            UI.Text(presentation.Source.DisplayName, Prefix + "source").Classes("playnite-library-details-source"),
             UI.Text(!current ? "Game no longer in the current results" : uninstalled ? "Not installed"
                 : launching || launchState is not null ? status : availability.Status == "Play" ? "Installed" : availability.Status,
                 Prefix + "status").Classes("playnite-library-details-meta"),
@@ -68,14 +71,12 @@ internal static class PlayniteLibraryDetailsPresentation
             UI.Stack(Prefix + "navigation.unused"), tabs,
             compactLeadingAdornment: UI.ControllerGlyph(ControllerButton.LeftBumper, Prefix + "previous.key").Classes("playnite-library-tab-key"),
             compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper, Prefix + "next.key").Classes("playnite-library-tab-key"));
-        var toolbar = UI.Row(Prefix + "toolbar",
-            navigation.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always).AddClasses("playnite-library-details-tabs"),
-            UI.Button("Refresh", Prefix + "refresh", Prefix + "refresh").Disabled(busy))
-            .Classes("playnite-library-details-toolbar");
-        controls = controls with { Children = [.. controls.Children, toolbar] };
+        var navigationRail = navigation.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always)
+            .AddClasses("playnite-library-details-tabs");
         var content = new List<WidgetElement>
         {
             UI.Row(Prefix + "overview-header", poster, controls).Classes("playnite-library-details-header"),
+            navigationRail,
         };
         if (extras.OperationMessage is { } message) content.Add(Copy(message, "operation.message"));
         if (extras.Tab == PlayniteDetailsTab.Overview)
@@ -92,7 +93,13 @@ internal static class PlayniteLibraryDetailsPresentation
             .Shortcut(ControllerButton.Y, Prefix + "refresh", "Refresh details");
         var scopedBody = body.ContextMenu(ControllerButton.X,
             PlayniteLibraryGameOptions.Create(item, favorite, categories, busy || !current));
-        return new(modalId, presentation.DisplayName, scopedBody, PlayId, PlayniteLibraryActions.DetailsClose);
+        return new(modalId, presentation.DisplayName, scopedBody, PlayId, PlayniteLibraryActions.DetailsClose)
+        {
+            HeaderActions = UI.Row(Prefix + "header-hints",
+                UI.ControllerHint(ControllerButton.Y, "Refresh", Prefix + "refresh.hint"),
+                UI.ControllerHint(ControllerButton.B, "Close", Prefix + "close.hint"))
+                .Classes("playnite-library-details-header-hints"),
+        };
     }
 
     private static void AddOverview(List<WidgetElement> content, PlayniteLibraryItem item, PlayniteBridgeGame? game,
@@ -125,6 +132,7 @@ internal static class PlayniteLibraryDetailsPresentation
         AddValue("Version", metadata?.Version, "version");
         if (error is null && (!loading || !string.IsNullOrWhiteSpace(metadata?.Description)))
         {
+            content.Add(UI.Text("Description", Prefix + "description.title").Classes("playnite-library-details-section-title"));
             var description = metadata?.Description;
             if (string.IsNullOrWhiteSpace(description)) content.Add(Copy("No description is available for this game.", "description"));
             else AddParagraphs(content, description, "description");
@@ -215,7 +223,10 @@ internal static class PlayniteLibraryDetailsPresentation
             .Classes("playnite-library-details-toolbar"));
     }
     private static WidgetElement Value(string label, string value, string id) =>
-        UI.ValueRow(label, value, id).AddClasses("playnite-library-details-value");
+        UI.Row(id,
+            UI.Text(label, id + ".label").Classes("playnite-library-details-label"),
+            UI.Text(value, id + ".value").Classes("playnite-library-details-field"))
+            .Classes("playnite-library-details-value");
     private static WidgetElement Copy(string text, string id) => UI.Text(text, Prefix + id).Classes("playnite-library-details-description");
     private static WidgetElement Loading(string text) => UI.Row(Prefix + "loading",
         UI.LoadingIndicator(Prefix + "spinner", size: LoadingIndicatorSize.Compact), UI.Text(text, Prefix + "loading.text"));

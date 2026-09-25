@@ -314,6 +314,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
+        ResumeDetails();
         var activation = _navigation.Value;
         var route = activation.Route;
         if (route != PlayniteLibraryRoute.Library && (route == PlayniteLibraryRoute.Hidden
@@ -369,6 +370,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         ClearPendingBackFocus();
+        SuspendDetails();
         RetirePlayniteConnection(clearPresentation: false);
         _actionFeedbackExpiry.Cancel();
         lock (_gate)
@@ -377,10 +379,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         _model.Update(state => state with
         {
-            DetailsItem = null,
-            DetailsExtras = new(),
-            DetailsLoading = false,
-            DetailsError = null,
             SearchFocusPending = false,
             LaunchingSavedId = null,
             PlayniteBusy = false,
@@ -2255,6 +2253,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
             DetailsOpening = preserveTab ? state.DetailsOpening : state.DetailsOpening + 1,
             DetailsLoading = true, DetailsError = null, DetailsExtras = new() { Tab = tab },
         });
+        LoadDetailsOverview(item, generation);
+        LoadDetailsSection(tab);
+    }
+
+    private void LoadDetailsOverview(PlayniteLibraryItem item, long generation)
+    {
         var routeLifetime = _navigation.Value.RouteCancellationToken;
         _ = Operations.RunLatest("playnite-library.details", async context =>
         {
@@ -2278,10 +2282,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             catch (Exception)
             {
                 _model.Update(state => state.DetailsGeneration != generation || state.DetailsItem is null
-                    ? state : state with { DetailsLoading = false, DetailsError = "Game details could not be loaded. Close and reopen to retry." });
+                    ? state : state with { DetailsLoading = false, DetailsError = "Game details could not be loaded. Refresh to retry." });
             }
         }, WidgetOperationLifetime.Active);
-        LoadDetailsSection(tab);
     }
 
     internal Task WhenDetailsIdleAsync(CancellationToken cancellationToken = default) =>

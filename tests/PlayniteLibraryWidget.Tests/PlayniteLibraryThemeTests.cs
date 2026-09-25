@@ -51,6 +51,13 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(raised, Resolve("button", "playnite-library-control").Get("background")?.Text);
         Assert.AreEqual(text, Resolve("text", "playnite-library-summary-title").Get("color")?.Text);
         Assert.AreEqual(text, Resolve("stack", "wrail-modal").Get("color")?.Text);
+        Assert.AreEqual(text, Resolve("text", "playnite-library-details-field").Get("color")?.Text);
+        Assert.AreEqual(text, Resolve("text", "playnite-library-details-description").Get("color")?.Text);
+        Assert.AreEqual(Resolve("text", "playnite-library-details-meta").Get("color")?.Text,
+            Resolve("text", "playnite-library-details-label").Get("color")?.Text);
+        Assert.AreEqual("13px", Resolve("text", "playnite-library-details-label").Get("font-size")?.Text);
+        Assert.AreEqual("20px", Resolve("text", "playnite-library-details-section-title").Get("font-size")?.Text);
+        Assert.AreEqual("400", Resolve("text", "playnite-library-details-description").Get("font-weight")?.Text);
         Assert.AreEqual(raised!.Replace("0.98)", "0.80)"), Resolve("stack", "wrail-modal").Get("background")?.Text);
         Assert.IsNull(Resolve("stack", "wrail-modal").Get("opacity"), "Panel alpha must not dim its children.");
         Assert.AreEqual(Resolve("backdrop").Get("background")?.Text,

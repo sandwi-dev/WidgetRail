@@ -10,6 +10,128 @@ public sealed partial class PlayniteLibraryTests
     private const string DetailAction = "playnite-library.details.";
 
     [TestMethod, Timeout(30_000)]
+    public async Task DetailsResumeWithSameTabScopeAndCompletedDataUntilExplicitlyDismissed()
+    {
+        var host = new FakeHost(3);
+        var widget = Create(host, out TestApplicationService application);
+        var reads = 0;
+        application.ActivityHandler = (_, _) =>
+        {
+            reads++;
+            return ValueTask.FromResult(new PlayniteActivity(true, 60, [new(null, 60, "Play")]));
+        };
+        await Interactive(widget);
+        await Ready(widget, host);
+        var game = Nodes(Snapshot(widget, 124_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+        await widget.OnActionAsync(new(DetailAction + "tab.activity", "tab"));
+        await Bounded(widget.WhenDetailsIdleAsync(), "loaded details");
+        var before = Snapshot(widget, 124_002);
+        var full = widget.RenderState.Value.DetailsExtras.Full;
+        var activity = widget.RenderState.Value.DetailsExtras.Activity;
+        await Background(widget);
+        Assert.AreEqual(ViewNodeKind.ModalLayer, Snapshot(widget, 124_003).Root.Kind);
+        await Interactive(widget);
+        await Bounded(widget.WhenDetailsIdleAsync(), "resumed details");
+        var after = Snapshot(widget, 124_004);
+        Assert.AreEqual(before.ActiveInputScopeId, after.ActiveInputScopeId);
+        Assert.AreEqual(Nodes(before.Root).Single(n => n.StyleClasses.Contains("wrail-modal__scroll")).Id,
+            Nodes(after.Root).Single(n => n.StyleClasses.Contains("wrail-modal__scroll")).Id);
+        Assert.AreEqual(PlayniteDetailsTab.Activity, widget.RenderState.Value.DetailsExtras.Tab);
+        Assert.AreSame(full, widget.RenderState.Value.DetailsExtras.Full);
+        Assert.AreSame(activity, widget.RenderState.Value.DetailsExtras.Activity);
+        Assert.AreEqual(1, reads);
+        Assert.IsTrue(await Route(widget, after, ControllerButton.B, after.InitialFocusId!));
+        await WaitFor(() => widget.RenderState.Value.DetailsItem is null, "explicit details dismissal");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    [DataRow("overview")]
+    [DataRow("achievements")]
+    [DataRow("activity")]
+    public async Task InterruptedDetailsReadsRestartOnResume(string section)
+    {
+        var host = new FakeHost(3);
+        var widget = Create(host, out TestApplicationService application);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reads = 0;
+        async Task WaitFirst(CancellationToken token)
+        {
+            if (Interlocked.Increment(ref reads) != 1) return;
+            started.SetResult();
+            await Task.Delay(Timeout.Infinite, token);
+        }
+        if (section == "overview") application.DetailsHandler = async (id, token) =>
+        {
+            await WaitFirst(token);
+            var items = await application.ResolveSavedAsync([id], token);
+            return new(items.Single());
+        };
+        else if (section == "achievements") application.AchievementsHandler = async (_, token) =>
+        {
+            await WaitFirst(token);
+            return PlayniteAchievements.Unavailable;
+        };
+        else application.ActivityHandler = async (_, token) =>
+        {
+            await WaitFirst(token);
+            return PlayniteActivity.Unavailable;
+        };
+        await Interactive(widget);
+        await Ready(widget, host);
+        var game = Nodes(Snapshot(widget, 125_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+        if (section != "overview") await widget.OnActionAsync(new(DetailAction + "tab." + section, "tab"));
+        await Bounded(started.Task, "details request started");
+        var scope = Snapshot(widget, 125_002).ActiveInputScopeId;
+        await Background(widget);
+        await Interactive(widget);
+        await Bounded(widget.WhenDetailsIdleAsync(), "resumed interrupted request");
+        Assert.AreEqual(2, reads);
+        Assert.IsFalse(widget.RenderState.Value.DetailsLoading);
+        Assert.IsFalse(widget.RenderState.Value.DetailsExtras.AchievementsLoading);
+        Assert.IsFalse(widget.RenderState.Value.DetailsExtras.ActivityLoading);
+        Assert.AreEqual(scope, Snapshot(widget, 125_003).ActiveInputScopeId);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task ResumeDoesNotReplayInstallationOrRetainConfirmation()
+    {
+        var host = new FakeHost(3);
+        var widget = Create(host, out TestApplicationService application);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        application.InstallationHandler = async (_, _, token) =>
+        {
+            started.SetResult();
+            await Task.Delay(Timeout.Infinite, token);
+            return true;
+        };
+        await Interactive(widget);
+        await Ready(widget, host);
+        var game = Nodes(Snapshot(widget, 126_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+        await Bounded(widget.WhenDetailsIdleAsync(), "loaded details");
+        await widget.OnActionAsync(new(DetailAction + "uninstall", "options"));
+        await Background(widget);
+        await Interactive(widget);
+        Assert.IsFalse(widget.RenderState.Value.DetailsExtras.ConfirmUninstall);
+        await widget.OnActionAsync(new(DetailAction + "uninstall", "options"));
+        await widget.OnActionAsync(new(DetailAction + "uninstall.confirm", "confirm"));
+        await Bounded(started.Task, "uninstall started");
+        await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+        Assert.IsTrue(widget.RenderState.Value.DetailsExtras.OperationBusy, "Refresh must not cancel a submitted operation.");
+        await Background(widget);
+        await Interactive(widget);
+        await Bounded(widget.WhenDetailsIdleAsync(), "resumed after operation");
+        Assert.AreEqual(1, application.InstallationRequests.Count);
+        Assert.IsFalse(widget.RenderState.Value.DetailsExtras.OperationBusy);
+        StringAssert.Contains(widget.RenderState.Value.DetailsExtras.OperationMessage!, "Refresh");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task EachOpeningGetsFreshScopeButLoadingRefreshAndTabsKeepIt()
     {
         var host = new FakeHost(3);
@@ -39,8 +161,8 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual(PlayniteLibraryDetailsPresentation.PlayId, second.InitialFocusId);
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(second).Count);
         await Background(widget);
-        Assert.IsNull(widget.RenderState.Value.DetailsItem, "Details must retire on close, before any reopening.");
-        Assert.AreNotEqual(ViewNodeKind.ModalLayer, Snapshot(widget, 123_008).Root.Kind);
+        Assert.IsNotNull(widget.RenderState.Value.DetailsItem);
+        Assert.AreEqual(second.ActiveInputScopeId, Snapshot(widget, 123_008).ActiveInputScopeId);
         var restartedHost = new FakeHost(3);
         var restarted = Create(restartedHost);
         await Interactive(restarted);
@@ -158,8 +280,9 @@ public sealed partial class PlayniteLibraryTests
         await Bounded(widget.WhenDetailsIdleAsync(), "uninstall request");
         Assert.AreEqual((savedId, false), application.InstallationRequests.Single());
         await Background(widget);
-        Assert.IsNull(widget.RenderState.Value.DetailsExtras.Achievements);
-        Assert.IsNull(widget.RenderState.Value.DetailsExtras.Full);
+        Assert.IsNotNull(widget.RenderState.Value.DetailsExtras.Achievements);
+        Assert.IsFalse(widget.RenderState.Value.DetailsExtras.OperationBusy);
+        Assert.IsFalse(widget.RenderState.Value.DetailsExtras.ConfirmUninstall);
     }
 }
 
@@ -221,6 +344,15 @@ public sealed partial class PlayniteLibraryLayoutTests
         var snapshot = new PresentationWidget(page.WithModal(modal)).RenderSnapshot("details.options", 2);
         var nodes = Nodes(snapshot.Root.Children[1]).ToArray();
         var options = nodes.Single(node => node.Id == PlayniteLibraryDetailsPresentation.ContentId);
+        Assert.AreEqual(ViewNodeKind.Stack, nodes.Single(node => node.Id == "playnite-library.details.actions").Kind);
+        Assert.AreEqual("playnite-library.details.overview-header", options.Children[0].Id);
+        Assert.IsTrue(options.Children[1].StyleClasses.Contains("playnite-library-details-tabs"));
+        Assert.IsFalse(nodes.Any(node => node.Kind == ViewNodeKind.Button && node.Text is "Close" or "Refresh"));
+        var header = snapshot.Root.Children[1].Children[0];
+        Assert.AreEqual("playnite-library.details.header-hints", header.Children[1].Id);
+        Assert.IsTrue(Nodes(header).Any(node => node.Text == "Refresh"));
+        Assert.IsTrue(Nodes(header).Any(node => node.Text == "Close"));
+
         CollectionAssert.AreEqual(tile.ContextActions.ToArray(), options.ContextActions.ToArray());
         Assert.AreEqual(ControllerButton.X, options.ContextMenuButton);
         Assert.AreEqual("poster-handle", nodes.Single(node => node.Id == "playnite-library.details." + "poster").ArtworkHandle);

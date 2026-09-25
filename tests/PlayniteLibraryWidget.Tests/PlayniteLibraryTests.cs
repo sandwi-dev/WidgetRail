@@ -53,7 +53,7 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task DetailsPlayUsesExactGameAndRetiresOnDeactivation()
+    public async Task DetailsPlayUsesExactGameAndSurvivesDeactivation()
     {
         var host = new FakeHost(3);
         var widget = Create(host);
@@ -67,8 +67,10 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(PlayniteLibraryActions.Launch, PlayniteLibraryDetailsPresentation.PlayId));
         CollectionAssert.AreEqual(new[] { "app-00001" }, host.Launches.ToArray());
         await Background(widget);
-        Assert.IsNull(widget.RenderState.Value.DetailsItem);
-        Assert.AreNotEqual(ViewNodeKind.ModalLayer, Snapshot(widget, 111_002).Root.Kind);
+        Assert.AreEqual("saved-00001", widget.RenderState.Value.DetailsItem!.Value.SavedId);
+        Assert.AreEqual(ViewNodeKind.ModalLayer, Snapshot(widget, 111_002).Root.Kind);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Launch, PlayniteLibraryDetailsPresentation.PlayId));
+        Assert.AreEqual(1, host.Launches.Count, "Hidden details cannot launch another game.");
     }
 
     [TestMethod, Timeout(30_000)]
@@ -4533,6 +4535,16 @@ public sealed partial class PlayniteLibraryTests
         FakeHost host) :
         IPlayniteLibraryApplicationService
     {
+        internal Func<string, CancellationToken, ValueTask<PlayniteGameDetails?>>? DetailsHandler { get; set; }
+        internal Func<string, bool, CancellationToken, ValueTask<bool>>? InstallationHandler { get; set; }
+        public async ValueTask<PlayniteGameDetails?> GetGameDetailsAsync(string gameId, CancellationToken token)
+        {
+            if (DetailsHandler is not null) return await DetailsHandler(gameId, token);
+            var items = await ResolveSavedAsync([gameId], token);
+            var item = items.FirstOrDefault(value => value.SavedId == gameId);
+            return item is null ? null : new(item);
+        }
+
         internal Func<string, CancellationToken, ValueTask<PlayniteAchievements>>? AchievementsHandler { get; set; }
         internal Func<string, CancellationToken, ValueTask<PlayniteActivity>>? ActivityHandler { get; set; }
         internal List<(string Id, bool Install)> InstallationRequests { get; } = [];
@@ -4545,7 +4557,7 @@ public sealed partial class PlayniteLibraryTests
         {
             token.ThrowIfCancellationRequested();
             InstallationRequests.Add((gameId, install));
-            return ValueTask.FromResult(true);
+            return InstallationHandler?.Invoke(gameId, install, token) ?? ValueTask.FromResult(true);
         }
 
         public bool OwnsArtworkContent => false;

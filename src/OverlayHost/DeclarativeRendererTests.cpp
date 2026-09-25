@@ -2,7 +2,6 @@
 #include "PopupMenuVisual.h"
 #include "DeclarativeRenderer.h"
 #include "NativeIcons.h"
-#include "InactiveWidgetProjection.h"
 #include "RemoteImageCache.h"
 
 #include <wincodec.h>
@@ -7424,16 +7423,13 @@ void ModalLayersPaintAboveThePageAndKeepIndependentScroll() {
     Check(result.elementVisibleRects.at(L"control.11").height > 0,
         "last dialog control is reachable through internal scrolling");
     Check(result.scrollbarThumbs.contains(L"modal.scroll"), "modal scrolling paints an ordinary themed indicator");
-    const auto inactive = widgetrail::ProjectInactiveWidgetParent(snapshot, true);
-    Check(inactive.has_value(), "inactive modal has a retained parent projection");
-    target->BeginDraw(); target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
-    const auto parentResult = renderer.Render(target.Get(), *inactive, L"game", {0,0,300,300}, options);
-    ok(target->EndDraw());
-    Check(parentResult.succeeded && !parentResult.elementRects.contains(L"dialog"),
-        "same-sequence inactive parent cannot reuse modal geometry");
-    const auto parentPixel = pixel(150, 65);
-    Check(parentPixel[0] == 255 && parentPixel[2] == 0,
-        "reopening retention paints the parent without the old dialog or dimming");
+    // An inert retained view keeps the authored modal until the widget dismisses it.
+    const auto retained = draw(L"");
+    Check(retained.succeeded && retained.elementRects.contains(L"dialog"),
+        "retained modal remains visible without active focus");
+    const auto resumed = draw(L"control.11");
+    Near(resumed.elementRects.at(L"control.11").y, result.elementRects.at(L"control.11").y,
+        "resuming a modal preserves its scroll position");
     // Null-target preparation must share geometry without dereferencing the paint target.
     const auto prepared = renderer.Render(nullptr, snapshot, L"play", {0,0,240,200}, options);
     Check(prepared.elementRects.at(L"dialog").width <= 240 &&

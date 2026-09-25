@@ -79,7 +79,7 @@ public sealed record WidgetView(
         var dialog = UI.Stack(modal.Id,
             UI.Row(StableIdentifier.Child(modal.Id, "header"),
                 UI.Text(modal.Title, StableIdentifier.Child(modal.Id, "title")).Classes("wrail-modal__title"),
-                UI.Button("Close", modal.DismissActionId, StableIdentifier.Child(modal.Id, "close")))
+                modal.HeaderActions ?? UI.Button("Close", modal.DismissActionId, StableIdentifier.Child(modal.Id, "close")))
                 .Classes("wrail-modal__header"),
             (UI.VerticalScroll(StableIdentifier.Child(modal.Id, "scroll"), modal.Content) with
                 { ShowScrollbar = modal.ShowScrollbar }).Classes("wrail-modal__scroll"))

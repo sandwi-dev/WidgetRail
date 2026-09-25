@@ -89,7 +89,11 @@ return detailsOpen
 The host centers and clamps the modal **inside the widget**, including when the
 widget is aligned to a screen corner. The background alone determines the widget's
 surface size. DPI, overlay scale, and viewport changes use the normal layout path.
-A themed header includes Close; the body is an ordinary vertical scroll container.
+A themed header includes Close by default; the body is an ordinary vertical scroll
+container. Set `WidgetModal.HeaderActions` to ordinary declarative content to
+replace the Close button with controls or controller hints. The title and B-to-dismiss
+shortcut remain. Header content belongs to the modal input scope; use stable,
+unique IDs and declare any additional shortcuts on the relevant content ancestor.
 Text, artwork, grids, tiles, sliders, text entry, and nested scrollers use their
 normal component contracts. Select/context popups and the host keyboard retain
 their own higher input layer. The keyboard still uses its existing placement.
@@ -100,7 +104,12 @@ and focus memory are retained; dismissal restores a valid remembered target,
 falling back to the page's initial or surviving focusable element if it disappeared.
 Do not dispatch background actions directly while displaying a modal. Cancel or
 ignore asynchronous results after the owning route/lifecycle is retired, and
-clear widget-owned modal state when leaving its page.
+clear widget-owned modal state when leaving its page. Hiding the overlay does not
+itself dismiss a modal: the widget chooses whether to retain it while loaded. To
+resume one, retain its modal ID and content IDs, cancel active work on deactivation,
+and resume interrupted reads on activation. Never automatically replay mutations.
+A new explicit opening may use a fresh modal ID to reset focus and scrolling;
+ordinary refreshes and hide/reopen should retain that ID when preserving position.
 
 One widget modal is supported at a time. Nested `WithModal` calls and embedded
 media sessions are rejected with an authoring error; media composition needs its

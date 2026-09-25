@@ -37,6 +37,17 @@ internal static class WidgetModalTests
             .Any(error => error.Code == "invalid_modal_layer"));
         True(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = 54 })
             .Any(error => error.Code == "feature_requires_version"));
+        var hinted = background.WithModal(modal with
+        {
+            HeaderActions = UI.Row("details.hints",
+                UI.ControllerHint(ControllerButton.Y, "Refresh", "refresh.hint"),
+                UI.ControllerHint(ControllerButton.B, "Close", "close.hint")),
+        }).CreateSnapshot("instance", 5);
+        Equal("details.close", snapshot.Root.Children[1].Children[0].Children[1].Id);
+        Equal("details.hints", hinted.Root.Children[1].Children[0].Children[1].Id);
+        Equal(0, ViewSnapshotValidator.Validate(hinted).Count);
+        True(hinted.Root.Children[1].Shortcuts.Any(s => s.Button == ControllerButton.B && s.ActionId == "details.close"));
+        Equal("play", hinted.InitialFocusId);
         Throws<InvalidOperationException>(() => background.WithModal(modal).WithModal(modal));
         var pinned = background with { PinnedLayouts = [WidgetView.PinnedLayout("compact", "Compact",
             new() { PreferredWidth = 400, PreferredHeight = 300 }, UI.Stack("pinned", UI.Text("Now playing", "pinned.text")))] };

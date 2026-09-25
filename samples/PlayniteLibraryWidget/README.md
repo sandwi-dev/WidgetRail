@@ -53,8 +53,14 @@ games; Library includes uninstalled games too. Selecting either destination ente
 its game list. Game details appears inside the widget with the page dimmed behind
 it; B restores the selected game. Each opening starts at Play/Install, while
 refreshing or switching detail tabs preserves your position. The poster and primary
-controls share the top row. X offers the same game actions as the poster, including
-category membership. Long details scroll inside the panel.
+controls share the top row, with vertical actions beside the poster and full-width
+details tabs below. Header hints show Y to refresh and B to close; X beneath the
+actions offers the same game options as the poster, including category membership.
+Long details scroll inside the panel. Hiding and reopening the overlay preserves
+the open details, tab, focus, and scroll position while the widget remains loaded.
+Interrupted reads resume; installation requests are never replayed automatically.
+B dismisses details explicitly. After the five-minute unload or an application
+restart, the widget returns to its ordinary page.
 
 The **Installed** filter narrows Library. Game details offers **Install** for uninstalled
 games and **Uninstall** for installed games, with confirmation before requesting
