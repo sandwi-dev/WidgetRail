@@ -37,10 +37,11 @@ You can reopen connection settings through **Menu → Playnite connection**.
 | Control | Action |
 | --- | --- |
 | A | Open game details; choose Play inside details to launch |
+| LB / RB | Switch Home and Library tabs |
 | RS click | Jump to Library search |
 | Right stick movement | Scroll the focused list or panel |
 | Y | Refresh Home or Browse |
-| Menu | Open the focused game�s quick actions, or page options elsewhere |
+| Menu | Open the focused game’s quick actions, or page options elsewhere |
 | B | Close details or a nested page; from Home/Library, return to the tray |
 
 Use the **Home** and **Library** navigation tabs to switch between peer destinations.
@@ -50,8 +51,7 @@ its game list. Game details appears inside the widget with the page dimmed behin
 it; B restores the selected game. Long details scroll inside the panel.
 
 The **Installed** filter narrows Library. Install uninstalled games through Playnite,
-then refresh the widget; the current Bridge API does not expose an installation
-command or achievements. Pinned views keep showing the page without its modal.
+then refresh the widget; this candidate has not yet integrated the Bridge installation or achievement endpoints. Pinned views keep showing the page without its modal.
 
 The interface follows your selected WidgetRail theme. Categories open by selecting
 the row; game covers retain their original artwork colors.

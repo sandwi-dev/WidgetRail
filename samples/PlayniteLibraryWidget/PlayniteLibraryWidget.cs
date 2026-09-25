@@ -246,8 +246,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             var current = CurrentLibrary.Snapshot.Items.Concat(local.FixedRows.All)
                 .FirstOrDefault(item => item.Key == details.Key);
             return page.WithModal(PlayniteLibraryDetailsPresentation.Create(
-                current ?? details, current is not null, local.LaunchingSavedId, local.Status,
-                state.LaunchStates.TryGetValue(details.Value.SavedId, out var launchState) ? launchState : null));
+                details, current is not null, local.LaunchingSavedId, local.Status,
+                state.LaunchStates.TryGetValue(details.Value.SavedId, out var launchState) ? launchState : null,
+                local.DetailsLoading, local.DetailsError));
         }
         return page;
     }
@@ -532,10 +533,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
                 var details = CurrentLibrary.Snapshot.Items.Concat(_model.Value.FixedRows.All)
                     .FirstOrDefault(item => PlayniteLibraryIdentity.FocusId("grid", item.Key) == action.SourceElementId);
-                if (details is not null) _model.Update(state => state with { DetailsItem = details });
+                if (details is not null) OpenDetails(details);
                 return;
             case PlayniteLibraryActions.DetailsClose:
-                _model.Update(state => state with { DetailsItem = null });
+                Operations.Cancel("playnite-library.details");
+                _model.Update(state => state with { DetailsItem = null, DetailsLoading = false });
                 RequestContentEntry();
                 return;
             case PlayniteLibraryActions.SearchFocus:
@@ -2227,6 +2229,45 @@ public sealed partial class PlayniteLibraryWidget : Widget
             Categories = authority.Categories,
         };
     }
+
+    private void OpenDetails(PlayniteLibraryItem item)
+    {
+        var generation = _model.Value.DetailsGeneration + 1;
+        _model.Update(state => state with
+        {
+            DetailsItem = item, DetailsGeneration = generation,
+            DetailsLoading = true, DetailsError = null,
+        });
+        var routeLifetime = _navigation.Value.RouteCancellationToken;
+        _ = Operations.RunLatest("playnite-library.details", async context =>
+        {
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
+                context.CancellationToken, routeLifetime);
+            try
+            {
+                var resolved = await _application.ResolveSavedAsync([item.Value.SavedId], lifetime.Token)
+                    .ConfigureAwait(false);
+                lifetime.Token.ThrowIfCancellationRequested();
+                var full = resolved.SingleOrDefault(value => value.SavedId == item.Value.SavedId);
+                _model.Update(state => state.DetailsGeneration != generation || state.DetailsItem is null
+                    ? state : state with
+                    {
+                        DetailsItem = full is null ? item : PlayniteLibraryItem.From(full),
+                        DetailsLoading = false,
+                        DetailsError = full is null ? "This game is no longer available from Playnite." : null,
+                    });
+            }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+            catch (Exception)
+            {
+                _model.Update(state => state.DetailsGeneration != generation || state.DetailsItem is null
+                    ? state : state with { DetailsLoading = false, DetailsError = "Game details could not be loaded. Close and reopen to retry." });
+            }
+        }, WidgetOperationLifetime.Active);
+    }
+
+    internal Task WhenDetailsIdleAsync(CancellationToken cancellationToken = default) =>
+        Operations.WhenIdleAsync("playnite-library.details", cancellationToken);
 
     private string? ResolveActionSource(string sourceElementId)
     {

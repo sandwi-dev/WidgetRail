@@ -144,7 +144,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         var snapshot = new PresentationWidget(view).RenderSnapshot(
             "playnite-library.presentation", 1);
         var nodes = Nodes(snapshot.Root).ToArray();
-        Assert.AreEqual(2, snapshot.Root.Children.Count);
+        Assert.AreEqual(1, snapshot.Root.Children.Count);
         var homeStage = nodes.Single(node => node.Id == "playnite-library.cinematic").Children.Single();
         Assert.AreEqual("playnite-library.home.stage", homeStage.Id);
         CollectionAssert.Contains(homeStage.StyleClasses.ToArray(),
@@ -169,7 +169,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsNull(library.ActionId);
         Assert.IsFalse(library.IsFocusable);
         Assert.AreEqual(ControllerButton.Menu, library.ContextMenuButton);
-        Assert.AreEqual(0, Nodes(topActions).Count(node => node.IsFocusable));
+        Assert.AreEqual(2, Nodes(topActions).Count(node => node.IsFocusable));
         CollectionAssert.AreEqual(new[]
         {
             "playnite-library.categories.open",
@@ -182,7 +182,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(ViewNodeKind.Scroll, rail.Kind);
         Assert.AreEqual(ScrollAxis.Horizontal, rail.ScrollAxis);
         Assert.AreEqual(items[0].Key.Value, rail.CollectionAnchorKey);
-        Assert.IsFalse(nodes.Any(node => node.Shortcuts.Any(shortcut =>
+        Assert.IsTrue(nodes.Any(node => node.Shortcuts.Any(shortcut =>
             shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)));
         var collectionItems = nodes.Where(node => node.CollectionItemKey is not null)
             .Select(node => node.CollectionItemKey!)
@@ -754,7 +754,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
                 .RenderSnapshot("playnite-library.browse." + phase, 10);
             var nodes = Nodes(snapshot.Root).ToArray();
-            Assert.AreEqual("playnite-library.shell", snapshot.Root.Id, phase);
+            Assert.AreEqual("playnite-library.root", snapshot.Root.Id, phase);
             CollectionAssert.Contains(nodes.Single(node => node.Id == "playnite-library.root").StyleClasses.ToArray(),
                 "playnite-library-browse-surface", phase);
             var background = nodes.Single(node =>

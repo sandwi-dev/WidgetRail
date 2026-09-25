@@ -51,7 +51,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(raised, Resolve("button", "playnite-library-control").Get("background")?.Text);
         Assert.AreEqual(text, Resolve("text", "playnite-library-summary-title").Get("color")?.Text);
         Assert.AreEqual(text, Resolve("stack", "wrail-modal").Get("color")?.Text);
-        Assert.AreEqual(raised, Resolve("stack", "wrail-modal").Get("background")?.Text);
+        Assert.AreEqual(raised!.Replace("0.98)", "0.80)"), Resolve("stack", "wrail-modal").Get("background")?.Text);
+        Assert.IsNull(Resolve("stack", "wrail-modal").Get("opacity"), "Panel alpha must not dim its children.");
         Assert.AreEqual(Resolve("backdrop").Get("background")?.Text,
             Resolve("modalLayer", "wrail-modal-layer").Get("background")?.Text);
         Assert.AreEqual("20px", Resolve("stack", "wrail-modal").Get("padding")?.Text);

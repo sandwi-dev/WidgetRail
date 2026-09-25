@@ -13,6 +13,45 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed class PlayniteLibraryTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task DetailsFetchFullDescriptionWithoutReplacingLibraryProjection()
+    {
+        var host = new FakeHost(3);
+        host.ResolveHandler = request => request.SavedIds.Select(id =>
+        {
+            var item = host.ItemFactory(int.Parse(id.AsSpan(id.LastIndexOf('-') + 1)));
+            return item with { Presentation = item.Presentation with
+            {
+                Metadata = new WidgetAppLibraryMetadata("full", new("Playnite", "full", "Steam", 1))
+                { Description = "Full game description from the detail endpoint." },
+            } };
+        }).ToArray();
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var game = Nodes(Snapshot(widget, 112_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+        await Bounded(widget.WhenDetailsIdleAsync(), "full details");
+        var modal = Snapshot(widget, 112_002);
+        Assert.AreEqual("Full game description from the detail endpoint.",
+            Nodes(modal.Root).Single(node => node.Id == "playnite-library.details.description").Text);
+        Assert.IsNull(widget.HomeCollection.Items.First().Presentation.Metadata?.Description);
+        var hero = Nodes(modal.Root).Single(node => node.Id == "playnite-library.details.hero");
+        Assert.AreEqual(ViewNodeKind.BackgroundSurface, hero.Kind);
+        Assert.IsTrue(Nodes(hero).Any(node => node.Id == PlayniteLibraryDetailsPresentation.PlayId));
+        await Background(widget);
+    }
+
+    [TestMethod]
+    public void HtmlDescriptionsAreReadableAndLongDescriptionsAreBoundedNotDiscarded()
+    {
+        Assert.AreEqual("Explore & discover", PlayniteDescriptionText.Normalize("<p>Explore &amp; <b>discover</b></p><script>bad()</script>"));
+        var longDescription = PlayniteDescriptionText.Normalize("<p>" + new string('x', 6000) + "</p>");
+        Assert.IsNotNull(longDescription);
+        Assert.AreEqual(4096, longDescription.Length);
+        Assert.IsFalse(longDescription.Contains('<'));
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task DetailsPlayUsesExactGameAndRetiresOnDeactivation()
     {
         var host = new FakeHost(3);

@@ -15,6 +15,7 @@
   --canvas-veil: rgba(2, 4, 10, 0.74);
   --surface: rgba(12, 16, 28, 0.98);
   --surface-raised: rgba(19, 24, 41, 0.98);
+  --modal-surface: rgba(19, 24, 41, 0.80);
   --surface-subtle: rgba(26, 32, 54, 0.94);
   --surface-active: rgba(35, 45, 74, 0.98);
   --surface-muted: rgba(26, 32, 54, 0.92);
@@ -149,7 +150,7 @@ title { font-weight: 600; letter-spacing: -0.01em; }
 .wrail-modal-layer { background: var(--canvas-veil); }
 .wrail-modal {
   width: 760px; height: 640px; padding: 20px; gap: 16px;
-  background: var(--surface-raised); color: var(--text);
+  background: var(--modal-surface); color: var(--text);
   border-color: var(--border-strong); border-width: 1px; corner-radius: 16px;
   shadow-color: rgba(0, 0, 0, 0.45); shadow-blur: 20px; overflow: clip;
 }

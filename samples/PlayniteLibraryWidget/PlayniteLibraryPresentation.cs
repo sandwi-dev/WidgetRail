@@ -97,6 +97,7 @@ internal static class PlayniteLibraryPresentation
             .Classes("playnite-library-header");
         if (state.Route == PlayniteLibraryRoute.Library)
             header = UI.Row("playnite-library.home.actions",
+                    NavigationTabs(state),
                     UI.Row("playnite-library.home.utilities",
                             UI.ControllerHint(ControllerButton.Y, "Refresh", "playnite-library.hint.refresh"),
                             LibraryNavigation(state, renderActionsEnabled))
@@ -105,6 +106,7 @@ internal static class PlayniteLibraryPresentation
         if (state.Route == PlayniteLibraryRoute.Browse)
             header = UI.Stack("playnite-library.header",
                     UI.Row("playnite-library.browse.toolbar",
+                            NavigationTabs(state),
                             LibraryNavigation(state, renderActionsEnabled))
                         .Classes("playnite-library-browse-toolbar"),
                     UI.Row("playnite-library.browse.title-row",
@@ -723,18 +725,11 @@ internal static class PlayniteLibraryPresentation
             root = ((ContainerElement)root).Shortcut(ControllerButton.Y, PlayniteLibraryActions.Refresh, label: "Refresh");
         if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
         {
-            var selected = state.Route == PlayniteLibraryRoute.Library ? "home" : "library";
-            var target = WidgetFocusTargetLookup.Resolve(root, initialFocus, root.Id);
-            var entry = target.IsEnabled && target.Id is { } targetId
-                ? NavigationShellContentEntry.Available(targetId)
-                : NavigationShellContentEntry.Unavailable;
-            var navigation = UI.NavigationShellParts("playnite-library.destinations", selected,
-                entry, root,
-                [new("home", "Home", PlayniteLibraryActions.HomeOpen, WidgetGlyph.Play),
-                 new("library", "Library", PlayniteLibraryActions.BrowseOpen, WidgetGlyph.Fullscreen)]);
-            root = UI.Stack("playnite-library.shell",
-                navigation.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always), root)
-                .Classes("playnite-library-shell");
+            var siblingAction = state.Route == PlayniteLibraryRoute.Library
+                ? PlayniteLibraryActions.BrowseOpen : PlayniteLibraryActions.HomeOpen;
+            root = ((ContainerElement)root)
+                .Shortcut(ControllerButton.LeftBumper, siblingAction, label: "Previous tab")
+                .Shortcut(ControllerButton.RightBumper, siblingAction, label: "Next tab");
             if (state.Route == PlayniteLibraryRoute.Browse)
                 root = ((ContainerElement)root).Shortcut(ControllerButton.RightStick,
                     PlayniteLibraryActions.SearchFocus, label: "Search");
@@ -1173,6 +1168,19 @@ internal static class PlayniteLibraryPresentation
             .Classes("playnite-library-home-summary");
 
     private static string GameCount(int count) => count == 1 ? "1 game" : $"{count} games";
+
+    private static WidgetElement NavigationTabs(PlayniteLibraryPresentationState state) =>
+        UI.NavigationShellParts("playnite-library.destinations",
+            state.Route == PlayniteLibraryRoute.Library ? "home" : "library",
+            NavigationShellContentEntry.Unavailable, UI.Stack("playnite-library.nav.unused"),
+            [new("home", "Home", PlayniteLibraryActions.HomeOpen, WidgetGlyph.Play),
+             new("library", "Library", PlayniteLibraryActions.BrowseOpen, WidgetGlyph.Fullscreen)],
+            compactLeadingAdornment: UI.ControllerGlyph(ControllerButton.LeftBumper,
+                "playnite-library.nav.previous", "Previous tab").Classes("playnite-library-tab-key"),
+            compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper,
+                "playnite-library.nav.next", "Next tab").Classes("playnite-library-tab-key"))
+            .CompactNavigation.VisibleWhen(ResponsiveVisibility.Always)
+            .AddClasses("playnite-library-tabs");
 
     private static ContainerElement LibraryNavigation(
         PlayniteLibraryPresentationState state,

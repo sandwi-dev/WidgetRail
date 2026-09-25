@@ -164,4 +164,4 @@ opaque identity and displays current provider metadata, rechecking current membe
 before enabling Play. Launch still uses the existing fresh provider revalidation.
 B dismisses the modal; background page geometry and scroll are unchanged. Deactivation
 clears details state. The host/Bridge/SDK must support protocol 55 to display details.
-The Bridge has no installation or achievement endpoint in this integration.
+The Bridge exposes installation and optional achievement/activity endpoints; their widget integration is planned separately.

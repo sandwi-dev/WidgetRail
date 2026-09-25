@@ -693,7 +693,8 @@ internal sealed class PlayniteBridgeClient(
             id.ToString("D"), name!, source, installed, favorite, hidden,
             completion, categories!, genres!, platforms!, playtime, lastActivity)
         {
-            Description = OptionalString(value, "description", 4096),
+            Description = value.TryGetProperty("description", out var description) && description.ValueKind == JsonValueKind.String
+                ? PlayniteDescriptionText.Normalize(description.GetString()) : null,
             Version = OptionalString(value, "version", 128),
         };
         return true;
