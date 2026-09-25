@@ -20,8 +20,13 @@ Try changes in a widget you use often so you can see how they affect real conten
 
 **Settings → Overlay → Section animation** controls page changes inside widgets:
 **Slide** (default) moves pages horizontally; **Paging** raises the next page
-while the previous page recedes; **None** changes pages immediately.
+while the previous page recedes; **Vertical slide** moves pages up or down;
+**Reveal** uncovers stationary content; **Cover slide** moves the new page over
+the previous page; **None** changes pages immediately.
 **Animate widget dialogs** independently controls opening and closing motion.
+**Dialog animation** offers **Zoom** (default), which grows the dialog from 90%
+to full size, and **Lift**, which slides it gently into place. Explicit saved
+choices remain respected when defaults change.
 **Widget animation speed** ranges from **0.5×** (slower) to **2×** (faster), with
 **1×** as normal speed. It scales section, navigation-indicator and dialog timing
 together. These preferences apply immediately and survive restarts. Reduced motion,
