@@ -325,6 +325,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         scene->rasterBytes > WidgetCompositionScene::MaximumBytes || !std::isfinite(scene->scale) ||
         scene->scale <= 0)
         return E_INVALIDARG;
+    const bool hadScene = static_cast<bool>(scene_);
     const bool cold = !scene_ || scene_->authority != scene->authority || scene_->scale != scene->scale ||
                       !Same(scene_->viewport, scene->viewport) || scene_->animations != scene->animations;
     if (cold || scene->directContent)
@@ -512,6 +513,11 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
                 if (moveFocus)
                     recipe = animation::FocusMove(node.bounds, node.clip, previous);
                 if (moveFocus && !scene_->reducedMotion) group.focusOrigin = priorFocus;
+            } else if (node.kind == WidgetCompositionKind::Popup) {
+                // Only an actual opening gets an entrance. Highlight/content
+                // updates retain the clock; reflow and policy changes snap.
+                if ((!existed || changed) && (!cold || !hadScene))
+                    recipe = animation::PopupEnter(node.bounds, node.clip, node.popupAnchor);
             } else if (node.kind == WidgetCompositionKind::Control) {
                 recipe = animation::ControlScale(node.bounds, node.clip, previous, node.controlScale,
                     existed && !changed && !boundsChanged && !contextChanged ? node.controlDuration : 0, node.controlCurve);
@@ -540,14 +546,15 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
                     node.kind == WidgetCompositionKind::Selection);
             }
             group.motion = recipe.Start(now, Frequency(), scene_->animations.speed);
-            if (!changed && node.kind != WidgetCompositionKind::Focus && node.kind != WidgetCompositionKind::Control) {
+            if (!changed && node.kind != WidgetCompositionKind::Focus && node.kind != WidgetCompositionKind::Control &&
+                node.kind != WidgetCompositionKind::Popup) {
                 if (node.kind == WidgetCompositionKind::Content && previousEnd > now) {
                     group.motion.start = previousMotion.start;
                     group.motion.duration = previousMotion.duration;
                 } else
                     group.motion.duration = std::max<std::int64_t>(0, previousEnd - now);
             }
-            if (cold || scene_->reducedMotion)
+            if ((cold && node.kind != WidgetCompositionKind::Popup) || scene_->reducedMotion)
                 group.motion.duration = 0;
             auto hr = Animate(group.incoming.Get(), group.incomingClip.Get(), group.motion, node.bounds);
             if (FAILED(hr))
@@ -773,7 +780,7 @@ D2D1_POINT_2F WidgetCompositionPresenter::MapInput(D2D1_POINT_2F point) const no
             if (group == groups_.end() || group->second.closing)
                 continue;
             const auto pose = Sample(group->second.motion, now);
-            if (it->kind == WidgetCompositionKind::Modal && Contains(it->clip, point) &&
+            if ((it->kind == WidgetCompositionKind::Modal || it->kind == WidgetCompositionKind::Popup) && Contains(it->clip, point) &&
                 (pose.opacity <= .01F || !Contains(pose.bounds, point)))
                 return {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
             if (it->kind == WidgetCompositionKind::Content && Contains(it->clip, point))

@@ -106,6 +106,7 @@ button:focused {
   outline-offset: -2px;
   scale: 1;
 }
+button:pressed { scale: 0.96; }
 select {
   min-height: 44px;
   padding: 10px 14px;
@@ -891,6 +892,8 @@ slider:focused {
   border-width: 1px;
   corner-radius: 10px;
   flex-shrink: 0;
+  transition-duration: 90ms;
+  transition-easing: ease-out;
 }
 .wrail-action-surface:focused {
   background: var(--surface-active);
@@ -898,7 +901,7 @@ slider:focused {
   outline-width: 2px;
   outline-offset: -2px;
 }
-.wrail-action-surface:pressed { background: var(--surface-raised); }
+.wrail-action-surface:pressed { background: var(--surface-raised); scale: 0.96; }
 .wrail-action-surface:selected { border-color: var(--accent); }
 .wrail-action-surface:disabled { color: var(--text-muted); }
 .wrail-tile { flex-wrap: wrap; }

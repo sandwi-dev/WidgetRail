@@ -145,6 +145,7 @@
 .games-app-tile:selected {
   border-color: var(--accent);
 }
+.games-app-tile:pressed { scale: 0.96; }
 
 .games-app-tile:busy { opacity: 0.72; }
 

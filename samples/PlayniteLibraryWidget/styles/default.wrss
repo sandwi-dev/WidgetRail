@@ -84,6 +84,7 @@
 .playnite-library-fixed-tile { width: 28vh; min-width: 112px; max-width: 150px; flex-basis: 28vh; flex-grow: 0; flex-shrink: 0; }
 .playnite-library-browse-tile { min-width: 0px; flex-grow: 0; flex-shrink: 1; }
 .playnite-library-tile:focused { scale: 1.04; background: var(--surface-active, var(--surface-muted)); border-color: var(--focus); }
+.playnite-library-tile:pressed { scale: 0.96; }
 .playnite-library-tile:disabled { background: var(--surface-subtle, var(--surface-muted)); color: var(--text-subdued); }
 .wrail-poster-tile__scrim { width: 100%; min-height: 0px; padding: 12px; background: var(--surface-subtle, var(--surface-muted)); corner-radius: 12px; overflow: clip; }
 .wrail-poster-tile__content { min-height: 0px; gap: 4px; overflow: clip; }

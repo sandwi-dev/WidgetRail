@@ -3,6 +3,7 @@
 #include "OverlayState.h"
 #include "TrayLayout.h"
 #include "ControllerGuideVisual.h"
+#include "PopupCompositionScene.h"
 #pragma comment(lib, "dwrite.lib")
 
 #include <Windows.h>
@@ -1172,6 +1173,21 @@ void CheckFixedChromeWindowPolicy() {
 void CheckWidgetAnimationPolicies() {
     using namespace widgetrail::animation;
     const Rect bounds{20, 30, 200, 120};
+    for (const Rect anchor : {Rect{0, 50, 10, 10}, Rect{230, 50, 10, 10},
+                              Rect{80, 0, 10, 10}, Rect{80, 160, 10, 10}}) {
+        const auto popup = PopupEnter(bounds, bounds, anchor);
+        Check(popup.milliseconds == 160 && popup.from.opacity == 1 && popup.to.opacity == 1,
+            "popup entrance has bounded duration and constant opacity");
+        for (int tick = 0; tick <= 160; ++tick) {
+            const auto pose = Sample(popup.Start(0, 1000), tick);
+            Check(pose.bounds.x >= bounds.x - .001F && pose.bounds.y >= bounds.y - .001F &&
+                  pose.bounds.x + pose.bounds.width <= bounds.x + bounds.width + .001F &&
+                  pose.bounds.y + pose.bounds.height <= bounds.y + bounds.height + .001F,
+                "anchored popup entrance stays within its final placement");
+        }
+        Check(popup.Start(0, 1000, .5).duration == 320 && popup.Start(0, 1000, 2).duration == 80,
+            "popup entrance follows the common animation speed limits");
+    }
     const auto plan = Section(SectionStyle::Paging, bounds, bounds, bounds, 1);
     Check(plan.incoming.milliseconds == 208 && plan.outgoing.milliseconds == 208,
           "paging has one shared duration");
@@ -1309,7 +1325,7 @@ void CheckWidgetAnimationPolicies() {
     }
 }
 
-void CheckWidgetCompositorPixels() {
+void CheckWidgetCompositorPixels(const bool popupOnly = false) {
     using namespace widgetrail;
     Check(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)!=0,
         "pixel fixture uses physical screen coordinates");
@@ -1365,9 +1381,9 @@ void CheckWidgetCompositorPixels() {
         OverlayCompositionSurface::CommitTiming timing;
         Check(SUCCEEDED(surface.CommitFrame(frame, true, timing)), "motion scene commits");
     };
-    const auto pixel = [&](int x = 64, int y = 64) {
+    const auto pixel = [&](int x = 64, int y = 64, HWND sampleWindow = nullptr) {
         POINT position{x, y};
-        ClientToScreen(window, &position);
+        ClientToScreen(sampleWindow ? sampleWindow : window, &position);
         const auto desktop = GetDC(nullptr);
         const auto value = GetPixel(desktop, position.x, position.y);
         ReleaseDC(nullptr, desktop);
@@ -1382,6 +1398,7 @@ void CheckWidgetCompositorPixels() {
     Sleep(50);
     DwmFlush();
     Check(GetRValue(pixel()) > 220, "initial compositor section is red");
+    if (!popupOnly) {
     commit(makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Lime)));
     const auto movingInput = surface.MapWidgetCompositionInput({64, 64});
     Check(!std::isfinite(movingInput.x) || (movingInput.x == 64 && movingInput.y <= 64),
@@ -1762,9 +1779,98 @@ void CheckWidgetCompositorPixels() {
     commit(scaleScene(1.04F));
     Sleep(240); DwmFlush();
     Check(GetRValue(pixel(38, 60)) < 5, "pressed-to-focused scale retargets one transform rather than stacking scales");
+    }
+    const auto popupFrame = [&](const wchar_t* key, bool reduced = false, float scale = 1.0F,
+                                bool captureOnly = false) {
+        OverlayCompositionSurface::Frame frame;
+        Check(SUCCEEDED(surface.BeginFrame(128, 128, frame)), "popup frame begins");
+        frame.target->Clear(D2D1::ColorF(D2D1::ColorF::Blue));
+        if (key) {
+            animation::Options animations;
+            animations.speed = .5;
+            frame.popupScene = shell::CapturePopupComposition(frame.target.Get(), {16, 16, 96, 96},
+                {16, 112, 24, 12}, {0, 0, 128, 128}, scale, key, reduced, animations,
+                [&](ID2D1RenderTarget* popupTarget) {
+                    ComPtr<ID2D1SolidColorBrush> fill;
+                    Check(SUCCEEDED(popupTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Lime),
+                        fill.GetAddressOf())), "popup capture brush");
+                    popupTarget->FillRectangle(D2D1::RectF(16, 16, 112, 112), fill.Get());
+                });
+            Check(frame.popupScene && frame.popupScene->nodes.size() == 2,
+                "popup is one bounded raster and one compositor group");
+            if (captureOnly) frame.popupScene.reset();
+        }
+        Check(SUCCEEDED(surface.EndFrame(frame)), "popup frame ends");
+        OverlayCompositionSurface::CommitTiming timing;
+        Check(SUCCEEDED(surface.CommitFrame(frame, true, timing)), "popup frame commits");
+    };
+    popupFrame(L"capture-check", false, 1, true); DwmFlush();
+    Check(GetBValue(pixel(64, 64)) > 220, "popup capture does not paint its parent surface");
+    const auto popupTestStarted = GetTickCount64();
+    popupFrame(L"open-1"); DwmFlush();
+    const auto popupCommitElapsed = GetTickCount64() - popupTestStarted;
+    const auto popupStarts = surface.popupCompositionCounters(OverlayCompositionSurface::Layer::Content).animationStarts;
+    Check(popupStarts > 0, "a new popup starts an entrance even on its first scene");
+    const auto outsidePopup = surface.MapPopupCompositionInput(OverlayCompositionSurface::Layer::Content, {111, 17});
+    Check(!std::isfinite(outsidePopup.x), "unrevealed popup pixels cannot activate final-layout options");
+    const auto openingPixel = pixel(110, 18);
+    const auto outsidePixel = pixel(4, 4);
+    if (GetBValue(openingPixel) <= 220)
+        std::cerr << "popup opening pixel RGB=" << static_cast<int>(GetRValue(openingPixel)) << ','
+            << static_cast<int>(GetGValue(openingPixel)) << ',' << static_cast<int>(GetBValue(openingPixel))
+            << " commit-ms=" << popupCommitElapsed << " sampled-ms=" << GetTickCount64() - popupTestStarted << '\n';
+    Check(GetBValue(outsidePixel) > 220, "popup capture cannot paint outside its final bounds");
+    const bool intermediateFrameObserved = GetBValue(openingPixel) > 220;
+    popupFrame(L"open-1");
+    Check(surface.popupCompositionCounters(OverlayCompositionSurface::Layer::Content).animationStarts == popupStarts,
+        "highlight and content updates do not restart popup entry");
+    const auto popupPaints = surface.paintCounters().content;
+    Sleep(380); DwmFlush();
+    Check(GetGValue(pixel(110, 18)) > 220 && surface.paintCounters().content == popupPaints,
+        "whole popup reaches final bounds without UI-thread animation paints");
+    popupFrame(nullptr); DwmFlush();
+    Check(GetBValue(pixel(64, 64)) > 220,
+        "dismissal removes popup pixels immediately without retained input or closing ghosts");
+    popupFrame(L"close-during-entry");
+    popupFrame(nullptr); DwmFlush();
+    Check(GetBValue(pixel(64, 64)) > 220, "dismissal during entry cancels all popup pixels");
+    const auto reopenedStarts = surface.popupCompositionCounters(OverlayCompositionSurface::Layer::Content).animationStarts;
+    Check(reopenedStarts > popupStarts, "reopening starts a fresh popup entrance");
+    popupFrame(L"open-2", true); DwmFlush();
+    Check(GetGValue(pixel(110, 18)) > 220 &&
+          surface.popupCompositionCounters(OverlayCompositionSurface::Layer::Content).animationStarts == reopenedStarts,
+        "reduced motion draws the complete popup immediately");
+    popupFrame(L"open-2", false, 1.25F);
+    Check(surface.popupCompositionCounters(OverlayCompositionSurface::Layer::Content).animationStarts == reopenedStarts,
+        "DPI or scale changes snap the popup without replaying its entrance");
+    const auto chromeWindow = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE |
+        WS_EX_NOREDIRECTIONBITMAP, name, L"Tray popup test", WS_POPUP, 180, 40, 128, 128,
+        nullptr, nullptr, wc.hInstance, nullptr);
+    Check(chromeWindow && surface.InitializeChromeTarget(chromeWindow, error), "tray popup has its chrome endpoint");
+    OverlayCompositionSurface::Frame trayFrame;
+    Check(SUCCEEDED(surface.BeginFrame(OverlayCompositionSurface::Layer::Tray, 128, 128, 0, 0,
+        nullptr, trayFrame)), "tray popup frame begins");
+    trayFrame.target->Clear(D2D1::ColorF(D2D1::ColorF::Blue));
+    trayFrame.popupScene = shell::CapturePopupComposition(trayFrame.target.Get(), {16, 16, 96, 96},
+        {48, 112, 24, 12}, {0, 0, 128, 128}, 1, L"tray-open", true, {},
+        [&](ID2D1RenderTarget* target) {
+            ComPtr<ID2D1SolidColorBrush> fill;
+            Check(SUCCEEDED(target->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Lime),
+                fill.GetAddressOf())), "tray popup brush");
+            target->FillRectangle(D2D1::RectF(16, 16, 112, 112), fill.Get());
+        });
+    Check(SUCCEEDED(surface.EndFrame(trayFrame)), "tray popup frame ends");
+    OverlayCompositionSurface::CommitTiming trayTiming;
+    Check(SUCCEEDED(surface.CommitFrame(trayFrame, true, trayTiming)), "tray popup commits on chrome");
+    ShowWindow(chromeWindow, SW_SHOWNOACTIVATE); DwmFlush();
+    Check(GetGValue(pixel(64, 64, chromeWindow)) > 220 && GetBValue(pixel(4, 4, chromeWindow)) > 220,
+        "tray popup paints above its own chrome surface without escaping its bounds");
     surface.Reset();
+    DestroyWindow(chromeWindow);
     DestroyWindow(window);
     UnregisterClassW(name, wc.hInstance);
+    std::cout << "Popup capture, layering, input mapping, timeline continuity, dismissal and reduced motion checks passed\n";
+    Check(intermediateFrameObserved, "DWM popup intermediate frame was not observed by desktop readback");
     std::cout << "Widget compositor pixel proof passed: UI thread paused, zero animation rasters, update "
                  "preserved timeline\n";
 }
@@ -1773,9 +1879,11 @@ void CheckWidgetCompositorPixels() {
 
 int main(int argc, char** argv) {
     CheckWidgetAnimationPolicies();
-    if (argc==2 && std::string_view(argv[1])=="--widget-motion-pixels") {
+    if (argc==2 && (std::string_view(argv[1])=="--widget-motion-pixels" ||
+                   std::string_view(argv[1])=="--popup-motion-pixels")) {
         Check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_MULTITHREADED)),"pixel proof COM initialization");
-        CheckWidgetCompositorPixels(); CoUninitialize(); return EXIT_SUCCESS;
+        CheckWidgetCompositorPixels(std::string_view(argv[1])=="--popup-motion-pixels");
+        CoUninitialize(); return EXIT_SUCCESS;
     }
     for (const float scale : {0.75F, 1.0F, 1.25F, 1.5F, 2.0F}) {
         const RECT work{-1920, -100, 0, 980};

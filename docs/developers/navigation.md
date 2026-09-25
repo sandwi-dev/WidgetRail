@@ -206,12 +206,26 @@ decoration. Controls whose focus state changes scale use attached decoration
 instead of a travelling row highlight. Pressed-only scale rules still allow
 normal focus travel while the controls are at rest. Base, focused and pressed styles resolve through the existing cascade;
 pressed scale replaces focused scale rather than multiplying another transform.
+The platform gives buttons and action surfaces a `:pressed` scale of `0.96`.
+If a package overrides `scale` in its base or focused styles, it must also author
+its pressed value: package layers take precedence over platform rules. Disabled
+and busy controls cannot acquire the pressed state. Releasing, changing focus,
+replacing a snapshot or closing the surface clears it without delaying actions.
 Layout and input rectangles stay fixed. Authors must provide room inside ancestor
 clips for enlargement; paint order and clipping are preserved.
 Focus-follow reveals the final scaled bounds without chasing animation frames.
 Trailing item margins remain part of the scroll extent, so that reserved room is
 reachable at the end of a list or rail. Right-stick free scrolling still suppresses
 focus-follow.
+
+Host context menus and dropdowns share a separate compositor surface above their
+content or tray layer. A new opening grows from 92% to full size over 160 ms at
+1x, anchored toward the triggering control, without changing opacity. Option
+highlights and content updates repaint that surface without restarting its clock.
+Pointer coordinates follow the current transform; controller navigation and
+accessibility retain their existing semantic targets. Dismissal removes the
+surface immediately. Resize or animation-policy changes snap, Reduced Motion
+disables entry motion, and capture failure falls back to ordinary popup paint.
 
 Use `transition-duration` and `transition-easing` with `scale`. Linear, ease-out
 and ease-in-out control-scale curves run in the compositor and honor the widget

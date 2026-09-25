@@ -16,3 +16,4 @@ clock-widget {
   outline-color: var(--accent);
   scale: 1.04;
 }
+.primary-action:pressed { scale: 0.96; }

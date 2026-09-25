@@ -220,6 +220,8 @@ bool OverlayCompositionSurface::InitializePinnedExternalContentEndpoint(
 }
 
 void OverlayCompositionSurface::Reset() noexcept {
+    contentPopupPresenter_.reset();
+    trayPopupPresenter_.reset();
     widgetPresenter_.reset();
     if (pinnedExternalTarget_ && device_)
         (void)pinnedExternalTarget_->SetRoot(nullptr);
@@ -948,6 +950,17 @@ HRESULT OverlayCompositionSurface::CommitFrames(
                     result = E_FAIL;
                 }
             }
+        }
+        if (SUCCEEDED(result) && (frame->layer == Layer::Content || frame->layer == Layer::Tray)) {
+            auto& popup = frame->layer == Layer::Tray ? trayPopupPresenter_ : contentPopupPresenter_;
+            try {
+                if (frame->popupScene && !popup)
+                    popup = std::make_unique<WidgetCompositionPresenter>(device_.Get(), d2dDevice_.Get());
+                // Children sit above their parent's pixels and inherit its
+                // placement, opacity and shell transform on either HWND.
+                if (popup) result = popup->Apply(frame->popupScene, state.visual.Get(), nullptr, 0, 0);
+            } catch (const std::bad_alloc&) { result = E_OUTOFMEMORY; }
+            catch (...) { result = E_FAIL; }
         }
         if (FAILED(result)) break;
     }

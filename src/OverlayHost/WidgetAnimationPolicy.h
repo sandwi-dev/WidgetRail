@@ -112,6 +112,16 @@ struct Recipe {
 inline Recipe Stationary(Rect bounds, Rect clip) noexcept {
     return {{bounds, 1, clip}, {bounds, 1, clip}, 0, Smooth};
 }
+inline Recipe PopupEnter(Rect bounds, Rect clip, Rect anchor) noexcept {
+    auto recipe = Stationary(bounds, clip);
+    constexpr float scale = .92F;
+    const float x = std::clamp(anchor.x + anchor.width * .5F, bounds.x, bounds.x + bounds.width);
+    const float y = std::clamp(anchor.y + anchor.height * .5F, bounds.y, bounds.y + bounds.height);
+    recipe.from.bounds = {x + (bounds.x - x) * scale, y + (bounds.y - y) * scale,
+        bounds.width * scale, bounds.height * scale};
+    recipe.milliseconds = 160;
+    return recipe;
+}
 inline unsigned SectionDuration(SectionStyle style) noexcept {
     return style == SectionStyle::None ? 0 : 208;
 }

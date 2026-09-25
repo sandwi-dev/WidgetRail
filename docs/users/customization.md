@@ -43,6 +43,10 @@ Games and Apps cards, Settings category cards, Playnite posters, YouTube Music
 Home posters, and the Spotify and YouTube Music play buttons use subtle focus
 enlargement. Their layout positions stay fixed. Animation speed applies to the
 effect; Reduced motion switches sizes immediately without animation.
+Buttons and action surfaces compress while pressed, then return to their normal
+or focused size. Context menus and dropdowns open with a short zoom toward their
+trigger. Both effects follow Animation speed and Reduced motion; commands and
+menu dismissal remain immediate.
 
 ## Arrange your tray
 

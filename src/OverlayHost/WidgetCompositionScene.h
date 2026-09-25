@@ -11,7 +11,7 @@
 #include <vector>
 
 namespace widgetrail {
-enum class WidgetCompositionKind { Raster, Content, Layout, Selection, Modal, Scrim, Focus, FocusSurface, Control };
+enum class WidgetCompositionKind { Raster, Content, Layout, Selection, Modal, Scrim, Focus, FocusSurface, Control, Popup };
 
 // A paint-ordered scene, in widget DIPs. Only raster nodes own pixels; group
 // nodes own compositor transforms. Input remains in the current widget tree.
@@ -27,6 +27,7 @@ struct WidgetCompositionNode final {
     float controlScale{1};
     unsigned controlDuration{};
     animation::Curve controlCurve{animation::Smooth};
+    declarative::Rect popupAnchor;
 };
 
 struct WidgetCompositionScene final {

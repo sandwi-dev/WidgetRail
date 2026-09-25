@@ -19,6 +19,7 @@ var tests = new (string Name, Action Run)[]
     ("Typed values clamp bounded renderer inputs", Clamping),
     ("Scrollbar parts have independent colors and bounded widths", ScrollbarStyles),
     ("Every built-in theme supplies separate scrollbar colors", BuiltinScrollbarPalettes),
+    ("Pressed scale overrides focus enlargement under every built-in theme", PressedScalePalettes),
     ("Invalid typed values prevent theme publication", InvalidTypedValues),
     ("Resolved property enumeration is deterministic", DeterministicResolution),
     ("Media-card properties compile to typed renderer values", MediaCardValues),
@@ -405,6 +406,54 @@ static void BuiltinScrollbarPalettes()
         Assert.Equal("4px", scroll.Get("scrollbar-width")!.Text);
         Assert.True(scroll.Get("scrollbar-thumb-color")!.Text != scroll.Get("scrollbar-track-color")!.Text,
             $"Theme {name} must distinguish the thumb from its track.");
+    }
+}
+
+static void PressedScalePalettes()
+{
+    var root = new DirectoryInfo(AppContext.BaseDirectory);
+    while (root is not null && !Directory.Exists(Path.Combine(root.FullName, "src", "WidgetStyling")))
+        root = root.Parent;
+    Assert.True(root is not null, "Repository sources are required for package-style validation.");
+    var baseline = WrssParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
+        "Themes", "builtin-default.wrss")), "builtin-default.wrss");
+    var targets = new[]
+    {
+        ("", "button", "ordinary-button"),
+        ("", "action-surface", "ordinary-tile"),
+        ("src/FirstPartyWidgets/GamesAppsWidget", "action-surface", "games-app-tile"),
+        ("src/FirstPartyWidgets/SettingsWidget", "action-surface", "category-card"),
+        ("samples/PlayniteLibraryWidget", "action-surface", "playnite-library-tile"),
+        ("samples/YtMusicWidget", "action-surface", "music-home-poster"),
+        ("samples/YtMusicWidget", "button", "music-play"),
+        ("samples/SpotifyWidget", "button", "spotify-play"),
+        ("samples/ClockWidget", "button", "primary-action"),
+    };
+    foreach (var name in new[] { "default", "cool-slate", "arcade-rush", "neon-circuit", "redline" })
+    foreach (var (directory, role, styleClass) in targets)
+    {
+        var palette = WrssParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
+            "Themes", $"builtin-{name}.wrss")), name);
+        var layers = new List<WrssThemeLayer> { new(0, [baseline.Document]), new(100, [palette.Document]) };
+        if (directory.Length > 0)
+        {
+            var package = WrssPackageLoader.Load("default.wrss",
+                new WrssFileSourceProvider(Path.Combine(root!.FullName, directory, "styles")));
+            Assert.True(package.IsValid, Describe(package.Diagnostics));
+            layers.Add(new(200, package.Documents));
+        }
+        var compiled = WrssThemeCompiler.Compile(layers);
+        Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
+        var classes = new HashSet<string> { styleClass };
+        if (role == "action-surface") classes.Add("wrail-action-surface");
+        var focused = compiled.Theme!.Resolve(new WrssElement(role, null, classes,
+            new HashSet<WrssPseudoState> { WrssPseudoState.Focused }));
+        var pressed = compiled.Theme.Resolve(new WrssElement(role, null, classes,
+            new HashSet<WrssPseudoState> { WrssPseudoState.Focused, WrssPseudoState.Pressed }));
+        Assert.Equal("0.96", pressed.Get("scale")?.Text);
+        Assert.Equal(focused.Get("width")?.Text, pressed.Get("width")?.Text);
+        Assert.Equal(focused.Get("height")?.Text, pressed.Get("height")?.Text);
+        Assert.True(pressed.Get("transition-duration") is not null, $"Missing press timing for {styleClass}.");
     }
 }
 

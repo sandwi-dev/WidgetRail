@@ -156,6 +156,7 @@
 }
 
 .category-card:focused { scale: 1.025; }
+.category-card:pressed { scale: 0.96; }
 
 
 .category-card:focused,

@@ -50,6 +50,7 @@
 #include "RadialInput.h"
 #include "RadialTrayVisual.h"
 #include "PopupMenuVisual.h"
+#include "PopupCompositionScene.h"
 
 #include <Windows.h>
 #include <d2d1_1.h>
@@ -9363,6 +9364,7 @@ private:
 
     struct TrayContextMenuLayout final {
         widgetrail::declarative::Rect bounds;
+        widgetrail::declarative::Rect anchor;
         widgetrail::accessibility::TrayContextMenuSemantics semantics;
     };
 
@@ -9454,6 +9456,7 @@ private:
             descriptor->presentationGeneration, false};
         const auto activation = interactionSession_.OpenSelectPopup(authority, *node);
         if (activation == widgetrail::input::SelectActivationResult::Opened) {
+            ++popupAnimationGeneration_;
             float contentWidth{};
             for (const auto& option : node->selectOptions) {
                 widgetrail::icons::NativeIcon icon{};
@@ -9748,6 +9751,7 @@ private:
             : tray.stripBounds.y - kTrayContextMenuGapDip - menuHeight;
         TrayContextMenuLayout result;
         result.bounds = {left, top, menuWidth, menuHeight};
+        result.anchor = tile->bounds;
         result.semantics.targetId = trayContextMenu_->widgetId;
         result.semantics.items.reserve(actions.size());
         const std::size_t selectedItem = std::min(
@@ -9980,6 +9984,10 @@ private:
             : metrics->physicalPixelsPerDip;
         const float trayX = trayPoint.x / trayPixelsPerDip;
         const float trayY = trayPoint.y / trayPixelsPerDip;
+        const auto popupPoint = compositionSurface_.MapPopupCompositionInput(
+            widgetrail::OverlayCompositionSurface::Layer::Content, {x, y});
+        const auto popupTrayPoint = compositionSurface_.MapPopupCompositionInput(
+            widgetrail::OverlayCompositionSurface::Layer::Tray, {trayX, trayY});
 
         std::optional<widgetrail::OverlaySurfaceGeometry> surfaceGeometry;
         if (state_.surface() == widgetrail::Surface::Widget) {
@@ -10007,7 +10015,7 @@ private:
                 return;
             }
             const auto option = layout
-                ? widgetrail::input::HitTestSelectPopup(*layout, x, y)
+                ? widgetrail::input::HitTestSelectPopup(*layout, popupPoint.x, popupPoint.y)
                 : std::nullopt;
             if (node && option && interactionSession_.HighlightSelectPopupOption(
                     authority, *node, *option)) {
@@ -10028,9 +10036,9 @@ private:
                     menu->semantics.items.begin(), menu->semantics.items.end(),
                     [&](const auto& candidate) {
                         const auto& bounds = candidate.bounds;
-                        return x >= bounds.x && y >= bounds.y &&
-                            x <= bounds.x + bounds.width &&
-                            y <= bounds.y + bounds.height;
+                        return popupPoint.x >= bounds.x && popupPoint.y >= bounds.y &&
+                            popupPoint.x <= bounds.x + bounds.width &&
+                            popupPoint.y <= bounds.y + bounds.height;
                     });
                 if (item != menu->semantics.items.end()) {
                     ActivateWidgetContextMenuItem(static_cast<std::size_t>(
@@ -10050,9 +10058,9 @@ private:
                     menu->semantics.items.begin(), menu->semantics.items.end(),
                     [&](const auto& candidate) {
                         const auto& bounds = candidate.bounds;
-                        return trayX >= bounds.x && trayY >= bounds.y &&
-                            trayX <= bounds.x + bounds.width &&
-                            trayY <= bounds.y + bounds.height;
+                        return popupTrayPoint.x >= bounds.x && popupTrayPoint.y >= bounds.y &&
+                            popupTrayPoint.x <= bounds.x + bounds.width &&
+                            popupTrayPoint.y <= bounds.y + bounds.height;
                     });
                 if (item != menu->semantics.items.end()) {
                     ActivateTrayContextMenuItem(static_cast<std::size_t>(
@@ -10350,6 +10358,7 @@ private:
             0,
             *sourceIdentity,
         };
+        ++popupAnimationGeneration_;
         float contentWidth{};
         for (const auto& action : widgetContextMenu_->actions) {
             const std::wstring label = action.style == L"danger" ? L"Danger · " + action.label : action.label;
@@ -10395,6 +10404,7 @@ private:
             widgetId.empty() || widgetId != state_.selectedWidget()) return;
         widgetContextMenu_.reset();
         trayContextMenu_ = TrayContextMenuState{std::wstring(widgetId), 0};
+        ++popupAnimationGeneration_;
         float contentWidth{};
         for (const auto& action : CurrentTrayMenuActions()) {
             contentWidth = std::max({contentWidth,
@@ -15879,6 +15889,7 @@ private:
             static_cast<int>(width), static_cast<int>(height),
             dpi != 0 ? dpi : 96U, interfaceScale);
         if (!metrics) return;
+        popupCaptureScale_ = metrics->physicalPixelsPerDip;
 
         const bool compositionRaster = compositionSurface_.available();
         std::optional<widgetrail::CompositionUpdateRasterMapping> mapping;
@@ -17002,6 +17013,9 @@ private:
         std::optional<widgetrail::CompositionUpdateRasterMapping> rasterMapping;
         if (paintLayer == CompositionPaintLayer::Content)
             pendingWidgetCompositionScene_.reset();
+        pendingPopupCompositionScene_.reset();
+        capturePopupComposition_ = layer == widgetrail::OverlayCompositionSurface::Layer::Content ||
+            layer == widgetrail::OverlayCompositionSurface::Layer::Tray;
         DrawCurrentFrame(
             fullWidth, fullHeight, dpi, frame.updateOffset, frame.updateArea,
             paintLayer, trayLayout, guideBounds,
@@ -17009,6 +17023,8 @@ private:
                 ? &rasterMapping
                 : nullptr,
             deferFixedChromeAccessibilityPublication);
+        capturePopupComposition_ = false;
+        frame.popupScene = std::move(pendingPopupCompositionScene_);
         if (paintLayer == CompositionPaintLayer::Content)
             frame.widgetScene = std::move(pendingWidgetCompositionScene_);
         if (paintLayer == CompositionPaintLayer::Content)
@@ -17849,17 +17865,19 @@ private:
         if (!layout->radialBounds && layout->nextOverflow) drawOverflow(*layout->nextOverflow);
         if (const auto menu = CurrentTrayContextMenuLayout(
                 *layout, CurrentTrayViewportWidthDip(width))) {
-            const widgetrail::shell::PopupMenuColors colors{
-                backgroundBrush_->GetColor(), accentBrush_->GetColor(),
-                trayItemTextBrush_->GetColor(), selectedTextBrush_->GetColor(), dashboardSecondaryBrush_->GetColor(),
-                focusBrush_->GetColor(), HighContrastSurfacePolicy()};
-            widgetrail::shell::DrawPopupMenuPanel(renderTarget_.Get(), menu->bounds,
-                colors, trayItemCornerRadius_, focusOutlineWidth_);
-            for (const auto& item : menu->semantics.items) {
-                widgetrail::shell::DrawPopupMenuRow(renderTarget_.Get(), writeFactory_.Get(),
-                    hintFormat_.Get(), item.bounds, item.name, item.value, item.selected,
-                    item.enabled, colors, trayItemCornerRadius_);
-            }
+            DrawAnimatedPopup(menu->bounds, menu->anchor, [&](ID2D1RenderTarget* popupTarget) {
+                const widgetrail::shell::PopupMenuColors colors{
+                    backgroundBrush_->GetColor(), accentBrush_->GetColor(),
+                    trayItemTextBrush_->GetColor(), selectedTextBrush_->GetColor(), dashboardSecondaryBrush_->GetColor(),
+                    focusBrush_->GetColor(), HighContrastSurfacePolicy()};
+                widgetrail::shell::DrawPopupMenuPanel(popupTarget, menu->bounds,
+                    colors, trayItemCornerRadius_, focusOutlineWidth_);
+                for (const auto& item : menu->semantics.items) {
+                    widgetrail::shell::DrawPopupMenuRow(popupTarget, writeFactory_.Get(),
+                        hintFormat_.Get(), item.bounds, item.name, item.value, item.selected,
+                        item.enabled, colors, trayItemCornerRadius_);
+                }
+            });
         }
         if (publishAccessibility)
             PublishTrayAccessibility(*layout, width, height, dashboard);
@@ -18116,25 +18134,45 @@ private:
         }
     }
 
+    template <class Paint>
+    void DrawAnimatedPopup(const widgetrail::declarative::Rect bounds,
+        const widgetrail::declarative::Rect anchor, Paint&& paint) {
+        if (capturePopupComposition_ && compositionSurface_.available()) {
+            widgetrail::animation::Options animations;
+            if (const auto& appearance = appearanceState_.current())
+                animations.speed = appearance->widgetAnimationSpeed;
+            auto scene = widgetrail::shell::CapturePopupComposition(renderTarget_.Get(),
+                bounds, anchor, bounds, popupCaptureScale_, std::to_wstring(popupAnimationGeneration_),
+                CurrentAccessibilityPolicy().reducedMotion, animations, paint);
+            if (scene) {
+                pendingPopupCompositionScene_ = std::move(scene);
+                return;
+            }
+        }
+        paint(renderTarget_.Get());
+    }
+
     void DrawWidgetContextMenu(const float width, const float height) {
         const auto menu = CurrentWidgetContextMenuLayout(width, height);
         if (!menu) return;
         widgetContextMenuPixelsPending_ = true;
-        const widgetrail::shell::PopupMenuColors colors{
-            backgroundBrush_->GetColor(), accentBrush_->GetColor(),
-            textBrush_->GetColor(), selectedTextBrush_->GetColor(), secondaryBrush_->GetColor(),
-            focusBrush_->GetColor(), HighContrastSurfacePolicy()};
-        widgetrail::shell::DrawPopupMenuPanel(renderTarget_.Get(), menu->bounds,
-            colors, trayItemCornerRadius_, focusOutlineWidth_);
-        for (std::size_t index = 0; index < menu->semantics.items.size(); ++index) {
-            const auto& item = menu->semantics.items[index];
-            const auto& action = widgetContextMenu_->actions[index];
-            const std::wstring visual = action.style == L"danger"
-                ? L"Danger · " + item.name : item.name;
-            widgetrail::shell::DrawPopupMenuRow(renderTarget_.Get(), writeFactory_.Get(),
-                hintFormat_.Get(), item.bounds, visual, L"", item.selected,
-                item.enabled, colors, trayItemCornerRadius_);
-        }
+        DrawAnimatedPopup(menu->bounds, widgetContextMenu_->anchor, [&](ID2D1RenderTarget* popupTarget) {
+            const widgetrail::shell::PopupMenuColors colors{
+                backgroundBrush_->GetColor(), accentBrush_->GetColor(),
+                textBrush_->GetColor(), selectedTextBrush_->GetColor(), secondaryBrush_->GetColor(),
+                focusBrush_->GetColor(), HighContrastSurfacePolicy()};
+            widgetrail::shell::DrawPopupMenuPanel(popupTarget, menu->bounds,
+                colors, trayItemCornerRadius_, focusOutlineWidth_);
+            for (std::size_t index = 0; index < menu->semantics.items.size(); ++index) {
+                const auto& item = menu->semantics.items[index];
+                const auto& action = widgetContextMenu_->actions[index];
+                const std::wstring visual = action.style == L"danger"
+                    ? L"Danger · " + item.name : item.name;
+                widgetrail::shell::DrawPopupMenuRow(popupTarget, writeFactory_.Get(),
+                    hintFormat_.Get(), item.bounds, visual, L"", item.selected,
+                    item.enabled, colors, trayItemCornerRadius_);
+            }
+        });
     }
 
     void DrawSelectPopup(
@@ -18144,66 +18182,70 @@ private:
         const auto layout = CurrentSelectPopupLayout(width, height);
         const auto& popup = interactionSession_.selectPopup();
         if (!layout || !popup || layout->items.empty()) return;
-        const widgetrail::shell::PopupMenuColors colors{
-            backgroundBrush_->GetColor(), accentBrush_->GetColor(),
-            textBrush_->GetColor(), selectedTextBrush_->GetColor(), secondaryBrush_->GetColor(),
-            focusBrush_->GetColor(), HighContrastSurfacePolicy()};
-        widgetrail::shell::DrawPopupMenuPanel(renderTarget_.Get(), layout->bounds,
-            colors, trayItemCornerRadius_, focusOutlineWidth_);
-        widgetrail::DeclarativeRenderOptions iconOptions;
-        const auto* iconDescriptor = sessions_.FindDescriptor(state_.activeWidget());
-        if (iconDescriptor) {
-            iconOptions.pixelScale = physicalPixelsPerDip;
-            iconOptions.artworkWidgetId = iconDescriptor->id;
-            iconOptions.artworkRuntimeGeneration = iconDescriptor->runtimeGeneration;
-            iconOptions.artworkPresentationGeneration =
-                iconDescriptor->presentationGeneration;
-            iconOptions.packageContentDigest = iconDescriptor->packageContentDigest;
-            iconOptions.packageIconAssets = iconDescriptor->iconAssets;
-        }
-        for (const auto& item : layout->items) {
-            if (item.optionIndex >= popup->options.size()) continue;
-            const auto& option = popup->options[item.optionIndex];
-            auto* optionInk = option.isDisabled || option.isBusy ? secondaryBrush_.Get()
-                : item.optionIndex == popup->highlightedOption ? selectedTextBrush_.Get() : textBrush_.Get();
-            if (item.optionIndex == popup->highlightedOption)
-                widgetrail::shell::DrawPopupMenuSelection(renderTarget_.Get(), item.bounds,
-                    colors, trayItemCornerRadius_);
-            widgetrail::icons::NativeIcon icon{};
-            const bool hasSemanticIcon = !option.glyph.empty() &&
-                widgetrail::icons::TryParseNativeIcon(option.glyph, icon);
-            const bool hasIcon = option.packageIcon.has_value() || hasSemanticIcon;
-            const auto content = widgetrail::input::ComputeSelectPopupContentLayout(
-                item.bounds, option.isSelected, hasIcon, widgetrail::shell::kPopupMenuContentInset, 10.0F);
-            if (content.checkmarkBounds) {
-                const auto& bounds = *content.checkmarkBounds;
-                widgetrail::shell::DrawPopupMenuText(renderTarget_.Get(), writeFactory_.Get(),
-                    hintFormat_.Get(), bounds, L"✓", L"",
+        const auto anchor = lastWidgetRenderResult_.focusRects.find(popup->openerElementId);
+        if (anchor == lastWidgetRenderResult_.focusRects.end()) return;
+        DrawAnimatedPopup(layout->bounds, anchor->second, [&](ID2D1RenderTarget* popupTarget) {
+            const widgetrail::shell::PopupMenuColors colors{
+                backgroundBrush_->GetColor(), accentBrush_->GetColor(),
+                textBrush_->GetColor(), selectedTextBrush_->GetColor(), secondaryBrush_->GetColor(),
+                focusBrush_->GetColor(), HighContrastSurfacePolicy()};
+            widgetrail::shell::DrawPopupMenuPanel(popupTarget, layout->bounds,
+                colors, trayItemCornerRadius_, focusOutlineWidth_);
+            widgetrail::DeclarativeRenderOptions iconOptions;
+            const auto* iconDescriptor = sessions_.FindDescriptor(state_.activeWidget());
+            if (iconDescriptor) {
+                iconOptions.pixelScale = physicalPixelsPerDip;
+                iconOptions.artworkWidgetId = iconDescriptor->id;
+                iconOptions.artworkRuntimeGeneration = iconDescriptor->runtimeGeneration;
+                iconOptions.artworkPresentationGeneration =
+                    iconDescriptor->presentationGeneration;
+                iconOptions.packageContentDigest = iconDescriptor->packageContentDigest;
+                iconOptions.packageIconAssets = iconDescriptor->iconAssets;
+            }
+            for (const auto& item : layout->items) {
+                if (item.optionIndex >= popup->options.size()) continue;
+                const auto& option = popup->options[item.optionIndex];
+                auto* optionInk = option.isDisabled || option.isBusy ? secondaryBrush_.Get()
+                    : item.optionIndex == popup->highlightedOption ? selectedTextBrush_.Get() : textBrush_.Get();
+                if (item.optionIndex == popup->highlightedOption)
+                    widgetrail::shell::DrawPopupMenuSelection(popupTarget, item.bounds,
+                        colors, trayItemCornerRadius_);
+                widgetrail::icons::NativeIcon icon{};
+                const bool hasSemanticIcon = !option.glyph.empty() &&
+                    widgetrail::icons::TryParseNativeIcon(option.glyph, icon);
+                const bool hasIcon = option.packageIcon.has_value() || hasSemanticIcon;
+                const auto content = widgetrail::input::ComputeSelectPopupContentLayout(
+                    item.bounds, option.isSelected, hasIcon, widgetrail::shell::kPopupMenuContentInset, 10.0F);
+                if (content.checkmarkBounds) {
+                    const auto& bounds = *content.checkmarkBounds;
+                    widgetrail::shell::DrawPopupMenuText(popupTarget, writeFactory_.Get(),
+                        hintFormat_.Get(), bounds, L"✓", L"",
+                        optionInk,
+                        secondaryBrush_.Get());
+                }
+                if (content.glyphBounds) {
+                    const auto& bounds = *content.glyphBounds;
+                    auto* brush = optionInk;
+                    const auto tint = brush->GetColor();
+                    const bool painted = option.packageIcon && declarativeRenderer_ &&
+                        declarativeRenderer_->PaintPackageIcon(
+                            popupTarget, *option.packageIcon, bounds,
+                            {tint.r, tint.g, tint.b, tint.a}, iconOptions);
+                    if (!painted && hasSemanticIcon) {
+                        (void)widgetrail::icons::DrawNativeIcon(
+                            popupTarget, icon,
+                            D2D1::RectF(
+                                bounds.x, bounds.y,
+                                bounds.x + bounds.width, bounds.y + bounds.height),
+                            brush, 1.7F);
+                    }
+                }
+                widgetrail::shell::DrawPopupMenuText(popupTarget, writeFactory_.Get(),
+                    hintFormat_.Get(), content.labelBounds, option.label, L"",
                     optionInk,
                     secondaryBrush_.Get());
             }
-            if (content.glyphBounds) {
-                const auto& bounds = *content.glyphBounds;
-                auto* brush = optionInk;
-                const auto tint = brush->GetColor();
-                const bool painted = option.packageIcon && declarativeRenderer_ &&
-                    declarativeRenderer_->PaintPackageIcon(
-                        renderTarget_.Get(), *option.packageIcon, bounds,
-                        {tint.r, tint.g, tint.b, tint.a}, iconOptions);
-                if (!painted && hasSemanticIcon) {
-                    (void)widgetrail::icons::DrawNativeIcon(
-                        renderTarget_.Get(), icon,
-                        D2D1::RectF(
-                            bounds.x, bounds.y,
-                            bounds.x + bounds.width, bounds.y + bounds.height),
-                        brush, 1.7F);
-                }
-            }
-            widgetrail::shell::DrawPopupMenuText(renderTarget_.Get(), writeFactory_.Get(),
-                hintFormat_.Get(), content.labelBounds, option.label, L"",
-                optionInk,
-                secondaryBrush_.Get());
-        }
+        });
     }
 
     [[nodiscard]] std::wstring CurrentPanelBackgroundPaintKey(
@@ -19144,6 +19186,10 @@ private:
     int lastHeldRepeatVerdict_{-1};
     widgetrail::input::WidgetInteractionSession interactionSession_;
     float selectPopupPreferredWidth_{widgetrail::shell::kPopupMenuMinimumWidth};
+    std::uint64_t popupAnimationGeneration_{};
+    bool capturePopupComposition_{};
+    float popupCaptureScale_{1};
+    std::shared_ptr<const widgetrail::WidgetCompositionScene> pendingPopupCompositionScene_;
     std::wstring rightStickDropSignature_;
     std::uint64_t rightStickDropCount_{};
     std::optional<bool> lastForegroundOwnership_;

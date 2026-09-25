@@ -98,6 +98,7 @@ public:
 
     struct Frame final {
         std::shared_ptr<const WidgetCompositionScene> widgetScene;
+        std::shared_ptr<const WidgetCompositionScene> popupScene;
         Layer layer{Layer::Content};
         Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
         Microsoft::WRL::ComPtr<ID2D1DeviceContext> target;
@@ -264,8 +265,28 @@ public:
     HRESULT SnapContentVisible() noexcept;
     HRESULT CommitShellZoom(float fromScale, bool opening, bool reducedMotion,
         OverlayPosition position = OverlayPosition::Center) noexcept;
-    HRESULT AdvanceWidgetComposition() { return widgetPresenter_ ? widgetPresenter_->Advance() : S_FALSE; }
-    void ClearWidgetComposition() noexcept { if (widgetPresenter_) widgetPresenter_->Clear(); }
+    HRESULT AdvanceWidgetComposition() {
+        for (auto* presenter : {widgetPresenter_.get(), contentPopupPresenter_.get(), trayPopupPresenter_.get()}) {
+            if (presenter) {
+                const auto status = presenter->Advance();
+                if (FAILED(status)) return status;
+            }
+        }
+        return S_OK;
+    }
+    void ClearWidgetComposition() noexcept {
+        if (widgetPresenter_) widgetPresenter_->Clear();
+        if (contentPopupPresenter_) contentPopupPresenter_->Clear();
+        if (trayPopupPresenter_) trayPopupPresenter_->Clear();
+    }
+    [[nodiscard]] D2D1_POINT_2F MapPopupCompositionInput(Layer layer, D2D1_POINT_2F point) const noexcept {
+        const auto* presenter = layer == Layer::Tray ? trayPopupPresenter_.get() : contentPopupPresenter_.get();
+        return presenter ? presenter->MapInput(point) : point;
+    }
+    [[nodiscard]] WidgetCompositionPresenter::Counters popupCompositionCounters(Layer layer) const noexcept {
+        const auto* presenter = layer == Layer::Tray ? trayPopupPresenter_.get() : contentPopupPresenter_.get();
+        return presenter ? presenter->counters() : WidgetCompositionPresenter::Counters{};
+    }
     [[nodiscard]] D2D1_POINT_2F MapWidgetCompositionInput(D2D1_POINT_2F point) const noexcept {
         return widgetPresenter_ ? widgetPresenter_->MapInput(point) : point;
     }
@@ -316,6 +337,7 @@ public:
 
 private:
     std::unique_ptr<WidgetCompositionPresenter> widgetPresenter_;
+    std::unique_ptr<WidgetCompositionPresenter> contentPopupPresenter_, trayPopupPresenter_;
     Microsoft::WRL::ComPtr<ID3D11Device> d3dDevice_;
     Microsoft::WRL::ComPtr<ID2D1Device> d2dDevice_;
     Microsoft::WRL::ComPtr<IDCompositionDesktopDevice> desktopDevice_;

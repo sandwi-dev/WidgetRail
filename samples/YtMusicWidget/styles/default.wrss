@@ -47,6 +47,7 @@
 .music-transport { width: 40px; height: 40px; padding: 9px; corner-radius: 26px; }
 .music-play { width: 52px; height: 52px; padding: 13px; scale: 1; transition-duration: 140ms; transition-easing: ease-in-out; corner-radius: 26px; background: var(--accent); color: var(--canvas, #090908); }
 .music-play:focused { scale: 1.06; }
+.music-play:pressed { scale: 0.96; }
 .music-secondary-action { width: 36px; height: 36px; padding: 8px; corner-radius: 26px; }
 .music-volume-row { width: 100%; min-width: 0px; gap: 10px; align: center; flex-shrink: 0; }
 .music-volume-icon { width: 22px; height: 22px; flex-shrink: 0; }
@@ -75,6 +76,7 @@
 /* Leave room for focused artwork at the edges of the scroll viewport. */
 .music-home-poster { min-width: 0px; flex-grow: 0; flex-shrink: 1; aspect-ratio: 1; min-height: 0px; padding: 0px; margin: 6px; scale: 1; transition-duration: 140ms; transition-easing: ease-in-out; border-width: 1px; border-color: transparent; corner-radius: 10px; background: var(--surface); overflow: clip; }
 .music-home-poster:focused { scale: 1.04; outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.music-home-poster:pressed { scale: 0.96; }
 .wrail-poster-tile__artwork { width: 100%; height: 100%; corner-radius: 10px; }
 .wrail-poster-tile__scrim { width: 100%; padding: 8px; background: rgba(0, 0, 0, 0.7); }
 .wrail-poster-tile__content { min-width: 0px; gap: 2px; }
