@@ -8,6 +8,36 @@ using WidgetRail.PlatformDiagnostics;
 
 internal static class BridgeClientRegistryScenarios
 {
+    internal static async Task ModalSeparatesMainAndPinnedAuthority()
+    {
+        var configured = Widget("modal-input", worker: 'm', catalog: 'm') with
+        { PinningSupported = true, FullWidgetPinningSupported = true };
+        await using var fixture = new RegistryFixture(Catalog(configured),
+            configure: (_, client) => client.SnapshotFactory = sequence =>
+                new WidgetView(UI.Stack("page", UI.Button("Game", "game", "game")).InputScope("page"),
+                    "game", ActiveInputScopeId: "page")
+                    .WithModal(new WidgetModal("details", "Game", UI.Button("Play", "play", "play"), "play", "close"))
+                    .CreateSnapshot(configured.InstanceId, sequence));
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Interactive);
+        var snapshot = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        var generation = configured.PublicDescriptor().RuntimeGeneration;
+        var main = new ControllerInputEvent(ControllerButton.A, ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget, FocusedElementId: "play", Sequence: 1,
+            ActiveInputScopeId: "details.scope", SnapshotSequence: snapshot.Sequence);
+        using (var admitted = await fixture.Registry.SendControllerInputAsync(configured.Id, main,
+            generation, CancellationToken.None, CancellationToken.None)) RegistryAssert.True(admitted.Value);
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() => fixture.Registry.SendControllerInputAsync(
+            configured.Id, main with { FocusedElementId = "game", ActiveInputScopeId = "page" }, generation,
+            CancellationToken.None, CancellationToken.None));
+        var pinned = main with { Context = ControllerInputContext.PinnedSurface,
+            FocusedElementId = "game", ActiveInputScopeId = "page", PinnedLayoutId = "host.full-widget" };
+        using (var admitted = await fixture.Registry.SendControllerInputAsync(configured.Id, pinned,
+            generation, CancellationToken.None, CancellationToken.None)) RegistryAssert.True(admitted.Value);
+        await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() => fixture.Registry.SendControllerInputAsync(
+            configured.Id, pinned with { FocusedElementId = "play", ActiveInputScopeId = "details.scope" }, generation,
+            CancellationToken.None, CancellationToken.None));
+    }
+
     internal static async Task ArtworkWaitsForCurrentWorkerSnapshotAfterIdleUnload()
     {
         const string handle = "artwork.stable-cover";

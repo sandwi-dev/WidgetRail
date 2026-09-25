@@ -41,6 +41,7 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Widget modal main and pinned inputs have separate authority", BridgeClientRegistryScenarios.ModalSeparatesMainAndPinnedAuthority),
     ("Window previews publish themed render styles for every protocol role", WindowPreviewScenarios.ThemedRenderRoles),
     ("Window previews require current manifest consent instance and snapshot authority", WindowPreviewScenarios.Authority),
     ("Settings controls retain Settings and consume application actions once", SettingsControlsScenarios.QueueAndCatalog),

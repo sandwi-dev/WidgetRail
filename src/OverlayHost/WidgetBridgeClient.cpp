@@ -1891,6 +1891,17 @@ void ValidatePosterTiles(const WidgetNode& root, const int protocolVersion) {
 
 void ValidateBackgroundSurfaces(const WidgetNode& root, const int protocolVersion) {
     const auto visit = [&](const auto& self, const WidgetNode& node) -> void {
+        if (node.kind == L"modalLayer" &&
+            (protocolVersion < protocol_contract::ModalLayerVersion || &node != &root ||
+             node.children.size() != 2U || node.children[0].inputScopeId.empty() ||
+             node.children[1].inputScopeId.empty() ||
+             node.children[0].inputScopeId == node.children[1].inputScopeId ||
+             !node.inputScopeId.empty() ||
+             !IsFocusEntryContainer(node.children[0]) || !IsFocusEntryContainer(node.children[1]) ||
+             (!node.visibleWhen.empty() && node.visibleWhen != L"always") ||
+             (!node.children[0].visibleWhen.empty() && node.children[0].visibleWhen != L"always") ||
+             (!node.children[1].visibleWhen.empty() && node.children[1].visibleWhen != L"always")))
+            throw winrt::hresult_invalid_argument(L"Invalid widget modal layer.");
         if (node.showScrollbar.has_value() && protocolVersion < protocol_contract::ScrollbarVisibilityVersion)
             throw winrt::hresult_invalid_argument(L"Scrollbar visibility requires protocol version 53.");
         if (node.kind == L"backgroundSurface" &&
@@ -2117,6 +2128,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                     throw winrt::hresult_invalid_argument(
                         L"Widget snapshot pinned projection version is invalid.");
                 parsed.root = ParseNode(layout.GetNamedObject(L"root"));
+                if (parsed.root->kind == L"modalLayer")
+                    throw winrt::hresult_invalid_argument(L"Pinned projections cannot declare modals.");
                 ValidatePosterTiles(*parsed.root, snapshot.protocolVersion);
                 ValidateBackgroundSurfaces(*parsed.root, snapshot.protocolVersion);
                 ValidateControllerShortcutLabels(
@@ -2371,6 +2384,10 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     snapshot.root = ParseNode(source.GetNamedObject(L"root"));
     ValidatePosterTiles(snapshot.root, snapshot.protocolVersion);
     ValidateBackgroundSurfaces(snapshot.root, snapshot.protocolVersion);
+    if (snapshot.root.kind == L"modalLayer" &&
+        (snapshot.activeInputScopeId != snapshot.root.children[1].inputScopeId ||
+         snapshot.embeddedMediaSession))
+        throw winrt::hresult_invalid_argument(L"A widget modal must exclusively own its dialog scope.");
     ValidateControllerShortcutLabels(snapshot.root, snapshot.protocolVersion);
     ValidateFocusPresentations(snapshot.root, snapshot.protocolVersion);
     ValidateRememberedChildFocusGroups(snapshot.root, snapshot.protocolVersion);

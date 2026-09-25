@@ -3,13 +3,26 @@ namespace WidgetRail.WidgetProtocol;
 internal static class PinnedSurfaceContract
 {
     internal const string FullWidgetLayoutId = "host.full-widget";
+
+    internal static ViewSnapshot WithoutModal(ViewSnapshot snapshot) =>
+        snapshot.Root.Kind == ViewNodeKind.ModalLayer && snapshot.Root.Children.Count == 2
+            ? snapshot with
+            {
+                Root = snapshot.Root.Children[0],
+                ActiveInputScopeId = snapshot.Root.Children[0].InputScopeId!,
+                InitialFocusId = null,
+                FocusGroupEntryRequest = null,
+                QuickActions = [],
+            }
+            : snapshot;
 }
 
 public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 54;
+    public const int CurrentVersion = 55;
+    public const int ModalLayerVersion = 55;
     public const int ControllerGlyphVersion = 54;
     public const int ScrollbarVisibilityVersion = 53;
     public const int WindowPreviewVersion = 52;

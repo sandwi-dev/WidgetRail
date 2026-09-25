@@ -58,6 +58,7 @@ var tests = new (string Name, Func<Task> Run)[]
         PackageSvgIconTests.Run),
     ("Settings composites expose stable controller and accessibility semantics", SettingsCompositesAreSemantic),
     ("Modern composites preserve semantic classes IDs and accessibility", ModernComponentsAreSemantic),
+    ("Widget modals isolate actions and preserve background and pinned views", WidgetModalTests.Run),
     ("Modern controller composites preserve tab switch and dialog semantics", ModernControllerComponentsAreSemantic),
     ("Settings rows and action sheets preserve responsive controller semantics", SettingsRowsAndActionSheetsAreSemantic),
     ("Action sheets route nested Back and suppress unavailable actions", ActionSheetRoutingIsScoped),

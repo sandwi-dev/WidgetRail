@@ -69,3 +69,47 @@ For API signatures and detailed targeting rules, see
 [Controller components](../reference/controller-ui-components.md),
 [Controller input](../reference/controller-input.md), and
 [UI elements](../reference/declarative-ui.md).
+
+
+## Widget modals
+
+Use `WidgetView.WithModal(new WidgetModal(...))` for a dialog above the current
+page (presentation protocol 55). Retain the page and its stable element IDs;
+return it without `WithModal` when the dismiss action runs.
+
+```csharp
+var page = new WidgetView(BuildLibrary(), "library.first");
+return detailsOpen
+    ? page.WithModal(new WidgetModal(
+        "game.details", "Game details", BuildGameDetails(),
+        "game.details.play", "game.details.close"))
+    : page;
+```
+
+The host centers and clamps the modal **inside the widget**, including when the
+widget is aligned to a screen corner. The background alone determines the widget's
+surface size. DPI, overlay scale, and viewport changes use the normal layout path.
+A themed header includes Close; the body is an ordinary vertical scroll container.
+Text, artwork, grids, tiles, sliders, text entry, and nested scrollers use their
+normal component contracts. Select/context popups and the host keyboard retain
+their own higher input layer. The keyboard still uses its existing placement.
+
+Only the dialog's input scope accepts main-widget input. B closes the topmost
+host popup before reaching the dialog dismiss action. Background scroll offsets
+and focus memory are retained; dismissal restores a valid remembered target,
+falling back to the page's initial or surviving focusable element if it disappeared.
+Do not dispatch background actions directly while displaying a modal. Cancel or
+ignore asynchronous results after the owning route/lifecycle is retired, and
+clear widget-owned modal state when leaving its page.
+
+One widget modal is supported at a time. Nested `WithModal` calls and embedded
+media sessions are rejected with an authoring error; media composition needs its
+own layering contract. Pinned layouts remain supported and do not display the
+modal. The full-widget pinned projection uses the underlying page; independently
+authored pinned layouts stay unchanged. Do not put a modal in a pinned projection.
+
+Themes style `.wrail-modal-layer` (scrim), `.wrail-modal` (panel),
+`.wrail-modal__header`, `.wrail-modal__title`, and `.wrail-modal__scroll` separately.
+Panel width/height are preferred bounds and are always clamped to the widget.
+Scrollbar styling follows the ordinary container contract. Set `WidgetModal.ShowScrollbar`
+to false to hide the body indicator and remove its reserved gutter.

@@ -1016,9 +1016,59 @@ void RetainedGridKeepsLogicalColumns() {
     }
 }
 
+void ModalLayerPreservesBackgroundAndBounds() {
+    auto page = Element("page");
+    page.scrollAxis = ScrollAxis::Vertical;
+    page.scrollOffset = 80;
+    for (int i = 0; i < 12; ++i) {
+        auto row = Element("game." + std::to_string(i));
+        row.height = 60; row.flexShrink = 0;
+        page.children.push_back(row);
+    }
+    auto modal = Element("dialog");
+    modal.width = 760; modal.height = 640;
+    auto header = Element("header"); header.height = 64; header.flexShrink = 0;
+    auto scroll = Element("details.scroll");
+    scroll.flexGrow = 1; scroll.minHeight = 0; scroll.scrollAxis = ScrollAxis::Vertical;
+    scroll.scrollOffset = 150;
+    auto copy = Element("description"); copy.height = 1200; copy.flexShrink = 0;
+    scroll.children = {copy}; modal.children = {header, scroll};
+    auto overlay = Element("overlay"); overlay.layoutMode = LayoutMode::ModalOverlay;
+    overlay.children = {page, modal};
+    for (const auto scale : {0.5F, 1.0F, 1.5F, 2.0F}) {
+        for (const auto width : {240.0F, 520.0F, 1180.0F}) {
+            widgetrail::declarative::LayoutOptions options; options.pixelScale = scale;
+            const Rect viewport{10, 20, width, 400};
+            const auto before = ComputeLayout(page, viewport, {}, options);
+            const auto during = ComputeLayout(overlay, viewport, {}, options);
+            Check(during.valid(), "modal layout is valid at each scale and width");
+            const auto* oldGame = before.Find("game.3");
+            const auto* newGame = during.Find("game.3");
+            Near(newGame->borderBox.y, oldGame->borderBox.y, "modal leaves background scrolling unchanged");
+            Near(newGame->borderBox.width, oldGame->borderBox.width, "modal leaves background width unchanged");
+            const auto* panel = during.Find("dialog");
+            Check(panel->borderBox.x >= viewport.x && panel->borderBox.y >= viewport.y &&
+                panel->borderBox.width <= viewport.width && panel->borderBox.height <= viewport.height,
+                "dialog is contained by the viewport");
+            const auto* body = during.Find("details.scroll");
+            Check(body->maximumScrollOffset > 0 && body->scrollOffset == 150,
+                "modal content scrolls independently");
+        }
+    }
+    widgetrail::declarative::LayoutOptions measuring; measuring.intrinsicRootHeight = true;
+    const Rect ceiling{0,0,900,700};
+    auto original = ComputeLayout(page, ceiling, {}, measuring);
+    auto measured = ComputeLayout(overlay, ceiling, {}, measuring);
+    Near(measured.Find("overlay")->borderBox.height, original.Find("page")->borderBox.height,
+        "modal does not influence intrinsic surface height");
+    overlay.children.pop_back();
+    Check(!ComputeLayout(overlay, ceiling).valid(), "malformed modal fails closed");
+}
+
 } // namespace
 
 int main() {
+    ModalLayerPreservesBackgroundAndBounds();
     NestedPercentageWidthsUseContainingBlocks();
     RetainedGridKeepsLogicalColumns();
     MediaLayout1080p();

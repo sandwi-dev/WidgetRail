@@ -58,6 +58,45 @@ public sealed record WidgetView(
         };
     }
 
+    /// <summary>
+    /// Displays one modal over this view. The background retains its layout and
+    /// scroll state but cannot receive input. Handle DismissActionId by returning
+    /// the original view. The host restores remembered focus in that view's scope.
+    /// Modal content scrolls inside a host-clamped, themed panel. Nested widget
+    /// modals and embedded media are not supported; pinned surfaces omit the modal.
+    /// </summary>
+    public WidgetView WithModal(WidgetModal modal)
+    {
+        ArgumentNullException.ThrowIfNull(modal);
+        StableIdentifier.Validate(modal.Id, nameof(modal));
+        StableIdentifier.Validate(modal.InitialFocusId, nameof(modal));
+        StableIdentifier.Validate(modal.DismissActionId, nameof(modal));
+        ArgumentException.ThrowIfNullOrWhiteSpace(modal.Title);
+        ArgumentNullException.ThrowIfNull(modal.Content);
+        if (Root is ModalLayerElement || EmbeddedMediaSession is not null)
+            throw new InvalidOperationException("A modal requires an ordinary widget view without embedded media.");
+        var scope = StableIdentifier.Child(modal.Id, "scope");
+        var dialog = UI.Stack(modal.Id,
+            UI.Row(StableIdentifier.Child(modal.Id, "header"),
+                UI.Text(modal.Title, StableIdentifier.Child(modal.Id, "title")).Classes("wrail-modal__title"),
+                UI.Button("Close", modal.DismissActionId, StableIdentifier.Child(modal.Id, "close")))
+                .Classes("wrail-modal__header"),
+            (UI.VerticalScroll(StableIdentifier.Child(modal.Id, "scroll"), modal.Content) with
+                { ShowScrollbar = modal.ShowScrollbar }).Classes("wrail-modal__scroll"))
+            .InputScope(scope)
+            .Shortcut(ControllerButton.B, modal.DismissActionId, "Close")
+            .Classes("wrail-modal");
+        return this with
+        {
+            Root = new ModalLayerElement(StableIdentifier.Child(modal.Id, "layer"), Root,
+                RootScopeId(Root), dialog),
+            ActiveInputScopeId = scope,
+            InitialFocusId = modal.InitialFocusId,
+            QuickActions = [],
+            FocusGroupEntryRequest = null,
+        };
+    }
+
     public ViewSnapshot CreateSnapshot(string widgetInstanceId, long sequence)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetInstanceId);
@@ -700,6 +739,8 @@ public abstract partial class Widget
         if (input.Context is ControllerInputContext.OpenWidget or
             ControllerInputContext.PinnedSurface)
         {
+            if (input.Context == ControllerInputContext.PinnedSurface)
+                snapshot = PinnedSurfaceContract.WithoutModal(snapshot);
             ViewNode inputRoot;
             string inputScopeId;
             if (input.Context == ControllerInputContext.OpenWidget)

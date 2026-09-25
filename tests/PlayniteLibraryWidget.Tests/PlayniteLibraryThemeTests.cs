@@ -50,6 +50,11 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(raised, Resolve("action-surface", "playnite-library-category").Get("background")?.Text);
         Assert.AreEqual(raised, Resolve("button", "playnite-library-control").Get("background")?.Text);
         Assert.AreEqual(text, Resolve("text", "playnite-library-summary-title").Get("color")?.Text);
+        Assert.AreEqual(text, Resolve("stack", "wrail-modal").Get("color")?.Text);
+        Assert.AreEqual(raised, Resolve("stack", "wrail-modal").Get("background")?.Text);
+        Assert.AreEqual(Resolve("backdrop").Get("background")?.Text,
+            Resolve("modalLayer", "wrail-modal-layer").Get("background")?.Text);
+        Assert.AreEqual("20px", Resolve("stack", "wrail-modal").Get("padding")?.Text);
         Assert.AreEqual(accent, Resolve("text", "playnite-library-summary-badge-accent").Get("color")?.Text);
         var focusedControl = theme.Resolve(new WrssElement("button", null,
             new HashSet<string>(["playnite-library-control"]),
@@ -109,7 +114,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         };
         var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
             .RenderSnapshot("playnite-library.pending-summary", 1);
-        var tile = Nodes(snapshot.Root).Single(node => node.ActionId == PlayniteLibraryActions.Launch);
+        var tile = Nodes(snapshot.Root).Single(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
         var compactMetadata = Nodes(tile.FocusPresentation!).Single(node =>
             node.StyleClasses.Contains("playnite-library-summary-compact-meta"));
         StringAssert.StartsWith(compactMetadata.Text!, "Pending · ");
@@ -144,9 +149,9 @@ public sealed partial class PlayniteLibraryLayoutTests
                 Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count, route + " " + phase);
                 if (route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
                 {
-                    var navigation = Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.navigation");
-                    Assert.AreEqual(2, navigation.Children.Count);
-                    Assert.AreEqual(1, navigation.Children.Count(node => node.IsSelected == true));
+                    var navigation = Nodes(snapshot.Root).Where(node => node.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen).ToArray();
+                    Assert.AreEqual(2, navigation.Length);
+                    Assert.AreEqual(1, navigation.Count(node => node.IsSelected == true));
                 }
                 if (phase == WidgetPagedResourceStatus.Loading)
                     Assert.IsNull(snapshot.FocusGroupEntryRequest, "Do not enter loading placeholders before games arrive.");

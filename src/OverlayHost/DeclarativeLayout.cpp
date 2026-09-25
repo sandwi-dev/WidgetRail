@@ -732,6 +732,49 @@ LayoutResult ComputeLayout(
     const Rect viewport,
     const IntrinsicMeasureCallback& measureIntrinsic,
     const LayoutOptions options) {
+    if (root.layoutMode == LayoutMode::ModalOverlay) {
+        if (root.children.size() != 2U) {
+            LayoutResult invalid;
+            invalid.issues.push_back({LayoutIssueSeverity::Error, root.id,
+                "invalid_modal_layer", "A modal requires background and dialog children."});
+            return invalid;
+        }
+        auto result = ComputeLayout(root.children[0], viewport, measureIntrinsic, options);
+        const auto* background = result.Find(root.children[0].id);
+        if (!background) return result;
+        // Modal content never participates in the underlying page's measurement.
+        const auto bounds = background->borderBox;
+        result.boxes.emplace(root.id, *background);
+        if (options.intrinsicRootHeight) return result;
+        auto panel = root.children[1];
+        const float inset = std::min(16.0F, std::min(bounds.width, bounds.height) / 8.0F);
+        const auto dimension = [](const float preferred, const std::optional<float> maximum,
+                                  const float available, const float fallback) {
+            const float desired = std::isfinite(preferred) ? preferred : fallback;
+            const float limit = maximum && std::isfinite(*maximum) ? *maximum : available;
+            return std::max(0.0F, std::min({desired, limit, available}));
+        };
+        const float availableWidth = bounds.width - inset * 2;
+        const float width = dimension(panel.widthFraction
+                ? availableWidth * *panel.widthFraction : panel.width.value_or(760.0F),
+            panel.maxWidth, availableWidth, 760.0F);
+        const float height = dimension(panel.height.value_or(640.0F), panel.maxHeight,
+            bounds.height - inset * 2, 640.0F);
+        panel.width = panel.minWidth = panel.maxWidth = width;
+        panel.height = panel.minHeight = panel.maxHeight = height;
+        panel.widthFraction.reset();
+        panel.margin = {};
+        panel.overflow = OverflowBehavior::Clip;
+        auto modalOptions = options;
+        modalOptions.fillAutoRoot = true;
+        modalOptions.fillAutoRootWidth = true;
+        auto foreground = ComputeLayout(panel,
+            {bounds.x + (bounds.width - width) / 2, bounds.y + (bounds.height - height) / 2, width, height},
+            measureIntrinsic, modalOptions);
+        result.boxes.insert(foreground.boxes.begin(), foreground.boxes.end());
+        result.issues.insert(result.issues.end(), foreground.issues.begin(), foreground.issues.end());
+        return result;
+    }
     return Engine{measureIntrinsic, options, viewport}.Run(root);
 }
 

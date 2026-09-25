@@ -44,6 +44,7 @@ enum class LayoutDirection {
 enum class LayoutMode {
     Flex,
     ResponsiveGrid,
+    ModalOverlay,
 };
 
 enum class WrapBehavior {

@@ -9,7 +9,7 @@ to play, and launch it with your controller without leaving the overlay.
 
 - Browse installed games on Home, or search your wider library in Browse.
 - Filter by favorites, installed status, source, and collections.
-- Launch installed games through Playnite Bridge.
+- Open game details over the current page, then launch installed games through Playnite Bridge.
 - Organize favorites, hidden games, categories, and completion status.
 
 ## Connect your library
@@ -36,17 +36,22 @@ You can reopen connection settings through **Menu â†’ Playnite connection**.
 
 | Control | Action |
 | --- | --- |
-| A | Open a control or launch the selected installed game |
-| X | Open options for the selected game |
+| A | Open game details; choose Play inside details to launch |
+| RS click | Jump to Library search |
+| Right stick movement | Scroll the focused list or panel |
 | Y | Refresh Home or Browse |
-| Menu | Open Categories, Hidden games, or Playnite connection |
-| B | Return from a nested page |
+| Menu | Open the focused game’s quick actions, or page options elsewhere |
+| B | Close details or a nested page; from Home/Library, return to the tray |
 
-Use **Home** and **Library** in the header to switch views. Home shows installed
-games; Library opens Browse, which includes uninstalled games too. Selecting either
-destination enters its game list. B from Library returns to the remembered Home
-game, or the first available game. The **Installed**
-filter narrows the list. Install those games through Playnite, then refresh the widget.
+Use the **Home** and **Library** navigation tabs to switch between peer destinations.
+Each keeps its own game focus, filters, and scroll position. Home shows installed
+games; Library includes uninstalled games too. Selecting either destination enters
+its game list. Game details appears inside the widget with the page dimmed behind
+it; B restores the selected game. Long details scroll inside the panel.
+
+The **Installed** filter narrows Library. Install uninstalled games through Playnite,
+then refresh the widget; the current Bridge API does not expose an installation
+command or achievements. Pinned views keep showing the page without its modal.
 
 The interface follows your selected WidgetRail theme. Categories open by selecting
 the row; game covers retain their original artwork colors.

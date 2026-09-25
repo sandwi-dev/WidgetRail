@@ -961,6 +961,26 @@ int main() {
             admission.pinnedLayouts.clear();
             admission.fullWidgetPinningSupported = true;
             Check(customOnly.Pin(admission, error), "full-widget opt-in admits pinning");
+            auto modalSnapshot = admission.snapshot;
+            modalSnapshot.sequence += 1;
+            auto background = modalSnapshot.root;
+            background.inputScopeId = modalSnapshot.activeInputScopeId;
+            widgetrail::WidgetNode modalPanel;
+            modalPanel.id = L"details"; modalPanel.kind = L"stack";
+            modalPanel.inputScopeId = L"details.scope";
+            modalPanel.children = {FocusButton(L"details.play")};
+            modalSnapshot.root = {};
+            modalSnapshot.root.id = L"details.layer"; modalSnapshot.root.kind = L"modalLayer";
+            modalSnapshot.root.children = {background, modalPanel};
+            modalSnapshot.activeInputScopeId = L"details.scope";
+            modalSnapshot.initialFocusId = L"details.play";
+            Check(customOnly.UpdateSnapshot(admission.widgetId, admission.runtimeGeneration, modalSnapshot),
+                "opening a widget modal does not retire or crash a full-widget pin");
+            Check(customOnly.focusedElementId() != L"details.play",
+                "a pinned surface never enters modal controls");
+            auto dismissed = admission.snapshot; dismissed.sequence = modalSnapshot.sequence + 1;
+            Check(customOnly.UpdateSnapshot(admission.widgetId, admission.runtimeGeneration, dismissed),
+                "modal dismissal restores the ordinary pinned projection safely");
             auto revoked = Descriptor();
             revoked.fullWidgetPinningSupported = false;
             customOnly.ReconcileCatalog({revoked});

@@ -37,7 +37,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.AreEqual(ready.Surface, view.Surface, "Loading the library must not resize the host surface.");
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
             CollectionAssert.AreEqual(readySnapshot.Root.StyleClasses.ToArray(), snapshot.Root.StyleClasses.ToArray());
-            var background = snapshot.Root.Children.Single();
+            var background = Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.cinematic");
             Assert.AreEqual(ViewNodeKind.BackgroundSurface, background.Kind);
             Assert.AreEqual("playnite-library.cinematic", background.Id);
             var stage = background.Children.Single();
@@ -144,9 +144,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         var snapshot = new PresentationWidget(view).RenderSnapshot(
             "playnite-library.presentation", 1);
         var nodes = Nodes(snapshot.Root).ToArray();
-        Assert.AreEqual(1, snapshot.Root.Children.Count);
-        Assert.AreEqual(ViewNodeKind.BackgroundSurface, snapshot.Root.Children[0].Kind);
-        var homeStage = snapshot.Root.Children[0].Children.Single();
+        Assert.AreEqual(2, snapshot.Root.Children.Count);
+        var homeStage = nodes.Single(node => node.Id == "playnite-library.cinematic").Children.Single();
         Assert.AreEqual("playnite-library.home.stage", homeStage.Id);
         CollectionAssert.Contains(homeStage.StyleClasses.ToArray(),
             "playnite-library-home-stage");
@@ -156,7 +155,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             homeStage.Children.Single().Id);
         Assert.AreEqual(1, nodes.Count(node => node.Kind == ViewNodeKind.FocusPresentationSurface));
         var topActions = nodes.Single(node => node.Id == "playnite-library.home.actions");
-        Assert.AreEqual("playnite-library.navigation", topActions.Children[0].Id);
+        Assert.IsTrue(nodes.Any(node => node.ActionId == PlayniteLibraryActions.HomeOpen));
         Assert.AreEqual("playnite-library.home.utilities", topActions.Children[^1].Id);
         CollectionAssert.AreEqual(new[]
         {
@@ -170,7 +169,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsNull(library.ActionId);
         Assert.IsFalse(library.IsFocusable);
         Assert.AreEqual(ControllerButton.Menu, library.ContextMenuButton);
-        Assert.AreEqual(2, Nodes(topActions).Count(node => node.IsFocusable));
+        Assert.AreEqual(0, Nodes(topActions).Count(node => node.IsFocusable));
         CollectionAssert.AreEqual(new[]
         {
             "playnite-library.categories.open",
@@ -190,7 +189,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             .ToArray();
         CollectionAssert.AreEquivalent(items.Select(item => item.Key.Value).ToArray(),
             collectionItems);
-        var launchTiles = nodes.Where(node => node.ActionId == "playnite-library.launch").ToArray();
+        var launchTiles = nodes.Where(node => node.ActionId == PlayniteLibraryActions.DetailsOpen).ToArray();
         Assert.IsTrue(launchTiles.All(node =>
             node.FocusPresentation is not null && node.ContextActions.Count <= 8));
         Assert.IsFalse(nodes.Any(node => node.Shortcuts.Any(shortcut =>
@@ -204,7 +203,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                     "playnite-library.collection.hint.next" ||
                 node.Text is "Previous collection" or "Next collection"),
             "Home must not advertise previous/next collection trigger hints.");
-        Assert.IsTrue(launchTiles.All(node => node.ContextMenuButton == ControllerButton.X),
+        Assert.IsTrue(launchTiles.All(node => node.ContextMenuButton == ControllerButton.Menu),
             "X opens the focused game's options.");
         Assert.IsTrue(nodes.SelectMany(node => node.Shortcuts).Any(shortcut =>
             shortcut.Button == ControllerButton.Y && shortcut.ActionId == PlayniteLibraryActions.Refresh));
@@ -218,7 +217,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsFalse(nodes.Any(node => node.Id.StartsWith("playnite-library.hero.",
             StringComparison.Ordinal)),
             "Home must use FocusPresentation as its sole selected-game summary.");
-        Assert.IsFalse(nodes.Any(node => node.ActionId is "playnite-library.details.open" or "playnite-library.add.open" or "playnite-library.running.open"));
+        Assert.IsFalse(nodes.Any(node => node.ActionId is "playnite-library.add.open" or "playnite-library.running.open"));
         var hintRegion = nodes.Single(node =>
             node.Id == "playnite-library.organization.hints");
         Assert.AreEqual(ViewNodeKind.Row, hintRegion.Kind,
@@ -347,7 +346,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.IsTrue(browsePageNodes.Any(node => node.Id == id),
                 id + " must remain inside the page-wide Browse shortcut owner.");
         Assert.IsTrue(browsePageNodes.Any(node =>
-            node.ActionId == PlayniteLibraryActions.Launch));
+            node.ActionId == PlayniteLibraryActions.DetailsOpen));
         Assert.AreEqual(1, browseNodes.Count(node => node.Shortcuts.Any(shortcut =>
             shortcut.Button == ControllerButton.LeftTrigger)));
         Assert.AreEqual(1, browseNodes.Count(node => node.Shortcuts.Any(shortcut =>
@@ -359,7 +358,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             shortcut.Button == ControllerButton.RightTrigger &&
             shortcut.ActionId == PlayniteLibraryActions.CollectionNext));
         Assert.IsFalse(browseNodes.Where(node =>
-                node.ActionId == PlayniteLibraryActions.Launch).Any(node =>
+                node.ActionId == PlayniteLibraryActions.DetailsOpen).Any(node =>
                 node.Shortcuts.Any(shortcut => shortcut.Button is
                     ControllerButton.LeftTrigger or ControllerButton.RightTrigger)),
             "Browse posters must inherit one page-wide collection shortcut owner.");
@@ -474,7 +473,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.AreEqual(ViewNodeKind.ActionSurface, card.Kind);
             Assert.AreEqual(ActionSurfacePresentation.Poster, card.ActionSurfacePresentation);
             Assert.AreEqual(ActionSurfaceOrientation.Vertical, card.ActionSurfaceOrientation);
-            Assert.AreEqual("playnite-library.launch", card.ActionId);
+            Assert.AreEqual(PlayniteLibraryActions.DetailsOpen, card.ActionId);
             CollectionAssert.AreEqual(
             new[]
             {
@@ -510,7 +509,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(1, homeNodes.Count(node => node.Kind ==
             ViewNodeKind.FocusPresentationSurface));
         Assert.AreEqual(2, homeNodes.Count(node => node.ActionId ==
-            "playnite-library.launch" && node.FocusPresentation is not null));
+            PlayniteLibraryActions.DetailsOpen && node.FocusPresentation is not null));
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(home).Count);
 
         var browse = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
@@ -524,7 +523,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(Nodes(browse.Root).Any(node =>
             node.Id == "playnite-library.browse.cinematic" &&
             node.Kind == ViewNodeKind.BackgroundSurface));
-        var browseBackground = browse.Root.Children.Single();
+        var browseBackground = Nodes(browse.Root).Single(node => node.Id == "playnite-library.browse.cinematic");
         var browseStage = browseBackground.Children.Single();
         Assert.AreEqual("playnite-library.browse.stage", browseStage.Id);
         CollectionAssert.Contains(browseStage.StyleClasses.ToArray(),
@@ -588,7 +587,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(150D, browseGrid.GridMinimumColumnWidth);
         Assert.AreEqual(7, browseGrid.GridMaximumColumns);
         var browseRootStyle = theme.Resolve(new WrssElement("stack", null,
-            browse.Root.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+            Nodes(browse.Root).Single(node => node.Id == "playnite-library.root").StyleClasses.ToHashSet(StringComparer.Ordinal)));
         Assert.AreEqual("100%", browseRootStyle.Get("width")?.Text);
         Assert.AreEqual("100%", browseRootStyle.Get("height")?.Text);
         Assert.IsNull(browseRootStyle.Get("max-width"),
@@ -596,7 +595,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsNull(browseRootStyle.Get("max-height"),
             "Browse root must fill the admitted height; only its foreground is bounded.");
         var browseTile = Nodes(browse.Root).First(node =>
-            node.ActionId == "playnite-library.launch");
+            node.ActionId == PlayniteLibraryActions.DetailsOpen);
         CollectionAssert.Contains(browseTile.StyleClasses.ToArray(),
             "playnite-library-browse-tile");
         CollectionAssert.DoesNotContain(browseTile.StyleClasses.ToArray(),
@@ -642,7 +641,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                 PlayniteLibraryPresentation.Render(hiddenState))
             .RenderSnapshot("playnite-library.layout.hidden", 2);
         var homeTile = Nodes(home.Root).Single(node =>
-            node.ActionId == PlayniteLibraryActions.Launch);
+            node.ActionId == PlayniteLibraryActions.DetailsOpen);
         var hiddenTile = Nodes(hidden.Root).Single(node =>
             node.ActionId == PlayniteLibraryActions.Restore);
         CollectionAssert.Contains(homeTile.StyleClasses.ToArray(),
@@ -755,8 +754,8 @@ public sealed partial class PlayniteLibraryLayoutTests
             var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
                 .RenderSnapshot("playnite-library.browse." + phase, 10);
             var nodes = Nodes(snapshot.Root).ToArray();
-            Assert.AreEqual("playnite-library.root", snapshot.Root.Id, phase);
-            CollectionAssert.Contains(snapshot.Root.StyleClasses.ToArray(),
+            Assert.AreEqual("playnite-library.shell", snapshot.Root.Id, phase);
+            CollectionAssert.Contains(nodes.Single(node => node.Id == "playnite-library.root").StyleClasses.ToArray(),
                 "playnite-library-browse-surface", phase);
             var background = nodes.Single(node =>
                 node.Id == "playnite-library.browse.cinematic");
@@ -804,7 +803,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                 Assert.IsTrue(actions.Children.Any(node => node.Id == "playnite-library.hint.options"));
                 Assert.IsNull(actions.InitialChildFocusId);
                 Assert.IsFalse(Nodes(actions).Any(node => node.IsFocusable));
-                Assert.IsTrue(nodes.Any(node => node.ActionId == "playnite-library.launch"),
+                Assert.IsTrue(nodes.Any(node => node.ActionId == PlayniteLibraryActions.DetailsOpen),
                     phase + " must retain the admitted catalog while refreshing.");
             }
             else
@@ -813,7 +812,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                     node.Id == PlayniteLibraryPresentation.ScrollId),
                     phase + " must not publish an empty collection owner.");
                 Assert.IsFalse(nodes.Any(node =>
-                        node.ActionId == "playnite-library.launch"),
+                        node.ActionId == PlayniteLibraryActions.DetailsOpen),
                     phase + " must not retain stale actionable rows.");
             }
         }

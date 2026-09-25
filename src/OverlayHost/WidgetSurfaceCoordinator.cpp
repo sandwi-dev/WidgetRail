@@ -212,6 +212,18 @@ WidgetSurfaceCoordinator::BuildLayoutOptions(
             PinnedLayoutOption::Kind::CompactMedia,
         });
     }
+    if (snapshot.root.kind == L"modalLayer" && snapshot.root.children.size() == 2U) {
+        for (auto& option : result) {
+            if (option.projection) continue;
+            auto background = snapshot;
+            background.root = snapshot.root.children.front();
+            background.activeInputScopeId = background.root.inputScopeId;
+            background.initialFocusId.clear();
+            background.focusGroupEntryRequest.reset();
+            background.quickActions.clear();
+            option.projection = std::move(background);
+        }
+    }
     return result;
 }
 

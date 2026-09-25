@@ -25,6 +25,7 @@ public enum ViewNodeKind
     Select,
     WindowPreview,
     ControllerGlyph,
+    ModalLayer,
 }
 
 /// <summary>One bounded option in a host-owned anchored Select popup.</summary>

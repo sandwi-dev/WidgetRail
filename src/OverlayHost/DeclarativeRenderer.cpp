@@ -898,6 +898,7 @@ struct DeclarativeRenderer::RenderPass final {
         const auto parentHeight = parentBox ? parentBox->contentBox.height : fallbackParentHeight;
         LayoutElement element;
         element.id = narrowId;
+        if (node.kind == L"modalLayer") element.layoutMode = LayoutMode::ModalOverlay;
         if (node.kind == L"grid") {
             element.layoutMode = LayoutMode::ResponsiveGrid;
             if (node.gridMinimumColumnWidth)
@@ -1163,7 +1164,7 @@ struct DeclarativeRenderer::RenderPass final {
     [[nodiscard]] static bool ClipsDescendants(
         const WidgetNode& node,
         const NativeRenderStyle& style) noexcept {
-        return node.kind == L"scroll" ||
+        return node.kind == L"modalLayer" || node.kind == L"scroll" ||
             node.kind == L"backgroundSurface" ||
             style.overflow() == NativeOverflow::Clip;
     }
@@ -4722,7 +4723,7 @@ struct DeclarativeRenderer::RenderPass final {
         // control surface; the Slider itself stays visually lightweight.
         const bool compositorBackground = node.kind == L"backgroundSurface" &&
             TrySelectCompositorBackground(node, style, paintRect, opacity);
-        if (node.kind != L"slider" && node.kind != L"loadingIndicator" &&
+        if (node.kind != L"modalLayer" && node.kind != L"slider" && node.kind != L"loadingIndicator" &&
             !compositorBackground)
             DrawSurface(node, style, paintRect, opacity);
 
@@ -4883,6 +4884,7 @@ struct DeclarativeRenderer::RenderPass final {
             // this exact content box only after the render commits.
         } else if (node.kind != L"stack" && node.kind != L"row" &&
                    node.kind != L"scroll" && node.kind != L"grid" &&
+                   node.kind != L"modalLayer" &&
                    node.kind != L"backgroundSurface" &&
                    node.kind != L"focusPresentationSurface" &&
                    node.kind != L"spacer") {
@@ -4905,7 +4907,13 @@ struct DeclarativeRenderer::RenderPass final {
                     : nullptr;
             if (fragment) DrawNode(*fragment, inputScope);
         }
-        for (const auto& child : node.children) DrawNode(child, inputScope);
+        for (std::size_t index = 0; index < node.children.size(); ++index) {
+            if (node.kind == L"modalLayer" && index == 1U) {
+                auto scrim = Brush(target, style.background().value_or(NativeColor{0, 0, 0, 0.60F}));
+                if (scrim) target->FillRectangle(D2DRect(presented.visibleBox), scrim.Get());
+            }
+            DrawNode(node.children[index], inputScope);
+        }
         DrawCollectionLoading(node, style, Intersection(presented.contentBox, presented.visibleBox), opacity);
         if (indicator) {
             DrawScrollIndicator(*indicator, style, opacity);

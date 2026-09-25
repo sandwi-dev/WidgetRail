@@ -95,3 +95,15 @@ title { font-weight: 700; letter-spacing: -0.015em; }
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+
+/* Widget modal: host-clamped geometry, theme-owned colors and typography. */
+.wrail-modal-layer { background: var(--canvas-veil); }
+.wrail-modal {
+  width: 760px; height: 640px; padding: 20px; gap: 16px;
+  background: var(--surface-raised); color: var(--text);
+  border-color: var(--border-strong); border-width: 1px; corner-radius: 16px;
+  shadow-color: rgba(0, 0, 0, 0.45); shadow-blur: 20px; overflow: clip;
+}
+.wrail-modal__header { direction: row; align: center; gap: 20px; flex-shrink: 0; }
+.wrail-modal__title { font-size: 26px; font-weight: 600; flex-grow: 1; min-width: 0; max-lines: 2; text-overflow: ellipsis; overflow-wrap: anywhere; }
+.wrail-modal__scroll { flex-grow: 1; min-height: 0; min-width: 0; gap: 12px; padding: 4px; }

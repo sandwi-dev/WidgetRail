@@ -987,3 +987,14 @@ complete authoring example, theme hooks, backend behavior and limits.
 Use `HostServices.Power` to check availability and request PC shutdown, restart or sleep.
 The separate read/control permissions, confirmation guidance, and Windows behavior
 are documented in [Power widget](../../docs/reference/power-widget.md).
+
+
+### Modal views
+
+`page.WithModal(new WidgetModal(id, title, content, initialFocusId, dismissActionId))`
+displays ordinary widget UI above the current page, with a themed scrim and an
+independently scrollable panel bounded by the widget. Handle the dismiss action by
+returning the original page. Protocol 55 is required only while a modal is present.
+Pinned surfaces omit the modal safely. One modal is supported; nested widget modals
+and embedded media sessions are rejected. See [modal navigation](../../docs/developers/navigation.md#widget-modals)
+for focus restoration, lifecycle ownership, and theme classes.

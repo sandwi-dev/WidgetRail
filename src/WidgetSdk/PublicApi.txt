@@ -101,6 +101,7 @@ ctor WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse(int StatusCode, string Json
 ctor WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions()
 ctor WidgetRail.WidgetSdk.WidgetMediaSession(string SessionId, string AppName, string Title, string Artist, WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus PlaybackStatus, long PositionMilliseconds, long DurationMilliseconds, long CapturedAtUnixMilliseconds, double PlaybackRate, bool IsCurrent, bool CanPlay, bool CanPause, bool CanTogglePlayPause, bool CanPrevious, bool CanNext)
 ctor WidgetRail.WidgetSdk.WidgetMediaSessionsChanged(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetMediaSession> Sessions)
+ctor WidgetRail.WidgetSdk.WidgetModal(string Id, string Title, WidgetRail.WidgetSdk.WidgetElement Content, string InitialFocusId, string DismissActionId)
 ctor WidgetRail.WidgetSdk.WidgetModelChangedEventArgs<TState>(WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> previous, WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> current)
 ctor WidgetRail.WidgetSdk.WidgetModelSnapshot<TState>(TState Value, long Revision)
 ctor WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>(TState Previous, TState Current, TResult Result, long Revision, bool Changed)
@@ -1201,6 +1202,11 @@ method WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.Deconstruct(out System.Co
 method WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetModal.<Clone>$() -> WidgetRail.WidgetSdk.WidgetModal
+method WidgetRail.WidgetSdk.WidgetModal.Deconstruct(out string Id, out string Title, out WidgetRail.WidgetSdk.WidgetElement Content, out string InitialFocusId, out string DismissActionId) -> void
+method WidgetRail.WidgetSdk.WidgetModal.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetModal.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetModal.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetModel<TState>.Set(TState value) -> WidgetRail.WidgetSdk.WidgetModelUpdate<TState>
 method WidgetRail.WidgetSdk.WidgetModel<TState>.Update(System.Func<TState,TState> updater) -> WidgetRail.WidgetSdk.WidgetModelUpdate<TState>
 method WidgetRail.WidgetSdk.WidgetModel<TState>.Update<TResult>(System.Func<TState,System.ValueTuple<TState,TResult>> updater) -> WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>
@@ -1519,6 +1525,7 @@ method WidgetRail.WidgetSdk.WidgetView.Deconstruct(out WidgetRail.WidgetSdk.Widg
 method WidgetRail.WidgetSdk.WidgetView.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetView.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetView.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetView.WithModal(WidgetRail.WidgetSdk.WidgetModal modal) -> WidgetRail.WidgetSdk.WidgetView
 method WidgetRail.WidgetSdk.WidgetWifiRadio.<Clone>$() -> WidgetRail.WidgetSdk.WidgetWifiRadio
 method WidgetRail.WidgetSdk.WidgetWifiRadio.Deconstruct(out WidgetRail.WidgetSdk.WidgetWifiRadioState State, out bool CanControl) -> void
 method WidgetRail.WidgetSdk.WidgetWifiRadio.Equals(object? obj) -> bool
@@ -1880,6 +1887,8 @@ method static WidgetRail.WidgetSdk.WidgetMediaSession.op_Equality(WidgetRail.Wid
 method static WidgetRail.WidgetSdk.WidgetMediaSession.op_Inequality(WidgetRail.WidgetSdk.WidgetMediaSession? left, WidgetRail.WidgetSdk.WidgetMediaSession? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.op_Equality(WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? left, WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.op_Inequality(WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? left, WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetModal.op_Equality(WidgetRail.WidgetSdk.WidgetModal? left, WidgetRail.WidgetSdk.WidgetModal? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetModal.op_Inequality(WidgetRail.WidgetSdk.WidgetModal? left, WidgetRail.WidgetSdk.WidgetModal? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetModel<TState>.CreateForTesting(TState initialValue, System.Collections.Generic.IEqualityComparer<TState>? comparer = null) -> WidgetRail.WidgetSdk.WidgetModel<TState>
 method static WidgetRail.WidgetSdk.WidgetModelSnapshot<TState>.op_Equality(WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> left, WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> right) -> bool
 method static WidgetRail.WidgetSdk.WidgetModelSnapshot<TState>.op_Inequality(WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> left, WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> right) -> bool
@@ -2135,6 +2144,7 @@ method virtual WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse.Equals(WidgetRail
 method virtual WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.Equals(WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetMediaSession.Equals(WidgetRail.WidgetSdk.WidgetMediaSession? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetMediaSessionsChanged.Equals(WidgetRail.WidgetSdk.WidgetMediaSessionsChanged? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetModal.Equals(WidgetRail.WidgetSdk.WidgetModal? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetModelSnapshot<TState>.Equals(WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>.Equals(WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult> other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetModelUpdate<TState>.Equals(WidgetRail.WidgetSdk.WidgetModelUpdate<TState> other) -> bool
@@ -2408,6 +2418,7 @@ property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.FocusPresentati
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.NavigationShellParts.Body { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.NavigationShellParts.CompactNavigation { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.ResponsiveBranchElement.Child { get; set; }
+property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetModal.Content { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetView.Root { get; set; }
 property WidgetRail.WidgetSdk.WidgetFocusTargetState WidgetRail.WidgetSdk.WidgetFocusTargetResult.State { get; set; }
 property WidgetRail.WidgetSdk.WidgetHostServices WidgetRail.WidgetSdk.WidgetScenarioDefinition.HostServices { get; }
@@ -2527,6 +2538,7 @@ property bool WidgetRail.WidgetSdk.WidgetMediaSession.CanPlay { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetMediaSession.CanPrevious { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetMediaSession.CanTogglePlayPause { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetMediaSession.IsCurrent { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetModal.ShowScrollbar { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>.Changed { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetModelUpdate<TState>.Changed { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.CanGoBack { get; }
@@ -2873,6 +2885,10 @@ property string WidgetRail.WidgetSdk.WidgetMediaSession.AppName { get; set; }
 property string WidgetRail.WidgetSdk.WidgetMediaSession.Artist { get; set; }
 property string WidgetRail.WidgetSdk.WidgetMediaSession.SessionId { get; set; }
 property string WidgetRail.WidgetSdk.WidgetMediaSession.Title { get; set; }
+property string WidgetRail.WidgetSdk.WidgetModal.DismissActionId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetModal.Id { get; set; }
+property string WidgetRail.WidgetSdk.WidgetModal.InitialFocusId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetModal.Title { get; set; }
 property string WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.InputScopeId { get; set; }
 property string WidgetRail.WidgetSdk.WidgetOperationBusyChangedEventArgs.Key { get; }
 property string WidgetRail.WidgetSdk.WidgetOperationFailedEventArgs.Key { get; }
@@ -3163,6 +3179,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions : System.IEq
 type sealed class WidgetRail.WidgetSdk.WidgetMediaService
 type sealed class WidgetRail.WidgetSdk.WidgetMediaSession : System.IEquatable<WidgetRail.WidgetSdk.WidgetMediaSession>
 type sealed class WidgetRail.WidgetSdk.WidgetMediaSessionsChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetMediaSessionsChanged>
+type sealed class WidgetRail.WidgetSdk.WidgetModal : System.IEquatable<WidgetRail.WidgetSdk.WidgetModal>
 type sealed class WidgetRail.WidgetSdk.WidgetModel<TState>
 type sealed class WidgetRail.WidgetSdk.WidgetModelChangedEventArgs<TState> : System.EventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute> : System.IEquatable<WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>>

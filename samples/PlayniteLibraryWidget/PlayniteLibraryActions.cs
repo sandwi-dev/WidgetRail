@@ -7,6 +7,9 @@ internal static class PlayniteLibraryActions
     internal const string Next = "playnite-library.next";
     internal const string Refresh = "playnite-library.refresh";
     internal const string Retry = "playnite-library.retry";
+    internal const string DetailsOpen = "playnite-library.details.open";
+    internal const string DetailsClose = "playnite-library.details.close";
+    internal const string SearchFocus = "playnite-library.search.focus";
     internal const string Launch = "playnite-library.launch";
     internal const string Favorite = "playnite-library.favorite";
     internal const string Hide = "playnite-library.hide";

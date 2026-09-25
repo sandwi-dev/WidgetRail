@@ -268,6 +268,30 @@ void CursorRequestsAreExplicitAndOneShot() {
 } // namespace
 
 int main() {
+    {
+        widgetrail::input::WidgetSurfaceFocusMemory modalMemory;
+        auto page = Snapshot(L"root");
+        page.root.inputScopeId = L"root";
+        page.root.children.resize(2);
+        modalMemory.Remember(L"game-library", page, L"root-second");
+        auto modal = page;
+        modal.activeInputScopeId = L"dialog.scope";
+        modal.initialFocusId = L"play";
+        modal.root = {};
+        modal.root.id = L"modal.layer"; modal.root.kind = L"modalLayer";
+        widgetrail::WidgetNode dialog;
+        dialog.id = L"dialog"; dialog.kind = L"stack"; dialog.inputScopeId = L"dialog.scope";
+        dialog.children = {Button(L"play"), Button(L"close")};
+        modal.root.children = {page.root, dialog};
+        Check(modalMemory.Restore(L"game-library", modal) == L"play", "modal enters its own focus scope");
+        modalMemory.Remember(L"game-library", modal, L"close");
+        Check(modalMemory.Restore(L"game-library", page) == L"root-second", "dismissal restores exact opener");
+        page.root.children.pop_back();
+        Check(modalMemory.Restore(L"game-library", page) == L"root-first", "removed opener restores a surviving game");
+        modalMemory.Forget(L"game-library");
+        Check(modalMemory.Restore(L"game-library", modal) == L"play", "runtime retirement removes stale modal focus");
+    }
+
     CursorRequestsAreExplicitAndOneShot();
     using widgetrail::input::ControllerActionContext;
     using widgetrail::input::ControllerActionRoute;

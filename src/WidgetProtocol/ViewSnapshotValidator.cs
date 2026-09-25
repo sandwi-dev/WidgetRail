@@ -133,6 +133,8 @@ public static class ViewSnapshotValidator
                 continue;
             }
             hasPinnedProjection = true;
+            if (layout.Root.Kind == ViewNodeKind.ModalLayer)
+                Add($"{path}.root", "pinned_modal_not_supported", "Pinned projections cannot declare modals.");
 
             var projection = snapshot with
             {
@@ -1406,7 +1408,7 @@ public static class ViewSnapshotValidator
             }
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or
                 ViewNodeKind.ActionSurface or ViewNodeKind.Grid or ViewNodeKind.BackgroundSurface or
-                ViewNodeKind.FocusPresentationSurface) &&
+                ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ModalLayer) &&
                 children.Count != 0)
                 Add($"{path}.children", "children_not_allowed", $"{node.Kind} cannot contain children.");
             if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid or
@@ -1428,6 +1430,20 @@ public static class ViewSnapshotValidator
                         children[index], $"{path}.children[{index}]", 1, ref descendantCount);
             }
 
+            if (node.Kind is ViewNodeKind.ModalLayer)
+            {
+                if (path != "$.root" || children.Count != 2 ||
+                    children.Any(child => child is null || child.InputScopeId is null ||
+                        child.VisibleWhen is not (null or ResponsiveVisibility.Always)) ||
+                    children.Count == 2 && (children[0].InputScopeId == children[1].InputScopeId ||
+                        snapshot.ActiveInputScopeId != children[1].InputScopeId) ||
+                    node.InputScopeId is not null || node.VisibleWhen is not (null or ResponsiveVisibility.Always))
+                    Add(path, "invalid_modal_layer",
+                        "A modal layer must be the main root with two always-visible, independently scoped children; the dialog scope must be active.");
+                if (snapshot.EmbeddedMediaSession is not null)
+                    Add(path, "unsupported_modal_surface",
+                        "Modal layers cannot be combined with embedded media.");
+            }
             if (node.Kind is ViewNodeKind.BackgroundSurface && children.Count != 1)
                 Add($"{path}.children", "background_surface_child_count",
                     "A background surface requires exactly one foreground child.");

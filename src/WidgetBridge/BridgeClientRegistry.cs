@@ -2227,6 +2227,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         string expectedActionId,
         string authority)
     {
+        if (input.Context == ControllerInputContext.PinnedSurface)
+            snapshot = PinnedSurfaceContract.WithoutModal(snapshot);
         ViewNode root;
         string scope;
         if (input.Context == ControllerInputContext.PinnedSurface &&
@@ -2289,6 +2291,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         ControllerInputEvent input,
         string authority)
     {
+        if (input.Context == ControllerInputContext.PinnedSurface)
+            snapshot = PinnedSurfaceContract.WithoutModal(snapshot);
         ViewNode root;
         string inputScopeId;
         if (input.Context == ControllerInputContext.OpenWidget)

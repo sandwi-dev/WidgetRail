@@ -11,6 +11,7 @@ save you from rebuilding navigation and focus relationships for every widget.
 | Shared setting rows, cards, and menus | Compose a familiar control pattern |
 | `UI.NavigationShell` | Present a destination set as compact tabs or an expanded rail |
 | `UI.NavigationShellParts` | Reuse that navigation inside a custom outer header |
+| `WidgetView.WithModal` | Present a scoped, themed dialog inside the widget; see [modal navigation](../developers/navigation.md#widget-modals) |
 | `WidgetNavigator<TRoute>` | Own route state and lifetimes, rather than draw the navigation |
 
 The shell and navigator are complementary. The shell shows destinations and

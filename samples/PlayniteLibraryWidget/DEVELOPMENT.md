@@ -9,15 +9,16 @@ does not copy a product app-library provider into the package.
 
 ## Navigation and library behavior
 
-Home and Library are focusable header destinations. Library opens Browse; Home
+Home and Library are peer navigation destinations. Library selects Browse; Home
 returns to the installed-game rail without resetting Browse's query. A on either
-destination and B from Browse request entry into the destination's results-only
+destination requests entry into the destination's results-only
 focus group. The host restores the remembered game when still eligible, otherwise
 the first available game. Header and filter buttons are outside these groups.
 Requests wait for loading to finish, remain stable across renders, and retire on
 other actions or when the widget stops being interactive. Other nested pages keep
-ordinary Back behavior. Y refreshes, Menu opens Categories, Hidden
-games, and Playnite connection, and X opens the focused game's options. These
+ordinary Back behavior; B at Home or Library returns to the host tray. Y refreshes.
+Menu opens the focused game's options or page-level Categories, Hidden games, and
+Playnite connection when focus is elsewhere. These
 controller hints remain non-focusable. Category rows are single action surfaces.
 
 Package WRSS owns layout and uses shared theme tokens for colors, fonts, borders,
@@ -32,7 +33,7 @@ Browse includes installed and uninstalled games by default. The Installed toggle
 beside Favorites limits Browse to installed games
 and combines with Favorites; Clear turns it off. Uninstalled games show "Not installed"
 on a visible poster badge and keep their game options, but cannot be launched.
-Pressing A shows a toast asking the user to install the game through Playnite and
+Pressing A opens details with installation guidance; install through Playnite and
 then refresh. Home lists installed games only.
 
 Home orders the full provider collection by favorites, most recently played,
@@ -151,3 +152,16 @@ Provider and persistence authority deliberately remain outside that model:
 Remote collections, mutable dictionaries, tasks, cancellation tokens, provider
 clients, and resource/navigator state never move into the render model. The model
 contains only immutable local projections needed to produce a coherent view.
+
+
+## Navigation and game details
+
+Home (`Library` internally) and Library (`Browse` internally) are root destinations.
+They retain separate cursor resources and remembered content groups. RS click requests
+one-shot entry into the single-field search group; analog scrolling remains host-owned.
+A poster opens a `WidgetModal` instead of launching. The modal retains the game's
+opaque identity and displays current provider metadata, rechecking current membership
+before enabling Play. Launch still uses the existing fresh provider revalidation.
+B dismisses the modal; background page geometry and scroll are unchanged. Deactivation
+clears details state. The host/Bridge/SDK must support protocol 55 to display details.
+The Bridge has no installation or achievement endpoint in this integration.

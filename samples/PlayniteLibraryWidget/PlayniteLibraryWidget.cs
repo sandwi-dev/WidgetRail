@@ -234,12 +234,22 @@ public sealed partial class PlayniteLibraryWidget : Widget
         initialFocusId = ResolveInitialFocus(
             root, initialFocusId, view.InitialFocusId, navigation.InputScopeId,
             allowDisabledRequestedTarget: navigation.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse);
-        return view with
+        var page = view with
         {
             Root = root,
             InitialFocusId = initialFocusId,
             ActiveInputScopeId = navigation.InputScopeId,
         };
+        if (local.DetailsItem is { } details && navigation.Route is
+            PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
+        {
+            var current = CurrentLibrary.Snapshot.Items.Concat(local.FixedRows.All)
+                .FirstOrDefault(item => item.Key == details.Key);
+            return page.WithModal(PlayniteLibraryDetailsPresentation.Create(
+                current ?? details, current is not null, local.LaunchingSavedId, local.Status,
+                state.LaunchStates.TryGetValue(details.Value.SavedId, out var launchState) ? launchState : null));
+        }
+        return page;
     }
 
     private void PinRenderedArtwork(
@@ -266,6 +276,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             PlayniteLibraryRoute.Hidden => home.Concat(browse),
             _ => home.Concat(browse).Concat(hidden),
         };
+        if (local.DetailsItem is { } details) rendered = new[] { details }.Concat(rendered);
         _application.PinArtworkHandles(rendered.Concat(retained)
             .SelectMany(item => item.Presentation.Artwork.Items)
             .Select(artwork => artwork.Handle)
@@ -341,8 +352,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (current != WidgetLifecycleState.Interactive)
         {
             ClearPendingBackFocus();
-            _model.Update(state => state.ContentEntryScopeId is null
-                ? state : state with { ContentEntryScopeId = null });
+            _model.Update(state => state.ContentEntryScopeId is null && !state.SearchFocusPending
+                ? state : state with { ContentEntryScopeId = null, SearchFocusPending = false });
         }
         if (current == WidgetLifecycleState.Interactive ||
             previous == WidgetLifecycleState.Interactive &&
@@ -362,6 +373,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         _model.Update(state => state with
         {
+            DetailsItem = null,
+            SearchFocusPending = false,
             LaunchingSavedId = null,
             PlayniteBusy = false,
             PlayniteFeedback = null,
@@ -416,6 +429,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (action.ActionId is not (PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen))
             _model.Update(state => state.ContentEntryScopeId is null
                 ? state : state with { ContentEntryScopeId = null });
+        if (action.ActionId != PlayniteLibraryActions.SearchFocus)
+            _model.Update(state => state.SearchFocusPending ? state with { SearchFocusPending = false } : state);
+        if (action.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen or
+            PlayniteLibraryActions.HiddenOpen or PlayniteLibraryActions.CategoriesOpen or PlayniteOpenActionId)
+            _model.Update(state => state.DetailsItem is null ? state : state with { DetailsItem = null });
         var feedbackBeforeAction = _model.Value.ActionFeedback;
         try
         {
@@ -509,6 +527,22 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return;
             case PlayniteLibraryActions.Retry:
                 _ = CurrentLibrary.Retry();
+                return;
+            case PlayniteLibraryActions.DetailsOpen:
+                if (LifecycleState != WidgetLifecycleState.Interactive) return;
+                var details = CurrentLibrary.Snapshot.Items.Concat(_model.Value.FixedRows.All)
+                    .FirstOrDefault(item => PlayniteLibraryIdentity.FocusId("grid", item.Key) == action.SourceElementId);
+                if (details is not null) _model.Update(state => state with { DetailsItem = details });
+                return;
+            case PlayniteLibraryActions.DetailsClose:
+                _model.Update(state => state with { DetailsItem = null });
+                RequestContentEntry();
+                return;
+            case PlayniteLibraryActions.SearchFocus:
+                if (LifecycleState != WidgetLifecycleState.Interactive ||
+                    _navigation.Value.Route != PlayniteLibraryRoute.Browse) return;
+                RequestContentEntry();
+                _model.Update(state => state with { SearchFocusPending = true });
                 return;
             case PlayniteLibraryActions.Launch:
                 if (ResolveActionSource(action.SourceElementId) is { } launchSource)
@@ -673,7 +707,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
                     _navigation.Value.Route is not (PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)) return;
                 if (_navigation.Value.Route == PlayniteLibraryRoute.Library &&
-                    _navigation.Push(PlayniteLibraryRoute.Browse, action.SourceElementId) ==
+                    _navigation.Navigate(PlayniteLibraryRoute.Browse, action.SourceElementId) ==
                     WidgetNavigationResult.Changed)
                 {
                     _model.Update(state => state with
@@ -969,7 +1003,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (LifecycleState != WidgetLifecycleState.Interactive) return false;
         if (_navigation.Value.Route == PlayniteLibraryRoute.Browse) return true;
         if (_navigation.Value.Route != PlayniteLibraryRoute.Library) return false;
-        return _navigation.Push(PlayniteLibraryRoute.Browse, sourceElementId) ==
+        return _navigation.Navigate(PlayniteLibraryRoute.Browse, sourceElementId) ==
             WidgetNavigationResult.Changed;
     }
 
@@ -2164,6 +2198,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             : local.HeroIndex)
     {
         ActiveCategoryId = local.ActiveCategoryId,
+        SearchFocusPending = local.SearchFocusPending,
         SearchExpanded = local.SearchExpanded,
         BrowseInitialFocusId = local.BrowseInitialFocusId,
         MatchingGameCount = gameCount?.Generation == QueryAuthorityGenerationLocked(route)
@@ -2195,6 +2230,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     private string? ResolveActionSource(string sourceElementId)
     {
+        if (sourceElementId == PlayniteLibraryDetailsPresentation.PlayId &&
+            _model.Value.DetailsItem is { } details)
+            sourceElementId = PlayniteLibraryIdentity.FocusId("grid", details.Key);
         var item = CurrentLibrary.Snapshot.Items.Concat(_model.Value.FixedRows.All)
             .FirstOrDefault(candidate => string.Equals(
                 PlayniteLibraryIdentity.FocusId("grid", candidate.Key), sourceElementId,
@@ -2222,8 +2260,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (LifecycleState != WidgetLifecycleState.Interactive ||
             _navigation.Value.Route is not (PlayniteLibraryRoute.Library or
                 PlayniteLibraryRoute.Browse)) return;
-        if (_navigation.Value.Route != PlayniteLibraryRoute.Library)
-            _navigation.Back(sourceElementId);
         _model.Update(state => state with
         {
             PreferLibraryContentFocus = false,
@@ -2243,8 +2279,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         if (_navigation.Value.Route != PlayniteLibraryRoute.Categories) return;
         if (_navigation.Back(sourceElementId) != WidgetNavigationResult.Changed) return;
-        if (_navigation.Push(PlayniteLibraryRoute.Browse, sourceElementId) !=
-            WidgetNavigationResult.Changed) return;
+        if (_navigation.Navigate(PlayniteLibraryRoute.Browse, sourceElementId) is not
+            (WidgetNavigationResult.Changed or WidgetNavigationResult.Unchanged)) return;
         SelectBrowseCategory(categoryId, sourceElementId);
     }
 
@@ -2451,7 +2487,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return ValueTask.CompletedTask;
         if (route == PlayniteLibraryRoute.Library)
         {
-            if (_navigation.Push(PlayniteLibraryRoute.Browse, sourceElementId) !=
+            if (_navigation.Navigate(PlayniteLibraryRoute.Browse, sourceElementId) !=
                     WidgetNavigationResult.Changed)
                 return ValueTask.CompletedTask;
         }

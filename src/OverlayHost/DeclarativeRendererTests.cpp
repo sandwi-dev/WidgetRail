@@ -7356,6 +7356,94 @@ void CursorWindowRegression(bool suppress, bool virtualGap=false) {
         "new window preserves visible position with focus-follow both enabled and disabled");
 }
 
+void ModalLayersPaintAboveThePageAndKeepIndependentScroll() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "modal native resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf())));
+    ok(wic->CreateBitmap(300, 300, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad,
+        canvas.ReleaseAndGetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf()));
+    WidgetSnapshot snapshot;
+    snapshot.protocolVersion = 55; snapshot.sequence = 1; snapshot.instanceId = L"modal.test";
+    snapshot.activeInputScopeId = L"dialog.scope"; snapshot.initialFocusId = L"play";
+    snapshot.root = Node(L"modal", L"modalLayer");
+    snapshot.root.baseStyle = {{L"background", Color(L"rgba(0, 0, 0, 0.5)")}};
+    auto page = Node(L"page", L"stack"); page.inputScopeId = L"page.scope";
+    page.baseStyle = {{L"background", Color(L"#ff0000")}};
+    page.children = {FixedButton(L"game")};
+    auto dialog = Node(L"dialog", L"stack"); dialog.inputScopeId = L"dialog.scope";
+    dialog.baseStyle = {{L"width", Length(180)}, {L"height", Length(180)},
+        {L"padding", LengthList(L"10px")}, {L"background", Color(L"#0000ff")}};
+    auto scroll = Node(L"modal.scroll", L"scroll"); scroll.scrollAxis = L"vertical";
+    scroll.baseStyle = {{L"flex-grow", Number(1)}, {L"min-height", Length(0)}};
+    for (int i = 0; i < 12; ++i) scroll.children.push_back(FixedButton((L"control." + std::to_wstring(i)).c_str()));
+    dialog.children = {FixedButton(L"play"), scroll};
+    snapshot.root.children = {page, dialog};
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+    DeclarativeRenderOptions options; options.accessibility.reducedMotion = true;
+    const auto draw = [&](std::wstring_view focus) {
+        target->BeginDraw(); target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        auto result = renderer.Render(target.Get(), snapshot, focus, {0,0,300,300}, options);
+        ok(target->EndDraw()); Check(result.succeeded, "modal paints successfully");
+        return result;
+    };
+    auto result = draw(L"play");
+    const auto pixel = [&](int x, int y) {
+        ComPtr<IWICBitmapLock> lock; const WICRect area{x,y,1,1};
+        ok(canvas->Lock(&area, WICBitmapLockRead, lock.ReleaseAndGetAddressOf()));
+        UINT count{}; BYTE* bytes{}; ok(lock->GetDataPointer(&count, &bytes));
+        return std::array<int,3>{bytes[2],bytes[1],bytes[0]};
+    };
+    auto under = pixel(15,280);
+    Check(under[0] > 120 && under[0] < 135 && under[2] == 0,
+        "scrim is drawn above the red page");
+    auto over = pixel(150,65);
+    if (over[0] != 0 || over[2] != 255) {
+        const auto& box = result.elementRects.at(L"dialog");
+        std::cerr << "modal pixel=" << over[0] << "," << over[1] << "," << over[2]
+            << " bounds=" << box.x << "," << box.y << "," << box.width << "," << box.height << "\n";
+    }
+    Check(over[0] == 0 && over[2] == 255, "dialog paints above scrim without dimming");
+    Check(result.focusScopes.at(L"game") == L"page.scope" && result.focusScopes.at(L"play") == L"dialog.scope",
+        "modal and background retain distinct input geometry scopes");
+    const auto before = result.elementRects.at(L"game");
+    result = draw(L"control.11");
+    Near(result.elementRects.at(L"game").y, before.y, "modal focus-follow never scrolls background");
+    Check(result.elementVisibleRects.at(L"control.11").height > 0,
+        "last dialog control is reachable through internal scrolling");
+    Check(result.scrollbarThumbs.contains(L"modal.scroll"), "modal scrolling paints an ordinary themed indicator");
+    // Null-target preparation must share geometry without dereferencing the paint target.
+    const auto prepared = renderer.Render(nullptr, snapshot, L"play", {0,0,240,200}, options);
+    Check(prepared.elementRects.at(L"dialog").width <= 240 &&
+        prepared.elementRects.at(L"dialog").height <= 200,
+        "modal supports geometry-only preparation and constrained resizing");
+    for (const float scale : {0.5F, 1.0F, 1.5F, 2.0F}) {
+        options.pixelScale = scale;
+        options.accessibility.textScale = 1.5F;
+        const Rect cornerViewport{75,120,150,160};
+        const auto constrained = renderer.Render(nullptr, snapshot, L"control.11", cornerViewport, options);
+        const auto& panel = constrained.elementRects.at(L"dialog");
+        Check(panel.x >= cornerViewport.x && panel.y >= cornerViewport.y &&
+            panel.x + panel.width <= cornerViewport.x + cornerViewport.width + 1 &&
+            panel.y + panel.height <= cornerViewport.y + cornerViewport.height + 1,
+            "scaled modals stay inside the widget's own offset viewport");
+        Check(constrained.elementVisibleRects.at(L"control.11").height > 0,
+            "modal controls remain reachable with enlarged text and small surfaces");
+    }
+}
+
+
 } // namespace
 
 #define WRAIL_RETAINED_PREPARATION_BENCH
@@ -7464,6 +7552,7 @@ int main() {
     PosterTileUsesFixedFullBleedGeometry();
     TileDescendantsRespectResolvedShapeAndOverflow();
     RetainedPosterPaintPreservesArtwork();
+    ModalLayersPaintAboveThePageAndKeepIndependentScroll();
     ScrollIndicatorsRespectViewportAndRetainedPaint();
     ScrollIndicatorStylePolicies();
     PosterArtworkAdmissionUsesPresentedGeometry();

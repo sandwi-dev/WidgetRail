@@ -29,6 +29,28 @@ void Require(const bool condition, const char* message) {
 
 #define CHECK(condition) Require(static_cast<bool>(condition), #condition)
 
+void VerifyModalLayerContract() {
+    const std::string wire = R"json({"snapshot":{"protocolVersion":55,"sequence":1,
+      "widgetInstanceId":"modal.test","activeInputScopeId":"dialog.scope","initialFocusId":"play",
+      "root":{"id":"layer","kind":"modalLayer","children":[
+        {"id":"page","kind":"stack","inputScopeId":"page.scope","children":[
+          {"id":"game","kind":"button","text":"Game","actionId":"open"}]},
+        {"id":"dialog","kind":"stack","inputScopeId":"dialog.scope","children":[
+          {"id":"play","kind":"button","text":"Play","actionId":"play"}]}]}},"renderStyles":{}})json";
+    std::wstring error;
+    auto valid = widgetrail::testing::ParseWidgetSnapshotResponse(wire, error);
+    CHECK(valid && valid->root.kind == L"modalLayer" && valid->root.children.size() == 2);
+    auto old = wire; old.replace(old.find("55"), 2, "54");
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(old, error));
+    auto inactive = wire;
+    const auto active = inactive.find("dialog.scope"); inactive.replace(active, 12, "page.scope");
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(inactive, error));
+    auto nested = wire;
+    const auto childKind = nested.find("\"kind\":\"stack\"");
+    nested.replace(childKind, 14, "\"kind\":\"modalLayer\"");
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(nested, error));
+}
+
 void VerifyWindowPreviewAuthority() {
     std::wstring error;
     const auto checkpoint = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
@@ -1560,6 +1582,7 @@ int main(int argc, char** argv) {
         Require(!widgetrail::testing::ParseWidgetSnapshotResponse(old,menuError), "legacy protocol rejects explicit menu trigger");
     }
 
+    VerifyModalLayerContract();
     VerifyWindowPreviewAuthority();
     VerifySnapshotComparison();
     MeasureFullSnapshotComparison();
