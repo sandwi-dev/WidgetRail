@@ -5227,15 +5227,18 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     void DrawDeferredFocus() {
-        if (deferredFocusNode && deferredFocusStyle && PaintCompositionPhase(deferredFocusNode->id, 3)) {
+        if (deferredFocusNode && deferredFocusStyle &&
+            (PaintCompositionPhase(deferredFocusNode->id, 3) || PaintCompositionPhase(deferredFocusNode->id, 4))) {
             if (deferredFocusClip) {
                 target->PushAxisAlignedClip(
                     D2DRect(*deferredFocusClip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             }
-            DrawFocus(*deferredFocusNode, *deferredFocusStyle,
-                      deferredFocusRect, deferredFocusOpacity);
-            DrawContextMenuIndicator(*deferredFocusNode, *deferredFocusStyle,
-                deferredFocusRect, deferredFocusOpacity);
+            if (PaintCompositionPhase(deferredFocusNode->id, 3))
+                DrawFocus(*deferredFocusNode, *deferredFocusStyle,
+                          deferredFocusRect, deferredFocusOpacity);
+            if (PaintCompositionPhase(deferredFocusNode->id, 4))
+                DrawContextMenuIndicator(*deferredFocusNode, *deferredFocusStyle,
+                    deferredFocusRect, deferredFocusOpacity);
             if (deferredFocusClip) target->PopAxisAlignedClip();
         }
     }

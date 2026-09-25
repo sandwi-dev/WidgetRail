@@ -297,6 +297,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         return S_OK;
     }
     if (scene->nodes.size() > WidgetCompositionScene::MaximumNodes ||
+        scene->focusTargets.size() > WidgetCompositionScene::MaximumNodes ||
         scene->rasterBytes > WidgetCompositionScene::MaximumBytes || !std::isfinite(scene->scale) ||
         scene->scale <= 0)
         return E_INVALIDARG;
@@ -426,6 +427,14 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         const bool existed = old != groups_.end();
         auto &group = groups_[node.id];
         const bool changed = !existed || group.node.key != node.key || group.closing;
+        const bool contextChanged = existed && node.kind == WidgetCompositionKind::Focus &&
+            (group.node.clock != node.clock || group.node.parent != node.parent);
+        const animation::FocusTarget priorFocus{group.node.key, group.node.clock, group.node.bounds, group.node.clip};
+        const bool focusInvalidated = node.kind == WidgetCompositionKind::Focus && group.focusOrigin &&
+            !animation::HasStableFocusTarget(*group.focusOrigin, scene_->focusTargets);
+        const bool moveFocus = existed && node.kind == WidgetCompositionKind::Focus && !contextChanged &&
+            animation::CanMoveFocus(priorFocus,
+                                    {node.key, node.clock, node.bounds, node.clip}, scene_->focusTargets);
         const bool boundsChanged =
             !existed || !Same(group.node.bounds, node.bounds) || !Same(group.node.clip, node.clip);
         auto previous = group.closing ? Sample(group.exit, now) : Sample(group.motion, now);
@@ -458,9 +467,14 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
             return clipped;
         if (auto captured = outgoing.find(node.id); captured != outgoing.end())
             group.previous = std::move(captured->second);
-        if (changed || boundsChanged || scene_->reducedMotion) {
+        if (changed || boundsChanged || contextChanged || focusInvalidated || scene_->reducedMotion) {
             auto recipe = animation::Stationary(node.bounds, node.clip);
-            if (node.kind == WidgetCompositionKind::Content) {
+            if (node.kind == WidgetCompositionKind::Focus) {
+                group.focusOrigin.reset();
+                if (moveFocus)
+                    recipe = animation::FocusMove(node.bounds, node.clip, previous);
+                if (moveFocus && !scene_->reducedMotion) group.focusOrigin = priorFocus;
+            } else if (node.kind == WidgetCompositionKind::Content) {
                 if (existed && (changed || previousEnd > now)) {
                     const auto plan = animation::Section(scene_->animations.section, node.bounds, node.clip,
                                                          group.previous.node.bounds, group.direction);
@@ -482,7 +496,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
                     node.kind == WidgetCompositionKind::Selection);
             }
             group.motion = recipe.Start(now, Frequency(), scene_->animations.speed);
-            if (!changed) {
+            if (!changed && node.kind != WidgetCompositionKind::Focus) {
                 if (node.kind == WidgetCompositionKind::Content && previousEnd > now) {
                     group.motion.start = previousMotion.start;
                     group.motion.duration = previousMotion.duration;
@@ -644,7 +658,8 @@ D2D1_POINT_2F WidgetCompositionPresenter::MapInput(D2D1_POINT_2F point) const no
         bool movingContent{};
         for (auto it = scene_->nodes.rbegin(); it != scene_->nodes.rend(); ++it) {
             if (it->parent != parent || it->kind == WidgetCompositionKind::Raster ||
-                it->kind == WidgetCompositionKind::Selection || it->kind == WidgetCompositionKind::Scrim)
+                it->kind == WidgetCompositionKind::Selection || it->kind == WidgetCompositionKind::Scrim ||
+                it->kind == WidgetCompositionKind::Focus)
                 continue;
             const auto group = groups_.find(it->id);
             if (group == groups_.end() || group->second.closing)

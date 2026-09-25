@@ -2,6 +2,7 @@
 
 #include "DeclarativeLayout.h"
 #include "WidgetAnimationPolicy.h"
+#include "WidgetInteractionMotion.h"
 #include <d2d1.h>
 #include <wrl/client.h>
 #include <memory>
@@ -10,7 +11,7 @@
 #include <vector>
 
 namespace widgetrail {
-enum class WidgetCompositionKind { Raster, Content, Layout, Selection, Modal, Scrim };
+enum class WidgetCompositionKind { Raster, Content, Layout, Selection, Modal, Scrim, Focus };
 
 // A paint-ordered scene, in widget DIPs. Only raster nodes own pixels; group
 // nodes own compositor transforms. Input remains in the current widget tree.
@@ -34,6 +35,8 @@ struct WidgetCompositionScene final {
     bool directContent{};
     animation::Options animations;
     std::vector<WidgetCompositionNode> nodes;
+    // Bounded to MaximumNodes. Used only to verify continuity of a focus move.
+    std::vector<animation::FocusTarget> focusTargets;
     std::size_t rasterBytes{};
 };
 } // namespace widgetrail

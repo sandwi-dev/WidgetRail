@@ -167,6 +167,25 @@ The bridge publishes the section choice using its stable
 lowercase ID and delivers updates through the existing appearance-revision path.
 Widgets continue to declare semantic transitions rather than choosing host effects.
 
+### Focus movement
+
+The native host moves the themed focus outline between nearby controls using
+DirectComposition. Widgets need no transition declaration for this behavior.
+Text, artwork, focus-state styles and the options badge change to the destination
+immediately; the outline alone moves over a 140 ms smoothstep timeline at 1x.
+The widget animation speed preference scales this duration. Reduced Motion and
+hosts without composition use the stationary outline.
+
+`WidgetInteractionMotion.h` owns the continuity rules and movement recipe.
+The scene carries a bounded list of visible focus identities and geometry, with
+no retained widget nodes or cursor pages. A move requires a still-present source
+at unchanged geometry in the same input, group, collection and section context.
+Scroll/reflow, recycled cursor keys, collection reset, clipping, distant jumps,
+large size changes and scope changes snap. Repeated navigation samples the
+current compositor position. Same-target updates do not restart the clock.
+The focus layer never changes input mapping or publishes an animation repaint
+timer. Live external media surfaces keep their existing stationary fallback.
+
 ## Widget modals
 
 Use `WidgetView.WithModal(new WidgetModal(...))` for a dialog above the current

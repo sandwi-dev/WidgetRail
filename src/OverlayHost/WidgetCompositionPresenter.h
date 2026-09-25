@@ -45,6 +45,7 @@ class WidgetCompositionPresenter final {
         WidgetCompositionNode node;
         Ptr<IDCompositionVisual3> root, incoming, outgoing, incomingClip, outgoingClip;
         Motion motion, exit;
+        std::optional<animation::FocusTarget> focusOrigin;
         Raster previous;
         bool closing{};
         int direction{1};

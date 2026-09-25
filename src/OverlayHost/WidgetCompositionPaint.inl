@@ -38,7 +38,8 @@ bool DrawWidgetComposition() {
         return std::any_of(node.children.begin(), node.children.end(),
                            [&](const auto &child) { return self(self, child); });
     };
-    if (!needsLayers(needsLayers, snapshot->root) && owner->compositionInstance_ != snapshot->instanceId) {
+    if (focusedId.empty() && !needsLayers(needsLayers, snapshot->root) &&
+        owner->compositionInstance_ != snapshot->instanceId) {
         scene->directContent = true;
         result.widgetComposition = std::move(scene);
         return false;
@@ -47,6 +48,9 @@ bool DrawWidgetComposition() {
     std::optional<std::size_t> band;
     std::map<std::wstring, std::wstring> focusParents;
     const WidgetNode *sceneFocus{};
+    std::wstring focusScope;
+    std::wstring focusKey;
+    bool focusTargetsOverflow{};
     std::map<std::wstring, std::wstring> parents;
     std::vector<std::wstring> path;
     const auto split = [&] { band.reset(); };
@@ -76,7 +80,7 @@ bool DrawWidgetComposition() {
         compositionPhases[{node.id, phase}] = *band;
     };
     const auto visit = [&](const auto &self, const WidgetNode &node, std::wstring parent,
-                           bool surfaceDone) -> void {
+                           bool surfaceDone, std::wstring scope, std::wstring itemIdentity) -> void {
         if (!IsResponsiveVisible(node))
             return;
         const auto position = presentation.find(NarrowStableId(node.id));
@@ -88,6 +92,27 @@ bool DrawWidgetComposition() {
         const auto &shown = position->second;
         const auto &style = styleNode->second.paintStyle;
         const auto &spec = node.transition;
+        // Boundaries are semantic, not snapshot sequence numbers. Appended
+        // cursor pages and routine value updates retain their focus context.
+        if (!node.inputScopeId.empty()) animation::AppendMotionIdentity(scope, L"scope:" + node.inputScopeId);
+        if (!node.initialChildFocusId.empty()) animation::AppendMotionIdentity(scope, L"group:" + node.id);
+        if (node.kind == L"scroll") animation::AppendMotionIdentity(scope, L"scroll:" + node.id);
+        if (node.collectionResetGeneration)
+            animation::AppendMotionIdentity(scope, L"reset:" + std::to_wstring(*node.collectionResetGeneration));
+        if (spec && !spec->layout) {
+            animation::AppendMotionIdentity(scope, L"section:" + spec->groupId);
+            animation::AppendMotionIdentity(scope, spec->key);
+        }
+        if (!node.collectionItemKey.empty()) animation::AppendMotionIdentity(itemIdentity, node.collectionItemKey);
+        const auto targetKey = node.id + L"\x1f" + itemIdentity;
+        if ((node.kind == L"button" || node.kind == L"slider" || node.kind == L"actionSurface") &&
+            shown.visibleBox.width > .5F && shown.visibleBox.height > .5F) {
+            if (scene->focusTargets.size() < WidgetCompositionScene::MaximumNodes)
+                scene->focusTargets.push_back({targetKey, scope,
+                                               shown.borderBox, shown.ancestorClip});
+            else
+                focusTargetsOverflow = true;
+        }
         const auto beforeParent = parent;
         if (spec) {
             if (!spec->layout)
@@ -141,7 +166,7 @@ bool DrawWidgetComposition() {
         }
         if (node.kind == L"focusPresentationSurface") {
             if (const auto *fragment = PresentationFor(node))
-                self(self, *fragment, parent, false);
+                self(self, *fragment, parent, false, scope, itemIdentity);
         }
         for (std::size_t index = 0; index < node.children.size(); ++index) {
             const auto &child = node.children[index];
@@ -156,28 +181,49 @@ bool DrawWidgetComposition() {
                 const auto modal =
                     addGroup(L"modal.panel", parent, WidgetCompositionKind::Modal, L"$modal", child.id, 0,
                              box == presentation.end() ? viewport : box->second.borderBox, viewport);
-                self(self, child, modal, false);
+                auto modalScope = scope;
+                animation::AppendMotionIdentity(modalScope, L"modal:" + child.id);
+                self(self, child, modal, false, modalScope, itemIdentity);
                 split();
             } else
-                self(self, child, parent, child.transition && child.transition->selection);
+                self(self, child, parent, child.transition && child.transition->selection, scope, itemIdentity);
         }
         if (node.kind == L"scroll" || node.kind == L"actionSurface")
             op(node, 2, parent, shown.visibleBox);
         if (node.id == focusedId) {
             focusParents[node.id] = parent;
             sceneFocus = &node;
+            focusScope = scope;
+            focusKey = targetKey;
         }
         if (parent != beforeParent)
             split();
         path.pop_back();
     };
-    visit(visit, snapshot->root, {}, false);
+    auto initialScope = snapshot->activeInputScopeId;
+    animation::AppendMotionIdentity(initialScope, snapshot->root.id);
+    visit(visit, snapshot->root, {}, false, initialScope, {});
+    if (focusTargetsOverflow) scene->focusTargets.clear();
     if (sceneFocus && focusParents.contains(focusedId)) {
         split();
         const auto found = presentation.find(NarrowStableId(focusedId));
-        if (found != presentation.end())
-            op(*sceneFocus, 3, focusParents.at(focusedId),
-               Intersection(Inset(found->second.borderBox, -12), found->second.ancestorClip));
+        if (found != presentation.end()) {
+            const auto &shown = found->second;
+            const auto focusGroup = addGroup(L"$focus", focusParents.at(focusedId), WidgetCompositionKind::Focus,
+                focusScope, focusKey, 0,
+                shown.borderBox, shown.ancestorClip);
+            const auto &style = prepared.at(NarrowStableId(focusedId)).paintStyle;
+            const auto paintBox = ScaleRect(shown.borderBox, shown.motion.value.scale);
+            const float outset = std::max(12.0F, style.outlineOffsetPx() +
+                std::max(options.accessibility.minimumFocusRingPx, std::max(2.0F, style.outlineWidthPx())));
+            op(*sceneFocus, 3, focusGroup, Intersection(Inset(paintBox, -outset), shown.ancestorClip));
+            split();
+            // Discoverability badges belong to the destination, not the moving outline.
+            if (sceneFocus->kind == L"actionSurface" && input::HasAvailableContextMenuActions(sceneFocus->contextActions)) {
+                const Rect badge{paintBox.x + paintBox.width - 29, paintBox.y + 5, 24, 16};
+                op(*sceneFocus, 4, focusParents.at(focusedId), Intersection(badge, shown.visibleBox));
+            }
+        }
     }
     const auto scale = std::isfinite(scene->scale) && scene->scale > 0 ? scene->scale : 1;
     for (const auto &node : scene->nodes) {

@@ -28,10 +28,14 @@ the previous page; **None** changes pages immediately.
 to full size, and **Lift**, which slides it gently into place. Explicit saved
 choices remain respected when defaults change.
 **Widget animation speed** ranges from **0.5×** (slower) to **2×** (faster), with
-**1×** as normal speed. It scales section, navigation-indicator and dialog timing
+**1×** as normal speed. It scales section, navigation-indicator, focus-outline and dialog timing
 together. These preferences apply immediately and survive restarts. Reduced motion,
 including the Windows preference when followed, overrides both without changing
 your saved choices. Tray widget-switch animation remains in **Settings → Appearance**.
+
+The focus outline moves between nearby controls while the controls respond
+immediately. Scrolling, page changes and large focus jumps keep the outline
+stationary on the current control. Reduced motion disables focus movement.
 
 ## Arrange your tray
 

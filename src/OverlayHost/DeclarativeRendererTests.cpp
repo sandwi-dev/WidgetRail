@@ -1495,6 +1495,17 @@ void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
     }
     Near(first.elementRects.at(L"poster.card").width, plain.elementRects.at(L"poster.card").width,
         "indicator does not resize the tile");
+    options.compositorWidgetTransitions = true;
+    const auto composited = draw(L"poster.card");
+    Check(composited.widgetComposition && !composited.widgetComposition->directContent,
+        "poster focus works without explicit transition declarations");
+    const auto stationaryBadge = std::find_if(composited.widgetComposition->nodes.begin(),
+        composited.widgetComposition->nodes.end(), [&](const auto &node) {
+            return node.bitmap && animation::SameFocusRect(node.bounds, badge);
+        });
+    Check(stationaryBadge != composited.widgetComposition->nodes.end() && stationaryBadge->parent != L"$focus",
+        "options badge uses a small stationary raster outside the moving focus outline");
+    options.compositorWidgetTransitions = false;
     Check(renderer.PlanFocusUpdate(snapshot, L"poster.card", L"poster.card.second", viewport).has_value(), "focus change has retained repaint plan");
     const auto moved = draw(L"poster.card.second");
     Check(moved.fullLayoutBuildCount == 0 && moved.contextMenuIndicatorRects.size() == 1 && moved.contextMenuIndicatorRects.contains(L"poster.card.second"),
@@ -7594,6 +7605,27 @@ void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
     Check(SUCCEEDED(target->EndDraw()),"composition scene rasters can be replayed");
     Check(pixel(10,45)==leftGolden && pixel(110,45)==rightGolden,
         "composition bands preserve navigation paint order and theme pixels");
+    // Ordinary widgets require no SDK transition declarations for focus motion.
+    renderer.CancelWidgetTransitions();
+    for (auto &tab : snapshot.root.children) tab.transition.reset();
+    transitionTestFocus = L"tab.home";
+    const auto focusScene = draw(1311);
+    Check(focusScene.widgetComposition && !focusScene.widgetComposition->directContent,
+        "plain focused controls export composition without widget opt-in");
+    const auto focusLayer = std::find_if(focusScene.widgetComposition->nodes.begin(),
+        focusScene.widgetComposition->nodes.end(), [](const auto &node) {
+            return node.kind == WidgetCompositionKind::Focus;
+        });
+    Check(focusLayer != focusScene.widgetComposition->nodes.end() &&
+          focusLayer->key == L"tab.home\x1f" && focusScene.widgetComposition->focusTargets.size() == 2,
+          "focus layer has exact identity and bounded current target geometry");
+    const auto stationaryTarget = focusScene.navigationRects.at(L"tab.library");
+    transitionTestFocus = L"tab.library";
+    const auto destination = draw(1312);
+    Near(destination.navigationRects.at(L"tab.library").x, stationaryTarget.x,
+        "focus motion never moves logical control geometry");
+    Check(!destination.animationActive && destination.hitRegions.size() == ordinary.hitRegions.size(),
+        "focus motion adds neither an application repaint timer nor duplicate input targets");
     options.accessibility.reducedMotion = false;
     options.suppressWidgetCompositionMotion = true;
     const auto popup = draw(1320);
