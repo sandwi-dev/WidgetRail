@@ -37,7 +37,6 @@
 .playnite-library-filter-active:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--text); outline-color: var(--focus); outline-width: 2px; }
 .playnite-library-control:disabled { background: var(--surface-subtle, var(--surface-muted)); color: var(--text-subdued); border-color: var(--border, var(--surface-muted)); }
 .playnite-library-header-copy { min-width: 0px; flex-grow: 1; flex-shrink: 1; }
-.playnite-library-browse-header { width: 100%; min-width: 0px; flex-grow: 0; flex-shrink: 0; gap: 10px; padding: 0px; background: transparent; }
 .playnite-library-header-expanded { min-width: 0px; gap: 3px; overflow: visible; }
 .playnite-library-eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; max-lines: 1; }
 .playnite-library-title { min-height: 38px; padding: 2px 0px 4px; overflow: visible; color: var(--text); font-family: var(--font-display, Segoe UI); font-size: 26px; font-weight: 600; line-height: 1.30; max-lines: 2; }
@@ -134,8 +133,6 @@
    Keep controls, copy, and artwork opaque above the three translucent panels. */
 
 /* Shared navigation and focused-game information use the global palette. */
-.playnite-library-browse-toolbar { width: 100%; min-width: 0px; align: center; justify: space-between; gap: 12px; }
-.playnite-library-browse-title-row { width: 100%; min-width: 0px; align: center; justify: space-between; gap: 12px; }
 .playnite-library-summary-badges { min-width: 0px; flex-wrap: wrap; gap: 6px; }
 .playnite-library-summary-badge { color: var(--text); background: var(--surface-active, var(--surface-muted)); padding: 4px 8px; corner-radius: 6px; font-size: 12px; font-weight: 600; max-lines: 1; text-overflow: ellipsis; }
 .playnite-library-summary-badge-accent { color: var(--accent); }

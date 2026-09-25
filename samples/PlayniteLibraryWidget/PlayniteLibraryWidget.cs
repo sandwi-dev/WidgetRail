@@ -1921,9 +1921,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         var status = "Completion status could not be changed. Refresh and try again.";
         try
         {
-            var next = selectedStatus;
             var changed = await _application.SetCompletionStatusAsync(
-                    display.SavedId, next, cancellationToken).ConfigureAwait(false);
+                    display.SavedId, selectedStatus, cancellationToken).ConfigureAwait(false);
             if (changed is null) return null;
             lock (_gate)
             {
@@ -1931,15 +1930,15 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 var values = new Dictionary<string, string?>(
                     authority.CompletionStatuses, StringComparer.Ordinal)
                 {
-                    [display.SavedId] = next,
+                    [display.SavedId] = selectedStatus,
                 };
                 PublishAuthorityMutationLocked(authority with
                 {
                     CompletionStatuses = values,
                 });
-                status = $"Completion · {next}";
+                status = $"Completion · {selectedStatus}";
             }
-            return next;
+            return selectedStatus;
         }
         finally
         {
