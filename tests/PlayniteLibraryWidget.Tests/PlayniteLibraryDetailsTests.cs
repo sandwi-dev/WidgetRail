@@ -166,6 +166,47 @@ public sealed partial class PlayniteLibraryTests
 public sealed partial class PlayniteLibraryLayoutTests
 {
     [TestMethod]
+    [DataRow("Played")]
+    [DataRow(null)]
+    public void PopulatedGameDetailsRemainValidAcrossTabs(string? completion)
+    {
+        var item = PlayniteLibraryItem.From(Item("full-app", "full-game", "Test game", "Steam"));
+        var metadata = new PlayniteBridgeGame(item.Value.SavedId, "Test game", "Steam",
+            true, true, false, completion, ["Favorites"], ["Adventure"], ["Windows"], 600, 1)
+        {
+            Developers = ["Developer"], Publishers = ["Publisher"], ReleaseDate = "2026-01-01",
+            Features = ["Controller"], Series = ["Series"], AgeRatings = ["Teen"], Tags = ["Story"],
+            PlayCount = 3, InstallSize = 1024, CriticScore = 80, CommunityScore = 85, UserScore = 90,
+            Notes = "Saved game notes", Links = [new("Website", "https://example.com/game")],
+        };
+        var organization = PlayniteLibraryPrivateState.Empty with
+        {
+            Categories = Enumerable.Range(0, 7).Select(index =>
+                new PlayniteLibraryCategory("category." + index, "Category " + index, [])).ToArray(),
+        };
+        var page = PlayniteLibraryPresentation.Render(State(Snapshot(WidgetPagedResourceStatus.Ready, [item]),
+            organization, PlayniteLibraryRoute.Library, []));
+        foreach (var tab in Enum.GetValues<PlayniteDetailsTab>())
+        {
+            var modal = PlayniteLibraryDetailsPresentation.Create(item, true, null, "Ready", null,
+                extras: new() { Full = new(item.Value, metadata), Tab = tab }, categories: organization.Categories);
+            var snapshot = new PresentationWidget(page.WithModal(modal)).RenderSnapshot("populated.details", 1);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            var nodes = Nodes(snapshot.Root.Children[1]).ToArray();
+            Assert.AreEqual(ProtocolConstants.MaximumContextActionCount,
+                nodes.Single(node => node.Id == PlayniteLibraryDetailsPresentation.ContentId).ContextActions.Count);
+            var button = nodes.Single(node => node.ActionId == "playnite-library.details.completion");
+            Assert.AreEqual(ViewNodeKind.Button, button.Kind);
+            if (tab == PlayniteDetailsTab.Overview && completion is not null)
+            {
+                Assert.IsTrue(nodes.Any(node => node.Text == completion));
+                Assert.AreNotEqual("playnite-library.details.completion", button.Id,
+                    "The action control must not collide with the loaded metadata row.");
+            }
+        }
+    }
+
+    [TestMethod]
     public void DetailsUsesPosterAndSameGameOptionsWithoutCategorySection()
     {
         var game = ArtworkItem("game-app", "game-id", "Test game", "Steam", "poster-handle", "hero-handle");

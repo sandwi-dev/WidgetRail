@@ -16,7 +16,7 @@ internal static class PlayniteLibraryGameOptions
             new(PlayniteLibraryActions.Hide, "Hide", IsDisabled: !enabled),
             new(PlayniteLibraryActions.RefreshSource, "Refresh source", IsDisabled: !enabled),
         };
-        foreach (var category in (categories ?? []).Take(5))
+        foreach (var category in (categories ?? []).Take(ProtocolConstants.MaximumContextActionCount - actions.Count))
         {
             var included = PlayniteLibraryCategoryPolicy.Contains(category, item.Value.SavedId);
             actions.Add(new(PlayniteLibraryActions.CategoryMembership(category.Id),

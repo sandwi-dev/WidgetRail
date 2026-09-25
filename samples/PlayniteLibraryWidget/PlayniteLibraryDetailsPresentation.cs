@@ -39,7 +39,7 @@ internal static class PlayniteLibraryDetailsPresentation
             .Disabled(!current || (!availability.Launchable && !uninstalled))
             .Busy(busy).Classes("playnite-library-details-play");
         var buttons = UI.Row(Prefix + "actions", play,
-            UI.Button("Completion status", Prefix + "completion", Prefix + "completion").Disabled(!current || busy),
+            UI.Button("Completion status", Prefix + "completion", Prefix + "completion.action").Disabled(!current || busy),
             UI.Button("Uninstall", Prefix + "uninstall", Prefix + "uninstall").Disabled(!current || !installed || busy))
             .Classes("playnite-library-details-buttons");
         var artwork = presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile);
