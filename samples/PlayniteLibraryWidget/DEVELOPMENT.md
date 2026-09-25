@@ -218,3 +218,9 @@ new game. Mutations set the selected name directly. Empty/failed lists disable t
 control with feedback; interrupted reads retry on resume. The list reserves one of
 the protocol's 128 slots for an unset or unlisted current value; larger provider
 lists show an explicit error rather than silently hiding statuses.
+
+Home opts its FocusPresentationSurface into `RetainLastPresentation` (protocol 56),
+matching the native focused-background policy. Both resolve retained source IDs
+against the current view and item keys; cursor overlap keeps the source, while
+window eviction or filtering it out uses the authored defaults. No worker-side
+focus cache, cursor refresh, or background input admission is added.

@@ -8,6 +8,7 @@
 #include "NativeStyle.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
+#include "FocusSurfaceSelection.h"
 
 #include <d2d1_1.h>
 #include <dwrite.h>
@@ -163,10 +164,9 @@ struct ComputedCompositorBackground final {
     std::uint64_t resourceGeneration{};
     // Preserve the ancestor/viewport clip independently from image-fit bounds.
     std::optional<declarative::Rect> clipBounds;
-    // A focusable descendant without an override retains the last displayed
-    // artwork for this exact surface/default declaration.
-    std::wstring defaultArtworkKey;
-    bool retainCurrentArtwork{};
+    // Source selected by the shared semantic resolver; empty means authored default.
+    // This is view-only identity, distinct from current input focus.
+    std::wstring selectionSourceId;
     ImageDecodeSize decodeSize{};
 };
 
@@ -685,9 +685,6 @@ private:
         std::wstring imageSource;
         std::wstring artworkHandle;
         std::wstring imageFit;
-        std::wstring defaultImageSource;
-        std::wstring defaultArtworkHandle;
-        std::wstring defaultImageFit;
         Microsoft::WRL::ComPtr<ID2D1Bitmap> committedBitmap;
         bool committedBitmapIsSurfaceComposite{};
         std::size_t committedSurfaceCompositeBytes{};
@@ -775,6 +772,8 @@ private:
     std::uint64_t bitmapSupersededArtworkEvictions_{};
     std::uint64_t bitmapResourceInvalidations_{};
     std::uint64_t bitmapResourceGeneration_{};
+    declarative::FocusSurfaceSelectionMemory focusSelectionMemory_;
+    std::map<std::wstring, std::wstring> selectedPresentationSources_;
     std::unordered_map<std::wstring, FocusBackgroundEntry> focusBackgrounds_;
     std::size_t focusBackgroundCompositeBytes_{};
     std::uint64_t focusBackgroundAccessClock_{};

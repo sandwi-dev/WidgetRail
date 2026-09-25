@@ -11,6 +11,7 @@ internal static class WidgetPresentationUpdateTests
     {
         PropertyNoOpAndRoundTrip();
         ScrollbarUpdatesAtomically();
+        FocusRetentionUpdatesAtomically();
         SelectOptionsUpdateAtomically();
         PackageIconUpdatesAtomically();
         VirtualCollectionWindowUpdatesAtomically();
@@ -25,6 +26,23 @@ internal static class WidgetPresentationUpdateTests
         PropertyCoalescingIsBounded();
         DifferIsTrustTierNeutral();
         return Task.CompletedTask;
+    }
+
+    private static void FocusRetentionUpdatesAtomically()
+    {
+        var before = new WidgetView(UI.FocusPresentationSurface(UI.Stack("content"),
+            UI.Text("Default", "fallback"), "surface") with { RetainLastPresentation = true })
+            .CreateSnapshot("retention.update", 1);
+        var after = before with { Sequence = 2, Root = before.Root with { RetainLastPresentation = false } };
+        var publication = WidgetPresentationDiff.Create(before, after, Generation, 1,
+            PresentationUpdateCapabilities.Current, WidgetPresentationTransactionKind.IncrementalUpdate);
+        True(publication.Update?.Operations.Single().Properties?.Single().Property == PresentationProperty.RetainLastPresentation,
+            "Retention policy must cross the existing atomic property-update path.");
+        var admitted = PresentationUpdateMaterializer.Apply(before, publication.Update!, Generation);
+        True(admitted.Root.RetainLastPresentation == false,
+            "The materialized policy must match the new snapshot.");
+        True((PresentationPropertyMetadata.Impact(PresentationProperty.RetainLastPresentation) &
+            PresentationPropertyImpact.MeasureLayout) != 0, "Changing retention may change fragment geometry.");
     }
 
     private static void ScrollbarUpdatesAtomically()

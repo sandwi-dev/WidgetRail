@@ -713,6 +713,10 @@ public static class ViewSnapshotValidator
                         "focus_background_on_non_focusable_node",
                         "Only focusable nodes may declare focus-background artwork.");
             }
+            if (node.RetainLastPresentation is not null &&
+                node.Kind is not (ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface))
+                Add($"{path}.retainLastPresentation", "focus_retention_not_allowed",
+                    "Only background and focus-presentation surfaces may declare retention.");
             if (node.UsesFocusedDescendantArtwork is not null &&
                 node.Kind is not ViewNodeKind.BackgroundSurface)
                 Add($"{path}.usesFocusedDescendantArtwork",
@@ -1612,7 +1616,7 @@ public static class ViewSnapshotValidator
                     node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null ||
                     node.FocusPersistenceId is not null || node.Focus is not null ||
                     node.InputScopeId is not null || node.InitialChildFocusId is not null ||
-                    node.UsesFocusedDescendantArtwork is not null || node.FocusPresentation is not null ||
+                    node.UsesFocusedDescendantArtwork is not null || node.RetainLastPresentation is not null || node.FocusPresentation is not null ||
                     node.DefaultFocusPresentation is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
                     node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null ||

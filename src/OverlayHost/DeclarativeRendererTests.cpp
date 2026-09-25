@@ -7451,6 +7451,162 @@ void ModalLayersPaintAboveThePageAndKeepIndependentScroll() {
 }
 
 
+
+WidgetSnapshot RetainedPresentationSnapshot() {
+    WidgetSnapshot snapshot;
+    snapshot.protocolVersion = 56;
+    snapshot.sequence = 1;
+    snapshot.instanceId = L"retention.instance";
+    snapshot.activeInputScopeId = L"page";
+    snapshot.root = Node(L"background", L"backgroundSurface");
+    snapshot.root.inputScopeId = L"page";
+    snapshot.root.usesFocusedDescendantArtwork = true;
+    auto summary = Node(L"summary", L"focusPresentationSurface");
+    summary.retainLastPresentation = true;
+    auto fallback = Node(L"summary.default", L"text"); fallback.text = L"Choose a game";
+    summary.defaultFocusPresentation = {fallback};
+    auto list = Node(L"cursor", L"scroll"); list.scrollAxis = L"vertical";
+    list.baseStyle = {{L"height", Length(160)}};
+    for (int i = 0; i < 8; ++i) {
+        const auto id = L"game." + std::to_wstring(i);
+        auto game = Node(id.c_str(), L"button");
+        game.actionId = id; game.text = id; game.collectionItemKey = id;
+        game.baseStyle = {{L"height", Length(40)}};
+        game.focusBackgroundArtworkHandle = L"art." + std::to_wstring(i);
+        auto fragment = Node((id + L".summary").c_str(), L"text"); fragment.text = id + L" details"; fragment.baseStyle = {{L"height", Length(64)}};
+        game.focusPresentation = {fragment};
+        list.children.push_back(game);
+    }
+    summary.children = {list}; snapshot.root.children = {summary};
+    return snapshot;
+}
+
+void RetainedSelectionReconcilesCursorIdentityAndScopes() {
+    using widgetrail::declarative::FocusSurfaceSelectionMemory;
+    auto snapshot = RetainedPresentationSnapshot();
+    FocusSurfaceSelectionMemory memory;
+    const auto resolve = [&](std::wstring_view focus) { return memory.Resolve(snapshot, focus, L"authority", false); };
+    auto selected = resolve(L"game.2");
+    Check(selected.at(L"background").source->id == L"game.2" &&
+        selected.at(L"summary").source->id == L"game.2", "both surfaces select the same focused game");
+    selected = resolve(L"");
+    Check(selected.at(L"summary").Fragment()->text == L"game.2 details", "tray retains admitted presentation");
+    auto& list = snapshot.root.children[0].children[0];
+    list.children.erase(list.children.begin()); ++snapshot.sequence;
+    selected = resolve(L"unrelated");
+    Check(selected.at(L"summary").source->id == L"game.2", "overlapping cursor window preserves stable item identity");
+    list.children[1].isDisabled = true;
+    list.collectionLoading = L"next";
+    Check(resolve(L"").at(L"summary").source->id == L"game.2",
+        "cursor loading and a temporarily disabled retained row do not invalidate its presentation");
+    list.children[1].isDisabled = false;
+    list.collectionLoading = L"idle";
+    list.children[1].focusPresentation[0].text = L"Updated game details";
+    selected = resolve(L"");
+    Check(selected.at(L"summary").Fragment()->text == L"Updated game details", "retention reads refreshed fragments, never old copies");
+    list.children[1].collectionItemKey = L"different-game";
+    selected = resolve(L"");
+    Check(!selected.at(L"summary").source && !selected.at(L"background").source,
+        "recycled cursor row identity cannot inherit a previous game");
+    list.children[1].collectionItemKey = L"game.2";
+    Check(!resolve(L"").at(L"summary").source, "a retired source does not resurrect without focus");
+    (void)resolve(L"game.2");
+    list.children.erase(list.children.begin() + 1);
+    selected = resolve(L"");
+    Check(!selected.at(L"summary").source && !selected.at(L"background").source,
+        "cursor eviction resets both surfaces to their authored defaults");
+    (void)resolve(L"game.3");
+    Check(!memory.Resolve(snapshot, L"", L"new-runtime", false).at(L"summary").source,
+        "a new runtime authority cannot inherit the selection");
+    memory.Forget(snapshot.instanceId);
+    Check(!resolve(L"").at(L"summary").source, "unload retires retained selection identities");
+    (void)resolve(L"game.3");
+    auto& responsiveItem = snapshot.root.children[0].children[0].children[1];
+    responsiveItem.visibleWhen = L"compactOnly";
+    Check(!resolve(L"").at(L"summary").source, "a responsive-hidden source is no longer valid");
+    responsiveItem.visibleWhen.clear();
+    snapshot.root.children[0].retainLastPresentation = false;
+    (void)resolve(L"game.3");
+    selected = resolve(L"");
+    Check(!selected.at(L"summary").source && selected.at(L"background").source,
+        "surface policy is independent while the resolver is shared");
+}
+
+void RetainedPresentationPaintAndMeasurementAgree() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic; ComPtr<IWICBitmap> bitmap; ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "retention render resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.ReleaseAndGetAddressOf())));
+    ok(wic->CreateBitmap(600, 400, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, bitmap.ReleaseAndGetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(bitmap.Get(), D2D1::RenderTargetProperties(), target.ReleaseAndGetAddressOf()));
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+    auto snapshot = RetainedPresentationSnapshot();
+    widgetrail::DeclarativeRenderOptions options; options.collectAccessibility = true; options.accessibility.reducedMotion = true;
+    const Rect viewport{0, 0, 600, 400};
+    const auto draw = [&](std::wstring_view focus) {
+        target->BeginDraw(); target->Clear(D2D1::ColorF(0,0,0,0));
+        auto result = renderer.Render(target.Get(), snapshot, focus, viewport, options);
+        ok(target->EndDraw()); Check(result.succeeded, "retained presentation frame succeeds"); return result;
+    };
+    options.artworkWidgetId = L"widget";
+    options.artworkRuntimeGeneration = L"runtime";
+    options.artworkPresentationGeneration = L"presentation";
+    options.artworkAuthorityId = L"widget\x1f" L"runtime\x1f" L"presentation";
+    const auto fallbackMeasure = renderer.MeasureContent(snapshot, {600,400}, false, options);
+    auto selected = draw(L"game.2");
+    auto onTray = draw(L"");
+    auto measuring = options;
+    measuring.artworkAuthorityId.clear();
+    const auto retainedMeasure = renderer.MeasureContent(snapshot, {600,400}, false, measuring);
+    Check(retainedMeasure.succeeded && fallbackMeasure.succeeded &&
+        retainedMeasure.extent.height > fallbackMeasure.extent.height + 20,
+        "intrinsic measurement resolves the same retained source without requiring a paint-only authority string");
+    Check(onTray.elementRects.contains(L"game.2.summary") && !onTray.elementRects.contains(L"summary.default"),
+        "tray keeps selected summary geometry");
+    Check(!onTray.focusRects.contains(L"game.2.summary"), "retained summary gains no input authority");
+    auto prepared = renderer.PrepareFocusEntry(snapshot, L"", viewport, options);
+    Near(prepared.focusRects.at(L"game.0").y, onTray.focusRects.at(L"game.0").y,
+        "focus preparation measures the retained fragment height too");
+    auto& refreshed = snapshot.root.children[0].children[0].children[2];
+    refreshed.focusPresentation[0].baseStyle[L"height"] = Length(96);
+    widgetrail::WidgetPresentationImpact fragmentImpact;
+    fragmentImpact.baseSequence = snapshot.sequence;
+    fragmentImpact.sequence = ++snapshot.sequence;
+    fragmentImpact.effects = widgetrail::WidgetPresentationEffect::MeasureLayout | widgetrail::WidgetPresentationEffect::Resource;
+    fragmentImpact.affectedNodeIds = {L"game.2"};
+    Check(!renderer.PlanPresentationUpdate(snapshot, fragmentImpact, viewport),
+        "a retained source update invalidates its consumer outside the cursor's scroll boundary");
+    auto updated = draw(L"");
+    Near(updated.elementRects.at(L"game.2.summary").height, 96, "refreshed retained text uses its new geometry");
+    auto& recycled = snapshot.root.children[0].children[0].children[2];
+    recycled.collectionItemKey = L"replacement-game";
+    widgetrail::WidgetPresentationImpact impact;
+    impact.baseSequence = snapshot.sequence;
+    impact.sequence = ++snapshot.sequence;
+    Check(!renderer.PlanPresentationUpdate(snapshot, impact, viewport),
+        "recycled cursor identity cannot bypass selection invalidation through a no-raster update");
+    auto reset = draw(L"");
+    Check(reset.elementRects.contains(L"summary.default"), "recycled row resets the painted summary");
+    recycled.collectionItemKey = L"game.2";
+    (void)draw(L"game.2");
+    auto parent = snapshot.root;
+    auto dialog = Node(L"dialog", L"stack"); dialog.inputScopeId = L"dialog.scope";
+    auto close = Node(L"close", L"button"); close.text = L"Close"; close.actionId = L"close";
+    dialog.children = {close};
+    snapshot.root = Node(L"layer", L"modalLayer"); snapshot.root.children = {parent, dialog};
+    snapshot.activeInputScopeId = L"dialog.scope"; ++snapshot.sequence;
+    auto modal = draw(L"close");
+    Check(modal.elementRects.contains(L"game.2.summary"), "modal focus preserves parent summary");
+    auto& rows = snapshot.root.children[0].children[0].children[0].children;
+    rows.erase(rows.begin() + 2); ++snapshot.sequence;
+    auto evicted = draw(L"close");
+    Check(evicted.elementRects.contains(L"summary.default") && !evicted.elementRects.contains(L"game.2.summary"),
+        "cursor eviction under a modal cannot retain stale summary layout");
+}
+
 } // namespace
 
 #define WRAIL_RETAINED_PREPARATION_BENCH
@@ -7549,6 +7705,8 @@ int main() {
     PressedComputedStyleLayersOnFocusedState();
     PlanningMetadataAndKinds();
     FocusAssociatedPresentationUsesNativeFocusAuthority();
+    RetainedSelectionReconcilesCursorIdentityAndScopes();
+    RetainedPresentationPaintAndMeasurementAgree();
     ResponsiveVisibilityExcludesInactiveSubtrees();
     ResponsiveNavigationShellFitsBoundedSurfaces();
     SliderPlanningAndAccessibilityTargets();

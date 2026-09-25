@@ -82,6 +82,7 @@ public enum PresentationProperty
     WindowId,
     PreviewAspectRatio,
     ShowScrollbar,
+    RetainLastPresentation,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -199,6 +200,7 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Resource |
             PresentationPropertyImpact.Paint,
         PresentationProperty.FocusPresentation or
+        PresentationProperty.RetainLastPresentation or
         PresentationProperty.DefaultFocusPresentation =>
             PresentationPropertyImpact.Resource |
             PresentationPropertyImpact.MeasureLayout |

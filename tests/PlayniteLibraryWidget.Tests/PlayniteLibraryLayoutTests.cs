@@ -508,6 +508,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         var homeNodes = Nodes(home.Root).ToArray();
         Assert.AreEqual(1, homeNodes.Count(node => node.Kind ==
             ViewNodeKind.FocusPresentationSurface));
+        Assert.AreEqual(true, homeNodes.Single(node => node.Kind == ViewNodeKind.FocusPresentationSurface).RetainLastPresentation);
+        Assert.AreEqual(56, home.ProtocolVersion);
         Assert.AreEqual(2, homeNodes.Count(node => node.ActionId ==
             PlayniteLibraryActions.DetailsOpen && node.FocusPresentation is not null));
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(home).Count);

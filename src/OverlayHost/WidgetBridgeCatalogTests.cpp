@@ -29,6 +29,21 @@ void Require(const bool condition, const char* message) {
 
 #define CHECK(condition) Require(static_cast<bool>(condition), #condition)
 
+void VerifyFocusRetentionContract() {
+    const std::string wire = R"json({"snapshot":{"protocolVersion":56,"sequence":1,
+      "widgetInstanceId":"retention.test","activeInputScopeId":"surface",
+      "root":{"id":"surface","kind":"focusPresentationSurface","retainLastPresentation":true,
+      "defaultFocusPresentation":{"id":"default","kind":"text","text":"Default"},
+      "children":[{"id":"body","kind":"stack","children":[]}]}},"renderStyles":{}})json";
+    std::wstring error;
+    const auto snapshot = widgetrail::testing::ParseWidgetSnapshotResponse(wire, error);
+    CHECK(snapshot && snapshot->root.retainLastPresentation == true);
+    auto old = wire; old.replace(old.find("56"), 2, "55");
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(old, error));
+    auto invalid = wire; invalid.replace(invalid.find(":true"), 5, ":42");
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(invalid, error));
+}
+
 void VerifyModalLayerContract() {
     const std::string wire = R"json({"snapshot":{"protocolVersion":55,"sequence":1,
       "widgetInstanceId":"modal.test","activeInputScopeId":"dialog.scope","initialFocusId":"play",
@@ -1583,6 +1598,7 @@ int main(int argc, char** argv) {
     }
 
     VerifyModalLayerContract();
+    VerifyFocusRetentionContract();
     VerifyWindowPreviewAuthority();
     VerifySnapshotComparison();
     MeasureFullSnapshotComparison();

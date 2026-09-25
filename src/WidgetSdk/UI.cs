@@ -48,7 +48,8 @@ public static partial class UI
     /// <summary>
     /// Projects one admitted presentation-only fragment above its ordinary
     /// content. Native focus selects the exact focused descendant's associated
-    /// fragment, otherwise the required default is shown.
+    /// fragment. The surface policy chooses whether to retain a valid source or
+    /// show the required default when focus leaves it.
     /// </summary>
     public static FocusPresentationSurfaceElement FocusPresentationSurface(
         WidgetElement content,

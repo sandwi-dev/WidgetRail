@@ -193,7 +193,9 @@ CompositorBackgroundSurfaceCoordinator::Stage(
         proposal.image.bitmap = renderer.ResolveCompositorBackgroundBitmap(
             resources.Get(), proposal.image.descriptor);
     }
-    if (!proposal.image.bitmap && next.committed) {
+    const bool hasImage = !proposal.image.descriptor.imageSource.empty() ||
+        !proposal.image.descriptor.artworkHandle.empty();
+    if (!proposal.image.bitmap && hasImage && next.committed) {
         diagnostic = L"readiness=pending retained=displayed";
         return StageDisposition::Pending;
     }
@@ -214,9 +216,17 @@ CompositorBackgroundSurfaceCoordinator::Stage(
         frames[0].target.Get(), proposal.image.descriptor, nullptr, true);
     if (FAILED(surface.EndFrame(frames[0]))) return StageDisposition::Failed;
     auto outgoing = next.committed;
-    if (!proposal.image.bitmap) {
+    if (!proposal.image.bitmap && hasImage) {
         diagnostic = L"readiness=pending";
-        staged.frames.push_back(std::move(frames[0]));
+        // No committed semantic source remains. Retire old textures while the
+        // authored default is decoding, rather than showing a removed item.
+        for (const auto index : {1U, 2U}) {
+            if (!begin(index, index == 1 ? OverlayCompositionSurface::Layer::BackgroundOutgoing
+                : OverlayCompositionSurface::Layer::BackgroundIncoming)) return StageDisposition::Failed;
+            frames[index].target->Clear(D2D1::ColorF(0, 0, 0, 0));
+            if (FAILED(surface.EndFrame(frames[index]))) return StageDisposition::Failed;
+        }
+        for (auto& frame : frames) staged.frames.push_back(std::move(frame));
         staged.presentation = {
             true, next.incoming.has_value(), false,
             next.presentationKey.empty()
@@ -291,25 +301,6 @@ CompositorBackgroundSurfaceCoordinator::Stage(
     return StageDisposition::Committed;
 }
 
-ComputedCompositorBackground CompositorBackgroundSurfaceCoordinator::ResolveRetainedArtwork(
-    const ComputedCompositorBackground& requested) const {
-    auto resolved = requested;
-    const auto* displayed = state_.incoming ? &*state_.incoming
-        : state_.committed ? &*state_.committed : nullptr;
-    if (!requested.retainCurrentArtwork || requested.defaultArtworkKey.empty() || !displayed)
-        return resolved;
-    const auto& previous = displayed->descriptor;
-    if (previous.authorityId == requested.authorityId &&
-        previous.widgetInstanceId == requested.widgetInstanceId &&
-        previous.nodeId == requested.nodeId &&
-        previous.resourceGeneration == requested.resourceGeneration &&
-        previous.defaultArtworkKey == requested.defaultArtworkKey) {
-        resolved.imageSource = previous.imageSource;
-        resolved.artworkHandle = previous.artworkHandle;
-    }
-    return resolved;
-}
-
 std::optional<CompositorBackgroundSurfaceCoordinator::Observation>
 CompositorBackgroundSurfaceCoordinator::Observe(
     const ComputedCompositorBackground& requested,
@@ -319,8 +310,18 @@ CompositorBackgroundSurfaceCoordinator::Observe(
     const unsigned int height,
     const float pixelsPerDip,
     const std::uint64_t nowMilliseconds) {
-    const auto background = ResolveRetainedArtwork(requested);
+    const auto& background = requested;
     auto next = state_;
+    const auto* displayed = next.incoming ? &*next.incoming : next.committed ? &*next.committed : nullptr;
+    if (background.selectionSourceId.empty() && displayed &&
+        !displayed->descriptor.selectionSourceId.empty()) {
+        // The semantic resolver retired the source; stale artwork cannot stand
+        // in for the authored default while its replacement is decoding.
+        next.committed.reset();
+        next.incoming.reset();
+        next.proposal.reset();
+        next.transitionStartedAt = 0;
+    }
     std::wstring diagnostic;
     Staged staged;
     if (next.incoming && nowMilliseconds >= next.transitionStartedAt &&
@@ -356,7 +357,7 @@ CompositorBackgroundSurfaceCoordinator::Observe(
         if (Stage(next, renderer, surface, width, height,
                 pixelsPerDip, nowMilliseconds, true, staged, diagnostic) ==
             StageDisposition::Failed) return std::nullopt;
-    } else if (!next.incoming) {
+    } else if (!next.incoming && !next.proposal->staged) {
         if (Stage(next, renderer, surface, width, height,
                 pixelsPerDip, nowMilliseconds, false, staged, diagnostic) ==
             StageDisposition::Failed) return std::nullopt;
@@ -401,7 +402,7 @@ CompositorBackgroundSurfaceCoordinator::Advance(
     const std::uint64_t nowMilliseconds,
     std::wstring& diagnostic) {
     const auto current = requested
-        ? std::optional{ResolveRetainedArtwork(*requested)} : std::nullopt;
+        ? std::optional{*requested} : std::nullopt;
     if (!current || !state_.proposal ||
         !SameDestination(state_.proposal->image.descriptor, *current) ||
         state_.proposal->image.descriptor.focusedElementId !=

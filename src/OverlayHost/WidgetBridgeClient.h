@@ -425,8 +425,8 @@ struct WidgetNode final {
     std::wstring sliderInteractionMode;
     std::wstring imageSource;
     std::wstring artworkHandle;
-    // Protocol-v39 trusted artwork selected only while this exact actionable
-    // node owns focus inside its nearest opted-in BackgroundSurface.
+    // Protocol-v39 trusted artwork associated with this exact actionable node.
+    // Its nearest opted-in BackgroundSurface selects it and applies retention.
     std::wstring focusBackgroundArtworkHandle;
     // Protocol-v23 declarative binding from one native layout viewport to the
     // one current embedded-media declaration. It grants no browser authority.
@@ -445,6 +445,7 @@ struct WidgetNode final {
     // Protocol-v33 opt-in remembered-child focus group fallback.
     std::wstring initialChildFocusId;
     bool usesFocusedDescendantArtwork{};
+    std::optional<bool> retainLastPresentation;
     // Protocol-v40 presentation-only subtrees. They are admitted with the
     // snapshot but remain outside ordinary input/action/focus traversal.
     std::vector<WidgetNode> focusPresentation;

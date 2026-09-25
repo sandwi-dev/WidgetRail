@@ -818,19 +818,19 @@ int wmain() {
                 const auto ordinary = trayRenderer.Render(target.Get(), traySnapshot,
                     L"background.retarget.ordinary", viewport, trayOptions);
                 Require(SUCCEEDED(target->EndDraw()) && ordinary.compositorBackground &&
-                    ordinary.compositorBackground->retainCurrentArtwork,
+                    !ordinary.compositorBackground->selectionSourceId.empty(),
                     "ordinary control did not retain the displayed selection");
                 trayOptions.retainedCompositorBackground = ordinary.compositorBackground;
                 target->BeginDraw();
                 const auto ordinaryToTray = trayRenderer.Render(target.Get(), traySnapshot, L"", viewport, trayOptions);
                 Require(SUCCEEDED(target->EndDraw()) && ordinaryToTray.compositorBackground &&
-                    ordinaryToTray.compositorBackground->retainCurrentArtwork &&
-                    ordinaryToTray.compositorBackground->defaultArtworkKey == ordinary.compositorBackground->defaultArtworkKey,
+                    !ordinaryToTray.compositorBackground->selectionSourceId.empty() &&
+                    ordinaryToTray.compositorBackground->artworkHandle == ordinary.compositorBackground->artworkHandle,
                     "moving from an ordinary control to tray must not resolve to the authored default");
                 trayOptions.artworkRuntimeGeneration = L"replacement-runtime";
                 target->BeginDraw();
                 const auto replaced = trayRenderer.Render(target.Get(), traySnapshot, L"", viewport, trayOptions);
-                Require(SUCCEEDED(target->EndDraw()) && !replaced.compositorBackground,
+                Require(SUCCEEDED(target->EndDraw()) && replaced.compositorBackground && replaced.compositorBackground->selectionSourceId.empty(),
                     "a replacement runtime cannot inherit the previous surface selection");
             }
             // Exercise the host's actual back-to-front layer order with an
@@ -1176,8 +1176,8 @@ int wmain() {
             commitObservation(std::move(pendingContent), std::move(*pendingObservation));
             auto [ordinaryContent, ordinaryResult] = renderIntegrated(
                 L"background.retarget.ordinary", 6020);
-            Require(ordinaryResult.compositorBackground->retainCurrentArtwork &&
-                        ordinaryResult.compositorBackground->artworkHandle == L"background.retarget.red",
+            Require(!ordinaryResult.compositorBackground->selectionSourceId.empty() &&
+                        ordinaryResult.compositorBackground->artworkHandle == L"background.retarget.blue",
                     "ordinary focus lost its explicit retention/default distinction");
             auto ordinaryObservation = coordinator.Observe(
                 *ordinaryResult.compositorBackground, integratedRenderer,
@@ -1186,9 +1186,9 @@ int wmain() {
                     "ordinary focus unnecessarily repainted retained artwork");
             commitObservation(std::move(ordinaryContent), std::move(*ordinaryObservation));
             Require(CoordinatorAccess::CommittedHandle(coordinator) == L"background.retarget.green" &&
-                        !coordinator.deadline(),
-                    "Retain selected the default or pending artwork instead of the displayed image");
-            retargetSnapshot->root.artworkHandle = L"background.retarget.blue";
+                        coordinator.deadline().has_value(),
+                    "retention keeps the latest valid source proposal while the previous image remains displayed");
+            retargetSnapshot->root.artworkHandle = L"background.retarget.red";
             ++retargetSnapshot->sequence;
             auto [defaultContent, defaultResult] = renderIntegrated(
                 L"background.retarget.ordinary", 6100);
@@ -1202,7 +1202,7 @@ int wmain() {
                         advanceDiagnostic) ==
                         widgetrail::CompositorBackgroundSurfaceCoordinator::AdvanceDisposition::Advanced &&
                         CoordinatorAccess::IncomingHandle(coordinator) == L"background.retarget.blue",
-                    "changed default incorrectly inherited retained artwork from the prior declaration");
+                    "changing the default must not replace a valid retained source");
             coordinator.Retire(composition);
             Require(composition.hasContent(
                         widgetrail::OverlayCompositionSurface::Layer::PanelBackground) &&
@@ -1478,33 +1478,29 @@ int wmain() {
         const auto replacementSurfaceBounds = RequireElementRect(
             replacementReady, L"background-surface-test.root",
             "ready replacement omitted BackgroundSurface geometry");
-        Require(replacementPlan->damage.x <= replacementSurfaceBounds.x + 0.01F &&
-                replacementPlan->damage.y <= replacementSurfaceBounds.y + 0.01F &&
-                replacementPlan->damage.x + replacementPlan->damage.width >=
-                    replacementSurfaceBounds.x + replacementSurfaceBounds.width - 0.01F &&
-                replacementPlan->damage.y + replacementPlan->damage.height >=
-                    replacementSurfaceBounds.y + replacementSurfaceBounds.height - 0.01F &&
+        Require(replacementPlan->damage.width > 0 && replacementPlan->damage.height > 0 &&
                 replacementPlan->damage.x >= viewport.x - 0.01F &&
                 replacementPlan->damage.y >= viewport.y - 0.01F &&
-                replacementPlan->damage.x + replacementPlan->damage.width <=
-                    viewport.x + viewport.width + 0.01F &&
-                replacementPlan->damage.y + replacementPlan->damage.height <=
-                    viewport.y + viewport.height + 0.01F,
-            "focused-background change did not contain exact full-surface damage");
+                replacementPlan->damage.x + replacementPlan->damage.width <= viewport.x + viewport.width + 0.01F &&
+                replacementPlan->damage.y + replacementPlan->damage.height <= viewport.y + viewport.height + 0.01F,
+            "unchanged retained artwork requires only bounded focus damage");
 
         parsed->root.artworkHandle = L"background-surface-test.artwork.changed";
         const auto changedDefaultKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
             L"widgetrail.tests.background-surface",
             L"background-surface-test.root",
             L"background-surface-test.artwork.changed");
+        const auto retainedAcrossDefaultChange = render(L"background-surface-test.ordinary");
+        Require(RequireBackgroundHandle(retainedAcrossDefaultChange, L"background-surface-test.root",
+                "default change lost selected artwork") == L"background-surface-test.focus.replacement",
+            "a changed default cannot override a valid retained source");
+        parsed->root.retainLastPresentation = false;
         const auto changedDefaultPending = render(L"background-surface-test.ordinary");
         requests.WaitForBack(changedDefaultKey,
             "changed default request did not reach its demand owner");
         Require(requests.back() == changedDefaultKey &&
-                RequireBackgroundHandle(changedDefaultPending,
-                    L"background-surface-test.root", "pending default lost displayed artwork") ==
-                    L"background-surface-test.focus.replacement",
-            "pending changed default must retain the last displayed focused artwork");
+                !changedDefaultPending.backgroundArtworkHandles.contains(L"background-surface-test.root"),
+            "falling back to an uncached default must not display retired source artwork");
         Require(cache.SupplyTrustedArtwork(
             L"widgetrail.tests.background-surface",
             L"background-surface-test.artwork.changed", L"image/png", std::wstring(png)),
@@ -1517,9 +1513,8 @@ int wmain() {
                     L"background-surface-test.root",
                     "changed default omitted the reset surface artwork") ==
                 L"background-surface-test.artwork.changed",
-            "ready changed default did not enter the existing transition");
-        Require(changedDefaultReady.animationActive,
-            "ready changed default replaced the surface without a transition");
+            "ready authored default did not replace the empty fallback");
+        parsed->root.retainLastPresentation = true;
 
         (void)render(L"background-surface-test.replacement");
         parsed->root.usesFocusedDescendantArtwork = false;
@@ -1706,17 +1701,16 @@ int wmain() {
             L"nested.inner.default");
         const auto requestsBeforeOuterFocus = requests.size();
         const auto outerFocusPending = renderNested(L"nested.outer.action");
-        requests.WaitForSize(requestsBeforeOuterFocus + 2U,
+        requests.WaitForSize(requestsBeforeOuterFocus + 1U,
             "outer focus requests did not reach their demand owner");
-        Require(requests.size() == requestsBeforeOuterFocus + 2U &&
+        Require(requests.size() == requestsBeforeOuterFocus + 1U &&
                 requests.at(requestsBeforeOuterFocus) == outerFocusKey &&
-                requests.at(requestsBeforeOuterFocus + 1U) == innerDefaultKey &&
                 RequireBackgroundHandle(
                     outerFocusPending, L"nested.outer",
                     "outer-focus pending frame omitted outer artwork") ==
                     L"nested.outer.default" &&
-                !outerFocusPending.backgroundArtworkHandles.contains(L"nested.inner"),
-            "selecting a different surface did not retire the prior surface override");
+                outerFocusPending.backgroundArtworkHandles.at(L"nested.inner") == L"nested.focus",
+            "moving to another surface preserves each surface's independent valid selection");
         Require(cache.SupplyTrustedArtwork(
             L"widgetrail.tests.background-surface", L"nested.outer.focus",
             L"image/png", std::wstring(png)),
@@ -1728,18 +1722,18 @@ int wmain() {
                     outerFocusReady, L"nested.outer",
                     "outer-focus ready frame omitted outer artwork") ==
                     L"nested.outer.focus" &&
-                !outerFocusReady.backgroundArtworkHandles.contains(L"nested.inner"),
+                outerFocusReady.backgroundArtworkHandles.at(L"nested.inner") == L"nested.focus",
             "different selected surface did not establish independent authority");
         const auto innerFocusRestored = renderNested(L"nested.action");
         Require(RequireBackgroundHandle(
                     innerFocusRestored, L"nested.outer",
                     "inner-focus frame omitted outer artwork") ==
-                    L"nested.outer.default" &&
+                    L"nested.outer.focus" &&
                 RequireBackgroundHandle(
                     innerFocusRestored, L"nested.inner",
                     "inner-focus frame omitted inner artwork") ==
                     L"nested.focus",
-            "selecting the inner surface retained the different outer override");
+            "nested focus must not replace the outer surface selection");
 
         auto& outerContent = nested->root.children.front();
         const auto retainedInner = outerContent.children.front();
@@ -1748,7 +1742,7 @@ int wmain() {
         Require(RequireBackgroundHandle(
                     innerRemoved, L"nested.outer",
                     "inner-removal frame omitted outer artwork") ==
-                L"nested.outer.default",
+                L"nested.outer.focus",
             "removing the inner surface altered the outer surface handle");
         outerContent.children.insert(outerContent.children.begin(), retainedInner);
         const auto innerReaddedPending = renderNested(L"nested.ordinary");
@@ -1759,7 +1753,7 @@ int wmain() {
                 RequireBackgroundHandle(
                     innerReaddedPending, L"nested.outer",
                     "inner-readded pending frame omitted outer artwork") ==
-                    L"nested.outer.default",
+                    L"nested.outer.focus",
             "re-added inner surface resurrected its old focused override");
         Require(cache.SupplyTrustedArtwork(
             L"widgetrail.tests.background-surface", L"nested.inner.default",
@@ -1771,7 +1765,7 @@ int wmain() {
         Require(RequireBackgroundHandle(
                     innerReaddedReady, L"nested.outer",
                     "inner-readded ready frame omitted outer artwork") ==
-                    L"nested.outer.default" &&
+                    L"nested.outer.focus" &&
                 RequireBackgroundHandle(
                     innerReaddedReady, L"nested.inner",
                     "inner-readded ready frame omitted inner artwork") ==
@@ -1794,18 +1788,18 @@ int wmain() {
         Require(RequireBackgroundHandle(
                     nestedNonOpt, L"nested.outer",
                     "nested non-opt-in frame omitted outer artwork") ==
-                    L"nested.outer.default" &&
+                    L"nested.outer.focus" &&
                 RequireBackgroundHandle(
                     nestedNonOpt, L"nested.inner",
                     "nested non-opt-in frame omitted inner artwork") ==
                     L"nested.inner.default",
-            "focus inside a nested non-opt-in surface retained the outer override");
+            "nested opt-out cannot override another surface's retained source");
         outerContent.children.front().usesFocusedDescendantArtwork = true;
         const auto innerReset = renderNested(L"nested.ordinary");
         Require(RequireBackgroundHandle(
                     innerReset, L"nested.outer",
                     "inner-reset frame omitted outer artwork") ==
-                    L"nested.outer.default" &&
+                    L"nested.outer.focus" &&
                 RequireBackgroundHandle(
                     innerReset, L"nested.inner",
                     "inner-reset frame omitted inner artwork") ==

@@ -1003,3 +1003,11 @@ returning the original page. Protocol 55 is required only while a modal is prese
 Pinned surfaces omit the modal safely. One modal is supported; nested widget modals
 and embedded media sessions are rejected. See [modal navigation](../../docs/developers/navigation.md#widget-modals)
 for focus restoration, lifecycle ownership, and theme classes.
+
+### Retained focus presentations
+
+Set `RetainLastPresentation = true` on a `FocusPresentationSurfaceElement` to retain
+the last valid source while focus moves to other controls, the tray, or a modal.
+Background surfaces retain focused artwork by default and can opt out with `false`.
+Explicit policies require protocol 56. Sources are revalidated against the current
+view, including cursor eviction and item-key reuse; see [retention rules](../../docs/developers/presentation-retention.md).

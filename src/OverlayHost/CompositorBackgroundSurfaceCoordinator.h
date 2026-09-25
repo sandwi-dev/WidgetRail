@@ -49,8 +49,6 @@ public:
     [[nodiscard]] std::optional<std::uint64_t> deadline() const noexcept;
 
 private:
-    [[nodiscard]] ComputedCompositorBackground ResolveRetainedArtwork(
-        const ComputedCompositorBackground& requested) const;
 #ifdef WRAIL_COMPOSITOR_BACKGROUND_TESTING
     friend struct CompositorBackgroundSurfaceCoordinatorTestAccess;
 #endif

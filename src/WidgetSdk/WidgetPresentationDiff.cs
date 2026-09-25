@@ -404,6 +404,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.InputScopeId, before.InputScopeId, after.InputScopeId);
         Add(PresentationProperty.InitialChildFocusId, before.InitialChildFocusId, after.InitialChildFocusId);
         Add(PresentationProperty.UsesFocusedDescendantArtwork, before.UsesFocusedDescendantArtwork, after.UsesFocusedDescendantArtwork);
+        Add(PresentationProperty.RetainLastPresentation, before.RetainLastPresentation, after.RetainLastPresentation);
         Add(PresentationProperty.FocusPresentation, before.FocusPresentation, after.FocusPresentation);
         Add(PresentationProperty.DefaultFocusPresentation, before.DefaultFocusPresentation, after.DefaultFocusPresentation);
         Add(PresentationProperty.ScrollAxis, before.ScrollAxis, after.ScrollAxis);

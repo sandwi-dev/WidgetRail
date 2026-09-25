@@ -1337,6 +1337,11 @@ WidgetNode ParseNode(const JsonObject& source) {
         !IsIdentifier(node.initialChildFocusId))
         throw winrt::hresult_invalid_argument(
             L"Initial child focus identity is invalid.");
+    if (source.HasKey(L"retainLastPresentation")) {
+        if (source.GetNamedValue(L"retainLastPresentation").ValueType() != JsonValueType::Boolean)
+            throw winrt::hresult_invalid_argument(L"Invalid presentation retention policy.");
+        node.retainLastPresentation = source.GetNamedBoolean(L"retainLastPresentation");
+    }
     if (source.HasKey(L"usesFocusedDescendantArtwork")) {
         if (source.GetNamedValue(L"usesFocusedDescendantArtwork").ValueType() !=
                 JsonValueType::Boolean || node.kind != L"backgroundSurface")
@@ -1653,6 +1658,8 @@ WidgetNode ParseNode(const JsonObject& source) {
         node.kind != L"actionSurface")
         throw winrt::hresult_invalid_argument(
             L"Focus-associated presentation requires a focusable node.");
+    if (node.retainLastPresentation && node.kind != L"backgroundSurface" && node.kind != L"focusPresentationSurface")
+        throw winrt::hresult_invalid_argument(L"Only presentation surfaces may declare retention.");
     if (!node.defaultFocusPresentation.empty() &&
         node.kind != L"focusPresentationSurface")
         throw winrt::hresult_invalid_argument(
@@ -1902,6 +1909,8 @@ void ValidateBackgroundSurfaces(const WidgetNode& root, const int protocolVersio
              (!node.children[0].visibleWhen.empty() && node.children[0].visibleWhen != L"always") ||
              (!node.children[1].visibleWhen.empty() && node.children[1].visibleWhen != L"always")))
             throw winrt::hresult_invalid_argument(L"Invalid widget modal layer.");
+        if (node.retainLastPresentation.has_value() && protocolVersion < protocol_contract::FocusPresentationRetentionVersion)
+            throw winrt::hresult_invalid_argument(L"Presentation retention requires protocol version 56.");
         if (node.showScrollbar.has_value() && protocolVersion < protocol_contract::ScrollbarVisibilityVersion)
             throw winrt::hresult_invalid_argument(L"Scrollbar visibility requires protocol version 53.");
         if (node.kind == L"backgroundSurface" &&
@@ -1957,7 +1966,7 @@ void ValidateFocusPresentations(const WidgetNode& root, const int protocolVersio
             !node.focusPersistenceId.empty() || !node.focusUp.empty() ||
             !node.focusDown.empty() || !node.focusLeft.empty() ||
             !node.focusRight.empty() || !node.inputScopeId.empty() ||
-            !node.initialChildFocusId.empty() || node.usesFocusedDescendantArtwork ||
+            !node.initialChildFocusId.empty() || node.usesFocusedDescendantArtwork || node.retainLastPresentation.has_value() ||
             !node.focusPresentation.empty() || !node.defaultFocusPresentation.empty() ||
             !node.scrollAxis.empty() || node.showScrollbar.has_value() || !node.scrollNearStartActionId.empty() ||
             !node.scrollNearEndActionId.empty() || node.scrollPaginationThreshold != 0 ||
@@ -2571,7 +2580,7 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 58> properties{
+    static constexpr std::array<std::wstring_view, 59> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextMenuButton", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
@@ -2581,7 +2590,7 @@ bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
         L"actionSurfaceOrientation", L"actionSurfacePresentation", L"gridMinimumColumnWidth",
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
         L"focusPersistenceId", L"focus", L"inputScopeId", L"initialChildFocusId",
-        L"usesFocusedDescendantArtwork", L"focusPresentation",
+        L"usesFocusedDescendantArtwork", L"retainLastPresentation", L"focusPresentation",
         L"defaultFocusPresentation", L"scrollAxis", L"showScrollbar",
         L"scrollNearStartActionId", L"scrollNearEndActionId",
         L"scrollPaginationThreshold", L"virtualCollectionWindow",
@@ -2625,7 +2634,7 @@ bool ValidateWidgetDocumentStructure(
                  L"indicatorSize", L"controllerPrompt", L"actionSurfaceOrientation", L"actionSurfacePresentation",
                  L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
-                 L"inputScopeId", L"initialChildFocusId", L"usesFocusedDescendantArtwork",
+                 L"inputScopeId", L"initialChildFocusId", L"usesFocusedDescendantArtwork", L"retainLastPresentation",
                  L"focusPresentation", L"defaultFocusPresentation",
                  L"scrollAxis", L"showScrollbar", L"scrollNearStartActionId",
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
@@ -3149,7 +3158,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
     if (property == L"focusBackgroundArtworkHandle" ||
         property == L"usesFocusedDescendantArtwork")
         return Effect::Resource | Effect::Paint;
-    if (property == L"focusPresentation" ||
+    if (property == L"retainLastPresentation" || property == L"focusPresentation" ||
         property == L"defaultFocusPresentation")
         return Effect::Resource | Effect::MeasureLayout |
             Effect::Paint | Effect::Accessibility;

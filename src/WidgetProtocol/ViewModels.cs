@@ -476,6 +476,12 @@ public sealed record ViewNode
     /// </summary>
     public bool? UsesFocusedDescendantArtwork { get; init; }
     /// <summary>
+    /// Protocol-v56 surface selection policy. Retain the last declared source while
+    /// it remains in this surface's current view. Omission retains the established
+    /// defaults: true for background artwork, false for focus-presentation content.
+    /// </summary>
+    public bool? RetainLastPresentation { get; init; }
+    /// <summary>
     /// Protocol-v40 bounded presentation-only fragment selected when this
     /// exact focusable node owns host focus inside its nearest enclosing
     /// FocusPresentationSurface. It grants no action, focus, scope, shortcut,
@@ -484,8 +490,8 @@ public sealed record ViewNode
     public ViewNode? FocusPresentation { get; init; }
     /// <summary>
     /// Protocol-v40 required fallback fragment for a FocusPresentationSurface.
-    /// The host projects it when the exact focused descendant has no associated
-    /// fragment or belongs to a nested consumer.
+    /// The host projects it when no current or valid retained source supplies a
+    /// fragment for this consumer.
     /// </summary>
     public ViewNode? DefaultFocusPresentation { get; init; }
     /// <summary>

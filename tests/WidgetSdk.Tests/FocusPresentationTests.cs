@@ -21,6 +21,21 @@ internal static class FocusPresentationTests
             InitialFocusId: "focus.first").CreateSnapshot("focus.instance", 1);
 
         Equal(ProtocolConstants.FocusAssociatedPresentationVersion, snapshot.ProtocolVersion);
+        var retaining = new WidgetView(UI.FocusPresentationSurface(UI.Stack("content"),
+            UI.Text("Default", "fallback"), "retained") with { RetainLastPresentation = true })
+            .CreateSnapshot("retained.instance", 1);
+        Equal(56, retaining.ProtocolVersion);
+        Equal(true, retaining.Root.RetainLastPresentation);
+        Equal(0, ViewSnapshotValidator.Validate(retaining).Count);
+        HasError(retaining with { ProtocolVersion = 55 }, "feature_requires_version");
+        HasError(retaining with { Root = new ViewNode { Id = "text", Kind = ViewNodeKind.Text,
+            Text = "Invalid", RetainLastPresentation = true }, ActiveInputScopeId = "text" }, "focus_retention_not_allowed");
+        var resettingBackground = new WidgetView(UI.BackgroundSurface(UI.Stack("body"), "background")
+            .UseFocusedDescendantArtwork() with { RetainLastPresentation = false }).CreateSnapshot("background.instance", 1);
+        Equal(56, resettingBackground.ProtocolVersion);
+        Equal(false, resettingBackground.Root.RetainLastPresentation);
+        Equal(0, ViewSnapshotValidator.Validate(resettingBackground).Count);
+
         Equal(ViewNodeKind.FocusPresentationSurface, snapshot.Root.Kind);
         Equal("focus.default.presentation", snapshot.Root.DefaultFocusPresentation?.Id);
         Equal("focus.first.presentation",

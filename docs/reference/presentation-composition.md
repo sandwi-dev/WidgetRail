@@ -97,3 +97,5 @@ show real composition. Exact overloads and constraints live together in
 
 Continue with [Routes](routes.md), [Collections](collections.md), or
 [Controller components](controller-ui-components.md).
+
+Focused artwork and summary retention share a per-surface policy; see [focus presentation retention](../developers/presentation-retention.md).

@@ -27,6 +27,7 @@ using declarative::LayoutMode;
 using declarative::LayoutOptions;
 using declarative::Rect;
 using declarative::Size;
+using declarative::FocusSurfaceSelectionMemory;
 
 struct PreparationTimer {
     std::uint64_t& nanoseconds;
@@ -219,71 +220,22 @@ std::wstring gLastRetiredRendererWidgetInstance;
     return false;
 }
 
-struct FocusBackgroundSelection final {
-    const WidgetNode* surface{};
-    const WidgetNode* focused{};
-    std::wstring_view imageSource;
-    std::wstring_view artworkHandle;
-};
+[[nodiscard]] std::wstring FocusSelectionAuthority(const DeclarativeRenderOptions& options) {
+    const auto generation = options.artworkWidgetId + L"\x1f" + options.artworkRuntimeGeneration +
+        L"\x1f" + options.artworkPresentationGeneration;
+    const auto& authority = options.artworkAuthorityId.empty() ? generation : options.artworkAuthorityId;
+    return authority + L"\x1e" + generation;
+}
 
-[[nodiscard]] FocusBackgroundSelection ResolveFocusBackgroundSelection(
-    const WidgetNode& root,
-    const std::wstring_view focusedElementId) {
-    if (focusedElementId.empty()) return {};
-    std::vector<const WidgetNode*> path;
-    if (!FindNodePath(root, focusedElementId, path) || path.empty()) return {};
-    const WidgetNode* nearestSurface{};
-    for (const auto* node : path) {
-        if (node->kind == L"backgroundSurface") nearestSurface = node;
+[[nodiscard]] std::map<std::wstring, std::wstring> SelectionSources(
+    const FocusSurfaceSelectionMemory::Selections& selections, bool fragmentsOnly = false) {
+    std::map<std::wstring, std::wstring> sources;
+    for (const auto& [id, selection] : selections) {
+        if (fragmentsOnly && selection.surface->kind != L"focusPresentationSurface") continue;
+        sources[id] = selection.source ? selection.source->id + L"\x1f" + selection.source->collectionItemKey +
+            (selection.surface->kind == L"backgroundSurface" ? L"\x1f" + selection.source->focusBackgroundArtworkHandle : L"") : L"";
     }
-    if (!nearestSurface) return {};
-    const auto* focused = path.back();
-    return {
-        nearestSurface,
-        focused,
-        {},
-        nearestSurface->usesFocusedDescendantArtwork
-            ? std::wstring_view(focused->focusBackgroundArtworkHandle)
-            : std::wstring_view{},
-    };
-}
-
-[[nodiscard]] bool SameFocusBackgroundSelection(
-    const FocusBackgroundSelection& left,
-    const FocusBackgroundSelection& right) noexcept {
-    return left.surface == right.surface && left.imageSource == right.imageSource &&
-        left.artworkHandle == right.artworkHandle;
-}
-
-struct FocusPresentationSelection final {
-    const WidgetNode* surface{};
-    const WidgetNode* fragment{};
-};
-
-[[nodiscard]] FocusPresentationSelection ResolveFocusPresentationSelection(
-    const WidgetNode& root,
-    const std::wstring_view focusedElementId) {
-    if (focusedElementId.empty()) return {};
-    std::vector<const WidgetNode*> path;
-    if (!FindNodePath(root, focusedElementId, path) || path.empty()) return {};
-    const WidgetNode* nearestSurface{};
-    for (const auto* node : path) {
-        if (node->kind == L"focusPresentationSurface") nearestSurface = node;
-    }
-    if (!nearestSurface) return {};
-    const auto* focused = path.back();
-    const auto* fragment = !focused->focusPresentation.empty()
-        ? &focused->focusPresentation.front()
-        : !nearestSurface->defaultFocusPresentation.empty()
-            ? &nearestSurface->defaultFocusPresentation.front()
-            : nullptr;
-    return {nearestSurface, fragment};
-}
-
-[[nodiscard]] bool SameFocusPresentationSelection(
-    const FocusPresentationSelection& left,
-    const FocusPresentationSelection& right) noexcept {
-    return left.surface == right.surface && left.fragment == right.fragment;
+    return sources;
 }
 
 [[nodiscard]] float PositionFactorX(const NativeObjectPosition position) noexcept {
@@ -552,6 +504,27 @@ struct DeclarativeRenderer::RenderPass final {
     std::optional<BackgroundSurfaceSettleWake> backgroundSurfaceSettleWake;
     std::wstring compositorBackgroundId;
 
+    FocusSurfaceSelectionMemory selectionMemory;
+    FocusSurfaceSelectionMemory::Selections selections;
+    bool selectionsResolved{};
+
+    void ResolveSelections() {
+        if (selectionsResolved) return;
+        selectionMemory = owner->focusSelectionMemory_;
+        selections = selectionMemory.Resolve(*snapshot, focusedId, FocusSelectionAuthority(options), compactMode);
+        selectionsResolved = true;
+    }
+
+    [[nodiscard]] FocusSurfaceSelectionMemory::Selection SelectionFor(const WidgetNode& surface) {
+        ResolveSelections();
+        const auto found = selections.find(surface.id);
+        return found == selections.end() ? FocusSurfaceSelectionMemory::Selection{&surface, nullptr} : found->second;
+    }
+
+    [[nodiscard]] const WidgetNode* PresentationFor(const WidgetNode& surface) {
+        return SelectionFor(surface).Fragment();
+    }
+
     [[nodiscard]] auto& ScrollState() noexcept {
         return scrollState ? *scrollState : owner->scrollOffsets_;
     }
@@ -615,17 +588,7 @@ struct DeclarativeRenderer::RenderPass final {
         if (!options.compositorBackgroundAvailable ||
             !surface.usesFocusedDescendantArtwork) return false;
         if (!compositorBackgroundId.empty()) return compositorBackgroundId == surface.id;
-        const auto selection = ResolveFocusBackgroundSelection(snapshot->root, focusedId);
-        const auto* prior = options.retainedCompositorBackground
-            ? &*options.retainedCompositorBackground : nullptr;
-        const bool retainSelection = !selection.surface && prior &&
-            prior->authorityId == options.artworkAuthorityId &&
-            prior->artworkWidgetId == options.artworkWidgetId &&
-            prior->artworkRuntimeGeneration == options.artworkRuntimeGeneration &&
-            prior->artworkPresentationGeneration == options.artworkPresentationGeneration &&
-            prior->widgetInstanceId == snapshot->instanceId && prior->nodeId == surface.id &&
-            prior->resourceGeneration == owner->bitmapResourceGeneration_;
-        if (!retainSelection && (selection.surface != &surface || !selection.focused)) return false;
+        const auto selection = SelectionFor(surface);
         std::vector<const WidgetNode*> path;
         if (!FindNodePath(snapshot->root, surface.id, path)) return false;
         const auto paints = [&](const WidgetNode& node) {
@@ -690,13 +653,9 @@ struct DeclarativeRenderer::RenderPass final {
         }
         compositorBackgroundId = surface.id;
         WidgetNode desired = surface;
-        if (retainSelection) {
-            desired.imageSource = prior->imageSource;
-            desired.artworkHandle = prior->artworkHandle;
-            desired.imageFit = prior->imageFit;
-        } else if (!selection.imageSource.empty() || !selection.artworkHandle.empty()) {
-            desired.imageSource = selection.imageSource;
-            desired.artworkHandle = selection.artworkHandle;
+        if (selection.source) {
+            desired.imageSource.clear();
+            desired.artworkHandle = selection.source->focusBackgroundArtworkHandle;
         }
         if (desired.imageFit.empty()) desired.imageFit = L"cover";
         desired.imageFit = ImageFitName(
@@ -712,12 +671,7 @@ struct DeclarativeRenderer::RenderPass final {
             shown->second.visibleBox};
         result.compositorBackground->decodeSize = options.sizeArtworkToDisplay
             ? DisplayImageSize(bounds.width, bounds.height, options.pixelScale) : ImageDecodeSize{};
-        result.compositorBackground->defaultArtworkKey = retainSelection
-            ? prior->defaultArtworkKey
-            : surface.imageSource + L"\x1f" + surface.artworkHandle + L"\x1f" + surface.imageFit;
-        result.compositorBackground->retainCurrentArtwork = retainSelection
-            ? prior->retainCurrentArtwork
-            : selection.imageSource.empty() && selection.artworkHandle.empty();
+        result.compositorBackground->selectionSourceId = selection.source ? selection.source->id : L"";
         AddBackgroundSurfaceTransitionDiagnostic(surface, L"compositor-eligible");
         return true;
     }
@@ -1100,13 +1054,7 @@ struct DeclarativeRenderer::RenderPass final {
             }
         }
         if (node.kind == L"focusPresentationSurface") {
-            const auto selection = ResolveFocusPresentationSelection(
-                snapshot->root, focusedId);
-            const auto* fragment = selection.surface == &node
-                ? selection.fragment
-                : !node.defaultFocusPresentation.empty()
-                    ? &node.defaultFocusPresentation.front()
-                    : nullptr;
+            const auto* fragment = PresentationFor(node);
             if (fragment && IsResponsiveVisible(*fragment)) {
                 element.children.push_back(PrepareNode(
                     *fragment, narrowId, parentWidth, parentHeight,
@@ -1212,13 +1160,7 @@ struct DeclarativeRenderer::RenderPass final {
             ? Intersection(ancestorClip, contentBox)
             : ancestorClip;
         if (node.kind == L"focusPresentationSurface") {
-            const auto selection = ResolveFocusPresentationSelection(
-                snapshot->root, focusedId);
-            const auto* fragment = selection.surface == &node
-                ? selection.fragment
-                : !node.defaultFocusPresentation.empty()
-                    ? &node.defaultFocusPresentation.front()
-                    : nullptr;
+            const auto* fragment = PresentationFor(node);
             if (fragment)
                 ResolvePresentation(
                     *fragment, translationX, translationY, childClip);
@@ -2891,9 +2833,7 @@ struct DeclarativeRenderer::RenderPass final {
             const auto style = prepared.at(id).baseStyle;
             const auto surface = prepared.at(id).effectiveBackground;
             if (node.kind == L"focusPresentationSurface") {
-                const auto selection = ResolveFocusPresentationSelection(snapshot->root, focusedId);
-                const auto* fragment = selection.surface == &node ? selection.fragment
-                    : !node.defaultFocusPresentation.empty() ? &node.defaultFocusPresentation.front() : nullptr;
+                const auto* fragment = PresentationFor(node);
                 if (fragment) self(self, *fragment, id, style.fontSizePx() / textScale, surface);
             }
             for (std::size_t index = 0; index < node.children.size(); ++index) {
@@ -3560,7 +3500,7 @@ struct DeclarativeRenderer::RenderPass final {
             const auto size = CachedImageSize(node);
             if (!node.imageSource.empty() || !node.artworkHandle.empty()) track(ImageKey(node, size));
             if (node.kind == L"backgroundSurface") {
-                const auto focused = ResolveFocusBackgroundSelection(snapshot->root, focusedId);
+                const auto focused = SelectionFor(node);
                 const auto protect = [&](std::wstring_view url, std::wstring_view handle) {
                     if (url.empty() && handle.empty()) return;
                     WidgetNode image;
@@ -3569,7 +3509,7 @@ struct DeclarativeRenderer::RenderPass final {
                     image.artworkHandle = handle;
                     track(ImageKey(image, CachedImageSize(image)));
                 };
-                if (focused.surface == &node) protect(focused.imageSource, focused.artworkHandle);
+                if (focused.source) protect({}, focused.source->focusBackgroundArtworkHandle);
                 for (const auto& [key, entry] : focusBackgrounds) {
                     if (entry.sessionId != node.id || entry.widgetInstanceId != snapshot->instanceId || entry.widgetId != options.artworkWidgetId) continue;
                     protect(entry.imageSource, entry.artworkHandle);
@@ -3680,16 +3620,6 @@ struct DeclarativeRenderer::RenderPass final {
         }
 
         auto retained = focusBackgrounds.find(authority);
-        const bool defaultChanged = retained != focusBackgrounds.end() &&
-            (retained->second.defaultImageSource != node.imageSource ||
-             retained->second.defaultArtworkHandle != node.artworkHandle ||
-             retained->second.defaultImageFit != node.imageFit);
-        const auto acceptDefaultDeclaration = [&](FocusBackgroundEntry& entry) {
-            entry.defaultImageSource = node.imageSource;
-            entry.defaultArtworkHandle = node.artworkHandle;
-            entry.defaultImageFit = node.imageFit;
-        };
-
         const auto sameProposal = [](
             const std::wstring_view imageSource,
             const std::wstring_view artworkHandle,
@@ -3799,9 +3729,6 @@ struct DeclarativeRenderer::RenderPass final {
             entry.imageSource = desired.imageSource;
             entry.artworkHandle = desired.artworkHandle;
             entry.imageFit = desired.imageFit;
-            entry.defaultImageSource = node.imageSource;
-            entry.defaultArtworkHandle = node.artworkHandle;
-            entry.defaultImageFit = node.imageFit;
             entry.committedBitmap = std::move(bitmap);
             entry.committedBitmapIsSurfaceComposite = false;
             entry.committedSurfaceCompositeBytes = 0;
@@ -3878,60 +3805,33 @@ struct DeclarativeRenderer::RenderPass final {
             return true;
         };
 
-        const auto selection = ResolveFocusBackgroundSelection(
-            snapshot->root, focusedId);
-        std::optional<WidgetNode> desired;
-        if (selection.surface == &node && selection.focused) {
-            if (!selection.artworkHandle.empty()) {
-                desired = node;
-                desired->imageSource = selection.imageSource;
-                desired->artworkHandle = selection.artworkHandle;
-                if (desired->imageFit.empty()) desired->imageFit = L"cover";
-            }
-        } else if (selection.surface) {
-            if (focusBackgrounds.contains(authority))
-                AddBackgroundSurfaceTransitionDiagnostic(
-                    node, L"retirement", L"different-effective-surface");
-            focusBackgrounds.erase(authority);
-            // This node still paints its authored fallback, but it is not the
-            // effective focus-artwork surface and therefore must not recreate
-            // retained transition authority on every frame.
-            if ((!node.imageSource.empty() || !node.artworkHandle.empty()) &&
-                DrawImage(node, style, rect, opacity, false, false)) {
-#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
-                if (!node.artworkHandle.empty())
-                    result.backgroundArtworkHandles[node.id] = node.artworkHandle;
-#endif
-            }
-            return;
+        const auto selection = SelectionFor(node);
+        WidgetNode desired = node;
+        if (selection.source) {
+            desired.imageSource.clear();
+            desired.artworkHandle = selection.source->focusBackgroundArtworkHandle;
+            if (desired.imageFit.empty()) desired.imageFit = L"cover";
+        } else {
+            // A missing/invalid semantic source must not be resurrected by a
+            // cached texture. Fall back even when the default has no image.
+            if (retained != focusBackgrounds.end() &&
+                (!sameCommittedProposal(retained->second, node) || retained->second.incomingBitmap ||
+                    retained->second.candidatePresent)) focusBackgrounds.erase(retained);
         }
-
-        // Updating a default is a new artwork proposal, not a new surface.
-        // An active override wins. With no widget focus, preserve the displayed
-        // selection and any fade already underway until focus returns.
-        const bool transitionDefault = defaultChanged && !desired &&
-            selection.surface == &node && selection.focused;
-        if (transitionDefault) desired = node;
         retained = focusBackgrounds.find(authority);
         if (retained != focusBackgrounds.end()) {
             auto& entry = retained->second;
-            if (defaultChanged && desired && !transitionDefault)
-                acceptDefaultDeclaration(entry);
             completeTransition(entry);
-            if (transitionDefault && sameCommittedProposal(entry, node))
-                acceptDefaultDeclaration(entry);
 
             if (entry.incomingBitmap) {
-                if (!desired) {
-                    clearCandidate(entry);
-                } else if (sameIncomingProposal(entry, *desired)) {
+                if (sameIncomingProposal(entry, desired)) {
                     clearCandidate(entry);
                 } else {
-                    queueCandidate(entry, *desired, now);
+                    queueCandidate(entry, desired, now);
                 }
 
-                if (entry.candidatePresent && desired &&
-                    sameCandidateProposal(entry, *desired) &&
+                if (entry.candidatePresent &&
+                    sameCandidateProposal(entry, desired) &&
                     now >= entry.candidateObservedAt &&
                     now - entry.candidateObservedAt >=
                         kBackgroundSurfaceProposalSettleMilliseconds) {
@@ -3982,13 +3882,13 @@ struct DeclarativeRenderer::RenderPass final {
             }
 
             if (entry.candidatePresent) {
-                if (!desired || sameCommittedProposal(entry, *desired)) {
+                if (sameCommittedProposal(entry, desired)) {
                     clearCandidate(entry);
-                } else if (!sameCandidateProposal(entry, *desired)) {
-                    queueCandidate(entry, *desired, now);
+                } else if (!sameCandidateProposal(entry, desired)) {
+                    queueCandidate(entry, desired, now);
                 }
-                if (entry.candidatePresent && desired &&
-                    sameCandidateProposal(entry, *desired)) {
+                if (entry.candidatePresent &&
+                    sameCandidateProposal(entry, desired)) {
                     if (now >= entry.candidateObservedAt &&
                         now - entry.candidateObservedAt >=
                             kBackgroundSurfaceProposalSettleMilliseconds) {
@@ -4020,89 +3920,76 @@ struct DeclarativeRenderer::RenderPass final {
                 return;
             }
 
-            if (!desired || sameCommittedProposal(entry, *desired)) {
+            if (sameCommittedProposal(entry, desired)) {
                 (void)drawRetained();
                 return;
             }
         }
 
-        if (desired) {
-            auto desiredState = ImagePresentationState::Pending;
-            auto desiredBitmap = owner->GetImageBitmap(
-                target, *desired, *this,
-                options.artworkWidgetId, desiredState);
-            if (!desiredBitmap) {
-                if (drawRetained()) return;
-                const bool trustedDefault =
-                    !node.artworkHandle.empty() && node.imageSource.empty();
-                const std::wstring defaultKey = trustedDefault
-                    ? RemoteImageCache::TrustedArtworkKey(
-                        options.artworkWidgetId, node.id,
-                        node.artworkHandle)
-                    : node.imageSource;
-                if (owner->imageCache_ && !defaultKey.empty() &&
-                    owner->imageCache_->GetState(defaultKey) ==
-                        RemoteImageState::Ready) {
-                    ComPtr<ID2D1Bitmap> defaultBitmap;
-                    if (DrawImage(
-                            node, style, rect, opacity, false, false,
-                            &defaultBitmap)) {
-                        remember(node, std::move(defaultBitmap));
-                    }
+        auto desiredState = ImagePresentationState::Pending;
+        auto desiredBitmap = owner->GetImageBitmap(
+            target, desired, *this,
+            options.artworkWidgetId, desiredState);
+        if (!desiredBitmap) {
+            if (drawRetained()) return;
+            const bool trustedDefault =
+                !node.artworkHandle.empty() && node.imageSource.empty();
+            const std::wstring defaultKey = trustedDefault
+                ? RemoteImageCache::TrustedArtworkKey(
+                    options.artworkWidgetId, node.id,
+                    node.artworkHandle)
+                : node.imageSource;
+            if (owner->imageCache_ && !defaultKey.empty() &&
+                owner->imageCache_->GetState(defaultKey) ==
+                    RemoteImageState::Ready) {
+                ComPtr<ID2D1Bitmap> defaultBitmap;
+                if (DrawImage(
+                        node, style, rect, opacity, false, false,
+                        &defaultBitmap)) {
+                    remember(node, std::move(defaultBitmap));
                 }
-                return;
             }
+            return;
+        }
 
-            retained = focusBackgrounds.find(authority);
-            if (retained == focusBackgrounds.end()) {
-                if (DrawResolvedImageLayers(
-                        *desired, desiredBitmap.Get(), false,
-                        nullptr, nullptr, 0.0F,
-                        style, rect, opacity, false)) {
-                    remember(*desired, std::move(desiredBitmap));
-                }
-                return;
+        retained = focusBackgrounds.find(authority);
+        if (retained == focusBackgrounds.end()) {
+            if (DrawResolvedImageLayers(
+                    desired, desiredBitmap.Get(), false,
+                    nullptr, nullptr, 0.0F,
+                    style, rect, opacity, false)) {
+                remember(desired, std::move(desiredBitmap));
             }
+            return;
+        }
 
-            auto& entry = retained->second;
-            if (!entry.committedBitmap) {
-                const auto committed = proposalNode(entry, false);
-                auto committedState = ImagePresentationState::Pending;
-                entry.committedBitmap = owner->GetImageBitmap(
-                    target, committed, *this,
-                    options.artworkWidgetId, committedState);
-            }
-            if (!entry.committedBitmap) {
-                entry.imageSource = desired->imageSource;
-                entry.artworkHandle = desired->artworkHandle;
-                entry.imageFit = desired->imageFit;
-                entry.committedBitmap = std::move(desiredBitmap);
-                entry.committedBitmapIsSurfaceComposite = false;
-                entry.committedSurfaceCompositeBytes = 0;
-                clearIncoming(entry);
-                clearCandidate(entry);
-                AddBackgroundSurfaceTransitionDiagnostic(
-                    node, L"completion", L"committed-texture-unavailable");
-                (void)drawRetained();
-                return;
-            }
-
-            startTransition(
-                entry, *desired, std::move(desiredBitmap), now, L"start");
+        auto& entry = retained->second;
+        if (!entry.committedBitmap) {
+            const auto committed = proposalNode(entry, false);
+            auto committedState = ImagePresentationState::Pending;
+            entry.committedBitmap = owner->GetImageBitmap(
+                target, committed, *this,
+                options.artworkWidgetId, committedState);
+        }
+        if (!entry.committedBitmap) {
+            entry.imageSource = desired.imageSource;
+            entry.artworkHandle = desired.artworkHandle;
+            entry.imageFit = desired.imageFit;
+            entry.committedBitmap = std::move(desiredBitmap);
+            entry.committedBitmapIsSurfaceComposite = false;
+            entry.committedSurfaceCompositeBytes = 0;
+            clearIncoming(entry);
+            clearCandidate(entry);
+            AddBackgroundSurfaceTransitionDiagnostic(
+                node, L"completion", L"committed-texture-unavailable");
             (void)drawRetained();
             return;
         }
 
-        if (drawRetained()) return;
-
-        if (!node.imageSource.empty() || !node.artworkHandle.empty()) {
-            ComPtr<ID2D1Bitmap> bitmap;
-            if (DrawImage(
-                    node, style, rect, opacity, false, false,
-                    &bitmap)) {
-                remember(node, std::move(bitmap));
-            }
-        }
+        startTransition(
+            entry, desired, std::move(desiredBitmap), now, L"start");
+        (void)drawRetained();
+        return;
     }
 
     void RetireAbsentFocusBackgroundSurfaces() {
@@ -4119,13 +4006,7 @@ struct DeclarativeRenderer::RenderPass final {
             if (node.kind == L"backgroundSurface")
                 present.insert(node.id);
             if (node.kind == L"focusPresentationSurface") {
-                const auto selection = ResolveFocusPresentationSelection(
-                    snapshot->root, focusedId);
-                const auto* fragment = selection.surface == &node
-                    ? selection.fragment
-                    : !node.defaultFocusPresentation.empty()
-                        ? &node.defaultFocusPresentation.front()
-                        : nullptr;
+                const auto* fragment = PresentationFor(node);
                 if (fragment) self(self, *fragment);
             }
             for (const auto& child : node.children) self(self, child);
@@ -4467,13 +4348,7 @@ struct DeclarativeRenderer::RenderPass final {
         if (presented == presentation.end()) return;
         CollectFocusGeometry(node, inputScope, presented->second);
         if (node.kind == L"focusPresentationSurface") {
-            const auto selection = ResolveFocusPresentationSelection(
-                snapshot->root, focusedId);
-            const auto* fragment = selection.surface == &node
-                ? selection.fragment
-                : !node.defaultFocusPresentation.empty()
-                    ? &node.defaultFocusPresentation.front()
-                    : nullptr;
+            const auto* fragment = PresentationFor(node);
             if (fragment) CollectFocusGeometryTree(*fragment, inputScope);
         }
         for (const auto& child : node.children)
@@ -4702,13 +4577,7 @@ struct DeclarativeRenderer::RenderPass final {
 
         if (!target) {
             if (node.kind == L"focusPresentationSurface") {
-                const auto selection = ResolveFocusPresentationSelection(
-                    snapshot->root, focusedId);
-                const auto* fragment = selection.surface == &node
-                    ? selection.fragment
-                    : !node.defaultFocusPresentation.empty()
-                        ? &node.defaultFocusPresentation.front()
-                        : nullptr;
+                const auto* fragment = PresentationFor(node);
                 if (fragment) DrawNode(*fragment, inputScope);
             }
             for (const auto& child : node.children) DrawNode(child, inputScope);
@@ -4898,13 +4767,7 @@ struct DeclarativeRenderer::RenderPass final {
         // renderer recurses through them.
         if (!clipTileContent) target->PopAxisAlignedClip();
         if (node.kind == L"focusPresentationSurface") {
-            const auto selection = ResolveFocusPresentationSelection(
-                snapshot->root, focusedId);
-            const auto* fragment = selection.surface == &node
-                ? selection.fragment
-                : !node.defaultFocusPresentation.empty()
-                    ? &node.defaultFocusPresentation.front()
-                    : nullptr;
+            const auto* fragment = PresentationFor(node);
             if (fragment) DrawNode(*fragment, inputScope);
         }
         for (std::size_t index = 0; index < node.children.size(); ++index) {
@@ -5171,6 +5034,25 @@ DeclarativeRenderer::PlanPresentationUpdate(
             impact.effects, WidgetPresentationEffect::Unknown)) {
         return std::nullopt;
     }
+    auto selectionMemory = focusSelectionMemory_;
+    const auto responsive = cache->options.responsiveViewport.value_or(Size{viewport.width, viewport.height});
+    const auto selected = selectionMemory.Resolve(snapshot, cache->focusedElementId,
+        FocusSelectionAuthority(cache->options), IsCompactResponsiveSurface(responsive));
+    if (SelectionSources(selected) != selectedPresentationSources_) return std::nullopt;
+    if (HasWidgetPresentationEffect(impact.effects, WidgetPresentationEffect::MeasureLayout) ||
+        HasWidgetPresentationEffect(impact.effects, WidgetPresentationEffect::Resource)) {
+        for (const auto& [_, selection] : selected) {
+            if (selection.surface->kind != L"focusPresentationSurface") continue;
+            const auto* fragment = selection.Fragment();
+            for (const auto& changedId : impact.affectedNodeIds) {
+                std::vector<const WidgetNode*> path;
+                if (changedId == selection.surface->id ||
+                    (selection.source && changedId == selection.source->id) ||
+                    (fragment && FindNodePath(*fragment, changedId, path)))
+                    return std::nullopt; // The consumer can be outside the changed cursor/scroll subtree.
+            }
+        }
+    }
     bool localLayout = HasWidgetPresentationEffect(
         impact.effects, WidgetPresentationEffect::MeasureLayout);
     if (localLayout && !impact.hasNonTextMeasureLayout &&
@@ -5379,32 +5261,17 @@ DeclarativeRenderer::PlanFocusUpdate(
         !addNode(nextFocusedElementId, true)) {
         return std::nullopt;
     }
-    const auto priorBackground = ResolveFocusBackgroundSelection(
-        snapshot.root, priorFocusedElementId);
-    const auto nextBackground = ResolveFocusBackgroundSelection(
-        snapshot.root, nextFocusedElementId);
-    if (!SameFocusBackgroundSelection(priorBackground, nextBackground)) {
-        for (const auto* surface :
-             {priorBackground.surface, nextBackground.surface}) {
-            if (!surface) continue;
-            const auto found = cache->nodes.find(surface->id);
-            if (found == cache->nodes.end()) return std::nullopt;
-            const auto bounded = Intersection(found->second.paintBounds, viewport);
-            if (bounded.width > 0.0F && bounded.height > 0.0F)
-                damage = UnionRect(damage, bounded);
-        }
-    }
-    const auto priorPresentation = ResolveFocusPresentationSelection(
-        snapshot.root, priorFocusedElementId);
-    const auto nextPresentation = ResolveFocusPresentationSelection(
-        snapshot.root, nextFocusedElementId);
-    if (!SameFocusPresentationSelection(priorPresentation, nextPresentation)) {
-        // The selected fragment participates in intrinsic layout and
-        // accessibility. A focus move therefore requires a complete native
-        // rerender from the already-admitted immutable snapshot, never a
-        // worker request or semantic/action-authority change.
+    auto priorMemory = focusSelectionMemory_;
+    auto nextMemory = focusSelectionMemory_;
+    const auto responsive = cache->options.responsiveViewport.value_or(Size{viewport.width, viewport.height});
+    const auto priorSelections = priorMemory.Resolve(snapshot, priorFocusedElementId,
+        FocusSelectionAuthority(cache->options), IsCompactResponsiveSurface(responsive));
+    const auto nextSelections = nextMemory.Resolve(snapshot, nextFocusedElementId,
+        FocusSelectionAuthority(cache->options), IsCompactResponsiveSurface(responsive));
+    if (SelectionSources(priorSelections, true) != SelectionSources(nextSelections, true))
         return std::nullopt;
-    }
+    if (SelectionSources(priorSelections) != SelectionSources(nextSelections))
+        damage = viewport;
     for (const auto& nodeId : additionalPaintNodeIds) {
         const auto found = cache->nodes.find(nodeId);
         if (found == cache->nodes.end()) return std::nullopt;
@@ -5835,6 +5702,9 @@ RenderResult DeclarativeRenderer::Render(
         });
     pass.result.succeeded = !hasErrors && pass.layout.valid() && renderTarget;
     if (pass.result.succeeded) {
+        pass.ResolveSelections();
+        selectedPresentationSources_ = SelectionSources(pass.selections);
+        focusSelectionMemory_ = std::move(pass.selectionMemory);
         pass.RetireAbsentFocusBackgroundSurfaces();
         focusBackgrounds_ = std::move(pass.focusBackgrounds);
         RecalculateFocusBackgroundCompositeBytes();
@@ -5933,13 +5803,7 @@ RenderResult DeclarativeRenderer::Render(
             }
             cache.nodes.insert_or_assign(node.id, std::move(state));
             if (node.kind == L"focusPresentationSurface") {
-                const auto selection = ResolveFocusPresentationSelection(
-                    snapshot.root, pass.focusedId);
-                const auto* fragment = selection.surface == &node
-                    ? selection.fragment
-                    : !node.defaultFocusPresentation.empty()
-                        ? &node.defaultFocusPresentation.front()
-                        : nullptr;
+                const auto* fragment = pass.PresentationFor(node);
                 if (fragment)
                     self(self, *fragment, node.id, descendantBoundary);
             }
@@ -6319,6 +6183,7 @@ void DeclarativeRenderer::ForgetWidgetState(
         return entry.first.starts_with(prefix);
     });
     motionTimeline_.ForgetPrefix(prefix);
+    focusSelectionMemory_.Forget(widgetInstanceId);
     std::erase_if(focusBackgrounds_, [&](const auto& entry) {
         return entry.second.widgetInstanceId == widgetInstanceId;
     });

@@ -331,7 +331,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ActionSurfacePresentation => Read<ActionSurfacePresentation?>(change.Value),
                 PresentationProperty.IsDisabled or PresentationProperty.IsSelected or
                 PresentationProperty.IsBusy or
-                PresentationProperty.UsesFocusedDescendantArtwork => Read<bool?>(change.Value),
+                PresentationProperty.UsesFocusedDescendantArtwork or PresentationProperty.RetainLastPresentation => Read<bool?>(change.Value),
                 PresentationProperty.Focus => Read<FocusNeighbors?>(change.Value),
                 PresentationProperty.ScrollAxis => Read<ScrollAxis?>(change.Value),
                 PresentationProperty.ShowScrollbar => Read<bool?>(change.Value),
@@ -476,6 +476,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.InputScopeId => node with { InputScopeId = Read<string?>(change.Value) },
                 PresentationProperty.InitialChildFocusId => node with { InitialChildFocusId = Read<string?>(change.Value) },
                 PresentationProperty.UsesFocusedDescendantArtwork => node with { UsesFocusedDescendantArtwork = Read<bool?>(change.Value) },
+                PresentationProperty.RetainLastPresentation => node with { RetainLastPresentation = Read<bool?>(change.Value) },
                 PresentationProperty.FocusPresentation => node with { FocusPresentation = Read<ViewNode?>(change.Value) },
                 PresentationProperty.DefaultFocusPresentation => node with { DefaultFocusPresentation = Read<ViewNode?>(change.Value) },
                 PresentationProperty.ScrollAxis => node with { ScrollAxis = Read<ScrollAxis?>(change.Value) },

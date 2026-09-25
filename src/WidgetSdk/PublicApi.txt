@@ -2477,7 +2477,9 @@ property WidgetRail.WidgetSdk.WidgetWifiScanState WidgetRail.WidgetSdk.WidgetAva
 property WidgetRail.WidgetSdk.WidgetWifiSecurityKind WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.Security { get; set; }
 property bool WidgetRail.WidgetSdk.ActionSheetItem.IsBusy { get; set; }
 property bool WidgetRail.WidgetSdk.ActionSheetItem.IsDisabled { get; set; }
+property bool WidgetRail.WidgetSdk.BackgroundSurfaceElement.RetainLastPresentation { get; set; }
 property bool WidgetRail.WidgetSdk.BackgroundSurfaceElement.UsesFocusedDescendantArtwork { get; set; }
+property bool WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.RetainLastPresentation { get; set; }
 property bool WidgetRail.WidgetSdk.IWidgetCapabilityClient.IsAvailable { get; }
 property bool WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.CloseOverlayOnSuccess { get; set; }
 property bool WidgetRail.WidgetSdk.NavigationShellDestination.IsDisabled { get; set; }

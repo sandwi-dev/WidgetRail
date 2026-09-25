@@ -56,8 +56,9 @@ public abstract record WidgetElement(string Id)
 
     /// <summary>
     /// Associates one trusted artwork resource with this exact focusable node.
-    /// The nearest opted-in BackgroundSurface may paint it while the host owns
-    /// focus; the declaration grants no input, URL, path, or provider authority.
+    /// The nearest opted-in BackgroundSurface may select it while the host owns
+    /// focus and retain that valid selection according to its surface policy.
+    /// The declaration grants no input, URL, path, or provider authority.
     /// </summary>
     public WidgetElement FocusBackground(WidgetArtworkHandle artwork) =>
         new FocusBackgroundElement(this, artwork);

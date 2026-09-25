@@ -634,7 +634,7 @@ internal static class PlayniteLibraryPresentation
                     UI.FocusPresentationSurface(
                         homeContent,
                         DefaultFocusedGameSummary(),
-                        "playnite-library.home.focus-summary"))
+                        "playnite-library.home.focus-summary") with { RetainLastPresentation = true })
                     .Classes("playnite-library-home-foreground", "playnite-library-common-frame")
                 : UI.Stack("playnite-library.home.foreground", header, queryControls, content)
                     .Classes("playnite-library-home-foreground", "playnite-library-home-fallback", "playnite-library-common-frame");

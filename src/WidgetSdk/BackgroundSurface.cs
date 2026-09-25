@@ -80,10 +80,13 @@ public sealed record BackgroundSurfaceElement : WidgetElement
     public WidgetElement Content { get; init; }
     public BackgroundSurfaceArtwork? Artwork { get; init; }
     public bool UsesFocusedDescendantArtwork { get; init; }
+    /// <summary>Retains a valid focused artwork source when focus leaves it. Defaults to true.</summary>
+    public bool RetainLastPresentation { get; init; } = true;
 
     /// <summary>
     /// Lets this surface consume the exact focused descendant's optional
-    /// FocusBackground declaration. Nested BackgroundSurface nodes are hard
+    /// FocusBackground declaration and apply this surface's retention policy.
+    /// Nested BackgroundSurface nodes are hard
     /// ownership boundaries.
     /// </summary>
     public BackgroundSurfaceElement UseFocusedDescendantArtwork() => this with
@@ -99,6 +102,7 @@ public sealed record BackgroundSurfaceElement : WidgetElement
         ArtworkHandle = Artwork?.ArtworkHandle?.Value,
         ImageFit = Artwork?.Fit,
         UsesFocusedDescendantArtwork = UsesFocusedDescendantArtwork ? true : null,
+        RetainLastPresentation = RetainLastPresentation ? null : false,
         StyleClasses = StyleClasses,
         Children = [Content.ToProtocolNode()],
     };

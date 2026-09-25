@@ -48,7 +48,9 @@ You can reopen connection settings through **Menu → Playnite connection**.
 | B | Close details or a nested page; from Home/Library, return to the tray |
 
 Use the **Home** and **Library** navigation tabs to switch between peer destinations.
-Each keeps its own game focus, filters, and scroll position. Home shows installed
+Each keeps its own game focus, filters, and scroll position. Home retains the last
+focused game summary and artwork while using the tray, other controls, or details;
+it falls back if that game leaves the current view, including cursor eviction. Home shows installed
 games; Library includes uninstalled games too. Selecting either destination enters
 its game list. Game details appears inside the widget with the page dimmed behind
 it; B restores the selected game. Each opening starts at Play/Install, while

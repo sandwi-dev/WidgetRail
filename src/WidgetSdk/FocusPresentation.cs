@@ -22,12 +22,15 @@ public sealed record FocusPresentationSurfaceElement : WidgetElement
 
     public WidgetElement Content { get; init; }
     public WidgetElement DefaultPresentation { get; init; }
+    /// <summary>Retains the last valid associated fragment when focus leaves it. Defaults to false.</summary>
+    public bool RetainLastPresentation { get; init; }
 
     internal override ViewNode ToProtocolNode() => new()
     {
         Id = Id,
         Kind = ViewNodeKind.FocusPresentationSurface,
         DefaultFocusPresentation = DefaultPresentation.ToProtocolNode(),
+        RetainLastPresentation = RetainLastPresentation ? true : null,
         StyleClasses = StyleClasses,
         Children = [Content.ToProtocolNode()],
     };

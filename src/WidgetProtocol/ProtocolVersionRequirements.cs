@@ -362,6 +362,9 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.TrustedEncodedArtworkVersion,
                     $"{path}.artworkHandle",
                     $"Trusted encoded artwork handles require protocol version {ProtocolConstants.TrustedEncodedArtworkVersion} or later.");
+            if (node.RetainLastPresentation is not null)
+                Add("focus-presentation-retention", ProtocolConstants.FocusPresentationRetentionVersion,
+                    $"{path}.retainLastPresentation", "Explicit focus-presentation retention requires protocol version 56 or later.");
             if (node.FocusBackgroundArtworkHandle is not null ||
                 node.UsesFocusedDescendantArtwork is true)
                 Add(
