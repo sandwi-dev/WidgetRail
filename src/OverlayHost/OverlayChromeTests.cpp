@@ -1297,6 +1297,16 @@ void CheckWidgetAnimationPolicies() {
     const auto focusMotion = FocusMove(targets[1].bounds, first.clip, {first.bounds, 1, first.clip}).Start(0, 1000);
     Check(focusMotion.duration == 140 && Sample(focusMotion, 70).bounds.x == 55,
           "focus policy uses a bounded smooth movement independently of section presets");
+    for (int tick = 0; tick <= 140; tick += 7) {
+        const auto partition = FocusSurfaceClips(first.clip, Sample(focusMotion, tick).bounds);
+        for (float y = 2.5F; y < 300; y += 7)
+            for (float x = 2.5F; x < 300; x += 7) {
+                const auto count = std::count_if(partition.begin(), partition.end(), [&](Rect rect) {
+                    return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
+                });
+                Check(count == 1, "focus surfaces replace every pixel exactly once, including translucent styles");
+            }
+    }
 }
 
 void CheckWidgetCompositorPixels() {
@@ -1666,6 +1676,92 @@ void CheckWidgetCompositorPixels() {
     DwmFlush();
     Check(GetGValue(pixel(72, 52)) > 220 && GetGValue(pixel(28, 52)) < 10,
           "an asynchronous cursor removal snaps an already-running focus move");
+    const auto surfaceScene = [&](bool right, bool pressLayers = false) {
+        auto scene = focusScene(right, L"surfaces");
+        scene->authority = pressLayers ? L"surface-press-proof" : L"surface-proof";
+        auto focus = scene->nodes[1];
+        scene->nodes.resize(1);
+        scene->nodes[0].solid = D2D1::ColorF(D2D1::ColorF::Blue);
+        for (const auto &control : scene->focusTargets) {
+            if (pressLayers) {
+                WidgetCompositionNode scale;
+                scale.id = L"control/" + control.key; scale.kind = WidgetCompositionKind::Control;
+                scale.key = control.key; scale.clock = control.scope;
+                scale.bounds = control.bounds; scale.clip = control.clip; scale.controlDuration = 140;
+                scene->nodes.push_back(scale);
+            }
+            WidgetCompositionNode group;
+            group.id = L"surface/" + control.key; group.kind = WidgetCompositionKind::FocusSurface;
+            group.clock = control.scope; group.key = control.key;
+            group.bounds = control.bounds; group.clip = control.clip;
+            if (pressLayers) group.parent = L"control/" + control.key;
+            scene->nodes.push_back(group);
+            WidgetCompositionNode idle;
+            idle.id = group.id + L"/idle"; idle.parent = group.id;
+            idle.bounds = control.bounds; idle.clip = control.clip;
+            idle.solid = D2D1::ColorF(1, 0, 0, .5F);
+            scene->nodes.push_back(idle);
+            auto active = idle; active.id = group.id + L"/active"; active.order = 1;
+            active.solid = D2D1::ColorF(0, 1, 0, .25F);
+            scene->nodes.push_back(active);
+        }
+        if (pressLayers) focus.parent = L"control/" + focus.key;
+        scene->nodes.push_back(focus);
+        return scene;
+    };
+    const auto focusedColor = [](COLORREF color) {
+        return GetRValue(color) < 5 && GetGValue(color) >= 60 && GetGValue(color) <= 68 && GetBValue(color) >= 185;
+    };
+    const auto idleColor = [](COLORREF color) {
+        return GetRValue(color) >= 123 && GetRValue(color) <= 132 && GetGValue(color) < 5 && GetBValue(color) >= 123;
+    };
+    commit(surfaceScene(false)); DwmFlush();
+    Check(focusedColor(pixel(28, 52)) && idleColor(pixel(72, 52)),
+          "focused surface replaces translucent idle pixels instead of accumulating alpha");
+    commit(surfaceScene(true));
+    const auto surfacePaints = surface.paintCounters().content;
+    const auto surfaceUploads = surface.widgetCompositionCounters().rasterUploads;
+    Sleep(90); DwmFlush();
+    Check(idleColor(pixel(20, 52)) && focusedColor(pixel(36, 52)) && idleColor(pixel(80, 52)),
+          "surface reveal follows the travelling focus without pre-highlighting the destination");
+    Sleep(250); DwmFlush();
+    Check(idleColor(pixel(28, 52)) && focusedColor(pixel(72, 52)) &&
+          surface.paintCounters().content == surfacePaints && surface.widgetCompositionCounters().rasterUploads == surfaceUploads,
+          "surface focus movement preserves exact alpha with no application animation paints");
+    commit(surfaceScene(false, true)); DwmFlush();
+    commit(surfaceScene(true, true)); Sleep(90); DwmFlush();
+    Check(focusedColor(pixel(36, 52)) && idleColor(pixel(80, 52)),
+          "resting press-scale layers share the focus coordinate space and do not suppress travel");
+    const auto scaleScene = [&](float amount) {
+        auto scene = std::make_shared<WidgetCompositionScene>();
+        scene->authority = L"scale-proof"; scene->viewport = {0, 0, 128, 128};
+        WidgetCompositionNode background;
+        background.id = L"background"; background.bounds = background.clip = scene->viewport;
+        background.solid = D2D1::ColorF(D2D1::ColorF::Black); scene->nodes.push_back(background);
+        WidgetCompositionNode control;
+        control.id = L"control"; control.kind = WidgetCompositionKind::Control; control.key = L"item";
+        control.clock = L"page"; control.bounds = {40, 40, 40, 40}; control.clip = scene->viewport;
+        control.controlScale = amount; control.controlDuration = 200; scene->nodes.push_back(control);
+        auto image = background; image.id = L"control.pixels"; image.parent = control.id;
+        image.bounds = control.bounds; image.solid = D2D1::ColorF(D2D1::ColorF::Red); scene->nodes.push_back(image);
+        auto text = image; text.id = L"control.text"; text.bounds = {50, 50, 4, 4};
+        text.solid = D2D1::ColorF(D2D1::ColorF::White); scene->nodes.push_back(text);
+        return scene;
+    };
+    commit(scaleScene(1)); DwmFlush();
+    Check(GetRValue(pixel(38, 60)) < 5, "unscaled control leaves its surrounding space clear");
+    commit(scaleScene(1.2F));
+    const auto scalePaints = surface.paintCounters().content;
+    const auto scaledInput = surface.MapWidgetCompositionInput({50, 50});
+    Check(scaledInput.x == 50 && scaledInput.y == 50, "whole-control scale leaves logical hit targets unchanged");
+    Sleep(240); DwmFlush();
+    Check(GetRValue(pixel(38, 60)) > 220 && GetGValue(pixel(49, 49)) > 220 && surface.paintCounters().content == scalePaints,
+          "compositor scale grows artwork and text together without UI frame painting");
+    commit(scaleScene(.98F));
+    Sleep(45); DwmFlush();
+    commit(scaleScene(1.04F));
+    Sleep(240); DwmFlush();
+    Check(GetRValue(pixel(38, 60)) < 5, "pressed-to-focused scale retargets one transform rather than stacking scales");
     surface.Reset();
     DestroyWindow(window);
     UnregisterClassW(name, wc.hInstance);

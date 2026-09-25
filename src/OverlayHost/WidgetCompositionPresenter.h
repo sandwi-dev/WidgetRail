@@ -46,6 +46,9 @@ class WidgetCompositionPresenter final {
         Ptr<IDCompositionVisual3> root, incoming, outgoing, incomingClip, outgoingClip;
         Motion motion, exit;
         std::optional<animation::FocusTarget> focusOrigin;
+        Motion focusReveal;
+        Rect focusExtent;
+        std::array<Ptr<IDCompositionVisual3>, 5> surfaceClips, surfacePixels;
         Raster previous;
         bool closing{};
         int direction{1};
@@ -71,5 +74,6 @@ class WidgetCompositionPresenter final {
     void DrawGroup(ID2D1RenderTarget *target, const std::wstring &group, D2D1_MATRIX_3X2_F transform,
                    float opacity, std::int64_t now) const;
     HRESULT Rebuild(IDCompositionVisual2 *above);
+    HRESULT ConfigureFocusSurface(Group &group);
 };
 } // namespace widgetrail

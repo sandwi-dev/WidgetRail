@@ -127,6 +127,30 @@ cancels outstanding transitions. Layout, colors, borders, shadows, blur,
 progress width, shell placement, and widget replacement are not interpolated
 by these WRSS transitions. Host window resizing and background-surface transitions use separate animation paths.
 
+For buttons and action surfaces, `scale` with linear, ease-out or ease-in-out
+easing uses one compositor transform for the whole control, including text and
+artwork. It keeps layout and hit targets fixed and follows the global widget
+animation speed setting. There is no additional SDK scale setting. Put the
+duration on the base rule so both focus entry and exit animate:
+
+```wrss
+.poster-card { scale: 1; transition-duration: 140ms; transition-easing: ease-in-out; }
+.poster-card:focused { scale: 1.04; }
+.poster-card:pressed { scale: 0.98; }
+```
+
+Leave space for the enlargement inside the parent's clip. Pressed scale replaces
+focused scale; the values do not multiply. Reduced motion snaps to the final
+scale. Spring and surfaces with live media keep the existing renderer path.
+Focus-state `width` and `height` do not resize the native layout; use `scale`
+for visual enlargement.
+
+Separately, the host can move focus-specific backgrounds, border colors and
+outlines together for fixed-size controls. This uses the final resolved styles
+from every WRSS layer and preserves persistent `:selected` styling. Unsupported
+decoration combinations use a stationary fallback. See
+[focus movement](../developers/navigation.md#focus-movement).
+
 Untrusted input is bounded before publication: source bytes/characters,
 statements, imports and import depth, selectors per rule, declarations per
 rule, raw values, and expanded variable values all have hard limits exposed

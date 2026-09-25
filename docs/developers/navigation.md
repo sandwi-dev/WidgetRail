@@ -169,10 +169,14 @@ Widgets continue to declare semantic transitions rather than choosing host effec
 
 ### Focus movement
 
-The native host moves the themed focus outline between nearby controls using
+The native host moves the themed focus decoration between nearby controls using
 DirectComposition. Widgets need no transition declaration for this behavior.
-Text, artwork, focus-state styles and the options badge change to the destination
-immediately; the outline alone moves over a 140 ms smoothstep timeline at 1x.
+Text, artwork and the options badge change to the destination immediately.
+The outline and focus border move over a 140 ms smoothstep timeline at 1x.
+Normal and focused backgrounds are revealed through complementary compositor
+clips on that same clock, behind each control's content. Every surface pixel
+is painted once, preserving translucent colors instead of overlaying a second
+fill. Normal surfaces retain selected, disabled and busy styling.
 The widget animation speed preference scales this duration. Reduced Motion and
 hosts without composition use the stationary outline.
 
@@ -185,6 +189,33 @@ large size changes and scope changes snap. Repeated navigation samples the
 current compositor position. Same-target updates do not restart the clock.
 The focus layer never changes input mapping or publishes an animation repaint
 timer. Live external media surfaces keep their existing stationary fallback.
+
+Focus surface separation uses final resolved styles, not widget IDs or selector
+names. It supports background, border color and rounded-shape changes. Shadows,
+blur, border-width/layout changes and semantic navigation-selection surfaces
+retain their ordinary surface painting. Poster surfaces remain underneath
+full-bleed artwork; their borders are not lifted above that artwork. Unsupported
+surface changes snap the outline too, avoiding competing focus indicators.
+
+### Authored control scaling
+
+WRSS `scale` is the sole opt-in for visual size changes; there is no second SDK
+flag or host zoom preset. On buttons and action surfaces, supported scaling runs
+as one compositor transform containing the background, text, artwork and focus
+decoration. Controls whose focus state changes scale use attached decoration
+instead of a travelling row highlight. Pressed-only scale rules still allow
+normal focus travel while the controls are at rest. Base, focused and pressed styles resolve through the existing cascade;
+pressed scale replaces focused scale rather than multiplying another transform.
+Layout and input rectangles stay fixed. Authors must provide room inside ancestor
+clips for enlargement; paint order and clipping are preserved.
+
+Use `transition-duration` and `transition-easing` with `scale`. Linear, ease-out
+and ease-in-out control-scale curves run in the compositor and honor the widget
+animation speed preference. Spring retains its existing renderer evaluator.
+Reduced Motion snaps to the authored scale. First frames, cursor identity/scope
+changes and geometry changes also snap, while rapid focus/press changes retarget
+from the currently displayed transform. Focused width/height overrides do not
+change the native base-style layout contract.
 
 ## Widget modals
 

@@ -33,9 +33,12 @@ together. These preferences apply immediately and survive restarts. Reduced moti
 including the Windows preference when followed, overrides both without changing
 your saved choices. Tray widget-switch animation remains in **Settings → Appearance**.
 
-The focus outline moves between nearby controls while the controls respond
+The focus highlight moves between nearby controls while the controls respond
 immediately. Scrolling, page changes and large focus jumps keep the outline
 stationary on the current control. Reduced motion disables focus movement.
+Widget or theme authors can instead use WRSS scaling to enlarge a focused card
+with its text and artwork. This uses the existing styling rules, rather than a
+separate competing zoom setting.
 
 ## Arrange your tray
 

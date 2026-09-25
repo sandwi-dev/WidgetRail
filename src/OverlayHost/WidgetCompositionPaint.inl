@@ -8,6 +8,40 @@ bool PaintCompositionPhase(std::wstring_view id, int phase) const {
     return found != compositionPhases.end() && static_cast<int>(found->second) == compositionBand;
 }
 
+bool CompositorControlsEnabled() {
+    if (!compositorControlSupport) {
+        const auto live = [&](const auto &self, const WidgetNode &node) -> bool {
+            return node.kind == L"mediaViewport" || node.kind == L"windowPreview" ||
+                std::any_of(node.children.begin(), node.children.end(), [&](const auto &child) { return self(self, child); });
+        };
+        compositorControlSupport = options.compositorWidgetTransitions && !live(live, snapshot->root) &&
+            !RasterWidgetMotionEnabled();
+    }
+    return *compositorControlSupport;
+}
+
+bool UsesCompositorControlScale(const WidgetNode &node) {
+    if ((node.kind != L"button" && node.kind != L"actionSurface") || !CompositorControlsEnabled()) return false;
+    bool scales{};
+    for (const auto *style : {&node.baseStyle, &node.focusedStyle, &node.pressedStyle}) {
+        // Keep the existing exact spring evaluator until the compositor can
+        // represent that curve too; never silently reinterpret authored easing.
+        const auto easing = style->find(L"transition-easing");
+        if (easing != style->end() && easing->second.text == L"spring") return false;
+        const auto scale = style->find(L"scale");
+        scales = scales || (scale != style->end() && scale->second.number && *scale->second.number != 1);
+    }
+    return scales;
+}
+
+void RestoreControlScaleFallback() {
+    for (auto &[id, shown] : presentation) {
+        const auto style = prepared.find(id);
+        if (style != prepared.end() && UsesCompositorControlScale(*style->second.node))
+            shown.motion.value.scale = style->second.paintStyle.scale();
+    }
+}
+
 bool DrawWidgetComposition() {
     if (!options.compositorWidgetTransitions || !target)
         return false;
@@ -33,7 +67,7 @@ bool DrawWidgetComposition() {
         return false;
     }
     const auto needsLayers = [&](const auto &self, const WidgetNode &node) -> bool {
-        if (node.transition || node.kind == L"modalLayer")
+        if (node.transition || node.kind == L"modalLayer" || UsesCompositorControlScale(node))
             return true;
         return std::any_of(node.children.begin(), node.children.end(),
                            [&](const auto &child) { return self(self, child); });
@@ -50,6 +84,7 @@ bool DrawWidgetComposition() {
     const WidgetNode *sceneFocus{};
     std::wstring focusScope;
     std::wstring focusKey;
+    bool focusMovable{true};
     bool focusTargetsOverflow{};
     std::map<std::wstring, std::wstring> parents;
     std::vector<std::wstring> path;
@@ -105,11 +140,28 @@ bool DrawWidgetComposition() {
         }
         if (!node.collectionItemKey.empty()) animation::AppendMotionIdentity(itemIdentity, node.collectionItemKey);
         const auto targetKey = node.id + L"\x1f" + itemIdentity;
+        const bool controlScale = UsesCompositorControlScale(node);
+        const bool visibleControl = (node.kind == L"button" || node.kind == L"actionSurface") &&
+            shown.visibleBox.width > .5F && shown.visibleBox.height > .5F;
+        bool separateSurface{};
+        bool movable = true;
+        if (visibleControl) {
+            const auto &context = styleNode->second.context;
+            const auto focusStyle = Adapt(node, true, false, context.parentWidthPx, context.parentHeightPx,
+                context.parentFontSizePx, context.effectiveBackground).style;
+            movable = styleNode->second.baseStyle.scale() == 1 && focusStyle.scale() == 1 && node.id != pressedId;
+            if (animation::HasFocusSurfaceChange(styleNode->second.baseStyle, focusStyle)) {
+                separateSurface = !surfaceDone && !node.transition && node.id != pressedId &&
+                    animation::CanSeparateFocusSurface(styleNode->second.baseStyle, focusStyle);
+                movable = movable && separateSurface;
+                if (separateSurface) compositionFocusStyles.emplace(node.id, focusStyle);
+            }
+        }
         if ((node.kind == L"button" || node.kind == L"slider" || node.kind == L"actionSurface") &&
             shown.visibleBox.width > .5F && shown.visibleBox.height > .5F) {
             if (scene->focusTargets.size() < WidgetCompositionScene::MaximumNodes)
                 scene->focusTargets.push_back({targetKey, scope,
-                                               shown.borderBox, shown.ancestorClip});
+                                               shown.borderBox, shown.ancestorClip, movable});
             else
                 focusTargetsOverflow = true;
         }
@@ -123,6 +175,15 @@ bool DrawWidgetComposition() {
                 parent = addGroup(L"layout/" + node.id, parent, WidgetCompositionKind::Layout, spec->groupId,
                                   spec->key, spec->order, shown.borderBox, shown.ancestorClip);
         }
+        if (controlScale && visibleControl) {
+            parent = addGroup(L"control/" + node.id, parent, WidgetCompositionKind::Control,
+                scope, targetKey, 0, shown.borderBox, shown.ancestorClip);
+            auto &control = scene->nodes.back();
+            control.controlScale = style.scale();
+            control.controlDuration = static_cast<unsigned>(style.transitionDurationMilliseconds());
+            control.controlCurve = style.transitionEasing() == NativeTransitionEasing::Linear ? animation::Curve{1, 0, 0}
+                : style.transitionEasing() == NativeTransitionEasing::EaseOut ? animation::EaseOut : animation::Smooth;
+        }
         const bool compositorBackground =
             node.kind == L"backgroundSurface" &&
             TrySelectCompositorBackground(node, style, shown.borderBox, shown.motion.value.opacity);
@@ -133,7 +194,16 @@ bool DrawWidgetComposition() {
         const bool surfacePaints = (style.background() && style.background()->alpha > 0) ||
                                    edgePaints(edges.top) || edgePaints(edges.right) ||
                                    edgePaints(edges.bottom) || edgePaints(edges.left) || style.shadowColor();
-        if (!surfaceDone && surfacePaints && !compositorBackground && node.kind != L"modalLayer" &&
+        if (separateSurface) {
+            const auto surface = addGroup(L"focus-surface/" + node.id, parent, WidgetCompositionKind::FocusSurface,
+                scope, targetKey, 0, shown.borderBox, shown.ancestorClip);
+            op(node, 5, surface, shown.visibleBox);
+            scene->nodes.back().order = 0;
+            split();
+            op(node, 0, surface, shown.visibleBox);
+            scene->nodes.back().order = 1;
+            split();
+        } else if (!surfaceDone && surfacePaints && !compositorBackground && node.kind != L"modalLayer" &&
             node.kind != L"slider")
             op(node, 0, parent, shown.visibleBox);
         const bool semantic = node.kind != L"stack" && node.kind != L"row" && node.kind != L"scroll" &&
@@ -195,6 +265,7 @@ bool DrawWidgetComposition() {
             sceneFocus = &node;
             focusScope = scope;
             focusKey = targetKey;
+            focusMovable = movable;
         }
         if (parent != beforeParent)
             split();
@@ -212,6 +283,7 @@ bool DrawWidgetComposition() {
             const auto focusGroup = addGroup(L"$focus", focusParents.at(focusedId), WidgetCompositionKind::Focus,
                 focusScope, focusKey, 0,
                 shown.borderBox, shown.ancestorClip);
+            scene->nodes.back().focusMovable = focusMovable;
             const auto &style = prepared.at(NarrowStableId(focusedId)).paintStyle;
             const auto paintBox = ScaleRect(shown.borderBox, shown.motion.value.scale);
             const float outset = std::max(12.0F, style.outlineOffsetPx() +
@@ -240,10 +312,13 @@ bool DrawWidgetComposition() {
     if (scene->nodes.size() > WidgetCompositionScene::MaximumNodes ||
         scene->rasterBytes > WidgetCompositionScene::MaximumBytes) {
         scene->nodes.clear();
+        scene->focusTargets.clear();
+        scene->rasterBytes = 0;
         scene->directContent = true;
         scene->reducedMotion = true;
         compositionPhases.clear();
         transitionSelections.clear();
+        RestoreControlScaleFallback();
         result.widgetComposition = std::move(scene);
         return false;
     }

@@ -1459,6 +1459,7 @@ void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
     snapshot.root.kind = L"row";
     snapshot.root.children[0].contextActions = {{L"next", L"Play next"}};
     snapshot.root.children[0].focusedStyle[L"outline-color"] = Color(L"#00ff00");
+    snapshot.root.children[0].focusedStyle[L"background"] = Color(L"#aa000080");
     auto neighbor = snapshot.root.children[0];
     const auto rename = [&](const auto& self, WidgetNode& node) -> void {
         node.id += L".second";
@@ -1499,6 +1500,8 @@ void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
     const auto composited = draw(L"poster.card");
     Check(composited.widgetComposition && !composited.widgetComposition->directContent,
         "poster focus works without explicit transition declarations");
+    Check(composited.widgetComposition->focusTargets[0].movable,
+        "poster artwork does not disable the accepted travelling outline");
     const auto stationaryBadge = std::find_if(composited.widgetComposition->nodes.begin(),
         composited.widgetComposition->nodes.end(), [&](const auto &node) {
             return node.bitmap && animation::SameFocusRect(node.bounds, badge);
@@ -7644,6 +7647,125 @@ void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
         "external live surfaces preserve direct rendering and stationary placement");
 }
 
+void FocusSurfacesPreserveColorsAndWrssScale() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "focus surface test resources"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    ok(wic->CreateBitmap(320, 220, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), nullptr);
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"focus-surfaces";
+    snapshot.activeInputScopeId = L"rows";
+    snapshot.root = Node(L"rows", L"stack");
+    snapshot.root.baseStyle = {{L"padding", Length(20)}, {L"gap", Length(12)}};
+    auto row = Node(L"row.one", L"button");
+    row.actionId = L"activate";
+    row.baseStyle = {{L"width", Length(260)}, {L"height", Length(60)}, {L"padding", Length(12)},
+        {L"border-width", Length(1)}, {L"border-color", Color(L"#ffffff30")}, {L"corner-radius", Length(8)}};
+    row.focusedStyle = {{L"border-color", Color(L"#ff3d2e")}};
+    auto selected = row; selected.id = L"row.selected"; selected.isSelected = true;
+    selected.baseStyle[L"background"] = Color(L"#00880060");
+    snapshot.root.children = {row, selected};
+    DeclarativeRenderOptions options;
+    options.accessibility.reducedMotion = true;
+    const auto draw = [&](std::wstring_view focus, bool composition) {
+        options.compositorWidgetTransitions = composition;
+        target->BeginDraw(); target->Clear(D2D1::ColorF(.2F, .3F, .4F));
+        auto result = renderer.Render(target.Get(), snapshot, focus, {0, 0, 320, 220}, options);
+        ok(target->EndDraw()); Check(result.succeeded, "focus surface frame succeeds");
+        return result;
+    };
+    const auto pixel = [&](int x, int y) {
+        ComPtr<IWICBitmapLock> lock; const WICRect rect{x, y, 1, 1};
+        ok(canvas->Lock(&rect, WICBitmapLockRead, lock.GetAddressOf()));
+        UINT count{}; BYTE *bytes{}; ok(lock->GetDataPointer(&count, &bytes));
+        return std::array<int, 4>{bytes[0], bytes[1], bytes[2], bytes[3]};
+    };
+    // These alpha pairs include the built-in theme palette shapes, transparent
+    // idle rows, and a focus surface that is LESS opaque than the idle surface.
+    for (const auto &colors : std::array{
+            std::pair{L"rgba(46,23,25,.98)", L"rgba(77,40,43,.98)"},
+            std::pair{L"rgba(22,32,45,.98)", L"rgba(39,54,72,.98)"},
+            std::pair{L"rgba(46,30,60,.98)", L"rgba(72,48,92,.98)"},
+            std::pair{L"rgba(29,29,27,.98)", L"rgba(48,47,43,.98)"},
+            std::pair{L"rgba(19,24,41,.98)", L"rgba(35,45,74,.98)"},
+            std::pair{L"#00000000", L"#ffffff80"},
+            std::pair{L"#aa5500cc", L"#ff113340"}}) {
+        snapshot.root.children[0].baseStyle[L"background"] = Color(colors.first);
+        snapshot.root.children[0].focusedStyle[L"background"] = Color(colors.second);
+        ++snapshot.sequence;
+        const auto plain = draw(L"row.one", false);
+        const auto fill = pixel(150, 55), border = pixel(20, 45), retained = pixel(150, 120);
+        const auto composed = draw(L"row.one", true);
+        Check(composed.widgetComposition && !composed.widgetComposition->directContent,
+            "resolved focused surfaces use composition");
+        target->BeginDraw(); target->Clear(D2D1::ColorF(.2F, .3F, .4F));
+        for (const auto &node : composed.widgetComposition->nodes) {
+            if (!node.bitmap) continue;
+            const auto parent = std::find_if(composed.widgetComposition->nodes.begin(), composed.widgetComposition->nodes.end(),
+                [&](const auto &value) { return value.id == node.parent; });
+            if (parent != composed.widgetComposition->nodes.end() && parent->kind == WidgetCompositionKind::FocusSurface) {
+                const bool focused = parent->key == L"row.one\x1f";
+                if ((node.order == 1) != focused) continue;
+            }
+            target->DrawBitmap(node.bitmap.Get(), D2D1::RectF(node.bounds.x, node.bounds.y,
+                node.bounds.x + node.bounds.width, node.bounds.y + node.bounds.height));
+        }
+        ok(target->EndDraw());
+        Check(pixel(150, 55) == fill && pixel(20, 45) == border,
+            "separated focus background and border preserve exact themed alpha/color at rest");
+        Check(pixel(150, 120) == retained, "persistent selected surface stays on its own row");
+        Check(composed.hitRegions.size() == plain.hitRegions.size(), "focus surfaces add no input targets");
+    }
+    snapshot.root.children[0].focusedStyle[L"width"] = Length(300);
+    ++snapshot.sequence;
+    const auto fallback = draw(L"row.one", true);
+    Check(std::none_of(fallback.widgetComposition->nodes.begin(), fallback.widgetComposition->nodes.end(),
+        [](const auto &node) { return node.id == L"focus-surface/row.one"; }),
+        "focused layout overrides use the stationary decoration fallback");
+    Near(fallback.navigationRects.at(L"row.one").width, 260, "focus width does not redefine the layout contract");
+    snapshot.root.children[0].focusedStyle.erase(L"width");
+    snapshot.root.children[0].baseStyle[L"scale"] = Number(1);
+    snapshot.root.children[0].baseStyle[L"transition-duration"] = Duration(140);
+    snapshot.root.children[0].focusedStyle[L"scale"] = Number(1.04);
+    snapshot.root.children[0].pressedStyle[L"scale"] = Number(.98);
+    options.accessibility.reducedMotion = false;
+    ++snapshot.sequence;
+    draw(L"row.selected", true);
+    const auto scaled = draw(L"row.one", true);
+    const auto control = std::find_if(scaled.widgetComposition->nodes.begin(), scaled.widgetComposition->nodes.end(),
+        [](const auto &node) { return node.id == L"control/row.one"; });
+    Check(control != scaled.widgetComposition->nodes.end() && std::abs(control->controlScale - 1.04F) < .001F,
+        "WRSS focused scale owns one whole-control compositor transform");
+    Check(!scaled.animationActive, "compositor scale does not schedule renderer animation frames");
+    Near(scaled.navigationRects.at(L"row.one").width, 260, "scale keeps input and layout geometry stable");
+    options.pressedElementId = L"row.one";
+    const auto pressed = draw(L"row.one", true);
+    const auto press = std::find_if(pressed.widgetComposition->nodes.begin(), pressed.widgetComposition->nodes.end(),
+        [](const auto &node) { return node.id == L"control/row.one"; });
+    Check(press != pressed.widgetComposition->nodes.end() && std::abs(press->controlScale - .98F) < .001F,
+        "pressed scale replaces focused scale rather than multiplying a second effect");
+    snapshot.root.children[0].focusedStyle[L"scale"] = Number(1);
+    ++snapshot.sequence; options.pressedElementId.clear();
+    const auto pressOnly = draw(L"row.one", true);
+    Check(pressOnly.widgetComposition->focusTargets[0].movable,
+        "a pressed-only scale rule does not disable normal focus travel");
+    options.pixelScale = 128; // Reject capture sizing before allocating a bitmap.
+    const auto bounded = draw(L"row.one", true);
+    Check(bounded.widgetComposition && bounded.widgetComposition->directContent &&
+          bounded.widgetComposition->nodes.empty() && bounded.widgetComposition->rasterBytes == 0,
+          "an oversized focus scene hands off a valid empty static fallback instead of failing admission");
+}
+
 void ModalLayersPaintAboveThePageAndKeepIndependentScroll() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -8060,6 +8182,7 @@ int main() {
     TileDescendantsRespectResolvedShapeAndOverflow();
     RetainedPosterPaintPreservesArtwork();
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
+    FocusSurfacesPreserveColorsAndWrssScale();
     ModalLayersPaintAboveThePageAndKeepIndependentScroll();
     ScrollIndicatorsRespectViewportAndRetainedPaint();
     ScrollIndicatorStylePolicies();

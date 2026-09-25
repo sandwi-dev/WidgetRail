@@ -1,6 +1,7 @@
 #pragma once
 
 #include "WidgetAnimationPolicy.h"
+#include "NativeStyle.h"
 #include <span>
 #include <string>
 #include <string_view>
@@ -12,6 +13,7 @@ namespace widgetrail::animation {
 struct FocusTarget {
     std::wstring key, scope;
     Rect bounds, clip;
+    bool movable{true};
 };
 
 inline void AppendMotionIdentity(std::wstring &identity, std::wstring_view part) {
@@ -35,13 +37,13 @@ inline bool HasStableFocusTarget(const FocusTarget &previous,
     const auto old = std::find_if(currentTargets.begin(), currentTargets.end(), [&](const auto &target) {
         return target.key == previous.key && target.scope == previous.scope;
     });
-    return old != currentTargets.end() && SameFocusRect(old->bounds, previous.bounds) &&
+    return old != currentTargets.end() && old->movable && SameFocusRect(old->bounds, previous.bounds) &&
            SameFocusRect(old->clip, previous.clip);
 }
 
 inline bool CanMoveFocus(const FocusTarget &previous, const FocusTarget &next,
                          std::span<const FocusTarget> currentTargets) noexcept {
-    if (previous.key == next.key || previous.scope != next.scope ||
+    if (!previous.movable || !next.movable || previous.key == next.key || previous.scope != next.scope ||
         !SameFocusRect(previous.clip, next.clip) || !FullyVisible(previous) || !FullyVisible(next) ||
         !HasStableFocusTarget(previous, currentTargets))
         return false;
@@ -57,6 +59,55 @@ inline Recipe FocusMove(Rect bounds, Rect clip, Pose previous) noexcept {
     auto recipe = Stationary(bounds, clip);
     recipe.from.bounds = previous.bounds;
     recipe.milliseconds = 140;
+    return recipe;
+}
+
+// Surface replacement uses disjoint clips, not alpha overlays. The first four
+// regions retain the normal surface; the last reveals the focused surface.
+inline std::array<Rect, 5> FocusSurfaceClips(Rect extent, Rect reveal) noexcept {
+    const float right = extent.x + extent.width, bottom = extent.y + extent.height;
+    return {{{extent.x, extent.y, extent.width, reveal.y - extent.y},
+             {extent.x, reveal.y + reveal.height, extent.width, bottom - reveal.y - reveal.height},
+             {extent.x, reveal.y, reveal.x - extent.x, reveal.height},
+             {reveal.x + reveal.width, reveal.y, right - reveal.x - reveal.width, reveal.height},
+             reveal}};
+}
+
+inline bool HasFocusSurfaceChange(const NativeRenderStyle &base, const NativeRenderStyle &focus) noexcept {
+    return base.background() != focus.background() || base.borderEdges() != focus.borderEdges() ||
+           base.cornerRadiusPx() != focus.cornerRadiusPx() || base.shape() != focus.shape();
+}
+
+inline bool CanSeparateFocusSurface(const NativeRenderStyle &base, const NativeRenderStyle &focus) noexcept {
+    const auto hasShadow = [](const auto &style) {
+        return style.shadowColor() && style.shadowColor()->alpha > 0;
+    };
+    const auto &before = base.borderEdges(), &after = focus.borderEdges();
+    return before.top.widthPx == after.top.widthPx && before.right.widthPx == after.right.widthPx &&
+        before.bottom.widthPx == after.bottom.widthPx && before.left.widthPx == after.left.widthPx &&
+        !hasShadow(base) && !hasShadow(focus) && base.backgroundBlurPx() == 0 && focus.backgroundBlurPx() == 0 &&
+        base.opacity() == focus.opacity() && base.scale() == 1 && focus.scale() == 1 &&
+        base.translateXPx() == focus.translateXPx() && base.translateYPx() == focus.translateYPx() &&
+        base.widthPx() == focus.widthPx() && base.heightPx() == focus.heightPx() &&
+        base.minWidthPx() == focus.minWidthPx() && base.minHeightPx() == focus.minHeightPx() &&
+        base.maxWidthPx() == focus.maxWidthPx() && base.maxHeightPx() == focus.maxHeightPx() &&
+        base.paddingPx() == focus.paddingPx() && base.marginPx() == focus.marginPx();
+}
+
+inline Rect ScaleControl(Rect bounds, float scale) noexcept {
+    scale = std::clamp(scale, .5F, 2.0F);
+    const float x = bounds.width * (scale - 1) * .5F, y = bounds.height * (scale - 1) * .5F;
+    return {bounds.x - x, bounds.y - y, bounds.width * scale, bounds.height * scale};
+}
+
+inline Recipe ControlScale(Rect bounds, Rect clip, Pose previous, float scale, unsigned duration,
+                           Curve curve = Smooth) noexcept {
+    auto recipe = Stationary(bounds, clip);
+    recipe.from = previous;
+    recipe.from.clip = clip;
+    recipe.to.bounds = ScaleControl(bounds, scale);
+    recipe.milliseconds = duration;
+    recipe.curve = curve;
     return recipe;
 }
 

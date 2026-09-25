@@ -141,6 +141,10 @@ HRESULT WidgetCompositionPresenter::Animate(IDCompositionVisual3 *visual, IDComp
     const float b[]{to._11, to._22, to._31 * scale, to._32 * scale};
     const int rows[]{0, 1, 2, 2}, columns[]{0, 1, 0, 1};
     for (int i = 0; SUCCEEDED(hr) && i < 4; ++i) {
+        if (a[i] == b[i]) {
+            hr = transform->SetMatrixElement(rows[i], columns[i], b[i]);
+            continue;
+        }
         Ptr<IDCompositionAnimation> animation;
         hr = animate(a[i], b[i], animation.GetAddressOf());
         if (SUCCEEDED(hr))
@@ -149,10 +153,10 @@ HRESULT WidgetCompositionPresenter::Animate(IDCompositionVisual3 *visual, IDComp
     if (SUCCEEDED(hr))
         hr = static_cast<IDCompositionVisual2 *>(visual)->SetTransform(transform.Get());
     Ptr<IDCompositionAnimation> opacity;
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(hr) && motion.from.opacity != motion.to.opacity)
         hr = animate(motion.from.opacity, motion.to.opacity, opacity.GetAddressOf());
     if (SUCCEEDED(hr))
-        hr = visual->SetOpacity(opacity.Get());
+        hr = opacity ? visual->SetOpacity(opacity.Get()) : visual->SetOpacity(motion.to.opacity);
     if (SUCCEEDED(hr) && Same(motion.from.clip, motion.to.clip))
         hr = clipVisual->SetClip(Box(motion.to.clip, scale));
     else if (SUCCEEDED(hr)) {
@@ -187,6 +191,26 @@ void WidgetCompositionPresenter::DrawGroup(ID2D1RenderTarget *target, const std:
     const auto &group = found->second;
     target->SetTransform(inherited);
     target->PushAxisAlignedClip(Box(group.node.clip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    if (group.node.kind == WidgetCompositionKind::FocusSurface) {
+        const auto clips = animation::FocusSurfaceClips(group.focusExtent, Sample(group.focusReveal, now).bounds);
+        for (const auto &node : scene_->nodes) {
+            if (node.parent != id || (!node.bitmap && !node.solid)) continue;
+            const std::size_t begin = node.order == 0 ? 0 : 4, end = node.order == 0 ? 4 : 5;
+            for (auto i = begin; i < end; ++i) {
+                target->PushAxisAlignedClip(Box(clips[i]), D2D1_ANTIALIAS_MODE_ALIASED);
+                if (node.bitmap) target->DrawBitmap(node.bitmap.Get(), Box(node.bounds), opacity);
+                else {
+                    Ptr<ID2D1SolidColorBrush> brush;
+                    auto color = *node.solid; color.a *= opacity;
+                    if (SUCCEEDED(target->CreateSolidColorBrush(color, brush.GetAddressOf())))
+                        target->FillRectangle(Box(node.bounds), brush.Get());
+                }
+                target->PopAxisAlignedClip();
+            }
+        }
+        target->PopAxisAlignedClip();
+        return;
+    }
     if (group.previous.node.bitmap) {
         const auto exit = Sample(group.exit, now);
         target->PushAxisAlignedClip(Box(exit.clip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
@@ -427,14 +451,28 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         const bool existed = old != groups_.end();
         auto &group = groups_[node.id];
         const bool changed = !existed || group.node.key != node.key || group.closing;
-        const bool contextChanged = existed && node.kind == WidgetCompositionKind::Focus &&
-            (group.node.clock != node.clock || group.node.parent != node.parent);
-        const animation::FocusTarget priorFocus{group.node.key, group.node.clock, group.node.bounds, group.node.clip};
+        const auto focusSpace = [&](std::wstring_view id) -> std::wstring_view {
+            const auto parent = groups_.find(std::wstring(id));
+            if (parent != groups_.end() && parent->second.node.kind == WidgetCompositionKind::Control &&
+                parent->second.node.controlScale == 1 &&
+                animation::SameFocusRect(Sample(parent->second.motion, now).bounds, parent->second.node.bounds))
+                return parent->second.node.parent;
+            return id;
+        };
+        const bool focusParentChanged = node.kind == WidgetCompositionKind::Focus
+            ? focusSpace(group.node.parent) != focusSpace(node.parent) : group.node.parent != node.parent;
+        const bool contextChanged = existed && (node.kind == WidgetCompositionKind::Focus || node.kind == WidgetCompositionKind::Control) &&
+            (group.node.clock != node.clock || focusParentChanged);
+        const animation::FocusTarget priorFocus{group.node.key, group.node.clock, group.node.bounds, group.node.clip, group.node.focusMovable};
         const bool focusInvalidated = node.kind == WidgetCompositionKind::Focus && group.focusOrigin &&
             !animation::HasStableFocusTarget(*group.focusOrigin, scene_->focusTargets);
         const bool moveFocus = existed && node.kind == WidgetCompositionKind::Focus && !contextChanged &&
             animation::CanMoveFocus(priorFocus,
-                                    {node.key, node.clock, node.bounds, node.clip}, scene_->focusTargets);
+                                    {node.key, node.clock, node.bounds, node.clip, node.focusMovable}, scene_->focusTargets);
+        const bool scaleChanged = existed && node.kind == WidgetCompositionKind::Control &&
+            group.node.controlScale != node.controlScale;
+        const bool focusPolicyChanged = existed && node.kind == WidgetCompositionKind::Focus &&
+            group.node.focusMovable != node.focusMovable;
         const bool boundsChanged =
             !existed || !Same(group.node.bounds, node.bounds) || !Same(group.node.clip, node.clip);
         auto previous = group.closing ? Sample(group.exit, now) : Sample(group.motion, now);
@@ -467,13 +505,19 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
             return clipped;
         if (auto captured = outgoing.find(node.id); captured != outgoing.end())
             group.previous = std::move(captured->second);
-        if (changed || boundsChanged || contextChanged || focusInvalidated || scene_->reducedMotion) {
+        if (changed || boundsChanged || contextChanged || focusInvalidated || focusPolicyChanged || scaleChanged || scene_->reducedMotion) {
             auto recipe = animation::Stationary(node.bounds, node.clip);
             if (node.kind == WidgetCompositionKind::Focus) {
                 group.focusOrigin.reset();
                 if (moveFocus)
                     recipe = animation::FocusMove(node.bounds, node.clip, previous);
                 if (moveFocus && !scene_->reducedMotion) group.focusOrigin = priorFocus;
+            } else if (node.kind == WidgetCompositionKind::Control) {
+                recipe = animation::ControlScale(node.bounds, node.clip, previous, node.controlScale,
+                    existed && !changed && !boundsChanged && !contextChanged ? node.controlDuration : 0, node.controlCurve);
+            } else if (node.kind == WidgetCompositionKind::FocusSurface) {
+                // Its normal/focused surface partition shares the focus clock
+                // and is bound after all groups have their new motion.
             } else if (node.kind == WidgetCompositionKind::Content) {
                 if (existed && (changed || previousEnd > now)) {
                     const auto plan = animation::Section(scene_->animations.section, node.bounds, node.clip,
@@ -496,7 +540,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
                     node.kind == WidgetCompositionKind::Selection);
             }
             group.motion = recipe.Start(now, Frequency(), scene_->animations.speed);
-            if (!changed && node.kind != WidgetCompositionKind::Focus) {
+            if (!changed && node.kind != WidgetCompositionKind::Focus && node.kind != WidgetCompositionKind::Control) {
                 if (node.kind == WidgetCompositionKind::Content && previousEnd > now) {
                     group.motion.start = previousMotion.start;
                     group.motion.duration = previousMotion.duration;
@@ -537,11 +581,69 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
     return attached;
 }
 
+HRESULT WidgetCompositionPresenter::ConfigureFocusSurface(Group &group) {
+    const Raster *idle{}, *focused{};
+    for (const auto &node : scene_->nodes) {
+        if (node.parent != group.node.id || node.kind != WidgetCompositionKind::Raster) continue;
+        if (node.order == 0) idle = &rasters_.at(node.id);
+        else focused = &rasters_.at(node.id);
+    }
+    if (!idle || !focused) return E_INVALIDARG;
+    auto reveal = animation::Stationary({scene_->viewport.x, scene_->viewport.y, 0, 0}, scene_->viewport)
+        .Start(Now(), Frequency());
+    for (const auto &[_, candidate] : groups_) {
+        if (candidate.node.kind == WidgetCompositionKind::Focus && candidate.node.clock == group.node.clock) {
+            reveal = candidate.motion;
+            break;
+        }
+    }
+    const auto unite = [](Rect a, Rect b) {
+        const float x = std::min(a.x, b.x), y = std::min(a.y, b.y);
+        return Rect{x, y, std::max(a.x + a.width, b.x + b.width) - x,
+                          std::max(a.y + a.height, b.y + b.height) - y};
+    };
+    const auto extent = unite(unite(scene_->viewport, reveal.from.bounds), reveal.to.bounds);
+    group.focusExtent = extent;
+    group.focusReveal = reveal;
+    const auto from = animation::FocusSurfaceClips(extent, reveal.from.bounds);
+    const auto to = animation::FocusSurfaceClips(extent, reveal.to.bounds);
+    auto hr = group.root->RemoveAllVisuals();
+    for (std::size_t index = 0; SUCCEEDED(hr) && index < group.surfaceClips.size(); ++index) {
+        for (auto *destination : {std::addressof(group.surfaceClips[index]), std::addressof(group.surfacePixels[index])}) {
+            if (*destination) continue;
+            Ptr<IDCompositionVisual2> visual;
+            hr = device_->CreateVisual(visual.GetAddressOf());
+            if (SUCCEEDED(hr)) hr = visual.As(destination);
+            if (FAILED(hr)) return hr;
+        }
+        const auto &raster = index == 4 ? *focused : *idle;
+        auto *pixels = group.surfacePixels[index].Get();
+        auto *clip = group.surfaceClips[index].Get();
+        hr = pixels->SetContent(raster.surface.Get());
+        const auto scale = scene_->scale;
+        if (SUCCEEDED(hr)) hr = pixels->SetOffsetX(raster.node.bounds.x * scale);
+        if (SUCCEEDED(hr)) hr = pixels->SetOffsetY(raster.node.bounds.y * scale);
+        const D2D_MATRIX_3X2_F matrix{raster.node.bounds.width * scale / raster.pixels.width, 0, 0,
+            raster.node.bounds.height * scale / raster.pixels.height, 0, 0};
+        if (SUCCEEDED(hr)) hr = static_cast<IDCompositionVisual2 *>(pixels)->SetTransform(matrix);
+        if (SUCCEEDED(hr)) hr = clip->RemoveAllVisuals();
+        if (SUCCEEDED(hr)) hr = clip->AddVisual(pixels, FALSE, nullptr);
+        auto motion = reveal;
+        motion.from = {group.node.bounds, 1, from[index]};
+        motion.to = {group.node.bounds, 1, to[index]};
+        if (Same(from[index], to[index])) motion.duration = 0;
+        if (SUCCEEDED(hr)) hr = Animate(clip, clip, motion, group.node.bounds);
+        if (SUCCEEDED(hr)) hr = group.root->AddVisual(clip, TRUE, nullptr);
+    }
+    return hr;
+}
+
 HRESULT WidgetCompositionPresenter::Rebuild(IDCompositionVisual2 *) {
     auto hr = root_->RemoveAllVisuals();
     if (FAILED(hr))
         return hr;
     for (auto &[_, group] : groups_) {
+        if (group.node.kind == WidgetCompositionKind::FocusSurface) continue;
         hr = group.root->RemoveAllVisuals();
         if (SUCCEEDED(hr))
             hr = group.incomingClip->RemoveAllVisuals();
@@ -585,9 +687,15 @@ HRESULT WidgetCompositionPresenter::Rebuild(IDCompositionVisual2 *) {
         auto *parent = node.parent.empty() ? root_.Get() : groups_.at(node.parent).incoming.Get();
         if (node.kind == WidgetCompositionKind::Raster) {
             usedRasters.insert(node.id);
-            hr = append(parent, rasters_.at(node.id).visual.Get());
-        } else
+            if (node.parent.empty() || groups_.at(node.parent).node.kind != WidgetCompositionKind::FocusSurface)
+                hr = append(parent, rasters_.at(node.id).visual.Get());
+        } else {
+            if (node.kind == WidgetCompositionKind::FocusSurface) {
+                hr = ConfigureFocusSurface(groups_.at(node.id));
+                if (FAILED(hr)) return hr;
+            }
             hr = append(parent, groups_.at(node.id).root.Get());
+        }
         if (FAILED(hr))
             return hr;
     }
@@ -659,7 +767,7 @@ D2D1_POINT_2F WidgetCompositionPresenter::MapInput(D2D1_POINT_2F point) const no
         for (auto it = scene_->nodes.rbegin(); it != scene_->nodes.rend(); ++it) {
             if (it->parent != parent || it->kind == WidgetCompositionKind::Raster ||
                 it->kind == WidgetCompositionKind::Selection || it->kind == WidgetCompositionKind::Scrim ||
-                it->kind == WidgetCompositionKind::Focus)
+                it->kind == WidgetCompositionKind::Focus || it->kind == WidgetCompositionKind::FocusSurface)
                 continue;
             const auto group = groups_.find(it->id);
             if (group == groups_.end() || group->second.closing)
@@ -685,8 +793,10 @@ D2D1_POINT_2F WidgetCompositionPresenter::MapInput(D2D1_POINT_2F point) const no
         const auto transform = animation::Map(match->node.bounds, pose.bounds);
         if (transform.scaleX <= 0 || transform.scaleY <= 0)
             return {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
-        point.x = (point.x - transform.offsetX) / transform.scaleX;
-        point.y = (point.y - transform.offsetY) / transform.scaleY;
+        if (match->node.kind != WidgetCompositionKind::Control) {
+            point.x = (point.x - transform.offsetX) / transform.scaleX;
+            point.y = (point.y - transform.offsetY) / transform.scaleY;
+        }
         parent = match->node.id;
     }
     return point;

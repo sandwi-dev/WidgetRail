@@ -382,6 +382,7 @@ struct DeclarativeRenderer::PreparedNode final {
     NativeRenderStyle paintStyle;
     std::string narrowId;
     std::optional<NativeColor> effectiveBackground;
+    NativeStyleContext context;
 };
 
 struct DeclarativeRenderer::RenderPass final {
@@ -492,6 +493,8 @@ struct DeclarativeRenderer::RenderPass final {
     }
     int compositionBand{-1};
     bool composingScene{};
+    std::optional<bool> compositorControlSupport;
+    std::map<std::wstring, NativeRenderStyle> compositionFocusStyles;
     std::map<std::pair<std::wstring, int>, std::size_t> compositionPhases;
     std::map<std::size_t, std::set<std::wstring>> compositionBandNodes;
     std::size_t transientCaptureBytes{};
@@ -852,6 +855,10 @@ struct DeclarativeRenderer::RenderPass final {
                 RenderDiagnosticSeverity::Error);
         }
         prepared[narrowId] = {&node, base.style, paint.style, narrowId};
+        prepared[narrowId].context = {viewport.width, viewport.height, parentWidth, parentHeight,
+            parentFontSize, options.rootFontSizePx, false, inheritedBackground,
+            (node.kind == L"button" || node.kind == L"actionSurface")
+                ? std::optional<NativeColor>{kDefaultButton} : std::nullopt};
 
         const auto& style = base.style;
         auto paintedBackground = style.background();
@@ -1161,7 +1168,7 @@ struct DeclarativeRenderer::RenderPass final {
             MotionStateKey(node.id),
             DeclarativeMotionValue{
                 style.opacity() * disabledFactor,
-                style.scale(),
+                UsesCompositorControlScale(node) ? 1.0F : style.scale(),
                 style.translateXPx(),
                 style.translateYPx(),
             },
@@ -3145,14 +3152,17 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
+    enum class SurfacePaint { All, Background, Border };
+
     void DrawSurface(
         const WidgetNode& node,
         const NativeRenderStyle& style,
         const Rect rect,
-        const float opacity) {
+        const float opacity,
+        const SurfacePaint paint = SurfacePaint::All) {
         if (!target || rect.width <= 0.0F || rect.height <= 0.0F) return;
         const auto radius = RadiusFor(style, rect);
-        if (style.shadowColor() && style.shadowColor()->alpha > 0.0F) {
+        if (paint != SurfacePaint::Border && style.shadowColor() && style.shadowColor()->alpha > 0.0F) {
             const Rect shadowRect{
                 rect.x + style.shadowOffsetXPx(),
                 rect.y + style.shadowOffsetYPx(),
@@ -3172,13 +3182,14 @@ struct DeclarativeRenderer::RenderPass final {
         if (!background &&
             (node.kind == L"button" || node.kind == L"actionSurface"))
             background = kDefaultButton;
-        if (background) {
+        if (paint != SurfacePaint::Border && background) {
             auto brush = Brush(target, WithOpacity(*background, opacity));
             if (brush)
                 target->FillRoundedRectangle({D2DRect(rect), radius, radius}, brush.Get());
         }
-        if (style.backgroundBlurPx() > 0.0F)
+        if (paint != SurfacePaint::Border && style.backgroundBlurPx() > 0.0F)
             Add(node.id, L"background_blur_fallback", L"Background blur is unavailable on the base render target; opaque fallback is used.");
+        if (paint == SurfacePaint::Background) return;
         const auto& edges = style.borderEdges();
         const auto sameEdges = edges.top == edges.right &&
             edges.top == edges.bottom && edges.top == edges.left;
@@ -4945,8 +4956,14 @@ struct DeclarativeRenderer::RenderPass final {
         const bool compositorBackground = node.kind == L"backgroundSurface" &&
             TrySelectCompositorBackground(node, style, paintRect, opacity);
         if (PaintCompositionPhase(node.id, 0) && !transitionSurfacesPainted.contains(node.id) && node.kind != L"modalLayer" && node.kind != L"slider" && node.kind != L"loadingIndicator" &&
-            !compositorBackground)
-            DrawSurface(node, style, paintRect, opacity);
+            !compositorBackground) {
+            const auto focusSurface = compositionFocusStyles.find(node.id);
+            const bool separated = composingScene && focusSurface != compositionFocusStyles.end();
+            DrawSurface(node, separated ? focusSurface->second : style, paintRect, opacity,
+                separated && node.actionSurfacePresentation != L"poster" ? SurfacePaint::Background : SurfacePaint::All);
+        }
+        if (composingScene && PaintCompositionPhase(node.id, 5))
+            DrawSurface(node, preparedNode->second.baseStyle, paintRect, opacity);
 
         const bool clipTileContent = node.kind == L"actionSurface" &&
             preparedNode->second.baseStyle.overflow() == NativeOverflow::Clip;
@@ -5233,9 +5250,16 @@ struct DeclarativeRenderer::RenderPass final {
                 target->PushAxisAlignedClip(
                     D2DRect(*deferredFocusClip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             }
-            if (PaintCompositionPhase(deferredFocusNode->id, 3))
+            if (PaintCompositionPhase(deferredFocusNode->id, 3)) {
+                // Poster borders stay below their full-bleed artwork. Lifting
+                // them above it would reveal pixels the authored tile hides.
+                if (composingScene && deferredFocusNode->actionSurfacePresentation != L"poster" &&
+                    compositionFocusStyles.contains(deferredFocusNode->id))
+                    DrawSurface(*deferredFocusNode, *deferredFocusStyle,
+                        deferredFocusRect, deferredFocusOpacity, SurfacePaint::Border);
                 DrawFocus(*deferredFocusNode, *deferredFocusStyle,
                           deferredFocusRect, deferredFocusOpacity);
+            }
             if (PaintCompositionPhase(deferredFocusNode->id, 4))
                 DrawContextMenuIndicator(*deferredFocusNode, *deferredFocusStyle,
                     deferredFocusRect, deferredFocusOpacity);
