@@ -9,13 +9,14 @@ internal static class PlayniteLibraryDetailsPresentation
     private const string Prefix = "playnite-library.details.";
     internal const string PlayId = Prefix + "play";
     internal const string ContentId = Prefix + "content";
+    internal const string OptionsId = Prefix + "options";
     internal const int PageSize = 20;
 
     internal static WidgetModal Create(PlayniteLibraryItem item, bool current,
         string? launchingSavedId, string status, PlayniteLibraryLaunchState? launchState,
         bool loading = false, string? error = null, PlayniteDetailsExtras? extras = null,
         IReadOnlyList<PlayniteLibraryCategory>? categories = null, string? openingId = null,
-        bool favorite = false, bool organizationBusy = false)
+        bool favorite = false, bool organizationBusy = false, string? completionStatus = null)
     {
         extras ??= new();
         var modalId = openingId ?? "playnite-library.details";
@@ -50,13 +51,20 @@ internal static class PlayniteLibraryDetailsPresentation
             ? UI.Artwork(new WidgetArtworkHandle(artwork.Handle), Prefix + "poster", presentation.DisplayName, ImageFit.Contain)
             : UI.Icon(WidgetGlyph.Play, Prefix + "poster", presentation.DisplayName);
         poster = poster.Classes("playnite-library-details-poster");
-        var controls = UI.Stack(Prefix + "controls",
-            UI.Text(presentation.Source.DisplayName, Prefix + "source").Classes("playnite-library-details-source"),
-            UI.Text(!current ? "Game no longer in the current results" : uninstalled ? "Not installed"
-                : launching || launchState is not null ? status : availability.Status == "Play" ? "Installed" : availability.Status,
-                Prefix + "status").Classes("playnite-library-details-meta"),
-            buttons,
-            UI.ControllerHint(ControllerButton.X, "Game options", Prefix + "options"))
+        var completion = completionStatus ?? game?.CompletionStatus;
+        var controlItems = new List<WidgetElement>
+        {
+            UI.Row(Prefix + "source-row",
+                UI.Text(presentation.Source.DisplayName, Prefix + "source").Classes("playnite-library-details-source"),
+                UI.Text(string.IsNullOrWhiteSpace(completion) ? "No completion status" : completion,
+                    Prefix + "completion.value").Classes("playnite-library-details-completion"))
+                .Classes("playnite-library-details-source-row"),
+        };
+        if (!current || launching || launchState is not null)
+            controlItems.Add(UI.Text(!current ? "Game no longer in the current results" : status,
+                Prefix + "status").Classes("playnite-library-details-meta"));
+        controlItems.Add(buttons);
+        var controls = UI.Stack(Prefix + "controls", controlItems.ToArray())
             .Classes("playnite-library-details-controls");
         var tabName = extras.Tab.ToString().ToLowerInvariant();
         var tabs = Enum.GetValues<PlayniteDetailsTab>().Select(tab =>
@@ -91,11 +99,13 @@ internal static class PlayniteLibraryDetailsPresentation
             .Shortcut(ControllerButton.LeftBumper, Prefix + "tab.previous", "Previous details tab")
             .Shortcut(ControllerButton.RightBumper, Prefix + "tab.next", "Next details tab")
             .Shortcut(ControllerButton.Y, Prefix + "refresh", "Refresh details");
-        var scopedBody = body.ContextMenu(ControllerButton.X,
-            PlayniteLibraryGameOptions.Create(item, favorite, categories, busy || !current));
-        return new(modalId, presentation.DisplayName, scopedBody, PlayId, PlayniteLibraryActions.DetailsClose)
+        var options = UI.Row(OptionsId,
+                UI.ControllerHint(ControllerButton.X, "Game options", Prefix + "options.hint"))
+            .ContextMenu(ControllerButton.X,
+                PlayniteLibraryGameOptions.Create(item, favorite, categories, busy || !current));
+        return new(modalId, presentation.DisplayName, body, PlayId, PlayniteLibraryActions.DetailsClose)
         {
-            HeaderActions = UI.Row(Prefix + "header-hints",
+            HeaderActions = UI.Row(Prefix + "header-hints", options,
                 UI.ControllerHint(ControllerButton.Y, "Refresh", Prefix + "refresh.hint"),
                 UI.ControllerHint(ControllerButton.B, "Close", Prefix + "close.hint"))
                 .Classes("playnite-library-details-header-hints"),
@@ -119,7 +129,6 @@ internal static class PlayniteLibraryDetailsPresentation
             AddValue("Features", string.Join(", ", game.Features), "features");
             AddValue("Series", string.Join(", ", game.Series), "series");
             AddValue("Age rating", string.Join(", ", game.AgeRatings), "age-rating");
-            AddValue("Completion", game.CompletionStatus, "completion");
             if (game.PlayCount is > 0) AddValue("Times played", game.PlayCount.Value.ToString(CultureInfo.CurrentCulture), "play-count");
             if (game.InstallSize is > 0) AddValue("Installation size", $"{game.InstallSize.Value / (1024d * 1024 * 1024):0.##} GB", "size");
             var scores = new List<string>();
@@ -233,15 +242,7 @@ internal static class PlayniteLibraryDetailsPresentation
     private static string Duration(long seconds) => seconds >= 3600 ? $"{seconds / 3600}h {seconds % 3600 / 60}m" : $"{seconds / 60}m";
     private static void AddParagraphs(List<WidgetElement> content, string text, string id)
     {
-        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var parts = new List<string>();
-        var current = "";
-        foreach (var word in words)
-        {
-            if (current.Length + word.Length > 240 && current.Length != 0) { parts.Add(current); current = ""; }
-            current = current.Length == 0 ? word : current + " " + word;
-        }
-        if (current.Length != 0) parts.Add(current);
+        var parts = text.Split("\n\n", 64, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         content.Add(UI.Stack(Prefix + id + ".paragraphs", parts.Select((part, index) =>
             Copy(part, index == 0 ? id : id + "." + index)).ToArray()).Classes("playnite-library-details-paragraphs"));
     }

@@ -251,7 +251,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 local.DetailsLoading, local.DetailsError, local.DetailsExtras, state.Organization.Categories,
                 local.DetailsScopePrefix + "." + local.DetailsOpening.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 state.Organization.FavoriteSavedIds.Contains(details.Value.SavedId),
-                state.OrganizationBusy || state.BrowseRetained));
+                state.OrganizationBusy || state.BrowseRetained,
+                local.DetailsExtras.ResolveCompletionStatus(
+                    state.CompletionStatuses.GetValueOrDefault(details.Value.SavedId)) ?? string.Empty));
         }
         return page;
     }
@@ -1908,14 +1910,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
         return applied;
     }
 
-    private async Task CycleCompletionStatusAsync(
+    private async Task<string?> CycleCompletionStatusAsync(
         string sourceElementId,
         CancellationToken cancellationToken)
     {
         var display = DisplayForSource(sourceElementId);
-        if (display is null) return;
+        if (display is null) return null;
         _model.Update(state => state with { OrganizationBusy = true });
-        string? status = null;
+        var status = "Completion status could not be changed. Refresh and try again.";
         try
         {
             var statuses = await _application.GetCompletionStatusesAsync(cancellationToken)
@@ -1923,23 +1925,26 @@ public sealed partial class PlayniteLibraryWidget : Widget
             if (statuses.Count == 0)
             {
                 status = "No Playnite completion statuses are available";
-                return;
+                return null;
             }
             string? current;
             lock (_gate)
             {
-                if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
+                if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return null;
                 current = authority.CompletionStatuses.GetValueOrDefault(display.SavedId);
+                var details = _model.Value;
+                if (details.DetailsItem?.Value.SavedId == display.SavedId)
+                    current = details.DetailsExtras.ResolveCompletionStatus(current);
             }
             var index = current is null ? -1 : statuses.ToList().FindIndex(value =>
                 string.Equals(value, current, StringComparison.OrdinalIgnoreCase));
             var next = statuses[(index + 1) % statuses.Count];
             var changed = await _application.SetCompletionStatusAsync(
                     display.SavedId, next, cancellationToken).ConfigureAwait(false);
-            if (changed is null) return;
+            if (changed is null) return null;
             lock (_gate)
             {
-                if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return;
+                if (!TryGetLivePlayniteAuthorityLocked(out var authority)) return null;
                 var values = new Dictionary<string, string?>(
                     authority.CompletionStatuses, StringComparer.Ordinal)
                 {
@@ -1951,13 +1956,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 });
                 status = $"Completion · {next}";
             }
+            return next;
         }
         finally
         {
             _model.Update(state => state with
             {
                 OrganizationBusy = false,
-                Status = status ?? state.Status,
+                Status = status,
             });
         }
     }
@@ -2295,7 +2301,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     private string? ResolveActionSource(string sourceElementId)
     {
-        if (sourceElementId is PlayniteLibraryDetailsPresentation.PlayId or PlayniteLibraryDetailsPresentation.ContentId &&
+        if (sourceElementId is PlayniteLibraryDetailsPresentation.PlayId or PlayniteLibraryDetailsPresentation.OptionsId &&
             _model.Value.DetailsItem is { } details)
             sourceElementId = PlayniteLibraryIdentity.FocusId("grid", details.Key);
         var item = CurrentLibrary.Snapshot.Items.Concat(_model.Value.FixedRows.All)

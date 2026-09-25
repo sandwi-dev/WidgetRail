@@ -54,11 +54,14 @@ its game list. Game details appears inside the widget with the page dimmed behin
 it; B restores the selected game. Each opening starts at Play/Install, while
 refreshing or switching detail tabs preserves your position. The poster and primary
 controls share the top row, with vertical actions beside the poster and full-width
-details tabs below. Header hints show Y to refresh and B to close; X beneath the
-actions offers the same game options as the poster, including category membership.
+details tabs below. Header hints show X Game options, Y Refresh, and B Close; X
+offers the same game options as the poster, including category membership.
 Long details scroll inside the panel. Hiding and reopening the overlay preserves
 the open details, tab, focus, and scroll position while the widget remains loaded.
 Interrupted reads resume; installation requests are never replayed automatically.
+Source and the current completion status appear together beside the poster; the
+Completion status button cycles through Playnite's statuses and shows the confirmed
+value without reloading the dialog. Descriptions preserve paragraphs and bullet lists.
 B dismisses details explicitly. After the five-minute unload or an application
 restart, the widget returns to its ordinary page.
 

@@ -173,13 +173,20 @@ the modal ID (and therefore its input scope and scroll-container ID). Loading, r
 tab changes, and hide/reopen retain that ID; another explicit opening gets a new one. This uses the existing
 SDK modal contract without adding focus-reset APIs. The host/Bridge/SDK must support protocol 55 to display details.
 Opening details resolves the full game record separately from compact catalog pages.
-HTML descriptions and notes become bounded plain text; they are never rendered as HTML.
+HTML descriptions and notes become bounded plain text with paragraph/line breaks and
+list markers preserved; they are never rendered as HTML. Description text uses
+max-lines: 128 and up to 64 real paragraph nodes instead of 240-character chunks.
+The original 4096-character normalized-text limit remains.
 Home and Library use the same navigation header and frame; Library filters/results occupy
 a separate panel below it. Both fill available height with 24 logical pixels of vertical
 padding. The themed count badge follows Clear, and RS Search is shown in its footer.
 The modal uses tile artwork beside source and vertically stacked controls, with a
 full-width navigation rail beneath. `WidgetModal.HeaderActions` replaces the default
-Close button with controller hints; the ordinary B dismissal shortcut remains. Its X menu shares the poster's
+Close button with X/Y/B controller hints; the ordinary B dismissal shortcut remains.
+The X hint container owns the context menu, so its anchor stays in the header.
+Source and actual completion status share a row; confirmed mutations update the
+header without reloading details. Full-game status takes precedence over catalog
+state, and a confirmed local mutation wins over a read already in flight until refresh. Its X menu shares the poster's
 action definition and current organization authority; categories are available there
 instead of a separate section.
 

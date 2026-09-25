@@ -83,7 +83,10 @@ The canonical runtime list is `WrssPropertyCatalog.AllowedProperties`. It curren
   `align`, `justify`, `direction`, `overflow`, `flex-grow`, `flex-shrink`,
   `flex-basis`, and row-only `flex-wrap` (`nowrap` or `wrap`).
 - Typography: `font-family`, `font-size`, `font-weight`, `letter-spacing`,
-  `line-height`, `max-lines`, text alignment/overflow/transform, and `color`.
+  `line-height`, `max-lines` (1–128; default 1), text alignment/overflow/transform, and `color`.
+  Use a larger `max-lines` for natural wrapping of bounded long paragraphs inside
+  scroll containers. The line count is a ceiling, not a reserved height; existing
+  declarations keep their current limits.
 - Surfaces: `background`, uniform `border-color`/`border-width`, independent
   `border-top|right|bottom|left-color` and
   `border-top|right|bottom|left-width`, outline color/width,

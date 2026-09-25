@@ -238,6 +238,28 @@ void FractionalScrollHeightKeepsCompleteLines(IDWriteFactory* factory) {
         "genuine height overflow still trims");
 }
 
+void LongParagraphsWrapWithoutArtificialBreaks(IDWriteFactory* factory) {
+    std::wstring text;
+    for (int index = 0; index < 40; ++index) text += L"A complete sentence stays in the same paragraph. ";
+    for (const float textScale : {1.0F, 1.5F, 2.0F}) {
+        const auto style = Style(15.0F, 1.4F, 128, textScale);
+        Check(style.maxLines() == 128, "native style admits bounded long paragraphs");
+        const auto plan = widgetrail::CreateNativeTextLayoutPlan(factory, text, style, 440.0F, 10000.0F);
+        DWRITE_LINE_METRICS lines[128]{};
+        UINT32 count{};
+        Check(plan.IsValid() && SUCCEEDED(plan.layout->GetLineMetrics(lines, 128, &count)),
+            "long paragraph exposes complete line metrics");
+        Check(count > 8 && count <= 128, "paragraph naturally wraps beyond eight lines");
+        UINT32 characters{};
+        for (UINT32 index = 0; index < count; ++index) {
+            Check(!lines[index].isTrimmed, "long paragraph does not elide visible text");
+            characters += lines[index].length;
+        }
+        Check(characters == text.size(), "all paragraph characters are represented");
+    }
+    Check(Style(15.0F, 1.4F, 129).maxLines() <= 128, "native maximum remains bounded");
+}
+
 void InvalidInputsFailClosed(IDWriteFactory* factory) {
     const auto style = Style(13.0F, 1.2F, 1);
     Check(!widgetrail::CreateNativeTextLayoutPlan(
@@ -268,6 +290,7 @@ int main() {
         WrappingScaleAndAlignmentStayBounded(factory.Get());
         DiagnosticMetricRowsRemainCompleteAtMaximumScale(factory.Get());
         FractionalScrollHeightKeepsCompleteLines(factory.Get());
+        LongParagraphsWrapWithoutArtificialBreaks(factory.Get());
         InvalidInputsFailClosed(factory.Get());
         RetainedPlansAreBoundedAndConstraintExact(factory.Get());
     }

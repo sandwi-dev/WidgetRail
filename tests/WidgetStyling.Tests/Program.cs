@@ -519,14 +519,14 @@ static void MediaCardValues()
 
 static void ResponsiveUnits()
 {
-    var compile = Compile("card { width: 130vw; height: 36vh; aspect-ratio: 16/1; max-lines: 99; line-height: 5; flex-grow: 99; }");
+    var compile = Compile("card { width: 130vw; height: 36vh; aspect-ratio: 16/1; max-lines: 999; line-height: 5; flex-grow: 99; }");
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
     Assert.Equal(5, compile.Diagnostics.Count(item => item.Code == "value_clamped"));
     var style = compile.Theme!.Resolve(Element("card"));
     Assert.Equal("100vw", style.Get("width")!.Text);
     Assert.Equal("36vh", style.Get("height")!.Text);
     Assert.Equal("5", style.Get("aspect-ratio")!.Text);
-    Assert.Equal("8", style.Get("max-lines")!.Text);
+    Assert.Equal("128", style.Get("max-lines")!.Text);
     Assert.Equal("3", style.Get("line-height")!.Text);
     Assert.Equal("8", style.Get("flex-grow")!.Text);
 }

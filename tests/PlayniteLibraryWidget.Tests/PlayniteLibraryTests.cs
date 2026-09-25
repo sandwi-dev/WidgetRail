@@ -4535,6 +4535,7 @@ public sealed partial class PlayniteLibraryTests
         FakeHost host) :
         IPlayniteLibraryApplicationService
     {
+        internal bool RejectCompletionChanges { get; set; }
         internal Func<string, CancellationToken, ValueTask<PlayniteGameDetails?>>? DetailsHandler { get; set; }
         internal Func<string, bool, CancellationToken, ValueTask<bool>>? InstallationHandler { get; set; }
         public async ValueTask<PlayniteGameDetails?> GetGameDetailsAsync(string gameId, CancellationToken token)
@@ -4638,6 +4639,7 @@ public sealed partial class PlayniteLibraryTests
         public async ValueTask<WidgetAppLibraryItem?> SetCompletionStatusAsync(
             string gameId, string completionStatus, CancellationToken cancellationToken)
         {
+            if (RejectCompletionChanges) return null;
             host.SetCompletionStatus(gameId, completionStatus);
             return (await ResolveSavedAsync([gameId], cancellationToken)).SingleOrDefault();
         }

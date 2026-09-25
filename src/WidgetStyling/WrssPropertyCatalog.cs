@@ -92,7 +92,7 @@ public static partial class WrssPropertyCatalog
             ["font-weight"] = new(PropertyType.FontWeight),
             ["font-family"] = new(PropertyType.FontFamily),
             ["line-height"] = new(PropertyType.LineHeight, 0.8, 3),
-            ["max-lines"] = new(PropertyType.PositiveInteger, 1, 8),
+            ["max-lines"] = new(PropertyType.PositiveInteger, 1, 128),
             ["text-overflow"] = new(PropertyType.TextOverflow),
             ["overflow-wrap"] = new(PropertyType.OverflowWrap),
             ["text-transform"] = new(PropertyType.TextTransform),

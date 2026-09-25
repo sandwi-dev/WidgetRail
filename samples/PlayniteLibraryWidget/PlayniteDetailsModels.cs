@@ -20,6 +20,11 @@ internal sealed record PlayniteActivity(bool Available, long TotalSeconds, IRead
 internal sealed record PlayniteDetailsExtras
 {
     internal PlayniteGameDetails? Full { get; init; }
+    // A confirmed mutation wins over a detail read that may already be in flight.
+    // Explicit Refresh creates new extras and reads the provider's current value.
+    internal string? ConfirmedCompletionStatus { get; init; }
+    internal string? ResolveCompletionStatus(string? catalogStatus) =>
+        ConfirmedCompletionStatus ?? (Full?.Game is { } game ? game.CompletionStatus : catalogStatus);
     internal PlayniteDetailsTab Tab { get; init; }
     internal PlayniteAchievements? Achievements { get; init; }
     internal PlayniteActivity? Activity { get; init; }

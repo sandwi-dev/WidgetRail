@@ -145,9 +145,16 @@ public sealed partial class PlayniteLibraryWidget
         }
         if (name == "completion" && ResolveActionSource(PlayniteLibraryDetailsPresentation.PlayId) is { } source)
         {
-            await CycleCompletionStatusAsync(source, token).ConfigureAwait(false);
-            if (_model.Value.DetailsGeneration == state.DetailsGeneration && _model.Value.DetailsItem is not null)
-                OpenDetails(item, preserveTab: true);
+            if (state.OrganizationBusy || state.DetailsExtras.OperationBusy) return true;
+            var completion = await CycleCompletionStatusAsync(source, token).ConfigureAwait(false);
+            var message = _model.Value.Status;
+            UpdateDetails(state.DetailsGeneration, value => value with
+            {
+                ConfirmedCompletionStatus = completion ?? value.ConfirmedCompletionStatus,
+                Full = completion is not null && value.Full?.Game is { } game
+                    ? value.Full with { Game = game with { CompletionStatus = completion } } : value.Full,
+                OperationMessage = completion is null ? message : null,
+            });
             return true;
         }
         var linkIndex = -1;

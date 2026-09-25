@@ -552,7 +552,7 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         } else if (property == L"line-height") {
             if (const auto item = Number(property, value, 0.8F, 3)) data->lineHeight = *item;
         } else if (property == L"max-lines") {
-            if (const auto item = Number(property, value, 1, 8)) data->maxLines = static_cast<int>(std::round(*item));
+            if (const auto item = Number(property, value, 1, 128)) data->maxLines = static_cast<int>(std::round(*item));
         } else if (property == L"flex-grow") {
             if (const auto item = Number(property, value, 0, 8)) data->flexGrow = *item;
         } else if (property == L"flex-shrink") {

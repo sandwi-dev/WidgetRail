@@ -9,6 +9,100 @@ public sealed partial class PlayniteLibraryTests
 {
     private const string DetailAction = "playnite-library.details.";
 
+    [TestMethod]
+    public void HtmlStructurePreservesParagraphsListsInlineWordsAndEntities()
+    {
+        var html = "<p>A free up<b>grade</b> &amp; more.</p><p>Another paragraph.<br>A line break.</p>"
+            + "<ul><li>First item</li><li>Second item</li></ul><script>bad()</script><style>bad{}</style>";
+        Assert.AreEqual("A free upgrade & more.\n\nAnother paragraph.\nA line break.\n\n• First item\n\n• Second item",
+            PlayniteDescriptionText.Normalize(html));
+        Assert.AreEqual("First paragraph.\n\nSecond paragraph.",
+            PlayniteDescriptionText.Normalize("First paragraph.\r\n\r\nSecond paragraph."));
+        Assert.AreEqual("First paragraph.\n\nSecond paragraph.",
+            PlayniteDescriptionText.Normalize("First paragraph.<br><br>Second paragraph."));
+        Assert.AreEqual("A formatted source line.",
+            PlayniteDescriptionText.Normalize("<p>A formatted\nsource line.</p>"));
+    }
+
+    [TestMethod]
+    public void CompletionPrefersFreshDetailsAndConfirmedMutationsUntilRefresh()
+    {
+        var game = new PlayniteBridgeGame("game", "Game", "Steam", true, false, false,
+            "Completed", [], [], [], 0, null);
+        var item = new FakeHost(1).ItemFactory(0);
+        var extras = new PlayniteDetailsExtras { Full = new(item, game) };
+        Assert.AreEqual("Completed", extras.ResolveCompletionStatus("Not Played"));
+        Assert.IsNull((extras with { Full = new(item, game with { CompletionStatus = null }) })
+            .ResolveCompletionStatus("Not Played"));
+        extras = extras with { ConfirmedCompletionStatus = "Playing" };
+        Assert.AreEqual("Playing", extras.ResolveCompletionStatus("Not Played"),
+            "An older in-flight full response must not override a confirmed mutation.");
+        Assert.AreEqual("Completed", (extras with { ConfirmedCompletionStatus = null }).ResolveCompletionStatus("Not Played"));
+    }
+
+    [TestMethod, Timeout(30_000)]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task CompletionControlUpdatesVisibleValueWithoutReloadingDetails(bool reject)
+    {
+        var host = new FakeHost(3);
+        host.SetCompletionStatus("saved-00000", "Not Played");
+        var widget = Create(host, out TestApplicationService application);
+        application.RejectCompletionChanges = reject;
+        var detailReads = 0;
+        application.DetailsHandler = async (id, token) =>
+        {
+            detailReads++;
+            return new((await application.ResolveSavedAsync([id], token)).Single());
+        };
+        await Interactive(widget);
+        await Ready(widget, host);
+        var game = Nodes(Snapshot(widget, 127_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+        await widget.OnActionAsync(new(DetailAction + "tab.activity", "tab"));
+        await Bounded(widget.WhenDetailsIdleAsync(), "loaded details");
+        var before = Snapshot(widget, 127_002);
+        Assert.AreEqual("Not Played", Nodes(before.Root).Single(n => n.Id == DetailAction + "completion.value").Text);
+        var full = widget.RenderState.Value.DetailsExtras.Full;
+        var activity = widget.RenderState.Value.DetailsExtras.Activity;
+        await widget.OnActionAsync(new(DetailAction + "completion", DetailAction + "completion.action"));
+        await Bounded(widget.WhenDetailsIdleAsync(), "completion action");
+        var after = Snapshot(widget, 127_003);
+        Assert.AreEqual(reject ? "Not Played" : "Playing",
+            Nodes(after.Root).Single(n => n.Id == DetailAction + "completion.value").Text);
+        Assert.AreEqual(1, detailReads, "Changing completion must not refetch and clear the modal.");
+        Assert.AreSame(full, widget.RenderState.Value.DetailsExtras.Full);
+        Assert.AreSame(activity, widget.RenderState.Value.DetailsExtras.Activity);
+        Assert.AreEqual(before.ActiveInputScopeId, after.ActiveInputScopeId);
+        Assert.AreEqual(PlayniteDetailsTab.Activity, widget.RenderState.Value.DetailsExtras.Tab);
+        if (reject) StringAssert.Contains(widget.RenderState.Value.DetailsExtras.OperationMessage!, "could not");
+        else Assert.IsNull(widget.RenderState.Value.DetailsExtras.OperationMessage);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(after).Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task HeaderGameOptionsResolveToTheOpenGame()
+    {
+        var host = new FakeHost(3);
+        var widget = Create(host);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var game = Nodes(Snapshot(widget, 128_001).Root)
+            .Where(node => node.ActionId == PlayniteLibraryActions.DetailsOpen).Skip(1).First();
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+        await Bounded(widget.WhenDetailsIdleAsync(), "loaded details");
+        var before = Snapshot(widget, 128_002);
+        Assert.IsTrue(Nodes(before.Root).Single(n => n.Id == PlayniteLibraryDetailsPresentation.OptionsId)
+            .ContextActions.Any(action => action.Label == "Add favorite"));
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Favorite, PlayniteLibraryDetailsPresentation.OptionsId));
+        var after = Snapshot(widget, 128_003);
+        Assert.IsTrue(Nodes(after.Root).Single(n => n.Id == PlayniteLibraryDetailsPresentation.OptionsId)
+            .ContextActions.Any(action => action.Label == "Remove favorite"));
+        Assert.AreEqual("saved-00001", widget.RenderState.Value.DetailsItem!.Value.SavedId);
+        await Background(widget);
+    }
+
     [TestMethod, Timeout(30_000)]
     public async Task DetailsResumeWithSameTabScopeAndCompletedDataUntilExplicitlyDismissed()
     {
@@ -289,6 +383,32 @@ public sealed partial class PlayniteLibraryTests
 public sealed partial class PlayniteLibraryLayoutTests
 {
     [TestMethod]
+    public void DescriptionKeepsRealParagraphsInsteadOfFixedCharacterChunks()
+    {
+        var paragraph = string.Join(" ", Enumerable.Repeat("A sentence that wraps naturally without splitting its paragraph.", 20));
+        var description = paragraph + "\n\nA second paragraph.\n\n• A feature\n• Another feature";
+        var game = ArtworkItem("description-app", "description-id", "Description game", "Steam", "poster", "hero");
+        game = game.WithProjectedValue(game.Value with
+        {
+            Presentation = game.Presentation with
+            {
+                Metadata = new WidgetAppLibraryMetadata("description", new("test", "test", "Steam", 1))
+                { Description = description },
+            },
+        });
+        var page = PlayniteLibraryPresentation.Render(State(Snapshot(WidgetPagedResourceStatus.Ready, [game]),
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []));
+        var snapshot = new PresentationWidget(page.WithModal(PlayniteLibraryDetailsPresentation.Create(
+            game, true, null, "Ready", null))).RenderSnapshot("description.paragraphs", 1);
+        var paragraphs = Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.details.description.paragraphs");
+        Assert.AreEqual(3, paragraphs.Children.Count);
+        Assert.AreEqual(paragraph, paragraphs.Children[0].Text);
+        Assert.AreEqual("A second paragraph.", paragraphs.Children[1].Text);
+        Assert.AreEqual("• A feature\n• Another feature", paragraphs.Children[2].Text);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    }
+
+    [TestMethod]
     [DataRow("Played")]
     [DataRow(null)]
     public void PopulatedGameDetailsRemainValidAcrossTabs(string? completion)
@@ -317,7 +437,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
             var nodes = Nodes(snapshot.Root.Children[1]).ToArray();
             Assert.AreEqual(ProtocolConstants.MaximumContextActionCount,
-                nodes.Single(node => node.Id == PlayniteLibraryDetailsPresentation.ContentId).ContextActions.Count);
+                nodes.Single(node => node.Id == PlayniteLibraryDetailsPresentation.OptionsId).ContextActions.Count);
             var button = nodes.Single(node => node.ActionId == "playnite-library.details.completion");
             Assert.AreEqual(ViewNodeKind.Button, button.Kind);
             if (tab == PlayniteDetailsTab.Overview && completion is not null)
@@ -353,8 +473,17 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(Nodes(header).Any(node => node.Text == "Refresh"));
         Assert.IsTrue(Nodes(header).Any(node => node.Text == "Close"));
 
-        CollectionAssert.AreEqual(tile.ContextActions.ToArray(), options.ContextActions.ToArray());
-        Assert.AreEqual(ControllerButton.X, options.ContextMenuButton);
+        var anchor = nodes.Single(node => node.Id == PlayniteLibraryDetailsPresentation.OptionsId);
+        CollectionAssert.AreEqual(tile.ContextActions.ToArray(), anchor.ContextActions.ToArray());
+        Assert.AreEqual(ControllerButton.X, anchor.ContextMenuButton);
+        Assert.AreEqual(0, options.ContextActions.Count);
+        Assert.AreEqual(anchor.Id, header.Children[1].Children[0].Id);
+        Assert.IsTrue(Nodes(header.Children[1].Children[1]).Any(node => node.Text == "Refresh"));
+        var sourceRow = nodes.Single(node => node.Id == "playnite-library.details.source-row");
+        Assert.AreEqual(ViewNodeKind.Row, sourceRow.Kind);
+        Assert.AreEqual("Steam", sourceRow.Children[0].Text);
+        Assert.AreEqual("No completion status", sourceRow.Children[1].Text);
+        Assert.IsFalse(nodes.Any(node => node.Text is "Installed" or "Not installed"));
         Assert.AreEqual("poster-handle", nodes.Single(node => node.Id == "playnite-library.details." + "poster").ArtworkHandle);
         Assert.IsFalse(nodes.Any(node => node.Id == "playnite-library.details." + "categories.title"));
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
