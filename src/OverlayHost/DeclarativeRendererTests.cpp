@@ -8490,7 +8490,8 @@ void ScrollDiagnosticBufferIsBoundedAndFaultContained() {
 
 #define WRAIL_RETAINED_PREPARATION_BENCH
 
-void PlaybackPreparationWorkload() {
+// Optional CPU paint/preparation probe; WIC excludes compositor upload and GPU execution.
+void PlaybackPreparationWorkload(bool composition = false, bool depth = false, bool pipelineProbe = false) {
     using Microsoft::WRL::ComPtr;
     ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
     ComPtr<IWICBitmap> bitmap; ComPtr<ID2D1RenderTarget> target;
@@ -8514,18 +8515,29 @@ void PlaybackPreparationWorkload() {
             {L"font-weight",Number(500)},{L"padding",LengthList(L"8px 12px")},
             {L"background",Color(L"#20242a")},{L"color",Color(L"#ffffff")},
             {L"flex-shrink",Number(0)},{L"text-align",Keyword(L"start")}};
+        if (depth) {
+            row.baseStyle[L"surface-shading"] = Number(.045);
+            row.baseStyle[L"scale"] = Number(1);
+            row.baseStyle[L"transition-duration"] = Duration(140);
+            row.focusedStyle = {{L"background", Color(L"#28364a")}, {L"surface-shading", Number(.065)},
+                {L"shadow-color", Color(L"#00000060")}, {L"shadow-blur", Length(5)}, {L"shadow-offset-y", Length(1)}};
+            row.pressedStyle[L"scale"] = Number(.96);
+        }
         snapshot.root.children.push_back(row);
     }
     const Rect viewport{0,0,1000,700};
     widgetrail::DeclarativeRenderOptions options; options.suppressFocusedDescendantFollow=true;
+    options.compositorWidgetTransitions=composition;
+    options.widgetAnimations.focus=widgetrail::animation::FocusStyle::Fade;
     const auto draw=[&]() {
         target->BeginDraw(); auto result=renderer.Render(target.Get(),snapshot,L"track.0",viewport,options);
         ok(target->EndDraw()); Check(result.succeeded,"playback workload renders"); return result;
     };
     auto cold=draw();
-    std::cout<<"WORKLOAD cold-prepare-us="<<cold.timing.preparationMicroseconds<<'\n';
+    std::cout<<(pipelineProbe?"PIPELINE":"WORKLOAD")<<" composition="<<composition<<" depth="<<depth<<" cold-prepare-us="<<cold.timing.preparationMicroseconds<<'\n';
     for (const bool incremental : {false,true}) {
-        std::vector<std::uint64_t> elapsed, prepare;
+        std::vector<std::uint64_t> elapsed, prepare, paint;
+        std::size_t rasterCount{}, rasterBytes{}; bool directContent{};
         for(int frame=0;frame<40;++frame) {
             const auto start=std::chrono::steady_clock::now();
             widgetrail::WidgetPresentationImpact impact{snapshot.sequence,snapshot.sequence+1,
@@ -8535,6 +8547,13 @@ void PlaybackPreparationWorkload() {
             const auto result=draw();
             elapsed.push_back(static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count()));
             prepare.push_back(result.timing.preparationMicroseconds);
+            paint.push_back(result.timing.nodeDrawMicroseconds);
+            if(result.widgetComposition) {
+                rasterCount=std::count_if(result.widgetComposition->nodes.begin(),result.widgetComposition->nodes.end(),
+                    [](const auto &n){return n.kind==widgetrail::WidgetCompositionKind::Raster && n.bitmap;});
+                rasterBytes=result.widgetComposition->rasterBytes;
+                directContent=result.widgetComposition->directContent;
+            }
 #ifdef WRAIL_RETAINED_PREPARATION_BENCH
             if(incremental && frame>1) {
                 Check(result.fullLayoutBuildCount==0,"progress avoids layout");
@@ -8543,10 +8562,10 @@ void PlaybackPreparationWorkload() {
             }
 #endif
         }
-        std::sort(elapsed.begin(),elapsed.end()); std::sort(prepare.begin(),prepare.end());
-        std::cout<<"WORKLOAD mode="<<(incremental?"incremental":"full")
+        std::sort(elapsed.begin(),elapsed.end()); std::sort(prepare.begin(),prepare.end()); std::sort(paint.begin(),paint.end());
+        std::cout<<(pipelineProbe?"PIPELINE":"WORKLOAD")<<" composition="<<composition<<" depth="<<depth<<" mode="<<(incremental?"incremental":"full")
             <<" total-median-us="<<elapsed[20]<<" total-p95-us="<<elapsed[38]
-            <<" prepare-median-us="<<prepare[20]<<" prepare-p95-us="<<prepare[38]<<'\n';
+            <<" prepare-median-us="<<prepare[20]<<" prepare-p95-us="<<prepare[38]<<" paint-median-us="<<paint[20]<<" rasters="<<rasterCount<<" raster-bytes="<<rasterBytes<<" direct="<<directContent<<'\n';
     }
 #ifdef WRAIL_RETAINED_PREPARATION_BENCH
     widgetrail::WidgetPresentationImpact impact{snapshot.sequence,snapshot.sequence+1,widgetrail::WidgetPresentationEffect::Paint,{L"progress"}};
@@ -8559,7 +8578,17 @@ void PlaybackPreparationWorkload() {
 #endif
 }
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--pipeline-workload") {
+        Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "pipeline probe COM initialization");
+        for (int repeat=0;repeat<3;++repeat) {
+            std::cout<<"PIPELINE repeat="<<repeat<<'\n';
+            PlaybackPreparationWorkload(false,false,true);
+            PlaybackPreparationWorkload(false,true,true);
+            PlaybackPreparationWorkload(true,true,true);
+        }
+        CoUninitialize(); return EXIT_SUCCESS;
+    }
     {
         WidgetSnapshot snapshot; snapshot.instanceId=L"menu.hint"; snapshot.activeInputScopeId=L"root";
         snapshot.root=Node(L"root",L"stack");
