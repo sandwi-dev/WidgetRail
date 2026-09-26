@@ -48,6 +48,9 @@ class WidgetCompositionPresenter final {
         std::optional<animation::FocusTarget> focusOrigin;
         Motion focusReveal;
         Ptr<IDCompositionArithmeticCompositeEffect> focusBlend;
+        Ptr<IDCompositionAffineTransform2DEffect> focusSample;
+        Ptr<IDCompositionSurface> focusAtlas;
+        D2D1_SIZE_U focusAtlasPixels{};
         Rect focusExtent;
         std::array<Ptr<IDCompositionVisual3>, 5> surfaceClips, surfacePixels;
         Raster previous;

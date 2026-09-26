@@ -473,6 +473,17 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
     for (const auto &node : scene_->nodes) {
         const auto nodePaintOrder = paintOrder++;
         if (node.kind == WidgetCompositionKind::Raster) {
+            const bool fadeSurface = scene_->animations.focus != animation::FocusStyle::Slide &&
+                std::any_of(scene_->nodes.begin(), scene_->nodes.end(), [&](const auto &parentNode) {
+                    return parentNode.id == node.parent && parentNode.kind == WidgetCompositionKind::FocusSurface;
+                });
+            if (fadeSurface) {
+                if (!node.bitmap && !node.solid) return E_INVALIDARG;
+                auto &raster = rasters_[node.id];
+                raster.node = node;
+                raster.pixels = node.solid ? D2D1::SizeU(1, 1) : node.bitmap->GetPixelSize();
+                continue;
+            }
             auto hr = Upload(rasters_[node.id], node);
             if (FAILED(hr))
                 return hr;
@@ -715,8 +726,53 @@ HRESULT WidgetCompositionPresenter::ConfigureFocusFade(Group &group, const Raste
     auto hr = device_->QueryInterface(IID_PPV_ARGS(effects.GetAddressOf()));
     if (SUCCEEDED(hr) && !group.focusBlend)
         hr = effects->CreateArithmeticCompositeEffect(group.focusBlend.GetAddressOf());
-    if (SUCCEEDED(hr)) hr = group.focusBlend->SetInput(0, idle.surface.Get(), 0);
-    if (SUCCEEDED(hr)) hr = group.focusBlend->SetInput(1, focused.surface.Get(), 0);
+    if (idle.pixels.width != focused.pixels.width || idle.pixels.height != focused.pixels.height ||
+        !Same(idle.node.bounds, focused.node.bounds) || !idle.pixels.width || !idle.pixels.height) return E_INVALIDARG;
+    // Filter inputs must be effects (or null for the source visual), not raw
+    // composition surfaces. Pack both rasters into one source and sample its
+    // second half through a translated effect. Keep placement outside this graph.
+    const bool vertical = idle.pixels.height <= idle.pixels.width;
+    const UINT width = idle.pixels.width, height = idle.pixels.height;
+    const auto atlasSize = D2D1::SizeU(width * (vertical ? 1 : 2), height * (vertical ? 2 : 1));
+    const float secondX = vertical ? 0.0F : static_cast<float>(width);
+    const float secondY = vertical ? static_cast<float>(height) : 0.0F;
+    if (SUCCEEDED(hr) && (!group.focusAtlas || group.focusAtlasPixels.width != atlasSize.width ||
+        group.focusAtlasPixels.height != atlasSize.height)) {
+        group.focusAtlas.Reset();
+        hr = device_->CreateSurface(atlasSize.width, atlasSize.height, DXGI_FORMAT_B8G8R8A8_UNORM,
+            DXGI_ALPHA_MODE_PREMULTIPLIED, group.focusAtlas.GetAddressOf());
+        if (SUCCEEDED(hr)) group.focusAtlasPixels = atlasSize;
+    }
+    Ptr<ID2D1DeviceContext> target;
+    POINT offset{};
+    if (SUCCEEDED(hr)) hr = group.focusAtlas->BeginDraw(nullptr, IID_PPV_ARGS(target.GetAddressOf()), &offset);
+    if (FAILED(hr)) return hr;
+    target->SetDpi(96, 96);
+    target->SetTransform(D2D1::Matrix3x2F::Translation(static_cast<float>(offset.x), static_cast<float>(offset.y)));
+    target->Clear(D2D1::ColorF(0, 0));
+    const auto paint = [&](const Raster &raster, float x, float y) {
+        const auto bounds = D2D1::RectF(x, y, x + width, y + height);
+        if (raster.node.bitmap) target->DrawBitmap(raster.node.bitmap.Get(), bounds);
+        else {
+            Ptr<ID2D1SolidColorBrush> brush;
+            const auto status = target->CreateSolidColorBrush(*raster.node.solid, brush.GetAddressOf());
+            if (FAILED(status)) return status;
+            target->FillRectangle(bounds, brush.Get());
+        }
+        return S_OK;
+    };
+    hr = paint(idle, 0, 0);
+    if (SUCCEEDED(hr)) hr = paint(focused, secondX, secondY);
+    const auto ended = group.focusAtlas->EndDraw();
+    if (SUCCEEDED(hr)) hr = ended;
+    if (SUCCEEDED(hr)) ++counters_.rasterUploads;
+    if (SUCCEEDED(hr) && !group.focusSample)
+        hr = effects->CreateAffineTransform2DEffect(group.focusSample.GetAddressOf());
+    if (SUCCEEDED(hr)) hr = group.focusSample->SetInput(0, nullptr, 0);
+    if (SUCCEEDED(hr)) hr = group.focusSample->SetTransformMatrix(D2D1::Matrix3x2F::Translation(-secondX, -secondY));
+    if (SUCCEEDED(hr)) hr = group.focusSample->SetInterpolationMode(D2D1_2DAFFINETRANSFORM_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+    if (SUCCEEDED(hr)) hr = group.focusBlend->SetInput(0, nullptr, 0);
+    if (SUCCEEDED(hr)) hr = group.focusBlend->SetInput(1, group.focusSample.Get(), 0);
     if (SUCCEEDED(hr)) hr = group.focusBlend->SetCoefficients({0, 1 - group.motion.to.opacity, group.motion.to.opacity, 0});
     if (SUCCEEDED(hr)) hr = group.focusBlend->SetClampOutput(TRUE);
     if (SUCCEEDED(hr) && group.motion.duration > 0) {
@@ -728,14 +784,19 @@ HRESULT WidgetCompositionPresenter::ConfigureFocusFade(Group &group, const Raste
     }
     if (SUCCEEDED(hr)) hr = group.root->RemoveAllVisuals();
     if (SUCCEEDED(hr)) hr = group.incoming->RemoveAllVisuals();
-    if (SUCCEEDED(hr)) hr = group.incoming->SetContent(idle.surface.Get());
+    if (SUCCEEDED(hr)) hr = group.incomingClip->RemoveAllVisuals();
+    if (SUCCEEDED(hr)) hr = group.outgoingClip->RemoveAllVisuals();
+    if (SUCCEEDED(hr)) hr = group.incoming->SetContent(group.focusAtlas.Get());
     if (SUCCEEDED(hr)) hr = group.incoming->SetEffect(group.focusBlend.Get());
-    // Both surface rasters have the same bounds and pixel size.
+    if (SUCCEEDED(hr)) hr = group.outgoingClip->SetClip(D2D1::RectF(0, 0, static_cast<float>(width), static_cast<float>(height)));
+    if (SUCCEEDED(hr)) hr = group.outgoingClip->AddVisual(group.incoming.Get(), FALSE, nullptr);
+    if (SUCCEEDED(hr)) hr = group.incomingClip->AddVisual(group.outgoingClip.Get(), FALSE, nullptr);
+    // Place the clipped result, not the graph's untransformed source input.
     const auto scale = scene_->scale;
     const D2D_MATRIX_3X2_F matrix{idle.node.bounds.width * scale / idle.pixels.width, 0, 0,
         idle.node.bounds.height * scale / idle.pixels.height, idle.node.bounds.x * scale, idle.node.bounds.y * scale};
-    if (SUCCEEDED(hr)) hr = static_cast<IDCompositionVisual2 *>(group.incoming.Get())->SetTransform(matrix);
-    if (SUCCEEDED(hr)) hr = group.root->AddVisual(group.incoming.Get(), FALSE, nullptr);
+    if (SUCCEEDED(hr)) hr = static_cast<IDCompositionVisual2 *>(group.incomingClip.Get())->SetTransform(matrix);
+    if (SUCCEEDED(hr)) hr = group.root->AddVisual(group.incomingClip.Get(), FALSE, nullptr);
     return hr;
 }
 
