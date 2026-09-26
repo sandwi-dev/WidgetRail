@@ -17502,6 +17502,9 @@ private:
         const unsigned int width,
         const unsigned int height,
         const UINT dpi) {
+        const auto diagnosticStarted = gScrollDiagnostics
+            ? widgetrail::ScrollDiagnostics::Clock::now()
+            : widgetrail::ScrollDiagnostics::Clock::time_point{};
         const std::wstring priorPresentationPaintKey =
             lastWidgetPresentationPaintKey_;
         const bool replacement =
@@ -17559,10 +17562,18 @@ private:
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
         const bool revealContent = CompositionContentRevealPending();
+        const auto diagnosticGpuBefore = compositionSurface_.widgetCompositionCounters();
+        const auto diagnosticSubmitStarted = gScrollDiagnostics
+            ? widgetrail::ScrollDiagnostics::Clock::now()
+            : widgetrail::ScrollDiagnostics::Clock::time_point{};
         const HRESULT result = compositionSurface_.CommitFrames(
             framePointers, replacement, timing, nullptr,
             frames.backgroundPresentation
                 ? &*frames.backgroundPresentation : nullptr, revealContent);
+        const auto diagnosticSubmitUs = gScrollDiagnostics
+            ? widgetrail::ScrollDiagnostics::Micros(
+                widgetrail::ScrollDiagnostics::Clock::now() - diagnosticSubmitStarted)
+            : 0;
         if (FAILED(result)) {
             if (frames.backgroundObservationTransaction)
                 compositorBackgroundCoordinator_.CancelObservation(
@@ -17615,10 +17626,20 @@ private:
         }
         AppendCompositionCoordinateSample(0);
         if (gScrollDiagnostics) gScrollDiagnostics->Record("frame-commit", [&](auto& out) {
-            out << "draw-us=" << drawMicroseconds << " commit-us=" << timing.commitMicroseconds
+            const auto gpu = compositionSurface_.widgetCompositionCounters();
+            out << "cpu-us=" << widgetrail::ScrollDiagnostics::Micros(
+                    widgetrail::ScrollDiagnostics::Clock::now() - diagnosticStarted)
+                << " draw-us=" << drawMicroseconds << " commit-us=" << timing.commitMicroseconds
+                << " submit-us=" << diagnosticSubmitUs
                 << " begin-us=" << frames.stageTiming.beginFrameMicroseconds
                 << " resource-us=" << frames.stageTiming.resourceSetupMicroseconds
                 << " end-us=" << frames.stageTiming.endFrameMicroseconds
+                << " gpu-uploads=" << gpu.rasterUploads - diagnosticGpuBefore.rasterUploads
+                << " gpu-reuses=" << gpu.rasterReuses - diagnosticGpuBefore.rasterReuses
+                << " gpu-uploaded-bytes=" << gpu.uploadedBytes - diagnosticGpuBefore.uploadedBytes
+                << " focus-atlas-reuses=" << gpu.focusAtlasReuses - diagnosticGpuBefore.focusAtlasReuses
+                << " focus-full-total=" << focusPaintFallbackCount_
+                << " focus-retained-total=" << focusPaintRetainedCount_
                 << " surface=" << width << 'x' << height
                 << " normal-log-us=" << gScrollDiagnostics->logUs.load();
         });

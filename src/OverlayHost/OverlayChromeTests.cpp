@@ -1748,7 +1748,7 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
 
 void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = true,
                               widgetrail::animation::FocusStyle focusStyle = widgetrail::animation::FocusStyle::Fade,
-                              bool scaleControls = true, bool tightRow = false, bool depth = false) {
+                              bool scaleControls = true, bool tightRow = false, bool depth = false, bool scrollRetarget = false) {
     using namespace widgetrail;
     const wchar_t *name = L"WidgetRail.FocusFadeTest";
     WNDCLASSW wc{}; wc.lpfnWndProc = DefWindowProcW;
@@ -1855,6 +1855,23 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         HDC dc = GetDC(nullptr); auto color = GetPixel(dc, pt.x, pt.y); ReleaseDC(nullptr, dc); return color;
     };
     commit(sceneFor(false));
+    if (scrollRetarget) {
+        ShowWindow(window, SW_SHOWNOACTIVATE); DwmFlush();
+        commit(sceneFor(true)); Sleep(30); DwmFlush();
+        auto scrolled = sceneFor(false);
+        for (auto& item : scrolled->focusTargets) item.bounds.y -= 8;
+        for (auto& node : scrolled->nodes) if (node.id != L"background") node.bounds.y -= 8;
+        commit(scrolled); DwmFlush();
+        Sleep(animation::FocusDuration(focusStyle) * 2 + 80); DwmFlush();
+        const auto old = pixel(120, 32), current = pixel(30, 32);
+        std::cout << "Scroll retarget scale=" << pixelScale << " old RGB=" << (int)GetRValue(old) << ','
+            << (int)GetGValue(old) << ',' << (int)GetBValue(old) << " current RGB=" << (int)GetRValue(current) << ','
+            << (int)GetGValue(current) << ',' << (int)GetBValue(current) << std::endl;
+        Check(GetRValue(old) > 120 && GetGValue(old) < 5 && GetGValue(current) >= 60,
+            "scroll during focus fade cannot retain the previous control's highlighted background");
+        surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
+        return;
+    }
     if (depth) {
         if (pixels) { ShowWindow(window, SW_SHOWNOACTIVATE); DwmFlush(); Sleep(50); DwmFlush(); }
         const auto initial = pixel(30, 40);
@@ -1979,6 +1996,13 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
 
 int main(int argc, char** argv) {
     CheckWidgetAnimationPolicies();
+    if (argc == 2 && std::string_view(argv[1]) == "--focus-scroll-pixels") {
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "scroll focus COM initialization");
+        for (float scale : {1.0F, 1.25F, 1.5F, 2.0F})
+            CheckFocusFadeCompositor(true, scale, true, widgetrail::animation::FocusStyle::Fade, false, false, false, true);
+        CoUninitialize(); return EXIT_SUCCESS;
+    }
     if (argc == 2 && std::string_view(argv[1]) == "--surface-depth-pixels") {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "depth COM initialization");

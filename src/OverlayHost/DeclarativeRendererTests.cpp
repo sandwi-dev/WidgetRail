@@ -8597,6 +8597,13 @@ void RetainedPresentationPaintAndMeasurementAgree() {
     const auto trace = scrollTrace->Snapshot();
     Check(std::ranges::any_of(trace.records, [](const auto& line) { return line.find("event=render ") != std::string::npos; }),
         "opt-in scroll trace records render timing");
+    Check(std::ranges::any_of(trace.records, [](const auto& line) {
+        return line.find("event=render ") != std::string::npos &&
+            line.find(" paint-hits=") != std::string::npos &&
+            line.find(" paint-misses=") != std::string::npos &&
+            line.find(" painted-bytes=") != std::string::npos &&
+            line.find("truncated=true") == std::string::npos;
+    }), "bounded scroll trace includes paint retention evidence");
     Check(std::ranges::any_of(trace.records, [](const auto& line) { return line.find("event=text-geometry ") != std::string::npos; }),
         "opt-in scroll trace records actual text drawing geometry");
     Check(std::ranges::none_of(trace.records, [](const auto& line) { return line.find("Close") != std::string::npos || line.find("game.2") != std::string::npos; }),

@@ -6465,6 +6465,8 @@ RenderResult DeclarativeRenderer::Render(
             << " image-us=" << pass.scrollImageNanoseconds / 1000 << " upload-us=" << pass.scrollUploadMicroseconds
             << " image-hits=" << pass.scrollImageHits << " image-misses=" << pass.scrollImageMisses
             << " text-hits=" << timing.textLayoutCacheHits << " text-misses=" << timing.textLayoutCacheMisses
+            << " paint-hits=" << timing.compositionPaintHits << " paint-misses=" << timing.compositionPaintMisses
+            << " painted-bytes=" << timing.compositionPaintedBytes
             << " bitmap-bytes=" << bitmapBytes_ << " bitmap-entries=" << bitmaps_.size()
             << " free-scroll=" << options.suppressFocusedDescendantFollow
             << " scale=" << options.pixelScale << " sequence-changed=" << !timing.collectionAdmissionSummary.empty();

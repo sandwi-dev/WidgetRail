@@ -23,7 +23,17 @@ function Get-TimingSummary($Records, [string]$Field) {
         MedianMs = $values[[int][Math]::Floor(($values.Count - 1) * .5)]
         P95Ms = $values[[int][Math]::Ceiling(($values.Count - 1) * .95)]
         MaximumMs = $values[-1]
+        Over16_67Ms = @($values | Where-Object { $_ -gt (1000.0 / 60) }).Count
+        Over33_33Ms = @($values | Where-Object { $_ -gt (1000.0 / 30) }).Count
     }
+}
+function Get-CounterSummary($Records, [string]$Field) {
+    $values = @($Records | Where-Object { $_.ContainsKey($Field) } | ForEach-Object {
+        [double]::Parse($_[$Field], [System.Globalization.CultureInfo]::InvariantCulture)
+    })
+    if ($values.Count -eq 0) { return $null }
+    $summary = $values | Measure-Object -Sum -Maximum
+    return [ordered]@{ Samples = $values.Count; Total = $summary.Sum; Maximum = $summary.Maximum }
 }
 $records = @($lines | Select-Object -Skip 1 | ForEach-Object { ConvertFrom-TraceLine $_ })
 $frames = @($records | Where-Object { $_['event'] -eq 'frame-commit' })
@@ -48,6 +58,29 @@ $assets = @($creates | Group-Object { $_['asset'] } | Sort-Object Count -Descend
     })
     FrameDrawing = Get-TimingSummary $frames 'draw-us'
     FrameCommit = Get-TimingSummary $frames 'commit-us'
+    FrameCpu = Get-TimingSummary $frames 'cpu-us'
+    FrameSubmission = Get-TimingSummary $frames 'submit-us'
+    PaintRetention = [ordered]@{
+        Hits = Get-CounterSummary $renders 'paint-hits'
+        Misses = Get-CounterSummary $renders 'paint-misses'
+        PaintedBytes = Get-CounterSummary $renders 'painted-bytes'
+    }
+    GpuTransfers = [ordered]@{
+        Uploads = Get-CounterSummary $frames 'gpu-uploads'
+        Reuses = Get-CounterSummary $frames 'gpu-reuses'
+        UploadedBytes = Get-CounterSummary $frames 'gpu-uploaded-bytes'
+        FocusAtlasReuses = Get-CounterSummary $frames 'focus-atlas-reuses'
+    }
+    RenderPaths = @($renders | Group-Object { $_['instance'] + ':' + $_['work'] + ':' + $_['free-scroll'] } | ForEach-Object {
+        [ordered]@{
+            InstanceWorkAndFreeScroll = $_.Name
+            Timing = Get-TimingSummary $_.Group 'total-us'
+            Preparation = Get-TimingSummary $_.Group 'prepare-us'
+            Painting = Get-TimingSummary $_.Group 'draw-us'
+            PaintHits = Get-CounterSummary $_.Group 'paint-hits'
+            PaintMisses = Get-CounterSummary $_.Group 'paint-misses'
+        }
+    })
     RenderStages = $stages
     MostRecreatedAssets = $assets
     RefreshCallers = @($records | Where-Object { $_['event'] -eq 'refresh-state' } |
@@ -56,6 +89,7 @@ $assets = @($creates | Group-Object { $_['asset'] } | Sort-Object Count -Descend
         })
     Notes = @(
         'Timings are nested: do not add layout/text, draw/image/upload, or log totals together.'
+        'Submission includes CPU upload and commit calls, not GPU execution or display latency. CPU budget counts are not dropped-frame counts.'
         'Counts cover retained trace records only. Inspect dropped and failures before interpreting them.'
         'Asset/variant values are opaque process-local correlation identifiers, not game IDs.'
         'Geometry records are sampled; correlate sequence and scroll offset before interpreting movement.'

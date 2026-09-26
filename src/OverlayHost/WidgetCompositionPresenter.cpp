@@ -708,7 +708,13 @@ HRESULT WidgetCompositionPresenter::ConfigureFocusFade(Group &group, const Raste
     if (SUCCEEDED(hr)) hr = group.focusSample->SetInterpolationMode(D2D1_2DAFFINETRANSFORM_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
     if (SUCCEEDED(hr)) hr = group.focusBlend->SetInput(0, nullptr, 0);
     if (SUCCEEDED(hr)) hr = group.focusBlend->SetInput(1, group.focusSample.Get(), 0);
-    if (SUCCEEDED(hr)) hr = group.focusBlend->SetCoefficients({0, 1 - group.motion.to.opacity, group.motion.to.opacity, 0});
+    // The bulk vector setter does not replace animations bound through the
+    // individual coefficient properties. Reflow/scroll can snap a fade to a
+    // zero-duration pose; explicitly retire both old animation bindings first.
+    if (SUCCEEDED(hr)) hr = group.focusBlend->SetCoefficient1(0.0F);
+    if (SUCCEEDED(hr)) hr = group.focusBlend->SetCoefficient2(1 - group.motion.to.opacity);
+    if (SUCCEEDED(hr)) hr = group.focusBlend->SetCoefficient3(group.motion.to.opacity);
+    if (SUCCEEDED(hr)) hr = group.focusBlend->SetCoefficient4(0.0F);
     if (SUCCEEDED(hr)) hr = group.focusBlend->SetClampOutput(TRUE);
     if (SUCCEEDED(hr) && group.motion.duration > 0) {
         Ptr<IDCompositionAnimation> before, after;
