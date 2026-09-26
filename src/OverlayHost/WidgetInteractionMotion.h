@@ -79,19 +79,16 @@ inline Recipe FocusFade(Rect bounds, Rect clip, float from, float to, unsigned d
     return recipe;
 }
 
-inline Rect FocusSettleBounds(Rect bounds, Rect clip) noexcept {
-    // Fixed DIP travel keeps short buttons and wide rows equally restrained.
-    // Preserve the center and reduce each axis independently near clipping edges.
-    const float x = std::clamp(std::min(bounds.x - clip.x,
-        clip.x + clip.width - bounds.x - bounds.width), 0.0F, 4.0F);
-    const float y = std::clamp(std::min(bounds.y - clip.y,
-        clip.y + clip.height - bounds.y - bounds.height), 0.0F, 4.0F);
-    return {bounds.x - x, bounds.y - y, bounds.width + x * 2, bounds.height + y * 2};
+inline Rect FocusSettleBounds(Rect bounds) noexcept {
+    // Stay within the control even when a grid/row clips exactly to its height.
+    // A fixed inset is visible on wide buttons without touching widget layout.
+    const float inset = std::clamp(std::min(bounds.width, bounds.height) * .15F, 0.0F, 6.0F);
+    return {bounds.x + inset, bounds.y + inset, bounds.width - inset * 2, bounds.height - inset * 2};
 }
 
 inline Recipe FocusSettle(Rect bounds, Rect clip, std::optional<Pose> previous = {}) noexcept {
     auto recipe = Stationary(bounds, clip);
-    recipe.from = previous.value_or(Pose{FocusSettleBounds(bounds, clip), .35F, clip});
+    recipe.from = previous.value_or(Pose{FocusSettleBounds(bounds), .65F, clip});
     recipe.from.clip = clip;
     recipe.milliseconds = SameFocusRect(recipe.from.bounds, bounds) && recipe.from.opacity == 1
         ? 0 : FocusDuration(FocusStyle::Settle);

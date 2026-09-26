@@ -1316,18 +1316,19 @@ void CheckWidgetAnimationPolicies() {
         "focus defaults and persisted preset IDs are stable");
     const Rect settleBounds{10, 10, 100, 44}, settleClip{0, 0, 300, 200};
     const auto settle = FocusSettle(settleBounds, settleClip).Start(0, 1000);
-    Check(settle.duration == 180 && Sample(settle, 0).opacity == .35F &&
-        SameFocusRect(Sample(settle, 0).bounds, {6, 6, 108, 52}) &&
-        SameFocusRect(Sample(settle, 180).bounds, settleBounds), "settle grows only the outline by a fixed DIP inset");
+    Check(settle.duration == 220 && Sample(settle, 0).opacity == .65F &&
+        SameFocusRect(Sample(settle, 0).bounds, {16, 16, 88, 32}) &&
+        SameFocusRect(Sample(settle, 220).bounds, settleBounds), "settle expands only the outline from a fixed DIP inset");
     const auto sampled = Sample(settle, 60);
     const auto resumed = FocusSettle(settleBounds, settleClip, sampled).Start(80, 1000);
     Check(SameFocusRect(Sample(resumed, 80).bounds, sampled.bounds) && Sample(resumed, 80).opacity == sampled.opacity,
-        "interrupted settle resumes current geometry and alpha without restarting its outward pose");
-    Check(SameFocusRect(FocusSettleBounds({0, 0, 100, 44}, settleClip), {0, 0, 100, 44}) &&
-        SameFocusRect(FocusSettleBounds({10, 1, 100, 44}, settleClip), {6, 0, 108, 46}),
-        "settle clips constrain each axis without resizing content or moving its center");
-    Check(FocusSettle(settleBounds, settleClip).Start(0, 1000, 2).duration == 90 &&
-        FocusDuration(FocusStyle::Settle) == 180 && FocusDuration(FocusStyle::None) == 0,
+        "interrupted settle resumes current geometry and alpha without restarting its initial pose");
+    const Rect tightBounds{0, 0, 100, 44};
+    Check(SameFocusRect(FocusSettle(tightBounds, tightBounds).from.bounds, {6, 6, 88, 32}) &&
+        SameFocusRect(FocusSettleBounds({10, 1, 100, 44}), {16, 7, 88, 32}),
+        "tight row clipping cannot suppress settle movement or move its center");
+    Check(FocusSettle(settleBounds, settleClip).Start(0, 1000, 2).duration == 110 &&
+        FocusDuration(FocusStyle::Settle) == 220 && FocusDuration(FocusStyle::None) == 0,
         "settle and its background share the configured timeline");
     const auto fade = FocusFade(first.bounds, first.clip, 0, 1).Start(0, 1000);
     Check(fade.duration == 120 && Sample(fade, 60).opacity == .5F &&
@@ -1906,7 +1907,7 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
 
 void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = true,
                               widgetrail::animation::FocusStyle focusStyle = widgetrail::animation::FocusStyle::Fade,
-                              bool scaleControls = true) {
+                              bool scaleControls = true, bool tightRow = false) {
     using namespace widgetrail;
     const wchar_t *name = L"WidgetRail.FocusFadeTest";
     WNDCLASSW wc{}; wc.lpfnWndProc = DefWindowProcW;
@@ -1929,6 +1930,7 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         background.solid = D2D1::ColorF(D2D1::ColorF::Blue); scene->nodes.push_back(background);
         scene->focusTargets = {{L"left", L"page", {10, 20, 40, 40}, scene->viewport},
                                {L"right", L"page", {100, 20, 40, 40}, scene->viewport}};
+        if (tightRow) for (auto &item : scene->focusTargets) item.clip = {0, 20, 160, 40};
         for (const auto &item : scene->focusTargets) {
             WidgetCompositionNode control;
             control.id = L"control/" + item.key; control.key = item.key; control.clock = item.scope;
@@ -1952,7 +1954,7 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         scene->nodes.push_back(focus);
         WidgetCompositionNode marker;
         marker.id = L"marker"; marker.parent = focus.id;
-        marker.bounds = {item.bounds.x, 65, 40, 5}; marker.clip = item.clip;
+        marker.bounds = tightRow ? item.bounds : declarative::Rect{item.bounds.x, 65, 40, 5}; marker.clip = item.clip;
         marker.solid = D2D1::ColorF(D2D1::ColorF::White); scene->nodes.push_back(marker);
         return scene;
     };
@@ -1962,7 +1964,8 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         frame.target->Clear(D2D1::ColorF(0, 0));
         // Exercise real raster surfaces, not only the one-pixel solid shortcut.
         for (auto &node : scene->nodes) {
-            if (!bitmaps || !node.solid || node.parent.find(L"surface/") != 0) continue;
+            const bool outline = tightRow && node.id == L"marker";
+            if (!node.solid || (!outline && (!bitmaps || node.parent.find(L"surface/") != 0))) continue;
             ComPtr<ID2D1BitmapRenderTarget> bitmapTarget;
             const auto size = D2D1::SizeF(node.bounds.width, node.bounds.height);
             const auto bitmapPixels = D2D1::SizeU(static_cast<UINT>(std::ceil(size.width * pixelScale)),
@@ -1972,7 +1975,10 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
             bitmapTarget->BeginDraw(); bitmapTarget->Clear(D2D1::ColorF(0, 0));
             ComPtr<ID2D1SolidColorBrush> brush;
             Check(SUCCEEDED(bitmapTarget->CreateSolidColorBrush(*node.solid, brush.GetAddressOf())), "fade bitmap brush");
-            bitmapTarget->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(0, 0, size.width, size.height), 5, 5), brush.Get());
+            if (outline)
+                bitmapTarget->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 1, size.width - 1, size.height - 1), 5, 5), brush.Get(), 2);
+            else
+                bitmapTarget->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(0, 0, size.width, size.height), 5, 5), brush.Get());
             Check(SUCCEEDED(bitmapTarget->EndDraw()), "fade bitmap paint");
             Check(SUCCEEDED(bitmapTarget->GetBitmap(node.bitmap.GetAddressOf())), "fade bitmap capture");
             node.solid.reset();
@@ -2011,9 +2017,22 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
     }
     Check(surface.paintCounters().content == paints && surface.widgetCompositionCounters().rasterUploads == counters.rasterUploads,
         "focus fade advances without UI paints or uploads");
+    if (pixels && tightRow) {
+        Check(GetGValue(pixel(120, 26)) > 130 && GetGValue(pixel(120, 21)) < 100,
+            "tightly clipped row visibly expands its outline from inside the control");
+        Check(GetGValue(pixel(120, 19)) == 0, "settle does not escape the row clip");
+        Sleep(430); DwmFlush();
+        Check(GetGValue(pixel(120, 21)) > 240 && GetGValue(pixel(120, 26)) < 100,
+            "tight row settle arrives at the exact final border");
+        Check(surface.paintCounters().content == paints && surface.widgetCompositionCounters().rasterUploads == counters.rasterUploads,
+            "tight row movement stays compositor-owned");
+        surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
+        std::cout << "Tight-row settle scale=" << pixelScale << " passed" << std::endl;
+        return;
+    }
     if (pixels && focusStyle == animation::FocusStyle::Settle && !scaleControls) {
-        Check(GetRValue(pixel(120, 72)) > 15 && GetRValue(pixel(120, 65)) < 5,
-            "settle moves only the incoming decoration outward, then inward");
+        Check(GetRValue(pixel(120, 60)) > 15 && GetRValue(pixel(120, 68)) < 5,
+            "settle expands the incoming decoration without resizing the control");
         Check(GetGValue(pixel(143, 40)) == 0,
             "settle does not enlarge the control background alongside its outline");
     }
@@ -2023,10 +2042,10 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
     Check(surface.widgetCompositionCounters().interruptionCaptures == captures,
         "same target updates do not recapture the focus visual");
     if (pixels && focusStyle == animation::FocusStyle::Settle && !scaleControls) {
-        commit(sceneFor(true)); // resume a still-expanded, fading-out outline
+        commit(sceneFor(true)); // resume a still-inset, fading-out outline
         Sleep(40); DwmFlush();
         bool visibleDecoration{};
-        for (int y = 61; y < 90; ++y) {
+        for (int y = 54; y < 90; ++y) {
             if (GetRValue(pixel(120, y)) <= 15) continue;
             visibleDecoration = true;
             Check(y <= 77, "rapid settle re-entry uses its sampled control pose, not captured raster bounds");
@@ -2059,6 +2078,7 @@ int main(int argc, char** argv) {
         for (float scale : {.85F, 1.0F, 1.25F, 1.5F}) {
             CheckFocusFadeCompositor(true, scale);
             CheckFocusFadeCompositor(true, scale, true, widgetrail::animation::FocusStyle::Settle, false);
+            CheckFocusFadeCompositor(true, scale, true, widgetrail::animation::FocusStyle::Settle, false, true);
         }
         CheckFocusFadeCompositor(true, 1.25F, true, widgetrail::animation::FocusStyle::Settle);
         CoUninitialize(); return EXIT_SUCCESS;

@@ -188,9 +188,10 @@ The widget animation speed preference scales this duration. Reduced Motion and
 hosts without composition use the stationary outline.
 
 Settings offers Settle (default), Fade, Slide and None for focus highlights.
-Settle brings the destination outline inward by up to 4 DIPs over 180 ms and raises
-its opacity from 35% to full. Available clipping space bounds the outward pose;
-content and layout stay stationary. The resolved background fades on the same clock.
+Settle expands the destination outline from up to 6 DIPs inside the control over
+220 ms and raises its opacity from 65% to full. The inset is bounded for small
+controls. It remains visible even when a row clips exactly to the control's bounds;
+content, layout and clipping stay stationary. The resolved background fades on the same clock.
 Existing WRSS scale remains a parent transform, so scaling and outline settling
 compose without competing layout changes. A rapid return to a fading outline resumes
 its sampled pose rather than restarting its expansion. Controller hints remain immediate.

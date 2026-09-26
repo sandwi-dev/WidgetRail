@@ -20,7 +20,7 @@ struct FocusPreset {
     bool inPlace;
 };
 inline constexpr std::array FocusPresets{
-    FocusPreset{L"settle", L"Settle", FocusStyle::Settle, 180, true},
+    FocusPreset{L"settle", L"Settle", FocusStyle::Settle, 220, true},
     FocusPreset{L"fade", L"Fade", FocusStyle::Fade, 120, true},
     FocusPreset{L"slide", L"Slide", FocusStyle::Slide, 140, false},
     FocusPreset{L"none", L"None", FocusStyle::None, 0, false},

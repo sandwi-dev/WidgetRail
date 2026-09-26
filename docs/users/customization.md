@@ -25,7 +25,7 @@ while the previous page recedes; **Vertical slide** moves pages up or down;
 the previous page; **None** changes pages immediately.
 **Animate widget dialogs** independently controls opening and closing motion.
 **Focus animation** offers **Settle** (default), **Fade**, **Slide**, and **None**.
-Settle brings the outline inward by up to 4 DIPs over 180 ms while its opacity rises;
+Settle expands the outline from up to 6 DIPs inside the control over 220 ms, starting at 65% opacity;
 the background fades on the same timeline. Fade changes opacity over 120 ms without
 outline movement. These effects leave the control geometry unchanged. Existing
 WRSS scale and press feedback still apply to the whole control, including its outline.
