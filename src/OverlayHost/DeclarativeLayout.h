@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -123,6 +124,9 @@ struct LayoutElement {
     // the measured content extent and clips descendants to contentBox.
     ScrollAxis scrollAxis{ScrollAxis::None};
     float scrollOffset{};
+    // Host-owned intrinsic-input revision, independent of stable node identity.
+    // Zero opts out of measurement reuse (the safe default for arbitrary callers).
+    std::uint64_t measureRevision{};
 };
 
 struct MeasureConstraints {
@@ -168,6 +172,19 @@ struct LayoutIssue {
     std::string message;
 };
 
+class LayoutSession final {
+public:
+    LayoutSession();
+    ~LayoutSession();
+    LayoutSession(const LayoutSession&) = delete;
+    LayoutSession& operator=(const LayoutSession&) = delete;
+    void Reset();
+private:
+    friend class LayoutEngine;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
 struct LayoutOptions {
     // Logical-to-physical pixel multiplier. Rect edges are rounded to this grid.
     float pixelScale{1.0F};
@@ -184,12 +201,16 @@ struct LayoutOptions {
     // the root's automatic block extent. The caller still supplies a finite
     // viewport ceiling and clamps the returned extent before final layout.
     bool intrinsicRootHeight{};
+    // Optional, exclusive synchronous borrow. No caller tree or callback is
+    // retained. The ordinary stateless path remains the correctness reference.
+    LayoutSession* session{};
 };
 
 struct LayoutResult {
     std::map<std::string, LayoutBox, std::less<>> boxes;
     std::vector<LayoutIssue> issues;
     bool compactMode{};
+    std::size_t intrinsicMeasures{};
 
     [[nodiscard]] bool valid() const noexcept;
     [[nodiscard]] const LayoutBox* Find(std::string_view stableId) const noexcept;

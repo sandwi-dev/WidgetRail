@@ -6,7 +6,7 @@
 // Stable, product-owned C ABI. The Rust implementation is pinned and built as
 // a static library; no Rust types or allocator ownership cross this boundary.
 
-#define WRAIL_TAFFY_ABI_VERSION 4U
+#define WRAIL_TAFFY_ABI_VERSION 5U
 
 enum WidgetRailTaffyResult : std::int32_t {
     WRAIL_TAFFY_OK = 0,
@@ -97,6 +97,8 @@ struct WidgetRailTaffyNodeInput {
     std::int32_t gridStartIndex{};
     std::uint32_t stretchCrossAxis{1};
     WidgetRailTaffyOptionalFloat widthFraction;
+    std::uint64_t stableKey{};
+    std::uint64_t measureRevision{};
 };
 
 struct WidgetRailTaffyMeasureInput {
@@ -130,12 +132,25 @@ struct WidgetRailTaffyNodeOutput {
 
 static_assert(sizeof(WidgetRailTaffyOptionalFloat) == 8);
 static_assert(sizeof(WidgetRailTaffyEdges) == 16);
-static_assert(sizeof(WidgetRailTaffyNodeInput) == 168);
+static_assert(sizeof(WidgetRailTaffyNodeInput) == 184);
 static_assert(sizeof(WidgetRailTaffyMeasureInput) == 32);
 static_assert(sizeof(WidgetRailTaffyMeasuredSize) == 8);
 static_assert(sizeof(WidgetRailTaffyNodeOutput) == 40);
 
 extern "C" {
+// Single-owner, non-reentrant handle. Calls borrow buffers/callbacks only
+// synchronously. Destroy with the same Rust library that created it.
+struct WidgetRailTaffySession;
+[[nodiscard]] WidgetRailTaffySession* wrail_taffy_session_create() noexcept;
+void wrail_taffy_session_destroy(WidgetRailTaffySession*) noexcept;
+[[nodiscard]] std::int32_t wrail_taffy_session_compute(
+    WidgetRailTaffySession* session,
+    const WidgetRailTaffyNodeInput* nodes, std::size_t nodeCount,
+    const std::uint32_t* children, std::size_t childCount,
+    std::uint32_t rootIndex, float availableWidth, float availableHeight,
+    std::uint32_t availableHeightMode, WidgetRailTaffyMeasureCallback measure,
+    void* measureContext, WidgetRailTaffyNodeOutput* outputs,
+    std::size_t outputCount) noexcept;
 [[nodiscard]] std::uint32_t wrail_taffy_abi_version() noexcept;
 
 [[nodiscard]] std::int32_t wrail_taffy_compute(

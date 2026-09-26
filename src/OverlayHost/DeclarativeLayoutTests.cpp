@@ -1122,12 +1122,99 @@ void ModalLayerPreservesBackgroundAndBounds() {
     Check(!ComputeLayout(overlay, ceiling).valid(), "malformed modal fails closed");
 }
 
+void RetainedLayoutMatchesStatelessAdmission() {
+    using namespace widgetrail::declarative;
+    for (const bool grid : {false, true}) {
+        LayoutSession session;
+        auto root = Element("collection");
+        root.scrollAxis = ScrollAxis::Vertical;
+        root.overflow = OverflowBehavior::Clip;
+        auto items = Element("items");
+        items.layoutMode = grid ? LayoutMode::ResponsiveGrid : LayoutMode::Flex;
+        if (grid) { items.gridMinimumColumnWidth = 105.5F; items.gridMaximumColumns = 7; }
+        items.gap = 7.25F; items.crossGap = 9.5F;
+        root.children.push_back(items);
+        for (int iteration=0; iteration<80; ++iteration) {
+            auto& collection = root.children[0];
+            collection.children.clear();
+            collection.gridStartIndex = iteration % 9;
+            for (int index=0; index<24 + iteration%13; ++index) {
+                auto item = Element("item." + std::to_string(index + iteration/4));
+                item.minHeight=45.5F; item.flexShrink=0;
+                item.padding=BoxSpacing::Four(3.25F,4.5F,2.75F,5.5F);
+                item.margin=BoxSpacing::Four(1.5F,2.5F,3.5F,1.25F);
+                if (grid) item.aspectRatio=.667F;
+                auto text = Element(item.id+".text"); text.measureRevision=1 + iteration/5;
+                item.children.push_back(text);
+                item.measureRevision=1;
+                collection.children.push_back(item);
+            }
+            if(iteration%2) std::reverse(collection.children.begin(),collection.children.end());
+            root.measureRevision=collection.measureRevision=1;
+            root.scrollOffset=iteration*137.3F;
+            LayoutOptions options; options.pixelScale=1 + (iteration%4)*.25F;
+            options.session=&session;
+            const Rect viewport{1.25F,2.5F,720.5F-(iteration%5)*63.75F,411.25F};
+            const auto measure = [&](const LayoutElement& element,const MeasureConstraints& constraints) -> Size {
+                const auto naturalWidth=143.5F+static_cast<float>(element.measureRevision%4)*51.5F;
+                const auto width=std::max(1.0F,std::min(naturalWidth,constraints.maximumWidth));
+                return {width, std::ceil(naturalWidth/width)*21.25F};
+            };
+            const auto actual=ComputeLayout(root,viewport,measure,options);
+            options.session=nullptr;
+            const auto expected=ComputeLayout(root,viewport,measure,options);
+            Check(actual.valid() && expected.valid(), "retained and stateless admission valid");
+            Check(actual.boxes.size()==expected.boxes.size(),"retained item membership exact");
+            const auto rect = [&](Rect a,Rect b) {
+                Near(a.x,b.x,"retained x"); Near(a.y,b.y,"retained y");
+                Near(a.width,b.width,"retained width"); Near(a.height,b.height,"retained height");
+            };
+            for(const auto& [id,box]:expected.boxes) {
+                const auto* other=actual.Find(id); Check(other!=nullptr,"retained stable id");
+                rect(other->borderBox,box.borderBox); rect(other->contentBox,box.contentBox);
+                rect(other->visibleBox,box.visibleBox); rect(other->unscrolledBorderBox,box.unscrolledBorderBox);
+                Near(other->scrollOffset,box.scrollOffset,"retained scroll offset");
+                Near(other->maximumScrollOffset,box.maximumScrollOffset,"retained scroll extent");
+                Check(other->overflowX==box.overflowX && other->overflowY==box.overflowY &&
+                    other->clippedByAncestor==box.clippedByAncestor,"retained clipping flags");
+            }
+            // Without changing semantics or constraints there is no new
+            // intrinsic work. The default revision-zero path is tested below.
+            options.session=&session;
+            const auto unchanged=ComputeLayout(root,viewport,measure,options);
+            Check(grid ? unchanged.intrinsicMeasures <= expected.intrinsicMeasures : unchanged.intrinsicMeasures==0, "unchanged retained nodes avoid repeated intrinsic work");
+        }
+    }
+    LayoutSession session;
+    auto leaf=Element("leaf"); LayoutOptions options; options.session=&session;
+    float width=40;
+    const auto measure=[&](const LayoutElement&, const MeasureConstraints&)->Size { return {width,20}; };
+    options.fillAutoRoot=false;
+    auto first=ComputeLayout(leaf,{0,0,500,200},measure,options);
+    width=90;
+    auto second=ComputeLayout(leaf,{0,0,500,200},measure,options);
+    Check(first.intrinsicMeasures>0 && second.intrinsicMeasures>0,"revision zero never retains arbitrary callback results");
+    Near(second.Find("leaf")->borderBox.width,90,"unversioned callback remeasured");
+    leaf.measureRevision=1;
+    (void)ComputeLayout(leaf,{0,0,500,200},{},options);
+    const auto callbackAppeared=ComputeLayout(leaf,{0,0,500,200},measure,options);
+    Near(callbackAppeared.Find("leaf")->borderBox.width,90,"new callback invalidates cached empty intrinsic size");
+    ++leaf.measureRevision;
+    const auto failed=ComputeLayout(leaf,{0,0,500,200},
+        [](const LayoutElement&, const MeasureConstraints&)->Size { throw std::runtime_error("measure failure"); },options);
+    Check(std::any_of(failed.issues.begin(),failed.issues.end(),[](const auto& issue) { return issue.code=="intrinsic_measure_failed"; }), "intrinsic failure keeps the existing warning fallback");
+    const auto recovered=ComputeLayout(leaf,{0,0,500,200},measure,options);
+    Near(recovered.Find("leaf")->borderBox.width,90,"failed measurement cannot poison retained layout");
+
+}
+
 } // namespace
 
 int main() {
     ModalLayerPreservesBackgroundAndBounds();
     NestedPercentageWidthsUseContainingBlocks();
     RetainedGridKeepsLogicalColumns();
+    RetainedLayoutMatchesStatelessAdmission();
     MediaLayout1080p();
     FlexShrinkAndMinimums();
     FlexGrowHonorsMaximum();

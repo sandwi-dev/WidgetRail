@@ -100,6 +100,7 @@ struct DeclarativeRenderTiming final {
     std::wstring collectionAdmissionSummary;
     std::size_t preparedNodes{};
     std::size_t deferredViewportItems{};
+    std::size_t intrinsicMeasures{};
 };
 
 // Opt-in developer data from the same prepared/presented nodes used to paint.
@@ -406,6 +407,7 @@ struct DeclarativeRenderOptions final {
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     /// Compare whole-item retention with the conservative clipped painter.
     bool disableIndependentCapturesForTesting{};
+    bool disableRetainedLayoutForTesting{};
     /// Injects a terminal diagnostic after target-backed drawing so tests can
     /// prove rejected frames do not commit renderer-owned presentation state.
     bool failAfterNodeDrawForTesting{};
@@ -630,6 +632,31 @@ private:
         std::uint32_t lineCount{};
         bool valid{};
     };
+    // Exact inputs used by MeasureLeaf, distinct from node identity and pixels.
+    // Adding an intrinsic leaf kind requires updating this proof or opting out.
+    struct IntrinsicInput final {
+        std::wstring kind, text, prompt, indicator;
+        NativeRenderStyle style;
+        NativeTextAlign buttonAlignment{};
+        float pixelScale{};
+        bool image{}, artwork{}, glyph{}, packageIcon{}, stateCue{};
+        friend bool operator==(const IntrinsicInput&, const IntrinsicInput&) = default;
+    };
+    struct IntrinsicEntry final {
+        IntrinsicInput input;
+        std::uint64_t revision{};
+        std::optional<TextMeasurementProof> text;
+        std::vector<TextMeasurementProof> queries;
+    };
+    struct RetainedLayoutPass final {
+        std::unique_ptr<declarative::LayoutSession> session;
+        std::map<std::string, IntrinsicEntry, std::less<>> inputs;
+        std::uint64_t revision{};
+    };
+    // The estimate and correction passes must not replace each other's
+    // constraints/measurements. Local measurement and modal trees stay stateless.
+    std::array<RetainedLayoutPass, 2> retainedLayout_;
+    std::wstring retainedLayoutOwner_;
     struct IncrementalNodeState final {
         NativeRenderStyle baseStyle;
         NativeStyleContext styleContext;

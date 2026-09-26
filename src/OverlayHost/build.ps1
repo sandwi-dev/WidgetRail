@@ -880,7 +880,7 @@ function Invoke-SettingsContentRendererTests {
 function Invoke-ScrollWorkloadProbe {
     $objectDirectory = Join-Path $outputDirectory 'obj/scroll-workload-probe'
     New-Item -ItemType Directory -Path $objectDirectory -Force | Out-Null
-    $arguments = $common + @('/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING') +
+    $arguments = $common + @('/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING', '/DWRAIL_DECLARATIVE_RENDERER_TESTING') +
         @('ScrollWorkloadProbe.cpp', 'ControllerNavigation.cpp', 'WidgetBridgeClient.cpp', 'PublicSuffixDomainAuthority.cpp',
           'DeclarativeRenderer.cpp', 'DeclarativeLayout.cpp', 'NativeStyle.cpp', 'NativeTextLayout.cpp',
           'DeclarativeMotion.cpp', 'NativeIcons.cpp', 'RemoteImageCache.cpp', 'ArtworkDecoderProcessOwner.cpp' |

@@ -1,12 +1,13 @@
 //! Narrow product-owned C ABI around the pinned Taffy layout engine.
 
+use std::collections::{HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::slice;
 use taffy::geometry::{Point, Rect, Size};
 use taffy::prelude::*;
 use taffy::style::Overflow;
 
-const ABI_VERSION: u32 = 4;
+const ABI_VERSION: u32 = 5;
 const OK: i32 = 0;
 const INVALID_ARGUMENT: i32 = 1;
 const INVALID_TREE: i32 = 2;
@@ -60,6 +61,8 @@ pub struct NodeInput {
     grid_start_index: i32,
     stretch_cross_axis: u32,
     width_fraction: OptionalFloat,
+    stable_key: u64,
+    measure_revision: u64,
 }
 
 #[repr(C)]
@@ -235,8 +238,55 @@ fn encode_available(value: AvailableSpace) -> (f32, u32) {
     }
 }
 
+pub struct LayoutSession {
+    tree: TaffyTree<u32>,
+    nodes: HashMap<u64, (NodeId, u64)>,
+}
+
+impl Default for LayoutSession {
+    fn default() -> Self {
+        Self {
+            tree: TaffyTree::new(),
+            nodes: HashMap::new(),
+        }
+    }
+}
+
+impl LayoutSession {
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
 #[allow(clippy::too_many_arguments)] // Mirrors the checked-in bulk C ABI.
 fn compute_impl(
+    inputs: &[NodeInput],
+    child_indices: &[u32],
+    root_index: u32,
+    available_width: f32,
+    available_height: f32,
+    available_height_mode: u32,
+    measure: Option<MeasureCallback>,
+    measure_context: *mut core::ffi::c_void,
+    outputs: &mut [NodeOutput],
+) -> i32 {
+    compute_retained(
+        &mut LayoutSession::default(),
+        inputs,
+        child_indices,
+        root_index,
+        available_width,
+        available_height,
+        available_height_mode,
+        measure,
+        measure_context,
+        outputs,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compute_retained(
+    session: &mut LayoutSession,
     inputs: &[NodeInput],
     child_indices: &[u32],
     root_index: u32,
@@ -262,34 +312,33 @@ fn compute_impl(
         return INVALID_ARGUMENT;
     }
 
-    let mut tree: TaffyTree<u32> = TaffyTree::with_capacity(inputs.len());
-    tree.disable_rounding();
-    let mut node_ids = Vec::with_capacity(inputs.len());
+    // Validate the complete new graph before touching retained state. Parent
+    // counts alone do not reject a disconnected cycle.
     let mut styles = Vec::with_capacity(inputs.len());
+    let mut keys = HashSet::with_capacity(inputs.len());
+    let mut parent_counts = vec![0u8; inputs.len()];
     for (index, input) in inputs.iter().enumerate() {
         let Some(style) = node_style(input) else {
             return INVALID_ARGUMENT;
         };
-        let Ok(node) = tree.new_leaf_with_context(style.clone(), index as u32) else {
-            return LAYOUT_ERROR;
-        };
-        node_ids.push(node);
         styles.push(style);
-    }
-
-    let mut parent_counts = vec![0u8; inputs.len()];
-    for (index, input) in inputs.iter().enumerate() {
+        let key = if input.stable_key == 0 {
+            index as u64 + 1
+        } else {
+            input.stable_key
+        };
+        if !keys.insert(key) {
+            return INVALID_TREE;
+        }
         let start = input.child_start as usize;
-        let count = input.child_count as usize;
-        let Some(end) = start.checked_add(count) else {
+        let Some(end) = start.checked_add(input.child_count as usize) else {
             return INVALID_TREE;
         };
         if end > child_indices.len() {
             return INVALID_TREE;
         }
-        let mut children = Vec::with_capacity(count);
-        for child_index in &child_indices[start..end] {
-            let child = *child_index as usize;
+        for &child in &child_indices[start..end] {
+            let child = child as usize;
             if child >= inputs.len() || child == index {
                 return INVALID_TREE;
             }
@@ -297,10 +346,6 @@ fn compute_impl(
             if parent_counts[child] != 1 {
                 return INVALID_TREE;
             }
-            children.push(node_ids[child]);
-        }
-        if tree.set_children(node_ids[index], &children).is_err() {
-            return INVALID_TREE;
         }
     }
     if parent_counts[root_index as usize] != 0
@@ -311,7 +356,108 @@ fn compute_impl(
     {
         return INVALID_TREE;
     }
+    let mut visited = vec![false; inputs.len()];
+    let mut pending = vec![root_index as usize];
+    while let Some(index) = pending.pop() {
+        if visited[index] {
+            return INVALID_TREE;
+        }
+        visited[index] = true;
+        let input = &inputs[index];
+        pending.extend(
+            child_indices[input.child_start as usize
+                ..input.child_start as usize + input.child_count as usize]
+                .iter()
+                .map(|&i| i as usize),
+        );
+    }
+    if visited.iter().any(|&v| !v) {
+        return INVALID_TREE;
+    }
 
+    let tree = &mut session.tree;
+    tree.disable_rounding();
+    // Remove dead nodes before adding the new page: storage is bounded by the
+    // admitted tree, not the number of pages the user has ever visited.
+    let removed: Vec<_> = session
+        .nodes
+        .keys()
+        .filter(|key| !keys.contains(key))
+        .copied()
+        .collect();
+    for key in removed {
+        let (node, _) = session.nodes.remove(&key).unwrap();
+        // Taffy remove does not itself invalidate a surviving parent.
+        if let Some(parent) = tree.parent(node)
+            && tree.mark_dirty(parent).is_err()
+        {
+            return LAYOUT_ERROR;
+        }
+        // Explicitly retire the measure context as well as topology.
+        if tree.set_node_context(node, None).is_err() || tree.remove(node).is_err() {
+            return LAYOUT_ERROR;
+        }
+    }
+    let mut node_ids = Vec::with_capacity(inputs.len());
+    for (index, input) in inputs.iter().enumerate() {
+        let key = if input.stable_key == 0 {
+            index as u64 + 1
+        } else {
+            input.stable_key
+        };
+        let incoming_revision = if input.stable_key == 0 {
+            0
+        } else {
+            input.measure_revision
+        };
+        let node = if let Some((node, revision)) = session.nodes.get_mut(&key) {
+            // Context is only the index in this call's validated buffer. Updating
+            // it must not invalidate otherwise unchanged intrinsic measurements.
+            *tree.get_node_context_mut(*node).unwrap() = index as u32;
+            if (incoming_revision == 0 || *revision != incoming_revision)
+                && tree.mark_dirty(*node).is_err()
+            {
+                return LAYOUT_ERROR;
+            }
+            *revision = incoming_revision;
+            if tree.style(*node).ok() != Some(&styles[index])
+                && tree.set_style(*node, styles[index].clone()).is_err()
+            {
+                return LAYOUT_ERROR;
+            }
+            *node
+        } else {
+            let Ok(node) = tree.new_leaf_with_context(styles[index].clone(), index as u32) else {
+                return LAYOUT_ERROR;
+            };
+            session.nodes.insert(key, (node, incoming_revision));
+            node
+        };
+        node_ids.push(node);
+    }
+    // Detach changed relationships first. This prevents a transient cycle
+    // when valid snapshots reparent/reorder existing nodes.
+    let mut changed = Vec::new();
+    for (index, input) in inputs.iter().enumerate() {
+        let children: Vec<_> = child_indices
+            [input.child_start as usize..input.child_start as usize + input.child_count as usize]
+            .iter()
+            .map(|&i| node_ids[i as usize])
+            .collect();
+        if tree.children(node_ids[index]).ok().as_ref() != Some(&children) {
+            changed.push((index, children));
+        }
+    }
+    for (index, _) in &changed {
+        if tree.set_children(node_ids[*index], &[]).is_err() {
+            return INVALID_TREE;
+        }
+    }
+    for (index, children) in changed {
+        if tree.set_children(node_ids[index], &children).is_err() {
+            return INVALID_TREE;
+        }
+    }
     let root = node_ids[root_index as usize];
     let available_height = match available_height_mode {
         0 => AvailableSpace::Definite(available_height),
@@ -371,7 +517,7 @@ fn compute_impl(
         )
     };
 
-    if run_layout(&mut tree).is_err() {
+    if run_layout(tree).is_err() {
         return LAYOUT_ERROR;
     }
 
@@ -400,10 +546,16 @@ fn compute_impl(
             if input.child_count > 0 {
                 let first = child_indices[input.child_start as usize] as usize;
                 let column = input.grid_start_index.rem_euclid(columns as i32) as i16 + 1;
-                let placement = Line { start: line(column), end: span(1) };
+                let placement = Line {
+                    start: line(column),
+                    end: span(1),
+                };
                 if styles[first].grid_column != placement {
                     styles[first].grid_column = placement;
-                    if tree.set_style(node_ids[first], styles[first].clone()).is_err() {
+                    if tree
+                        .set_style(node_ids[first], styles[first].clone())
+                        .is_err()
+                    {
                         return LAYOUT_ERROR;
                     }
                     changed = true;
@@ -428,7 +580,7 @@ fn compute_impl(
         if !changed {
             break;
         }
-        if run_layout(&mut tree).is_err() {
+        if run_layout(tree).is_err() {
             return LAYOUT_ERROR;
         }
     }
@@ -503,6 +655,79 @@ pub unsafe extern "C" fn wrail_taffy_compute(
     })
 }
 
+/// Opaque, single-owner layout state. No callback or caller buffer is retained.
+#[unsafe(no_mangle)]
+pub extern "C" fn wrail_taffy_session_create() -> *mut LayoutSession {
+    catch_unwind(|| Box::into_raw(Box::new(LayoutSession::default())))
+        .unwrap_or(core::ptr::null_mut())
+}
+
+/// # Safety
+/// `session` must be null or a live handle returned by create, destroyed once.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn wrail_taffy_session_destroy(session: *mut LayoutSession) {
+    if !session.is_null() {
+        let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
+            drop(Box::from_raw(session));
+        }));
+    }
+}
+
+/// # Safety
+/// Same buffer/callback contract as wrail_taffy_compute. The handle must be
+/// live and exclusively borrowed for this synchronous call; no reentrancy.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn wrail_taffy_session_compute(
+    session: *mut LayoutSession,
+    nodes: *const NodeInput,
+    node_count: usize,
+    children: *const u32,
+    child_count: usize,
+    root_index: u32,
+    available_width: f32,
+    available_height: f32,
+    available_height_mode: u32,
+    measure: Option<MeasureCallback>,
+    measure_context: *mut core::ffi::c_void,
+    outputs: *mut NodeOutput,
+    output_count: usize,
+) -> i32 {
+    if session.is_null()
+        || nodes.is_null()
+        || outputs.is_null()
+        || (child_count != 0 && children.is_null())
+    {
+        return INVALID_ARGUMENT;
+    }
+    let session = unsafe { &mut *session };
+    let result = contain_panic(|| {
+        let inputs = unsafe { slice::from_raw_parts(nodes, node_count) };
+        let children = if child_count == 0 {
+            &[]
+        } else {
+            unsafe { slice::from_raw_parts(children, child_count) }
+        };
+        let outputs = unsafe { slice::from_raw_parts_mut(outputs, output_count) };
+        compute_retained(
+            session,
+            inputs,
+            children,
+            root_index,
+            available_width,
+            available_height,
+            available_height_mode,
+            measure,
+            measure_context,
+            outputs,
+        )
+    });
+    // A failed admission cannot leave partially mutated state available for reuse.
+    if result != OK {
+        session.reset();
+    }
+    result
+}
+
 fn contain_panic(operation: impl FnOnce() -> i32) -> i32 {
     catch_unwind(AssertUnwindSafe(operation)).unwrap_or(PANIC)
 }
@@ -515,11 +740,11 @@ mod tests {
     fn c_abi_sizes_are_stable() {
         assert_eq!(core::mem::size_of::<OptionalFloat>(), 8);
         assert_eq!(core::mem::size_of::<Edges>(), 16);
-        assert_eq!(core::mem::size_of::<NodeInput>(), 168);
+        assert_eq!(core::mem::size_of::<NodeInput>(), 184);
         assert_eq!(core::mem::size_of::<MeasureInput>(), 32);
         assert_eq!(core::mem::size_of::<MeasuredSize>(), 8);
         assert_eq!(core::mem::size_of::<NodeOutput>(), 40);
-        assert_eq!(wrail_taffy_abi_version(), 4);
+        assert_eq!(wrail_taffy_abi_version(), 5);
     }
 
     #[test]
@@ -670,5 +895,240 @@ mod tests {
             outputs[2].x
         );
         assert!(outputs[4].y >= 40.0);
+    }
+    #[test]
+    fn retained_measurement_is_invalidated_by_revision_and_eviction() {
+        let mut session = LayoutSession::default();
+        let mut node = NodeInput {
+            stable_key: 42,
+            measure_revision: 1,
+            ..NodeInput::default()
+        };
+        let mut output = [NodeOutput::default()];
+        let mut calls = 0usize;
+        let run = |session: &mut LayoutSession,
+                   node: NodeInput,
+                   calls: &mut usize,
+                   output: &mut [NodeOutput]| {
+            compute_retained(
+                session,
+                &[node],
+                &[],
+                0,
+                640.0,
+                480.0,
+                0,
+                Some(fixed_measure),
+                (calls as *mut usize).cast(),
+                output,
+            )
+        };
+        assert_eq!(run(&mut session, node, &mut calls, &mut output), OK);
+        let first = calls;
+        assert!(first > 0);
+        assert_eq!(run(&mut session, node, &mut calls, &mut output), OK);
+        assert_eq!(calls, first);
+        node.measure_revision += 1;
+        assert_eq!(run(&mut session, node, &mut calls, &mut output), OK);
+        assert!(calls > first);
+        for key in 50..150 {
+            node.stable_key = key;
+            assert_eq!(run(&mut session, node, &mut calls, &mut output), OK);
+            assert_eq!(session.nodes.len(), 1);
+            assert_eq!(session.tree.total_node_count(), 1);
+        }
+    }
+
+    #[test]
+    fn retained_grids_match_fresh_layout_through_window_changes() {
+        let mut session = LayoutSession::default();
+        for iteration in 0..120usize {
+            let count = 5 + iteration % 17;
+            let mut nodes = vec![NodeInput::default(); count + 1];
+            let width = 521.25 - (iteration % 5) as f32 * 41.5;
+            nodes[0] = NodeInput {
+                stable_key: 1,
+                measure_revision: 1,
+                child_count: count as u32,
+                layout_mode: 1,
+                grid_minimum_column_width: 90.5,
+                grid_maximum_columns: 6,
+                grid_start_index: (iteration % 11) as i32,
+                column_gap: 7.25,
+                row_gap: 5.75,
+                width: OptionalFloat {
+                    present: 1,
+                    value: width,
+                },
+                ..NodeInput::default()
+            };
+            for (i, node) in nodes.iter_mut().enumerate().skip(1) {
+                node.stable_key = 10 + ((i + iteration / 3) % 40) as u64;
+                node.measure_revision = 1;
+                node.height = OptionalFloat {
+                    present: 1,
+                    value: 40.25 + (i % 3) as f32 * 8.5,
+                };
+            }
+            let mut children: Vec<_> = (1..=count as u32).collect();
+            if iteration % 2 == 1 {
+                children.reverse();
+            }
+            let mut actual = vec![NodeOutput::default(); nodes.len()];
+            let mut expected = actual.clone();
+            assert_eq!(
+                compute_retained(
+                    &mut session,
+                    &nodes,
+                    &children,
+                    0,
+                    width,
+                    480.0,
+                    0,
+                    None,
+                    core::ptr::null_mut(),
+                    &mut actual
+                ),
+                OK
+            );
+            assert_eq!(
+                compute_impl(
+                    &nodes,
+                    &children,
+                    0,
+                    width,
+                    480.0,
+                    0,
+                    None,
+                    core::ptr::null_mut(),
+                    &mut expected
+                ),
+                OK
+            );
+            for (a, b) in actual.iter().zip(&expected) {
+                assert_eq!(
+                    (
+                        a.x,
+                        a.y,
+                        a.width,
+                        a.height,
+                        a.content_width,
+                        a.content_height
+                    ),
+                    (
+                        b.x,
+                        b.y,
+                        b.width,
+                        b.height,
+                        b.content_width,
+                        b.content_height
+                    ),
+                    "iteration {iteration}"
+                );
+            }
+            assert_eq!(session.nodes.len(), nodes.len());
+        }
+    }
+
+    #[test]
+    fn disconnected_cycle_is_rejected_before_retained_mutation() {
+        let mut session = LayoutSession::default();
+        let mut nodes = vec![NodeInput::default(); 3];
+        nodes[1].child_count = 1;
+        nodes[2].child_start = 1;
+        nodes[2].child_count = 1;
+        let mut outputs = vec![NodeOutput::default(); 3];
+        assert_eq!(
+            compute_retained(
+                &mut session,
+                &nodes,
+                &[2, 1],
+                0,
+                100.0,
+                100.0,
+                0,
+                None,
+                core::ptr::null_mut(),
+                &mut outputs
+            ),
+            INVALID_TREE
+        );
+        assert!(session.nodes.is_empty());
+    }
+    #[test]
+    fn opaque_session_discards_failed_admission_and_recovers() {
+        let handle = wrail_taffy_session_create();
+        assert!(!handle.is_null());
+        let mut node = NodeInput {
+            stable_key: 42,
+            measure_revision: 1,
+            ..NodeInput::default()
+        };
+        let mut output = NodeOutput::default();
+        let mut calls = 0usize;
+        // SAFETY: all buffers and the exclusively owned handle remain live for
+        // these synchronous calls and are destroyed exactly once below.
+        unsafe {
+            assert_eq!(
+                wrail_taffy_session_compute(
+                    handle,
+                    &node,
+                    1,
+                    core::ptr::null(),
+                    0,
+                    0,
+                    640.0,
+                    480.0,
+                    0,
+                    Some(fixed_measure),
+                    (&mut calls as *mut usize).cast(),
+                    &mut output,
+                    1
+                ),
+                OK
+            );
+            node.child_count = 1;
+            assert_eq!(
+                wrail_taffy_session_compute(
+                    handle,
+                    &node,
+                    1,
+                    &0,
+                    1,
+                    0,
+                    640.0,
+                    480.0,
+                    0,
+                    Some(fixed_measure),
+                    (&mut calls as *mut usize).cast(),
+                    &mut output,
+                    1
+                ),
+                INVALID_TREE
+            );
+            assert!((*handle).nodes.is_empty());
+            node.child_count = 0;
+            let before = calls;
+            assert_eq!(
+                wrail_taffy_session_compute(
+                    handle,
+                    &node,
+                    1,
+                    core::ptr::null(),
+                    0,
+                    0,
+                    640.0,
+                    480.0,
+                    0,
+                    Some(fixed_measure),
+                    (&mut calls as *mut usize).cast(),
+                    &mut output,
+                    1
+                ),
+                OK
+            );
+            assert!(calls > before);
+            wrail_taffy_session_destroy(handle);
+        }
     }
 }

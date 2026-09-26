@@ -88,9 +88,28 @@ struct RawBox {
     return {left, top, right - left, bottom - top};
 }
 
-class Engine final {
+} // namespace
+
+struct LayoutSession::Impl {
+    struct Entry {
+        std::uint64_t key{}, revision{}, sourceRevision{};
+        float maximumWidth{};
+        bool compact{};
+        bool hasMeasure{}, authoredHeight{};
+    };
+    WidgetRailTaffySession* handle{wrail_taffy_session_create()};
+    std::map<std::string, Entry, std::less<>> entries;
+    std::uint64_t nextKey{}, nextRevision{};
+    ~Impl() { wrail_taffy_session_destroy(handle); }
+};
+
+LayoutSession::LayoutSession() : impl_(std::make_unique<Impl>()) {}
+LayoutSession::~LayoutSession() = default;
+void LayoutSession::Reset() { impl_ = std::make_unique<Impl>(); }
+
+class LayoutEngine final {
 public:
-    Engine(
+    LayoutEngine(
         const IntrinsicMeasureCallback& measureIntrinsic,
         LayoutOptions options,
         const Rect viewport)
@@ -159,8 +178,37 @@ public:
         else if (rootInput.height.present)
             rootInput.height.value = std::min(rootInput.height.value, availableHeight);
 
+        if (options_.session && options_.session->impl_->handle) {
+            auto& state = *options_.session->impl_;
+            std::set<std::string, std::less<>> admitted;
+            for (std::size_t index = 0; index < elements_.size(); ++index) {
+                const auto& element = *elements_[index];
+                admitted.insert(element.id);
+                auto& entry = state.entries[element.id];
+                if (!entry.key) entry.key = ++state.nextKey;
+                if (!element.measureRevision || entry.sourceRevision != element.measureRevision ||
+                    entry.maximumWidth != measurementMaximumWidths_[index] || entry.compact != result_.compactMode ||
+                    entry.hasMeasure != static_cast<bool>(measureIntrinsic_) || entry.authoredHeight != element.height.has_value()) {
+                    entry.revision = ++state.nextRevision;
+                    entry.sourceRevision = element.measureRevision;
+                    entry.maximumWidth = measurementMaximumWidths_[index];
+                    entry.compact = result_.compactMode;
+                    entry.hasMeasure = static_cast<bool>(measureIntrinsic_);
+                    entry.authoredHeight = element.height.has_value();
+                }
+                inputs_[index].stableKey = entry.key;
+                inputs_[index].measureRevision = entry.revision;
+            }
+            std::erase_if(state.entries, [&](const auto& entry) { return !admitted.contains(entry.first); });
+        }
         outputs_.resize(inputs_.size());
         const auto compute = [&]() {
+            if (options_.session && options_.session->impl_->handle)
+                return wrail_taffy_session_compute(options_.session->impl_->handle,
+                    inputs_.data(), inputs_.size(), childIndices_.data(), childIndices_.size(),
+                    rootIndex, availableWidth, availableHeight,
+                    options_.intrinsicRootHeight ? WRAIL_TAFFY_AVAILABLE_MAX_CONTENT : WRAIL_TAFFY_AVAILABLE_DEFINITE,
+                    &MeasureThunk, this, outputs_.data(), outputs_.size());
             return wrail_taffy_compute(
                 inputs_.data(), inputs_.size(), childIndices_.data(),
                 childIndices_.size(), rootIndex, availableWidth, availableHeight,
@@ -193,6 +241,7 @@ public:
         raw_.resize(inputs_.size());
         (void)BuildRaw(rootIndex, viewport_.x, viewport_.y);
         Publish(rootIndex, 0.0F, 0.0F, viewport_);
+        if ((!result_.valid() || intrinsicMeasurementFailed_) && options_.session) options_.session->Reset();
         return std::move(result_);
     }
 
@@ -448,7 +497,7 @@ private:
         void* context,
         const std::uint32_t nodeIndex,
         const WidgetRailTaffyMeasureInput input) noexcept {
-        return static_cast<Engine*>(context)->Measure(nodeIndex, input);
+        return static_cast<LayoutEngine*>(context)->Measure(nodeIndex, input);
     }
 
     [[nodiscard]] WidgetRailTaffyMeasuredSize Measure(
@@ -467,6 +516,7 @@ private:
             : (input.availableHeightMode == WRAIL_TAFFY_AVAILABLE_DEFINITE
                 ? input.availableHeight : kMaximumCoordinate);
         try {
+            ++result_.intrinsicMeasures;
             const auto measured = measureIntrinsic_(element, {
                 std::max(0.0F, maximumWidth),
                 std::max(0.0F, maximumHeight),
@@ -484,12 +534,14 @@ private:
                 : cleanMeasuredHeight;
             if ((!input.knownWidth.present && width != measured.width) ||
                 (!input.knownHeight.present && height != measured.height)) {
+                intrinsicMeasurementFailed_ = true;
                 AddIssue(element.id, "invalid_intrinsic_size",
                     "Intrinsic measurement returned non-finite, negative, or excessive geometry.",
                     LayoutIssueSeverity::Warning);
             }
             return {width, height};
         } catch (...) {
+            intrinsicMeasurementFailed_ = true;
             AddIssue(element.id, "intrinsic_measure_failed",
                 "Intrinsic measurement failed and was replaced with an empty size.",
                 LayoutIssueSeverity::Warning);
@@ -658,6 +710,7 @@ private:
 
     const IntrinsicMeasureCallback& measureIntrinsic_;
     LayoutOptions options_;
+    bool intrinsicMeasurementFailed_{};
     LayoutResult result_;
     std::set<std::string, std::less<>> issueKeys_;
     std::set<const LayoutElement*> verticalScrollAncestors_;
@@ -669,8 +722,6 @@ private:
     std::vector<WidgetRailTaffyNodeOutput> outputs_;
     std::vector<RawBox> raw_;
 };
-
-} // namespace
 
 BoxSpacing BoxSpacing::One(const float all) noexcept {
     return {{all, 0.0F, 0.0F, 0.0F}, 1};
@@ -744,7 +795,9 @@ LayoutResult ComputeLayout(
                 "invalid_modal_layer", "A modal requires background and dialog children."});
             return invalid;
         }
-        auto result = ComputeLayout(root.children[0], viewport, measureIntrinsic, options);
+        auto modalOptions = options;
+        modalOptions.session = nullptr;
+        auto result = ComputeLayout(root.children[0], viewport, measureIntrinsic, modalOptions);
         const auto* background = result.Find(root.children[0].id);
         if (!background) return result;
         // Modal content never participates in the underlying page's measurement.
@@ -770,7 +823,6 @@ LayoutResult ComputeLayout(
         panel.widthFraction.reset();
         panel.margin = {};
         panel.overflow = OverflowBehavior::Clip;
-        auto modalOptions = options;
         modalOptions.fillAutoRoot = true;
         modalOptions.fillAutoRootWidth = true;
         auto foreground = ComputeLayout(panel,
@@ -778,9 +830,10 @@ LayoutResult ComputeLayout(
             measureIntrinsic, modalOptions);
         result.boxes.insert(foreground.boxes.begin(), foreground.boxes.end());
         result.issues.insert(result.issues.end(), foreground.issues.begin(), foreground.issues.end());
+        result.intrinsicMeasures += foreground.intrinsicMeasures;
         return result;
     }
-    return Engine{measureIntrinsic, options, viewport}.Run(root);
+    return LayoutEngine{measureIntrinsic, options, viewport}.Run(root);
 }
 
 } // namespace widgetrail::declarative

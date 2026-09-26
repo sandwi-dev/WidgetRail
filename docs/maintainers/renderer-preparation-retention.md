@@ -40,6 +40,51 @@ The SDK reports `pinned_layout_content_changed` separately from catalog changes.
   happen. Correlated input/action results, restart, authority, layout and structural
   changes remain separate. Existing refresh-demand coalescing remains the request owner.
 
+## Cursor-page layout admission
+
+Structural snapshot changes still pass through full semantic preparation and the
+existing collection admission, anchor, focus and presentation authorities. They
+can now reuse Taffy layout nodes underneath that full path. The renderer owns two
+bounded layout sessions: one for the initial parent estimate and one for the
+parent-relative correction pass. Sharing one session between those passes would
+repeatedly invalidate their differing constraints. Local surface measurement and
+modal layout keep the stateless path.
+
+Stable native IDs establish node identity, not measurement validity. Each session
+reconciles current styles and child relationships, removes absent nodes, and updates
+callback indices to the current input buffer. An exact intrinsic-input proof covers
+leaf kind, text, resolved style, controller prompt, button content/state lanes and
+pixel scale. Changed inputs mark measurement dirty; Taffy separately validates
+available constraints and propagates dirty descendants. Unknown leaf kinds and
+unversioned generic layout callbacks always remeasure. The layout engine also
+includes its fallback measurement width and responsive mode in that validity check.
+New intrinsic leaf behavior must extend the proof alongside `MeasureLeaf`, or opt
+out of reuse. Color/style changes currently invalidate conservatively.
+
+The Rust session owns only layout state and numeric current-buffer indices. It
+retains no C++ callback, snapshot, action or buffer pointer. The ABI validates the
+complete tree before reconciling it, including disconnected cycles; changed child
+relationships are detached before reparenting. Failed layout or render passes
+discard their reusable state. Package/instance changes, widget retirement and
+renderer resource retirement also release sessions. Storage follows the currently
+admitted bounded tree, and each text-measurement proof keeps at most 32 constraint
+queries before falling back to fresh measurement.
+
+This is measurement/layout reuse, not provider prefetch or fixed-height item
+substitution. Content-sized music rows remain content-sized. Responsive grid tracks
+are resolved through the existing full algorithm, including partial rows and logical
+start columns. Placement, clipping, scroll extent, navigation and accessibility are
+published from the current result. No SDK or wire contract changes are required.
+Full style/tree preparation and grid track resolution can still cost time on page
+arrival; this does not promise frame-budget admission or eliminate provider waits.
+
+`ScrollWorkloadProbe --admission` compares production widget fixtures against a
+stateless reference, including append, prepend, eviction, reorder/reset, missing
+anchors, changed same-key content, display/text scale, inherited surfaces, modal
+entry/exit and failed-frame recovery. It checks geometry, input/accessibility order
+and raster pixels. `disableRetainedLayoutForTesting` disables only the new layout
+sessions so the reference cannot accidentally share their measurement reuse.
+
 ## Retained composition pixels
 
 Composition paint bands have stable IDs derived from their parent, first paint

@@ -426,6 +426,7 @@ struct DeclarativeRenderer::RenderPass final {
         DeclarativeMotionSample motion;
     };
     bool windowDecorations{};
+    int retainedLayoutPhase{-1};
 
     enum class FocusFollowPhase {
         Layout,
@@ -2855,10 +2856,73 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     [[nodiscard]] declarative::LayoutResult ComputeTimedLayout(
-        const LayoutElement& root, const Rect bounds,
-        const declarative::IntrinsicMeasureCallback& measure, const LayoutOptions& settings) {
+        LayoutElement& root, const Rect bounds,
+        const declarative::IntrinsicMeasureCallback& measure, LayoutOptions settings) {
         PreparationTimer timer{layoutNanoseconds};
-        return declarative::ComputeLayout(root, bounds, measure, settings);
+        RetainedLayoutPass* retained{};
+        bool enabled = retainedLayoutPhase >= 0 && !measurementOnly &&
+            snapshot->root.kind != L"modalLayer";
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        enabled = enabled && !options.disableRetainedLayoutForTesting;
+#endif
+        if (enabled) {
+            retained = &owner->retainedLayout_[retainedLayoutPhase];
+            if (!retained->session) retained->session = std::make_unique<declarative::LayoutSession>();
+            settings.session = retained->session.get();
+            std::set<std::string, std::less<>> admitted;
+            const auto visit = [&](const auto& self, LayoutElement& element) -> void {
+                admitted.insert(element.id);
+                const auto found = prepared.find(element.id);
+                // Virtual spacers have no intrinsic callback input. Unknown
+                // semantic leaves remain dirty rather than inheriting a guess.
+                element.measureRevision = 1;
+                if (found != prepared.end()) {
+                    const auto& node = *found->second.node;
+                    const bool supported = node.kind == L"text" || node.kind == L"button" ||
+                        node.kind == L"image" || node.kind == L"icon" || node.kind == L"controllerGlyph" ||
+                        node.kind == L"loadingIndicator" || node.kind == L"progress" || node.kind == L"slider" ||
+                        node.kind == L"stack" || node.kind == L"row" || node.kind == L"grid" ||
+                        node.kind == L"scroll" || node.kind == L"spacer" || node.kind == L"actionSurface" ||
+                        node.kind == L"backgroundSurface" || node.kind == L"focusPresentationSurface";
+                    if (!supported) { element.measureRevision = 0; }
+                    else {
+                        IntrinsicInput input{node.kind, node.text, node.controllerPrompt, node.indicatorSize,
+                            found->second.baseStyle, ResolveButtonContentAlignment(node, found->second.baseStyle, false, false),
+                            options.pixelScale, !node.imageSource.empty(), !node.artworkHandle.empty(),
+                            !node.glyph.empty(), node.packageIcon.has_value(), ReservesTrailingButtonStateCue(node)};
+                        auto& entry = retained->inputs[element.id];
+                        if (!entry.revision || entry.input != input) {
+                            entry = {std::move(input), ++retained->revision};
+                        }
+                        element.measureRevision = entry.revision;
+                        if (entry.text) textMeasurements.insert_or_assign(node.id, *entry.text);
+                        if (!entry.queries.empty()) textMeasurementQueries.insert_or_assign(node.id, entry.queries);
+                    }
+                }
+                for (auto& child : element.children) self(self, child);
+            };
+            visit(visit, root);
+            std::erase_if(retained->inputs, [&](const auto& item) { return !admitted.contains(item.first); });
+        }
+        auto computed = declarative::ComputeLayout(root, bounds, measure, settings);
+        result.timing.intrinsicMeasures += computed.intrinsicMeasures;
+        if (retained) {
+            if (!computed.valid()) *retained = {};
+            else for (auto& [id, entry] : retained->inputs) {
+                const auto wide = WidenStableId(id);
+                if (const auto text = textMeasurements.find(wide); text != textMeasurements.end()) entry.text = text->second;
+                if (const auto queries = textMeasurementQueries.find(wide); queries != textMeasurementQueries.end()) entry.queries = queries->second;
+                // Resizing can introduce new measurement constraints over a
+                // long-lived view. Bound proof storage; overflow simply forces
+                // fresh measurement on the next pass, never guessed validity.
+                if (entry.queries.size() > 32) {
+                    entry.revision = 0;
+                    entry.text.reset();
+                    entry.queries.clear();
+                }
+            }
+        }
+        return computed;
     }
 
     void BuildLayout(
@@ -2874,6 +2938,7 @@ struct DeclarativeRenderer::RenderPass final {
         textMeasurements.clear();
         textMeasurementQueries.clear();
         layout = {};
+        retainedLayoutPhase = 0;
         auto root = PrepareNode(
             snapshot->root,
             {},
@@ -2900,6 +2965,7 @@ struct DeclarativeRenderer::RenderPass final {
         prepared.clear();
         textMeasurements.clear();
         textMeasurementQueries.clear();
+        retainedLayoutPhase = 1;
         auto correctedRoot = PrepareNode(
             snapshot->root,
             {},
@@ -2992,6 +3058,7 @@ struct DeclarativeRenderer::RenderPass final {
                     ? RenderDiagnosticSeverity::Error
                     : RenderDiagnosticSeverity::Warning);
         }
+        retainedLayoutPhase = -1;
     }
 
     void PrepareAgainstCurrentLayout() {
@@ -6175,6 +6242,11 @@ RenderResult DeclarativeRenderer::Render(
         animationTimestamp, options.accessibility.reducedMotion || !pass.RasterWidgetMotionEnabled()) || options.accessibility.reducedMotion)
         pass.transitionVisuals.clear();
     for (auto& [_, visual] : pass.transitionVisuals) visual.seen = false;
+    const auto layoutOwner = snapshot.instanceId + L"\x1f" + options.packageContentDigest;
+    if (retainedLayoutOwner_ != layoutOwner) {
+        retainedLayout_ = {};
+        retainedLayoutOwner_ = layoutOwner;
+    }
     const auto preparationOptionsMatch = [&]() {
         if (!incrementalLayoutCache_) return false;
         const auto& previous = incrementalLayoutCache_->options;
@@ -6522,6 +6594,7 @@ RenderResult DeclarativeRenderer::Render(
         incrementalLayoutCache_ = std::move(cache);
     } else {
         incrementalLayoutCache_.reset();
+        retainedLayout_ = {};
     }
     if (styleCache_.size() > 4096) {
         std::erase_if(styleCache_, [&](const auto& entry) {
@@ -6540,6 +6613,7 @@ RenderResult DeclarativeRenderer::Render(
     };
     const auto preparedNodes = pass.result.timing.preparedNodes;
     const auto deferredViewportItems = pass.result.timing.deferredViewportItems;
+    const auto intrinsicMeasures = pass.result.timing.intrinsicMeasures;
     pass.result.timing = DeclarativeRenderTiming{
         elapsed(renderStarted, finalizationFinished),
         elapsed(renderStarted, preparationFinished),
@@ -6557,6 +6631,7 @@ RenderResult DeclarativeRenderer::Render(
     pass.result.timing.snapshotComparisonMicroseconds = snapshotComparisonMicroseconds;
     pass.result.timing.preparedNodes = preparedNodes;
     pass.result.timing.deferredViewportItems = deferredViewportItems;
+    pass.result.timing.intrinsicMeasures = intrinsicMeasures;
     pass.result.timing.updatePlanningMicroseconds = updatePlanningMicroseconds;
     pass.result.timing.styleResolutionMicroseconds = pass.styleNanoseconds / 1000;
     pass.result.timing.textMeasurementMicroseconds = pass.textNanoseconds / 1000;
@@ -6594,6 +6669,7 @@ RenderResult DeclarativeRenderer::Render(
             << " work=" << diagnosticWork << " total-us=" << timing.totalMicroseconds
             << " prepare-us=" << timing.preparationMicroseconds << " layout-us=" << timing.layoutMicroseconds
             << " text-us=" << timing.textMeasurementMicroseconds << " style-us=" << timing.styleResolutionMicroseconds
+            << " intrinsic-measures=" << timing.intrinsicMeasures
             << " present-us=" << timing.presentationMicroseconds << " draw-us=" << timing.nodeDrawMicroseconds
             << " image-us=" << pass.scrollImageNanoseconds / 1000 << " upload-us=" << pass.scrollUploadMicroseconds
             << " image-hits=" << pass.scrollImageHits << " image-misses=" << pass.scrollImageMisses
@@ -6732,6 +6808,7 @@ void DeclarativeRenderer::DiscardTargetResources() noexcept {
     });
     RecalculateFocusBackgroundCompositeBytes();
     incrementalLayoutCache_.reset();
+    retainedLayout_ = {};
     pendingIncrementalPlan_.reset();
 }
 
@@ -6908,6 +6985,10 @@ void DeclarativeRenderer::ForgetWidgetState(
 #endif
     std::wstring prefix(widgetInstanceId);
     prefix.push_back(L'\x1f');
+    if (retainedLayoutOwner_.starts_with(prefix)) {
+        retainedLayout_ = {};
+        retainedLayoutOwner_.clear();
+    }
     std::erase_if(scrollOffsets_, [&](const auto& entry) {
         return entry.first.starts_with(prefix);
     });

@@ -28,6 +28,13 @@ Loading the next page continues the same collection. Refreshing or changing
 the query starts a fresh collection at the beginning. Keep the scroll container's
 identity stable; do not rename it on every render to force scrolling to reset.
 
+Stable keys identify items; they do not freeze their contents or dimensions.
+Publish updated text, styles and actions normally, including changes to an existing
+key. The native host validates measurement inputs and constraints before reusing
+layout work across page arrivals. Widgets do not invalidate native caches, supply
+measurement revisions, or schedule rendering frames. Use the resource's reset
+contract for a new query rather than manufacturing new IDs for unchanged items.
+
 The retention target is a preference, not permission to remove visible items.
 A wide viewport may need more items than that target. The cursor and host work
 together to retain the range currently in use and compensate for removed pages.
