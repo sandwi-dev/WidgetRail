@@ -2793,6 +2793,19 @@ int main(int argc, char** argv) {
     }
     CHECK(appearance->animateWidgetModals);
     CHECK(appearance->modalAnimation == L"zoom");
+    CHECK(appearance->focusAnimation == L"fade");
+    for (const auto value : {"\"fade\"", "\"slide\"", "\"none\"", "\"unknown\"", "false", "null"}) {
+        std::string source(ValidAppearance);
+        source.insert(1, std::string("\"focusAnimation\":") + value + ",");
+        error.clear();
+        const auto parsed = widgetrail::testing::ParsePlatformAppearance(source, error);
+        const auto option = std::string_view(value);
+        CHECK(parsed.has_value() == (option == "\"fade\"" || option == "\"slide\"" || option == "\"none\""));
+        if (parsed) {
+            const std::string id(value + 1, std::char_traits<char>::length(value) - 2);
+            CHECK(parsed->focusAnimation == std::wstring(id.begin(), id.end()));
+        }
+    }
     for (const auto value : {"\"lift\"", "\"zoom\"", "\"unknown\"", "false"}) {
         std::string source(ValidAppearance);
         source.insert(1, std::string("\"modalAnimation\":") + value + ",");

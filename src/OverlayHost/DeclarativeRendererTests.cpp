@@ -1519,6 +1519,7 @@ void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
     Near(first.elementRects.at(L"poster.card").width, plain.elementRects.at(L"poster.card").width,
         "indicator does not resize the tile");
     options.compositorWidgetTransitions = true;
+    options.widgetAnimations.focus = widgetrail::animation::FocusStyle::Slide;
     const auto composited = draw(L"poster.card");
     Check(composited.widgetComposition && !composited.widgetComposition->directContent,
         "poster focus works without explicit transition declarations");
@@ -1537,6 +1538,14 @@ void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
     Check(scaledFocus != scaled.widgetComposition->nodes.end() &&
           scaledFocus->parent == L"control/poster.card",
         "outline and badge inherit the same whole-tile scale transform");
+    options.widgetAnimations.focus = widgetrail::animation::FocusStyle::Fade;
+    const auto faded = draw(L"poster.card");
+    const auto immediateBadge = std::find_if(faded.widgetComposition->nodes.begin(),
+        faded.widgetComposition->nodes.end(), [&](const auto &node) {
+            return node.bitmap && animation::SameFocusRect(node.bounds, badge);
+        });
+    Check(immediateBadge != faded.widgetComposition->nodes.end() && immediateBadge->parent == L"control/poster.card",
+        "fade hint is immediate while inheriting whole-tile scale");
     tile.focusedStyle.erase(L"scale");
     options.compositorWidgetTransitions = false;
     Check(renderer.PlanFocusUpdate(snapshot, L"poster.card", L"poster.card.second", viewport).has_value(), "focus change has retained repaint plan");
@@ -3166,7 +3175,7 @@ void VirtualCollectionWindowKeepsNativeWorkBounded() {
     heading.text = L"Reference Library";
     auto library = Node(L"full-app.library", L"stack");
     auto summary = Node(L"full-app.summary", L"text");
-    summary.text = L"10,000 private records · 32 projected";
+    summary.text = L"10,000 private records Ã‚Â· 32 projected";
     auto refresh = Node(L"full-app.refresh", L"button");
     refresh.text = L"Refresh";
     refresh.actionId = L"full-app.refresh";
@@ -7850,6 +7859,9 @@ void FocusSurfacesPreserveColorsAndWrssScale() {
     Check(control != scaled.widgetComposition->nodes.end() && std::abs(control->controlScale - 1.04F) < .001F,
         "WRSS focused scale owns one whole-control compositor transform");
     Check(!scaled.animationActive, "compositor scale does not schedule renderer animation frames");
+    Check(std::any_of(scaled.widgetComposition->nodes.begin(), scaled.widgetComposition->nodes.end(),
+        [](const auto &node) { return node.kind == WidgetCompositionKind::FocusSurface && node.parent == L"control/row.one"; }),
+        "in-place surface fading composes beneath the existing focused scale");
     Near(scaled.navigationRects.at(L"row.one").width, 260, "scale keeps input and layout geometry stable");
     options.pressedElementId = L"row.one";
     const auto pressed = draw(L"row.one", true);

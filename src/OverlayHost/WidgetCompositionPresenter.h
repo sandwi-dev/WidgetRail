@@ -47,6 +47,7 @@ class WidgetCompositionPresenter final {
         Motion motion, exit;
         std::optional<animation::FocusTarget> focusOrigin;
         Motion focusReveal;
+        Ptr<IDCompositionArithmeticCompositeEffect> focusBlend;
         Rect focusExtent;
         std::array<Ptr<IDCompositionVisual3>, 5> surfaceClips, surfacePixels;
         Raster previous;
@@ -66,7 +67,7 @@ class WidgetCompositionPresenter final {
     bool attached_{};
     static std::int64_t Now() noexcept;
     static std::int64_t Frequency() noexcept;
-    static Rect CaptureBounds(const Group &group, std::int64_t now) noexcept;
+    Rect CaptureBounds(const Group &group, std::int64_t now) const noexcept;
     HRESULT Upload(Raster &raster, const WidgetCompositionNode &node);
     HRESULT Animate(IDCompositionVisual3 *visual, IDCompositionVisual3 *clipVisual, const Motion &motion,
                     Rect basis);
@@ -75,5 +76,9 @@ class WidgetCompositionPresenter final {
                    float opacity, std::int64_t now) const;
     HRESULT Rebuild(IDCompositionVisual2 *above);
     HRESULT ConfigureFocusSurface(Group &group);
+    HRESULT ConfigureFocusFade(Group &group, const Raster &idle, const Raster &focused);
+    HRESULT CreateAnimation(float from, float to, const Motion &motion, IDCompositionAnimation **output);
+    void DrawFocusFade(ID2D1RenderTarget *target, const Group &group,
+                       D2D1_MATRIX_3X2_F transform, float opacity, std::int64_t now) const;
 };
 } // namespace widgetrail

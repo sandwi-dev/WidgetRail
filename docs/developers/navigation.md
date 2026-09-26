@@ -161,8 +161,8 @@ clips prevent translucent incoming content from exposing the old page beneath it
 The policy parser defaults unknown IDs to Slide; settings validation and bridge admission reject
 unsupported values. The options also allow modal motion to be disabled independently.
 Changing preferences settles the current scene and discards old motion. Reduced
-motion takes precedence over every preset. **Settings → Overlay** exposes the
-Section animation and Dialog animation dropdowns and Animate widget dialogs switch.
+motion takes precedence over every preset. **Settings Ã¢â€ â€™ Overlay** exposes the
+Focus animation, Section animation and Dialog animation dropdowns and Animate widget dialogs switch.
 The platform settings document persists `appearance.sectionAnimation`,
 `appearance.modalAnimation` (`Lift` or `Zoom`), and `appearance.animateWidgetModals`.
 Missing values default to Slide, Zoom and enabled dialog motion;
@@ -175,9 +175,10 @@ Widgets continue to declare semantic transitions rather than choosing host effec
 
 ### Focus movement
 
-The native host moves the themed focus decoration between nearby controls using
-DirectComposition. Widgets need no transition declaration for this behavior.
-Text and artwork change to the destination immediately. The options badge,
+The native host animates themed focus decorations using DirectComposition.
+Widgets need no transition declaration. Fade is the default; the optional Slide
+preset moves decoration between nearby controls. In Slide, text and artwork
+change to the destination immediately. The options badge,
 outline and focus border move over a 140 ms smoothstep timeline at 1x.
 Normal and focused backgrounds are revealed through complementary compositor
 clips on that same clock, behind each control's content. Every surface pixel
@@ -186,7 +187,15 @@ fill. Normal surfaces retain selected, disabled and busy styling.
 The widget animation speed preference scales this duration. Reduced Motion and
 hosts without composition use the stationary outline.
 
-`WidgetInteractionMotion.h` owns the continuity rules and movement recipe.
+Settings offers Fade (default), Slide and None for focus highlights. Fade uses a
+120 ms smooth in-place transition for outgoing/incoming outlines and supported
+resolved focus surfaces. Surface colors are interpolated with premultiplied
+alpha, preserving translucent themes. Controller hints appear immediately and
+retain their control's scale. Rapid changes sample the current fade weight;
+removed or moved cursor items cannot retain an outgoing outline. None snaps
+highlight changes; authored control scaling and pressed feedback remain independent.
+
+`WidgetInteractionMotion.h` owns the continuity rules and movement recipe for Slide.
 The scene carries a bounded list of visible focus identities and geometry, with
 no retained widget nodes or cursor pages. A move requires a still-present source
 at unchanged geometry in the same input, group, collection and section context.

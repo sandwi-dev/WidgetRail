@@ -1310,6 +1310,15 @@ void CheckWidgetAnimationPolicies() {
     Check(!CanMoveFocus(first, next, targets), "clipped or newly scrolled targets snap focus");
     next = targets[1]; next.bounds.width = 180;
     Check(!CanMoveFocus(first, next, targets), "large changes of control shape snap focus");
+    Check(Options{}.focus == FocusStyle::Fade && ParseFocusStyle(L"unknown") == FocusStyle::Fade &&
+        ParseFocusStyle(L"none") == FocusStyle::None && ParseFocusStyle(L"slide") == FocusStyle::Slide,
+        "focus defaults and persisted preset IDs are stable");
+    const auto fade = FocusFade(first.bounds, first.clip, 0, 1).Start(0, 1000);
+    Check(fade.duration == 120 && Sample(fade, 60).opacity == .5F &&
+        SameFocusRect(Sample(fade, 60).bounds, first.bounds), "focus fade changes only alpha at fixed bounds");
+    const auto reversed = FocusFade(first.bounds, first.clip, Sample(fade, 30).opacity, 0).Start(30, 1000, 2);
+    Check(reversed.duration == 60 && Sample(reversed, 30).opacity == Sample(fade, 30).opacity &&
+        Sample(reversed, 90).opacity == 0, "rapid fade reversal continues from current opacity at configured speed");
     const auto focusMotion = FocusMove(targets[1].bounds, first.clip, {first.bounds, 1, first.clip}).Start(0, 1000);
     Check(focusMotion.duration == 140 && Sample(focusMotion, 70).bounds.x == 55,
           "focus policy uses a bounded smooth movement independently of section presets");
@@ -1623,6 +1632,7 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
     const auto focusScene = [&](bool right, std::wstring scope = L"page", bool retainSource = true) {
         auto scene = std::make_shared<WidgetCompositionScene>();
         scene->authority = L"focus-proof";
+        scene->animations.focus = animation::FocusStyle::Slide;
         scene->viewport = {0, 0, 128, 128};
         scene->animations.speed = .5;
         WidgetCompositionNode background;
@@ -1877,8 +1887,113 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
 
 } // namespace
 
+
+void CheckFocusFadeCompositor(bool pixels) {
+    using namespace widgetrail;
+    const wchar_t *name = L"WidgetRail.FocusFadeTest";
+    WNDCLASSW wc{}; wc.lpfnWndProc = DefWindowProcW;
+    wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = name;
+    Check(RegisterClassW(&wc) != 0, "focus fade window class");
+    HWND window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_NOREDIRECTIONBITMAP,
+        name, L"Focus fade test", WS_POPUP, 40, 40, 160, 100, nullptr, nullptr, wc.hInstance, nullptr);
+    Check(window != nullptr, "focus fade test window");
+    ComPtr<ID2D1Factory1> factory;
+    Check(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.GetAddressOf())), "fade factory");
+    OverlayCompositionSurface surface;
+    std::wstring error;
+    Check(surface.Initialize(window, factory.Get(), error), "focus fade compositor initializes");
+    const auto sceneFor = [&](bool right) {
+        auto scene = std::make_shared<WidgetCompositionScene>();
+        scene->authority = L"fade-proof"; scene->viewport = {0, 0, 160, 100};
+        scene->animations.speed = .5;
+        WidgetCompositionNode background;
+        background.id = L"background"; background.bounds = background.clip = scene->viewport;
+        background.solid = D2D1::ColorF(D2D1::ColorF::Blue); scene->nodes.push_back(background);
+        scene->focusTargets = {{L"left", L"page", {10, 20, 40, 40}, scene->viewport},
+                               {L"right", L"page", {100, 20, 40, 40}, scene->viewport}};
+        for (const auto &item : scene->focusTargets) {
+            WidgetCompositionNode group;
+            group.id = L"surface/" + item.key; group.key = item.key; group.clock = item.scope;
+            group.kind = WidgetCompositionKind::FocusSurface; group.bounds = item.bounds; group.clip = item.clip;
+            scene->nodes.push_back(group);
+            WidgetCompositionNode idle;
+            idle.id = group.id + L"/idle"; idle.parent = group.id; idle.bounds = group.bounds; idle.clip = group.clip;
+            idle.solid = D2D1::ColorF(1, 0, 0, .5F); scene->nodes.push_back(idle);
+            auto focused = idle; focused.id = group.id + L"/focused"; focused.order = 1;
+            focused.solid = D2D1::ColorF(0, 1, 0, .25F); scene->nodes.push_back(focused);
+        }
+        const auto &item = scene->focusTargets[right ? 1 : 0];
+        WidgetCompositionNode focus;
+        focus.id = L"focus/" + item.key; focus.key = item.key; focus.clock = item.scope;
+        focus.kind = WidgetCompositionKind::Focus; focus.bounds = item.bounds; focus.clip = item.clip;
+        scene->nodes.push_back(focus);
+        WidgetCompositionNode marker;
+        marker.id = L"marker"; marker.parent = focus.id;
+        marker.bounds = {item.bounds.x, 65, 40, 5}; marker.clip = item.clip;
+        marker.solid = D2D1::ColorF(D2D1::ColorF::White); scene->nodes.push_back(marker);
+        return scene;
+    };
+    const auto commit = [&](std::shared_ptr<WidgetCompositionScene> scene) {
+        OverlayCompositionSurface::Frame frame;
+        Check(SUCCEEDED(surface.BeginFrame(160, 100, frame)), "fade frame begins");
+        frame.target->Clear(D2D1::ColorF(0, 0)); frame.widgetScene = std::move(scene);
+        Check(SUCCEEDED(surface.EndFrame(frame)), "fade frame ends");
+        OverlayCompositionSurface::CommitTiming timing;
+        Check(SUCCEEDED(surface.CommitFrame(frame, true, timing)), "fade effect commits");
+    };
+    const auto pixel = [&](int x, int y) {
+        POINT pt{x, y}; ClientToScreen(window, &pt);
+        HDC dc = GetDC(nullptr); auto color = GetPixel(dc, pt.x, pt.y); ReleaseDC(nullptr, dc); return color;
+    };
+    commit(sceneFor(false));
+    if (pixels) {
+        ShowWindow(window, SW_SHOWNOACTIVATE); DwmFlush(); Sleep(50); DwmFlush();
+        const auto color = pixel(30, 40);
+
+        Check(GetRValue(color) < 5 && GetGValue(color) >= 60 && GetGValue(color) <= 68 && GetBValue(color) >= 185,
+            "fade starts with exact translucent focused color");
+    }
+    commit(sceneFor(true));
+    auto counters = surface.widgetCompositionCounters();
+    const auto paints = surface.paintCounters().content;
+    Sleep(60); DwmFlush();
+    if (pixels) {
+        Check(GetRValue(pixel(75, 67)) < 5, "fade outline never crosses the gap");
+        const auto color = pixel(30, 40);
+
+        Check(GetRValue(color) > 0 && GetRValue(color) < 128 && GetGValue(color) > 0,
+            "old focus surface interpolates in place");
+        // Premultiplied colors plus the blue background retain total energy.
+        Check(std::abs(GetRValue(color) + GetGValue(color) + GetBValue(color) - 255) <= 4,
+            "translucent crossfade does not accumulate or lose alpha");
+    }
+    Check(surface.paintCounters().content == paints && surface.widgetCompositionCounters().rasterUploads == counters.rasterUploads,
+        "focus fade advances without UI paints or uploads");
+    commit(sceneFor(false)); // reverse before completion
+    const auto captures = surface.widgetCompositionCounters().interruptionCaptures;
+    commit(sceneFor(false)); // same-key updates must not capture/restart
+    Check(surface.widgetCompositionCounters().interruptionCaptures == captures, "same target retains fade timeline");
+    const auto mapped = surface.MapWidgetCompositionInput({30, 40});
+    Check(mapped.x == 30 && mapped.y == 40, "fade leaves logical input geometry unchanged");
+    auto removed = sceneFor(false); removed->focusTargets.resize(1);
+    commit(removed); // evict the outgoing cursor identity during its fade
+    auto reduced = sceneFor(true); reduced->reducedMotion = true;
+    commit(reduced); DwmFlush();
+    if (pixels) Check(GetRValue(pixel(120, 67)) > 245 && GetRValue(pixel(30, 67)) < 5,
+        "reduced motion snaps new focus and retires old outline");
+    auto none = sceneFor(false); none->animations.focus = animation::FocusStyle::None;
+    commit(none);
+    Sleep(260); surface.AdvanceWidgetComposition();
+    surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
+}
+
 int main(int argc, char** argv) {
     CheckWidgetAnimationPolicies();
+    if (argc == 2 && std::string_view(argv[1]) == "--focus-fade-pixels") {
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "fade COM initialization");
+        CheckFocusFadeCompositor(true); CoUninitialize(); return EXIT_SUCCESS;
+    }
     if (argc==2 && (std::string_view(argv[1])=="--widget-motion-pixels" ||
                    std::string_view(argv[1])=="--popup-motion-pixels")) {
         Check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_MULTITHREADED)),"pixel proof COM initialization");
@@ -1923,6 +2038,7 @@ int main(int argc, char** argv) {
               IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
           "WIC factory is created");
 
+    CheckFocusFadeCompositor(false);
     CheckFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckControllerGlyphs(d2d.Get(), wic.Get());
     CheckFrame(d2d.Get(), wic.Get(), 1.5F);

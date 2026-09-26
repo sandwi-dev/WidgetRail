@@ -850,6 +850,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     if (required.HasKey(L"widgetSwitcher")) required.Remove(L"widgetSwitcher");
     if (required.HasKey(L"overlayPosition")) required.Remove(L"overlayPosition");
     if (required.HasKey(L"modalAnimation")) required.Remove(L"modalAnimation");
+    if (required.HasKey(L"focusAnimation")) required.Remove(L"focusAnimation");
     if (required.HasKey(L"sectionAnimation")) required.Remove(L"sectionAnimation");
     if (required.HasKey(L"animateWidgetModals")) required.Remove(L"animateWidgetModals");
     if (required.HasKey(L"widgetAnimationSpeed")) required.Remove(L"widgetAnimationSpeed");
@@ -894,6 +895,14 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
             appearance.widgetAnimationSpeed > 2) {
             error = L"Invalid widget animation speed."; return std::nullopt;
         }
+    }
+    if (payload.HasKey(L"focusAnimation")) {
+        const auto value = payload.GetNamedValue(L"focusAnimation");
+        if (value.ValueType() != JsonValueType::String ||
+            (value.GetString() != L"fade" && value.GetString() != L"slide" && value.GetString() != L"none")) {
+            error = L"Invalid focus animation."; return std::nullopt;
+        }
+        appearance.focusAnimation = value.GetString();
     }
     if (payload.HasKey(L"sectionAnimation")) {
         const auto value = payload.GetNamedValue(L"sectionAnimation");

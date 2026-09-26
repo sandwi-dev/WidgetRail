@@ -4344,7 +4344,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["activeDisplayId", "animateWidgetModals", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "interfaceScale", "modalAnimation", "motion", "overlayPosition", "revision", "sectionAnimation", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetAnimationSpeed", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides", "widgetSwitcher"],
+        ["activeDisplayId", "animateWidgetModals", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "focusAnimation", "interfaceScale", "modalAnimation", "motion", "overlayPosition", "revision", "sectionAnimation", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetAnimationSpeed", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides", "widgetSwitcher"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
@@ -4357,6 +4357,7 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal(true, response.Payload.GetProperty("boldText").GetBoolean());
     Assert.Equal("reduced", response.Payload.GetProperty("transparency").GetString());
     Assert.Equal(true, response.Payload.GetProperty("animateWidgetSwitching").GetBoolean());
+    Assert.Equal("none", response.Payload.GetProperty("focusAnimation").GetString());
     Assert.Equal("slide", response.Payload.GetProperty("sectionAnimation").GetString());
     Assert.Equal("zoom", response.Payload.GetProperty("modalAnimation").GetString());
     Assert.Equal(1.5d, response.Payload.GetProperty("widgetAnimationSpeed").GetDouble());
@@ -7452,6 +7453,7 @@ file sealed class TemporaryAppearance : IAsyncDisposable
                 BoldText = true,
                 Transparency = TransparencyPreference.Reduced,
                 AnimateWidgetSwitching = true,
+                FocusAnimation = WidgetFocusAnimation.None,
                 SectionAnimation = WidgetSectionAnimation.Slide,
                 WidgetAnimationSpeed = 1.5,
                 ModalAnimation = WidgetModalAnimation.Zoom,

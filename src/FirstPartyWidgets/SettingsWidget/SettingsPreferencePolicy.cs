@@ -17,6 +17,7 @@ internal enum SettingsPreferenceKind
     BoldText,
     ReducedTransparency,
     AnimateWidgetSwitching,
+    FocusAnimation,
     SectionAnimation,
     AnimateWidgetModals,
     ModalAnimation,
@@ -33,6 +34,7 @@ internal readonly record struct SettingsPreferenceMutation(
     string? ThemeId = null,
     string? ThemeVersion = null,
     string? DisplayId = null,
+    WidgetFocusAnimation? FocusAnimation = null,
     WidgetSectionAnimation? SectionAnimation = null,
     WidgetModalAnimation? ModalAnimation = null)
 {
@@ -137,6 +139,10 @@ internal readonly record struct SettingsPreferenceMutation(
         {
             AnimateWidgetSwitching = !appearance.AnimateWidgetSwitching,
         },
+        SettingsPreferenceKind.FocusAnimation when FocusAnimation is { } focus => appearance with
+        {
+            FocusAnimation = focus,
+        },
         SettingsPreferenceKind.SectionAnimation when SectionAnimation is { } selected => appearance with
         {
             SectionAnimation = selected,
@@ -230,6 +236,12 @@ internal static class SettingsPreferencePolicy
                 SettingsPreferenceKind.ReducedTransparency,
                 "Transparency preference saved"),
             "widget-switcher.toggle" => new(SettingsPreferenceKind.WidgetSwitcher, "Widget switcher layout saved"),
+            "focus-animation.fade" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",
+                FocusAnimation: WidgetFocusAnimation.Fade),
+            "focus-animation.slide" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",
+                FocusAnimation: WidgetFocusAnimation.Slide),
+            "focus-animation.none" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",
+                FocusAnimation: WidgetFocusAnimation.None),
             "section-animation.paging" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",
                 SectionAnimation: WidgetSectionAnimation.Paging),
             "section-animation.slide" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",

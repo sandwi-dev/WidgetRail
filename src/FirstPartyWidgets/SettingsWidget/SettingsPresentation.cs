@@ -377,12 +377,20 @@ internal static class SettingsPresentation
                 UI.Text("Choose Center, Bottom left, or Bottom right. Corner layouts keep the outside edge fixed when widgets resize.",
                     "overlay.position.help").Classes("page-help"),
                 UI.Button($"Widget switcher: {(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial ? "Radial + rail" : "Rail")}",
-                    "widget-switcher.toggle", "overlay.widget-switcher").FocusDown("overlay.section-animation")
+                    "widget-switcher.toggle", "overlay.widget-switcher").FocusDown("overlay.focus-animation")
                     .Busy(busy).Classes("setting-row"),
                 UI.Text(settings.Appearance.WidgetSwitcher == WidgetSwitcherLayout.Radial
                         ? "B at the widget's top level opens the radial.\nLeft stick previews widgets and their shortcuts; right stick changes pages without changing the preview. A enters, B returns.\nMove down past the widget's bottom row for the rail. B on the rail closes the overlay."
                         : "Move down past the widget's bottom row, or press B at its top level, to enter the rail.\nLeft/right previews widgets and their shortcuts. A or Up enters the widget; B on the rail closes the overlay.",
                     "overlay.widget-switcher.help").Classes("page-help", "widget-switcher-help"),
+                UI.Select("Focus animation", new SelectOption[]
+                {
+                    new("fade", "Fade", "focus-animation.fade", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Fade),
+                    new("slide", "Slide", "focus-animation.slide", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Slide),
+                    new("none", "None", "focus-animation.none", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.None),
+                }, "overlay.focus-animation", "Focus animation")
+                    .FocusUp("overlay.widget-switcher").FocusDown("overlay.section-animation")
+                    .Busy(busy).AddClasses("setting-row"),
                 UI.Select("Section animation", new SelectOption[]
                 {
                     new("slide", "Slide", "section-animation.slide", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Slide),
@@ -392,7 +400,7 @@ internal static class SettingsPresentation
                     new("coverslide", "Cover slide", "section-animation.coverslide", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.CoverSlide),
                     new("none", "None", "section-animation.none", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.None),
                 }, "overlay.section-animation", "Section animation")
-                    .FocusUp("overlay.widget-switcher").FocusDown("overlay.animate-dialogs")
+                    .FocusUp("overlay.focus-animation").FocusDown("overlay.animate-dialogs")
                     .Busy(busy).AddClasses("setting-row"),
                 UI.Switch("Animate widget dialogs", appearance.AnimateWidgetModals,
                     "widget-modal-animation.toggle", "overlay.animate-dialogs")
@@ -411,7 +419,7 @@ internal static class SettingsPresentation
                     appearance.WidgetAnimationSpeed > AppearanceSettings.MinimumWidgetAnimationSpeed,
                     appearance.WidgetAnimationSpeed < AppearanceSettings.MaximumWidgetAnimationSpeed),
                     "overlay.modal-animation", null, busy),
-                UI.Text("Section animations apply inside supported widgets. Speed ranges from 0.5× (slower) to 2× (faster). Reduced motion overrides section and dialog animations.",
+                UI.Text("Section animations apply inside supported widgets. Speed ranges from 0.5× (slower) to 2× (faster). Reduced motion overrides focus, section and dialog animations.",
                     "overlay.animations.help").Classes("page-help"),
                 UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
                     "startup.toggle", "overlay.startup").Busy(busy).Disabled(startup?.CanChange != true)

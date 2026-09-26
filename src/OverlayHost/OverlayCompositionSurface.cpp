@@ -72,7 +72,8 @@ bool OverlayCompositionSurface::Initialize(
             dxgiDevice.Get(), d2dDevice_.ReleaseAndGetAddressOf());
     }
     if (SUCCEEDED(result)) {
-        result = DCompositionCreateDevice2(
+        // Filter effects used by focus fades require the Windows 10 device contract.
+        result = DCompositionCreateDevice3(
             d2dDevice_.Get(), __uuidof(IDCompositionDesktopDevice),
             reinterpret_cast<void**>(desktopDevice_.ReleaseAndGetAddressOf()));
     }

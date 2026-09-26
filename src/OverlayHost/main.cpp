@@ -18501,6 +18501,7 @@ private:
                 options.suppressWidgetCompositionMotion =
                     widgetContextMenu_.has_value() || interactionSession_.selectPopup().has_value();
                 if (const auto& appearance = appearanceState_.current()) {
+                    options.widgetAnimations.focus = widgetrail::animation::ParseFocusStyle(appearance->focusAnimation);
                     options.widgetAnimations.section = widgetrail::animation::ParseSectionStyle(appearance->sectionAnimation);
                     options.widgetAnimations.speed = appearance->widgetAnimationSpeed;
                     options.widgetAnimations.modal = appearance->animateWidgetModals

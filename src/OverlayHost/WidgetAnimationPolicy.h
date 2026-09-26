@@ -12,6 +12,10 @@ using Rect = declarative::Rect;
 
 enum class SectionStyle { Paging, Slide, None, VerticalSlide, Reveal, CoverSlide };
 enum class ModalStyle { Lift, None, Zoom };
+enum class FocusStyle { Fade, Slide, None };
+constexpr FocusStyle ParseFocusStyle(std::wstring_view id) noexcept {
+    return id == L"slide" ? FocusStyle::Slide : id == L"none" ? FocusStyle::None : FocusStyle::Fade;
+}
 
 // Host preferences, independent of widget declarations and graphics resources.
 // Stable IDs can be persisted by settings without serializing enum ordinals.
@@ -43,6 +47,7 @@ struct Options {
     SectionStyle section{SectionStyle::Slide};
     ModalStyle modal{ModalStyle::Zoom};
     double speed{1};
+    FocusStyle focus{FocusStyle::Fade};
     bool operator==(const Options &) const = default;
 };
 

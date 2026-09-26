@@ -41,6 +41,9 @@ public enum WidgetSwitcherLayout { Rail, Radial }
 [JsonConverter(typeof(JsonStringEnumConverter<OverlayPosition>))]
 public enum OverlayPosition { Center, BottomLeft, BottomRight }
 
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetFocusAnimation>))]
+public enum WidgetFocusAnimation { Fade, Slide, None }
+
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetSectionAnimation>))]
 public enum WidgetSectionAnimation { Paging, Slide, None, VerticalSlide, Reveal, CoverSlide }
 
@@ -99,6 +102,7 @@ public sealed record AppearanceSettings
     /// </summary>
     public bool AnimateWidgetSwitching { get; init; }
     /// <summary>Host-owned transitions between sections within a widget.</summary>
+    public WidgetFocusAnimation FocusAnimation { get; init; } = WidgetFocusAnimation.Fade;
     public WidgetSectionAnimation SectionAnimation { get; init; } = WidgetSectionAnimation.Slide;
     /// <summary>Host-owned opening and closing motion for widget dialogs.</summary>
     public bool AnimateWidgetModals { get; init; } = true;
@@ -278,6 +282,8 @@ public static class PlatformSettingsValidator
             Add("$.appearance.widgetSwitcher", "invalid_enum", "Widget switcher layout is invalid.");
         if (!Enum.IsDefined(appearance.ModalAnimation))
             Add("$.appearance.modalAnimation", "invalid_enum", "Dialog animation is invalid.");
+        if (!Enum.IsDefined(appearance.FocusAnimation))
+            Add("$.appearance.focusAnimation", "invalid_enum", "Focus animation is invalid.");
         if (!Enum.IsDefined(appearance.SectionAnimation))
             Add("$.appearance.sectionAnimation", "invalid_enum", "Section animation is invalid.");
         Range(appearance.WidgetAnimationSpeed, AppearanceSettings.MinimumWidgetAnimationSpeed,

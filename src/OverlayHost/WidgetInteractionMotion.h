@@ -62,6 +62,14 @@ inline Recipe FocusMove(Rect bounds, Rect clip, Pose previous) noexcept {
     return recipe;
 }
 
+inline Recipe FocusFade(Rect bounds, Rect clip, float from, float to) noexcept {
+    auto recipe = Stationary(bounds, clip);
+    recipe.from.opacity = from;
+    recipe.to.opacity = to;
+    recipe.milliseconds = from == to ? 0 : 120;
+    return recipe;
+}
+
 // Surface replacement uses disjoint clips, not alpha overlays. The first four
 // regions retain the normal surface; the last reveals the focused surface.
 inline std::array<Rect, 5> FocusSurfaceClips(Rect extent, Rect reveal) noexcept {
@@ -78,7 +86,8 @@ inline bool HasFocusSurfaceChange(const NativeRenderStyle &base, const NativeRen
            base.cornerRadiusPx() != focus.cornerRadiusPx() || base.shape() != focus.shape();
 }
 
-inline bool CanSeparateFocusSurface(const NativeRenderStyle &base, const NativeRenderStyle &focus) noexcept {
+inline bool CanSeparateFocusSurface(const NativeRenderStyle &base, const NativeRenderStyle &focus,
+                                    bool compositorScale = false) noexcept {
     const auto hasShadow = [](const auto &style) {
         return style.shadowColor() && style.shadowColor()->alpha > 0;
     };
@@ -86,7 +95,7 @@ inline bool CanSeparateFocusSurface(const NativeRenderStyle &base, const NativeR
     return before.top.widthPx == after.top.widthPx && before.right.widthPx == after.right.widthPx &&
         before.bottom.widthPx == after.bottom.widthPx && before.left.widthPx == after.left.widthPx &&
         !hasShadow(base) && !hasShadow(focus) && base.backgroundBlurPx() == 0 && focus.backgroundBlurPx() == 0 &&
-        base.opacity() == focus.opacity() && base.scale() == 1 && focus.scale() == 1 &&
+        base.opacity() == focus.opacity() && (compositorScale || (base.scale() == 1 && focus.scale() == 1)) &&
         base.translateXPx() == focus.translateXPx() && base.translateYPx() == focus.translateYPx() &&
         base.widthPx() == focus.widthPx() && base.heightPx() == focus.heightPx() &&
         base.minWidthPx() == focus.minWidthPx() && base.minHeightPx() == focus.minHeightPx() &&

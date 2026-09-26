@@ -5005,7 +5005,8 @@ struct DeclarativeRenderer::RenderPass final {
             const auto focusSurface = compositionFocusStyles.find(node.id);
             const bool separated = composingScene && focusSurface != compositionFocusStyles.end();
             DrawSurface(node, separated ? focusSurface->second : style, paintRect, opacity,
-                separated && node.actionSurfacePresentation != L"poster" ? SurfacePaint::Background : SurfacePaint::All);
+                separated && options.widgetAnimations.focus == animation::FocusStyle::Slide &&
+                    node.actionSurfacePresentation != L"poster" ? SurfacePaint::Background : SurfacePaint::All);
         }
         if (composingScene && PaintCompositionPhase(node.id, 5))
             DrawSurface(node, preparedNode->second.baseStyle, paintRect, opacity);
@@ -5310,7 +5311,8 @@ struct DeclarativeRenderer::RenderPass final {
             if (PaintCompositionPhase(deferredFocusNode->id, 3)) {
                 // Poster borders stay below their full-bleed artwork. Lifting
                 // them above it would reveal pixels the authored tile hides.
-                if (composingScene && deferredFocusNode->actionSurfacePresentation != L"poster" &&
+                if (composingScene && options.widgetAnimations.focus == animation::FocusStyle::Slide &&
+                    deferredFocusNode->actionSurfacePresentation != L"poster" &&
                     compositionFocusStyles.contains(deferredFocusNode->id))
                     DrawSurface(*deferredFocusNode, *deferredFocusStyle,
                         deferredFocusRect, deferredFocusOpacity, SurfacePaint::Border);

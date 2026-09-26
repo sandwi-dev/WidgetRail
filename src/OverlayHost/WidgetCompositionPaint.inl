@@ -152,7 +152,8 @@ bool DrawWidgetComposition() {
             movable = styleNode->second.baseStyle.scale() == 1 && focusStyle.scale() == 1 && node.id != pressedId;
             if (animation::HasFocusSurfaceChange(styleNode->second.baseStyle, focusStyle)) {
                 separateSurface = !surfaceDone && !node.transition && node.id != pressedId &&
-                    animation::CanSeparateFocusSurface(styleNode->second.baseStyle, focusStyle);
+                    animation::CanSeparateFocusSurface(styleNode->second.baseStyle, focusStyle,
+                        controlScale && scene->animations.focus != animation::FocusStyle::Slide);
                 movable = movable && separateSurface;
                 if (separateSurface) compositionFocusStyles.emplace(node.id, focusStyle);
             }
@@ -280,7 +281,8 @@ bool DrawWidgetComposition() {
         const auto found = presentation.find(NarrowStableId(focusedId));
         if (found != presentation.end()) {
             const auto &shown = found->second;
-            const auto focusGroup = addGroup(L"$focus", focusParents.at(focusedId), WidgetCompositionKind::Focus,
+            const auto focusGroup = addGroup(scene->animations.focus == animation::FocusStyle::Fade
+                ? L"$focus/" + focusKey : L"$focus", focusParents.at(focusedId), WidgetCompositionKind::Focus,
                 focusScope, focusKey, 0,
                 shown.borderBox, shown.ancestorClip);
             scene->nodes.back().focusMovable = focusMovable;
@@ -290,11 +292,12 @@ bool DrawWidgetComposition() {
                 std::max(options.accessibility.minimumFocusRingPx, std::max(2.0F, style.outlineWidthPx())));
             op(*sceneFocus, 3, focusGroup, Intersection(Inset(paintBox, -outset), shown.ancestorClip));
             split();
-            // Keep the badge on the same focus timeline as the outline. This
-            // also inherits a scaled control's transform through focusGroup.
+            // Fade only the highlight. The current controller hint is immediate,
+            // while still inheriting its control's scale. Slide retains its badge motion.
             if (sceneFocus->kind == L"actionSurface" && input::HasAvailableContextMenuActions(sceneFocus->contextActions)) {
                 const auto badge = ContextMenuIndicatorBounds(paintBox);
-                op(*sceneFocus, 4, focusGroup, Intersection(badge, shown.visibleBox));
+                op(*sceneFocus, 4, scene->animations.focus == animation::FocusStyle::Fade
+                    ? focusParents.at(focusedId) : focusGroup, Intersection(badge, shown.visibleBox));
             }
         }
     }
