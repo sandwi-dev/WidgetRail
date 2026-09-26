@@ -9,6 +9,7 @@
 #include "WidgetCompositionScene.h"
 #include "NativeStyle.h"
 #include "SurfaceDepth.h"
+#include "CompositionPaintCache.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
 #include "FocusSurfaceSelection.h"
@@ -88,6 +89,7 @@ struct DeclarativeRenderTiming final {
     std::uint64_t styleCacheMisses{};
     std::uint64_t textLayoutCacheHits{};
     std::uint64_t textLayoutCacheMisses{};
+    std::uint64_t compositionPaintHits{}, compositionPaintMisses{}, compositionPaintedBytes{};
     /// One bounded, render-local convergence summary. It is populated only
     /// when focus following is slow, unusually iterative, or non-convergent;
     /// the existing host slow-frame diagnostic remains the sole log owner.
@@ -826,6 +828,7 @@ private:
         std::size_t bytes{};
     };
     std::vector<CompositionCapture> compositionCaptures_;
+    std::map<std::wstring, CompositionPaintEntry> compositionPaintCache_;
     std::optional<IncrementalLayoutCache> incrementalLayoutCache_;
     std::optional<PendingIncrementalPlan> pendingIncrementalPlan_;
 };

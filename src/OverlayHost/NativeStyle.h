@@ -122,6 +122,7 @@ struct NativeStyleDiagnostic final {
 class NativeRenderStyle final {
 public:
     NativeRenderStyle();
+    [[nodiscard]] bool operator==(const NativeRenderStyle& other) const noexcept;
 
     [[nodiscard]] const std::optional<NativeColor>& background() const noexcept;
     [[nodiscard]] float surfaceShading() const noexcept;

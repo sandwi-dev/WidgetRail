@@ -4863,6 +4863,8 @@ struct DeclarativeRenderer::RenderPass final {
         PaintTransitionBitmap(visual.current.Get(), bounds, opacity, viewport);
     }
 
+    std::map<std::wstring, CompositionPaintEntry> nextCompositionPaintCache;
+    #include "CompositionPaintIdentity.inl"
     #include "WidgetCompositionPaint.inl"
 
     void DrawNode(const WidgetNode& node, const std::wstring_view inheritedInputScope = {}) {
@@ -5317,6 +5319,7 @@ void DeclarativeRenderer::CancelWidgetTransitions() noexcept {
     transitionVisuals_.clear();
     compositionInstance_.clear();
     compositionCaptures_.clear();
+    compositionPaintCache_.clear();
 }
 void DeclarativeRenderer::PublishImageProtection() {
     if (!imageCache_) return;
@@ -6219,6 +6222,9 @@ RenderResult DeclarativeRenderer::Render(
             return item.severity == RenderDiagnosticSeverity::Error;
         });
     pass.result.succeeded = !hasErrors && pass.layout.valid() && renderTarget;
+    if (pass.result.succeeded && pass.result.widgetComposition && !pass.result.widgetComposition->directContent)
+        compositionPaintCache_ = std::move(pass.nextCompositionPaintCache);
+    else compositionPaintCache_.clear();
     if (pass.result.succeeded) {
         pass.transitions.End();
         widgetTransitions_ = std::move(pass.transitions);
@@ -6412,6 +6418,11 @@ RenderResult DeclarativeRenderer::Render(
         elapsed(nodeDrawFinished, deferredFocusFinished),
         elapsed(deferredFocusFinished, finalizationFinished),
     };
+    if (pass.result.widgetComposition) {
+        pass.result.timing.compositionPaintHits = pass.result.widgetComposition->paintCacheHits;
+        pass.result.timing.compositionPaintMisses = pass.result.widgetComposition->paintCacheMisses;
+        pass.result.timing.compositionPaintedBytes = pass.result.widgetComposition->paintedBytes;
+    }
     pass.result.timing.snapshotComparisonMicroseconds = snapshotComparisonMicroseconds;
     pass.result.timing.updatePlanningMicroseconds = updatePlanningMicroseconds;
     pass.result.timing.styleResolutionMicroseconds = pass.styleNanoseconds / 1000;
@@ -6755,7 +6766,7 @@ bool DeclarativeRenderer::EnsureSurfaceClip(
 void DeclarativeRenderer::ForgetWidgetState(
     const std::wstring_view widgetInstanceId) noexcept {
     if (widgetInstanceId.empty()) return;
-    if (widgetTransitions_.OwnsInstance(widgetInstanceId)) CancelWidgetTransitions();
+    if (widgetTransitions_.OwnsInstance(widgetInstanceId) || compositionInstance_ == widgetInstanceId) CancelWidgetTransitions();
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     ++gRendererWidgetStateRetirementCount;
     gLastRetiredRendererWidgetInstance = widgetInstanceId;

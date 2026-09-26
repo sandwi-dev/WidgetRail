@@ -87,6 +87,7 @@ bool DrawWidgetComposition() {
     bool focusTargetsOverflow{};
     std::map<std::wstring, std::wstring> parents;
     std::vector<std::wstring> path;
+    std::map<std::size_t, std::vector<std::pair<const WidgetNode*, int>>> paintOperations;
     const auto split = [&] { band.reset(); };
     const auto addGroup = [&](std::wstring id, std::wstring parent, WidgetCompositionKind kind,
                               std::wstring clock, std::wstring key, int order, Rect bounds, Rect clip) {
@@ -101,7 +102,11 @@ bool DrawWidgetComposition() {
             return;
         if (!band || scene->nodes[*band].parent != parent) {
             band = scene->nodes.size();
-            scene->nodes.push_back({L"raster/" + std::to_wstring(*band),
+            std::wstring rasterId;
+            animation::AppendMotionIdentity(rasterId, parent);
+            animation::AppendMotionIdentity(rasterId, node.id);
+            animation::AppendMotionIdentity(rasterId, std::to_wstring(phase));
+            scene->nodes.push_back({L"raster/" + rasterId,
                                     parent,
                                     {},
                                     {},
@@ -112,6 +117,7 @@ bool DrawWidgetComposition() {
         } else
             scene->nodes[*band].bounds = UnionRect(scene->nodes[*band].bounds, bounds);
         compositionPhases[{node.id, phase}] = *band;
+        paintOperations[*band].push_back({&node, phase});
     };
     const auto visit = [&](const auto &self, const WidgetNode &node, std::wstring parent,
                            bool surfaceDone, std::wstring scope, std::wstring itemIdentity) -> void {
@@ -341,6 +347,8 @@ bool DrawWidgetComposition() {
     target = nullptr;
     DrawNode(snapshot->root);
     target = mainTarget;
+    std::map<std::wstring, CompositionPaintEntry> nextPaintCache;
+    std::size_t identityBytes{};
     ++owner->compatiblePaintDepth_;
     for (std::size_t index = 0; index < scene->nodes.size(); ++index) {
         auto &node = scene->nodes[index];
@@ -349,6 +357,22 @@ bool DrawWidgetComposition() {
         const auto size = D2D1::SizeF(node.bounds.width, node.bounds.height);
         const auto pixels = D2D1::SizeU(static_cast<UINT32>(std::round(size.width * scale)),
                                         static_cast<UINT32>(std::round(size.height * scale)));
+        auto identity = CompositionIdentity(node, paintOperations[index], compositionBandNodes[index]);
+        const auto prior = owner->compositionPaintCache_.find(node.id);
+        if (identity.cacheable && prior != owner->compositionPaintCache_.end() && identity == prior->second.identity) {
+            node.bitmap = prior->second.bitmap;
+            node.rasterLease = prior->second.lease;
+            if (identityBytes + identity.Bytes() <= CompositionPaintIdentity::MaximumRetainedBytes) {
+                identityBytes += identity.Bytes();
+                nextPaintCache.emplace(node.id, std::move(prior->second));
+            }
+            ++scene->paintCacheHits;
+            continue;
+        }
+        ++scene->paintCacheMisses;
+        scene->paintedBytes += static_cast<std::size_t>(pixels.width) * pixels.height * 4;
+        // A dirty entry cannot keep an unused pool target leased indefinitely.
+        if (prior != owner->compositionPaintCache_.end()) owner->compositionPaintCache_.erase(prior);
         ComPtr<ID2D1BitmapRenderTarget> surface;
         node.rasterLease = std::make_shared<char>();
         auto &captures = owner->compositionCaptures_;
@@ -405,8 +429,13 @@ bool DrawWidgetComposition() {
                 RenderDiagnosticSeverity::Error);
             break;
         }
+        if (identity.cacheable && identityBytes + identity.Bytes() <= CompositionPaintIdentity::MaximumRetainedBytes) {
+            identityBytes += identity.Bytes();
+            nextPaintCache.emplace(node.id, CompositionPaintEntry{std::move(identity), node.bitmap, node.rasterLease});
+        }
         animationActive = animationActive || result.animationActive;
     }
+    nextCompositionPaintCache = std::move(nextPaintCache);
     --owner->compatiblePaintDepth_;
     target = mainTarget;
     composingScene = false;

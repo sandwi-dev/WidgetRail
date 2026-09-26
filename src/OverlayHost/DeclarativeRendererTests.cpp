@@ -7837,6 +7837,146 @@ void SurfaceDepthUsesBoundedSharedPainting() {
 
 // Fractional control bounds must retain the same glyph pixel phase when
 // focus/press changes the compositor's surface/content band partition.
+void RetainedCompositionPixelsRespectInvalidation() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas; ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "retained paint fixture resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    const auto makeTarget = [&] {
+        ok(wic->CreateBitmap(480, 360, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf()));
+        ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.ReleaseAndGetAddressOf()));
+    };
+    makeTarget();
+    std::mutex readyMutex; std::condition_variable readyChanged; bool ready{};
+    RemoteImageCache images({}, [&](std::wstring_view, RemoteImageState state) {
+        { std::lock_guard lock(readyMutex); ready = state == RemoteImageState::Ready; }
+        readyChanged.notify_all();
+    }, [](std::wstring_view, std::stop_token, const RemoteImageLimits&) {
+        RemoteDecodedImage image; image.width = image.height = 4; image.stride = 16;
+        image.mimeType = L"image/png"; image.premultipliedBgra.resize(64, 255);
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    });
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), &images);
+    WidgetSnapshot snapshot; snapshot.instanceId = L"paint-cache"; snapshot.sequence = 1; snapshot.activeInputScopeId = L"root";
+    snapshot.root = Node(L"root", L"stack"); snapshot.root.inputScopeId = L"root";
+    snapshot.root.baseStyle = {{L"padding", LengthList(L"16px")}, {L"gap", LengthList(L"8px")}, {L"background", Color(L"#101010")}};
+    auto progress = Node(L"progress", L"progress"); progress.hasProgress = true; progress.value = .2;
+    progress.baseStyle = {{L"height", Length(8)}}; snapshot.root.children.push_back(progress);
+    for (int i = 0; i < 3; ++i) {
+        const auto id = L"button." + std::to_wstring(i);
+        auto button = Node(id.c_str(), L"button"); button.text = L"Stable content"; button.actionId = L"select";
+        button.baseStyle = {{L"width", Length(300)}, {L"height", Length(64)}, {L"padding", LengthList(L"8px")},
+            {L"background", Color(L"#223344")}, {L"color", Color(L"#ffffff")}, {L"surface-shading", Number(.05)}};
+        button.focusedStyle = {{L"background", Color(L"#445566")}, {L"shadow-color", Color(L"#00000080")}, {L"shadow-blur", Length(5)}};
+        snapshot.root.children.push_back(button);
+    }
+    DeclarativeRenderOptions options; options.compositorWidgetTransitions = true; options.accessibility.reducedMotion = true;
+    const Rect viewport{0, 0, 480, 360};
+    const auto draw = [&](std::wstring_view focused = L"button.0") {
+        target->BeginDraw(); auto result = renderer.Render(target.Get(), snapshot, focused, viewport, options); ok(target->EndDraw());
+        Check(result.succeeded || options.failAfterNodeDrawForTesting, "retained scene succeeds");
+        Check(result.widgetComposition && !result.widgetComposition->directContent, "retained scene remains layered");
+        return result;
+    };
+    const auto replay = [&](const RenderResult& rendered, std::wstring_view focus) {
+        const auto& scene = *rendered.widgetComposition;
+        target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0));
+        for (const auto& node : scene.nodes) {
+            if (!node.bitmap) continue;
+            const auto parent = std::find_if(scene.nodes.begin(), scene.nodes.end(), [&](const auto& n) { return n.id == node.parent; });
+            if (parent != scene.nodes.end() && parent->kind == WidgetCompositionKind::FocusSurface) {
+                const bool selected = parent->key == std::wstring(focus) + L"";
+                if ((node.order == 1) != selected) continue;
+            }
+            target->DrawBitmap(node.bitmap.Get(), D2D1::RectF(node.bounds.x, node.bounds.y,
+                node.bounds.x + node.bounds.width, node.bounds.y + node.bounds.height));
+        }
+        ok(target->EndDraw()); std::vector<BYTE> pixels(480 * 360 * 4);
+        ok(canvas->CopyPixels(nullptr, 480 * 4, static_cast<UINT>(pixels.size()), pixels.data()));
+        return pixels;
+    };
+    const auto matchesFresh = [&](std::wstring_view focus = L"button.0") {
+        const auto retained = draw(focus);
+        const auto retainedPixels = replay(retained, focus);
+        DeclarativeRenderer fresh(d2d.Get(), write.Get(), &images);
+        target->BeginDraw();
+        const auto reference = fresh.Render(target.Get(), snapshot, focus, viewport, options);
+        ok(target->EndDraw());
+        Check(reference.succeeded && retainedPixels == replay(reference, focus),
+            "retained pixels exactly match fresh rendering after visual invalidation");
+    };
+    const auto cold = draw(); const auto warm = draw();
+    Check(cold.widgetComposition->paintCacheMisses > 4 && warm.widgetComposition->paintCacheMisses == 0 &&
+        warm.widgetComposition->paintCacheHits == cold.widgetComposition->paintCacheMisses, "unchanged layers retain all immutable pixels");
+    snapshot.root.children[0].value = .7; ++snapshot.sequence;
+    auto changed = draw();
+    Check(changed.widgetComposition->paintCacheMisses == 1 && changed.widgetComposition->paintCacheHits > 4 &&
+        changed.widgetComposition->paintedBytes < cold.widgetComposition->paintedBytes / 2,
+        "progress changes repaint only their paint band, not static rows");
+    matchesFresh();
+    const auto moved = draw(L"button.1");
+    Check(moved.widgetComposition->paintCacheHits > 4, "focus reuses idle/focused surface pixels and unaffected content");
+    matchesFresh(L"button.1");
+    // Semantic updates must still reach the native input tree on paint hits.
+    snapshot.root.children[2].actionId = L"new.action"; ++snapshot.sequence;
+    const auto actions = draw(L"button.1");
+    Check(actions.widgetComposition->paintCacheMisses == 0 && actions.focusRects.contains(L"button.1"),
+        "action-only changes refresh current geometry without invalidating pixels");
+    snapshot.root.children[2].text = L"New label"; ++snapshot.sequence;
+    Check(draw(L"button.1").widgetComposition->paintCacheMisses > 0, "text updates invalidate content");
+    snapshot.root.children[2].baseStyle[L"color"] = Color(L"#ff0000"); ++snapshot.sequence;
+    Check(draw(L"button.1").widgetComposition->paintCacheMisses > 0, "resolved theme colors invalidate content");
+    matchesFresh(L"button.1");
+    options.pressedElementId = L"button.1";
+    Check(draw(L"button.1").widgetComposition->paintCacheMisses > 0, "pressed regrouping invalidates only changed bands");
+    matchesFresh(L"button.1");
+    options.pressedElementId.clear(); draw();
+    options.pixelScale = 1.25F;
+    Check(draw().widgetComposition->paintCacheHits == 0, "display scale invalidates captured pixel density");
+    options.accessibility.textScale = 1.2F;
+    Check(draw().widgetComposition->paintCacheMisses > 0, "text scale invalidates measured content");
+    options.artworkAuthorityId = L"replacement-runtime";
+    Check(draw().widgetComposition->paintCacheHits == 0, "runtime authority cannot inherit old captures");
+    snapshot.root.collectionResetGeneration = 2;
+    Check(draw().widgetComposition->paintCacheHits == 0, "cursor reset retires prior item capture authority");
+    snapshot.root.baseStyle[L"padding"] = LengthList(L"24px"); ++snapshot.sequence;
+    Check(draw().widgetComposition->paintCacheMisses > 0, "ancestor geometry invalidates descendants");
+    options.failAfterNodeDrawForTesting = true; draw(); options.failAfterNodeDrawForTesting = false;
+    Check(draw().widgetComposition->paintCacheHits == 0, "failed frames cannot publish retained pixels");
+    const auto priorDomain = renderer.GetImageBitmapCacheStats().resourceGeneration;
+    makeTarget();
+    const auto replaced = draw();
+    Check(renderer.GetImageBitmapCacheStats().resourceGeneration == priorDomain || replaced.widgetComposition->paintCacheHits == 0,
+        "only targets sharing a resource domain may reuse captured pixels");
+    snapshot.root.children[1].imageSource = L"https://example.test/retained.png"; ++snapshot.sequence;
+    draw();
+    { std::unique_lock lock(readyMutex); Check(readyChanged.wait_for(lock, std::chrono::seconds(3), [&] { return ready; }), "artwork becomes ready asynchronously"); }
+    const auto resolved = draw();
+    Check(resolved.widgetComposition->paintCacheMisses > 0, "artwork readiness repaints its owning layer");
+    Check(draw().widgetComposition->paintCacheMisses == 0, "ready artwork participates in immutable pixel reuse");
+    matchesFresh();
+    renderer.ForgetWidgetState(snapshot.instanceId);
+    Check(draw().widgetComposition->paintCacheHits == 0, "widget retirement clears retained paint state");
+    snapshot.root.kind = L"scroll"; snapshot.root.scrollAxis = L"vertical";
+    snapshot.root.baseStyle[L"height"] = Length(150);
+    for (auto& child : snapshot.root.children) child.baseStyle[L"flex-shrink"] = Number(0);
+    ++snapshot.sequence; options.suppressFocusedDescendantFollow = true;
+    draw(); draw();
+    const auto scroll = renderer.PlanFocusedFreeScroll(snapshot, L"button.0", declarative::ScrollAxis::Vertical,
+        24, viewport, L"root");
+    Check(scroll.has_value(), "retained fixture has a scrollable viewport");
+    const auto scrolled = draw();
+    Check(scrolled.widgetComposition->paintCacheMisses > 0 && scrolled.scrollOffsets.at(L"root") > 0,
+        "scrolling invalidates moved/clipped pixels while preserving current scroll geometry");
+    Check(draw().widgetComposition->paintCacheMisses == 0, "stopped scrolling reuses its new pixel geometry");
+    CompositionPaintIdentity bounded; bounded.Text(std::wstring(40000, L'x'));
+    Check(!bounded.cacheable && bounded.values.size() <= CompositionPaintIdentity::MaximumBytes, "paint signatures are bounded");
+}
+
 void FocusCaptureKeepsTextPixelsStable() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -8537,7 +8677,7 @@ void PlaybackPreparationWorkload(bool composition = false, bool depth = false, b
     std::cout<<(pipelineProbe?"PIPELINE":"WORKLOAD")<<" composition="<<composition<<" depth="<<depth<<" cold-prepare-us="<<cold.timing.preparationMicroseconds<<'\n';
     for (const bool incremental : {false,true}) {
         std::vector<std::uint64_t> elapsed, prepare, paint;
-        std::size_t rasterCount{}, rasterBytes{}; bool directContent{};
+        std::size_t rasterCount{}, rasterBytes{}, repaintedBytes{}, paintHits{}, paintMisses{}; bool directContent{};
         for(int frame=0;frame<40;++frame) {
             const auto start=std::chrono::steady_clock::now();
             widgetrail::WidgetPresentationImpact impact{snapshot.sequence,snapshot.sequence+1,
@@ -8552,6 +8692,7 @@ void PlaybackPreparationWorkload(bool composition = false, bool depth = false, b
                 rasterCount=std::count_if(result.widgetComposition->nodes.begin(),result.widgetComposition->nodes.end(),
                     [](const auto &n){return n.kind==widgetrail::WidgetCompositionKind::Raster && n.bitmap;});
                 rasterBytes=result.widgetComposition->rasterBytes;
+                repaintedBytes=result.widgetComposition->paintedBytes; paintHits=result.widgetComposition->paintCacheHits; paintMisses=result.widgetComposition->paintCacheMisses;
                 directContent=result.widgetComposition->directContent;
             }
 #ifdef WRAIL_RETAINED_PREPARATION_BENCH
@@ -8565,7 +8706,7 @@ void PlaybackPreparationWorkload(bool composition = false, bool depth = false, b
         std::sort(elapsed.begin(),elapsed.end()); std::sort(prepare.begin(),prepare.end()); std::sort(paint.begin(),paint.end());
         std::cout<<(pipelineProbe?"PIPELINE":"WORKLOAD")<<" composition="<<composition<<" depth="<<depth<<" mode="<<(incremental?"incremental":"full")
             <<" total-median-us="<<elapsed[20]<<" total-p95-us="<<elapsed[38]
-            <<" prepare-median-us="<<prepare[20]<<" prepare-p95-us="<<prepare[38]<<" paint-median-us="<<paint[20]<<" rasters="<<rasterCount<<" raster-bytes="<<rasterBytes<<" direct="<<directContent<<'\n';
+            <<" prepare-median-us="<<prepare[20]<<" prepare-p95-us="<<prepare[38]<<" paint-median-us="<<paint[20]<<" rasters="<<rasterCount<<" raster-bytes="<<rasterBytes<<" paint-hits="<<paintHits<<" paint-misses="<<paintMisses<<" painted-bytes="<<repaintedBytes<<" direct="<<directContent<<'\n';
     }
 #ifdef WRAIL_RETAINED_PREPARATION_BENCH
     widgetrail::WidgetPresentationImpact impact{snapshot.sequence,snapshot.sequence+1,widgetrail::WidgetPresentationEffect::Paint,{L"progress"}};
@@ -8628,6 +8769,7 @@ int main(int argc, char** argv) {
     RetainedPosterPaintPreservesArtwork();
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
     SurfaceDepthUsesBoundedSharedPainting();
+    RetainedCompositionPixelsRespectInvalidation();
     FocusCaptureKeepsTextPixelsStable();
     FocusSurfacesPreserveColorsAndWrssScale();
     ModalBackgroundRetainsItsScrollOwner();

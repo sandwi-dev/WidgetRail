@@ -25,8 +25,8 @@ Do not combine all of them into one unexplained average.
 | Input | Queueing, admission, focus targeting, and scroll demand |
 
 A complete snapshot is not a requirement to prepare or redraw everything.
-Use the existing presentation-impact and damage paths. Retain unchanged styles
-and text layouts with correct invalidation. See [Renderer preparation](renderer-preparation-retention.md).
+Use the existing presentation-impact and damage paths. Retain unchanged styles,
+text layouts, painted layers and GPU surfaces with correct invalidation. See [Renderer preparation](renderer-preparation-retention.md).
 
 ## Common causes
 

@@ -65,25 +65,34 @@ HRESULT WidgetCompositionPresenter::Upload(Raster &raster, const WidgetCompositi
     if (!surface)
         hr = device_->CreateSurface(pixels.width, pixels.height, DXGI_FORMAT_B8G8R8A8_UNORM,
                                     DXGI_ALPHA_MODE_PREMULTIPLIED, surface.GetAddressOf());
-    Ptr<ID2D1DeviceContext> target;
-    POINT offset{};
-    if (SUCCEEDED(hr))
-        hr = surface->BeginDraw(nullptr, __uuidof(ID2D1DeviceContext),
-                                reinterpret_cast<void **>(target.GetAddressOf()), &offset);
-    if (FAILED(hr))
-        return hr;
-    target->SetDpi(96, 96);
-    target->SetTransform(
-        D2D1::Matrix3x2F::Translation(static_cast<float>(offset.x), static_cast<float>(offset.y)));
-    target->Clear(D2D1::ColorF(0, 0));
-    if (node.solid)
-        target->Clear(*node.solid);
-    else
-        target->DrawBitmap(node.bitmap.Get(), D2D1::RectF(0, 0, static_cast<float>(pixels.width),
-                                                          static_cast<float>(pixels.height)));
-    hr = surface->EndDraw();
-    if (FAILED(hr))
-        return hr;
+    const bool sameSolid = node.solid && raster.node.solid &&
+        node.solid->r == raster.node.solid->r && node.solid->g == raster.node.solid->g &&
+        node.solid->b == raster.node.solid->b && node.solid->a == raster.node.solid->a;
+    const bool unchanged = surface && surface.Get() == raster.surface.Get() &&
+        (sameSolid || (node.rasterLease && raster.node.rasterLease == node.rasterLease));
+    if (!unchanged) {
+        Ptr<ID2D1DeviceContext> target;
+        POINT offset{};
+        if (SUCCEEDED(hr))
+            hr = surface->BeginDraw(nullptr, __uuidof(ID2D1DeviceContext),
+                                    reinterpret_cast<void **>(target.GetAddressOf()), &offset);
+        if (FAILED(hr))
+            return hr;
+        target->SetDpi(96, 96);
+        target->SetTransform(
+            D2D1::Matrix3x2F::Translation(static_cast<float>(offset.x), static_cast<float>(offset.y)));
+        target->Clear(D2D1::ColorF(0, 0));
+        if (node.solid)
+            target->Clear(*node.solid);
+        else
+            target->DrawBitmap(node.bitmap.Get(), D2D1::RectF(0, 0, static_cast<float>(pixels.width),
+                                                              static_cast<float>(pixels.height)));
+        hr = surface->EndDraw();
+        if (FAILED(hr))
+            return hr;
+        ++counters_.rasterUploads;
+        counters_.uploadedBytes += static_cast<std::uint64_t>(pixels.width) * pixels.height * 4;
+    } else ++counters_.rasterReuses;
     if (SUCCEEDED(hr))
         hr = raster.visual->SetContent(surface.Get());
     const auto scale = scene_->scale;
@@ -99,7 +108,6 @@ HRESULT WidgetCompositionPresenter::Upload(Raster &raster, const WidgetCompositi
         raster.surface = std::move(surface);
         raster.node = node;
         raster.pixels = pixels;
-        ++counters_.rasterUploads;
     }
     return hr;
 }
@@ -653,36 +661,46 @@ HRESULT WidgetCompositionPresenter::ConfigureFocusFade(Group &group, const Raste
     const auto atlasSize = D2D1::SizeU(width * (vertical ? 1 : 2), height * (vertical ? 2 : 1));
     const float secondX = vertical ? 0.0F : static_cast<float>(width);
     const float secondY = vertical ? static_cast<float>(height) : 0.0F;
-    if (SUCCEEDED(hr) && (!group.focusAtlas || group.focusAtlasPixels.width != atlasSize.width ||
-        group.focusAtlasPixels.height != atlasSize.height)) {
+    const bool compatibleAtlas = group.focusAtlas && group.focusAtlasPixels.width == atlasSize.width &&
+        group.focusAtlasPixels.height == atlasSize.height;
+    if (SUCCEEDED(hr) && !compatibleAtlas) {
         group.focusAtlas.Reset();
         hr = device_->CreateSurface(atlasSize.width, atlasSize.height, DXGI_FORMAT_B8G8R8A8_UNORM,
             DXGI_ALPHA_MODE_PREMULTIPLIED, group.focusAtlas.GetAddressOf());
         if (SUCCEEDED(hr)) group.focusAtlasPixels = atlasSize;
     }
-    Ptr<ID2D1DeviceContext> target;
-    POINT offset{};
-    if (SUCCEEDED(hr)) hr = group.focusAtlas->BeginDraw(nullptr, IID_PPV_ARGS(target.GetAddressOf()), &offset);
-    if (FAILED(hr)) return hr;
-    target->SetDpi(96, 96);
-    target->SetTransform(D2D1::Matrix3x2F::Translation(static_cast<float>(offset.x), static_cast<float>(offset.y)));
-    target->Clear(D2D1::ColorF(0, 0));
-    const auto paint = [&](const Raster &raster, float x, float y) {
-        const auto bounds = D2D1::RectF(x, y, x + width, y + height);
-        if (raster.node.bitmap) target->DrawBitmap(raster.node.bitmap.Get(), bounds);
-        else {
-            Ptr<ID2D1SolidColorBrush> brush;
-            const auto status = target->CreateSolidColorBrush(*raster.node.solid, brush.GetAddressOf());
-            if (FAILED(status)) return status;
-            target->FillRectangle(bounds, brush.Get());
+    const bool unchanged = compatibleAtlas && idle.node.rasterLease && focused.node.rasterLease &&
+        group.idleAtlasLease.lock() == idle.node.rasterLease && group.focusedAtlasLease.lock() == focused.node.rasterLease;
+    if (!unchanged) {
+        Ptr<ID2D1DeviceContext> target;
+        POINT offset{};
+        if (SUCCEEDED(hr)) hr = group.focusAtlas->BeginDraw(nullptr, IID_PPV_ARGS(target.GetAddressOf()), &offset);
+        if (FAILED(hr)) return hr;
+        target->SetDpi(96, 96);
+        target->SetTransform(D2D1::Matrix3x2F::Translation(static_cast<float>(offset.x), static_cast<float>(offset.y)));
+        target->Clear(D2D1::ColorF(0, 0));
+        const auto paint = [&](const Raster &raster, float x, float y) {
+            const auto bounds = D2D1::RectF(x, y, x + width, y + height);
+            if (raster.node.bitmap) target->DrawBitmap(raster.node.bitmap.Get(), bounds);
+            else {
+                Ptr<ID2D1SolidColorBrush> brush;
+                const auto status = target->CreateSolidColorBrush(*raster.node.solid, brush.GetAddressOf());
+                if (FAILED(status)) return status;
+                target->FillRectangle(bounds, brush.Get());
+            }
+            return S_OK;
+        };
+        hr = paint(idle, 0, 0);
+        if (SUCCEEDED(hr)) hr = paint(focused, secondX, secondY);
+        const auto ended = group.focusAtlas->EndDraw();
+        if (SUCCEEDED(hr)) hr = ended;
+        if (SUCCEEDED(hr)) {
+            ++counters_.rasterUploads;
+            counters_.uploadedBytes += static_cast<std::uint64_t>(atlasSize.width) * atlasSize.height * 4;
+            group.idleAtlasLease = idle.node.rasterLease;
+            group.focusedAtlasLease = focused.node.rasterLease;
         }
-        return S_OK;
-    };
-    hr = paint(idle, 0, 0);
-    if (SUCCEEDED(hr)) hr = paint(focused, secondX, secondY);
-    const auto ended = group.focusAtlas->EndDraw();
-    if (SUCCEEDED(hr)) hr = ended;
-    if (SUCCEEDED(hr)) ++counters_.rasterUploads;
+    } else ++counters_.focusAtlasReuses;
     if (SUCCEEDED(hr) && !group.focusSample)
         hr = effects->CreateAffineTransform2DEffect(group.focusSample.GetAddressOf());
     if (SUCCEEDED(hr)) hr = group.focusSample->SetInput(0, nullptr, 0);

@@ -8573,7 +8573,9 @@ private:
         const std::wstring_view priorFocusedElementId,
         const std::vector<std::wstring>& sliderDamageNodeIds = {}) {
         if (!window_) return;
-        const auto full = [&] {
+        const auto full = [&](const wchar_t* reason) {
+            lastFocusPaintFallback_ = reason;
+            ++focusPaintFallbackCount_;
             pendingContentRenderPlan_.reset();
             if (declarativeRenderer_)
                 declarativeRenderer_->CancelPresentationUpdatePlan();
@@ -8587,19 +8589,19 @@ private:
             presentationTransaction_.extentTransitionActive() ||
             compositionPlacementInProgress_ ||
             pendingWidgetPresentationImpact_) {
-            full();
+            full(L"state-busy-or-unavailable");
             return;
         }
         RECT pendingPaint{};
         if (GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE) {
-            full();
+            full(L"pending-window-paint");
             return;
         }
         const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
         RECT client{};
         if (!snapshot || !lastWidgetRenderResult_.succeeded ||
             !GetClientRect(window_, &client)) {
-            full();
+            full(L"snapshot-or-client-unavailable");
             return;
         }
         const UINT dpi = std::max(1U, GetDpiForWindow(window_));
@@ -8614,7 +8616,7 @@ private:
                 metrics->viewportWidthDip, metrics->viewportHeightDip)
             : std::nullopt;
         if (!metrics || !geometry || metrics->physicalPixelsPerDip <= 0.0F) {
-            full();
+            full(L"geometry-unavailable");
             return;
         }
         const widgetrail::declarative::Rect viewport{
@@ -8627,11 +8629,11 @@ private:
             *declarativeRenderer_,
             *snapshot, priorFocusedElementId, interactionSession_.focusedElementId(), viewport,
             sliderDamageNodeIds);
-        if (!plan || !SubmitWidgetContentDamage(
-                *plan, metrics->physicalPixelsPerDip, client)) {
-            full();
-            return;
+        if (!plan) { full(L"retained-plan-rejected"); return; }
+        if (!SubmitWidgetContentDamage(*plan, metrics->physicalPixelsPerDip, client)) {
+            full(L"damage-submission-rejected"); return;
         }
+        ++focusPaintRetainedCount_;
     }
 
     [[nodiscard]] bool TryApplyNoRasterWidgetPresentation(
@@ -16060,9 +16062,9 @@ private:
         std::wstring guideKey;
     };
 
-    [[nodiscard]] static std::wstring SlowCompositionStageDiagnostic(
+    [[nodiscard]] std::wstring SlowCompositionStageDiagnostic(
         const std::uint64_t totalMicroseconds,
-        const CompositionFrameSet& frames) {
+        const CompositionFrameSet& frames) const {
         const bool hasFocusFollowSummary = frames.declarativeTiming &&
             !frames.declarativeTiming->focusFollowSummary.empty();
         if (totalMicroseconds <= kSlowCompositionFrameMicroseconds &&
@@ -16109,6 +16111,9 @@ private:
                 std::to_wstring(renderer.clipSetupMicroseconds) +
                 L" slow-render-node-us=" +
                 std::to_wstring(renderer.nodeDrawMicroseconds) +
+                L" paint-cache-hits=" + std::to_wstring(renderer.compositionPaintHits) +
+                L" paint-cache-misses=" + std::to_wstring(renderer.compositionPaintMisses) +
+                L" painted-bytes=" + std::to_wstring(renderer.compositionPaintedBytes) +
                 L" slow-render-focus-us=" +
                 std::to_wstring(renderer.deferredFocusMicroseconds) +
                 L" slow-render-finalize-us=" +
@@ -16116,6 +16121,14 @@ private:
             if (!renderer.focusFollowSummary.empty())
                 diagnostic += L" " + renderer.focusFollowSummary;
         }
+        const auto gpu = compositionSurface_.widgetCompositionCounters();
+        diagnostic += L" gpu-uploads-total=" + std::to_wstring(gpu.rasterUploads) +
+            L" gpu-reuses-total=" + std::to_wstring(gpu.rasterReuses) +
+            L" focus-atlas-reuses-total=" + std::to_wstring(gpu.focusAtlasReuses) +
+            L" gpu-uploaded-bytes-total=" + std::to_wstring(gpu.uploadedBytes) +
+            L" focus-full-total=" + std::to_wstring(focusPaintFallbackCount_) +
+            L" focus-retained-total=" + std::to_wstring(focusPaintRetainedCount_) +
+            L" last-focus-fallback=" + lastFocusPaintFallback_;
         diagnostic += L" slow-content-transport=";
         switch (frames.contentTransportWork) {
         case CompositionFrameSet::ContentTransportWork::None:
@@ -19272,6 +19285,8 @@ private:
     bool restartRequested_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     widgetrail::RenderResult lastWidgetRenderResult_;
+    const wchar_t* lastFocusPaintFallback_{L"none"};
+    std::uint64_t focusPaintFallbackCount_{}, focusPaintRetainedCount_{};
     std::optional<widgetrail::DeclarativeRenderTiming>
         currentCompositionRenderTiming_;
     std::optional<CommittedWidgetVisualState> committedWidgetVisualState_;

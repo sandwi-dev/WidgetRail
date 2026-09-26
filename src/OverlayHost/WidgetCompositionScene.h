@@ -32,6 +32,8 @@ struct WidgetCompositionNode final {
     declarative::Rect bounds, clip;
     Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
     std::optional<D2D1_COLOR_F> solid;
+    // A live lease pins immutable pixels. Repainting must use a new token;
+    // presenters can then reuse GPU content by identity, independent of position.
     std::shared_ptr<void> rasterLease;
     float controlScale{1};
     unsigned controlDuration{};
@@ -52,5 +54,6 @@ struct WidgetCompositionScene final {
     // Bounded to MaximumNodes. Used to retire outgoing decoration when its control changes or disappears.
     std::vector<animation::FocusTarget> focusTargets;
     std::size_t rasterBytes{};
+    std::uint64_t paintCacheHits{}, paintCacheMisses{}, paintedBytes{};
 };
 } // namespace widgetrail

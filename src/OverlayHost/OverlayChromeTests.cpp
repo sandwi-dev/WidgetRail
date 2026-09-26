@@ -1800,6 +1800,7 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         marker.solid = D2D1::ColorF(D2D1::ColorF::White); scene->nodes.push_back(marker);
         return scene;
     };
+    std::map<std::wstring, std::pair<ComPtr<ID2D1Bitmap>, std::shared_ptr<void>>> retainedPixels;
     const auto commit = [&](std::shared_ptr<WidgetCompositionScene> scene) {
         OverlayCompositionSurface::Frame frame;
         Check(SUCCEEDED(surface.BeginFrame(static_cast<UINT>(160 * pixelScale), static_cast<UINT>(100 * pixelScale), frame)), "fade frame begins");
@@ -1808,6 +1809,13 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         for (auto &node : scene->nodes) {
             const bool outline = tightRow && node.id == L"marker";
             if (!node.solid || (!outline && (!bitmaps || node.parent.find(L"surface/") != 0))) continue;
+            const auto retained = retainedPixels.find(node.id);
+            if (!outline && retained != retainedPixels.end()) {
+                node.bitmap = retained->second.first;
+                node.rasterLease = retained->second.second;
+                node.solid.reset();
+                continue;
+            }
             ComPtr<ID2D1BitmapRenderTarget> bitmapTarget;
             const auto size = D2D1::SizeF(node.bounds.width, node.bounds.height);
             const auto bitmapPixels = D2D1::SizeU(static_cast<UINT>(std::ceil(size.width * pixelScale)),
@@ -1831,6 +1839,10 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
                 bitmapTarget->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(0, 0, size.width, size.height), 5, 5), brush.Get());
             Check(SUCCEEDED(bitmapTarget->EndDraw()), "fade bitmap paint");
             Check(SUCCEEDED(bitmapTarget->GetBitmap(node.bitmap.GetAddressOf())), "fade bitmap capture");
+            if (!outline) {
+                node.rasterLease = std::make_shared<char>();
+                retainedPixels[node.id] = {node.bitmap, node.rasterLease};
+            }
             node.solid.reset();
         }
         frame.widgetScene = std::move(scene);
@@ -1874,6 +1886,15 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         }
         Check(surface.paintCounters().content == paints && surface.widgetCompositionCounters().rasterUploads == uploads,
             "depth focus animation requires no per-frame UI painting or mask upload");
+        retainedPixels.erase(L"surface/right/focused");
+        auto recolored = sceneFor(true);
+        for (auto& node : recolored->nodes)
+            if (node.id == L"surface/right/focused") node.solid = D2D1::ColorF(1, 1, 0, .25F);
+        commit(recolored); DwmFlush();
+        Check(surface.widgetCompositionCounters().rasterUploads == uploads + 1,
+            "a changed source uploads only its focus atlas; unrelated GPU pixels are reused");
+        if (pixels) Check(GetRValue(pixel(120, 40)) > GetRValue(initial) + 40,
+            "retained atlas invalidation presents the new theme color without stale pixels");
         surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
         std::cout << "Surface depth compositor scale=" << pixelScale << " passed" << std::endl;
         return;
@@ -1889,6 +1910,8 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
     }
     commit(sceneFor(true));
     auto counters = surface.widgetCompositionCounters();
+    if (bitmaps) Check(counters.focusAtlasReuses >= 2,
+        "focus changes reuse immutable idle/focused GPU atlases");
     const auto paints = surface.paintCounters().content;
     Sleep(60); DwmFlush();
     if (pixels) {

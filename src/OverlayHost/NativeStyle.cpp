@@ -244,9 +244,13 @@ struct NativeRenderStyle::Data final {
     NativeDirection direction{NativeDirection::Unspecified};
     NativeOverflow overflow{NativeOverflow::Clip};
     NativeTextAlign textAlign{NativeTextAlign::Start};
+    bool operator==(const Data&) const = default;
 };
 
 NativeRenderStyle::NativeRenderStyle() : data_(std::make_shared<const Data>()) {}
+bool NativeRenderStyle::operator==(const NativeRenderStyle& other) const noexcept {
+    return data_ == other.data_ || *data_ == *other.data_;
+}
 NativeRenderStyle::NativeRenderStyle(std::shared_ptr<const Data> data) : data_(std::move(data)) {}
 #define WRAIL_STYLE_GETTER(type, name, field) type NativeRenderStyle::name() const noexcept { return data_->field; }
 WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, background, background)

@@ -9,6 +9,7 @@ class WidgetCompositionPresenter final {
   public:
     struct Counters {
         std::uint64_t sceneCommits{}, rasterUploads{}, animationStarts{}, interruptionCaptures{};
+        std::uint64_t rasterReuses{}, focusAtlasReuses{}, uploadedBytes{};
     };
     WidgetCompositionPresenter(IDCompositionDevice2 *composition, ID2D1Device *graphics);
     ~WidgetCompositionPresenter() {
@@ -49,6 +50,7 @@ class WidgetCompositionPresenter final {
         Ptr<IDCompositionAffineTransform2DEffect> focusSample;
         Ptr<IDCompositionSurface> focusAtlas;
         D2D1_SIZE_U focusAtlasPixels{};
+        std::weak_ptr<void> idleAtlasLease, focusedAtlasLease;
         Raster previous;
         bool closing{};
         int direction{1};

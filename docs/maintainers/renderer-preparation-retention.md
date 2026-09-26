@@ -40,6 +40,39 @@ The SDK reports `pinned_layout_content_changed` separately from catalog changes.
   happen. Correlated input/action results, restart, authority, layout and structural
   changes remain separate. Existing refresh-demand coalescing remains the request owner.
 
+## Retained composition pixels
+
+Composition paint bands have stable IDs derived from their parent, first paint
+operation and node identity. `CompositionPaintIdentity.inl` captures exact,
+bounded dependencies alongside native painting: resolved immutable styles,
+operation order, ancestor geometry/clips, text and visual state, controller family,
+optimistic slider values, cursor reset identity, widget/resource authority and
+pixel scale. It does not retain old widget trees or rely on a collision-prone hash.
+New visual properties must be added to this dependency contract with the painter.
+
+Unchanged bands reuse immutable bitmap pixels and their pool leases. Input,
+accessibility, focus and scroll geometry still come from the current snapshot.
+Only successful render passes publish the next paint cache. Inactive bands retire
+on the next frame; widget retirement and resource-domain replacement clear the
+cache. The existing 256-node/64-MiB scene and pool bounds remain; each exact value
+signature is limited to 64 KiB and retained identity metadata to 4 MiB.
+
+Ready artwork uses weak identity references to immutable decoded images. This
+avoids retaining another copy of decoded image storage. A changed/evicted source
+invalidates its band. Pending and failed artwork, package-icon demand, loading
+indicators and background-surface transitions keep their original rendering paths;
+they cannot freeze demand or animation behind a cached placeholder.
+
+The presenter reuses GPU raster contents when the immutable pixel lease matches,
+and skips unchanged solid fills. It retains focus-atlas contents when both source
+leases match, updating only the compositor effects/timeline. New pixels always
+receive a new lease; leases must never be reused for mutated bitmap contents.
+Raster placement and clipping remain independent of upload identity.
+
+This is content retention, not compositor scrolling: moved/clipped content is
+repainted, then reused once stationary. Existing cursor loading, anchor restoration,
+artwork protection and logical input coordinates remain authoritative.
+
 ## Diagnostics
 
 Slow-frame logging now splits style resolution, text measurement, layout computation,
@@ -47,6 +80,19 @@ snapshot comparison, update planning and drawing, with style/text cache hits and
 Layout time includes intrinsic text callbacks; the nested measurements must not be
 summed as disjoint stages. Snapshot comparison and update planning happen before Render
 and are reported separately from its total.
+
+Existing slow-frame records also report `paint-cache-hits`, `paint-cache-misses`
+and `painted-bytes` for that render. GPU upload/reuse/atlas counters are cumulative
+for the current compositor owner. Focus full/retained counters and
+`last-focus-fallback` help explain conservative fallback; the last reason can refer
+to an earlier focus change. These fields do not add per-frame logging.
+
+The native renderer test executable accepts `--pipeline-workload` for the decorated
+60-row comparison. It runs three repeats of full and retained-layout progress updates,
+reporting raster footprint separately from bytes actually repainted. Use Release
+for performance comparisons. This WIC probe excludes GPU upload/commit, provider
+work and real artwork decoding; pair it with compositor pixel/counter checks and
+physical testing rather than treating it as end-to-end FPS.
 
 ## Automated validation and performance
 
