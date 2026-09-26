@@ -145,8 +145,8 @@ scale. Spring and surfaces with live media keep the existing renderer path.
 Focus-state `width` and `height` do not resize the native layout; use `scale`
 for visual enlargement.
 
-Separately, the host can move focus-specific backgrounds, border colors and
-outlines together for fixed-size controls. This uses the final resolved styles
+Separately, the host can fade focus-specific backgrounds, border colors,
+shading, shadows and outlines in place for fixed-size controls. This uses the final resolved styles
 from every WRSS layer and preserves persistent `:selected` styling. Unsupported
 decoration combinations use a stationary fallback. See
 [focus movement](../developers/navigation.md#focus-movement).

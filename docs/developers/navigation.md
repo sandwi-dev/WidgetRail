@@ -176,18 +176,11 @@ Widgets continue to declare semantic transitions rather than choosing host effec
 ### Focus movement
 
 The native host animates themed focus decorations using DirectComposition.
-Widgets need no transition declaration. Fade is the default; the optional Slide
-preset moves decoration between nearby controls. In Slide, text and artwork
-change to the destination immediately. The options badge,
-outline and focus border move over a 140 ms smoothstep timeline at 1x.
-Normal and focused backgrounds are revealed through complementary compositor
-clips on that same clock, behind each control's content. Every surface pixel
-is painted once, preserving translucent colors instead of overlaying a second
-fill. Normal surfaces retain selected, disabled and busy styling.
-The widget animation speed preference scales this duration. Reduced Motion and
-hosts without composition use the stationary outline.
+Widgets need no transition declaration. Settings offers Fade (default), Settle
+and None for focus highlights. Focus changes stay attached to their control;
+text and artwork do not travel with the highlight. Legacy focus Slide settings
+migrate to Fade without changing section animations or other preferences.
 
-Settings offers Fade (default), Settle, Slide and None for focus highlights.
 Settle expands the destination outline from up to 6 DIPs inside the control over
 220 ms and raises its opacity from 65% to full. The inset is bounded for small
 controls. It remains visible even when a row clips exactly to the control's bounds;
@@ -195,40 +188,35 @@ content, layout and clipping stay stationary. The resolved background fades on t
 Existing WRSS scale remains a parent transform, so scaling and outline settling
 compose without competing layout changes. A rapid return to a fading outline resumes
 its sampled pose rather than restarting its expansion. Controller hints remain immediate.
-Fade uses a 120 ms smooth in-place transition for outgoing/incoming outlines and supported
+Fade uses a 240 ms smooth in-place transition for outgoing/incoming outlines and supported
 resolved focus surfaces. Surface colors are interpolated with premultiplied
 alpha, preserving translucent themes. Controller hints appear immediately and
 retain their control's scale. Rapid changes sample the current fade weight;
 removed or moved cursor items cannot retain an outgoing outline. None snaps
 highlight changes; authored control scaling and pressed feedback remain independent.
 
-`WidgetInteractionMotion.h` owns the continuity rules and movement recipe for Slide.
-The scene carries a bounded list of visible focus identities and geometry, with
-no retained widget nodes or cursor pages. A move requires a still-present source
-at unchanged geometry in the same input, group, collection and section context.
-Scroll/reflow, recycled cursor keys, collection reset, clipping, distant jumps,
-large size changes and scope changes snap. Repeated navigation samples the
-current compositor position. Same-target updates do not restart the clock.
-The focus layer never changes input mapping or publishes an animation repaint
-timer. Live external media surfaces keep their existing stationary fallback.
+`WidgetInteractionMotion.h` owns the in-place focus recipes. The scene carries a
+bounded list of visible focus identities and geometry, without retaining widget
+nodes or cursor pages. Removed, recycled, scrolled or reflowed controls retire
+outgoing decoration. Same-target updates do not restart the clock. The focus
+layer does not change input mapping or publish an animation repaint timer.
+Live external media surfaces retain their stationary fallback.
 
 Focus surface separation uses final resolved styles, not widget IDs or selector
 names. Fade and Settle support background, shading, soft shadows, border color
 and rounded-shape changes. Both states use the same shadow-expanded capture bounds
-so translucent pixels interpolate consistently. Slide retains a stationary fallback
-for shadowed controls. Background blur, border-width/layout changes and semantic
-navigation-selection surfaces retain their ordinary surface painting. Poster surfaces remain underneath
-full-bleed artwork; their borders are not lifted above that artwork. Unsupported
-surface changes snap the outline too, avoiding competing focus indicators.
+so translucent pixels interpolate consistently. Background blur, border-width/layout
+changes and semantic navigation-selection surfaces retain their ordinary surface
+painting. Poster surfaces remain underneath full-bleed artwork; their borders
+are not lifted above that artwork.
 
 ### Authored control scaling
 
 WRSS `scale` is the sole opt-in for visual size changes; there is no second SDK
 flag or host zoom preset. On buttons and action surfaces, supported scaling runs
 as one compositor transform containing the background, text, artwork and focus
-decoration. Controls whose focus state changes scale use attached decoration
-instead of a travelling row highlight. Pressed-only scale rules still allow
-normal focus travel while the controls are at rest. Base, focused and pressed styles resolve through the existing cascade;
+decoration. Focus decoration remains attached to the same scaled control. Base,
+focused and pressed styles resolve through the existing cascade;
 pressed scale replaces focused scale rather than multiplying another transform.
 The platform gives buttons and action surfaces a `:pressed` scale of `0.96`.
 If a package overrides `scale` in its base or focused styles, it must also author

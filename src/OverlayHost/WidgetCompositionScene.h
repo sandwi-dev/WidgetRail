@@ -11,6 +11,16 @@
 #include <vector>
 
 namespace widgetrail {
+// Capture in the widget's physical pixel grid, independent of layer grouping.
+// Logical layout/hit targets keep their original fractional DIP bounds.
+inline declarative::Rect CompositionRasterBounds(declarative::Rect bounds, float scale) noexcept {
+    const float left = std::floor(bounds.x * scale + .0001F);
+    const float top = std::floor(bounds.y * scale + .0001F);
+    const float right = std::ceil((bounds.x + bounds.width) * scale - .0001F);
+    const float bottom = std::ceil((bounds.y + bounds.height) * scale - .0001F);
+    return {left / scale, top / scale, (right - left) / scale, (bottom - top) / scale};
+}
+
 enum class WidgetCompositionKind { Raster, Content, Layout, Selection, Modal, Scrim, Focus, FocusSurface, Control, Popup };
 
 // A paint-ordered scene, in widget DIPs. Only raster nodes own pixels; group
@@ -23,7 +33,6 @@ struct WidgetCompositionNode final {
     Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
     std::optional<D2D1_COLOR_F> solid;
     std::shared_ptr<void> rasterLease;
-    bool focusMovable{true};
     float controlScale{1};
     unsigned controlDuration{};
     animation::Curve controlCurve{animation::Smooth};
@@ -40,7 +49,7 @@ struct WidgetCompositionScene final {
     bool directContent{};
     animation::Options animations;
     std::vector<WidgetCompositionNode> nodes;
-    // Bounded to MaximumNodes. Used only to verify continuity of a focus move.
+    // Bounded to MaximumNodes. Used to retire outgoing decoration when its control changes or disappears.
     std::vector<animation::FocusTarget> focusTargets;
     std::size_t rasterBytes{};
 };

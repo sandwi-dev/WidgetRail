@@ -201,9 +201,9 @@ public sealed class PlatformSettingsStore
 
     /// <summary>
     /// Supported old schemas carried now-retired launcher-presentation and
-    /// installed-game source preferences. Retire only those known properties and
-    /// advance the overlay-owned document in memory; the next successful normal
-    /// mutation persists the current schema.
+    /// installed-game source preferences. Retire only known properties and the
+    /// obsolete focus Slide preset in memory; the next successful normal mutation
+    /// persists the current schema and preferences.
     /// </summary>
     private static byte[] RetireObsoleteSettings(byte[] bytes)
     {
@@ -212,15 +212,26 @@ public sealed class PlatformSettingsStore
             !document.RootElement.TryGetProperty("schemaVersion", out var schemaVersion) ||
             schemaVersion.ValueKind != JsonValueKind.Number ||
             !schemaVersion.TryGetInt32(out var version) ||
-            version is not 1 and not 2)
+            version is not 1 and not 2 and not PlatformSettingsDocument.CurrentSchemaVersion)
             return bytes;
 
         var root = JsonNode.Parse(bytes)?.AsObject()
             ?? throw new JsonException("Settings document was null.");
-        if (version == 1)
-            root.Remove("launcherExperience");
-        root.Remove("appLibrary");
-        root["schemaVersion"] = PlatformSettingsDocument.CurrentSchemaVersion;
+        if (version is 1 or 2)
+        {
+            if (version == 1) root.Remove("launcherExperience");
+            root.Remove("appLibrary");
+            root["schemaVersion"] = PlatformSettingsDocument.CurrentSchemaVersion;
+        }
+        if (root["appearance"] is JsonObject appearance &&
+            appearance["focusAnimation"] is JsonValue focus &&
+            focus.TryGetValue<string>(out var focusId) &&
+            string.Equals(focusId, "slide", StringComparison.OrdinalIgnoreCase))
+        {
+            // Retire only the focus preset. Section Slide remains supported.
+            // Loading is read-only; the next normal write persists the migration.
+            appearance["focusAnimation"] = "Fade";
+        }
         return JsonSerializer.SerializeToUtf8Bytes(root);
     }
 

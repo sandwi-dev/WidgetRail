@@ -2803,7 +2803,7 @@ int main(int argc, char** argv) {
         CHECK(parsed.has_value() == (option == "\"settle\"" || option == "\"fade\"" || option == "\"slide\"" || option == "\"none\""));
         if (parsed) {
             const std::string id(value + 1, std::char_traits<char>::length(value) - 2);
-            CHECK(parsed->focusAnimation == std::wstring(id.begin(), id.end()));
+            CHECK(parsed->focusAnimation == (id == "slide" ? L"fade" : std::wstring(id.begin(), id.end())));
         }
     }
     for (const auto value : {"\"lift\"", "\"zoom\"", "\"unknown\"", "false"}) {

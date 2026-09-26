@@ -20,18 +20,19 @@ std::shared_ptr<const WidgetCompositionScene> CapturePopupComposition(
         !std::isfinite(anchor.width) || !std::isfinite(anchor.height) ||
         !std::isfinite(bounds.width) || !std::isfinite(bounds.height) ||
         bounds.width <= 0 || bounds.height <= 0) return {};
-    const double width = std::ceil(bounds.width * scale);
-    const double height = std::ceil(bounds.height * scale);
+    const auto rasterBounds = CompositionRasterBounds(bounds, scale);
+    const double width = std::round(rasterBounds.width * scale);
+    const double height = std::round(rasterBounds.height * scale);
     constexpr std::size_t maximumPopupBytes = 8U * 1024U * 1024U;
     if (width > 8192 || height > 8192 || width * height * 4 > maximumPopupBytes)
         return {};
-    const auto size = D2D1::SizeF(bounds.width, bounds.height);
+    const auto size = D2D1::SizeF(rasterBounds.width, rasterBounds.height);
     const auto pixels = D2D1::SizeU(static_cast<UINT32>(width), static_cast<UINT32>(height));
     Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> surface;
     if (FAILED(target->CreateCompatibleRenderTarget(&size, &pixels, nullptr,
             D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, surface.GetAddressOf()))) return {};
     surface->SetDpi(96 * scale, 96 * scale);
-    surface->SetTransform(D2D1::Matrix3x2F::Translation(-bounds.x, -bounds.y));
+    surface->SetTransform(D2D1::Matrix3x2F::Translation(-rasterBounds.x, -rasterBounds.y));
     surface->BeginDraw();
     surface->Clear(D2D1::ColorF(0, 0, 0, 0));
     try {
@@ -54,7 +55,7 @@ std::shared_ptr<const WidgetCompositionScene> CapturePopupComposition(
     group.popupAnchor = anchor;
     scene->nodes.push_back(std::move(group));
     WidgetCompositionNode raster{L"popup.pixels", L"popup", {}, {}, WidgetCompositionKind::Raster,
-        0, bounds, viewport};
+        0, rasterBounds, viewport};
     raster.bitmap = std::move(bitmap);
     scene->nodes.push_back(std::move(raster));
     scene->rasterBytes = static_cast<std::size_t>(width * height * 4);

@@ -240,8 +240,6 @@ internal static class SettingsPreferencePolicy
                 FocusAnimation: WidgetFocusAnimation.Settle),
             "focus-animation.fade" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",
                 FocusAnimation: WidgetFocusAnimation.Fade),
-            "focus-animation.slide" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",
-                FocusAnimation: WidgetFocusAnimation.Slide),
             "focus-animation.none" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",
                 FocusAnimation: WidgetFocusAnimation.None),
             "section-animation.paging" => new(SettingsPreferenceKind.SectionAnimation, "Section animation saved",

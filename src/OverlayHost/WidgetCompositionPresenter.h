@@ -45,14 +45,10 @@ class WidgetCompositionPresenter final {
         WidgetCompositionNode node;
         Ptr<IDCompositionVisual3> root, incoming, outgoing, incomingClip, outgoingClip;
         Motion motion, exit;
-        std::optional<animation::FocusTarget> focusOrigin;
-        Motion focusReveal;
         Ptr<IDCompositionArithmeticCompositeEffect> focusBlend;
         Ptr<IDCompositionAffineTransform2DEffect> focusSample;
         Ptr<IDCompositionSurface> focusAtlas;
         D2D1_SIZE_U focusAtlasPixels{};
-        Rect focusExtent;
-        std::array<Ptr<IDCompositionVisual3>, 5> surfaceClips, surfacePixels;
         Raster previous;
         bool closing{};
         int direction{1};

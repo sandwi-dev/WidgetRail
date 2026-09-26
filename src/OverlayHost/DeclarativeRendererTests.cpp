@@ -1519,25 +1519,7 @@ void ContextMenuIndicatorOnlyFollowsAvailableFocusedTiles() {
     Near(first.elementRects.at(L"poster.card").width, plain.elementRects.at(L"poster.card").width,
         "indicator does not resize the tile");
     options.compositorWidgetTransitions = true;
-    options.widgetAnimations.focus = widgetrail::animation::FocusStyle::Slide;
-    const auto composited = draw(L"poster.card");
-    Check(composited.widgetComposition && !composited.widgetComposition->directContent,
-        "poster focus works without explicit transition declarations");
-    Check(composited.widgetComposition->focusTargets[0].movable,
-        "poster artwork does not disable the accepted travelling outline");
-    const auto focusBadge = std::find_if(composited.widgetComposition->nodes.begin(),
-        composited.widgetComposition->nodes.end(), [&](const auto &node) {
-            return node.bitmap && animation::SameFocusRect(node.bounds, badge);
-        });
-    Check(focusBadge != composited.widgetComposition->nodes.end() && focusBadge->parent == L"$focus",
-        "options badge shares the focus outline's compositor timeline");
     tile.focusedStyle.insert_or_assign(L"scale", Number(1.04));
-    const auto scaled = draw(L"poster.card");
-    const auto scaledFocus = std::find_if(scaled.widgetComposition->nodes.begin(),
-        scaled.widgetComposition->nodes.end(), [](const auto& node) { return node.id == L"$focus"; });
-    Check(scaledFocus != scaled.widgetComposition->nodes.end() &&
-          scaledFocus->parent == L"control/poster.card",
-        "outline and badge inherit the same whole-tile scale transform");
     options.widgetAnimations.focus = widgetrail::animation::FocusStyle::Fade;
     const auto faded = draw(L"poster.card");
     const auto immediateBadge = std::find_if(faded.widgetComposition->nodes.begin(),
@@ -7853,6 +7835,70 @@ void SurfaceDepthUsesBoundedSharedPainting() {
         "idle and focused depth share an expanded capture footprint for exact alpha blending");
 }
 
+// Fractional control bounds must retain the same glyph pixel phase when
+// focus/press changes the compositor's surface/content band partition.
+void FocusCaptureKeepsTextPixelsStable() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "text capture resources"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    for (float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
+        const UINT width = static_cast<UINT>(400 * scale), height = static_cast<UINT>(140 * scale);
+        ComPtr<IWICBitmap> canvas; ComPtr<ID2D1RenderTarget> target;
+        ok(wic->CreateBitmap(width, height, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf()));
+        ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
+        target->SetDpi(96 * scale, 96 * scale);
+        DeclarativeRenderer renderer(d2d.Get(), write.Get(), nullptr);
+        WidgetSnapshot snapshot; snapshot.instanceId = L"text-phase"; snapshot.sequence = 1;
+        snapshot.root = Node(L"root", L"row"); snapshot.activeInputScopeId = L"root";
+        snapshot.root.baseStyle = {{L"padding", LengthList(L"17.3px")}, {L"gap", LengthList(L"9.7px")}};
+        for (const auto *id : {L"one", L"two"}) {
+            auto button = Node(id, L"button"); button.actionId = L"select"; button.text = L"Button text";
+            button.baseStyle = {{L"width", Length(153.7)}, {L"height", Length(53.3)}, {L"font-size", Length(17)},
+                {L"background", Color(L"#222222")}, {L"color", Color(L"#00ff00")},
+                {L"border-width", Length(0)}, {L"padding", LengthList(L"5.2px")}};
+            button.focusedStyle = {{L"shadow-color", Color(L"#00000080")}, {L"shadow-blur", Length(7)}};
+            snapshot.root.children.push_back(button);
+        }
+        DeclarativeRenderOptions options; options.pixelScale = scale; options.compositorWidgetTransitions = true;
+        options.accessibility.reducedMotion = true;
+        const auto frame = [&](const wchar_t *focus, const wchar_t *pressed) {
+            options.pressedElementId = pressed;
+            target->BeginDraw();
+            auto result = renderer.Render(target.Get(), snapshot, focus, {0, 0, 400, 140}, options);
+            ok(target->EndDraw());
+            Check(result.succeeded && result.widgetComposition && !result.widgetComposition->directContent,
+                "fractional text fixture builds a compositor scene");
+            target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0, 0));
+            for (const auto &node : result.widgetComposition->nodes) {
+                if (!node.bitmap) continue;
+                const auto parent = std::find_if(result.widgetComposition->nodes.begin(), result.widgetComposition->nodes.end(),
+                    [&](const auto &value) { return value.id == node.parent; });
+                if (parent != result.widgetComposition->nodes.end()) {
+                    if (parent->kind == WidgetCompositionKind::Focus) continue;
+                    if (parent->kind == WidgetCompositionKind::FocusSurface && node.order != 0) continue;
+                }
+                target->DrawBitmap(node.bitmap.Get(), D2D1::RectF(node.bounds.x, node.bounds.y,
+                    node.bounds.x + node.bounds.width, node.bounds.y + node.bounds.height));
+            }
+            ok(target->EndDraw());
+            std::vector<BYTE> pixels(width * height * 4), ink(width * height);
+            ok(canvas->CopyPixels(nullptr, width * 4, static_cast<UINT>(pixels.size()), pixels.data()));
+            for (std::size_t i = 0; i < ink.size(); ++i)
+                ink[i] = static_cast<BYTE>(std::max(0, static_cast<int>(pixels[i * 4 + 1]) - pixels[i * 4 + 2]));
+            Check(std::any_of(ink.begin(), ink.end(), [](BYTE value) { return value > 100; }), "fixture paints text pixels");
+            return ink;
+        };
+        const auto reference = frame(L"one", L"");
+        Check(frame(L"two", L"") == reference, "moving focus preserves every text pixel at fractional display scale");
+        Check(frame(L"one", L"one") == reference, "press surface regrouping preserves every text pixel at fractional display scale");
+        Check(frame(L"one", L"") == reference, "releasing restores identical text pixels without a position jump");
+    }
+}
+
 void FocusSurfacesPreserveColorsAndWrssScale() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -7966,8 +8012,8 @@ void FocusSurfacesPreserveColorsAndWrssScale() {
     snapshot.root.children[0].focusedStyle[L"scale"] = Number(1);
     ++snapshot.sequence; options.pressedElementId.clear();
     const auto pressOnly = draw(L"row.one", true);
-    Check(pressOnly.widgetComposition->focusTargets[0].movable,
-        "a pressed-only scale rule does not disable normal focus travel");
+    Check(!pressOnly.widgetComposition->focusTargets.empty(),
+        "pressed-only scale retains control identities for outgoing focus cleanup");
     options.pixelScale = 128; // Reject capture sizing before allocating a bitmap.
     const auto bounded = draw(L"row.one", true);
     Check(bounded.widgetComposition && bounded.widgetComposition->directContent &&
@@ -8553,6 +8599,7 @@ int main() {
     RetainedPosterPaintPreservesArtwork();
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
     SurfaceDepthUsesBoundedSharedPainting();
+    FocusCaptureKeepsTextPixelsStable();
     FocusSurfacesPreserveColorsAndWrssScale();
     ModalBackgroundRetainsItsScrollOwner();
     ModalLayersPaintAboveThePageAndKeepIndependentScroll();

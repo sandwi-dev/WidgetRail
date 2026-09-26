@@ -12,7 +12,7 @@ using Rect = declarative::Rect;
 
 enum class SectionStyle { Paging, Slide, None, VerticalSlide, Reveal, CoverSlide };
 enum class ModalStyle { Lift, None, Zoom };
-enum class FocusStyle { Fade, Slide, None, Settle };
+enum class FocusStyle { Fade, None, Settle };
 struct FocusPreset {
     std::wstring_view id, label;
     FocusStyle style;
@@ -20,9 +20,8 @@ struct FocusPreset {
     bool inPlace;
 };
 inline constexpr std::array FocusPresets{
-    FocusPreset{L"fade", L"Fade", FocusStyle::Fade, 120, true},
+    FocusPreset{L"fade", L"Fade", FocusStyle::Fade, 240, true},
     FocusPreset{L"settle", L"Settle", FocusStyle::Settle, 220, true},
-    FocusPreset{L"slide", L"Slide", FocusStyle::Slide, 140, false},
     FocusPreset{L"none", L"None", FocusStyle::None, 0, false},
 };
 constexpr FocusStyle ParseFocusStyle(std::wstring_view id) noexcept {

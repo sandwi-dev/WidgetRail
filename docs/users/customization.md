@@ -24,9 +24,9 @@ while the previous page recedes; **Vertical slide** moves pages up or down;
 **Reveal** uncovers stationary content; **Cover slide** moves the new page over
 the previous page; **None** changes pages immediately.
 **Animate widget dialogs** independently controls opening and closing motion.
-**Focus animation** offers **Fade** (default), **Settle**, **Slide**, and **None**.
+**Focus animation** offers **Fade** (default), **Settle**, and **None**.
 Settle expands the outline from up to 6 DIPs inside the control over 220 ms, starting at 65% opacity;
-the background fades on the same timeline. Fade changes opacity over 120 ms without
+the background fades on the same timeline. Fade changes opacity over 240 ms without
 outline movement. These effects leave the control geometry unchanged. Existing
 WRSS scale and press feedback still apply to the whole control, including its outline.
 Controller hints appear immediately with Settle and Fade. Animation speed and reduced
@@ -43,8 +43,8 @@ your saved choices. Tray widget-switch animation remains in **Settings → Appea
 
 Focus normally fades in place using a thin theme-accent edge and surface emphasis.
 Panels, controls and dialogs use subtle shading and shadows to show depth.
-The optional Slide preset moves the highlight between compatible nearby controls;
-scrolling, page changes and large jumps keep it stationary. High contrast retains
+Old focus Slide preferences migrate to Fade; section Slide remains available.
+High contrast retains
 a stronger outline, and reduced motion disables animated focus changes.
 Widget or theme authors can instead use WRSS scaling to enlarge a focused card
 with its text and artwork. This uses the existing styling rules, rather than a

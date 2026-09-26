@@ -3197,17 +3197,14 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
-    enum class SurfacePaint { All, Background, Border };
-
     void DrawSurface(
         const WidgetNode& node,
         const NativeRenderStyle& style,
         const Rect rect,
-        const float opacity,
-        const SurfacePaint paint = SurfacePaint::All) {
+        const float opacity) {
         if (!target || rect.width <= 0.0F || rect.height <= 0.0F) return;
         const auto radius = RadiusFor(style, rect);
-        if (paint != SurfacePaint::Border && style.shadowColor() && style.shadowColor()->alpha > 0.0F) {
+        if (style.shadowColor() && style.shadowColor()->alpha > 0.0F) {
             const auto color = WithOpacity(*style.shadowColor(), opacity);
             if (!owner->surfaceShadows_.Draw(target, rect, radius, style.shadowBlurPx(),
                 style.shadowOffsetXPx(), style.shadowOffsetYPx(), {color.red, color.green, color.blue, color.alpha}, options.pixelScale))
@@ -3217,7 +3214,7 @@ struct DeclarativeRenderer::RenderPass final {
         if (!background &&
             (node.kind == L"button" || node.kind == L"actionSurface"))
             background = kDefaultButton;
-        if (paint != SurfacePaint::Border && background) {
+        if (background) {
             auto brush = Brush(target, WithOpacity(*background, opacity));
             const auto base = WithOpacity(*background, opacity);
             const D2D1_COLOR_F color{base.red, base.green, base.blue, base.alpha};
@@ -3225,9 +3222,8 @@ struct DeclarativeRenderer::RenderPass final {
                 surface::Shade(color, style.surfaceShading()), surface::Shade(color, -style.surfaceShading()));
             if (!shaded && brush) target->FillRoundedRectangle({D2DRect(rect), radius, radius}, brush.Get());
         }
-        if (paint != SurfacePaint::Border && style.backgroundBlurPx() > 0.0F)
+        if (style.backgroundBlurPx() > 0.0F)
             Add(node.id, L"background_blur_fallback", L"Background blur is unavailable on the base render target; opaque fallback is used.");
-        if (paint == SurfacePaint::Background) return;
         const auto& edges = style.borderEdges();
         const auto sameEdges = edges.top == edges.right &&
             edges.top == edges.bottom && edges.top == edges.left;
@@ -4997,9 +4993,7 @@ struct DeclarativeRenderer::RenderPass final {
             !compositorBackground) {
             const auto focusSurface = compositionFocusStyles.find(node.id);
             const bool separated = composingScene && focusSurface != compositionFocusStyles.end();
-            DrawSurface(node, separated ? focusSurface->second : style, paintRect, opacity,
-                separated && options.widgetAnimations.focus == animation::FocusStyle::Slide &&
-                    node.actionSurfacePresentation != L"poster" ? SurfacePaint::Background : SurfacePaint::All);
+            DrawSurface(node, separated ? focusSurface->second : style, paintRect, opacity);
         }
         if (composingScene && PaintCompositionPhase(node.id, 5))
             DrawSurface(node, preparedNode->second.baseStyle, paintRect, opacity);
@@ -5304,13 +5298,6 @@ struct DeclarativeRenderer::RenderPass final {
                     D2DRect(*deferredFocusClip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             }
             if (PaintCompositionPhase(deferredFocusNode->id, 3)) {
-                // Poster borders stay below their full-bleed artwork. Lifting
-                // them above it would reveal pixels the authored tile hides.
-                if (composingScene && options.widgetAnimations.focus == animation::FocusStyle::Slide &&
-                    deferredFocusNode->actionSurfacePresentation != L"poster" &&
-                    compositionFocusStyles.contains(deferredFocusNode->id))
-                    DrawSurface(*deferredFocusNode, *deferredFocusStyle,
-                        deferredFocusRect, deferredFocusOpacity, SurfacePaint::Border);
                 DrawFocus(*deferredFocusNode, *deferredFocusStyle,
                           deferredFocusRect, deferredFocusOpacity);
             }

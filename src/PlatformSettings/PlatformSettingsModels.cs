@@ -42,7 +42,7 @@ public enum WidgetSwitcherLayout { Rail, Radial }
 public enum OverlayPosition { Center, BottomLeft, BottomRight }
 
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetFocusAnimation>))]
-public enum WidgetFocusAnimation { Fade, Slide, None, Settle }
+public enum WidgetFocusAnimation { Fade = 0, None = 2, Settle = 3 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetSectionAnimation>))]
 public enum WidgetSectionAnimation { Paging, Slide, None, VerticalSlide, Reveal, CoverSlide }

@@ -15,6 +15,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Schema-two source preferences retire read-only until a normal write", SchemaTwoRetiresSourcePreferences),
     ("Malformed duplicate unknown and oversized settings fail closed", StrictSettingsFailClosed),
     ("Settings ranges and enums are enforced", SettingsRangesAreEnforced),
+    ("Retired focus Slide migrates without changing section Slide or unrelated settings", RetiredFocusSlide),
     ("Failed mutations preserve the prior atomic document", FailedMutationPreservesState),
     ("Independent stores serialize concurrent mutations", ConcurrentMutationsPersist),
     ("Theme catalog discovers every embedded theme and valid user themes", ThemeDiscovery),
@@ -57,6 +58,33 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task RetiredFocusSlide()
+{
+    using var temp = new TemporaryDirectory();
+    var paths = new PlatformSettingsPaths(temp.Path);
+    var store = new PlatformSettingsStore(paths);
+    foreach (var legacy in new[] { "Slide", "slide", "SLIDE" })
+    {
+        await store.ReplaceAsync(PlatformSettingsDocument.Default with
+        {
+            Appearance = PlatformSettingsDocument.Default.Appearance with { TextScale = 1.1 },
+        });
+        var root = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(paths.SettingsFile))!;
+        root["appearance"]!["focusAnimation"] = legacy;
+        var original = root.ToJsonString();
+        await File.WriteAllTextAsync(paths.SettingsFile, original);
+        var loaded = await store.LoadAsync();
+        Assert.Equal(WidgetFocusAnimation.Fade, loaded.Appearance.FocusAnimation);
+        Assert.Equal(WidgetSectionAnimation.Slide, loaded.Appearance.SectionAnimation);
+        Assert.Equal(1.1d, loaded.Appearance.TextScale);
+        Assert.Equal(original, await File.ReadAllTextAsync(paths.SettingsFile));
+        await store.UpdateAsync(current => current);
+        var persisted = await File.ReadAllTextAsync(paths.SettingsFile);
+        Assert.Contains("\"focusAnimation\": \"fade\"", persisted);
+        Assert.Equal(WidgetFocusAnimation.Fade, (await store.LoadAsync()).Appearance.FocusAnimation);
+    }
+}
 
 static async Task DefaultsAreSafe()
 {

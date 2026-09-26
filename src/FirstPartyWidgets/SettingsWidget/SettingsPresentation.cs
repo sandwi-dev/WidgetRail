@@ -387,7 +387,6 @@ internal static class SettingsPresentation
                 {
                     new("fade", "Fade", "focus-animation.fade", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Fade),
                     new("settle", "Settle", "focus-animation.settle", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Settle),
-                    new("slide", "Slide", "focus-animation.slide", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Slide),
                     new("none", "None", "focus-animation.none", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.None),
                 }, "overlay.focus-animation", "Focus animation")
                     .FocusUp("overlay.widget-switcher").FocusDown("overlay.section-animation")

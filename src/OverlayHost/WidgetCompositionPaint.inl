@@ -84,7 +84,6 @@ bool DrawWidgetComposition() {
     const WidgetNode *sceneFocus{};
     std::wstring focusScope;
     std::wstring focusKey;
-    bool focusMovable{true};
     bool focusTargetsOverflow{};
     std::map<std::wstring, std::wstring> parents;
     std::vector<std::wstring> path;
@@ -144,18 +143,14 @@ bool DrawWidgetComposition() {
         const bool visibleControl = (node.kind == L"button" || node.kind == L"actionSurface") &&
             shown.visibleBox.width > .5F && shown.visibleBox.height > .5F;
         bool separateSurface{};
-        bool movable = true;
         if (visibleControl) {
             const auto &context = styleNode->second.context;
             const auto focusStyle = Adapt(node, true, false, context.parentWidthPx, context.parentHeightPx,
                 context.parentFontSizePx, context.effectiveBackground).style;
-            movable = styleNode->second.baseStyle.scale() == 1 && focusStyle.scale() == 1 && node.id != pressedId;
             if (animation::HasFocusSurfaceChange(styleNode->second.baseStyle, focusStyle)) {
                 separateSurface = !surfaceDone && !node.transition && node.id != pressedId &&
                     animation::CanSeparateFocusSurface(styleNode->second.baseStyle, focusStyle,
-                        controlScale && scene->animations.focus != animation::FocusStyle::Slide,
-                        scene->animations.focus != animation::FocusStyle::Slide);
-                movable = movable && separateSurface;
+                        controlScale);
                 if (separateSurface) compositionFocusStyles.emplace(node.id, focusStyle);
             }
         }
@@ -163,7 +158,7 @@ bool DrawWidgetComposition() {
             shown.visibleBox.width > .5F && shown.visibleBox.height > .5F) {
             if (scene->focusTargets.size() < WidgetCompositionScene::MaximumNodes)
                 scene->focusTargets.push_back({targetKey, scope,
-                                               shown.borderBox, shown.ancestorClip, movable});
+                                               shown.borderBox, shown.ancestorClip});
             else
                 focusTargetsOverflow = true;
         }
@@ -272,7 +267,6 @@ bool DrawWidgetComposition() {
             sceneFocus = &node;
             focusScope = scope;
             focusKey = targetKey;
-            focusMovable = movable;
         }
         if (parent != beforeParent)
             split();
@@ -287,11 +281,9 @@ bool DrawWidgetComposition() {
         const auto found = presentation.find(NarrowStableId(focusedId));
         if (found != presentation.end()) {
             const auto &shown = found->second;
-            const auto focusGroup = addGroup(animation::InPlaceFocus(scene->animations.focus)
-                ? L"$focus/" + focusKey : L"$focus", focusParents.at(focusedId), WidgetCompositionKind::Focus,
+            const auto focusGroup = addGroup(L"$focus/" + focusKey, focusParents.at(focusedId), WidgetCompositionKind::Focus,
                 focusScope, focusKey, 0,
                 shown.borderBox, shown.ancestorClip);
-            scene->nodes.back().focusMovable = focusMovable;
             const auto &style = prepared.at(NarrowStableId(focusedId)).paintStyle;
             const auto paintBox = ScaleRect(shown.borderBox, shown.motion.value.scale);
             const float outset = std::max(12.0F, style.outlineOffsetPx() +
@@ -299,20 +291,20 @@ bool DrawWidgetComposition() {
             op(*sceneFocus, 3, focusGroup, Intersection(Inset(paintBox, -outset), shown.ancestorClip));
             split();
             // In-place focus animates only the highlight. The controller hint is immediate,
-            // while still inheriting its control's scale. Slide retains its badge motion.
+            // while still inheriting its control's scale.
             if (sceneFocus->kind == L"actionSurface" && input::HasAvailableContextMenuActions(sceneFocus->contextActions)) {
                 const auto badge = ContextMenuIndicatorBounds(paintBox);
-                op(*sceneFocus, 4, animation::InPlaceFocus(scene->animations.focus)
-                    ? focusParents.at(focusedId) : focusGroup, Intersection(badge, shown.visibleBox));
+                op(*sceneFocus, 4, focusParents.at(focusedId), Intersection(badge, shown.visibleBox));
             }
         }
     }
     const auto scale = std::isfinite(scene->scale) && scene->scale > 0 ? scene->scale : 1;
-    for (const auto &node : scene->nodes) {
+    for (auto &node : scene->nodes) {
         if (node.kind != WidgetCompositionKind::Raster || node.solid)
             continue;
-        const auto width = std::ceil(node.bounds.width * scale),
-                   height = std::ceil(node.bounds.height * scale);
+        node.bounds = CompositionRasterBounds(node.bounds, scale);
+        const auto width = std::round(node.bounds.width * scale),
+                   height = std::round(node.bounds.height * scale);
         if (width > 8192 || height > 8192) {
             scene->rasterBytes = WidgetCompositionScene::MaximumBytes + 1;
             break;
@@ -355,8 +347,8 @@ bool DrawWidgetComposition() {
         if (node.kind != WidgetCompositionKind::Raster || node.solid)
             continue;
         const auto size = D2D1::SizeF(node.bounds.width, node.bounds.height);
-        const auto pixels = D2D1::SizeU(static_cast<UINT32>(std::ceil(size.width * scale)),
-                                        static_cast<UINT32>(std::ceil(size.height * scale)));
+        const auto pixels = D2D1::SizeU(static_cast<UINT32>(std::round(size.width * scale)),
+                                        static_cast<UINT32>(std::round(size.height * scale)));
         ComPtr<ID2D1BitmapRenderTarget> surface;
         node.rasterLease = std::make_shared<char>();
         auto &captures = owner->compositionCaptures_;
@@ -398,6 +390,7 @@ bool DrawWidgetComposition() {
         compositionBand = static_cast<int>(index);
         transitionSurfacesPainted.clear();
         target = surface.Get();
+        target->SetDpi(96 * scale, 96 * scale);
         target->BeginDraw();
         target->Clear(D2D1::ColorF(0, 0));
         target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);

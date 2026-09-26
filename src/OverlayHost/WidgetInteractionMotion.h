@@ -14,7 +14,6 @@ namespace widgetrail::animation {
 struct FocusTarget {
     std::wstring key, scope;
     Rect bounds, clip;
-    bool movable{true};
 };
 
 inline void AppendMotionIdentity(std::wstring &identity, std::wstring_view part) {
@@ -27,40 +26,13 @@ inline bool SameFocusRect(Rect a, Rect b) noexcept {
            std::abs(a.width - b.width) < .01F && std::abs(a.height - b.height) < .01F;
 }
 
-inline bool FullyVisible(const FocusTarget &target) noexcept {
-    const auto &a = target.bounds, &b = target.clip;
-    return a.width > 0 && a.height > 0 && a.x >= b.x - .01F && a.y >= b.y - .01F &&
-           a.x + a.width <= b.x + b.width + .01F && a.y + a.height <= b.y + b.height + .01F;
-}
-
 inline bool HasStableFocusTarget(const FocusTarget &previous,
                                 std::span<const FocusTarget> currentTargets) noexcept {
     const auto old = std::find_if(currentTargets.begin(), currentTargets.end(), [&](const auto &target) {
         return target.key == previous.key && target.scope == previous.scope;
     });
-    return old != currentTargets.end() && old->movable && SameFocusRect(old->bounds, previous.bounds) &&
+    return old != currentTargets.end() && SameFocusRect(old->bounds, previous.bounds) &&
            SameFocusRect(old->clip, previous.clip);
-}
-
-inline bool CanMoveFocus(const FocusTarget &previous, const FocusTarget &next,
-                         std::span<const FocusTarget> currentTargets) noexcept {
-    if (!previous.movable || !next.movable || previous.key == next.key || previous.scope != next.scope ||
-        !SameFocusRect(previous.clip, next.clip) || !FullyVisible(previous) || !FullyVisible(next) ||
-        !HasStableFocusTarget(previous, currentTargets))
-        return false;
-    const auto &a = previous.bounds, &b = next.bounds;
-    const float gapX = std::max({b.x - a.x - a.width, a.x - b.x - b.width, 0.0F});
-    const float gapY = std::max({b.y - a.y - a.height, a.y - b.y - b.height, 0.0F});
-    return gapX <= std::max(a.width, b.width) && gapY <= std::max(a.height, b.height) &&
-           b.width >= a.width * .5F && b.width <= a.width * 2 &&
-           b.height >= a.height * .5F && b.height <= a.height * 2;
-}
-
-inline Recipe FocusMove(Rect bounds, Rect clip, Pose previous) noexcept {
-    auto recipe = Stationary(bounds, clip);
-    recipe.from.bounds = previous.bounds;
-    recipe.milliseconds = FocusPresetFor(FocusStyle::Slide).milliseconds;
-    return recipe;
 }
 
 inline bool InPlaceFocus(FocusStyle style) noexcept {
@@ -71,7 +43,7 @@ inline unsigned FocusDuration(FocusStyle style) noexcept {
     return FocusPresetFor(style).milliseconds;
 }
 
-inline Recipe FocusFade(Rect bounds, Rect clip, float from, float to, unsigned duration = 120) noexcept {
+inline Recipe FocusFade(Rect bounds, Rect clip, float from, float to, unsigned duration = FocusDuration(FocusStyle::Fade)) noexcept {
     auto recipe = Stationary(bounds, clip);
     recipe.from.opacity = from;
     recipe.to.opacity = to;
@@ -102,17 +74,6 @@ inline Recipe FocusEnter(FocusStyle style, Rect bounds, Rect clip, std::optional
     return Stationary(bounds, clip);
 }
 
-// Surface replacement uses disjoint clips, not alpha overlays. The first four
-// regions retain the normal surface; the last reveals the focused surface.
-inline std::array<Rect, 5> FocusSurfaceClips(Rect extent, Rect reveal) noexcept {
-    const float right = extent.x + extent.width, bottom = extent.y + extent.height;
-    return {{{extent.x, extent.y, extent.width, reveal.y - extent.y},
-             {extent.x, reveal.y + reveal.height, extent.width, bottom - reveal.y - reveal.height},
-             {extent.x, reveal.y, reveal.x - extent.x, reveal.height},
-             {reveal.x + reveal.width, reveal.y, right - reveal.x - reveal.width, reveal.height},
-             reveal}};
-}
-
 inline bool HasFocusSurfaceChange(const NativeRenderStyle &base, const NativeRenderStyle &focus) noexcept {
     return base.background() != focus.background() || base.surfaceShading() != focus.surfaceShading() ||
            base.shadowColor() != focus.shadowColor() || base.shadowBlurPx() != focus.shadowBlurPx() ||
@@ -122,14 +83,11 @@ inline bool HasFocusSurfaceChange(const NativeRenderStyle &base, const NativeRen
 }
 
 inline bool CanSeparateFocusSurface(const NativeRenderStyle &base, const NativeRenderStyle &focus,
-                                    bool compositorScale = false, bool depth = false) noexcept {
-    const auto hasShadow = [](const auto &style) {
-        return style.shadowColor() && style.shadowColor()->alpha > 0;
-    };
+                                    bool compositorScale = false) noexcept {
     const auto &before = base.borderEdges(), &after = focus.borderEdges();
     return before.top.widthPx == after.top.widthPx && before.right.widthPx == after.right.widthPx &&
         before.bottom.widthPx == after.bottom.widthPx && before.left.widthPx == after.left.widthPx &&
-        (depth || (!hasShadow(base) && !hasShadow(focus))) && base.backgroundBlurPx() == 0 && focus.backgroundBlurPx() == 0 &&
+        base.backgroundBlurPx() == 0 && focus.backgroundBlurPx() == 0 &&
         base.opacity() == focus.opacity() && (compositorScale || (base.scale() == 1 && focus.scale() == 1)) &&
         base.translateXPx() == focus.translateXPx() && base.translateYPx() == focus.translateYPx() &&
         base.widthPx() == focus.widthPx() && base.heightPx() == focus.heightPx() &&

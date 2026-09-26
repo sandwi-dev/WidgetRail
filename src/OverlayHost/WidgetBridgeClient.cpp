@@ -903,7 +903,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
              value.GetString() != L"slide" && value.GetString() != L"none")) {
             error = L"Invalid focus animation."; return std::nullopt;
         }
-        appearance.focusAnimation = value.GetString();
+        appearance.focusAnimation = value.GetString() == L"slide" ? L"fade" : value.GetString();
     }
     if (payload.HasKey(L"sectionAnimation")) {
         const auto value = payload.GetNamedValue(L"sectionAnimation");

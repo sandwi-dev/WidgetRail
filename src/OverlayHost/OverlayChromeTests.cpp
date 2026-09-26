@@ -1290,30 +1290,12 @@ void CheckWidgetAnimationPolicies() {
               selection.from.bounds.width == oldLabel.bounds.width,
           "layout motion moves text without scaling it while selection surfaces can resize");
     const FocusTarget first{L"first/item-a", L"library/grid", {20, 30, 60, 40}, {0, 0, 300, 300}};
-    auto next = first;
-    next.key = L"next/item-b";
-    next.bounds.x += 70;
-    std::vector<FocusTarget> targets{first, next};
-    Check(CanMoveFocus(first, next, targets), "adjacent stable targets can animate focus");
-    targets[0].bounds.y -= 10;
-    Check(!CanMoveFocus(first, next, targets), "scrolling the source prevents a spurious focus move");
-    targets[0] = first;
-    targets[0].key = L"first/recycled-item";
-    Check(!CanMoveFocus(first, next, targets), "recycled cursor identity cannot become a motion source");
-    targets = {next};
-    Check(!CanMoveFocus(first, next, targets), "removed source cannot become a motion source");
-    targets = {first, next};
-    next.scope = L"dialog";
-    Check(!CanMoveFocus(first, next, targets), "scope changes snap focus");
-    next = targets[1]; next.bounds.x = 240;
-    Check(!CanMoveFocus(first, next, targets), "distant focus jumps snap instead of sweeping the page");
-    next = targets[1]; next.clip.height = 50;
-    Check(!CanMoveFocus(first, next, targets), "clipped or newly scrolled targets snap focus");
-    next = targets[1]; next.bounds.width = 180;
-    Check(!CanMoveFocus(first, next, targets), "large changes of control shape snap focus");
+    auto recycled = first; recycled.key = L"recycled";
+    Check(HasStableFocusTarget(first, std::vector<FocusTarget>{first}), "unchanged focus source can fade out");
+    Check(!HasStableFocusTarget(first, std::vector<FocusTarget>{recycled}), "recycled cursor source cannot retain focus decoration");
     Check(Options{}.focus == FocusStyle::Fade && ParseFocusStyle(L"unknown") == FocusStyle::Fade &&
         ParseFocusStyle(L"settle") == FocusStyle::Settle && ParseFocusStyle(L"fade") == FocusStyle::Fade &&
-        ParseFocusStyle(L"none") == FocusStyle::None && ParseFocusStyle(L"slide") == FocusStyle::Slide,
+        ParseFocusStyle(L"none") == FocusStyle::None && ParseFocusStyle(L"slide") == FocusStyle::Fade,
         "focus defaults and persisted preset IDs are stable");
     const Rect settleBounds{10, 10, 100, 44}, settleClip{0, 0, 300, 200};
     const auto settle = FocusSettle(settleBounds, settleClip).Start(0, 1000);
@@ -1332,24 +1314,12 @@ void CheckWidgetAnimationPolicies() {
         FocusDuration(FocusStyle::Settle) == 220 && FocusDuration(FocusStyle::None) == 0,
         "settle and its background share the configured timeline");
     const auto fade = FocusFade(first.bounds, first.clip, 0, 1).Start(0, 1000);
-    Check(fade.duration == 120 && Sample(fade, 60).opacity == .5F &&
-        SameFocusRect(Sample(fade, 60).bounds, first.bounds), "focus fade changes only alpha at fixed bounds");
+    Check(fade.duration == 240 && Sample(fade, 120).opacity == .5F &&
+        SameFocusRect(Sample(fade, 120).bounds, first.bounds), "focus fade changes only alpha at fixed bounds");
     const auto reversed = FocusFade(first.bounds, first.clip, Sample(fade, 30).opacity, 0).Start(30, 1000, 2);
-    Check(reversed.duration == 60 && Sample(reversed, 30).opacity == Sample(fade, 30).opacity &&
-        Sample(reversed, 90).opacity == 0, "rapid fade reversal continues from current opacity at configured speed");
-    const auto focusMotion = FocusMove(targets[1].bounds, first.clip, {first.bounds, 1, first.clip}).Start(0, 1000);
-    Check(focusMotion.duration == 140 && Sample(focusMotion, 70).bounds.x == 55,
-          "focus policy uses a bounded smooth movement independently of section presets");
-    for (int tick = 0; tick <= 140; tick += 7) {
-        const auto partition = FocusSurfaceClips(first.clip, Sample(focusMotion, tick).bounds);
-        for (float y = 2.5F; y < 300; y += 7)
-            for (float x = 2.5F; x < 300; x += 7) {
-                const auto count = std::count_if(partition.begin(), partition.end(), [&](Rect rect) {
-                    return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
-                });
-                Check(count == 1, "focus surfaces replace every pixel exactly once, including translucent styles");
-            }
-    }
+    Check(reversed.duration == 120 && Sample(reversed, 30).opacity == Sample(fade, 30).opacity &&
+        Sample(reversed, 150).opacity == 0, "rapid fade reversal continues from current opacity at configured speed");
+
 }
 
 void CheckWidgetCompositorPixels(const bool popupOnly = false) {
@@ -1647,136 +1617,6 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
     Sleep(550); DwmFlush();
     Check(GetRValue(pixel(25, 64)) > 220 && surface.paintCounters().content == zoomPaints,
           "interrupted zoom modal reaches full size without UI paints");
-    const auto focusScene = [&](bool right, std::wstring scope = L"page", bool retainSource = true) {
-        auto scene = std::make_shared<WidgetCompositionScene>();
-        scene->authority = L"focus-proof";
-        scene->animations.focus = animation::FocusStyle::Slide;
-        scene->viewport = {0, 0, 128, 128};
-        scene->animations.speed = .5;
-        WidgetCompositionNode background;
-        background.id = L"background";
-        background.bounds = background.clip = scene->viewport;
-        background.solid = D2D1::ColorF(D2D1::ColorF::Black);
-        scene->nodes.push_back(background);
-        const animation::FocusTarget left{L"left", scope, {16, 40, 24, 24}, scene->viewport};
-        const animation::FocusTarget next{L"right", scope, {60, 40, 24, 24}, scene->viewport};
-        if (retainSource) scene->focusTargets = {left, next};
-        else scene->focusTargets = {right ? next : left};
-        const auto &focus = right ? next : left;
-        WidgetCompositionNode group;
-        group.id = L"focus"; group.key = focus.key; group.clock = focus.scope;
-        group.kind = WidgetCompositionKind::Focus;
-        group.bounds = focus.bounds; group.clip = focus.clip;
-        scene->nodes.push_back(group);
-        WidgetCompositionNode ink;
-        ink.id = L"focus-ink"; ink.parent = group.id;
-        ink.bounds = group.bounds; ink.clip = group.clip;
-        ink.solid = D2D1::ColorF(D2D1::ColorF::Lime);
-        scene->nodes.push_back(ink);
-        return scene;
-    };
-    commit(focusScene(false));
-    DwmFlush();
-    Check(GetGValue(pixel(28, 52)) > 220, "first focus presentation snaps into place");
-    commit(focusScene(true));
-    const auto focusPaints = surface.paintCounters().content;
-    const auto focusUploads = surface.widgetCompositionCounters().rasterUploads;
-    const auto focusCaptures = surface.widgetCompositionCounters().interruptionCaptures;
-    const auto inputAtDestination = surface.MapWidgetCompositionInput({72, 52});
-    Check(inputAtDestination.x == 72 && inputAtDestination.y == 52,
-          "focus visual motion never remaps the destination input target");
-    Sleep(90); DwmFlush();
-    Check(GetGValue(pixel(44, 52)) > 220,
-          "DWM moves focus between controls while the application thread is idle");
-    Check(surface.paintCounters().content == focusPaints &&
-          surface.widgetCompositionCounters().rasterUploads == focusUploads,
-          "focus movement causes no animation-frame paints or raster uploads");
-    commit(focusScene(false));
-    DwmFlush();
-    Check(GetGValue(pixel(44, 52)) > 220 &&
-          surface.widgetCompositionCounters().interruptionCaptures == focusCaptures,
-          "rapid focus navigation continues from the displayed position without snapshots");
-    Sleep(310); DwmFlush();
-    Check(GetGValue(pixel(28, 52)) > 220 && GetGValue(pixel(72, 52)) < 10,
-          "focus settles to the newest target");
-    const auto focusStarts = surface.widgetCompositionCounters().animationStarts;
-    commit(focusScene(true, L"dialog"));
-    DwmFlush();
-    Check(GetGValue(pixel(72, 52)) > 220 && surface.widgetCompositionCounters().animationStarts == focusStarts,
-          "entering a different focus scope snaps immediately");
-    commit(focusScene(false, L"dialog", false));
-    DwmFlush();
-    Check(GetGValue(pixel(28, 52)) > 220 && surface.widgetCompositionCounters().animationStarts == focusStarts,
-          "removing the source snaps instead of animating recycled content");
-    auto reducedFocus = focusScene(true, L"dialog");
-    reducedFocus->reducedMotion = true;
-    commit(reducedFocus);
-    DwmFlush();
-    Check(GetGValue(pixel(72, 52)) > 220 && surface.widgetCompositionCounters().animationStarts == focusStarts,
-          "reduced motion disables focus movement without delaying focus");
-    commit(focusScene(false, L"next-page"));
-    commit(focusScene(true, L"next-page"));
-    auto originRemoved = focusScene(true, L"next-page", false);
-    commit(originRemoved);
-    DwmFlush();
-    Check(GetGValue(pixel(72, 52)) > 220 && GetGValue(pixel(28, 52)) < 10,
-          "an asynchronous cursor removal snaps an already-running focus move");
-    const auto surfaceScene = [&](bool right, bool pressLayers = false) {
-        auto scene = focusScene(right, L"surfaces");
-        scene->authority = pressLayers ? L"surface-press-proof" : L"surface-proof";
-        auto focus = scene->nodes[1];
-        scene->nodes.resize(1);
-        scene->nodes[0].solid = D2D1::ColorF(D2D1::ColorF::Blue);
-        for (const auto &control : scene->focusTargets) {
-            if (pressLayers) {
-                WidgetCompositionNode scale;
-                scale.id = L"control/" + control.key; scale.kind = WidgetCompositionKind::Control;
-                scale.key = control.key; scale.clock = control.scope;
-                scale.bounds = control.bounds; scale.clip = control.clip; scale.controlDuration = 140;
-                scene->nodes.push_back(scale);
-            }
-            WidgetCompositionNode group;
-            group.id = L"surface/" + control.key; group.kind = WidgetCompositionKind::FocusSurface;
-            group.clock = control.scope; group.key = control.key;
-            group.bounds = control.bounds; group.clip = control.clip;
-            if (pressLayers) group.parent = L"control/" + control.key;
-            scene->nodes.push_back(group);
-            WidgetCompositionNode idle;
-            idle.id = group.id + L"/idle"; idle.parent = group.id;
-            idle.bounds = control.bounds; idle.clip = control.clip;
-            idle.solid = D2D1::ColorF(1, 0, 0, .5F);
-            scene->nodes.push_back(idle);
-            auto active = idle; active.id = group.id + L"/active"; active.order = 1;
-            active.solid = D2D1::ColorF(0, 1, 0, .25F);
-            scene->nodes.push_back(active);
-        }
-        if (pressLayers) focus.parent = L"control/" + focus.key;
-        scene->nodes.push_back(focus);
-        return scene;
-    };
-    const auto focusedColor = [](COLORREF color) {
-        return GetRValue(color) < 5 && GetGValue(color) >= 60 && GetGValue(color) <= 68 && GetBValue(color) >= 185;
-    };
-    const auto idleColor = [](COLORREF color) {
-        return GetRValue(color) >= 123 && GetRValue(color) <= 132 && GetGValue(color) < 5 && GetBValue(color) >= 123;
-    };
-    commit(surfaceScene(false)); DwmFlush();
-    Check(focusedColor(pixel(28, 52)) && idleColor(pixel(72, 52)),
-          "focused surface replaces translucent idle pixels instead of accumulating alpha");
-    commit(surfaceScene(true));
-    const auto surfacePaints = surface.paintCounters().content;
-    const auto surfaceUploads = surface.widgetCompositionCounters().rasterUploads;
-    Sleep(90); DwmFlush();
-    Check(idleColor(pixel(20, 52)) && focusedColor(pixel(36, 52)) && idleColor(pixel(80, 52)),
-          "surface reveal follows the travelling focus without pre-highlighting the destination");
-    Sleep(250); DwmFlush();
-    Check(idleColor(pixel(28, 52)) && focusedColor(pixel(72, 52)) &&
-          surface.paintCounters().content == surfacePaints && surface.widgetCompositionCounters().rasterUploads == surfaceUploads,
-          "surface focus movement preserves exact alpha with no application animation paints");
-    commit(surfaceScene(false, true)); DwmFlush();
-    commit(surfaceScene(true, true)); Sleep(90); DwmFlush();
-    Check(focusedColor(pixel(36, 52)) && idleColor(pixel(80, 52)),
-          "resting press-scale layers share the focus coordinate space and do not suppress travel");
     const auto scaleScene = [&](float amount) {
         auto scene = std::make_shared<WidgetCompositionScene>();
         scene->authority = L"scale-proof"; scene->viewport = {0, 0, 128, 128};
@@ -2022,7 +1862,7 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
             Check(GetRValue(during) > GetRValue(initial) && GetGValue(during) < GetGValue(initial),
                 "shaded translucent focus interpolates rather than snapping");
         }
-        Sleep(240); DwmFlush();
+        Sleep(animation::FocusDuration(focusStyle) * 2 + 40); DwmFlush();
         if (pixels) {
             const auto final = pixel(120, 40);
             Check(std::abs(GetRValue(final) - GetRValue(initial)) <= 3 &&
