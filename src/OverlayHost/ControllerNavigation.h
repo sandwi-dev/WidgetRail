@@ -103,6 +103,26 @@ struct RightStickScrollUpdate final {
     bool returnedToDeadZone{};
 };
 
+/// Coalesces input into one bounded movement per rendered frame. A blocked
+/// range keeps consuming input without retaining distance to replay later.
+/// The owner names the exact admitted view/range; a new owner cannot inherit
+/// movement computed against the previous one.
+class ContinuousScrollFrames final {
+public:
+    bool Offer(RightStickScrollUpdate sample, std::wstring_view owner);
+    [[nodiscard]] std::optional<RightStickScrollUpdate> Take(std::wstring_view owner);
+    void BlockLastFrame() noexcept;
+    void Neutral() noexcept;
+    void Clear() noexcept;
+    [[nodiscard]] bool pending() const noexcept { return pending_.has_value(); }
+private:
+    std::wstring owner_;
+    std::optional<RightStickScrollUpdate> pending_;
+    FreeScrollAxis lastAxis_{FreeScrollAxis::None};
+    int lastDirection_{};
+    bool blocked_{};
+};
+
 /// Converts the raw right stick into bounded continuous host-scroll movement.
 /// It owns only dead-zone/rate sampling; retained offsets and viewport choice
 /// remain with the declarative renderer's existing scroll authority.

@@ -365,6 +365,7 @@ enum class ScrollPaginationIntentSource {
     DirectionalNavigation,
     Pointer,
     Accessibility,
+    HeldDpad,
 };
 
 struct ScrollPaginationPrefetchRequest final {

@@ -214,6 +214,31 @@ void CheckShortcutResolutionContract() {
 
 int main() {
     {
+        using namespace widgetrail::input;
+        ContinuousScrollFrames frames;
+        const auto sample = [](float delta, FreeScrollAxis axis = FreeScrollAxis::Vertical) {
+            return RightStickScrollUpdate{axis, delta, true, false};
+        };
+        Check(frames.Offer(sample(12), L"view-1") && frames.Offer(sample(8), L"view-1"), "input samples coalesce before a paint");
+        Check(frames.Take(L"view-1")->deltaDip == 20 && !frames.Take(L"view-1"), "one paint consumes movement exactly once");
+        (void)frames.Offer(sample(90), L"view-1"); (void)frames.Offer(sample(90), L"view-1");
+        Check(frames.Take(L"view-1")->deltaDip == 110, "a stalled painter receives at most one bounded kinetic interval");
+        (void)frames.Offer(sample(20), L"view-1"); (void)frames.Offer(sample(-7), L"view-1");
+        Check(frames.Take(L"view-1")->deltaDip == -7, "reversal discards unpainted old-direction distance");
+        frames.BlockLastFrame();
+        Check(!frames.Offer(sample(-30), L"view-1") && !frames.pending(), "a loaded-range boundary consumes input without accumulating debt");
+        (void)frames.Offer(sample(-4), L"view-2");
+        Check(frames.Take(L"view-2")->deltaDip == -4, "a new page range resumes using only fresh movement");
+        frames.BlockLastFrame();
+        Check(frames.Offer(sample(6), L"view-2"), "reversal leaves a blocked edge immediately");
+        Check(!frames.Take(L"different-scope") && !frames.pending(), "replacement authority cannot receive a queued frame");
+        (void)frames.Offer(sample(5), L"view-2"); frames.Neutral();
+        Check(frames.Take(L"view-2")->deltaDip == 5, "a short stick pulse survives release before its first paint");
+        frames.BlockLastFrame(); frames.Neutral();
+        Check(frames.Offer(sample(3), L"view-2"), "a fresh gesture can probe the edge again");
+        frames.Clear(); Check(!frames.pending(), "hide or input loss cancels queued motion");
+    }
+    {
         widgetrail::input::HeldDpadScroll held;
         Check(!held.Update(1, true, L"grid", 0).active, "held input on ownership entry requires neutral");
         (void)held.Update(0, true, L"grid", 10);

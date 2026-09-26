@@ -129,6 +129,7 @@ std::wstring_view ScrollPaginationIntentName(
         return L"directional-navigation";
     case ScrollPaginationIntentSource::Pointer: return L"pointer";
     case ScrollPaginationIntentSource::Accessibility: return L"accessibility";
+    case ScrollPaginationIntentSource::HeldDpad: return L"held-dpad";
     }
     return L"unknown";
 }

@@ -881,7 +881,7 @@ function Invoke-ScrollWorkloadProbe {
     $objectDirectory = Join-Path $outputDirectory 'obj/scroll-workload-probe'
     New-Item -ItemType Directory -Path $objectDirectory -Force | Out-Null
     $arguments = $common + @('/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING') +
-        @('ScrollWorkloadProbe.cpp', 'WidgetBridgeClient.cpp', 'PublicSuffixDomainAuthority.cpp',
+        @('ScrollWorkloadProbe.cpp', 'ControllerNavigation.cpp', 'WidgetBridgeClient.cpp', 'PublicSuffixDomainAuthority.cpp',
           'DeclarativeRenderer.cpp', 'DeclarativeLayout.cpp', 'NativeStyle.cpp', 'NativeTextLayout.cpp',
           'DeclarativeMotion.cpp', 'NativeIcons.cpp', 'RemoteImageCache.cpp', 'ArtworkDecoderProcessOwner.cpp' |
             ForEach-Object { Join-Path $projectDirectory $_ }) +

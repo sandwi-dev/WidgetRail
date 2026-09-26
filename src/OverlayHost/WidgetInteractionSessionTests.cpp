@@ -2053,6 +2053,13 @@ void CursorBoundaryAndViewportDemand() {
     (void)session.MoveFocus(L"paged.widget", snapshot, L"page.row.3");
     Check(!session.ResolvePendingCollectionFocus(nextAuthority, L"page.row.3", nextRender),
         "newer focus cancels a delayed directional move");
+    session.SetFocus(L"paged.widget", snapshot, L"page.row.4");
+    (void)session.ObserveScrollPaginationBoundaryIntent(authority, trailing,
+        L"page.row.4", NavigationDirection::Down, ScrollPaginationIntentSource::DirectionalNavigation, 3);
+    (void)session.ObserveScrollPaginationIntent(authority, L"page.scroll", widgetrail::declarative::ScrollAxis::Vertical,
+        ScrollPaginationEdge::After, ScrollPaginationIntentSource::HeldDpad, 4);
+    Check(!session.ResolvePendingCollectionFocus(nextAuthority, L"page.row.4", nextRender),
+        "held scrolling cancels the initial tap's delayed focus move when its page arrives");
 
     auto roomy = PagedRender(0, 0); roomy.scrollViewports.at(L"page.scroll").rect.height = 500;
     WidgetInteractionSession filling;
@@ -2154,6 +2161,9 @@ void PaginationPrefetchLifecycle() {
     checkDirectIntent(
         ScrollPaginationIntentSource::RightStick,
         "right-stick viewport intent rearms on a genuine threshold entry");
+    checkDirectIntent(
+        ScrollPaginationIntentSource::HeldDpad,
+        "held D-pad scrolling shares viewport pagination admission without directional focus replay");
     checkDirectIntent(
         ScrollPaginationIntentSource::Pointer,
         "pointer scrolling uses the same exact viewport demand");

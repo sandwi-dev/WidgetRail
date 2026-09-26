@@ -105,6 +105,8 @@ An integrity checksum detects changed bytes; it does not establish who wrote the
 **Hold D-pad to scroll** is off by default. Enable it to scroll vertically by
 holding Up or Down. A short tap still moves focus normally. Release to land on a
 visible item in the same column where possible. The right stick remains available for scrolling.
+Focus also settles when scrolling reaches the loaded edge. If more items are
+loading, continuing to hold resumes scrolling when they become available.
 
 Choose either **View + Menu** or **Guide** as the opening shortcut. Optional
 Exclusive control has separate driver requirements and compatibility limits.

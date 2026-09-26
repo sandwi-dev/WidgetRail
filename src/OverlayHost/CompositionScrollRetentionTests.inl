@@ -87,6 +87,7 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
     options.compositorWidgetTransitions = true; options.accessibility.reducedMotion = true;
     options.sizeArtworkToDisplay = false; options.artworkDecodeSize = decode;
     options.suppressFocusedDescendantFollow = true;
+    options.collectAccessibility = !benchmark;
     const auto draw = [&](DeclarativeRenderer& renderer, bool reference, int frame) {
         auto current = options;
         current.disableIndependentCapturesForTesting = reference && clippedReference;
@@ -145,7 +146,30 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
         Check(retained.PlanFocusedFreeScroll(snapshot, L"item.0", axis, delta, viewport, L"scroll").has_value(), "retained scroll plans");
         Check(fresh.PlanFocusedFreeScroll(snapshot, L"item.0", axis, delta, viewport, L"scroll").has_value(), "reference scroll plans");
         const auto actual = draw(retained, false, frame), expected = draw(fresh, true, frame);
+        if (largeCoordinates) {
+            Check(actual.timing.deferredViewportItems > 100, "deep regular grids defer offscreen decoration preparation");
+            Check(actual.timing.preparedNodes < 200, "regular-grid style preparation follows the viewport and its buffer");
+        }
         Check(actual.scrollOffsets == expected.scrollOffsets, "retained pixels never change scroll state");
+        Check(actual.navigationRects.size() == expected.navigationRects.size() &&
+            actual.focusScopes == expected.focusScopes && actual.revealableFocusIds == expected.revealableFocusIds,
+            "viewport preparation retains the complete logical focus graph");
+        for (const auto& [id, rect] : actual.navigationRects) {
+            const auto& reference = expected.navigationRects.at(id);
+            Near(rect.x, reference.x, "offscreen item navigation x remains current");
+            Near(rect.y, reference.y, "offscreen item navigation y remains current");
+        }
+        Check(actual.accessibilityRegions.size() == expected.accessibilityRegions.size(),
+            "viewport preparation preserves visible accessibility semantics");
+        for (std::size_t i = 0; i < actual.accessibilityRegions.size(); ++i) {
+            const auto& region = actual.accessibilityRegions[i];
+            const auto& reference = expected.accessibilityRegions[i];
+            Check(region.nodeId == reference.nodeId, "viewport preparation preserves accessible reading order");
+            Near(region.rect.x, reference.rect.x, "accessible x remains current");
+            Near(region.rect.y, reference.rect.y, "accessible y remains current");
+            Near(region.rect.width, reference.rect.width, "accessible width remains current");
+            Near(region.rect.height, reference.rect.height, "accessible height remains current");
+        }
         const auto actualPixels = replay(actual), expectedPixels = replay(expected);
         if (actualPixels != expectedPixels) {
             std::size_t count{}; int largest{};

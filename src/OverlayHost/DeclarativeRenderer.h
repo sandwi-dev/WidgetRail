@@ -98,6 +98,8 @@ struct DeclarativeRenderTiming final {
     /// Stable collection paints and controller repeats leave this empty; the
     /// existing host post-commit diagnostic remains the sole log owner.
     std::wstring collectionAdmissionSummary;
+    std::size_t preparedNodes{};
+    std::size_t deferredViewportItems{};
 };
 
 // Opt-in developer data from the same prepared/presented nodes used to paint.
@@ -631,6 +633,7 @@ private:
     struct IncrementalNodeState final {
         NativeRenderStyle baseStyle;
         NativeStyleContext styleContext;
+        std::optional<NativeColor> effectiveBackground;
         declarative::Rect borderBox;
         declarative::Rect ancestorClip;
         declarative::Rect paintBounds;
@@ -678,6 +681,9 @@ private:
         std::map<std::wstring, CollectionDiagnosticObservation, std::less<>>
             collections;
         std::map<std::wstring, RenderScrollViewport, std::less<>> scrollViewports;
+        // Regular clipped item roots and their owning scroll. Decoration can
+        // be deferred while complete logical layout remains authoritative.
+        std::map<std::wstring, std::wstring, std::less<>> viewportItems;
     };
     struct PendingIncrementalPlan final {
         std::wstring instanceId;

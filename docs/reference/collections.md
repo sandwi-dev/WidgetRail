@@ -68,11 +68,15 @@ timer or per-frame scroll callback to implement.
 - Keep existing items interactive during adjacent loading. The host can hold
   movement at the loaded boundary and continue after the new window is admitted.
   It does not replay a queue of navigation commands against the arriving page.
+  Movement is coalesced once per paint; repeated input while blocked does not
+  accumulate a distance that will jump through the new page.
 - The Controllers setting **Hold D-pad to scroll** is optional and off by default.
   A tap retains normal focus navigation. A vertical hold uses the current active
   scroll/input scope, then lands in the originating column where possible on release. Widgets
   use the same standard Scroll and collection contracts as right-stick scrolling;
   do not add a second D-pad repeat loop.
+  Focus also settles when the loaded boundary stops movement; holding can resume
+  scrolling when a new page extends the available range.
 - Modal scopes, collection resets, widget replacement, and loss of input authority
   retire the old gesture. A parent page cannot continue receiving held navigation
   through its modal.

@@ -2672,7 +2672,10 @@ private:
             return 0;
         case WM_PAINT:
             if (performanceCountersActive_) ++performancePaintMessages_;
+            FlushContinuousScrollFrame();
             Paint();
+            if (heldDpadBoundaryStop_ && (ContinuousScrollFrameAuthority().empty() || SettleRightStickFocus()))
+                heldDpadBoundaryStop_ = false;
             return 0;
         case WM_SIZE:
         {
@@ -11239,6 +11242,8 @@ private:
     }
 
     void ClearFreeScrollReentry(const std::wstring_view reason) {
+        continuousScrollFrames_.Clear();
+        heldDpadBoundaryStop_ = false;
         heldDpadScroll_.Reset();
         heldDpadLandingX_.reset();
         heldDpadTravelDirection_ = 0;
@@ -11360,12 +11365,50 @@ private:
             L"\x1f" + std::to_wstring(scroll->collectionResetGeneration.value_or(0));
     }
 
+    [[nodiscard]] std::wstring ContinuousScrollFrameAuthority() const {
+        if (!IsOverlayProcessForeground() || state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget || trayContextMenu_ || widgetContextMenu_ ||
+            interactionSession_.selectPopup() || textEntryModal_.active() ||
+            textEntryControllerPhase_ != TextEntryControllerPhase::None ||
+            pinnedSurfaceCoordinator_.controllerFocused() || OverlayFullscreenMediaRequested()) return {};
+        const auto widget = state_.activeWidget();
+        const auto* descriptor = sessions_.FindDescriptor(widget);
+        const auto* snapshot = InteractionSnapshotFor(widget);
+        if (!descriptor || !snapshot) return {};
+        return std::wstring{widget} + L"\x1f" + descriptor->runtimeGeneration + L"\x1f" +
+            descriptor->presentationGeneration + L"\x1f" + snapshot->instanceId + L"\x1f" +
+            snapshot->activeInputScopeId + L"\x1f" + std::to_wstring(snapshot->sequence);
+    }
+
+    void FlushContinuousScrollFrame() {
+        const auto sample = continuousScrollFrames_.Take(ContinuousScrollFrameAuthority());
+        if (sample) (void)ApplyContinuousFreeScroll(*sample, GetTickCount64(), queuedScrollIsHeldDpad_);
+    }
+
     [[nodiscard]] bool HandleContinuousFreeScroll(
         const WidgetRailOverlayPlatformControllerFrame& frame,
         const ULONGLONG now, const std::optional<int> heldDirection = std::nullopt) {
         const auto sample = interactionSession_.SampleRightStick(
             heldDirection ? 0 : frame.state.rightThumbX,
             heldDirection ? static_cast<short>(*heldDirection > 0 ? -32767 : 32767) : frame.state.rightThumbY, now);
+        if (!sample.moving) {
+            continuousScrollFrames_.Neutral();
+            if (!continuousScrollFrames_.pending()) return ApplyContinuousFreeScroll(sample, now, false);
+            return false;
+        }
+        const auto authority = ContinuousScrollFrameAuthority();
+        if (authority.empty()) { continuousScrollFrames_.Clear(); return true; }
+        const bool alreadyPending = continuousScrollFrames_.pending();
+        if (continuousScrollFrames_.Offer(sample, authority)) {
+            queuedScrollIsHeldDpad_ = heldDirection.has_value();
+            if (!alreadyPending && !SubmitRetainedWidgetPaint()) InvalidateRect(window_, nullptr, FALSE);
+        }
+        return true;
+    }
+
+    [[nodiscard]] bool ApplyContinuousFreeScroll(
+        const widgetrail::input::RightStickScrollUpdate& sample,
+        const ULONGLONG now, const bool heldDpad) {
         const std::wstring widget = state_.surface() == widgetrail::Surface::Widget
             ? std::wstring{state_.activeWidget()} : std::wstring{};
         const auto* descriptor = widget.empty()
@@ -11376,9 +11419,7 @@ private:
                 RecordRightStickDrop(reason, widget, descriptor, scrollId);
         };
         std::wstring_view ineligibleReason;
-        if (frame.connected == WRAIL_OVERLAY_PLATFORM_FALSE)
-            ineligibleReason = L"controller-disconnected";
-        else if (state_.surface() != widgetrail::Surface::Widget)
+        if (state_.surface() != widgetrail::Surface::Widget)
             ineligibleReason = L"no-widget-surface";
         else if (state_.focusRegion() != widgetrail::FocusRegion::Widget)
             ineligibleReason = L"scope-mismatch";
@@ -11525,6 +11566,10 @@ private:
             lastWidgetRenderResult_, axis, sample.deltaDip, viewport,
             &planDiagnostic);
         if (!plan) {
+            if (planDiagnostic.disposition == widgetrail::FocusedFreeScrollPlanDisposition::OffsetBoundary) {
+                continuousScrollFrames_.BlockLastFrame();
+                heldDpadBoundaryStop_ = heldDpad;
+            }
             const auto rectText = [](const widgetrail::declarative::Rect value) {
                 return std::to_wstring(value.x) + L"," +
                     std::to_wstring(value.y) + L"," +
@@ -11577,7 +11622,7 @@ private:
             plan->offset < plan->priorOffset
                 ? widgetrail::input::ScrollPaginationEdge::Before
                 : widgetrail::input::ScrollPaginationEdge::After,
-            heldDirection ? widgetrail::input::ScrollPaginationIntentSource::DirectionalNavigation :
+            heldDpad ? widgetrail::input::ScrollPaginationIntentSource::HeldDpad :
                 widgetrail::input::ScrollPaginationIntentSource::RightStick);
 
         const bool newBinding = !priorFreeScrollBinding ||
@@ -11743,6 +11788,7 @@ private:
                 textEntryModal_.UpdateControllerRepeat({}, now);
             heldDpadScroll_.Reset();
             heldDpadLandingX_.reset();
+            continuousScrollFrames_.Clear();
             return;
         }
         if (viewMenuShortcutEnabled_) {
@@ -11771,10 +11817,17 @@ private:
         const WORD buttons = frame.state.buttons;
         const WORD pressed = frame.pressedButtons;
         const WORD released = frame.releasedButtons;
-        if (!connected || !foregroundOwned || trayContextMenu_ || widgetContextMenu_ || textEntryModal_.active() ||
+        constexpr WORD directions = XINPUT_GAMEPAD_DPAD_UP | XINPUT_GAMEPAD_DPAD_DOWN |
+            XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT;
+        if ((pressed & ~directions) != 0 || frame.leftTriggerPressed || frame.rightTriggerPressed)
+            continuousScrollFrames_.Clear();
+        if (!connected || !foregroundOwned || trayContextMenu_ || widgetContextMenu_ || interactionSession_.selectPopup() || textEntryModal_.active() ||
+            textEntryControllerPhase_ != TextEntryControllerPhase::None || pinnedSurfaceCoordinator_.controllerFocused() ||
+            OverlayFullscreenMediaRequested() || RadialSwitcherOpen() ||
             state_.surface() != widgetrail::Surface::Widget || state_.focusRegion() != widgetrail::FocusRegion::Widget) {
             heldDpadScroll_.Reset();
             heldDpadLandingX_.reset();
+            continuousScrollFrames_.Clear();
         } else if ((buttons & (XINPUT_GAMEPAD_DPAD_UP | XINPUT_GAMEPAD_DPAD_DOWN)) == 0) {
             (void)heldDpadScroll_.Update(0, false, {}, now);
         }
@@ -12433,13 +12486,27 @@ private:
             std::abs(static_cast<int>(frame.state.rightThumbY)) > 8000;
         const int heldDirection = ((frame.state.buttons & XINPUT_GAMEPAD_DPAD_DOWN) != 0) -
             ((frame.state.buttons & XINPUT_GAMEPAD_DPAD_UP) != 0);
-        const bool heldEligible = holdDpadToScroll_ && heldDirection != 0 && !radialInput && !focusActionPressed && !physicalScroll &&
+        bool heldEligible = holdDpadToScroll_ && heldDirection != 0 && !radialInput && !focusActionPressed && !physicalScroll && !stickDirection &&
             (frame.state.buttons & (XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT)) == 0;
+        if (heldEligible) {
+            const auto* media = RichMediaProofSession();
+            heldEligible = !media || !media->coordinator ||
+                media->coordinator->state().lifecycle != widgetrail::richmedia::Lifecycle::Visible;
+        }
         const auto heldOwner = heldEligible ? HeldDpadScrollOwner() : std::wstring{};
         const auto heldScroll = heldDpadScroll_.Update(heldDirection, heldEligible && !heldOwner.empty(), heldOwner, now);
         if (physicalScroll) { heldDpadLandingX_.reset(); heldDpadTravelDirection_ = 0; }
         if (heldScroll.started) {
             heldDpadLandingX_.reset();
+            if (const auto* snapshot = InteractionSnapshotFor(state_.activeWidget())) {
+                const auto owner = widgetrail::input::ResolveFocusedScrollOwner(snapshot->root,
+                    interactionSession_.focusedElementId(), widgetrail::declarative::ScrollAxis::Vertical,
+                    snapshot->activeInputScopeId, lastWidgetRenderResult_);
+                if (owner.disposition == widgetrail::input::FocusedScrollResolutionDisposition::Resolved)
+                    ObserveScrollPaginationIntent(state_.activeWidget(), *snapshot, owner.scrollId, owner.axis,
+                        heldScroll.direction > 0 ? widgetrail::input::ScrollPaginationEdge::After : widgetrail::input::ScrollPaginationEdge::Before,
+                        widgetrail::input::ScrollPaginationIntentSource::HeldDpad);
+            }
             const auto target = lastWidgetRenderResult_.navigationRects.find(interactionSession_.focusedElementId());
             if (target != lastWidgetRenderResult_.navigationRects.end())
                 heldDpadLandingX_ = target->second.x + target->second.width * .5F;
@@ -12448,6 +12515,7 @@ private:
         const bool rightStickMoving = !focusActionPressed && radialRightStick_.allowScroll() &&
             HandleContinuousFreeScroll(frame, now, heldScroll.active ? std::optional<int>{heldScroll.direction} : std::nullopt);
         const auto reentryDirection = stickDirection ? stickDirection : dpadDirection;
+        if (!rightStickMoving && reentryDirection) continuousScrollFrames_.Clear();
         const bool reentryConsumed = !rightStickMoving && reentryDirection &&
             ConsumeFreeScrollReentry(*reentryDirection);
         if (!radialInput && !rightStickMoving && !reentryConsumed) {
@@ -19260,6 +19328,9 @@ private:
     bool viewMenuShortcutEnabled_{};
     bool holdDpadToScroll_{};
     widgetrail::input::HeldDpadScroll heldDpadScroll_;
+    widgetrail::input::ContinuousScrollFrames continuousScrollFrames_;
+    bool queuedScrollIsHeldDpad_{};
+    bool heldDpadBoundaryStop_{};
     std::optional<float> heldDpadLandingX_;
     int heldDpadTravelDirection_{};
     bool controllerPreferenceEnabled_{};

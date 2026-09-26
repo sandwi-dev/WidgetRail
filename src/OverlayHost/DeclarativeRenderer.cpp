@@ -425,6 +425,7 @@ struct DeclarativeRenderer::RenderPass final {
         Rect ancestorClip;
         DeclarativeMotionSample motion;
     };
+    bool windowDecorations{};
 
     enum class FocusFollowPhase {
         Layout,
@@ -866,6 +867,7 @@ struct DeclarativeRenderer::RenderPass final {
         const float fallbackParentWidth, const float fallbackParentHeight,
         const float parentFontSize, const std::optional<NativeColor>& inheritedBackground,
         const std::wstring_view inheritedScope) {
+        ++result.timing.preparedNodes;
         auto parentWidth = fallbackParentWidth;
         auto parentHeight = fallbackParentHeight;
         if (!parentId.empty()) {
@@ -3003,6 +3005,34 @@ struct DeclarativeRenderer::RenderPass final {
                                const std::wstring_view inheritedScope) -> void {
             const auto id = NarrowStableId(node.id);
             if (!layout.Find(id)) return;
+            if (windowDecorations && node.id != focusedId && node.id != pressedId) {
+                const auto& cache = *owner->incrementalLayoutCache_;
+                if (const auto item = cache.viewportItems.find(node.id); item != cache.viewportItems.end()) {
+                    const auto* box = layout.Find(id);
+                    const auto* scroll = layout.Find(NarrowStableId(item->second));
+                    const auto prior = cache.nodes.find(node.id);
+                    if (box && scroll && prior != cache.nodes.end()) {
+                        auto horizon = scroll->contentBox;
+                        if (scroll->scrollAxis == declarative::ScrollAxis::Vertical) {
+                            horizon.y -= box->borderBox.height;
+                            horizon.height += 2 * box->borderBox.height;
+                        } else {
+                            horizon.x -= box->borderBox.width;
+                            horizon.width += 2 * box->borderBox.width;
+                        }
+                        const auto overlap = Intersection(box->borderBox, horizon);
+                        if (overlap.width <= 0 || overlap.height <= 0) {
+                            // Keep the actionable root's geometry/scope. Its
+                            // noninteractive decoration has no viewport work.
+                            const auto& cached = prior->second;
+                            prepared[id] = {&node, cached.baseStyle, cached.baseStyle, id, cached.effectiveBackground, cached.styleContext,
+                                ResolveInputScope(node, inheritedScope), parent};
+                            ++result.timing.deferredViewportItems;
+                            return;
+                        }
+                    }
+                }
+            }
             PrepareStyle(node, parent, viewport.width, viewport.height, font, background, inheritedScope);
             const auto inputScope = prepared.at(id).inputScope;
             const auto style = prepared.at(id).baseStyle;
@@ -6173,6 +6203,10 @@ RenderResult DeclarativeRenderer::Render(
         pass.textMeasurementQueries = incrementalLayoutCache_->textMeasurementQueries;
         if (pendingIncrementalPlan_->work == IncrementalPresentationWork::PaintOnly ||
             pendingIncrementalPlan_->work == IncrementalPresentationWork::ScrollOnly) {
+            pass.windowDecorations = incrementalLayoutCache_->sequence == snapshot.sequence && !options.collectInspection &&
+                incrementalLayoutCache_->options.pressedElementId == options.pressedElementId &&
+                incrementalLayoutCache_->options.packageContentDigest == options.packageContentDigest &&
+                incrementalLayoutCache_->options.compositorWidgetTransitions == options.compositorWidgetTransitions;
             pass.ProjectScrollOffsets();
             pass.PrepareAgainstCurrentLayout();
         } else if (!pass.BuildLocalLayout(
@@ -6354,9 +6388,27 @@ RenderResult DeclarativeRenderer::Render(
                 descendantBoundary = node.id;
             }
             IncrementalNodeState state;
+            if (pass.windowDecorations && prepared == pass.prepared.end() && incrementalLayoutCache_) {
+                if (const auto prior = incrementalLayoutCache_->nodes.find(node.id); prior != incrementalLayoutCache_->nodes.end()) {
+                    state = prior->second;
+                    state.paintBounds = {};
+                    state.visibleBounds = {};
+                    if (const auto* box = cache.layout.Find(narrowId)) {
+                        state.borderBox = box->borderBox;
+                        state.ancestorClip = box->visibleBox;
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+                        // Geometry probes describe the retained logical layout,
+                        // including decoration that was not prepared or painted.
+                        pass.result.elementRects[node.id] = box->borderBox;
+                        pass.result.elementVisibleRects[node.id] = box->visibleBox;
+#endif
+                    }
+                }
+            }
             if (prepared != pass.prepared.end()) {
                 state.baseStyle = prepared->second.baseStyle;
                 state.styleContext = prepared->second.context;
+                state.effectiveBackground = prepared->second.effectiveBackground;
             }
             state.parentId = parentId;
             state.safeBoundaryId = std::wstring{inheritedBoundary};
@@ -6416,6 +6468,39 @@ RenderResult DeclarativeRenderer::Render(
                 self(self, child, node.id, descendantBoundary);
         };
         retain(retain, snapshot.root, std::wstring_view{}, std::wstring_view{});
+        if (pass.windowDecorations && incrementalLayoutCache_) {
+            cache.viewportItems = incrementalLayoutCache_->viewportItems;
+        } else {
+            const auto decoration = [&](const auto& self, const WidgetNode& node) -> bool {
+                if (!node.inputScopeId.empty() || !node.initialChildFocusId.empty() || node.transition ||
+                    (node.kind != L"stack" && node.kind != L"row" && node.kind != L"grid" &&
+                     node.kind != L"text" && node.kind != L"image" && node.kind != L"icon" &&
+                     node.kind != L"controllerGlyph" && node.kind != L"progress" && node.kind != L"spacer")) return false;
+                const auto style = cache.nodes.find(node.id);
+                if (style == cache.nodes.end() || style->second.baseStyle.translateXPx() != 0 ||
+                    style->second.baseStyle.translateYPx() != 0 || style->second.baseStyle.scale() != 1) return false;
+                return std::all_of(node.children.begin(), node.children.end(), [&](const auto& child) { return self(self, child); });
+            };
+            const auto indexItems = [&](const auto& self, const WidgetNode& node, std::wstring_view parentKind,
+                                        std::wstring_view scrollId, unsigned scrollDepth, bool regular) -> void {
+                const auto prepared = pass.prepared.find(NarrowStableId(node.id));
+                if (prepared == pass.prepared.end()) return;
+                const auto& style = prepared->second.baseStyle;
+                regular = regular && (!node.transition || options.compositorWidgetTransitions) &&
+                    style.translateXPx() == 0 && style.translateYPx() == 0;
+                if (node.kind == L"scroll") { scrollId = node.id; ++scrollDepth; }
+                if (regular && scrollDepth == 1 && style.scale() == 1 &&
+                    ((node.kind == L"button" && node.children.empty()) ||
+                     (node.kind == L"actionSurface" && style.overflow() == NativeOverflow::Clip)) &&
+                    (parentKind == L"grid" || parentKind == L"stack" || parentKind == L"row" || parentKind == L"scroll") &&
+                    std::all_of(node.children.begin(), node.children.end(), [&](const auto& child) { return decoration(decoration, child); }))
+                    cache.viewportItems.emplace(node.id, scrollId);
+                regular = regular && node.kind != L"actionSurface" && node.kind != L"modalLayer" &&
+                    node.kind != L"focusPresentationSurface" && style.scale() == 1;
+                for (const auto& child : node.children) self(self, child, node.kind, scrollId, scrollDepth, regular);
+            };
+            indexItems(indexItems, snapshot.root, {}, {}, 0, true);
+        }
         pass.result.inspection = std::move(inspection);
         if (!pass.focusedId.empty()) {
             if (const auto boundary =
@@ -6453,6 +6538,8 @@ RenderResult DeclarativeRenderer::Render(
             std::chrono::duration_cast<std::chrono::microseconds>(
                 finished - started).count());
     };
+    const auto preparedNodes = pass.result.timing.preparedNodes;
+    const auto deferredViewportItems = pass.result.timing.deferredViewportItems;
     pass.result.timing = DeclarativeRenderTiming{
         elapsed(renderStarted, finalizationFinished),
         elapsed(renderStarted, preparationFinished),
@@ -6468,6 +6555,8 @@ RenderResult DeclarativeRenderer::Render(
         pass.result.timing.compositionPaintedBytes = pass.result.widgetComposition->paintedBytes;
     }
     pass.result.timing.snapshotComparisonMicroseconds = snapshotComparisonMicroseconds;
+    pass.result.timing.preparedNodes = preparedNodes;
+    pass.result.timing.deferredViewportItems = deferredViewportItems;
     pass.result.timing.updatePlanningMicroseconds = updatePlanningMicroseconds;
     pass.result.timing.styleResolutionMicroseconds = pass.styleNanoseconds / 1000;
     pass.result.timing.textMeasurementMicroseconds = pass.textNanoseconds / 1000;

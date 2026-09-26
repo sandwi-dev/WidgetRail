@@ -1,5 +1,6 @@
 #include "DeclarativeRenderer.h"
 #include "WidgetBridgeClient.h"
+#include "ControllerNavigation.h"
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <algorithm>
@@ -32,16 +33,34 @@ const WidgetNode* Find(const WidgetNode& node, std::wstring_view id) {
     for (const auto& child : node.children) if (auto* found = Find(child, id)) return found;
     return nullptr;
 }
+WidgetNode* Find(WidgetNode& node, std::wstring_view id) {
+    if (node.id == id) return &node;
+    for (auto& child : node.children) if (auto* found = Find(child, id)) return found;
+    return nullptr;
+}
 const WidgetNode* FirstControl(const WidgetNode& node) {
     if (node.kind == L"actionSurface" || node.kind == L"button") return &node;
     for (const auto& child : node.children) if (auto* found = FirstControl(child)) return found;
     return nullptr;
 }
+WidgetNode* ParentOf(WidgetNode& node, std::wstring_view id) {
+    for (auto& child : node.children) {
+        if (child.id == id) return &node;
+        if (auto* parent = ParentOf(child, id)) return parent;
+    }
+    return nullptr;
+}
+void Reidentify(WidgetNode& node, const std::wstring& suffix) {
+    node.id += suffix;
+    if (!node.collectionItemKey.empty()) node.collectionItemKey += suffix;
+    for (auto& child : node.children) Reidentify(child, suffix);
+}
 }
 
 int wmain(int argc, wchar_t** argv) {
     try {
-        Require(argc == 2, "Usage: ScrollWorkloadProbe <renderer-fixture.json>");
+        Require(argc == 2 || (argc == 3 && std::wstring_view(argv[2]) == L"--cadence"),
+            "Usage: ScrollWorkloadProbe <renderer-fixture.json> [--cadence]");
         std::ifstream file(std::filesystem::path(argv[1]), std::ios::binary);
         Require(static_cast<bool>(file), "Fixture missing");
         std::string payload{std::istreambuf_iterator<char>(file), {}};
@@ -101,6 +120,73 @@ int wmain(int argc, wchar_t** argv) {
         const auto* control = root ? FirstControl(*root) : nullptr;
         Require(control != nullptr, "Fixture scroll has no control"); focus = control->id;
         for (int i = 0; i < 3; ++i) initial = draw();
+        if (argc == 3) {
+            using namespace widgetrail::input;
+            ContinuousScrollFrames frames;
+            const auto movementAxis = axis == declarative::ScrollAxis::Vertical ? FreeScrollAxis::Vertical : FreeScrollAxis::Horizontal;
+            const auto offer = [&](float delta, std::wstring_view authority = L"view-1") {
+                return frames.Offer({movementAxis, delta, true, false}, authority);
+            };
+            std::size_t inputs{}, paints{};
+            for (int frame = 0; frame < 12; ++frame) {
+                for (int input = 0; input < 4; ++input) { Require(offer(2), "Input not queued"); ++inputs; }
+                const auto sample = frames.Take(L"view-1");
+                Require(sample && sample->deltaDip == 8 && !frames.Take(L"view-1"), "A paint did not consume exactly one coalesced movement");
+                const auto plan = renderer.PlanFocusedFreeScroll(*snapshot, focus, axis, sample->deltaDip, viewport, scrollId);
+                Require(plan.has_value(), "Cadence scroll did not plan");
+                initial = draw(); ++paints;
+            }
+            Require(renderer.PlanFocusedFreeScroll(*snapshot, focus, axis, 1e9F, viewport, scrollId).has_value(), "Cannot reach loaded boundary");
+            initial = draw();
+            const float boundary = initial.scrollViewports.at(scrollId).offset;
+            Require(offer(12), "Boundary probe not queued");
+            const auto edgeSample = frames.Take(L"view-1");
+            FocusedFreeScrollPlanDiagnostic diagnostic;
+            Require(!renderer.PlanFocusedFreeScroll(*snapshot, focus, axis, edgeSample->deltaDip, viewport, scrollId, &diagnostic) &&
+                diagnostic.disposition == FocusedFreeScrollPlanDisposition::OffsetBoundary, "Loaded boundary did not stop movement");
+            frames.BlockLastFrame();
+            for (int input = 0; input < 200; ++input) Require(!offer(12), "Blocked input manufactured another frame");
+            Require(!frames.pending(), "Loading boundary retained movement debt");
+
+            auto* parent = ParentOf(snapshot->root, focus);
+            Require(parent != nullptr, "Fixture item parent missing");
+            const auto prototype = *Find(snapshot->root, focus);
+            for (int item = 0; item < 24; ++item) {
+                auto next = prototype;
+                Reidentify(next, L".arrived." + std::to_wstring(item));
+                parent->children.push_back(std::move(next));
+            }
+            auto* arrivingScroll = Find(snapshot->root, scrollId);
+            arrivingScroll->collectionGeneration = arrivingScroll->collectionGeneration.value_or(0) + 1;
+            if (auto& window = arrivingScroll->virtualCollectionWindow; window) {
+                ++window->requestGeneration;
+                window->change = VirtualCollectionWindowChange::Append;
+                // The synthetic page extends the provider's earlier estimate.
+                // Keep it unknown instead of publishing a total smaller than
+                // the now-realized window. This is an append, never a reset.
+                window->totalItemCount.reset();
+                window->hasAfter = false;
+            }
+            ++snapshot->sequence;
+            initial = draw();
+            Require(std::abs(initial.scrollViewports.at(scrollId).offset - boundary) < .01F, "Page arrival moved the existing viewport anchor");
+            Require(offer(3, L"view-2"), "New range failed to resume");
+            const auto arrived = frames.Take(L"view-2");
+            Require(arrived && arrived->deltaDip == 3, "New range replayed old movement");
+            const auto resumed = renderer.PlanFocusedFreeScroll(*snapshot, focus, axis, arrived->deltaDip, viewport, scrollId);
+            Require(resumed && std::abs(resumed->offset - boundary - 3) < .01F, "Newly loaded items failed to extend the range");
+            initial = draw();
+            (void)offer(5, L"view-2"); (void)offer(-4, L"view-2");
+            const auto reverse = frames.Take(L"view-2");
+            Require(reverse && reverse->deltaDip == -4, "Reversal retained old direction");
+            Require(renderer.PlanFocusedFreeScroll(*snapshot, focus, axis, reverse->deltaDip, viewport, scrollId).has_value(), "Reverse scroll failed");
+            initial = draw();
+            (void)offer(5, L"view-2");
+            Require(!frames.Take(L"modal-scope") && !frames.pending(), "Another input scope inherited pending movement");
+            std::cout << "SCROLL-CADENCE inputs=" << inputs << " paints=" << paints
+                << " blocked-inputs=200 page-arrival=passed reversal=passed scope-cancel=passed\n";
+            return 0;
+        }
         for (const float fraction : {0.0F, .65F}) {
             const auto state = initial.scrollViewports.at(scrollId);
             const float distance = state.maximumOffset * fraction - state.offset;
@@ -108,7 +194,7 @@ int wmain(int argc, wchar_t** argv) {
                 Require(renderer.PlanFocusedFreeScroll(*snapshot, focus, axis, distance, viewport, scrollId).has_value(), "Positioning failed");
             initial = draw();
             std::vector<std::uint64_t> times, paint, preparation;
-            std::uint64_t hits{}, misses{}, bytes{};
+            std::uint64_t hits{}, misses{}, bytes{}, preparedNodes{}, deferredItems{};
             std::map<std::wstring, std::weak_ptr<void>> leases;
             std::map<std::wstring, std::uint64_t> changedBytes;
             for (const auto& node : initial.widgetComposition->nodes) leases[node.id] = node.rasterLease;
@@ -117,6 +203,7 @@ int wmain(int argc, wchar_t** argv) {
                 initial = draw(); const auto& timing = initial.timing;
                 times.push_back(timing.totalMicroseconds); paint.push_back(timing.nodeDrawMicroseconds); preparation.push_back(timing.preparationMicroseconds);
                 hits += timing.compositionPaintHits; misses += timing.compositionPaintMisses; bytes += timing.compositionPaintedBytes;
+                preparedNodes += timing.preparedNodes; deferredItems += timing.deferredViewportItems;
                 for (const auto& node : initial.widgetComposition->nodes) {
                     if (!node.bitmap || !node.rasterLease) continue;
                     const std::weak_ptr<void> current = node.rasterLease;
@@ -132,7 +219,8 @@ int wmain(int argc, wchar_t** argv) {
             std::cout << "WIDGET-SCROLL fraction=" << fraction << " median-us=" << times[24] << " p95-us=" << times[45]
                 << " paint-median-us=" << paint[24] << " prepare-median-us=" << preparation[24]
                 << " hits=" << hits << " misses=" << misses << " painted-bytes=" << bytes
-                << " compositor-background=" << initial.compositorBackground.has_value() << '\n';
+                << " compositor-background=" << initial.compositorBackground.has_value()
+                << " prepared-nodes=" << preparedNodes / 48 << " deferred-items=" << deferredItems / 48 << '\n';
             std::vector<std::pair<std::uint64_t, std::wstring>> largest;
             for (const auto& [id, size] : changedBytes) largest.emplace_back(size, id);
             std::sort(largest.rbegin(), largest.rend());

@@ -103,6 +103,26 @@ The full-item capture uses its pixel-aligned raster envelope rather than an extr
 fractional shadow clip. Shadow padding must not become a changing paint dependency
 as an otherwise unchanged item moves through the viewport.
 
+For a retained immutable view, regular rows/grids also keep an index of eligible
+item roots. Style/presentation work covers the viewport plus one item extent on
+each scrolling edge. Beyond that horizon, the host reuses the root's immutable
+style and retains logical layout/navigation while deferring its decorative
+descendants. Buttons and clipped action surfaces qualify; nested interactive
+children, nested scrolling, transformed ancestry, modal/presentation layers and
+unusual decoration keep the full preparation path. Focused/pressed items are
+always prepared. New snapshots, themes, scale changes and inspection rebuild or
+validate the index through the existing layout authority. This is independent of
+the item bitmap cache, and does not remove offscreen focus or accessibility data.
+
+Continuous controller movement is coalesced by `ContinuousScrollFrames` and
+consumed once immediately before `WM_PAINT`. It retains at most one bounded
+kinetic interval, replaces unpainted movement on reversal, and discards stale-view
+input. Reaching a loaded boundary blocks more movement until the admitted view
+changes, direction reverses or a fresh gesture starts. Inputs received while
+blocked do not accumulate distance. Held-D-pad focus settles after the boundary
+frame commits, as well as after release. The existing scroll offset, pagination,
+refresh and input-scope authorities still decide whether movement may apply.
+
 ## Diagnostics
 
 Slow-frame logging now splits style resolution, text measurement, layout computation,
@@ -146,6 +166,10 @@ and run the native `ScrollWorkloadProbe`. This probe has no renderer test geomet
 instrumentation, honors the widget's surface hints, and substitutes deterministic
 in-memory artwork. It reports near-start/deep scrolling and the largest changed
 raster bands. It does not measure provider/network delay or display FPS.
+The probe also reports `prepared-nodes` and `deferred-items` so viewport work can
+be distinguished from raster reuse. Run the built probe with an additional
+`--cadence` argument to exercise coalesced input, a loaded-range stop, synthetic
+page arrival, reversal and scope cancellation using the same real-widget layout.
 
 For physical evidence, launch with `--scroll-diagnostics-quiet`, exercise the
 widget, then hide the overlay. The bounded in-memory trace is saved under

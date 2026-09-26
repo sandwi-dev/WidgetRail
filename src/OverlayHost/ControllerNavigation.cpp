@@ -42,6 +42,41 @@ void HeldDpadScroll::Reset() noexcept {
     owner_.clear(); pressedAt_ = 0; direction_ = 0; active_ = false; blocked_ = true;
 }
 
+bool ContinuousScrollFrames::Offer(RightStickScrollUpdate sample, std::wstring_view owner) {
+    if (owner.empty() || !sample.moving || sample.axis == FreeScrollAxis::None || !std::isfinite(sample.deltaDip))
+        return false;
+    if (owner_ != owner) { Clear(); owner_ = owner; }
+    const int direction = sample.deltaDip > 0 ? 1 : sample.deltaDip < 0 ? -1 : 0;
+    if (!direction) return false;
+    if (sample.axis != lastAxis_ || direction != lastDirection_) {
+        pending_.reset();
+        blocked_ = false;
+    }
+    lastAxis_ = sample.axis;
+    lastDirection_ = direction;
+    if (blocked_) return false;
+    // Match the kinetic sampler's maximum elapsed interval. A stalled painter
+    // receives one bounded update, never a queue of old navigation commands.
+    constexpr float maximumDelta = kRightStickMaximumScrollRateDipPerSecond *
+        static_cast<float>(kRightStickMaximumSampleMilliseconds) / 1000;
+    sample.deltaDip = std::clamp(sample.deltaDip + (pending_ ? pending_->deltaDip : 0), -maximumDelta, maximumDelta);
+    pending_ = sample;
+    return true;
+}
+
+std::optional<RightStickScrollUpdate> ContinuousScrollFrames::Take(std::wstring_view owner) {
+    if (owner.empty() || owner != owner_) { Clear(); return std::nullopt; }
+    auto result = pending_;
+    pending_.reset();
+    return result;
+}
+
+void ContinuousScrollFrames::BlockLastFrame() noexcept { pending_.reset(); blocked_ = true; }
+void ContinuousScrollFrames::Neutral() noexcept { blocked_ = false; }
+void ContinuousScrollFrames::Clear() noexcept {
+    pending_.reset(); owner_.clear(); lastAxis_ = FreeScrollAxis::None; lastDirection_ = 0; blocked_ = false;
+}
+
 RightStickScrollUpdate RightStickScrollKinetics::Update(
     const short x,
     const short y,
