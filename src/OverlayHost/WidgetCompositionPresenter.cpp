@@ -255,9 +255,13 @@ WidgetCompositionPresenter::Rect WidgetCompositionPresenter::CaptureBounds(const
     if (group.node.kind == WidgetCompositionKind::Focus) {
         for (const auto &child : scene_->nodes) {
             if (child.parent != group.node.id || child.kind != WidgetCompositionKind::Raster) continue;
-            const auto childRight = std::max(bounds.x + bounds.width, child.bounds.x + child.bounds.width);
-            const auto childBottom = std::max(bounds.y + bounds.height, child.bounds.y + child.bounds.height);
-            bounds.x = std::min(bounds.x, child.bounds.x); bounds.y = std::min(bounds.y, child.bounds.y);
+            const auto transform = animation::Map(group.node.bounds, pose);
+            const Rect painted{child.bounds.x * transform.scaleX + transform.offsetX,
+                child.bounds.y * transform.scaleY + transform.offsetY,
+                child.bounds.width * transform.scaleX, child.bounds.height * transform.scaleY};
+            const auto childRight = std::max(bounds.x + bounds.width, painted.x + painted.width);
+            const auto childBottom = std::max(bounds.y + bounds.height, painted.y + painted.height);
+            bounds.x = std::min(bounds.x, painted.x); bounds.y = std::min(bounds.y, painted.y);
             bounds.width = childRight - bounds.x; bounds.height = childBottom - bounds.y;
         }
     }
@@ -336,7 +340,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         return S_OK;
     }
     const auto retainFocus = [&](const Group &group) {
-        if (scene->animations.focus != animation::FocusStyle::Fade || scene->reducedMotion) return false;
+        if (!animation::InPlaceFocus(scene->animations.focus) || scene->reducedMotion) return false;
         const auto target = std::find_if(scene->focusTargets.begin(), scene->focusTargets.end(), [&](const auto &item) {
             return item.key == group.node.key && item.scope == group.node.clock &&
                 Same(item.bounds, group.node.bounds) && Same(item.clip, group.node.clip);
@@ -410,8 +414,10 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
             if (FAILED(hr)) return hr;
             group.closing = true;
             group.resumeOpacity = Sample(group.motion, now).opacity;
+            group.resumeFocusBounds = Sample(group.motion, now).bounds;
             // Capture already contains the sampled alpha; fade that image once.
-            group.exit = animation::FocusFade(group.previous.node.bounds, group.node.clip, 1, 0)
+            group.exit = animation::FocusFade(group.previous.node.bounds, group.node.clip, 1, 0,
+                animation::FocusDuration(scene->animations.focus))
                 .Start(now, Frequency(), scene->animations.speed);
         }
     }
@@ -526,8 +532,10 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
             !existed || !Same(group.node.bounds, node.bounds) || !Same(group.node.clip, node.clip);
         auto previous = group.closing ? Sample(group.exit, now) : Sample(group.motion, now);
         const bool reopening = group.closing;
-        if (reopening)
+        if (reopening) {
             previous.opacity *= group.resumeOpacity;
+            if (node.kind == WidgetCompositionKind::Focus) previous.bounds = group.resumeFocusBounds;
+        }
         const auto previousEnd = group.motion.start + group.motion.duration;
         const auto previousMotion = group.motion;
         const auto priorOrder = group.node.order;
@@ -558,9 +566,12 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
             auto recipe = animation::Stationary(node.bounds, node.clip);
             if (node.kind == WidgetCompositionKind::Focus) {
                 group.focusOrigin.reset();
-                if (scene_->animations.focus == animation::FocusStyle::Fade) {
-                    recipe = animation::FocusFade(node.bounds, node.clip,
-                        existed ? previous.opacity : cold ? 1.0F : 0.0F, 1);
+                if (animation::InPlaceFocus(scene_->animations.focus)) {
+                    // Geometry/scope changes invalidate a sampled pose. First
+                    // presentation also snaps; same-target updates retain their clock.
+                    if (!cold && !(existed && (boundsChanged || contextChanged)))
+                        recipe = animation::FocusEnter(scene_->animations.focus, node.bounds, node.clip,
+                            existed ? std::optional<Pose>{previous} : std::nullopt);
                 } else if (scene_->animations.focus == animation::FocusStyle::Slide && moveFocus) {
                     recipe = animation::FocusMove(node.bounds, node.clip, previous);
                     if (!scene_->reducedMotion) group.focusOrigin = priorFocus;
@@ -578,8 +589,8 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
                 // Slide instead binds its disjoint reveal to the moving outline.
                 const float weight = surfaceFocused ? 1.0F : 0.0F;
                 recipe = animation::FocusFade(node.bounds, node.clip,
-                    existed && !changed && !boundsChanged && !contextChanged ? previous.opacity : weight, weight);
-                if (scene_->animations.focus != animation::FocusStyle::Fade) recipe.milliseconds = 0;
+                    existed && !changed && !boundsChanged && !contextChanged ? previous.opacity : weight, weight,
+                    animation::InPlaceFocus(scene_->animations.focus) ? animation::FocusDuration(scene_->animations.focus) : 0);
             } else if (node.kind == WidgetCompositionKind::Content) {
                 if (existed && (changed || previousEnd > now)) {
                     const auto plan = animation::Section(scene_->animations.section, node.bounds, node.clip,

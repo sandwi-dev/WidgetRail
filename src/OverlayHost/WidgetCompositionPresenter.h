@@ -57,6 +57,7 @@ class WidgetCompositionPresenter final {
         bool closing{};
         int direction{1};
         float resumeOpacity{1};
+        Rect resumeFocusBounds;
         std::size_t paintOrder{};
     };
     IDCompositionDevice2 *device_{};

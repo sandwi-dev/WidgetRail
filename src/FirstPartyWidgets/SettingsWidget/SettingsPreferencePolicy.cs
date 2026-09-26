@@ -236,6 +236,8 @@ internal static class SettingsPreferencePolicy
                 SettingsPreferenceKind.ReducedTransparency,
                 "Transparency preference saved"),
             "widget-switcher.toggle" => new(SettingsPreferenceKind.WidgetSwitcher, "Widget switcher layout saved"),
+            "focus-animation.settle" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",
+                FocusAnimation: WidgetFocusAnimation.Settle),
             "focus-animation.fade" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",
                 FocusAnimation: WidgetFocusAnimation.Fade),
             "focus-animation.slide" => new(SettingsPreferenceKind.FocusAnimation, "Focus animation saved",

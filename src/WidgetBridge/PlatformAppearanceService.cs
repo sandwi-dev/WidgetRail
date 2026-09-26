@@ -21,7 +21,7 @@ public sealed record BridgePlatformAppearance
     public required bool BoldText { get; init; }
     public required TransparencyPreference Transparency { get; init; }
     public required bool AnimateWidgetSwitching { get; init; }
-    public string FocusAnimation { get; init; } = "fade";
+    public string FocusAnimation { get; init; } = "settle";
     public string SectionAnimation { get; init; } = "slide";
     public bool AnimateWidgetModals { get; init; } = true;
     public string ModalAnimation { get; init; } = "zoom";

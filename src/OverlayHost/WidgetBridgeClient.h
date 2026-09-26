@@ -781,7 +781,7 @@ struct PlatformAppearance final {
     bool boldText{};
     PlatformTransparencyPreference transparency{PlatformTransparencyPreference::Full};
     bool animateWidgetSwitching{};
-    std::wstring focusAnimation{L"fade"};
+    std::wstring focusAnimation{L"settle"};
     std::wstring sectionAnimation{L"slide"};
     bool animateWidgetModals{true};
     std::wstring modalAnimation{L"zoom"};

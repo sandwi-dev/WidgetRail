@@ -12,9 +12,28 @@ using Rect = declarative::Rect;
 
 enum class SectionStyle { Paging, Slide, None, VerticalSlide, Reveal, CoverSlide };
 enum class ModalStyle { Lift, None, Zoom };
-enum class FocusStyle { Fade, Slide, None };
+enum class FocusStyle { Fade, Slide, None, Settle };
+struct FocusPreset {
+    std::wstring_view id, label;
+    FocusStyle style;
+    unsigned milliseconds;
+    bool inPlace;
+};
+inline constexpr std::array FocusPresets{
+    FocusPreset{L"settle", L"Settle", FocusStyle::Settle, 180, true},
+    FocusPreset{L"fade", L"Fade", FocusStyle::Fade, 120, true},
+    FocusPreset{L"slide", L"Slide", FocusStyle::Slide, 140, false},
+    FocusPreset{L"none", L"None", FocusStyle::None, 0, false},
+};
 constexpr FocusStyle ParseFocusStyle(std::wstring_view id) noexcept {
-    return id == L"slide" ? FocusStyle::Slide : id == L"none" ? FocusStyle::None : FocusStyle::Fade;
+    for (const auto &preset : FocusPresets)
+        if (preset.id == id) return preset.style;
+    return FocusStyle::Settle;
+}
+constexpr const FocusPreset &FocusPresetFor(FocusStyle style) noexcept {
+    for (const auto &preset : FocusPresets)
+        if (preset.style == style) return preset;
+    return FocusPresets.front();
 }
 
 // Host preferences, independent of widget declarations and graphics resources.
@@ -47,7 +66,7 @@ struct Options {
     SectionStyle section{SectionStyle::Slide};
     ModalStyle modal{ModalStyle::Zoom};
     double speed{1};
-    FocusStyle focus{FocusStyle::Fade};
+    FocusStyle focus{FocusStyle::Settle};
     bool operator==(const Options &) const = default;
 };
 

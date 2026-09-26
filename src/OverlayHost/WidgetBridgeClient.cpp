@@ -899,7 +899,8 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     if (payload.HasKey(L"focusAnimation")) {
         const auto value = payload.GetNamedValue(L"focusAnimation");
         if (value.ValueType() != JsonValueType::String ||
-            (value.GetString() != L"fade" && value.GetString() != L"slide" && value.GetString() != L"none")) {
+            (value.GetString() != L"settle" && value.GetString() != L"fade" &&
+             value.GetString() != L"slide" && value.GetString() != L"none")) {
             error = L"Invalid focus animation."; return std::nullopt;
         }
         appearance.focusAnimation = value.GetString();

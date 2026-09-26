@@ -385,6 +385,7 @@ internal static class SettingsPresentation
                     "overlay.widget-switcher.help").Classes("page-help", "widget-switcher-help"),
                 UI.Select("Focus animation", new SelectOption[]
                 {
+                    new("settle", "Settle", "focus-animation.settle", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Settle),
                     new("fade", "Fade", "focus-animation.fade", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Fade),
                     new("slide", "Slide", "focus-animation.slide", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Slide),
                     new("none", "None", "focus-animation.none", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.None),

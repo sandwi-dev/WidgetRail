@@ -433,13 +433,13 @@ static async Task AnimationPreferences()
         Assert.Equal(expected, (await Store(temp.Path).LoadAsync()).Appearance.SectionAnimation);
         Assert.Equal(SettingsPage.Overlay, widget.CurrentPage);
     }
-    foreach (var (id, expected) in new[] { ("fade", WidgetFocusAnimation.Fade), ("slide", WidgetFocusAnimation.Slide), ("none", WidgetFocusAnimation.None) })
+    foreach (var (id, expected) in new[] { ("settle", WidgetFocusAnimation.Settle), ("fade", WidgetFocusAnimation.Fade), ("slide", WidgetFocusAnimation.Slide), ("none", WidgetFocusAnimation.None) })
     {
         await Action(widget, "focus-animation." + id);
         var snapshot = Snapshot(widget);
         Assert.Valid(snapshot);
         var select = Nodes(snapshot.Root).Single(node => node.Id == "overlay.focus-animation");
-        Assert.Equal("fade", select.SelectOptions!.First().Id);
+        Assert.Equal("settle", select.SelectOptions!.First().Id);
         Assert.Equal(id, select.SelectOptions!.Single(option => option.IsSelected).Id);
         Assert.Equal(expected, (await Store(temp.Path).LoadAsync()).Appearance.FocusAnimation);
     }

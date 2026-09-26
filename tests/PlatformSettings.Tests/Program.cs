@@ -78,7 +78,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(true, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
         Assert.Equal(true, settings.Appearance.AnimateWidgetSwitching);
-        Assert.Equal(WidgetFocusAnimation.Fade, settings.Appearance.FocusAnimation);
+        Assert.Equal(WidgetFocusAnimation.Settle, settings.Appearance.FocusAnimation);
         Assert.Equal(WidgetSectionAnimation.Slide, settings.Appearance.SectionAnimation);
         Assert.Equal(1d, settings.Appearance.WidgetAnimationSpeed);
         Assert.Equal(true, settings.Appearance.AnimateWidgetModals);
@@ -95,7 +95,7 @@ static async Task DefaultsAreSafe()
         await File.WriteAllTextAsync(store.Paths.SettingsFile, SettingsJson());
         Assert.Equal(ThemeIdentity.BuiltInDefault, (await store.LoadAsync()).Appearance.ThemeId);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.AnimateWidgetSwitching);
-        Assert.Equal(WidgetFocusAnimation.Fade, (await store.LoadAsync()).Appearance.FocusAnimation);
+        Assert.Equal(WidgetFocusAnimation.Settle, (await store.LoadAsync()).Appearance.FocusAnimation);
         Assert.Equal(WidgetSectionAnimation.Slide, (await store.LoadAsync()).Appearance.SectionAnimation);
         Assert.Equal(true, (await store.LoadAsync()).Appearance.AnimateWidgetModals);
         Assert.Equal(WidgetModalAnimation.Zoom, (await store.LoadAsync()).Appearance.ModalAnimation);

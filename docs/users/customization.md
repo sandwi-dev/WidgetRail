@@ -24,7 +24,13 @@ while the previous page recedes; **Vertical slide** moves pages up or down;
 **Reveal** uncovers stationary content; **Cover slide** moves the new page over
 the previous page; **None** changes pages immediately.
 **Animate widget dialogs** independently controls opening and closing motion.
-**Focus animation** offers **Fade** (default), a 120 ms in-place highlight transition, **Slide**, and **None**. Tile scale and press feedback remain controlled by the theme. Controller hints appear immediately with Fade. Animation speed and reduced motion also apply to focus highlights.
+**Focus animation** offers **Settle** (default), **Fade**, **Slide**, and **None**.
+Settle brings the outline inward by up to 4 DIPs over 180 ms while its opacity rises;
+the background fades on the same timeline. Fade changes opacity over 120 ms without
+outline movement. These effects leave the control geometry unchanged. Existing
+WRSS scale and press feedback still apply to the whole control, including its outline.
+Controller hints appear immediately with Settle and Fade. Animation speed and reduced
+motion apply to focus highlights; saved animation choices remain respected.
 
 **Dialog animation** offers **Zoom** (default), which grows the dialog from 90%
 to full size, and **Lift**, which slides it gently into place. Explicit saved

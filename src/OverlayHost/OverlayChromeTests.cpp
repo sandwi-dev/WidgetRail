@@ -1310,9 +1310,25 @@ void CheckWidgetAnimationPolicies() {
     Check(!CanMoveFocus(first, next, targets), "clipped or newly scrolled targets snap focus");
     next = targets[1]; next.bounds.width = 180;
     Check(!CanMoveFocus(first, next, targets), "large changes of control shape snap focus");
-    Check(Options{}.focus == FocusStyle::Fade && ParseFocusStyle(L"unknown") == FocusStyle::Fade &&
+    Check(Options{}.focus == FocusStyle::Settle && ParseFocusStyle(L"unknown") == FocusStyle::Settle &&
+        ParseFocusStyle(L"settle") == FocusStyle::Settle && ParseFocusStyle(L"fade") == FocusStyle::Fade &&
         ParseFocusStyle(L"none") == FocusStyle::None && ParseFocusStyle(L"slide") == FocusStyle::Slide,
         "focus defaults and persisted preset IDs are stable");
+    const Rect settleBounds{10, 10, 100, 44}, settleClip{0, 0, 300, 200};
+    const auto settle = FocusSettle(settleBounds, settleClip).Start(0, 1000);
+    Check(settle.duration == 180 && Sample(settle, 0).opacity == .35F &&
+        SameFocusRect(Sample(settle, 0).bounds, {6, 6, 108, 52}) &&
+        SameFocusRect(Sample(settle, 180).bounds, settleBounds), "settle grows only the outline by a fixed DIP inset");
+    const auto sampled = Sample(settle, 60);
+    const auto resumed = FocusSettle(settleBounds, settleClip, sampled).Start(80, 1000);
+    Check(SameFocusRect(Sample(resumed, 80).bounds, sampled.bounds) && Sample(resumed, 80).opacity == sampled.opacity,
+        "interrupted settle resumes current geometry and alpha without restarting its outward pose");
+    Check(SameFocusRect(FocusSettleBounds({0, 0, 100, 44}, settleClip), {0, 0, 100, 44}) &&
+        SameFocusRect(FocusSettleBounds({10, 1, 100, 44}, settleClip), {6, 0, 108, 46}),
+        "settle clips constrain each axis without resizing content or moving its center");
+    Check(FocusSettle(settleBounds, settleClip).Start(0, 1000, 2).duration == 90 &&
+        FocusDuration(FocusStyle::Settle) == 180 && FocusDuration(FocusStyle::None) == 0,
+        "settle and its background share the configured timeline");
     const auto fade = FocusFade(first.bounds, first.clip, 0, 1).Start(0, 1000);
     Check(fade.duration == 120 && Sample(fade, 60).opacity == .5F &&
         SameFocusRect(Sample(fade, 60).bounds, first.bounds), "focus fade changes only alpha at fixed bounds");
@@ -1888,7 +1904,9 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
 } // namespace
 
 
-void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = true) {
+void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = true,
+                              widgetrail::animation::FocusStyle focusStyle = widgetrail::animation::FocusStyle::Fade,
+                              bool scaleControls = true) {
     using namespace widgetrail;
     const wchar_t *name = L"WidgetRail.FocusFadeTest";
     WNDCLASSW wc{}; wc.lpfnWndProc = DefWindowProcW;
@@ -1905,7 +1923,7 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
     const auto sceneFor = [&](bool right) {
         auto scene = std::make_shared<WidgetCompositionScene>();
         scene->authority = L"fade-proof"; scene->viewport = {0, 0, 160, 100};
-        scene->animations.speed = .5; scene->scale = pixelScale;
+        scene->animations.speed = .5; scene->scale = pixelScale; scene->animations.focus = focusStyle;
         WidgetCompositionNode background;
         background.id = L"background"; background.bounds = background.clip = scene->viewport;
         background.solid = D2D1::ColorF(D2D1::ColorF::Blue); scene->nodes.push_back(background);
@@ -1915,7 +1933,7 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
             WidgetCompositionNode control;
             control.id = L"control/" + item.key; control.key = item.key; control.clock = item.scope;
             control.kind = WidgetCompositionKind::Control; control.bounds = item.bounds; control.clip = item.clip;
-            control.controlScale = (item.key == (right ? L"right" : L"left")) ? 1.25F : 1.0F;
+            control.controlScale = scaleControls && (item.key == (right ? L"right" : L"left")) ? 1.25F : 1.0F;
             control.controlDuration = 140; scene->nodes.push_back(control);
             WidgetCompositionNode group;
             group.id = L"surface/" + item.key; group.key = item.key; group.clock = item.scope;
@@ -1974,7 +1992,7 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         const auto color = pixel(30, 40);
         Check(GetRValue(color) < 5 && GetGValue(color) >= 60 && GetGValue(color) <= 68 && GetBValue(color) >= 185,
             "fade starts with exact translucent focused color");
-        Check(GetGValue(pixel(52, 40)) >= 60, "focused surface fills the scaled control, including its new edge");
+        Check(GetGValue(pixel(scaleControls ? 52 : 48, 40)) >= 60, "focused surface fills the control to its expected edge");
         Check(GetRValue(pixel(4, 14)) == 0 && GetGValue(pixel(4, 14)) == 0,
             "scaled rounded surface does not spill outside the card");
     }
@@ -1993,24 +2011,42 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
     }
     Check(surface.paintCounters().content == paints && surface.widgetCompositionCounters().rasterUploads == counters.rasterUploads,
         "focus fade advances without UI paints or uploads");
+    if (pixels && focusStyle == animation::FocusStyle::Settle && !scaleControls) {
+        Check(GetRValue(pixel(120, 72)) > 15 && GetRValue(pixel(120, 65)) < 5,
+            "settle moves only the incoming decoration outward, then inward");
+        Check(GetGValue(pixel(143, 40)) == 0,
+            "settle does not enlarge the control background alongside its outline");
+    }
     commit(sceneFor(false)); // reverse before completion
     const auto captures = surface.widgetCompositionCounters().interruptionCaptures;
     commit(sceneFor(false)); // same-key updates must not capture/restart
-    Check(surface.widgetCompositionCounters().interruptionCaptures == captures, "same target retains fade timeline");
+    Check(surface.widgetCompositionCounters().interruptionCaptures == captures,
+        "same target updates do not recapture the focus visual");
+    if (pixels && focusStyle == animation::FocusStyle::Settle && !scaleControls) {
+        commit(sceneFor(true)); // resume a still-expanded, fading-out outline
+        Sleep(40); DwmFlush();
+        bool visibleDecoration{};
+        for (int y = 61; y < 90; ++y) {
+            if (GetRValue(pixel(120, y)) <= 15) continue;
+            visibleDecoration = true;
+            Check(y <= 77, "rapid settle re-entry uses its sampled control pose, not captured raster bounds");
+        }
+        Check(visibleDecoration, "rapid settle re-entry retains a visible destination outline");
+    }
     const auto mapped = surface.MapWidgetCompositionInput({30, 40});
     Check(mapped.x == 30 && mapped.y == 40, "fade leaves logical input geometry unchanged");
     auto removed = sceneFor(false); removed->focusTargets.resize(1);
     commit(removed); // evict the outgoing cursor identity during its fade
     auto reduced = sceneFor(true); reduced->reducedMotion = true;
     commit(reduced); DwmFlush();
-    if (pixels) Check(GetRValue(pixel(120, 74)) > 245 && GetRValue(pixel(30, 74)) < 5,
+    if (pixels) Check(GetRValue(pixel(120, scaleControls ? 74 : 67)) > 245 && GetRValue(pixel(30, scaleControls ? 74 : 67)) < 5,
         "reduced motion snaps new focus and retires old outline");
     auto none = sceneFor(false); none->animations.focus = animation::FocusStyle::None;
     commit(none); DwmFlush();
     if (pixels) Check(GetGValue(pixel(30, 40)) >= 60 && GetRValue(pixel(30, 40)) < 5,
         "None preserves the same final themed color as Fade");
     Sleep(260); surface.AdvanceWidgetComposition();
-    std::cout << "Focus fade bitmap=" << bitmaps << " scale=" << pixelScale << " passed" << std::endl;
+    std::cout << "Focus style=" << static_cast<int>(focusStyle) << " bitmap=" << bitmaps << " scale=" << pixelScale << " control-scale=" << scaleControls << " passed" << std::endl;
     surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
 }
 
@@ -2020,7 +2056,11 @@ int main(int argc, char** argv) {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "fade COM initialization");
         CheckFocusFadeCompositor(true, 1, false);
-        for (float scale : {.85F, 1.0F, 1.25F, 1.5F}) CheckFocusFadeCompositor(true, scale);
+        for (float scale : {.85F, 1.0F, 1.25F, 1.5F}) {
+            CheckFocusFadeCompositor(true, scale);
+            CheckFocusFadeCompositor(true, scale, true, widgetrail::animation::FocusStyle::Settle, false);
+        }
+        CheckFocusFadeCompositor(true, 1.25F, true, widgetrail::animation::FocusStyle::Settle);
         CoUninitialize(); return EXIT_SUCCESS;
     }
     if (argc==2 && (std::string_view(argv[1])=="--widget-motion-pixels" ||
@@ -2068,6 +2108,7 @@ int main(int argc, char** argv) {
           "WIC factory is created");
 
     CheckFocusFadeCompositor(false);
+    CheckFocusFadeCompositor(false, 1, true, widgetrail::animation::FocusStyle::Settle);
     CheckFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckControllerGlyphs(d2d.Get(), wic.Get());
     CheckFrame(d2d.Get(), wic.Get(), 1.5F);

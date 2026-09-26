@@ -176,7 +176,7 @@ Widgets continue to declare semantic transitions rather than choosing host effec
 ### Focus movement
 
 The native host animates themed focus decorations using DirectComposition.
-Widgets need no transition declaration. Fade is the default; the optional Slide
+Widgets need no transition declaration. Settle is the default; the optional Slide
 preset moves decoration between nearby controls. In Slide, text and artwork
 change to the destination immediately. The options badge,
 outline and focus border move over a 140 ms smoothstep timeline at 1x.
@@ -187,8 +187,14 @@ fill. Normal surfaces retain selected, disabled and busy styling.
 The widget animation speed preference scales this duration. Reduced Motion and
 hosts without composition use the stationary outline.
 
-Settings offers Fade (default), Slide and None for focus highlights. Fade uses a
-120 ms smooth in-place transition for outgoing/incoming outlines and supported
+Settings offers Settle (default), Fade, Slide and None for focus highlights.
+Settle brings the destination outline inward by up to 4 DIPs over 180 ms and raises
+its opacity from 35% to full. Available clipping space bounds the outward pose;
+content and layout stay stationary. The resolved background fades on the same clock.
+Existing WRSS scale remains a parent transform, so scaling and outline settling
+compose without competing layout changes. A rapid return to a fading outline resumes
+its sampled pose rather than restarting its expansion. Controller hints remain immediate.
+Fade uses a 120 ms smooth in-place transition for outgoing/incoming outlines and supported
 resolved focus surfaces. Surface colors are interpolated with premultiplied
 alpha, preserving translucent themes. Controller hints appear immediately and
 retain their control's scale. Rapid changes sample the current fade weight;

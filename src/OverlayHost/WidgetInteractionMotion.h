@@ -2,6 +2,7 @@
 
 #include "WidgetAnimationPolicy.h"
 #include "NativeStyle.h"
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -58,16 +59,50 @@ inline bool CanMoveFocus(const FocusTarget &previous, const FocusTarget &next,
 inline Recipe FocusMove(Rect bounds, Rect clip, Pose previous) noexcept {
     auto recipe = Stationary(bounds, clip);
     recipe.from.bounds = previous.bounds;
-    recipe.milliseconds = 140;
+    recipe.milliseconds = FocusPresetFor(FocusStyle::Slide).milliseconds;
     return recipe;
 }
 
-inline Recipe FocusFade(Rect bounds, Rect clip, float from, float to) noexcept {
+inline bool InPlaceFocus(FocusStyle style) noexcept {
+    return FocusPresetFor(style).inPlace;
+}
+
+inline unsigned FocusDuration(FocusStyle style) noexcept {
+    return FocusPresetFor(style).milliseconds;
+}
+
+inline Recipe FocusFade(Rect bounds, Rect clip, float from, float to, unsigned duration = 120) noexcept {
     auto recipe = Stationary(bounds, clip);
     recipe.from.opacity = from;
     recipe.to.opacity = to;
-    recipe.milliseconds = from == to ? 0 : 120;
+    recipe.milliseconds = from == to ? 0 : duration;
     return recipe;
+}
+
+inline Rect FocusSettleBounds(Rect bounds, Rect clip) noexcept {
+    // Fixed DIP travel keeps short buttons and wide rows equally restrained.
+    // Preserve the center and reduce each axis independently near clipping edges.
+    const float x = std::clamp(std::min(bounds.x - clip.x,
+        clip.x + clip.width - bounds.x - bounds.width), 0.0F, 4.0F);
+    const float y = std::clamp(std::min(bounds.y - clip.y,
+        clip.y + clip.height - bounds.y - bounds.height), 0.0F, 4.0F);
+    return {bounds.x - x, bounds.y - y, bounds.width + x * 2, bounds.height + y * 2};
+}
+
+inline Recipe FocusSettle(Rect bounds, Rect clip, std::optional<Pose> previous = {}) noexcept {
+    auto recipe = Stationary(bounds, clip);
+    recipe.from = previous.value_or(Pose{FocusSettleBounds(bounds, clip), .35F, clip});
+    recipe.from.clip = clip;
+    recipe.milliseconds = SameFocusRect(recipe.from.bounds, bounds) && recipe.from.opacity == 1
+        ? 0 : FocusDuration(FocusStyle::Settle);
+    return recipe;
+}
+
+inline Recipe FocusEnter(FocusStyle style, Rect bounds, Rect clip, std::optional<Pose> previous = {}) noexcept {
+    if (style == FocusStyle::Settle) return FocusSettle(bounds, clip, previous);
+    if (style == FocusStyle::Fade)
+        return FocusFade(bounds, clip, previous ? previous->opacity : 0, 1, FocusDuration(style));
+    return Stationary(bounds, clip);
 }
 
 // Surface replacement uses disjoint clips, not alpha overlays. The first four
