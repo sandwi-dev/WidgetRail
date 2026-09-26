@@ -1,6 +1,7 @@
 // Included in the renderer test namespace. Compare retained scrolling pixels
 // against forced repainting with identical input/layout state, not a mock cache.
-void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool benchmark = false) {
+void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool benchmark = false,
+    bool largeCoordinates = false, bool translatedViewport = true, bool deepScroll = true) {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
     ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
@@ -44,7 +45,7 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
     auto items = Node(L"items", grid ? L"grid" : horizontal ? L"row" : L"stack");
     items.gridMinimumColumnWidth = 160; items.gridMaximumColumns = 4;
     items.baseStyle = {{L"gap", LengthList(L"8px")}, {L"flex-shrink", Number(0)}};
-    for (int i = 0; i < 48; ++i) {
+    for (int i = 0; i < (largeCoordinates ? 240 : 48); ++i) {
         const auto id = L"item." + std::to_wstring(i);
         auto item = Node(id.c_str(), L"actionSurface"); item.actionId = L"open";
         item.collectionItemKey = id;
@@ -71,7 +72,8 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
         items.children.push_back(item);
     }
     scroll.children.push_back(items); snapshot.root.children.push_back(scroll);
-    const Rect viewport{0, 0, 800, 600};
+    const Rect viewport{largeCoordinates && translatedViewport ? 1400.0F : 0.0F,
+        largeCoordinates && translatedViewport ? 200.0F : 0.0F, 800, 600};
     DeclarativeRenderOptions options; options.pixelScale = scale;
     options.compositorWidgetTransitions = true; options.accessibility.reducedMotion = true;
     options.sizeArtworkToDisplay = false; options.artworkDecodeSize = decode;
@@ -97,8 +99,8 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
                 const bool selected = parent->key.starts_with(L"item.0\x1f");
                 if ((node.order == 1) != selected) continue;
             }
-            target->DrawBitmap(node.bitmap.Get(), D2D1::RectF(node.bounds.x, node.bounds.y,
-                node.bounds.x + node.bounds.width, node.bounds.y + node.bounds.height));
+            target->DrawBitmap(node.bitmap.Get(), D2D1::RectF(node.bounds.x - viewport.x, node.bounds.y - viewport.y,
+                node.bounds.x + node.bounds.width - viewport.x, node.bounds.y + node.bounds.height - viewport.y));
         }
         ok(target->EndDraw());
         std::vector<BYTE> pixels(width * height * 4);
@@ -106,6 +108,12 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
         return pixels;
     };
     draw(retained, false, 0); draw(fresh, true, 0);
+    if (largeCoordinates && deepScroll) {
+        for (auto* renderer : {&retained, &fresh})
+            Check(renderer->PlanFocusedFreeScroll(snapshot, L"item.0", declarative::ScrollAxis::Vertical, 3000,
+                viewport, L"scroll").has_value(), "deep collection scroll plans");
+        draw(retained, false, 0); draw(fresh, true, 0);
+    }
     std::uint64_t hits{}, misses{}, bytes{}, referenceBytes{};
     std::vector<std::uint64_t> timings, referenceTimings;
     const int frames = benchmark ? 48 : 16;
@@ -145,7 +153,9 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
         timings.push_back(actual.timing.totalMicroseconds); referenceTimings.push_back(expected.timing.totalMicroseconds);
     }
     std::sort(timings.begin(), timings.end()); std::sort(referenceTimings.begin(), referenceTimings.end());
-    std::cout << "SCROLL scale=" << scale << " grid=" << grid << " horizontal=" << horizontal
+    std::cout << "SCROLL scale=" << scale << " grid=" << grid << " horizontal=" << horizontal << " large=" << largeCoordinates
+        << " translated=" << translatedViewport
+        << " deep=" << deepScroll
         << " hits=" << hits << " misses=" << misses << " bytes=" << bytes << " fresh-bytes=" << referenceBytes
         << " median-us=" << timings[timings.size()/2] << " fresh-median-us=" << referenceTimings[referenceTimings.size()/2] << '\n';
     if (!benchmark) {
