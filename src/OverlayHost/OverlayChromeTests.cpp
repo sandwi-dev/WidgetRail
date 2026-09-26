@@ -1861,7 +1861,12 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         auto scrolled = sceneFor(false);
         for (auto& item : scrolled->focusTargets) item.bounds.y -= 8;
         for (auto& node : scrolled->nodes) if (node.id != L"background") node.bounds.y -= 8;
+        const auto beforeScroll = surface.widgetCompositionCounters();
         commit(scrolled); DwmFlush();
+        const auto afterScroll = surface.widgetCompositionCounters();
+        Check(afterScroll.rasterUploads == beforeScroll.rasterUploads &&
+            afterScroll.focusAtlasReuses > beforeScroll.focusAtlasReuses,
+            "translated immutable captures reuse GPU pixels and focus atlases");
         Sleep(animation::FocusDuration(focusStyle) * 2 + 80); DwmFlush();
         const auto old = pixel(120, 32), current = pixel(30, 32);
         std::cout << "Scroll retarget scale=" << pixelScale << " old RGB=" << (int)GetRValue(old) << ','

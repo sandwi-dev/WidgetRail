@@ -1,6 +1,7 @@
 #include "DeclarativeRenderer.h"
 
 #include "BackgroundSurfaceTransitionPolicy.h"
+#include "CompositionPaintSpace.h"
 #include "NativeIcons.h"
 #include "ControllerGlyphVisual.h"
 #include "NativeTextLayout.h"
@@ -3187,6 +3188,8 @@ struct DeclarativeRenderer::RenderPass final {
         const auto color = style.foreground().value_or(kDefaultText);
         auto brush = Brush(target, WithOpacity(color, opacity));
         if (brush) {
+            const CompositionPaintSpace paintSpace(target, composingScene && compositionBand >= 0, options.pixelScale);
+            rect = paintSpace.Local(rect);
             target->DrawTextLayout(
                 D2D1::Point2F(
                     rect.x,
@@ -3200,9 +3203,11 @@ struct DeclarativeRenderer::RenderPass final {
     void DrawSurface(
         const WidgetNode& node,
         const NativeRenderStyle& style,
-        const Rect rect,
+        Rect rect,
         const float opacity) {
         if (!target || rect.width <= 0.0F || rect.height <= 0.0F) return;
+        const CompositionPaintSpace paintSpace(target, composingScene && compositionBand >= 0, options.pixelScale);
+        rect = paintSpace.Local(rect);
         const auto radius = RadiusFor(style, rect);
         if (style.shadowColor() && style.shadowColor()->alpha > 0.0F) {
             const auto color = WithOpacity(*style.shadowColor(), opacity);
@@ -3383,11 +3388,15 @@ struct DeclarativeRenderer::RenderPass final {
         const WidgetNode& imageNode,
         ID2D1Bitmap* const bitmap,
         const NativeRenderStyle& style,
-        const Rect destination,
+        Rect destination,
         const float opacity,
         const bool focused,
         const bool surfaceComposite) {
         if (!destinationTarget || !bitmap) return;
+        const auto screenDestination = destination;
+        const CompositionPaintSpace paintSpace(destinationTarget,
+            destinationTarget == target && composingScene && compositionBand >= 0, options.pixelScale);
+        destination = paintSpace.Local(destination);
         const auto imageSize = bitmap->GetSize();
         const auto placement = surfaceComposite
             ? ImagePlacement{
@@ -3409,15 +3418,18 @@ struct DeclarativeRenderer::RenderPass final {
             !imageNode.artworkHandle.empty()) {
             const auto nodeKey = NarrowStableId(imageNode.id);
             const auto shown = presentation.find(nodeKey);
+            auto reportedDestination = placement.destination;
+            reportedDestination.x += screenDestination.x - destination.x;
+            reportedDestination.y += screenDestination.y - destination.y;
             owner->ReportArtworkRenderDiagnostic(
                 imageNode,
                 options.artworkWidgetId,
                 L"draw",
                 L"bitmap",
                 {imageSize.width, imageSize.height},
-                placement.destination,
+                reportedDestination,
                 placement.source,
-                shown != presentation.end() ? shown->second.visibleBox : destination,
+                shown != presentation.end() ? shown->second.visibleBox : screenDestination,
                 opacity);
         }
     }
@@ -4671,8 +4683,10 @@ struct DeclarativeRenderer::RenderPass final {
         target->PopAxisAlignedClip();
     }
 
-    bool PushTileContentClip(const Rect rect, const float radius) {
+    bool PushTileContentClip(Rect rect, const float radius) {
         if (!owner->d2dFactory_ || radius <= 0.0F || rect.width <= 0 || rect.height <= 0) return false;
+        const CompositionPaintSpace paintSpace(target, composingScene && compositionBand >= 0, options.pixelScale);
+        rect = paintSpace.Local(rect);
         if (owner->tileClipTarget_ != target) {
             owner->tileClipResources_.clear();
             owner->tileClipTarget_ = target;

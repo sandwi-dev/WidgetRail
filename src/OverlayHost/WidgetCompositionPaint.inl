@@ -266,7 +266,18 @@ bool DrawWidgetComposition() {
             } else
                 self(self, child, parent, child.transition && child.transition->selection, scope, itemIdentity);
         }
-        if (node.kind == L"scroll" || node.kind == L"actionSurface")
+        if (node.kind == L"scroll") {
+            const bool loading = !node.collectionLoading.empty() && node.collectionLoading != L"idle";
+            const auto indicator = PrepareScrollIndicator(node, style, shown);
+            if (loading || indicator) {
+                // Container chrome is stationary. Keep its tiny changing thumb
+                // separate from content, and never capture an empty viewport-sized
+                // raster when the widget has opted out of scrollbars.
+                split();
+                op(node, 2, parent, loading ? shown.visibleBox : Intersection(indicator->track, indicator->clip));
+                split();
+            }
+        } else if (node.kind == L"actionSurface" && (node.isSelected || node.isDisabled || node.isBusy))
             op(node, 2, parent, shown.visibleBox);
         if (node.id == focusedId) {
             focusParents[node.id] = parent;

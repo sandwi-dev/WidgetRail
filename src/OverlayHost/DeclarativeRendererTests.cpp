@@ -7977,6 +7977,8 @@ void RetainedCompositionPixelsRespectInvalidation() {
     Check(!bounded.cacheable && bounded.values.size() <= CompositionPaintIdentity::MaximumBytes, "paint signatures are bounded");
 }
 
+#include "CompositionScrollRetentionTests.inl"
+
 void FocusCaptureKeepsTextPixelsStable() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -8727,6 +8729,15 @@ void PlaybackPreparationWorkload(bool composition = false, bool depth = false, b
 }
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--scroll-retention") {
+        Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "scroll probe COM initialization");
+        for (float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
+            CompositionScrollRetention(scale, false, false, true);
+            CompositionScrollRetention(scale, true, false, true);
+            CompositionScrollRetention(scale, false, true, true);
+        }
+        CoUninitialize(); return EXIT_SUCCESS;
+    }
     if (argc == 2 && std::string_view(argv[1]) == "--pipeline-workload") {
         Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "pipeline probe COM initialization");
         for (int repeat=0;repeat<3;++repeat) {
@@ -8777,6 +8788,9 @@ int main(int argc, char** argv) {
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
     SurfaceDepthUsesBoundedSharedPainting();
     RetainedCompositionPixelsRespectInvalidation();
+    CompositionScrollRetention(1.0F, false, false);
+    CompositionScrollRetention(1.25F, true, false);
+    CompositionScrollRetention(1.5F, false, true);
     FocusCaptureKeepsTextPixelsStable();
     FocusSurfacesPreserveColorsAndWrssScale();
     ModalBackgroundRetainsItsScrollOwner();

@@ -69,9 +69,23 @@ leases match, updating only the compositor effects/timeline. New pixels always
 receive a new lease; leases must never be reused for mutated bitmap contents.
 Raster placement and clipping remain independent of upload identity.
 
-This is content retention, not compositor scrolling: moved/clipped content is
-repainted, then reused once stationary. Existing cursor loading, anchor restoration,
-artwork protection and logical input coordinates remain authoritative.
+Capture-local pixel identity is separate from compositor placement. Moving an
+unchanged text row or poster can retain its bitmap and GPU surface. Effective
+clips are compared within the capture; newly exposed or differently clipped edge
+content still repaints. Rounded tile masks retain their complete local shape.
+Text, surfaces, artwork and tile masks rasterize in capture-local coordinates so
+fractional DPI and baseline snapping cannot depend on the previous screen position.
+Float cancellation noise within 0.0001 physical pixels of the layout grid is
+normalized; other subpixel geometry is preserved.
+
+Painter paths without translation-invariance coverage (including glyphs, sliders,
+state cues and focus decorations) retain placement in their cache identity.
+Stationary scroll chrome is split from content: a scrollbar captures only its
+track, and hidden scrollbars do not allocate an empty viewport-sized raster.
+Loading indicators retain their existing admission and painting behavior.
+This is bounded per-band reuse, not a texture of the entire collection.
+Existing cursor loading, anchor restoration, artwork protection and logical input
+coordinates remain authoritative.
 
 ## Diagnostics
 
@@ -93,6 +107,20 @@ reporting raster footprint separately from bytes actually repainted. Use Release
 for performance comparisons. This WIC probe excludes GPU upload/commit, provider
 work and real artwork decoding; pair it with compositor pixel/counter checks and
 physical testing rather than treating it as end-to-end FPS.
+
+`--scroll-retention` compares vertical lists, artwork-backed grids and horizontal
+rails at 100%, 125%, 150% and 200% scale against forced fresh captures. It checks
+exact pixels, resizing, nested clipping, cursor eviction/reset and current focus
+geometry. The reported timings exclude the comparison/replay work. The ordinary
+suite also enforces pixel-reuse budgets. `OverlayChromeTests --focus-scroll-pixels`
+checks real compositor placement and GPU reuse while interrupting a focus fade.
+
+For physical evidence, launch with `--scroll-diagnostics-quiet`, exercise the
+widget, then hide the overlay. The bounded in-memory trace is saved under
+`%LOCALAPPDATA%/WidgetRail/diagnostics/scroll-<PID>.log`; use
+`scripts/Analyze-ScrollDiagnostics.ps1` to summarize it. Inspect dropped records
+before interpreting totals. CPU frame/submission times are not display FPS or GPU
+execution time; no trace-file writes occur on the scrolling paint path.
 
 ## Automated validation and performance
 

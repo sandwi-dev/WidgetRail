@@ -12,12 +12,39 @@ CompositionPaintIdentity CompositionIdentity(const WidgetCompositionNode& raster
     key.Scalar(options.sizeArtworkToDisplay); key.Scalar(options.artworkDecodeSize.width); key.Scalar(options.artworkDecodeSize.height);
     key.Scalar(options.accessibility.reducedMotion); key.Scalar(options.accessibility.reducedTransparency);
     key.Scalar(static_cast<bool>(options.accessibility.contrastHook));
-    key.Box(viewport); key.Box(raster.bounds);
+    // Placement belongs to the compositor. A capture's identity describes only
+    // pixels in its own coordinate system, including the effective clips baked
+    // into those pixels. Preserve authored subpixel phases; remove only float
+    // cancellation noise around the layout's physical-pixel grid.
+    const auto localBox = [&](Rect box) {
+        key.Box(CompositionLocalRect(box, raster.bounds.x, raster.bounds.y, options.pixelScale));
+    };
+    const auto localClip = [&](Rect box) {
+        localBox(Intersection(box, raster.bounds));
+    };
+    localClip(viewport);
+    key.Scalar(raster.bounds.width); key.Scalar(raster.bounds.height);
+    // Only primitives rasterized in capture-local space may ignore placement.
+    // Keep less common painter paths conservative until their local pixel
+    // invariance has the same coverage (glyphs, state cues, sliders, etc.).
+    const bool translationSafe = std::all_of(operations.begin(), operations.end(), [](const auto& operation) {
+        const auto& [node, phase] = operation;
+        if (phase == 0 || phase == 5) return true;
+        if (phase != 1) return false;
+        if (node->kind == L"text") return true;
+        if (node->kind == L"actionSurface")
+            return node->actionSurfacePresentation != L"poster" || node->children.size() == 2;
+        return node->kind == L"button" && node->imageSource.empty() && node->artworkHandle.empty() &&
+            node->glyph.empty() && !node->packageIcon && !node->isSelected && !node->isDisabled && !node->isBusy;
+    });
+    key.Scalar(translationSafe);
+    if (!translationSafe) key.Box(raster.bounds);
     const auto geometry = [&](const WidgetNode& node) {
         const auto& shown = presentation.at(NarrowStableId(node.id));
         key.Text(node.id); key.Text(node.kind); key.Text(node.inputScopeId); key.Text(node.collectionItemKey);
         key.Scalar(node.collectionResetGeneration.value_or(0));
-        key.Box(shown.borderBox); key.Box(shown.contentBox); key.Box(shown.visibleBox); key.Box(shown.ancestorClip);
+        localBox(shown.borderBox); localBox(shown.contentBox);
+        localClip(shown.visibleBox); localClip(shown.ancestorClip);
         key.Scalar(shown.motion.value.opacity); key.Scalar(shown.motion.value.scale);
     };
     // Ancestors can change descendant clipping/opacity without changing any
@@ -25,7 +52,16 @@ CompositionPaintIdentity CompositionIdentity(const WidgetCompositionNode& raster
     key.Scalar(ancestors.size());
     for (const auto& id : ancestors) {
         const auto& item = prepared.at(NarrowStableId(id));
-        geometry(*item.node);
+        const auto& shown = presentation.at(NarrowStableId(id));
+        key.Text(item.node->id); key.Text(item.node->kind); key.Text(item.node->inputScopeId);
+        key.Text(item.node->collectionItemKey);
+        key.Scalar(item.node->collectionResetGeneration.value_or(0));
+        // Traversed ancestors contribute clips, not their screen positions.
+        // Rounded tile masks additionally depend on the complete tile shape.
+        localClip(shown.visibleBox); localClip(shown.ancestorClip);
+        if (item.node->kind == L"actionSurface" && item.baseStyle.overflow() == NativeOverflow::Clip)
+            localBox(ScaleRect(shown.borderBox, shown.motion.value.scale));
+        key.Scalar(shown.motion.value.opacity); key.Scalar(shown.motion.value.scale);
         key.Style(item.baseStyle);
         if (item.node->kind == L"actionSurface") key.Style(item.paintStyle);
     }
