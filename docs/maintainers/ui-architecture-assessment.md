@@ -10,14 +10,22 @@ Windows integration layer and an explicitly sandboxed widget model. Redesign the
 public authoring and collection contracts around that architecture instead of
 translating every existing WRSS/layout behavior indefinitely.
 
-For a Windows-first product, **Avalonia is the first integration candidate I would
-evaluate**, with **Compose Multiplatform as the principal alternative**. This is
-because of Avalonia's Windows windowing, direct UI Automation, public GPU image
-interop and directional-focus infrastructure—not because existing C# code must
-survive. Compose has a compelling lazy-collection system and expressive UI model,
-but its Windows media integration and accessibility path warrant earlier proof.
-Neither framework has been measured in WidgetRail, so there is no demonstrated
-performance winner and no authorization here to migrate production.
+**Compose Multiplatform is the primary assessment candidate for controller-first
+navigation and lazy collections. Avalonia is a secondary reference, not the
+recommended first implementation.** The user previously tried Avalonia in this
+product's early development and reports high memory use for a basic UI and focus
+moving to unexpected elements. The version, measurements and reproductions are not
+available in this assessment, so this is historical product evidence, not a fresh
+benchmark of Avalonia 12.1.3. It nevertheless carries more decision weight than the
+mere presence of HWND, UIA or directional-focus APIs.
+
+The initial assessment over-weighted native integration and recommended Avalonia
+first without establishing its suitability for those product priorities. That
+recommendation is withdrawn. Low resident cost and predictable remote/controller
+navigation are primary gates; convenient interop cannot compensate for failing
+them. Compose must meet the same gates: its JVM and GPU caches are not evidence of
+low memory, and the Android TV experience is not proof of identical Windows behavior.
+There is no demonstrated current-version performance winner or migration decision.
 
 Keep the accepted native renderer as the working product and comparison baseline
 while evaluating the replacement. Its remaining cost is evidence about the problem,
@@ -100,6 +108,30 @@ do not establish a universal speedup or a migration performance target.
   arbitrary native HWND or WebView2 composition interoperability.
 - Self-contained distributions bundle a trimmed Java runtime; users do not need
   to install a separate JDK. Startup, resident memory and GPU memory are unmeasured.
+
+### What carries over from Android TV navigation
+
+The relevant Compose focus machinery is not confined to Android's window backend.
+In the inspected Compose Multiplatform release, `TwoDimensionalFocusSearch`,
+`FocusProperties`, `FocusRestorer` and Foundation's `focusGroup` are in `commonMain`.
+Directional search can request beyond-bounds layout to realize additional candidates
+when a target is outside the current realized set. This integration between focus,
+identity and lazy layout is the specific reason Compose warrants examination here.
+
+That is a stronger lead than an API merely naming gamepads, but it is not a promise
+of perfect automatic navigation. Default directional search still uses spatial
+candidate rules. Rails, navigation bars, modal boundaries and unusual layouts may
+need explicit groups, neighbors and restoration policies in shared product
+components. Android-only TV controls, remote event delivery and window behavior
+are separate; they do not arrive automatically in the Windows implementation.
+
+The inspected Nuvio source also implements app-specific behavior. Its
+`DpadFastScrollModifier` intercepts held directional events, frame-paces scrolling,
+keeps the originating focus during the gesture and chooses a landing target on
+release/edge. Single presses fall through to Compose focus traversal. Its Discover
+screen explicitly manages restoration. Therefore the navigation experience comes
+from shared Compose infrastructure plus TV/app design, not from the graphics API
+or a zero-configuration desktop gamepad mode.
 
 ### Avalonia
 
@@ -249,13 +281,27 @@ proves every interaction or accessibility requirement works.
 
 ## Decisive integrated gates
 
+Two criteria have priority throughout every gate:
+
+- **Predictable focus:** define expected item/group transitions for taps, holds,
+  reversals, row edges, loading, item removal and modal entry/exit. Assert logical
+  target IDs and scope ownership, not just a visible focus ring. Shared components
+  should encode policy; repeated widget-specific focus patches are a negative result.
+- **Bounded memory:** measure the complete process tree and GPU resources for a
+  basic empty/light widget, populated library, sustained traversal, hide/show and
+  widget retirement. Separate private committed memory, working set, reserved heap,
+  decoded artwork and GPU allocations; compare equivalent content and lifecycle.
+  Agree numeric budgets from the accepted product baseline rather than inventing
+  an absolute limit or assuming either managed runtime is lighter.
+
 The next implementation, if authorized, should be a replacement-host vertical slice
 on its own branch. It should not be a visually similar standalone benchmark or a
 promise to translate every legacy widget first.
 
 | Order | Deliverable | Pass/fail evidence |
 |---|---|---|
-| 1. Windows shell and surfaces | Framework-owned transparent/topmost overlay, native controller activation, one native video/web surface and one capture texture | Show/hide/reopen, monitor/DPI transitions, input ownership, rounded clipping, menus/dialogs above media, hidden/pinned lifetime, device-loss recovery. Fail the path if it requires routine full-frame CPU readback or brittle internal patches without an explicitly accepted tradeoff. |
+| 1. Windows shell, navigation and resident cost | Compose-owned transparent overlay, native controller activation and representative navigation groups; establish a basic-UI memory baseline immediately | Deterministic focus through lists/rails/modal scopes; show/hide/reopen, monitor/DPI transitions and input ownership. Reject unacceptable basic-UI resource cost before investing in a full widget port. |
+| 1b. Native surfaces | One native video/web surface and one capture texture in the same host | Rounded clipping, menus/dialogs above media, hidden/pinned lifetime and device-loss recovery. Fail the path if it requires routine full-frame CPU readback or brittle internal patches without an explicitly accepted tradeoff. |
 | 2. Real sandbox boundary | One sandboxed provider worker and the new safe UI/collection contract | Worker cannot inject UI-process code; malformed/over-budget state is rejected; crash/restart and stale actions do not corrupt the UI or another widget. A trusted in-process demo does not pass this gate. |
 | 3. Representative product flows | Playnite-backed library/details plus a music-style variable-height list and inline modal | Tap/hold/reversal, loading edges, append/prepend/eviction/reset, focus restoration, text scaling, themes, accessibility and playback updates together. Frontends can be redesigned rather than preserve old widgets. |
 | 4. Controlled performance and resource comparison | Same device, artwork, provider timing, visual complexity and display settings across candidates | Frame-time distributions, input-to-visible latency, admission costs, CPU/GPU/RSS and cold start; include a real desktop compositor path. WIC or an isolated grid is supplementary evidence only. |
@@ -271,16 +317,17 @@ whether a candidate solves the observed problem, not a measurement already achie
 or a universal guarantee for arbitrary widget content. Test higher refresh rates
 separately and agree final resource budgets before selecting a production backend.
 
-If Avalonia meets these gates, it is the preferred Windows-first migration direction.
-If its virtualization or native-surface behavior fails materially, run the same
-integrated gates against Compose. If both require disproportionate integration work,
-continue the native backend with an explicitly lazy collection/authoring redesign.
-Failure of one wrapper implementation is not evidence that the entire toolkit is
-incapable; identify the actual API/architecture limit before rejecting it.
+If Compose meets these integrated navigation, memory, platform and sandbox gates,
+it is a credible migration direction. If it does not, identify whether the failure
+is in the toolkit or our integration and compare the cost of fixing that boundary
+against a deliberately lazy native architecture. Do not automatically return to
+Avalonia: revisiting it requires a concrete explanation or evidence addressing the
+user's earlier memory/focus failures. Its native integration strengths remain useful
+comparison evidence, not a reason to repeat a previously disappointing approach.
 
 ## Evidence and limits
 
-No Compose/Avalonia runtime was installed or run. No throughput, memory, accessibility
+No Compose/Avalonia runtime was installed or run as part of this assessment. No throughput, memory, accessibility
 or media integration superiority is claimed from source alone. The assessment uses
 the following pinned sources; downloaded references remain in ignored research
 artifacts, not vendored product code.
@@ -300,6 +347,15 @@ artifacts, not vendored product code.
   [Windows accessibility](https://kotlinlang.org/docs/multiplatform/compose-desktop-accessibility.html),
   [Swing interop](https://kotlinlang.org/docs/multiplatform/compose-desktop-swing-interoperability.html),
   [self-contained distributions](https://kotlinlang.org/docs/multiplatform/compose-native-distribution.html).
+- Shared Compose focus implementation in the selected release:
+  [two-dimensional search and beyond-bounds realization](https://github.com/JetBrains/compose-multiplatform-core/blob/a1a7f3533363aa93849541cf451af2363fc2070a/compose/ui/ui/src/commonMain/kotlin/androidx/compose/ui/focus/TwoDimensionalFocusSearch.kt),
+  [explicit directional destinations](https://github.com/JetBrains/compose-multiplatform-core/blob/a1a7f3533363aa93849541cf451af2363fc2070a/compose/ui/ui/src/commonMain/kotlin/androidx/compose/ui/focus/FocusProperties.kt),
+  [focus restoration](https://github.com/JetBrains/compose-multiplatform-core/blob/a1a7f3533363aa93849541cf451af2363fc2070a/compose/ui/ui/src/commonMain/kotlin/androidx/compose/ui/focus/FocusRestorer.kt),
+  [focus groups](https://github.com/JetBrains/compose-multiplatform-core/blob/a1a7f3533363aa93849541cf451af2363fc2070a/compose/foundation/foundation/src/commonMain/kotlin/androidx/compose/foundation/Focusable.kt).
+- Nuvio reference implementation:
+  [held D-pad scrolling](https://github.com/NuvioMedia/NuvioTV/blob/d8c500175b08e0a1a3fd8da9fc9f4bfe89ff4c96/app/src/main/java/com/nuvio/tv/ui/util/DpadFastScrollModifier.kt),
+  [Discover restoration](https://github.com/NuvioMedia/NuvioTV/blob/d8c500175b08e0a1a3fd8da9fc9f4bfe89ff4c96/app/src/main/java/com/nuvio/tv/ui/screens/search/DiscoverScreen.kt).
+  This is app code on Android; desktop transferability has not been runtime-tested.
 - [Avalonia 12.1.3 source](https://github.com/AvaloniaUI/Avalonia/tree/8eeda4f6f546165b3f72e63c9f42247abb306905):
   [Win32 windows](https://github.com/AvaloniaUI/Avalonia/blob/8eeda4f6f546165b3f72e63c9f42247abb306905/src/Windows/Avalonia.Win32/WindowImpl.cs),
   [UIA root](https://github.com/AvaloniaUI/Avalonia/blob/8eeda4f6f546165b3f72e63c9f42247abb306905/src/Windows/Avalonia.Win32.Automation/RootAutomationNode.cs),
