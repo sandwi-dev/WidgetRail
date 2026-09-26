@@ -51,6 +51,12 @@ D-pad and left-stick navigation move focus and reveal the target control.
 Right-stick scrolling moves the viewport; focus settles after scrolling stops
 instead of jumping with every arriving page.
 
+Scroll positions belong to the widget instance, the container's own input scope,
+and its stable ID. Changing the active scope to a modal does not reset the parent
+page's viewport. The dialog keeps independent scroll state. Explicit collection
+resets still reset that container; removing it from a scope that remains in the
+view clears its state. Other page scopes retain their positions for returning.
+
 Overflowing vertical containers also show a thin scroll indicator by default.
 Use `with { ShowScrollbar = false }` on a scroll element to hide it for that
 container and release its reserved gutter. Scrolling and focus-follow remain enabled.

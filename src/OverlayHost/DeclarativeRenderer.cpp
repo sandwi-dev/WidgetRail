@@ -29,6 +29,29 @@ using declarative::Rect;
 using declarative::Size;
 using declarative::FocusSurfaceSelectionMemory;
 
+[[nodiscard]] std::wstring_view ResolveInputScope(
+    const WidgetNode& node, const std::wstring_view inheritedScope) noexcept {
+    return !node.inputScopeId.empty() ? std::wstring_view{node.inputScopeId}
+        : !inheritedScope.empty() ? inheritedScope : std::wstring_view{node.id};
+}
+
+[[nodiscard]] std::wstring_view ScopeForPath(
+    const std::vector<const WidgetNode*>& path, const std::size_t count) noexcept {
+    std::wstring_view scope;
+    for (std::size_t index = 0; index < std::min(count, path.size()); ++index)
+        scope = ResolveInputScope(*path[index], scope);
+    return scope;
+}
+
+[[nodiscard]] std::wstring ScrollScopePrefix(
+    const std::wstring_view instanceId, const std::wstring_view scope) {
+    std::wstring prefix(instanceId);
+    prefix.push_back(L'\x1f');
+    prefix.append(scope);
+    prefix.push_back(L'\x1f');
+    return prefix;
+}
+
 struct PreparationTimer {
     std::uint64_t& nanoseconds;
     std::chrono::steady_clock::time_point start{std::chrono::steady_clock::now()};
@@ -383,6 +406,7 @@ struct DeclarativeRenderer::PreparedNode final {
     std::string narrowId;
     std::optional<NativeColor> effectiveBackground;
     NativeStyleContext context;
+    std::wstring_view inputScope;
 };
 
 struct DeclarativeRenderer::RenderPass final {
@@ -509,6 +533,9 @@ struct DeclarativeRenderer::RenderPass final {
     bool intrinsicRootWidth{};
     DeclarativeRenderOptions options;
     std::unordered_map<std::string, PreparedNode> prepared;
+    // Keep scroll ownership across local relayout's temporary preparation reset.
+    // This also covers retained presentation fragments outside the source tree.
+    std::map<std::wstring_view, std::wstring_view, std::less<>> scrollScopes;
     std::unordered_map<std::string, PresentationNode> presentation;
     declarative::LayoutResult layout;
     RenderResult result;
@@ -833,7 +860,8 @@ struct DeclarativeRenderer::RenderPass final {
     void PrepareStyle(
         const WidgetNode& node, const std::string_view parentId,
         const float fallbackParentWidth, const float fallbackParentHeight,
-        const float parentFontSize, const std::optional<NativeColor>& inheritedBackground) {
+        const float parentFontSize, const std::optional<NativeColor>& inheritedBackground,
+        const std::wstring_view inheritedScope) {
         auto parentWidth = fallbackParentWidth;
         auto parentHeight = fallbackParentHeight;
         if (!parentId.empty()) {
@@ -855,6 +883,8 @@ struct DeclarativeRenderer::RenderPass final {
                 RenderDiagnosticSeverity::Error);
         }
         prepared[narrowId] = {&node, base.style, paint.style, narrowId};
+        prepared[narrowId].inputScope = ResolveInputScope(node, inheritedScope);
+        if (node.kind == L"scroll") scrollScopes.insert_or_assign(node.id, prepared[narrowId].inputScope);
         prepared[narrowId].context = {viewport.width, viewport.height, parentWidth, parentHeight,
             parentFontSize, options.rootFontSizePx, false, inheritedBackground,
             (node.kind == L"button" || node.kind == L"actionSurface")
@@ -875,11 +905,13 @@ struct DeclarativeRenderer::RenderPass final {
     [[nodiscard]] LayoutElement PrepareNode(
         const WidgetNode& node, const std::string_view parentId,
         const float fallbackParentWidth, const float fallbackParentHeight,
-        const float parentFontSize, const std::optional<NativeColor>& inheritedBackground) {
+        const float parentFontSize, const std::optional<NativeColor>& inheritedBackground,
+        const std::wstring_view inheritedScope = {}) {
         PrepareStyle(node, parentId, fallbackParentWidth, fallbackParentHeight,
-            parentFontSize, inheritedBackground);
+            parentFontSize, inheritedBackground, inheritedScope);
         const auto narrowId = NarrowStableId(node.id);
         const auto& style = prepared.at(narrowId).baseStyle;
+        const auto inputScope = prepared.at(narrowId).inputScope;
         const auto effectiveBackground = prepared.at(narrowId).effectiveBackground;
         const auto* parentBox = layout.Find(parentId);
         const auto parentWidth = parentBox ? parentBox->contentBox.width : fallbackParentWidth;
@@ -1092,7 +1124,7 @@ struct DeclarativeRenderer::RenderPass final {
             if (fragment && IsResponsiveVisible(*fragment)) {
                 element.children.push_back(PrepareNode(
                     *fragment, narrowId, parentWidth, parentHeight,
-                    style.fontSizePx() / textScale, effectiveBackground));
+                    style.fontSizePx() / textScale, effectiveBackground, inputScope));
             }
         }
         for (std::size_t childIndex = 0; childIndex < node.children.size(); ++childIndex) {
@@ -1104,7 +1136,7 @@ struct DeclarativeRenderer::RenderPass final {
                 parentWidth,
                 parentHeight,
                 style.fontSizePx() / textScale,
-                effectiveBackground);
+                effectiveBackground, inputScope);
             if (!IsPosterArtworkChild(node, childIndex))
                 element.children.push_back(std::move(preparedChild));
         }
@@ -1128,10 +1160,16 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     [[nodiscard]] std::wstring ScrollStateKey(const std::wstring_view nodeId) const {
-        std::wstring key(snapshot->instanceId);
-        key.push_back(L'\x1f');
-        key.append(snapshot->activeInputScopeId);
-        key.push_back(L'\x1f');
+        const auto node = scrollScopes.find(nodeId);
+        std::wstring_view scope;
+        if (node != scrollScopes.end()) scope = node->second;
+        else {
+            std::vector<const WidgetNode*> path;
+            if (FindNodePath(snapshot->root, nodeId, path)) scope = ScopeForPath(path, path.size());
+        }
+        // Active input may belong to a modal while this container still paints
+        // its parent page. Scroll memory belongs to the container's own scope.
+        auto key = ScrollScopePrefix(snapshot->instanceId, scope);
         key.append(nodeId);
         return key;
     }
@@ -1966,18 +2004,6 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
-    static std::wstring_view ScopeForPath(
-        const std::vector<const WidgetNode*>& path,
-        const std::size_t count) {
-        std::wstring_view scope;
-        for (std::size_t index = 0; index < std::min(count, path.size()); ++index) {
-            const auto& node = *path[index];
-            if (!node.inputScopeId.empty()) scope = node.inputScopeId;
-            else if (scope.empty()) scope = node.id;
-        }
-        return scope;
-    }
-
     struct AxisFocusRevealRange final {
         float minimumDelta{};
         float maximumDelta{};
@@ -2627,12 +2653,16 @@ struct DeclarativeRenderer::RenderPass final {
                 }
             }
         });
-        std::wstring prefix(snapshot->instanceId);
-        prefix.push_back(L'\x1f');
-        prefix.append(snapshot->activeInputScopeId);
-        prefix.push_back(L'\x1f');
+        std::set<std::wstring_view> presentScopes{snapshot->activeInputScopeId};
+        for (const auto& [_, node] : prepared) presentScopes.insert(node.inputScope);
+        std::set<std::wstring, std::less<>> ownerPrefixes;
+        for (const auto scope : presentScopes)
+            ownerPrefixes.insert(ScrollScopePrefix(snapshot->instanceId, scope));
         std::erase_if(ScrollState(), [&](const auto& entry) {
-            return entry.first.starts_with(prefix) && !activeKeys.contains(entry.first);
+            const auto separator = entry.first.rfind(L'\x1f');
+            return separator != std::wstring::npos &&
+                ownerPrefixes.contains(std::wstring_view{entry.first}.substr(0, separator + 1)) &&
+                !activeKeys.contains(entry.first);
         });
         if (ScrollState().size() <= kMaximumScrollStateEntries) return;
 
@@ -2956,15 +2986,17 @@ struct DeclarativeRenderer::RenderPass final {
         const float textScale = std::clamp(options.accessibility.textScale, 0.85F, 1.5F);
         const auto visit = [&](const auto& self, const WidgetNode& node,
                                const std::string& parent, const float font,
-                               const std::optional<NativeColor>& background) -> void {
+                               const std::optional<NativeColor>& background,
+                               const std::wstring_view inheritedScope) -> void {
             const auto id = NarrowStableId(node.id);
             if (!layout.Find(id)) return;
-            PrepareStyle(node, parent, viewport.width, viewport.height, font, background);
+            PrepareStyle(node, parent, viewport.width, viewport.height, font, background, inheritedScope);
+            const auto inputScope = prepared.at(id).inputScope;
             const auto style = prepared.at(id).baseStyle;
             const auto surface = prepared.at(id).effectiveBackground;
             if (node.kind == L"focusPresentationSurface") {
                 const auto* fragment = PresentationFor(node);
-                if (fragment) self(self, *fragment, id, style.fontSizePx() / textScale, surface);
+                if (fragment) self(self, *fragment, id, style.fontSizePx() / textScale, surface, inputScope);
             }
             for (std::size_t index = 0; index < node.children.size(); ++index) {
                 const auto& child = node.children[index];
@@ -2974,13 +3006,13 @@ struct DeclarativeRenderer::RenderPass final {
                     // has no Taffy box. It still needs its own current style
                     // and semantic pointer for DrawImage on retained paints.
                     PrepareStyle(child, id, viewport.width, viewport.height,
-                        style.fontSizePx() / textScale, surface);
+                        style.fontSizePx() / textScale, surface, inputScope);
                 } else {
-                    self(self, child, id, style.fontSizePx() / textScale, surface);
+                    self(self, child, id, style.fontSizePx() / textScale, surface, inputScope);
                 }
             }
         };
-        visit(visit, snapshot->root, {}, options.rootFontSizePx, options.surfaceBackground);
+        visit(visit, snapshot->root, {}, options.rootFontSizePx, options.surfaceBackground, {});
     }
 
     void ProjectScrollOffsets(const bool force = false) {
@@ -3076,6 +3108,8 @@ struct DeclarativeRenderer::RenderPass final {
             const auto parentBackground = preparedParent != prepared.end()
                 ? preparedParent->second.effectiveBackground
                 : options.surfaceBackground;
+            const auto parentInputScope = preparedParent != prepared.end()
+                ? preparedParent->second.inputScope : std::wstring_view{};
             auto recompute = [&]() {
                 prepared.clear();
                 auto root = PrepareNode(
@@ -3084,7 +3118,7 @@ struct DeclarativeRenderer::RenderPass final {
                     localViewport.width,
                     localViewport.height,
                     parentFontSize,
-                    parentBackground);
+                    parentBackground, parentInputScope);
                 // The retained border box already excludes the parent's
                 // allocation for this node's margins.
                 root.margin = {};
@@ -5823,10 +5857,8 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
                 FocusedFreeScrollPlanDisposition::EmptyScrollViewport;
             continue;
         }
-        std::wstring stateKey(snapshot.instanceId);
-        stateKey.push_back(L'\x1f');
-        stateKey.append(snapshot.activeInputScopeId);
-        stateKey.push_back(L'\x1f');
+        auto stateKey = ScrollScopePrefix(snapshot.instanceId,
+            ScopeForPath(path, static_cast<std::size_t>(std::distance(path.begin(), item.base()))));
         stateKey.append(candidate.id);
         // More than one input sample may arrive before the pending paint.
         // Accumulate against the requested offset, not the older painted box.

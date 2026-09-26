@@ -2749,6 +2749,7 @@ void ControllerScrollFollowsFocusAndRestoresState() {
     snapshot.instanceId = L"audio.runtime.v1";
     snapshot.activeInputScopeId = L"root";
     snapshot.root = Node(L"sessions", L"scroll");
+    snapshot.root.inputScopeId = L"root";
     snapshot.root.scrollAxis = L"vertical";
     for (int index = 0; index < 8; ++index) {
         auto button = Node((L"session-" + std::to_wstring(index)).c_str(), L"button");
@@ -2792,6 +2793,7 @@ void ControllerScrollFollowsFocusAndRestoresState() {
 
     auto otherScope = snapshot;
     otherScope.activeInputScopeId = L"details";
+    otherScope.root.inputScopeId = L"details";
     const auto independent = renderer.Render(
         nullptr, otherScope, L"session-0", {0.0F, 0.0F, 240.0F, 100.0F});
     Near(independent.scrollOffsets.at(L"sessions"), 0.0F,
@@ -7867,6 +7869,167 @@ void FocusSurfacesPreserveColorsAndWrssScale() {
           "an oversized focus scene hands off a valid empty static fallback instead of failing admission");
 }
 
+void ModalBackgroundRetainsItsScrollOwner() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT result) { Check(SUCCEEDED(result), "modal scroll regression graphics"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.GetAddressOf())));
+    ok(wic->CreateBitmap(400, 300, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
+    for (const bool horizontal : {false, true}) {
+        for (const float scale : {1.0F, 1.25F, 1.5F}) {
+            WidgetSnapshot snapshot;
+            snapshot.instanceId = L"modal-scroll-owner";
+            snapshot.sequence = 1;
+            snapshot.activeInputScopeId = L"page.scope";
+            auto page = Node(L"page", L"stack");
+            page.inputScopeId = L"page.scope";
+            auto scroll = Node(L"parent.scroll", L"scroll");
+            scroll.scrollAxis = horizontal ? L"horizontal" : L"vertical";
+            scroll.collectionAnchorKey = L"key.14";
+            scroll.collectionGeneration = 1;
+            scroll.collectionResetGeneration = 1;
+            scroll.collectionStartIndex = 0;
+            scroll.baseStyle = {{L"flex-grow", Number(1)}, {L"min-height", Length(0)}};
+            auto grid = Node(L"parent.grid", L"grid");
+            grid.gridMinimumColumnWidth = 100;
+            grid.gridMaximumColumns = 3;
+            grid.baseStyle = {{L"flex-shrink", Number(0)}};
+            for (int index = 0; index < 24; ++index) {
+                auto item = FixedButton((L"parent." + std::to_wstring(index)).c_str(), 80);
+                item.collectionItemKey = L"key." + std::to_wstring(index);
+                if (horizontal) item.baseStyle.insert_or_assign(L"width", Length(100));
+                if (horizontal) scroll.children.push_back(std::move(item));
+                else grid.children.push_back(std::move(item));
+            }
+            if (!horizontal) scroll.children.push_back(std::move(grid));
+            page.children.push_back(std::move(scroll));
+            snapshot.root = page;
+            const Rect viewport{20, 30, 360, 220};
+            DeclarativeRenderOptions options;
+            options.pixelScale = scale;
+            options.accessibility.reducedMotion = true;
+            DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+            const auto render = [&](std::wstring_view focus) {
+                // Free-scroll plans require a committed paint checkpoint.
+                target->BeginDraw();
+                target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+                auto result = renderer.Render(target.Get(), snapshot, focus, viewport, options);
+                ok(target->EndDraw());
+                Check(result.succeeded, "modal scroll regression frame succeeds");
+                return result;
+            };
+            const auto before = render(L"parent.14");
+            const auto initialOffset = before.scrollOffsets.at(L"parent.scroll");
+            Check(initialOffset > 0, "modal regression starts from a scrolled parent rail or grid");
+            const auto anchor = before.elementRects.at(L"parent.14");
+            auto modal = Node(L"details.layer", L"modalLayer");
+            auto dialog = Node(L"details", L"stack");
+            dialog.inputScopeId = L"details.scope";
+            dialog.baseStyle = {{L"width", Length(220)}, {L"height", Length(180)}};
+            auto body = Node(L"details.scroll", L"scroll");
+            body.scrollAxis = L"vertical";
+            body.baseStyle = {{L"flex-grow", Number(1)}, {L"min-height", Length(0)}};
+            for (int index = 0; index < 10; ++index)
+                body.children.push_back(FixedButton((L"detail." + std::to_wstring(index)).c_str()));
+            dialog.children = {FixedButton(L"details.play"), std::move(body)};
+            modal.children = {page, std::move(dialog)};
+            snapshot.root = std::move(modal);
+            snapshot.activeInputScopeId = L"details.scope";
+            ++snapshot.sequence;
+            const auto opened = render(L"details.play");
+            Near(opened.scrollOffsets.at(L"parent.scroll"), initialOffset,
+                "opening a modal preserves the inactive parent's scroll position");
+            Near(opened.elementRects.at(L"parent.14").x, anchor.x, "opening preserves parent poster x");
+            Near(opened.elementRects.at(L"parent.14").y, anchor.y, "opening preserves parent poster y");
+            const auto moved = render(L"detail.9");
+            Check(moved.scrollOffsets.at(L"details.scroll") > 0, "dialog has independent scroll state");
+            Near(moved.scrollOffsets.at(L"parent.scroll"), initialOffset,
+                "moving inside the dialog cannot scroll its background");
+            const auto axis = horizontal ? declarative::ScrollAxis::Horizontal : declarative::ScrollAxis::Vertical;
+            const auto firstScroll = renderer.PlanFocusedFreeScroll(snapshot, L"detail.9", axis, -8,
+                viewport, L"parent.scroll");
+            Check(firstScroll.has_value() &&
+                  renderer.PlanFocusedFreeScroll(snapshot, L"detail.9", axis, -16, viewport, L"parent.scroll").has_value(),
+                "exact scroll plans resolve the target owner's state while a modal is active");
+            options.suppressFocusedDescendantFollow = true;
+            Near(render(L"detail.9").scrollOffsets.at(L"parent.scroll"), initialOffset - 24,
+                "queued free-scroll inputs accumulate in the container's own namespace");
+            Check(renderer.PlanFocusedFreeScroll(snapshot, L"detail.9", axis, 24, viewport, L"parent.scroll").has_value(),
+                "parent free-scroll position can be restored independently of dialog input");
+            (void)render(L"detail.9");
+            options.suppressFocusedDescendantFollow = false;
+            ++snapshot.sequence;
+            auto& backgroundScroll = snapshot.root.children[0].children[0];
+            auto& items = horizontal ? backgroundScroll.children : backgroundScroll.children[0].children;
+            items.erase(items.begin(), items.begin() + 6);
+            backgroundScroll.collectionGeneration = 2;
+            backgroundScroll.collectionStartIndex = 6;
+            const auto windowed = render(L"detail.9");
+            Near(windowed.elementRects.at(L"parent.14").x, anchor.x,
+                "cursor eviction under a modal retains its parent anchor x");
+            Near(windowed.elementRects.at(L"parent.14").y, anchor.y,
+                "cursor eviction under a modal retains its parent anchor y");
+            const auto retainedOffset = windowed.scrollOffsets.at(L"parent.scroll");
+            auto nextDialog = snapshot.root.children[1];
+            page = snapshot.root.children[0];
+            snapshot.root = page;
+            snapshot.activeInputScopeId = L"page.scope";
+            ++snapshot.sequence;
+            const auto closed = render(L"");
+            Near(closed.scrollOffsets.at(L"parent.scroll"), retainedOffset,
+                "closing preserves parent state before focus-follow can mask a reset");
+            nextDialog.inputScopeId = L"details.next.scope";
+            snapshot.root = Node(L"details.next.layer", L"modalLayer");
+            snapshot.root.children = {page, std::move(nextDialog)};
+            snapshot.activeInputScopeId = L"details.next.scope";
+            ++snapshot.sequence;
+            const auto nextOpening = render(L"details.play");
+            Near(nextOpening.scrollOffsets.at(L"parent.scroll"), retainedOffset,
+                "a new modal opening retains the same parent position");
+            Near(nextOpening.scrollOffsets.at(L"details.scroll"), 0,
+                "fresh modal scopes do not inherit another opening's scroll position");
+            snapshot.root = page;
+            snapshot.activeInputScopeId = L"page.scope";
+            ++snapshot.sequence;
+            (void)render(L"");
+            snapshot.root.inputScopeId = L"other.scope";
+            snapshot.activeInputScopeId = L"other.scope";
+            ++snapshot.sequence;
+            Near(render(L"").scrollOffsets.at(L"parent.scroll"), 0,
+                "reusing scroll IDs under another owner does not inherit offsets");
+            snapshot.root = page;
+            snapshot.activeInputScopeId = L"page.scope";
+            ++snapshot.sequence;
+            Near(render(L"").scrollOffsets.at(L"parent.scroll"), retainedOffset,
+                "returning to the original owner restores its retained state");
+            snapshot.root.children[0].collectionResetGeneration = 2;
+            ++snapshot.sequence;
+            Near(render(L"").scrollOffsets.at(L"parent.scroll"), 0,
+                "explicit cursor resets still clear the owning container's position");
+            Check(render(L"parent.14").scrollOffsets.at(L"parent.scroll") > 0,
+                "cleanup regression starts with retained scroll state");
+            page = snapshot.root;
+            snapshot.root.children.clear();
+            ++snapshot.sequence;
+            (void)render(L"");
+            snapshot.root = page;
+            ++snapshot.sequence;
+            Near(render(L"").scrollOffsets.at(L"parent.scroll"), 0,
+                "removed containers are pruned from scopes that remain present");
+        }
+    }
+}
+
 void ModalLayersPaintAboveThePageAndKeepIndependentScroll() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -8284,6 +8447,7 @@ int main() {
     RetainedPosterPaintPreservesArtwork();
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
     FocusSurfacesPreserveColorsAndWrssScale();
+    ModalBackgroundRetainsItsScrollOwner();
     ModalLayersPaintAboveThePageAndKeepIndependentScroll();
     ScrollIndicatorsRespectViewportAndRetainedPaint();
     ScrollIndicatorStylePolicies();
