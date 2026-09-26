@@ -15792,6 +15792,7 @@ private:
 
     void DiscardGraphicsResources(const bool discardRenderTarget = true) {
         if (declarativeRenderer_) declarativeRenderer_->DiscardTargetResources();
+        popupShadows_.Clear();
         lastFallbackPresentationCheckpointKey_.clear();
         pendingContentRenderPlan_.reset();
         activeContentRenderPlan_.reset();
@@ -17871,7 +17872,7 @@ private:
                     trayItemTextBrush_->GetColor(), selectedTextBrush_->GetColor(), dashboardSecondaryBrush_->GetColor(),
                     focusBrush_->GetColor(), HighContrastSurfacePolicy()};
                 widgetrail::shell::DrawPopupMenuPanel(popupTarget, menu->bounds,
-                    colors, trayItemCornerRadius_, focusOutlineWidth_);
+                    colors, trayItemCornerRadius_, focusOutlineWidth_, &popupShadows_);
                 for (const auto& item : menu->semantics.items) {
                     widgetrail::shell::DrawPopupMenuRow(popupTarget, writeFactory_.Get(),
                         hintFormat_.Get(), item.bounds, item.name, item.value, item.selected,
@@ -18162,7 +18163,7 @@ private:
                 textBrush_->GetColor(), selectedTextBrush_->GetColor(), secondaryBrush_->GetColor(),
                 focusBrush_->GetColor(), HighContrastSurfacePolicy()};
             widgetrail::shell::DrawPopupMenuPanel(popupTarget, menu->bounds,
-                colors, trayItemCornerRadius_, focusOutlineWidth_);
+                colors, trayItemCornerRadius_, focusOutlineWidth_, &popupShadows_);
             for (std::size_t index = 0; index < menu->semantics.items.size(); ++index) {
                 const auto& item = menu->semantics.items[index];
                 const auto& action = widgetContextMenu_->actions[index];
@@ -18190,7 +18191,7 @@ private:
                 textBrush_->GetColor(), selectedTextBrush_->GetColor(), secondaryBrush_->GetColor(),
                 focusBrush_->GetColor(), HighContrastSurfacePolicy()};
             widgetrail::shell::DrawPopupMenuPanel(popupTarget, layout->bounds,
-                colors, trayItemCornerRadius_, focusOutlineWidth_);
+                colors, trayItemCornerRadius_, focusOutlineWidth_, &popupShadows_);
             widgetrail::DeclarativeRenderOptions iconOptions;
             const auto* iconDescriptor = sessions_.FindDescriptor(state_.activeWidget());
             if (iconDescriptor) {
@@ -19261,6 +19262,7 @@ private:
     float focusOutlineWidth_{2.0F};
     std::unique_ptr<widgetrail::RemoteImageCache> imageCache_;
     std::unique_ptr<widgetrail::DeclarativeRenderer> declarativeRenderer_;
+    widgetrail::surface::ShadowCache popupShadows_;
     widgetrail::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;
     std::wstring pinnedWorkDiagnosticWidgetId_;
     std::uint64_t pinnedWorkDiagnosticPaintBucket_{};

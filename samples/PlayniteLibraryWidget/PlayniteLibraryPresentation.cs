@@ -656,7 +656,7 @@ internal static class PlayniteLibraryPresentation
         {
             var page = UI.Stack("playnite-library.browse.page",
                     queryControls, content)
-                .Classes("playnite-library-browse-foreground");
+                .Classes("playnite-library-browse-foreground", "wrail-surface-raised");
             if (state.Organization.Categories.Count != 0 && renderActionsEnabled &&
                 !state.OrganizationBusy)
                 page = page
@@ -684,7 +684,7 @@ internal static class PlayniteLibraryPresentation
         {
             var shell = UI.Stack("playnite-library.categories.shell",
                     header, content)
-                .Classes("playnite-library-categories-shell");
+                .Classes("playnite-library-categories-shell", "wrail-surface-raised");
             root = UI.Stack("playnite-library.root", shell)
                 .Classes("playnite-library-categories");
         }
@@ -692,7 +692,7 @@ internal static class PlayniteLibraryPresentation
         {
             var shell = UI.Stack("playnite-library.hidden.shell",
                     header, queryControls, content)
-                .Classes("playnite-library-hidden-shell");
+                .Classes("playnite-library-hidden-shell", "wrail-surface-raised");
             root = UI.Stack("playnite-library.root", shell)
                 .Classes("playnite-library-hidden-surface");
         }
@@ -1149,7 +1149,7 @@ internal static class PlayniteLibraryPresentation
                 UI.Text("Move across the poster rail to preview game details.",
                         "playnite-library.home.summary.body", "Game summary")
                     .Classes("playnite-library-summary-meta"))
-            .Classes("playnite-library-home-summary");
+            .Classes("playnite-library-home-summary", "wrail-surface-raised");
 
     private static string GameCount(int count) => count == 1 ? "1 game" : $"{count} games";
 
@@ -1268,7 +1268,7 @@ internal static class PlayniteLibraryPresentation
                             .Classes("playnite-library-summary-compact-meta"))
                     .Classes("playnite-library-summary-compact")
                     .VisibleWhen(ResponsiveVisibility.CompactOnly))
-            .Classes("playnite-library-home-summary");
+            .Classes("playnite-library-home-summary", "wrail-surface-raised");
 
         WidgetElement SummaryBadge(string label, string suffix, bool accent = false)
         {

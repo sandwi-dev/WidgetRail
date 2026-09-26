@@ -439,7 +439,7 @@ static async Task AnimationPreferences()
         var snapshot = Snapshot(widget);
         Assert.Valid(snapshot);
         var select = Nodes(snapshot.Root).Single(node => node.Id == "overlay.focus-animation");
-        Assert.Equal("settle", select.SelectOptions!.First().Id);
+        Assert.Equal("fade", select.SelectOptions!.First().Id);
         Assert.Equal(id, select.SelectOptions!.Single(option => option.IsSelected).Id);
         Assert.Equal(expected, (await Store(temp.Path).LoadAsync()).Appearance.FocusAnimation);
     }

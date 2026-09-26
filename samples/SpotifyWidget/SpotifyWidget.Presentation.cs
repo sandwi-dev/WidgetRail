@@ -647,7 +647,7 @@ internal static class SpotifyPresentation
                                         "Choose a playlist or start Spotify on a device.")
                                     .Classes("spotify-player-empty-message"))
                             .Classes("spotify-player-empty-copy"))
-                    .Classes("spotify-player-card", "spotify-player-dock",
+                    .Classes("wrail-surface-raised", "spotify-player-card", "spotify-player-dock",
                         "spotify-player-standard", "spotify-player-empty");
             }
             var empty = UI.EmptyState("Nothing playing",
@@ -659,12 +659,12 @@ internal static class SpotifyPresentation
                         : null,
                     WidgetGlyph.Music);
             if (pane)
-                return empty.Classes("spotify-player-card", "spotify-player-pane",
+                return empty.Classes("wrail-surface-raised", "spotify-player-card", "spotify-player-pane",
                     "spotify-player-standard");
             return docked
-                ? empty.Classes("spotify-player-card", "spotify-player-dock",
+                ? empty.Classes("wrail-surface-raised", "spotify-player-card", "spotify-player-dock",
                     "spotify-player-standard")
-                : empty.Classes("spotify-player-card");
+                : empty.Classes("wrail-surface-raised", "spotify-player-card");
         }
 
         var item = playback.Item;
@@ -801,14 +801,14 @@ internal static class SpotifyPresentation
         if (pane) transport = transport.AddClasses("spotify-player-pane-transport");
         if (docked)
             return UI.Row($"{prefix}.card", artworkFrame, details, transport)
-                .Classes("spotify-player-card", "spotify-player-dock",
+                .Classes("wrail-surface-raised", "spotify-player-card", "spotify-player-dock",
                     "spotify-player-standard");
 
         return UI.Stack($"{prefix}.card",
                 artworkFrame,
                 details,
                 transport)
-            .Classes("spotify-player-card",
+            .Classes("wrail-surface-raised", "spotify-player-card",
                 compact ? "spotify-player-card-compact" :
                     "spotify-player-card-wide",
                 pane ? "spotify-player-pane" :

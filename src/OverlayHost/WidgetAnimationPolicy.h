@@ -20,15 +20,15 @@ struct FocusPreset {
     bool inPlace;
 };
 inline constexpr std::array FocusPresets{
-    FocusPreset{L"settle", L"Settle", FocusStyle::Settle, 220, true},
     FocusPreset{L"fade", L"Fade", FocusStyle::Fade, 120, true},
+    FocusPreset{L"settle", L"Settle", FocusStyle::Settle, 220, true},
     FocusPreset{L"slide", L"Slide", FocusStyle::Slide, 140, false},
     FocusPreset{L"none", L"None", FocusStyle::None, 0, false},
 };
 constexpr FocusStyle ParseFocusStyle(std::wstring_view id) noexcept {
     for (const auto &preset : FocusPresets)
         if (preset.id == id) return preset.style;
-    return FocusStyle::Settle;
+    return FocusStyle::Fade;
 }
 constexpr const FocusPreset &FocusPresetFor(FocusStyle style) noexcept {
     for (const auto &preset : FocusPresets)
@@ -66,7 +66,7 @@ struct Options {
     SectionStyle section{SectionStyle::Slide};
     ModalStyle modal{ModalStyle::Zoom};
     double speed{1};
-    FocusStyle focus{FocusStyle::Settle};
+    FocusStyle focus{FocusStyle::Fade};
     bool operator==(const Options &) const = default;
 };
 

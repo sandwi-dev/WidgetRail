@@ -28,8 +28,8 @@
 .theme-row:focused {
   background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width, 1.5px);
+  outline-offset: var(--focus-offset, -1.5px);
 }
 .theme-name {
   flex-grow: 1;
@@ -167,8 +167,8 @@
 .wrail-stepper__button:focused {
   background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width, 1.5px);
+  outline-offset: var(--focus-offset, -1.5px);
 }
 
 .wrail-switch:selected,
@@ -197,8 +197,8 @@
   background: var(--surface-active, rgba(48, 47, 43, 0.98));
   color: var(--danger, #c98181);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width, 1.5px);
+  outline-offset: var(--focus-offset, -1.5px);
 }
 
 .home-header { align: center; gap: 14px; }
@@ -215,4 +215,4 @@
 .home-utilities { flex-shrink: 0; gap: 8px; }
 .home-utility { min-height: 40px; padding: 8px 12px; font-size: 13px; color: var(--text-muted); }
 .home-utility.danger-card { color: var(--danger, #c98181); }
-.home-utility:focused { background: var(--surface-active, rgba(48, 47, 43, 0.98)); color: var(--text); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.home-utility:focused { background: var(--surface-active, rgba(48, 47, 43, 0.98)); color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }

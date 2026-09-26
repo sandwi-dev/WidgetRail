@@ -8,6 +8,7 @@
 #include "WidgetTransitions.h"
 #include "WidgetCompositionScene.h"
 #include "NativeStyle.h"
+#include "SurfaceDepth.h"
 #include "RemoteImageCache.h"
 #include "WidgetBridgeClient.h"
 #include "FocusSurfaceSelection.h"
@@ -624,6 +625,9 @@ private:
     };
     struct IncrementalNodeState final {
         NativeRenderStyle baseStyle;
+        NativeStyleContext styleContext;
+        declarative::Rect borderBox;
+        declarative::Rect ancestorClip;
         declarative::Rect paintBounds;
         declarative::Rect visibleBounds;
         std::wstring safeBoundaryId;
@@ -781,6 +785,7 @@ private:
     };
     ID2D1RenderTarget* tileClipTarget_{};
     std::vector<TileClipResources> tileClipResources_;
+    surface::ShadowCache surfaceShadows_;
     std::unordered_map<std::wstring, BitmapCacheEntry> bitmaps_;
     std::size_t bitmapBytes_{};
     std::uint64_t bitmapAccessClock_{};

@@ -46,6 +46,17 @@ tokens. Theme them independently of text and container backgrounds; see
 Try both light and dark backgrounds. Avoid conveying an error or disabled state
 through color alone; use a useful message as well.
 
+## Use shared surface depth
+
+Cards, navigation, buttons and dialogs receive subtle theme shading and shadows.
+For a custom panel, add `wrail-surface-raised` to its classes; use
+`wrail-surface-inset` for a recessed track or `wrail-surface-flat` to remove depth.
+Keep the widget canvas flat so raised controls remain distinct.
+
+This appearance comes from WRSS, with native paint and compositor transitions.
+There is no separate C# 3D-control API. The [surface-depth reference](../reference/wrss.md#surface-depth)
+lists properties, theme tokens, clipping and accessibility behavior.
+
 ## WRSS is not all of CSS
 
 WRSS supports a defined set of selectors and properties. Browser-only features

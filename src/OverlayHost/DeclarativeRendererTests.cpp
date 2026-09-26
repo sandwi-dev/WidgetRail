@@ -7759,6 +7759,100 @@ void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
         "external live surfaces preserve direct rendering and stationary placement");
 }
 
+void SurfaceDepthUsesBoundedSharedPainting() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "surface depth resource/paint succeeds"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    const auto makeTarget = [&] {
+        ok(wic->CreateBitmap(256, 192, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf()));
+        ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.ReleaseAndGetAddressOf()));
+    };
+    makeTarget();
+    const auto pixel = [&](int x, int y) {
+        ComPtr<IWICBitmapLock> lock; const WICRect rect{x, y, 1, 1};
+        ok(canvas->Lock(&rect, WICBitmapLockRead, lock.GetAddressOf()));
+        UINT count{}; BYTE *bytes{}; ok(lock->GetDataPointer(&count, &bytes));
+        return std::array<int, 4>{bytes[0], bytes[1], bytes[2], bytes[3]};
+    };
+    surface::ShadowCache shadows;
+    target->BeginDraw(); target->Clear(D2D1::ColorF(1, 1, 1));
+    Check(shadows.Draw(target.Get(), {40, 40, 100, 50}, 8, 9, 0, 3, D2D1::ColorF(0, .5F), 1), "soft shadow paints");
+    Check(surface::Fill(target.Get(), D2D1::RoundedRect({40, 40, 140, 90}, 8, 8),
+        D2D1::ColorF(.4F, .5F, .6F), D2D1::ColorF(.2F, .3F, .4F)), "surface shading paints");
+    ok(target->EndDraw());
+    Check(pixel(90, 95)[0] < pixel(90, 99)[0] && pixel(90, 99)[0] < pixel(90, 106)[0],
+        "real shadow blur fades continuously beyond the offset silhouette");
+    Check(pixel(90, 45)[0] > pixel(90, 85)[0] + 20, "surface has restrained directional shading");
+    const auto creates = shadows.stats().creates;
+    target->BeginDraw();
+    Check(shadows.Draw(target.Get(), {10, 10, 220, 80}, 8, 9, 0, 3, D2D1::ColorF(1, 0, 0, .4F), 1), "resized/tinted shadow paints");
+    ok(target->EndDraw());
+    Check(shadows.stats().creates == creates && shadows.stats().hits > 0, "large surfaces and colors reuse nine-slice shadow masks");
+    target->BeginDraw(); target->Clear(D2D1::ColorF(1, 1, 1));
+    target->PushAxisAlignedClip({0, 0, 148, 96}, D2D1_ANTIALIAS_MODE_ALIASED);
+    shadows.Draw(target.Get(), {40, 40, 100, 50}, 8, 9, 0, 3, D2D1::ColorF(0, .5F), 1);
+    target->PopAxisAlignedClip(); ok(target->EndDraw());
+    Check(pixel(90, 100)[0] == 255, "depth respects ancestor clipping");
+    target->BeginDraw();
+    for (int radius = 1; radius < 45; ++radius)
+        shadows.Draw(target.Get(), {40, 40, 100, 90}, static_cast<float>(radius), 6, 0, 2, D2D1::ColorF(0, .2F), 1);
+    ok(target->EndDraw());
+    Check(shadows.stats().entries <= surface::ShadowCache::MaximumEntries && shadows.stats().bytes <= surface::ShadowCache::MaximumBytes,
+        "shadow cache is bounded under shape churn");
+    shadows.Clear(); Check(shadows.stats().entries == 0 && shadows.stats().bytes == 0, "shadow resources retire with their owner");
+
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), nullptr);
+    WidgetSnapshot snapshot; snapshot.instanceId = L"depth"; snapshot.sequence = 1; snapshot.activeInputScopeId = L"root";
+    snapshot.root = Node(L"root", L"stack");
+    snapshot.root.baseStyle = {{L"width", Length(240)}, {L"height", Length(160)}, {L"padding", LengthList(L"24px")}, {L"overflow", Keyword(L"visible")}};
+    auto button = Node(L"depth.button", L"button");
+    button.text = L"Depth"; button.actionId = L"activate";
+    button.baseStyle = {{L"width", Length(100)}, {L"height", Length(44)}, {L"background", Color(L"#445566")},
+        {L"surface-shading", Number(.06)}, {L"corner-radius", Length(8)}, {L"shadow-color", Color(L"#00000080")},
+        {L"shadow-blur", Length(9)}, {L"shadow-offset-y", Length(3)}};
+    button.focusedStyle = {{L"surface-shading", Number(.10)}, {L"shadow-blur", Length(18)}};
+    snapshot.root.children = {button};
+    DeclarativeRenderOptions options; options.widgetAnimations.focus = animation::FocusStyle::Fade;
+    for (int domain = 0; domain < 2; ++domain) {
+        if (domain) makeTarget();
+        target->BeginDraw(); target->Clear(D2D1::ColorF(1, 1, 1));
+        auto result = renderer.Render(target.Get(), snapshot, L"", {0, 0, 256, 192}, options);
+        ok(target->EndDraw()); Check(result.succeeded, "depth survives target resource replacement");
+        const auto box = result.elementRects.at(L"depth.button");
+        Near(box.width, 100, "shadow does not enlarge logical control bounds");
+        Near(box.y, 24, "test surface retains its authored inset");
+        Check(pixel(static_cast<int>(box.x + 50), static_cast<int>(box.y + box.height + 5))[0] < 255,
+            "renderer shadow is not cut off at the control's own border");
+    }
+    options.compositorWidgetTransitions = true;
+    const auto focusDamage = renderer.PlanFocusUpdate(snapshot, L"", L"depth.button", {0, 0, 256, 192});
+    Check(focusDamage && focusDamage->damage.y + focusDamage->damage.height >= 90,
+        "incoming focus damage includes its expanded shadow, not just its logical box");
+    snapshot.sequence = 2;
+    snapshot.root.children[0].baseStyle[L"shadow-blur"] = Length(40);
+    const auto depthDamage = renderer.PlanPresentationUpdate(snapshot,
+        WidgetPresentationImpact{1, 2, WidgetPresentationEffect::Paint, {L"depth.button"}}, {0, 0, 256, 192});
+    Check(depthDamage && depthDamage->damage.y + depthDamage->damage.height >= 114,
+        "a newly enlarged shadow expands incremental damage beyond the previous frame");
+    target->BeginDraw(); target->Clear(D2D1::ColorF(1, 1, 1));
+    auto composed = renderer.Render(target.Get(), snapshot, L"depth.button", {0, 0, 256, 192}, options);
+    ok(target->EndDraw());
+    Check(composed.widgetComposition && !composed.widgetComposition->directContent, "depth stays compositor-compatible");
+    std::vector<declarative::Rect> footprints;
+    for (const auto &node : composed.widgetComposition->nodes)
+        if (node.parent == L"focus-surface/depth.button" && node.bitmap) footprints.push_back(node.bounds);
+    Check(footprints.size() == 2 && animation::SameFocusRect(footprints[0], footprints[1]) && footprints[0].width > 100,
+        "idle and focused depth share an expanded capture footprint for exact alpha blending");
+}
+
 void FocusSurfacesPreserveColorsAndWrssScale() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -8458,6 +8552,7 @@ int main() {
     TileDescendantsRespectResolvedShapeAndOverflow();
     RetainedPosterPaintPreservesArtwork();
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
+    SurfaceDepthUsesBoundedSharedPainting();
     FocusSurfacesPreserveColorsAndWrssScale();
     ModalBackgroundRetainsItsScrollOwner();
     ModalLayersPaintAboveThePageAndKeepIndependentScroll();

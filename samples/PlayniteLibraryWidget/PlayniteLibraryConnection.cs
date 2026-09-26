@@ -119,7 +119,7 @@ internal static class PlayniteLibraryConnectionPresentation
                 children[0],
                 UI.VerticalScroll("playnite-library.playnite.content", children.Skip(1).ToArray())
                     .Classes("playnite-library-playnite-content"))
-            .Classes("playnite-library-playnite-shell");
+            .Classes("playnite-library-playnite-shell", "wrail-surface-raised");
         var root = UI.Stack("playnite-library.playnite.root", shell)
             .Classes("playnite-library-playnite");
         return new WidgetView(root,

@@ -35,6 +35,19 @@ void Near(float expected, float actual) {
 int main() {
     using namespace widgetrail;
 
+    WidgetComputedStyle depth{{L"surface-shading", Number(L"number", .08)},
+        {L"shadow-color", Color(L"#00000066")}, {L"shadow-blur", Length(9, L"px")}};
+    const auto raised = NativeStyleAdapter::Adapt(depth, {});
+    Near(.08F, raised.style.surfaceShading());
+    assert(raised.style.shadowColor());
+    depth[L"surface-shading"] = Number(L"number", -1);
+    Near(-.25F, NativeStyleAdapter::Adapt(depth, {}).style.surfaceShading());
+    NativeAccessibilityPolicy contrastDepth;
+    contrastDepth.contrastHook = [](NativeColor foreground, NativeColor) { return foreground; };
+    const auto flatContrast = NativeStyleAdapter::Adapt(depth, {}, contrastDepth);
+    Near(0, flatContrast.style.surfaceShading());
+    assert(!flatContrast.style.shadowColor());
+
     WidgetComputedStyle responsive{
         {L"width", Length(50, L"vw")},
         {L"height", Length(25, L"vh")},
@@ -389,8 +402,8 @@ int main() {
     Near(0x18 / 255.0F, shellResult.style.background()->red);
     Near(0xcc / 255.0F, shellResult.style.background()->alpha);
     Near(18, shellResult.style.cornerRadiusPx());
-    // Focused shell items inherit the host's minimum two-DIP focus ring.
-    Near(2.0F, shellResult.style.outlineWidthPx());
+    // Normal mode honors a thin themed edge; high contrast retains its stronger minimum.
+    Near(1.5F, shellResult.style.outlineWidthPx());
     Near(24, shellResult.style.fontSizePx());
     assert(shellResult.style.fontWeight() == 650);
     assert(shellResult.style.fontFamily() == L"Segoe UI Variable Display");

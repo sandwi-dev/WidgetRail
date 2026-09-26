@@ -9,7 +9,7 @@
 .youtube-appbar-copy { min-width: 0px; gap: 1px; flex-grow: 1; }
 .youtube-route-actions { align: center; justify: end; gap: 8px; flex-shrink: 0; }
 .youtube-route-button { min-height: 38px; padding: 7px 12px; color: var(--text-muted); background: transparent; border-color: var(--text-subdued); border-width: 1px; corner-radius: 8px; }
-.youtube-route-button:focused { color: var(--text); background: var(--surface-raised); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-route-button:focused { color: var(--text); background: var(--surface-raised); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .youtube-route-button:disabled { color: var(--text-subdued); border-color: var(--surface-muted); opacity: 0.72; }
 .youtube-header { min-width: 0px; }
 .youtube-eyebrow { color: #ff5f5f; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; max-lines: 1; }
@@ -26,7 +26,7 @@
 .youtube-section-copy, .youtube-copy { color: var(--text-muted); font-size: 12px; max-lines: 5; }
 .youtube-link { width: 100%; min-height: 36px; padding: 3px 12px; color: var(--text); background: var(--surface); border-color: var(--text-subdued); border-width: 1px; corner-radius: 10px; text-align: start; flex-shrink: 1; }
 .youtube-link.is-empty { color: var(--text-subdued); }
-.youtube-link:focused { border-color: var(--focus); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-link:focused { border-color: var(--focus); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .youtube-player-shell { width: 100%; min-width: 0px; min-height: 0px; gap: 6px; padding: 8px; background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 10px; flex-grow: 1; flex-shrink: 1; overflow: clip; }
 .youtube-viewport { width: 100%; min-width: 356px; min-height: 200px; flex-basis: 320px; flex-grow: 1; flex-shrink: 1; background: #000000; border-color: var(--surface-muted); border-width: 1px; corner-radius: 7px; overflow: clip; }
 .youtube-control-deck { gap: 2px; padding: 4px 6px; background: transparent; corner-radius: 7px; flex-shrink: 0; }
@@ -35,7 +35,7 @@
 .youtube-primary, .youtube-secondary { min-height: 38px; padding: 7px 14px; border-width: 1px; corner-radius: 8px; }
 .youtube-primary { min-width: 108px; background: var(--accent); color: var(--surface); border-color: transparent; }
 .youtube-secondary { min-width: 82px; background: var(--surface); color: var(--text); border-color: var(--text-subdued); }
-.youtube-primary:focused, .youtube-secondary:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-primary:focused, .youtube-secondary:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .youtube-secondary:focused { background: var(--surface-muted); }
 .youtube-primary:disabled, .youtube-secondary:disabled { color: var(--text-subdued); background: var(--surface-muted); border-color: var(--surface-muted); opacity: 0.7; }
 .youtube-transport-button { min-width: 38px; width: 38px; min-height: 36px; height: 36px; padding: 4px; corner-radius: 7px; flex-shrink: 0; }
@@ -45,7 +45,7 @@
 .youtube-time.is-end { text-align: end; }
 .youtube-label { width: 48px; color: var(--text-muted); font-size: 11px; max-lines: 1; }
 .youtube-slider { min-width: 80px; height: 34px; flex-grow: 1; color: var(--accent); background: var(--surface); }
-.youtube-slider:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-slider:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .youtube-slider:disabled { color: var(--text-subdued); opacity: 0.68; }
 .youtube-volume { width: 72px; min-width: 56px; height: 32px; flex-grow: 0; flex-shrink: 1; }
 .youtube-page { width: 100%; min-width: 0px; gap: 12px; }
@@ -55,11 +55,11 @@
 .youtube-setup-step { gap: 8px; }
 .youtube-setup-manage { gap: 8px; }
 .youtube-entry { width: 100%; min-height: 44px; color: var(--text); background: var(--surface); border-color: var(--text-subdued); border-width: 1px; corner-radius: 9px; }
-.youtube-entry:focused { border-color: var(--focus); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-entry:focused { border-color: var(--focus); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .youtube-danger, .youtube-tertiary { min-height: 38px; padding: 7px 12px; border-width: 1px; corner-radius: 8px; }
 .youtube-danger { color: var(--danger, #c98181); background: var(--surface); border-color: var(--danger, #c98181); }
 .youtube-tertiary { color: var(--text-muted); background: transparent; border-color: var(--text-subdued); }
-.youtube-danger:focused, .youtube-tertiary:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-danger:focused, .youtube-tertiary:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .youtube-state-card { width: 100%; min-width: 0px; min-height: 112px; gap: 8px; padding: 18px; justify: center; background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 11px; }
 .youtube-state-card.is-empty { border-color: var(--surface-muted); }
 .youtube-state-card.is-loading { border-color: var(--accent); }
@@ -76,7 +76,7 @@
 .youtube-result-title { color: var(--text); font-size: 13px; font-weight: 600; max-lines: 2; }
 .youtube-result-meta { color: var(--text-muted); font-size: 11px; max-lines: 1; }
 .youtube-result-action { min-width: 72px; min-height: 34px; padding: 5px 10px; background: var(--surface); border-color: var(--text-subdued); border-width: 1px; corner-radius: 7px; }
-.youtube-result-action:focused, .youtube-now-playing:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-result-action:focused, .youtube-now-playing:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .youtube-now-playing { width: 100%; min-height: 42px; padding: 8px 12px; color: var(--text); background: var(--surface-muted); border-color: var(--accent); border-width: 1px; corner-radius: 9px; }
 .youtube-player-settings { width: 100%; min-width: 0px; min-height: 0px; max-height: 620px; gap: 10px; padding: 14px 16px; background: var(--surface); color: var(--text); overflow: clip; }
 .wrail-dialog__content { min-height: 0px; flex-grow: 1; flex-shrink: 1; }

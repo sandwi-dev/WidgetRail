@@ -2793,7 +2793,7 @@ int main(int argc, char** argv) {
     }
     CHECK(appearance->animateWidgetModals);
     CHECK(appearance->modalAnimation == L"zoom");
-    CHECK(appearance->focusAnimation == L"settle");
+    CHECK(appearance->focusAnimation == L"fade");
     for (const auto value : {"\"settle\"", "\"fade\"", "\"slide\"", "\"none\"", "\"unknown\"", "false", "null"}) {
         std::string source(ValidAppearance);
         source.insert(1, std::string("\"focusAnimation\":") + value + ",");

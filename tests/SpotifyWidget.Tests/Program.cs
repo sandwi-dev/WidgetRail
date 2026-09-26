@@ -252,7 +252,7 @@ static async Task PrimaryActionContrast()
     Assert.Equal("#ff7898", focused.Get("outline-color")?.Text);
     Assert.True(normal.Get("background")?.Text != focused.Get("outline-color")?.Text,
         "Primary fill and focused outline must use distinct semantic theme tokens.");
-    Assert.Equal("-2px", focused.Get("outline-offset")?.Text);
+    Assert.Equal("-1.5px", focused.Get("outline-offset")?.Text);
     await StopAsync(widget);
 }
 

@@ -153,7 +153,8 @@ bool DrawWidgetComposition() {
             if (animation::HasFocusSurfaceChange(styleNode->second.baseStyle, focusStyle)) {
                 separateSurface = !surfaceDone && !node.transition && node.id != pressedId &&
                     animation::CanSeparateFocusSurface(styleNode->second.baseStyle, focusStyle,
-                        controlScale && scene->animations.focus != animation::FocusStyle::Slide);
+                        controlScale && scene->animations.focus != animation::FocusStyle::Slide,
+                        scene->animations.focus != animation::FocusStyle::Slide);
                 movable = movable && separateSurface;
                 if (separateSurface) compositionFocusStyles.emplace(node.id, focusStyle);
             }
@@ -198,15 +199,18 @@ bool DrawWidgetComposition() {
         if (separateSurface) {
             const auto surface = addGroup(L"focus-surface/" + node.id, parent, WidgetCompositionKind::FocusSurface,
                 scope, targetKey, 0, shown.borderBox, shown.ancestorClip);
-            op(node, 5, surface, shown.visibleBox);
+            const auto surfaceBounds = Intersection(UnionRect(
+                widgetrail::surface::PaintBounds(shown.borderBox, styleNode->second.baseStyle, options.pixelScale),
+                widgetrail::surface::PaintBounds(shown.borderBox, compositionFocusStyles.at(node.id), options.pixelScale)), shown.ancestorClip);
+            op(node, 5, surface, surfaceBounds);
             scene->nodes.back().order = 0;
             split();
-            op(node, 0, surface, shown.visibleBox);
+            op(node, 0, surface, surfaceBounds);
             scene->nodes.back().order = 1;
             split();
         } else if (!surfaceDone && surfacePaints && !compositorBackground && node.kind != L"modalLayer" &&
             node.kind != L"slider")
-            op(node, 0, parent, shown.visibleBox);
+            op(node, 0, parent, Intersection(widgetrail::surface::PaintBounds(shown.borderBox, style, options.pixelScale), shown.ancestorClip));
         const bool semantic = node.kind != L"stack" && node.kind != L"row" && node.kind != L"scroll" &&
                               node.kind != L"grid" && node.kind != L"spacer" &&
                               node.kind != L"focusPresentationSurface" && node.kind != L"modalLayer";
@@ -218,7 +222,8 @@ bool DrawWidgetComposition() {
                 continue;
             const auto childPos = presentation.find(NarrowStableId(child.id));
             if (childPos != presentation.end())
-                op(child, 0, parent, childPos->second.visibleBox);
+                op(child, 0, parent, Intersection(widgetrail::surface::PaintBounds(childPos->second.borderBox,
+                    prepared.at(NarrowStableId(child.id)).paintStyle, options.pixelScale), childPos->second.ancestorClip));
         }
         for (const auto &child : node.children) {
             if (!child.transition || !child.transition->selection || !child.isSelected)
@@ -232,7 +237,8 @@ bool DrawWidgetComposition() {
                          transition.groupId, transition.key, transition.order, childPos->second.borderBox,
                          shown.visibleBox);
             transitionSelections[child.id] = childPos->second.borderBox;
-            op(child, 0, selection, childPos->second.visibleBox);
+            op(child, 0, selection, Intersection(widgetrail::surface::PaintBounds(childPos->second.borderBox,
+                prepared.at(NarrowStableId(child.id)).paintStyle, options.pixelScale), childPos->second.ancestorClip));
             split();
         }
         if (node.kind == L"focusPresentationSurface") {
@@ -289,7 +295,7 @@ bool DrawWidgetComposition() {
             const auto &style = prepared.at(NarrowStableId(focusedId)).paintStyle;
             const auto paintBox = ScaleRect(shown.borderBox, shown.motion.value.scale);
             const float outset = std::max(12.0F, style.outlineOffsetPx() +
-                std::max(options.accessibility.minimumFocusRingPx, std::max(2.0F, style.outlineWidthPx())));
+                std::max(options.accessibility.minimumFocusRingPx, (style.outlineWidthPx() > 0 ? style.outlineWidthPx() : 2.0F)));
             op(*sceneFocus, 3, focusGroup, Intersection(Inset(paintBox, -outset), shown.ancestorClip));
             split();
             // In-place focus animates only the highlight. The controller hint is immediate,

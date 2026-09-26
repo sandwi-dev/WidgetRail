@@ -176,7 +176,7 @@ Widgets continue to declare semantic transitions rather than choosing host effec
 ### Focus movement
 
 The native host animates themed focus decorations using DirectComposition.
-Widgets need no transition declaration. Settle is the default; the optional Slide
+Widgets need no transition declaration. Fade is the default; the optional Slide
 preset moves decoration between nearby controls. In Slide, text and artwork
 change to the destination immediately. The options badge,
 outline and focus border move over a 140 ms smoothstep timeline at 1x.
@@ -187,7 +187,7 @@ fill. Normal surfaces retain selected, disabled and busy styling.
 The widget animation speed preference scales this duration. Reduced Motion and
 hosts without composition use the stationary outline.
 
-Settings offers Settle (default), Fade, Slide and None for focus highlights.
+Settings offers Fade (default), Settle, Slide and None for focus highlights.
 Settle expands the destination outline from up to 6 DIPs inside the control over
 220 ms and raises its opacity from 65% to full. The inset is bounded for small
 controls. It remains visible even when a row clips exactly to the control's bounds;
@@ -213,9 +213,11 @@ The focus layer never changes input mapping or publishes an animation repaint
 timer. Live external media surfaces keep their existing stationary fallback.
 
 Focus surface separation uses final resolved styles, not widget IDs or selector
-names. It supports background, border color and rounded-shape changes. Shadows,
-blur, border-width/layout changes and semantic navigation-selection surfaces
-retain their ordinary surface painting. Poster surfaces remain underneath
+names. Fade and Settle support background, shading, soft shadows, border color
+and rounded-shape changes. Both states use the same shadow-expanded capture bounds
+so translucent pixels interpolate consistently. Slide retains a stationary fallback
+for shadowed controls. Background blur, border-width/layout changes and semantic
+navigation-selection surfaces retain their ordinary surface painting. Poster surfaces remain underneath
 full-bleed artwork; their borders are not lifted above that artwork. Unsupported
 surface changes snap the outline too, avoiding competing focus indicators.
 

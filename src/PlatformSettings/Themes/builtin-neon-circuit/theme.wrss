@@ -3,12 +3,21 @@
    and accessibility affordance owned by builtin.default and changes only
    palette, corner geometry, and label typography.
 
-   Theme layers beat selector specificity, so this file never declares a
-   property that builtin.default varies per pseudo-state (background, color,
-   border-color, outline-*, opacity, scale). Those follow the tokens below
-   instead, which keeps :focused, :selected, :pressed, and :disabled intact. */
+   Theme layers beat selector specificity. State-dependent fills, focus edges,
+   opacity and scale follow baseline rules and the tokens below, preserving
+   focused, selected, pressed and disabled states. */
 
 :root {
+  --panel-shading: .025;
+  --control-shading: .045;
+  --focus-shading: .065;
+  --inset-shading: -0.035;
+  --depth-shadow: rgba(0, 3, 12, 0.38);
+  --depth-highlight: rgba(174, 234, 255, 0.09);
+  --depth-lowlight: rgba(0, 0, 0, 0.18);
+  --focus-width: 1.5px;
+  --focus-offset: -1.5px;
+
   /* Deep indigo-black instead of warm graphite. Surfaces keep the platform's
      four-step ramp so raised/subtle/active separation still reads at 720p. */
   --canvas: #05070e;
@@ -32,10 +41,8 @@
   --scrollbar-thumb: #67bbd0;
   --text-subdued: #7d89a5;
 
-  /* Focus stays a near-neutral bright value, only barely cooled toward the
-     palette. The ring must not compete with the accent or lose contrast under
-     host high-contrast policy. */
-  --focus: #eaf7ff;
+  /* The accent edge reinforces the raised focused surface. */
+  --focus: var(--accent);
 
   /* Electric cyan is the single interactive accent: progress, sliders, primary
      icon buttons, and tile state. Magenta is a label-only companion used for

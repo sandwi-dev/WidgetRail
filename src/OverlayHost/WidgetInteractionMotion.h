@@ -114,19 +114,22 @@ inline std::array<Rect, 5> FocusSurfaceClips(Rect extent, Rect reveal) noexcept 
 }
 
 inline bool HasFocusSurfaceChange(const NativeRenderStyle &base, const NativeRenderStyle &focus) noexcept {
-    return base.background() != focus.background() || base.borderEdges() != focus.borderEdges() ||
+    return base.background() != focus.background() || base.surfaceShading() != focus.surfaceShading() ||
+           base.shadowColor() != focus.shadowColor() || base.shadowBlurPx() != focus.shadowBlurPx() ||
+           base.shadowOffsetXPx() != focus.shadowOffsetXPx() || base.shadowOffsetYPx() != focus.shadowOffsetYPx() ||
+           base.borderEdges() != focus.borderEdges() ||
            base.cornerRadiusPx() != focus.cornerRadiusPx() || base.shape() != focus.shape();
 }
 
 inline bool CanSeparateFocusSurface(const NativeRenderStyle &base, const NativeRenderStyle &focus,
-                                    bool compositorScale = false) noexcept {
+                                    bool compositorScale = false, bool depth = false) noexcept {
     const auto hasShadow = [](const auto &style) {
         return style.shadowColor() && style.shadowColor()->alpha > 0;
     };
     const auto &before = base.borderEdges(), &after = focus.borderEdges();
     return before.top.widthPx == after.top.widthPx && before.right.widthPx == after.right.widthPx &&
         before.bottom.widthPx == after.bottom.widthPx && before.left.widthPx == after.left.widthPx &&
-        !hasShadow(base) && !hasShadow(focus) && base.backgroundBlurPx() == 0 && focus.backgroundBlurPx() == 0 &&
+        (depth || (!hasShadow(base) && !hasShadow(focus))) && base.backgroundBlurPx() == 0 && focus.backgroundBlurPx() == 0 &&
         base.opacity() == focus.opacity() && (compositorScale || (base.scale() == 1 && focus.scale() == 1)) &&
         base.translateXPx() == focus.translateXPx() && base.translateYPx() == focus.translateYPx() &&
         base.widthPx() == focus.widthPx() && base.heightPx() == focus.heightPx() &&

@@ -191,6 +191,7 @@ struct NativeRenderStyle::Data final {
     std::optional<NativeColor> borderColor;
     std::optional<NativeColor> outlineColor;
     std::optional<NativeColor> shadowColor;
+    float surfaceShading{};
     std::optional<NativeColor> imageTint;
     std::optional<NativeColor> scrimColor;
     float scrollbarWidth{4};
@@ -272,6 +273,7 @@ WRAIL_STYLE_GETTER(float, outlineOffsetPx, outlineOffset)
 WRAIL_STYLE_GETTER(float, borderWidthPx, borderWidth)
 WRAIL_STYLE_GETTER(const NativeBorderStyle&, borderEdges, borderEdges)
 WRAIL_STYLE_GETTER(float, backgroundBlurPx, backgroundBlur)
+WRAIL_STYLE_GETTER(float, surfaceShading, surfaceShading)
 WRAIL_STYLE_GETTER(float, shadowBlurPx, shadowBlur)
 WRAIL_STYLE_GETTER(float, shadowOffsetXPx, shadowOffsetX)
 WRAIL_STYLE_GETTER(float, shadowOffsetYPx, shadowOffsetY)
@@ -469,6 +471,9 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         else if (property == L"border-bottom-color") borderBottomColor = Color(property, value);
         else if (property == L"border-left-color") borderLeftColor = Color(property, value);
         else if (property == L"outline-color") data->outlineColor = Color(property, value);
+        else if (property == L"surface-shading") {
+            if (const auto item = Number(property, value, -.25F, .25F)) data->surfaceShading = *item;
+        }
         else if (property == L"shadow-color") data->shadowColor = Color(property, value);
         else if (property == L"image-tint") data->imageTint = Color(property, value);
         else if (property == L"scrim-color") data->scrimColor = Color(property, value);
@@ -621,6 +626,7 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         std::swap(data->minHeight, data->maxHeight); Add(L"min-height", L"Minimum and maximum height were reordered.");
     }
 
+    if (accessibility.contrastHook) { data->surfaceShading = 0; data->shadowColor.reset(); }
     if (accessibility.reducedTransparency) {
         data->opacity = 1;
         data->backgroundBlur = 0;
@@ -674,8 +680,8 @@ NativeStyleResult NativeStyleAdapter::Adapt(
     ApplyContrast(data->scrollbarThumbColor, L"scrollbar-thumb-color", false,
         ResolveNativeSurfaceColor(data->scrollbarTrackColor, background, data->opacity));
     if (context.focused) {
-        data->outlineWidth = std::max(data->outlineWidth,
-            ClampFinite(accessibility.minimumFocusRingPx, 2, 1, 16));
+        data->outlineWidth = std::max(data->outlineWidth > 0 ? data->outlineWidth : 2.0F,
+            ClampFinite(accessibility.minimumFocusRingPx, 1, 1, 16));
         if (!data->outlineColor) data->outlineColor = DefaultContrastingColor(background);
         ApplyContrast(data->outlineColor, L"outline-color");
     }

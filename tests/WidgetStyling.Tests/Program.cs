@@ -17,8 +17,9 @@ var tests = new (string Name, Action Run)[]
     ("Explicit theme layers outrank selector specificity", LayerPrecedence),
     ("Selected disabled busy and focused states compose", InteractionStateComposition),
     ("Typed values clamp bounded renderer inputs", Clamping),
+    ("Surface shading is typed bounded and theme-owned", SurfaceShading),
     ("Scrollbar parts have independent colors and bounded widths", ScrollbarStyles),
-    ("Every built-in theme supplies separate scrollbar colors", BuiltinScrollbarPalettes),
+    ("Every built-in theme supplies scrollbar colors, depth and thin focus edges", BuiltinScrollbarPalettes),
     ("Pressed scale overrides focus enlargement under every built-in theme", PressedScalePalettes),
     ("Invalid typed values prevent theme publication", InvalidTypedValues),
     ("Resolved property enumeration is deterministic", DeterministicResolution),
@@ -406,6 +407,23 @@ static void BuiltinScrollbarPalettes()
         Assert.Equal("4px", scroll.Get("scrollbar-width")!.Text);
         Assert.True(scroll.Get("scrollbar-thumb-color")!.Text != scroll.Get("scrollbar-track-color")!.Text,
             $"Theme {name} must distinguish the thumb from its track.");
+        foreach (var styleClass in new[] { "wrail-switch", "wrail-stepper__button", "wrail-tile", "wrail-choice-row" })
+        {
+            var focus = compiled.Theme.Resolve(new WrssElement("button", null,
+                new HashSet<string> { styleClass }, new HashSet<WrssPseudoState> { WrssPseudoState.Focused }));
+            Assert.Equal("1.5px", focus.Get("outline-width")!.Text);
+            Assert.True(focus.Get("surface-shading")!.Number > 0, $"{name}/{styleClass} has focused surface emphasis.");
+        }
+        var raised = compiled.Theme.Resolve(new WrssElement("stack", null,
+            new HashSet<string> { "wrail-surface-raised" }, null));
+        var inset = compiled.Theme.Resolve(new WrssElement("row", null,
+            new HashSet<string> { "wrail-surface-inset" }, null));
+        Assert.True(raised.Get("surface-shading")!.Number > 0 && inset.Get("surface-shading")!.Number < 0,
+            $"{name} distinguishes raised panels from inset navigation tracks.");
+        var flat = compiled.Theme.Resolve(new WrssElement("stack", null,
+            new HashSet<string> { "wrail-card", "wrail-surface-flat" }, null));
+        Assert.Equal(0d, flat.Get("surface-shading")!.Number!.Value);
+        Assert.Equal("transparent", flat.Get("shadow-color")!.Text);
     }
 }
 
@@ -616,6 +634,20 @@ static void TranslationValues()
         "translate-y is missing from the public allowlist.");
 }
 
+static void SurfaceShading()
+{
+    var compile = Compile(":root { --light: 0.06; } button { surface-shading: var(--light); } button:pressed { surface-shading: -0.04; }");
+    Assert.True(compile.IsValid, Describe(compile.Diagnostics));
+    var style = compile.Theme!.Resolve(Element("button"));
+    Assert.Equal(WrssValueKind.Number, style.Get("surface-shading")!.Kind);
+    Assert.Equal(0.06d, style.Get("surface-shading")!.Number!.Value);
+    var bounded = Compile("button { surface-shading: 2; }");
+    Assert.Equal(0.25d, bounded.Theme!.Resolve(Element("button")).Get("surface-shading")!.Number!.Value);
+    Assert.Equal(1, bounded.Diagnostics.Count(item => item.Code == "value_clamped"));
+    var invalid = CompileExpectingErrors("button { surface-shading: 10px; }");
+    Assert.Equal(1, invalid.Diagnostics.Count(item => item.Code == "invalid_value"));
+}
+
 static void ResponsiveWrapValues()
 {
     var compile = Compile("row { flex-wrap: wrap; gap: 8px 12px; }");
@@ -739,7 +771,7 @@ static void CoolSlateSource()
     var button = compiled.Theme.Resolve(Element("button"));
     Assert.Equal("44px", button.Get("min-height")!.Text);
     Assert.Equal("rgba(22, 32, 45, 0.98)", button.Get("background")!.Text);
-    Assert.Equal("#f1f4f7", button.Get("outline-color")!.Text);
+    Assert.Equal("#8ca9c4", button.Get("outline-color")!.Text);
     Assert.Equal("rgba(219, 230, 240, 0.12)", button.Get("border-color")!.Text);
     Assert.True(button.Get("shadow-blur") is null, "Cool Slate must not introduce a component shadow.");
 }
@@ -803,7 +835,8 @@ static void NeonCircuitSource()
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("rgba(35, 45, 74, 0.98)", focused.Get("background")!.Text);
-    Assert.Equal("#eaf7ff", focused.Get("outline-color")!.Text);
+    Assert.Equal("#3fe0ff", focused.Get("outline-color")!.Text);
+    // This probe authors a fixed width. Palette tokens must not override it.
     Assert.Equal("2px", focused.Get("outline-width")!.Text);
     Assert.Equal("6px", focused.Get("corner-radius")!.Text);
 
@@ -881,7 +914,7 @@ static void ArcadeRushSource()
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("rgba(72, 48, 92, 0.98)", focused.Get("background")!.Text);
-    Assert.Equal("#fdf4fa", focused.Get("outline-color")!.Text);
+    Assert.Equal("#ff3ea5", focused.Get("outline-color")!.Text);
     Assert.Equal("22px", focused.Get("corner-radius")!.Text);
 
     // Circular tray targets keep their 44 DIP extent, and the selected state
@@ -1001,7 +1034,7 @@ static void RedlineSource()
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("rgba(77, 40, 43, 0.98)", focused.Get("background")!.Text);
-    Assert.Equal("#fff4f2", focused.Get("outline-color")!.Text);
+    Assert.Equal("#ff3d2e", focused.Get("outline-color")!.Text);
 
     var transparentCard = compiled.Theme.Resolve(new WrssElement(
         "container",

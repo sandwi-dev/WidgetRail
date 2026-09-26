@@ -29,12 +29,12 @@
 .playnite-library-header-row { width: 100%; align: center; justify: space-between; gap: 16px; padding: 10px 14px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
 .playnite-library-home-actions { width: 100%; min-width: 0px; flex-shrink: 0; align: center; justify: space-between; gap: 12px; padding: 10px 14px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; opacity: 0.84; }
 .playnite-library-home-utilities { min-width: 0px; flex-grow: 0; flex-shrink: 0; align: center; gap: 8px; }
-.playnite-library-control { min-height: 40px; flex-grow: 0; flex-shrink: 0; padding: 8px 12px; font-family: var(--font-text, Segoe UI); font-size: 13px; font-weight: 600; text-align: center; background: var(--surface-raised); color: var(--text); border-color: var(--border-strong, var(--text-muted)); border-width: 1px; corner-radius: 10px; outline-color: transparent; outline-width: 0px; outline-offset: -2px; }
-.playnite-library-control:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--text); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.playnite-library-control { min-height: 40px; flex-grow: 0; flex-shrink: 0; padding: 8px 12px; font-family: var(--font-text, Segoe UI); font-size: 13px; font-weight: 600; text-align: center; background: var(--surface-raised); color: var(--text); border-color: var(--border-strong, var(--text-muted)); border-width: 1px; corner-radius: 10px; outline-color: transparent; outline-width: 0px; outline-offset: var(--focus-offset, -1.5px); }
+.playnite-library-control:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .playnite-library-control:pressed { background: var(--surface-active, var(--surface-muted)); border-color: var(--focus); }
 .playnite-library-control:selected { background: var(--surface-active, var(--surface-muted)); color: var(--text); border-color: var(--accent); }
 .playnite-library-filter-active { background: var(--surface-active, var(--surface-muted)); color: var(--text); border-color: var(--accent); }
-.playnite-library-filter-active:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--text); outline-color: var(--focus); outline-width: 2px; }
+.playnite-library-filter-active:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); }
 .playnite-library-control:disabled { background: var(--surface-subtle, var(--surface-muted)); color: var(--text-subdued); border-color: var(--border, var(--surface-muted)); }
 .playnite-library-header-copy { min-width: 0px; flex-grow: 1; flex-shrink: 1; }
 .playnite-library-header-expanded { min-width: 0px; gap: 3px; overflow: visible; }
@@ -139,7 +139,7 @@
 .playnite-library-summary-badges { min-width: 0px; flex-wrap: wrap; gap: 6px; }
 .playnite-library-summary-badge { color: var(--text); background: var(--surface-active, var(--surface-muted)); padding: 4px 8px; corner-radius: 6px; font-size: 12px; font-weight: 600; max-lines: 1; text-overflow: ellipsis; }
 .playnite-library-summary-badge-accent { color: var(--accent); }
-.playnite-library-category:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--focus); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.playnite-library-category:focused { background: var(--surface-active, var(--surface-muted)); border-color: var(--focus); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .playnite-library-category:pressed { background: var(--surface-subtle, var(--surface-muted)); }
 .playnite-library-category-chevron { color: var(--text-muted); flex-shrink: 0; }
 /* Preserve readable labels when no cover is available, including warm rows. */

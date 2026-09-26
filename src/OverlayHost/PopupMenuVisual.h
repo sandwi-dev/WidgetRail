@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PopupMenuMetrics.h"
+#include "SurfaceDepth.h"
 #include <d2d1.h>
 #include <dwrite.h>
 #include <wrl/client.h>
@@ -56,7 +57,7 @@ inline Microsoft::WRL::ComPtr<IDWriteTextLayout> CreatePopupMenuTextLayout(
 }
 
 inline void DrawPopupMenuPanel(ID2D1RenderTarget* target, const declarative::Rect& bounds,
-    const PopupMenuColors& colors, float themedRadius, float focusWidth) {
+    const PopupMenuColors& colors, float themedRadius, float focusWidth, surface::ShadowCache* shadows = nullptr) {
     if (!target || bounds.width <= kPopupMenuShadowMargin * 2 ||
         bounds.height <= kPopupMenuShadowMargin * 2) return;
     const auto face = D2D1::RectF(bounds.x + kPopupMenuShadowMargin, bounds.y + kPopupMenuShadowMargin,
@@ -67,32 +68,18 @@ inline void DrawPopupMenuPanel(ID2D1RenderTarget* target, const declarative::Rec
     surface.a = 1;
     if (FAILED(target->CreateSolidColorBrush(surface, brush.GetAddressOf()))) return;
     if (!colors.highContrast) {
-        // Every shadow layer stays inside the reserved bounds used by the host.
-        auto shadow = MenuShade(surface, -.65F);
-        shadow.a = .09F;
-        brush->SetColor(shadow);
-        for (int layer = 5; layer > 0; --layer) {
-            const float spread = static_cast<float>(layer) * .8F;
-            target->FillRoundedRectangle(D2D1::RoundedRect(
-                D2D1::RectF(face.left - spread, face.top - spread + 1.5F,
-                    face.right + spread, face.bottom + spread + 1.5F),
-                radius + spread, radius + spread), brush.Get());
-        }
+        widgetrail::surface::ShadowCache localShadows;
+        auto &cache = shadows ? *shadows : localShadows;
+        cache.Bind(target);
+        auto shadow = MenuShade(surface, -.65F); shadow.a = .35F;
+        cache.Draw(target, {face.left, face.top, face.right - face.left, face.bottom - face.top},
+            radius, 3, 0, 1.5F, shadow, 1);
         brush->SetColor(surface);
     }
     const auto panel = D2D1::RoundedRect(face, radius, radius);
     target->FillRoundedRectangle(panel, brush.Get());
     if (!colors.highContrast) {
-        const D2D1_GRADIENT_STOP stops[]{
-            {0, MenuShade(surface, .08F)}, {1, MenuShade(surface, -.08F)}};
-        Microsoft::WRL::ComPtr<ID2D1GradientStopCollection> collection;
-        Microsoft::WRL::ComPtr<ID2D1LinearGradientBrush> lighting;
-        if (SUCCEEDED(target->CreateGradientStopCollection(stops, 2, collection.GetAddressOf())) &&
-            SUCCEEDED(target->CreateLinearGradientBrush(
-                D2D1::LinearGradientBrushProperties({face.left, face.top}, {face.left, face.bottom}),
-                collection.Get(), lighting.GetAddressOf()))) {
-            target->FillRoundedRectangle(panel, lighting.Get());
-        }
+        widgetrail::surface::Fill(target, panel, MenuShade(surface, .06F), MenuShade(surface, -.06F));
     }
     auto border = colors.highContrast ? colors.focus : colors.muted;
     if (!colors.highContrast) border.a *= .55F;

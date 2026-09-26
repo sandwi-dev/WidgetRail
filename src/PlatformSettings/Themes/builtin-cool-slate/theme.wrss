@@ -1,4 +1,14 @@
 :root {
+  --panel-shading: .030;
+  --control-shading: .050;
+  --focus-shading: .070;
+  --inset-shading: -0.035;
+  --depth-shadow: rgba(0, 7, 20, 0.32);
+  --depth-highlight: rgba(210, 230, 255, 0.09);
+  --depth-lowlight: rgba(0, 0, 0, 0.18);
+  --focus-width: 1.5px;
+  --focus-offset: -1.5px;
+
   --canvas: #080d14;
   --canvas-veil: rgba(2, 6, 12, 0.72);
   --surface: rgba(15, 23, 34, 0.98);
@@ -14,7 +24,7 @@
   --scrollbar-track: #303b49;
   --scrollbar-thumb: #a3afbd;
   --text-subdued: #74808d;
-  --focus: #f1f4f7;
+  --focus: var(--accent);
   --accent: #8ca9c4;
   --success: #8eb19f;
   --info: #8ca9c4;

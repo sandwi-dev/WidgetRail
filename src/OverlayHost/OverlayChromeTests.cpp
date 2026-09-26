@@ -4,6 +4,7 @@
 #include "TrayLayout.h"
 #include "ControllerGuideVisual.h"
 #include "PopupCompositionScene.h"
+#include "SurfaceDepth.h"
 #pragma comment(lib, "dwrite.lib")
 
 #include <Windows.h>
@@ -1310,7 +1311,7 @@ void CheckWidgetAnimationPolicies() {
     Check(!CanMoveFocus(first, next, targets), "clipped or newly scrolled targets snap focus");
     next = targets[1]; next.bounds.width = 180;
     Check(!CanMoveFocus(first, next, targets), "large changes of control shape snap focus");
-    Check(Options{}.focus == FocusStyle::Settle && ParseFocusStyle(L"unknown") == FocusStyle::Settle &&
+    Check(Options{}.focus == FocusStyle::Fade && ParseFocusStyle(L"unknown") == FocusStyle::Fade &&
         ParseFocusStyle(L"settle") == FocusStyle::Settle && ParseFocusStyle(L"fade") == FocusStyle::Fade &&
         ParseFocusStyle(L"none") == FocusStyle::None && ParseFocusStyle(L"slide") == FocusStyle::Slide,
         "focus defaults and persisted preset IDs are stable");
@@ -1907,7 +1908,7 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
 
 void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = true,
                               widgetrail::animation::FocusStyle focusStyle = widgetrail::animation::FocusStyle::Fade,
-                              bool scaleControls = true, bool tightRow = false) {
+                              bool scaleControls = true, bool tightRow = false, bool depth = false) {
     using namespace widgetrail;
     const wchar_t *name = L"WidgetRail.FocusFadeTest";
     WNDCLASSW wc{}; wc.lpfnWndProc = DefWindowProcW;
@@ -1943,6 +1944,7 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
             scene->nodes.push_back(group);
             WidgetCompositionNode idle;
             idle.id = group.id + L"/idle"; idle.parent = group.id; idle.bounds = group.bounds; idle.clip = group.clip;
+            if (depth) idle.bounds = {item.bounds.x - 8, item.bounds.y - 8, 56, 56};
             idle.solid = D2D1::ColorF(1, 0, 0, .5F); scene->nodes.push_back(idle);
             auto focused = idle; focused.id = group.id + L"/focused"; focused.order = 1;
             focused.solid = D2D1::ColorF(0, 1, 0, .25F); scene->nodes.push_back(focused);
@@ -1977,6 +1979,14 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
             Check(SUCCEEDED(bitmapTarget->CreateSolidColorBrush(*node.solid, brush.GetAddressOf())), "fade bitmap brush");
             if (outline)
                 bitmapTarget->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(1, 1, size.width - 1, size.height - 1), 5, 5), brush.Get(), 2);
+            else if (depth) {
+                widgetrail::surface::ShadowCache shadows;
+                Check(shadows.Draw(bitmapTarget.Get(), {8, 8, 40, 40}, 5, 4, 0, 2,
+                    D2D1::ColorF(0, .3F), pixelScale), "depth shadow rasterizes on compatible target");
+                Check(widgetrail::surface::Fill(bitmapTarget.Get(), D2D1::RoundedRect({8, 8, 48, 48}, 5, 5),
+                    widgetrail::surface::Shade(*node.solid, .2F), widgetrail::surface::Shade(*node.solid, -.2F)),
+                    "depth gradient rasterizes on compatible target");
+            }
             else
                 bitmapTarget->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(0, 0, size.width, size.height), 5, 5), brush.Get());
             Check(SUCCEEDED(bitmapTarget->EndDraw()), "fade bitmap paint");
@@ -1993,6 +2003,41 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         HDC dc = GetDC(nullptr); auto color = GetPixel(dc, pt.x, pt.y); ReleaseDC(nullptr, dc); return color;
     };
     commit(sceneFor(false));
+    if (depth) {
+        if (pixels) { ShowWindow(window, SW_SHOWNOACTIVATE); DwmFlush(); Sleep(50); DwmFlush(); }
+        const auto initial = pixel(30, 40);
+        const auto shadow = pixel(30, 63);
+        if (pixels) {
+            Check(GetBValue(shadow) > 180 && GetBValue(shadow) < 255,
+                "expanded capture preserves the soft shadow outside the control");
+            Check(GetRValue(pixel(120, 25)) > GetRValue(pixel(120, 55)) + 10,
+                "focus atlas preserves vertical surface shading");
+        }
+        commit(sceneFor(true));
+        const auto paints = surface.paintCounters().content;
+        const auto uploads = surface.widgetCompositionCounters().rasterUploads;
+        Sleep(80); DwmFlush();
+        if (pixels) {
+            const auto during = pixel(30, 40);
+            Check(GetRValue(during) > GetRValue(initial) && GetGValue(during) < GetGValue(initial),
+                "shaded translucent focus interpolates rather than snapping");
+        }
+        Sleep(240); DwmFlush();
+        if (pixels) {
+            const auto final = pixel(120, 40);
+            Check(std::abs(GetRValue(final) - GetRValue(initial)) <= 3 &&
+                  std::abs(GetGValue(final) - GetGValue(initial)) <= 3 &&
+                  std::abs(GetBValue(final) - GetBValue(initial)) <= 3,
+                "depth fade arrives at the exact focused surface color without stretching its expanded atlas");
+            Check(std::abs(GetBValue(pixel(120, 63)) - GetBValue(shadow)) <= 3,
+                "depth fade retains the same shadow extent and alpha");
+        }
+        Check(surface.paintCounters().content == paints && surface.widgetCompositionCounters().rasterUploads == uploads,
+            "depth focus animation requires no per-frame UI painting or mask upload");
+        surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
+        std::cout << "Surface depth compositor scale=" << pixelScale << " passed" << std::endl;
+        return;
+    }
     if (pixels) {
         ShowWindow(window, SW_SHOWNOACTIVATE); DwmFlush(); Sleep(50); DwmFlush();
         const auto color = pixel(30, 40);
@@ -2071,6 +2116,13 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
 
 int main(int argc, char** argv) {
     CheckWidgetAnimationPolicies();
+    if (argc == 2 && std::string_view(argv[1]) == "--surface-depth-pixels") {
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "depth COM initialization");
+        for (float scale : {1.0F, 1.25F, 1.5F, 2.0F})
+            CheckFocusFadeCompositor(true, scale, true, widgetrail::animation::FocusStyle::Fade, false, false, true);
+        CoUninitialize(); return EXIT_SUCCESS;
+    }
     if (argc == 2 && std::string_view(argv[1]) == "--focus-fade-pixels") {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "fade COM initialization");

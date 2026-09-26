@@ -17,6 +17,16 @@
    which keeps :focused, :selected, :pressed, and :disabled intact. */
 
 :root {
+  --panel-shading: .035;
+  --control-shading: .050;
+  --focus-shading: .070;
+  --inset-shading: -0.035;
+  --depth-shadow: rgba(16, 2, 4, 0.36);
+  --depth-highlight: rgba(255, 222, 214, 0.09);
+  --depth-lowlight: rgba(0, 0, 0, 0.18);
+  --focus-width: 1.5px;
+  --focus-offset: -1.5px;
+
   --canvas: #160b0d;
   --canvas-veil: rgba(12, 5, 7, 0.72);
   --surface: rgba(36, 18, 20, 0.98);
@@ -37,10 +47,8 @@
   --scrollbar-thumb: #d99389;
   --text-subdued: #a5847f;
 
-  /* Focus stays a near-neutral bright value, warmed only enough to belong to
-     the palette. It must not compete with the accent or lose contrast under
-     host high-contrast policy. */
-  --focus: #fff4f2;
+  /* The accent edge reinforces the raised focused surface. */
+  --focus: var(--accent);
 
   --accent: #ff3d2e;
 

@@ -898,8 +898,8 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.IsNotNull(styled.Get("border-color"), state.ToString());
             if (state == WrssPseudoState.Focused)
             {
-                Assert.AreEqual("2px", styled.Get("outline-width")?.Text);
-                Assert.AreEqual("#f4f0e8", styled.Get("outline-color")?.Text);
+                Assert.AreEqual("1.5px", styled.Get("outline-width")?.Text);
+                Assert.AreEqual("#b8ae92", styled.Get("outline-color")?.Text);
             }
         }
         var search = theme.Resolve(new WrssElement("text-entry", null,

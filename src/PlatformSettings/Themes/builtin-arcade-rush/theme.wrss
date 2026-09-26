@@ -9,6 +9,16 @@
    which keeps :focused, :selected, :pressed, and :disabled intact. */
 
 :root {
+  --panel-shading: .040;
+  --control-shading: .060;
+  --focus-shading: .080;
+  --inset-shading: -0.035;
+  --depth-shadow: rgba(11, 4, 17, 0.36);
+  --depth-highlight: rgba(255, 211, 241, 0.10);
+  --depth-lowlight: rgba(0, 0, 0, 0.18);
+  --focus-width: 1.5px;
+  --focus-offset: -1.5px;
+
   /* A plum ground, not a black one: the shell reads as warm even before any
      accent lands on it. The four-step surface ramp keeps its separation. */
   --canvas: #1a1020;
@@ -31,10 +41,8 @@
   --scrollbar-thumb: #d58dba;
   --text-subdued: #9a86a4;
 
-  /* Focus stays a near-neutral bright value, warmed only enough to belong to
-     the palette. It must not compete with the accent or lose contrast under
-     host high-contrast policy. */
-  --focus: #fdf4fa;
+  /* The accent edge reinforces the raised focused surface. */
+  --focus: var(--accent);
 
   /* One loud color, and only one. Fuchsia carries progress, sliders, primary
      icon buttons, and tile state; nothing else in the theme shouts, so the

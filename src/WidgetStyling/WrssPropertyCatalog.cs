@@ -41,6 +41,7 @@ public static partial class WrssPropertyCatalog
         new Dictionary<string, Definition>(StringComparer.Ordinal)
         {
             ["background"] = new(PropertyType.Color),
+            ["surface-shading"] = new(PropertyType.BoundedNumber, -0.25, 0.25, true),
             ["color"] = new(PropertyType.Color),
             ["border-color"] = new(PropertyType.Color),
             ["border-top-color"] = new(PropertyType.Color),
@@ -230,9 +231,9 @@ public static partial class WrssPropertyCatalog
             case PropertyType.TransitionEasing:
                 return TryKeyword(value, ["linear", "ease-out", "ease-in-out", "spring"], out computed, out error);
             case PropertyType.BoundedNumber:
-                if (!TryInvariantDouble(value, out var flexFactor) || flexFactor < 0)
+                if (!TryInvariantDouble(value, out var flexFactor) || (!definition.AllowNegative && flexFactor < 0))
                 {
-                    error = "Expected a non-negative finite number.";
+                    error = definition.AllowNegative ? "Expected a finite number." : "Expected a non-negative finite number.";
                     return false;
                 }
                 flexFactor = Clamp(flexFactor, definition.Minimum, definition.Maximum, ref clamped);

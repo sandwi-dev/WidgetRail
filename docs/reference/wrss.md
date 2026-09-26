@@ -95,7 +95,7 @@ The canonical runtime list is `WrssPropertyCatalog.AllowedProperties`. It curren
   `scrim-color`.
 - Scroll indicators: `scrollbar-width`, `scrollbar-track-color`, and
   `scrollbar-thumb-color`.
-- Effects: `scale`, `background-blur`, shadow color/blur/offset,
+- Effects: `scale`, `surface-shading`, `background-blur`, shadow color/blur/offset,
   `transition-duration`, and `transition-easing`.
 
 Values are typed before reaching a renderer. Dimensions, spacing, scale, opacity, blur, border widths, and transition durations are bounded. Out-of-range finite values are clamped with a source-located warning; malformed values are errors.
@@ -160,6 +160,46 @@ restrictively shared handle. Installed widget entries/imports must also match
 the exact relative-path/SHA-256 inventory computed with their sealed package
 tree; a modified or newly inserted source is treated as missing and the theme
 does not publish.
+
+### Surface depth
+
+`surface-shading` is a unitless number from -0.25 to 0.25 (default 0).
+Positive values gently lighten the top and darken the bottom of the resolved
+background; negative values reverse that lighting for a recessed surface.
+The background alpha is preserved. This is paint-only: it does not change
+layout, hit targets, scrolling, or focus geometry.
+
+`shadow-color`, `shadow-blur`, `shadow-offset-x` and `shadow-offset-y` render a
+soft rounded shadow. Shadows can extend beyond the element but remain clipped
+by ancestor containers. They do not reserve layout space. Leave padding around
+raised panels if their shadows need room. Native rendering uses bounded, cached
+alpha masks, reused across colors and large panel sizes; a theme change does not
+require a separate mask per color.
+
+Shared cards, navigation surfaces, controls and dialogs use theme depth tokens.
+Custom panels can add the `wrail-surface-raised`, `wrail-surface-inset` or
+`wrail-surface-flat` class through the usual C# `Classes`/`AddClasses` methods.
+These classes control appearance; they do not introduce a new control type.
+A raised custom panel should also define its background and corner geometry.
+For direct styling:
+
+```wrss
+.game-panel {
+  background: var(--surface-raised);
+  surface-shading: var(--panel-shading, .03);
+  shadow-color: var(--depth-shadow, rgba(0, 0, 0, .28));
+  shadow-blur: 8px;
+  shadow-offset-y: 2px;
+  corner-radius: 12px;
+}
+```
+
+Theme authors can tune `--panel-shading`, `--control-shading`,
+`--focus-shading`, `--inset-shading`, `--depth-shadow`, `--depth-highlight`
+and `--depth-lowlight`. Focus uses `--focus` (the theme accent by default),
+`--focus-width` and `--focus-offset`. High-contrast mode removes shading and
+shadows and retains its stronger contrasting focus outline. Reduced motion
+snaps state transitions; reduced transparency makes surface fills opaque.
 
 ## Imports and safety
 

@@ -78,7 +78,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(true, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
         Assert.Equal(true, settings.Appearance.AnimateWidgetSwitching);
-        Assert.Equal(WidgetFocusAnimation.Settle, settings.Appearance.FocusAnimation);
+        Assert.Equal(WidgetFocusAnimation.Fade, settings.Appearance.FocusAnimation);
         Assert.Equal(WidgetSectionAnimation.Slide, settings.Appearance.SectionAnimation);
         Assert.Equal(1d, settings.Appearance.WidgetAnimationSpeed);
         Assert.Equal(true, settings.Appearance.AnimateWidgetModals);
@@ -95,7 +95,7 @@ static async Task DefaultsAreSafe()
         await File.WriteAllTextAsync(store.Paths.SettingsFile, SettingsJson());
         Assert.Equal(ThemeIdentity.BuiltInDefault, (await store.LoadAsync()).Appearance.ThemeId);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.AnimateWidgetSwitching);
-        Assert.Equal(WidgetFocusAnimation.Settle, (await store.LoadAsync()).Appearance.FocusAnimation);
+        Assert.Equal(WidgetFocusAnimation.Fade, (await store.LoadAsync()).Appearance.FocusAnimation);
         Assert.Equal(WidgetSectionAnimation.Slide, (await store.LoadAsync()).Appearance.SectionAnimation);
         Assert.Equal(true, (await store.LoadAsync()).Appearance.AnimateWidgetModals);
         Assert.Equal(WidgetModalAnimation.Zoom, (await store.LoadAsync()).Appearance.ModalAnimation);
@@ -451,7 +451,7 @@ static Task ThemeDiscovery()
         "button", null,
         new HashSet<string>(["wrail-switch", "wrail-switch--off"]),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
-    Assert.Equal("#f4f0e8", focusedToggle.Get("outline-color")!.Text);
+    Assert.Equal("#b8ae92", focusedToggle.Get("outline-color")!.Text);
     var disabledToggle = compiled.Theme.Resolve(new WrssElement(
         "button", null,
         new HashSet<string>(["wrail-switch", "wrail-switch--off"]),
@@ -484,7 +484,7 @@ static Task ThemeDiscovery()
     var focusedStepperButton = compiled.Theme.Resolve(new WrssElement(
         "button", null, new HashSet<string>(["wrail-stepper__button"]),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
-    Assert.Equal("#f4f0e8", focusedStepperButton.Get("outline-color")!.Text);
+    Assert.Equal("#b8ae92", focusedStepperButton.Get("outline-color")!.Text);
     var disabledStepperButton = compiled.Theme.Resolve(new WrssElement(
         "button", null, new HashSet<string>(["wrail-stepper__button"]),
         new HashSet<WrssPseudoState>([WrssPseudoState.Disabled])));
@@ -543,8 +543,8 @@ static Task ThemeDiscovery()
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("1", focusedButton.Get("scale")!.Text);
-    Assert.Equal("#f4f0e8", focusedButton.Get("outline-color")!.Text);
-    Assert.Equal("-2px", focusedButton.Get("outline-offset")!.Text);
+    Assert.Equal("#b8ae92", focusedButton.Get("outline-color")!.Text);
+    Assert.Equal("-1.5px", focusedButton.Get("outline-offset")!.Text);
     Assert.Equal("90ms", focusedButton.Get("transition-duration")!.Text);
     Assert.Equal("ease-out", focusedButton.Get("transition-easing")!.Text);
     var eyebrow = compiled.Theme.Resolve(new WrssElement(
@@ -614,8 +614,8 @@ static async Task BuiltInCoolSlateSelection()
         null,
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
-    Assert.Equal("#f1f4f7", focused.Get("outline-color")!.Text);
-    Assert.Equal("-2px", focused.Get("outline-offset")!.Text);
+    Assert.Equal("#8ca9c4", focused.Get("outline-color")!.Text);
+    Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);
     Assert.Equal("1", focused.Get("scale")!.Text);
 
     var defaultCanvas = WrssThemeCompiler.Compile(catalog.BuiltInDefault.Package)
@@ -679,9 +679,9 @@ static async Task BuiltInNeonCircuitSelection()
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("rgba(35, 45, 74, 0.98)", focused.Get("background")!.Text);
-    Assert.Equal("#eaf7ff", focused.Get("outline-color")!.Text);
-    Assert.Equal("2px", focused.Get("outline-width")!.Text);
-    Assert.Equal("-2px", focused.Get("outline-offset")!.Text);
+    Assert.Equal("#3fe0ff", focused.Get("outline-color")!.Text);
+    Assert.Equal("1.5px", focused.Get("outline-width")!.Text);
+    Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);
     Assert.Equal("6px", focused.Get("corner-radius")!.Text);
 
     var eyebrow = reload.Current.Theme.Resolve(new WrssElement(
@@ -759,9 +759,9 @@ static async Task BuiltInArcadeRushSelection()
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("rgba(72, 48, 92, 0.98)", focused.Get("background")!.Text);
-    Assert.Equal("#fdf4fa", focused.Get("outline-color")!.Text);
-    Assert.Equal("2px", focused.Get("outline-width")!.Text);
-    Assert.Equal("-2px", focused.Get("outline-offset")!.Text);
+    Assert.Equal("#ff3ea5", focused.Get("outline-color")!.Text);
+    Assert.Equal("1.5px", focused.Get("outline-width")!.Text);
+    Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);
     Assert.Equal("22px", focused.Get("corner-radius")!.Text);
 
     var trayItem = reload.Current.Theme.Resolve(new WrssElement("tray-item"));
@@ -869,9 +869,9 @@ static async Task BuiltInRedlineSelection()
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("rgba(77, 40, 43, 0.98)", focused.Get("background")!.Text);
-    Assert.Equal("#fff4f2", focused.Get("outline-color")!.Text);
-    Assert.Equal("2px", focused.Get("outline-width")!.Text);
-    Assert.Equal("-2px", focused.Get("outline-offset")!.Text);
+    Assert.Equal("#ff3d2e", focused.Get("outline-color")!.Text);
+    Assert.Equal("1.5px", focused.Get("outline-width")!.Text);
+    Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);
 
     // A transparent card has no box to underline, so the edge is zeroed again.
     var transparentCard = reload.Current.Theme.Resolve(new WrssElement(

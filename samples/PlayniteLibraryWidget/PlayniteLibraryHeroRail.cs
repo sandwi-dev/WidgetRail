@@ -299,7 +299,7 @@ internal static class PlayniteLibraryHeroRailPresentation
                         UI.Text(metadata, "playnite-library.hero.state", metadata)
                             .Classes("playnite-library-hero-state"))
                     .Classes("playnite-library-hero-content"))
-            .Classes("playnite-library-hero");
+            .Classes("playnite-library-hero", "wrail-surface-raised");
     }
 
     internal static WidgetElement Fallback(string title, string detail) =>
@@ -312,5 +312,5 @@ internal static class PlayniteLibraryHeroRailPresentation
                         UI.Text(detail, "playnite-library.hero.state", detail)
                             .Classes("playnite-library-hero-state"))
                     .Classes("playnite-library-hero-content"))
-            .Classes("playnite-library-hero");
+            .Classes("playnite-library-hero", "wrail-surface-raised");
 }

@@ -3208,20 +3208,10 @@ struct DeclarativeRenderer::RenderPass final {
         if (!target || rect.width <= 0.0F || rect.height <= 0.0F) return;
         const auto radius = RadiusFor(style, rect);
         if (paint != SurfacePaint::Border && style.shadowColor() && style.shadowColor()->alpha > 0.0F) {
-            const Rect shadowRect{
-                rect.x + style.shadowOffsetXPx(),
-                rect.y + style.shadowOffsetYPx(),
-                rect.width,
-                rect.height,
-            };
-            auto shadow = Brush(target, WithOpacity(*style.shadowColor(), opacity * 0.65F));
-            if (shadow) {
-                target->FillRoundedRectangle(
-                    {D2DRect(shadowRect), radius, radius},
-                    shadow.Get());
-            }
-            if (style.shadowBlurPx() > 0.0F)
-                Add(node.id, L"shadow_blur_fallback", L"Blur is approximated by a bounded offset shadow.");
+            const auto color = WithOpacity(*style.shadowColor(), opacity);
+            if (!owner->surfaceShadows_.Draw(target, rect, radius, style.shadowBlurPx(),
+                style.shadowOffsetXPx(), style.shadowOffsetYPx(), {color.red, color.green, color.blue, color.alpha}, options.pixelScale))
+                Add(node.id, L"shadow_render_failed", L"The bounded surface shadow could not be rendered.");
         }
         auto background = style.background();
         if (!background &&
@@ -3229,8 +3219,11 @@ struct DeclarativeRenderer::RenderPass final {
             background = kDefaultButton;
         if (paint != SurfacePaint::Border && background) {
             auto brush = Brush(target, WithOpacity(*background, opacity));
-            if (brush)
-                target->FillRoundedRectangle({D2DRect(rect), radius, radius}, brush.Get());
+            const auto base = WithOpacity(*background, opacity);
+            const D2D1_COLOR_F color{base.red, base.green, base.blue, base.alpha};
+            const bool shaded = style.surfaceShading() != 0 && surface::Fill(target, {D2DRect(rect), radius, radius},
+                surface::Shade(color, style.surfaceShading()), surface::Shade(color, -style.surfaceShading()));
+            if (!shaded && brush) target->FillRoundedRectangle({D2DRect(rect), radius, radius}, brush.Get());
         }
         if (paint != SurfacePaint::Border && style.backgroundBlurPx() > 0.0F)
             Add(node.id, L"background_blur_fallback", L"Background blur is unavailable on the base render target; opaque fallback is used.");
@@ -3348,7 +3341,7 @@ struct DeclarativeRenderer::RenderPass final {
         if (!target || node.id != focusedId) return;
         const auto width = std::max(
             options.accessibility.minimumFocusRingPx,
-            std::max(2.0F, style.outlineWidthPx()));
+            (style.outlineWidthPx() > 0 ? style.outlineWidthPx() : 2.0F));
         const auto expanded = Inset(rect, -(style.outlineOffsetPx() + width * 0.5F));
         const auto radius = RadiusFor(style, expanded);
         auto brush = Brush(target, WithOpacity(
@@ -4993,7 +4986,7 @@ struct DeclarativeRenderer::RenderPass final {
             return;
         }
         target->PushAxisAlignedClip(
-            D2DRect(presented.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+            D2DRect(presented.ancestorClip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         // Slider background is its track color. Painting the generic surface
         // first duplicates that color across the complete 44-DIP hit target.
         // Authors can wrap a Slider in a Card/Row when they want a filled
@@ -5011,6 +5004,8 @@ struct DeclarativeRenderer::RenderPass final {
         if (composingScene && PaintCompositionPhase(node.id, 5))
             DrawSurface(node, preparedNode->second.baseStyle, paintRect, opacity);
 
+        target->PopAxisAlignedClip();
+        target->PushAxisAlignedClip(D2DRect(presented.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         const bool clipTileContent = node.kind == L"actionSurface" &&
             preparedNode->second.baseStyle.overflow() == NativeOverflow::Clip;
         bool roundedTileClip{};
@@ -5625,6 +5620,27 @@ DeclarativeRenderer::PlanPresentationUpdate(
         if (bounds == cache->nodes.end()) return std::nullopt;
         damage = UnionRect(
             damage, Inset(bounds->second.paintBounds, -8.0F));
+        // A new style can introduce a larger shadow than the committed frame.
+        // Include both footprints before clipping an incremental repaint.
+        std::vector<const WidgetNode*> path;
+        if (!FindNodePath(snapshot.root, targetId, path)) return std::nullopt;
+        const auto& node = *path.back();
+        const auto state = cache->nodes.find(targetId);
+        if (state == cache->nodes.end()) return std::nullopt;
+        if (node.baseStyle.contains(L"shadow-color") || node.focusedStyle.contains(L"shadow-color") ||
+            node.pressedStyle.contains(L"shadow-color")) {
+            RenderPass proof;
+            proof.owner = this;
+            proof.options = cache->options;
+            proof.viewport = viewport;
+            const auto& context = state->second.styleContext;
+            for (const bool focused : {false, true}) for (const bool pressed : {false, true}) {
+                const auto style = proof.Adapt(node, focused, pressed, context.parentWidthPx,
+                    context.parentHeightPx, context.parentFontSizePx, context.effectiveBackground).style;
+                damage = UnionRect(damage, Intersection(surface::PaintBounds(state->second.borderBox, style,
+                    cache->options.pixelScale), state->second.ancestorClip));
+            }
+        }
         if (localLayout &&
             std::find(boundaries.begin(), boundaries.end(), damageId) ==
                 boundaries.end()) {
@@ -5738,7 +5754,7 @@ DeclarativeRenderer::PlanFocusUpdate(
         damage = UnionRect(
             damage,
             includeFutureFocus
-                ? Inset(found->second.visibleBounds, -8.0F)
+                ? Inset(found->second.paintBounds, -8.0F)
                 : found->second.paintBounds);
         for (const auto scrollViewport : scrollViewports)
             damage = UnionRect(damage, scrollViewport);
@@ -6301,19 +6317,48 @@ RenderResult DeclarativeRenderer::Render(
                 descendantBoundary = node.id;
             }
             IncrementalNodeState state;
-            if (prepared != pass.prepared.end()) state.baseStyle = prepared->second.baseStyle;
+            if (prepared != pass.prepared.end()) {
+                state.baseStyle = prepared->second.baseStyle;
+                state.styleContext = prepared->second.context;
+            }
             state.parentId = parentId;
             state.safeBoundaryId = std::wstring{inheritedBoundary};
             state.scrollBoundary = node.kind == L"scroll";
             if (presented != pass.presentation.end()) {
+                state.borderBox = presented->second.borderBox;
+                state.ancestorClip = presented->second.ancestorClip;
                 state.visibleBounds = presented->second.visibleBox;
                 auto paintBounds = presented->second.visibleBox;
+                if (prepared != pass.prepared.end()) {
+                    auto surfaceBounds = surface::PaintBounds(presented->second.borderBox, prepared->second.paintStyle, options.pixelScale);
+                    // Cache all state footprints: incoming focus/press shadows
+                    // can extend beyond a control's currently painted state.
+                    const auto changesShadow = [&](const WidgetComputedStyle &stateStyle) {
+                        for (const auto *property : {L"shadow-color", L"shadow-blur", L"shadow-offset-x", L"shadow-offset-y"}) {
+                            const auto value = stateStyle.find(property);
+                            if (value == stateStyle.end()) continue;
+                            const auto base = node.baseStyle.find(property);
+                            if (base == node.baseStyle.end() || value->second != base->second) return true;
+                        }
+                        return false;
+                    };
+                    if (changesShadow(node.focusedStyle) || changesShadow(node.pressedStyle)) {
+                        for (const bool focused : {false, true}) for (const bool pressed : {false, true}) {
+                            const auto &context = prepared->second.context;
+                            const auto stateStyle = pass.Adapt(node, focused, pressed, context.parentWidthPx,
+                                context.parentHeightPx, context.parentFontSizePx, context.effectiveBackground).style;
+                            surfaceBounds = UnionRect(surfaceBounds,
+                                surface::PaintBounds(presented->second.borderBox, stateStyle, options.pixelScale));
+                        }
+                    }
+                    paintBounds = UnionRect(paintBounds, Intersection(surfaceBounds, presented->second.ancestorClip));
+                }
                 if (node.id == pass.focusedId &&
                     prepared != pass.prepared.end()) {
                     const auto& style = prepared->second.paintStyle;
                     const auto width = std::max(
                         pass.options.accessibility.minimumFocusRingPx,
-                        std::max(2.0F, style.outlineWidthPx()));
+                        (style.outlineWidthPx() > 0 ? style.outlineWidthPx() : 2.0F));
                     auto outline = Inset(
                         presented->second.borderBox,
                         -(style.outlineOffsetPx() + width * 0.5F));
@@ -6623,6 +6668,7 @@ void DeclarativeRenderer::ClearBitmapCache(
     bitmaps_.clear();
     bitmapBytes_ = 0;
     if (resourceInvalidation) {
+        surfaceShadows_.Clear();
         CancelWidgetTransitions();
         // Transition bitmaps belong to the same Direct2D resource domain.
         // Device/target replacement retires both sides atomically; the exact

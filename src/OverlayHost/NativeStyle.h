@@ -99,7 +99,7 @@ struct NativeAccessibilityPolicy final {
     /// Host-owned text zoom applied after widget/theme style resolution.
     /// The platform settings contract bounds this to 0.85 through 1.5.
     float textScale{1.0F};
-    float minimumFocusRingPx{2.0F};
+    float minimumFocusRingPx{1.0F};
     /// Called last for text and focused outline colors. Arguments are foreground/background.
     std::function<NativeColor(NativeColor, NativeColor)> contrastHook;
 };
@@ -124,6 +124,7 @@ public:
     NativeRenderStyle();
 
     [[nodiscard]] const std::optional<NativeColor>& background() const noexcept;
+    [[nodiscard]] float surfaceShading() const noexcept;
     [[nodiscard]] const std::optional<NativeColor>& foreground() const noexcept;
     [[nodiscard]] const std::optional<NativeColor>& borderColor() const noexcept;
     [[nodiscard]] const std::optional<NativeColor>& outlineColor() const noexcept;

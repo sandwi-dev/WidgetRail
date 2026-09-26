@@ -127,8 +127,8 @@
   color: var(--text);
   background: var(--surface-active, #242933);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width, 1.5px);
+  outline-offset: var(--focus-offset, -1.5px);
 }
 .wrail-icon-button:pressed { opacity: 0.68; }
 
@@ -174,8 +174,8 @@
 .gallery-wide-action:focused,
 .gallery-utilities-toast-button:focused {
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width, 1.5px);
+  outline-offset: var(--focus-offset, -1.5px);
 }
 .gallery-controls-openers { min-width: 0px; gap: 8px; flex-wrap: wrap; }
 .gallery-wide-action { flex-grow: 1; flex-shrink: 1; }
@@ -211,8 +211,8 @@
 .wrail-settings-row__action:focused,
 .wrail-switch:focused {
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width, 1.5px);
+  outline-offset: var(--focus-offset, -1.5px);
 }
 .wrail-switch:selected { color: var(--success); }
 .gallery-controls-scrubber-card { gap: 10px; }
@@ -244,8 +244,8 @@
 .wrail-tile:focused {
   background: var(--surface-active, #242933);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width, 1.5px);
+  outline-offset: var(--focus-offset, -1.5px);
 }
 .wrail-tile:pressed { opacity: 0.72; }
 .wrail-tile__artwork { width: 54px; height: 54px; flex-shrink: 0; padding: 9px; color: var(--accent); }
@@ -305,8 +305,8 @@
 }
 .gallery-background-button:focused {
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width, 1.5px);
+  outline-offset: var(--focus-offset, -1.5px);
 }
 .gallery-background-demo-surface {
   width: 100%;
@@ -385,8 +385,8 @@
 .wrail-picker__option:focused,
 .wrail-action-sheet__item:focused {
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width, 1.5px);
+  outline-offset: var(--focus-offset, -1.5px);
 }
 
 .wrail-toast {

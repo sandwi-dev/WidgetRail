@@ -1,4 +1,14 @@
 :root {
+  --panel-shading: .030;
+  --control-shading: .050;
+  --focus-shading: .070;
+  --inset-shading: -0.035;
+  --depth-shadow: rgba(0, 0, 0, 0.28);
+  --depth-highlight: rgba(255, 243, 216, 0.09);
+  --depth-lowlight: rgba(0, 0, 0, 0.18);
+  --focus-width: 1.5px;
+  --focus-offset: -1.5px;
+
   --canvas: #090908;
   --canvas-veil: rgba(0, 0, 0, 0.70);
   --surface: rgba(21, 21, 20, 0.98);
@@ -14,7 +24,7 @@
   --scrollbar-track: #34332f;
   --scrollbar-thumb: #aaa69d;
   --text-subdued: #7d7a72;
-  --focus: #f4f0e8;
+  --focus: var(--accent);
   --accent: #b8ae92;
   --success: #8eb49a;
   --info: #96aeb8;
@@ -54,8 +64,8 @@ tray-item {
 tray-item:selected { background: var(--surface-active); color: var(--text); }
 tray-item:focused {
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
 }
 
 title {
@@ -102,8 +112,8 @@ button:selected {
 button:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
   scale: 1;
 }
 button:pressed { scale: 0.96; }
@@ -125,8 +135,8 @@ select {
 select:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
   scale: 1;
 }
 progress {
@@ -150,8 +160,8 @@ slider {
 slider:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
   scale: 1;
 }
 
@@ -174,8 +184,8 @@ slider:focused {
 .wrail-scrubber__slider:focused {
   background: var(--surface-subtle);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
 }
 .wrail-scrubber__times {
   width: 100%;
@@ -437,8 +447,8 @@ slider:focused {
 .wrail-navigation-shell__rail-item:focused {
   color: var(--text);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
 }
 .wrail-navigation-shell__compact-item:pressed,
 .wrail-navigation-shell__rail-item:pressed { opacity: 0.72; }
@@ -480,8 +490,8 @@ slider:focused {
 .wrail-switch:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
 }
 .wrail-switch:disabled {
   background: var(--surface-subtle);
@@ -527,8 +537,8 @@ slider:focused {
 .wrail-stepper__button:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
 }
 .wrail-stepper__button:disabled {
   background: var(--surface-subtle);
@@ -620,8 +630,8 @@ slider:focused {
 .wrail-settings-row__action:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
 }
 
 .wrail-action-sheet {
@@ -678,8 +688,8 @@ slider:focused {
 .wrail-action-sheet__item:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
 }
 
 .wrail-picker {
@@ -736,8 +746,8 @@ slider:focused {
 .wrail-picker__option:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
 }
 
 .wrail-value-row {
@@ -801,8 +811,8 @@ slider:focused {
 .wrail-choice-row:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
 }
 
 /* Controller symbols use the host's private font; typography here sizes the
@@ -898,8 +908,8 @@ slider:focused {
 .wrail-action-surface:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
-  outline-width: 2px;
-  outline-offset: -2px;
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
 }
 .wrail-action-surface:pressed { background: var(--surface-raised); scale: 0.96; }
 .wrail-action-surface:selected { border-color: var(--accent); }
@@ -1074,3 +1084,66 @@ slider:focused {
 .wrail-modal__header { direction: row; align: center; gap: 20px; flex-shrink: 0; }
 .wrail-modal__title { font-size: 26px; font-weight: 600; flex-grow: 1; min-width: 0; max-lines: 2; text-overflow: ellipsis; overflow-wrap: anywhere; }
 .wrail-modal__scroll { flex-grow: 1; min-height: 0; min-width: 0; gap: 12px; padding: 4px; }
+
+/* Focus belongs to the surface. Accessibility can strengthen this edge. */
+button:focused, select:focused, slider:focused,
+.wrail-action-surface:focused, .wrail-choice-row:focused,
+.wrail-tile:focused, .wrail-poster-tile:focused {
+  outline-color: var(--focus);
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
+}
+
+/* Shared depth vocabulary. Custom panels can opt into these roles without a
+   new SDK element; ordinary components below use the same paint primitives. */
+.wrail-surface-raised,
+.wrail-card,
+.wrail-navigation-shell__persistent,
+.wrail-navigation-shell__body,
+.wrail-dialog, .wrail-action-sheet, .wrail-picker,
+.wrail-modal {
+  surface-shading: var(--panel-shading);
+  shadow-color: var(--depth-shadow);
+  shadow-blur: 8px;
+  shadow-offset-y: 2px;
+  border-top-color: var(--depth-highlight);
+  border-bottom-color: var(--depth-lowlight);
+}
+.wrail-surface-inset,
+.wrail-segmented-tabs,
+.wrail-navigation-shell__compact,
+.wrail-navigation-shell__rail {
+  surface-shading: var(--inset-shading);
+  border-top-color: var(--depth-lowlight);
+  border-bottom-color: var(--depth-highlight);
+}
+button, select,
+.wrail-action-surface, .wrail-choice-row {
+  surface-shading: var(--control-shading);
+}
+button:focused, select:focused,
+.wrail-action-surface:focused, .wrail-choice-row:focused {
+  surface-shading: var(--focus-shading);
+  shadow-color: var(--depth-shadow);
+  shadow-blur: 5px;
+  shadow-offset-y: 1px;
+}
+button:pressed, .wrail-action-surface:pressed, .wrail-choice-row:pressed {
+  surface-shading: var(--inset-shading);
+  shadow-color: transparent;
+}
+.wrail-navigation-shell__item--selected,
+.wrail-segmented-tabs__tab--selected {
+  surface-shading: var(--control-shading);
+  shadow-color: var(--depth-shadow);
+  shadow-blur: 3px;
+  shadow-offset-y: 1px;
+}
+.wrail-dialog, .wrail-modal, .wrail-action-sheet, .wrail-picker {
+  shadow-blur: 14px;
+  shadow-offset-y: 4px;
+}
+.wrail-surface-flat, .wrail-card--transparent {
+  surface-shading: 0;
+  shadow-color: transparent;
+}
