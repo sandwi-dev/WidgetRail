@@ -5,12 +5,20 @@ This is a source-based architecture assessment, not a runtime comparison or a mi
 
 ## Recommendation
 
-Prefer a mature framework owning the application UI, backed by a small native
-Windows integration layer and an explicitly sandboxed widget model. Redesign the
-public authoring and collection contracts around that architecture instead of
-translating every existing WRSS/layout behavior indefinitely.
+There are two first-class routes: evolve WidgetRail into a coherent native
+lazy/retained UI framework, or adopt an established framework with a redesigned
+sandboxed widget model. Both may change the SDK, WRSS, wire protocol and widget
+implementations. Neither should be selected to preserve old code or on the strength
+of a library's feature list alone.
 
-**Compose Multiplatform is the primary assessment candidate for controller-first
+The [native evolution, animation and graphics assessment](native-ui-evolution-assessment.md)
+now supplies the equally concrete native design and effort comparison. It recommends
+scoping the native collection/preparation project next while preserving the current
+painting backend initially. This supersedes the initial blanket preference for a
+framework replacement. Graphics-library adoption is a separate decision from UI
+framework adoption.
+
+**Compose Multiplatform is the primary replacement-toolkit candidate for controller-first
 navigation and lazy collections. Avalonia is a secondary reference, not the
 recommended first implementation.** The user previously tried Avalonia in this
 product's early development and reports high memory use for a basic UI and focus
@@ -294,8 +302,8 @@ Two criteria have priority throughout every gate:
   Agree numeric budgets from the accepted product baseline rather than inventing
   an absolute limit or assuming either managed runtime is lighter.
 
-The next implementation, if authorized, should be a replacement-host vertical slice
-on its own branch. It should not be a visually similar standalone benchmark or a
+For the replacement-toolkit route, the next implementation, if authorized, should
+be an integrated replacement-host vertical slice on its own branch. It should not be a visually similar standalone benchmark or a
 promise to translate every legacy widget first.
 
 | Order | Deliverable | Pass/fail evidence |
@@ -317,13 +325,15 @@ whether a candidate solves the observed problem, not a measurement already achie
 or a universal guarantee for arbitrary widget content. Test higher refresh rates
 separately and agree final resource budgets before selecting a production backend.
 
-If Compose meets these integrated navigation, memory, platform and sandbox gates,
-it is a credible migration direction. If it does not, identify whether the failure
-is in the toolkit or our integration and compare the cost of fixing that boundary
-against a deliberately lazy native architecture. Do not automatically return to
-Avalonia: revisiting it requires a concrete explanation or evidence addressing the
-user's earlier memory/focus failures. Its native integration strengths remain useful
-comparison evidence, not a reason to repeat a previously disappointing approach.
+Apply these navigation, memory, platform and sandbox criteria to both native
+evolution and a Compose replacement. The companion report recommends a scoped
+native collection/preparation delivery as the next implementation, with an explicit
+reassessment gate. If Compose is evaluated and meets the integrated criteria, it
+remains a credible migration direction. Identify toolkit limitations separately
+from integration defects; compare concrete costs rather than assuming either path
+is inherently faster or cheaper. Revisiting Avalonia requires an explanation or
+evidence addressing the user's earlier memory/focus failures; its integration APIs
+alone do not justify repeating that trial.
 
 ## Evidence and limits
 
