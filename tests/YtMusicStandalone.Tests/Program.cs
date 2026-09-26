@@ -44,6 +44,10 @@ if (args is ["--export-layout", var directory])
         await File.WriteAllBytesAsync(Path.Combine(directory, "search.snapshot.json"), SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 4)));
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
+    var fixtureTheme = WidgetRail.Tests.RendererFixtureExporter.CompileTheme(AppContext.BaseDirectory, "standalone.wrss");
+    foreach (var path in Directory.EnumerateFiles(directory, "*.snapshot.json"))
+        WidgetRail.Tests.RendererFixtureExporter.Write(path.Replace(".snapshot.json", ".renderer.json", StringComparison.Ordinal),
+            SnapshotJson.Deserialize(await File.ReadAllBytesAsync(path)), fixtureTheme);
     return 0;
 }
 

@@ -102,6 +102,10 @@ An integrity checksum detects changed bytes; it does not establish who wrote the
 
 ## Controller options
 
+**Hold D-pad to scroll** is off by default. Enable it to scroll vertically by
+holding Up or Down. A short tap still moves focus normally. Release to land on a
+visible item in the same column where possible. The right stick remains available for scrolling.
+
 Choose either **View + Menu** or **Guide** as the opening shortcut. Optional
 Exclusive control has separate driver requirements and compatibility limits.
 Changing it may require reopening other applications before the change takes effect.

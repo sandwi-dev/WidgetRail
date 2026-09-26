@@ -408,6 +408,7 @@ struct DeclarativeRenderer::PreparedNode final {
     std::optional<NativeColor> effectiveBackground;
     NativeStyleContext context;
     std::wstring_view inputScope;
+    std::string parentId;
 };
 
 struct DeclarativeRenderer::RenderPass final {
@@ -522,6 +523,8 @@ struct DeclarativeRenderer::RenderPass final {
     std::map<std::wstring, NativeRenderStyle> compositionFocusStyles;
     std::map<std::pair<std::wstring, int>, std::size_t> compositionPhases;
     std::map<std::size_t, std::set<std::wstring>> compositionBandNodes;
+    using PaintChildren = std::map<const WidgetNode*, std::vector<const WidgetNode*>>;
+    std::map<std::size_t, PaintChildren> compositionBandChildren;
     std::size_t transientCaptureBytes{};
     std::set<std::wstring> nonAnimatedContent;
     ID2D1RenderTarget* target{};
@@ -885,6 +888,7 @@ struct DeclarativeRenderer::RenderPass final {
         }
         prepared[narrowId] = {&node, base.style, paint.style, narrowId};
         prepared[narrowId].inputScope = ResolveInputScope(node, inheritedScope);
+        prepared[narrowId].parentId = parentId;
         if (node.kind == L"scroll") scrollScopes.insert_or_assign(node.id, prepared[narrowId].inputScope);
         prepared[narrowId].context = {viewport.width, viewport.height, parentWidth, parentHeight,
             parentFontSize, options.rootFontSizePx, false, inheritedBackground,
@@ -2590,7 +2594,15 @@ struct DeclarativeRenderer::RenderPass final {
         const auto presentedTarget = presentation.find(NarrowStableId(nodeId));
         if (presentedTarget == presentation.end()) return false;
         std::vector<const WidgetNode*> path;
-        if (!FindNodePath(snapshot->root, nodeId, path) || path.size() < 2) return false;
+        auto entry = prepared.find(NarrowStableId(nodeId));
+        while (entry != prepared.end()) {
+            path.push_back(entry->second.node);
+            if (entry->second.parentId.empty()) break;
+            if (path.size() > prepared.size()) return false;
+            entry = prepared.find(entry->second.parentId);
+        }
+        if (entry == prepared.end() || path.size() < 2) return false;
+        std::reverse(path.begin(), path.end());
         const auto& targetRect = presentedTarget->second.borderBox;
 
         const auto canSatisfyClip = [&](const Rect& clip, const std::size_t index) {
@@ -4881,7 +4893,23 @@ struct DeclarativeRenderer::RenderPass final {
     #include "CompositionPaintIdentity.inl"
     #include "WidgetCompositionPaint.inl"
 
+    template<class Visitor>
+    void VisitPaintChildren(const WidgetNode& node, Visitor&& visit) {
+        if (composingScene && compositionBand >= 0) {
+            const auto band = compositionBandChildren.find(static_cast<std::size_t>(compositionBand));
+            if (band == compositionBandChildren.end()) return;
+            const auto children = band->second.find(&node);
+            if (children != band->second.end())
+                for (const auto* child : children->second) visit(*child);
+        } else {
+            for (const auto& child : node.children) visit(child);
+        }
+    }
+
     void DrawNode(const WidgetNode& node, const std::wstring_view inheritedInputScope = {}) {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        if (composingScene && compositionBand >= 0) ++result.compositionPaintNodeVisits;
+#endif
         if (composingScene) {
             if (compositionBand >= 0 && !compositionBandNodes[static_cast<std::size_t>(compositionBand)].contains(node.id)) return;
             DrawNodeBody(node, inheritedInputScope); return;
@@ -4909,6 +4937,7 @@ struct DeclarativeRenderer::RenderPass final {
         const auto paintRect = ScaleRect(
             presented.borderBox, presented.motion.value.scale);
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        if (!composingScene || compositionBand < 0) {
         result.elementRects[node.id] = presented.borderBox;
         result.elementVisibleRects[node.id] = presented.visibleBox;
         if (node.kind == L"actionSurface" &&
@@ -4916,10 +4945,11 @@ struct DeclarativeRenderer::RenderPass final {
             node.children.size() == 2U) {
             result.posterArtworkRects[node.children.front().id] = presented.borderBox;
         }
+        }
 #endif
 
         const auto visibleRect = presented.visibleBox;
-        if (node.kind == L"scroll") {
+        if (node.kind == L"scroll" && (!composingScene || compositionBand < 0)) {
             if (const auto* box = layout.Find(narrowId);
                 box && box->scrollAxis != declarative::ScrollAxis::None) {
                 result.scrollViewports.insert_or_assign(
@@ -5191,25 +5221,25 @@ struct DeclarativeRenderer::RenderPass final {
         // Paint a shared selection surface before any sibling labels. Moving
         // the selected button itself would overlap the previous label and move
         // its input target to the wrong tab during the transition.
-        for (const auto& child : node.children) {
-            if (!child.transition || !child.transition->selection) continue;
+        VisitPaintChildren(node, [&](const WidgetNode& child) {
+            if (!child.transition || !child.transition->selection) return;
             const auto childStyle = prepared.find(NarrowStableId(child.id));
             const auto childPresentation = presentation.find(NarrowStableId(child.id));
-            if (childStyle == prepared.end() || childPresentation == presentation.end()) continue;
-            if (child.isSelected && !transitionSelections.contains(child.id)) continue;
+            if (childStyle == prepared.end() || childPresentation == presentation.end()) return;
+            if (child.isSelected && !transitionSelections.contains(child.id)) return;
             transitionSurfacesPainted.insert(child.id);
-            if (child.isSelected || !PaintCompositionPhase(child.id, 0)) continue;
+            if (child.isSelected || !PaintCompositionPhase(child.id, 0)) return;
             target->PushAxisAlignedClip(D2DRect(childPresentation->second.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             DrawSurface(child, childStyle->second.paintStyle, childPresentation->second.borderBox,
                 childPresentation->second.motion.value.opacity);
             target->PopAxisAlignedClip();
-        }
-        for (const auto& child : node.children) {
+        });
+        VisitPaintChildren(node, [&](const WidgetNode& child) {
             const auto selection = transitionSelections.find(child.id);
-            if (selection == transitionSelections.end() || !PaintCompositionPhase(child.id, 0)) continue;
+            if (selection == transitionSelections.end() || !PaintCompositionPhase(child.id, 0)) return;
             const auto childStyle = prepared.find(NarrowStableId(child.id));
             const auto childPresentation = presentation.find(NarrowStableId(child.id));
-            if (childStyle == prepared.end() || childPresentation == presentation.end()) continue;
+            if (childStyle == prepared.end() || childPresentation == presentation.end()) return;
             auto bounds = selection->second;
             if (!composingScene) {
                 const auto initial = transitionSelectionTargets.at(child.id);
@@ -5221,20 +5251,20 @@ struct DeclarativeRenderer::RenderPass final {
             target->PushAxisAlignedClip(D2DRect(presented.visibleBox), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
             DrawSurface(child, childStyle->second.paintStyle, bounds, childPresentation->second.motion.value.opacity);
             target->PopAxisAlignedClip();
-        }
+        });
         if (node.kind == L"focusPresentationSurface") {
             const auto* fragment = PresentationFor(node);
             if (fragment) DrawNode(*fragment, inputScope);
         }
-        for (std::size_t index = 0; index < node.children.size(); ++index) {
-            if (node.kind == L"modalLayer" && index == 1U && PaintCompositionPhase(node.id, 4)) {
+        VisitPaintChildren(node, [&](const WidgetNode& child) {
+            if (node.kind == L"modalLayer" && node.children.size() == 2 && &child == &node.children[1] && PaintCompositionPhase(node.id, 4)) {
                 const auto color = style.background().value_or(NativeColor{0, 0, 0, 0.60F});
                 transitionVisuals[L"$modal"].scrim = color;
                 auto scrim = Brush(target, WithOpacity(color, modalOpacity));
                 if (scrim) target->FillRectangle(D2DRect(presented.visibleBox), scrim.Get());
             }
-            DrawNode(node.children[index], inputScope);
-        }
+            DrawNode(child, inputScope);
+        });
         if (PaintCompositionPhase(node.id, 2)) {
         DrawCollectionLoading(node, style, Intersection(presented.contentBox, presented.visibleBox), opacity);
         if (indicator) {

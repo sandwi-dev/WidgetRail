@@ -8729,11 +8729,21 @@ void PlaybackPreparationWorkload(bool composition = false, bool depth = false, b
 }
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--scroll-capture-parity") {
+        Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "capture parity COM initialization");
+        for (float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
+            CompositionScrollRetention(scale, true, false, false, true, true, true, true);
+            CompositionScrollRetention(scale, false, false, false, false, true, true, true);
+        }
+        CoUninitialize(); return EXIT_SUCCESS;
+    }
     if (argc == 2 && std::string_view(argv[1]) == "--scroll-large-coordinates") {
         Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "large scroll probe COM initialization");
-        CompositionScrollRetention(1.25F, true, false, true, true);
-        CompositionScrollRetention(1.25F, true, false, true, true, false);
-        CompositionScrollRetention(1.25F, true, false, true, true, true, false);
+        for (float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
+            CompositionScrollRetention(scale, true, false, true, true);
+            CompositionScrollRetention(scale, true, false, true, true, false);
+            CompositionScrollRetention(scale, true, false, true, true, true, false);
+        }
         CoUninitialize(); return EXIT_SUCCESS;
     }
     if (argc == 2 && std::string_view(argv[1]) == "--scroll-retention") {

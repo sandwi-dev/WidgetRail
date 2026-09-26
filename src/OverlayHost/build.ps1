@@ -10,6 +10,7 @@ param(
     [switch]$SemanticChurnTestsOnly,
     [switch]$DeclarativeLayoutTestsOnly,
     [switch]$DeclarativeRendererTestsOnly,
+    [string]$ScrollWorkloadFixture,
     [switch]$SettingsContentTestsOnly,
     [switch]$BackgroundSurfaceHostTestsOnly,
     [switch]$AccessibilityTreeTestsOnly,
@@ -69,6 +70,7 @@ $primaryTestSelectors = @(
     [pscustomobject]@{ Name = 'SemanticChurnTestsOnly'; Selected = [bool]$SemanticChurnTestsOnly }
     [pscustomobject]@{ Name = 'DeclarativeLayoutTestsOnly'; Selected = [bool]$DeclarativeLayoutTestsOnly }
     [pscustomobject]@{ Name = 'DeclarativeRendererTestsOnly'; Selected = [bool]$DeclarativeRendererTestsOnly }
+    [pscustomobject]@{ Name = 'ScrollWorkloadFixture'; Selected = -not [string]::IsNullOrWhiteSpace($ScrollWorkloadFixture) }
     [pscustomobject]@{ Name = 'SettingsContentTestsOnly'; Selected = [bool]$SettingsContentTestsOnly }
     [pscustomobject]@{ Name = 'BackgroundSurfaceHostTestsOnly'; Selected = [bool]$BackgroundSurfaceHostTestsOnly }
     [pscustomobject]@{ Name = 'AccessibilityTreeTestsOnly'; Selected = [bool]$AccessibilityTreeTestsOnly }
@@ -873,6 +875,23 @@ function Invoke-SettingsContentRendererTests {
     if ($LASTEXITCODE -ne 0) { throw 'SettingsContentRendererTests compile failed.' }
     & (Join-Path $outputDirectory 'SettingsContentRendererTests.exe') --fixture $fixture
     if ($LASTEXITCODE -ne 0) { throw 'SettingsContentRendererTests failed.' }
+}
+
+function Invoke-ScrollWorkloadProbe {
+    $objectDirectory = Join-Path $outputDirectory 'obj/scroll-workload-probe'
+    New-Item -ItemType Directory -Path $objectDirectory -Force | Out-Null
+    $arguments = $common + @('/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING') +
+        @('ScrollWorkloadProbe.cpp', 'WidgetBridgeClient.cpp', 'PublicSuffixDomainAuthority.cpp',
+          'DeclarativeRenderer.cpp', 'DeclarativeLayout.cpp', 'NativeStyle.cpp', 'NativeTextLayout.cpp',
+          'DeclarativeMotion.cpp', 'NativeIcons.cpp', 'RemoteImageCache.cpp', 'ArtworkDecoderProcessOwner.cpp' |
+            ForEach-Object { Join-Path $projectDirectory $_ }) +
+        @("/Fo:$objectDirectory\", "/Fe:$outputDirectory\ScrollWorkloadProbe.exe", '/link', '/SUBSYSTEM:CONSOLE') +
+        $libraryArguments + @('d2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib',
+            'windowsapp.lib', 'user32.lib', 'bcrypt.lib', 'normaliz.lib')
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) { throw 'Scroll workload probe compile failed.' }
+    & (Join-Path $outputDirectory 'ScrollWorkloadProbe.exe') $ScrollWorkloadFixture
+    if ($LASTEXITCODE -ne 0) { throw 'Scroll workload probe failed.' }
 }
 
 function Invoke-BackgroundSurfaceHostTests {
@@ -1767,6 +1786,11 @@ if ($DeclarativeRendererTestsOnly) {
         throw 'DeclarativeRendererTestsOnly cannot be combined with SkipTests.'
     }
     Invoke-DeclarativeRendererTests
+    return
+}
+
+if (-not [string]::IsNullOrWhiteSpace($ScrollWorkloadFixture)) {
+    Invoke-ScrollWorkloadProbe
     return
 }
 

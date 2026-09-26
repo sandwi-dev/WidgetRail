@@ -1,7 +1,8 @@
 // Included in the renderer test namespace. Compare retained scrolling pixels
 // against forced repainting with identical input/layout state, not a mock cache.
 void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool benchmark = false,
-    bool largeCoordinates = false, bool translatedViewport = true, bool deepScroll = true) {
+    bool largeCoordinates = false, bool translatedViewport = true, bool deepScroll = true,
+    bool clippedReference = false) {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
     ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
@@ -14,14 +15,18 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
     ok(wic->CreateBitmap(width, height, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf()));
     ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
     target->SetDpi(96 * scale, 96 * scale);
-    RemoteImageCache artwork({}, {}, [](std::wstring_view, std::stop_token, const RemoteImageLimits&) {
+    RemoteImageCache artwork({}, {}, [clippedReference](std::wstring_view, std::stop_token, const RemoteImageLimits&) {
+        // The conservative-path comparison isolates rectangular viewport clips
+        // from image resampling and rounded-mask rasterization. The ordinary
+        // retention test covers textured artwork, rounded masks and depth with
+        // byte-identical reuse versus a fresh whole-item raster.
         RemoteDecodedImage image; image.width = image.height = 64; image.stride = 256;
         image.premultipliedBgra.resize(64 * 64 * 4);
         for (unsigned y = 0; y < 64; ++y) for (unsigned x = 0; x < 64; ++x) {
             const auto at = (y * 64 + x) * 4;
-            image.premultipliedBgra[at] = static_cast<BYTE>(x * 4);
-            image.premultipliedBgra[at + 1] = static_cast<BYTE>(y * 4);
-            image.premultipliedBgra[at + 2] = ((x / 8 + y / 8) % 2) ? 230 : 40;
+            image.premultipliedBgra[at] = clippedReference ? 80 : static_cast<BYTE>(x * 4);
+            image.premultipliedBgra[at + 1] = clippedReference ? 120 : static_cast<BYTE>(y * 4);
+            image.premultipliedBgra[at + 2] = clippedReference ? 200 : ((x / 8 + y / 8) % 2) ? 230 : 40;
             image.premultipliedBgra[at + 3] = 255;
         }
         return RemoteImageFetchResult{S_OK, std::move(image), {}};
@@ -53,7 +58,11 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
             {L"background", Color(L"#263344")}, {L"color", Color(L"#ffffff")},
             {L"corner-radius", Length(12)}, {L"overflow", Keyword(L"clip")},
             {L"padding", LengthList(L"8px")}, {L"surface-shading", Number(.05)},
-            {L"shadow-color", Color(L"#00000060")}, {L"shadow-blur", Length(5)}};
+            {L"shadow-color", Color(L"#00000060")}, {L"shadow-blur", Length(5)}, {L"shadow-offset-y", Length(1)}};
+        if (clippedReference) {
+            item.baseStyle[L"corner-radius"] = Length(0);
+            item.baseStyle.erase(L"shadow-color");
+        }
         if (horizontal) item.baseStyle[L"width"] = Length(180);
         item.focusedStyle = {{L"background", Color(L"#486388")}};
         item.pressedStyle = {{L"scale", Number(.96)}};
@@ -80,6 +89,7 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
     options.suppressFocusedDescendantFollow = true;
     const auto draw = [&](DeclarativeRenderer& renderer, bool reference, int frame) {
         auto current = options;
+        current.disableIndependentCapturesForTesting = reference && clippedReference;
         // Authority changes invalidate pixels without resetting scroll state.
         if (reference) current.packageContentDigest = std::to_wstring(frame);
         target->BeginDraw();
@@ -99,8 +109,18 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
                 const bool selected = parent->key.starts_with(L"item.0\x1f");
                 if ((node.order == 1) != selected) continue;
             }
+            std::size_t clips{};
+            auto ancestor = parent;
+            while (ancestor != nodes.end()) {
+                const auto& clip = ancestor->clip;
+                target->PushAxisAlignedClip(D2D1::RectF(clip.x - viewport.x, clip.y - viewport.y,
+                    clip.x + clip.width - viewport.x, clip.y + clip.height - viewport.y), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+                ++clips;
+                ancestor = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.id == ancestor->parent; });
+            }
             target->DrawBitmap(node.bitmap.Get(), D2D1::RectF(node.bounds.x - viewport.x, node.bounds.y - viewport.y,
                 node.bounds.x + node.bounds.width - viewport.x, node.bounds.y + node.bounds.height - viewport.y));
+            while (clips > 0) { target->PopAxisAlignedClip(); --clips; }
         }
         ok(target->EndDraw());
         std::vector<BYTE> pixels(width * height * 4);
@@ -116,6 +136,7 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
     }
     std::uint64_t hits{}, misses{}, bytes{}, referenceBytes{};
     std::vector<std::uint64_t> timings, referenceTimings;
+    std::uint64_t paintUs{}, preparationUs{}, nodeVisits{};
     const int frames = benchmark ? 48 : 16;
     for (int frame = 1; frame <= frames; ++frame) {
         const auto axis = horizontal ? declarative::ScrollAxis::Horizontal : declarative::ScrollAxis::Vertical;
@@ -146,11 +167,13 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
                     << L" expected=" << other->bounds.x << L"," << other->bounds.y << L"," << other->bounds.width << L"," << other->bounds.height << L'\n';
             }
         }
-        Check(actualPixels == expectedPixels, "translated captures exactly match fresh clipped pixels");
+        Check(actualPixels == expectedPixels, "translated captures preserve fresh pixels and clipped shape coverage");
         Check(actual.fullLayoutBuildCount == 0, "scrolling retains layout independently of pixels");
         hits += actual.widgetComposition->paintCacheHits; misses += actual.widgetComposition->paintCacheMisses;
         bytes += actual.widgetComposition->paintedBytes; referenceBytes += expected.widgetComposition->paintedBytes;
         timings.push_back(actual.timing.totalMicroseconds); referenceTimings.push_back(expected.timing.totalMicroseconds);
+        paintUs += actual.timing.nodeDrawMicroseconds; preparationUs += actual.timing.preparationMicroseconds;
+        nodeVisits += actual.compositionPaintNodeVisits;
     }
     std::sort(timings.begin(), timings.end()); std::sort(referenceTimings.begin(), referenceTimings.end());
     std::cout << "SCROLL scale=" << scale << " grid=" << grid << " horizontal=" << horizontal << " large=" << largeCoordinates
@@ -158,6 +181,11 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
         << " deep=" << deepScroll
         << " hits=" << hits << " misses=" << misses << " bytes=" << bytes << " fresh-bytes=" << referenceBytes
         << " median-us=" << timings[timings.size()/2] << " fresh-median-us=" << referenceTimings[referenceTimings.size()/2] << '\n';
+    std::cout << "SCROLL-STAGES paint-mean-us=" << paintUs / frames << " prepare-mean-us=" << preparationUs / frames << " visits-mean=" << nodeVisits / frames;
+    std::cout << '\n';
+    Check(nodeVisits < static_cast<std::uint64_t>(frames) * 300,
+        "capture traversal stays bounded to contributing item paths");
+    if (largeCoordinates) Check(hits > misses, "deep collection retains the majority of visible item captures");
     if (!benchmark) {
         Check(hits > misses, "scrolling reuses most capture layers");
         Check(bytes < referenceBytes / 2, "scrolling repaints less than half of fresh capture bytes");
@@ -165,7 +193,10 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
     const auto compareUpdate = [&](int revision) {
         ++snapshot.sequence;
         const auto actual = draw(retained, false, frames + revision), expected = draw(fresh, true, frames + revision);
-        Check(replay(actual) == replay(expected), "scrolled captures invalidate exactly after content/clip/cursor changes");
+        const auto actualPixels = replay(actual), expectedPixels = replay(expected);
+        if (actualPixels != expectedPixels) std::cerr << "capture update mismatch revision=" << revision
+            << " scale=" << scale << " clipped-reference=" << clippedReference << '\n';
+        Check(actualPixels == expectedPixels, "scrolled captures invalidate after content/clip/cursor changes");
         Check(actual.focusRects.size() == expected.focusRects.size(), "retained capture preserves current focus eligibility");
         for (const auto& [id, bounds] : actual.focusRects) {
             Check(expected.focusRects.contains(id), "retained capture cannot resurrect a retired focus target");

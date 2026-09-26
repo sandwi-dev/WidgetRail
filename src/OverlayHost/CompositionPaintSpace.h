@@ -14,7 +14,7 @@ inline declarative::Rect CompositionLocalRect(declarative::Rect box,
         const auto pixels = value * scale;
         const auto snapped = std::round(pixels);
         constexpr float pixelGridTolerance = .0001F;
-        return std::abs(pixels - snapped) < pixelGridTolerance ? snapped / scale : value;
+        return std::abs(pixels - snapped) < pixelGridTolerance ? (snapped == 0 ? 0.0F : snapped / scale) : value;
     };
     return {stable(box.x - originX), stable(box.y - originY), stable(box.width), stable(box.height)};
 }

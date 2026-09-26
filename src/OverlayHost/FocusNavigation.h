@@ -182,7 +182,9 @@ FindExternalFocusGroupCandidates(
     std::wstring_view scrollId,
     declarative::ScrollAxis axis,
     std::wstring_view activeScopeId,
-    const RenderResult& renderResult);
+    const RenderResult& renderResult,
+    std::optional<float> preferredCrossAxis = std::nullopt,
+    int travelDirection = 0);
 
 [[nodiscard]] bool IsEnabledFocusTarget(
     std::wstring_view id,

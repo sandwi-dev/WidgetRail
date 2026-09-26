@@ -15,6 +15,33 @@ constexpr float kRightStickAxisSwitchRatio = 1.25F;
 
 } // namespace
 
+HeldDpadScrollDecision HeldDpadScroll::Update(int direction, bool eligible,
+    std::wstring_view owner, std::uint64_t now) {
+    const bool wasActive = active_;
+    if (direction == 0) {
+        Reset(); blocked_ = false;
+        return {false, false, wasActive, 0};
+    }
+    direction = direction < 0 ? -1 : 1;
+    if (!eligible || owner.empty() || (!owner_.empty() && owner_ != owner)) {
+        Reset();
+        return {false, false, wasActive, 0};
+    }
+    if (blocked_) return {};
+    if (direction_ == 0 || (!active_ && direction_ != direction)) {
+        pressedAt_ = now;
+        owner_ = owner;
+    }
+    direction_ = direction;
+    constexpr std::uint64_t holdMilliseconds = 360;
+    active_ = active_ || (now >= pressedAt_ && now - pressedAt_ >= holdMilliseconds);
+    return {active_, active_ && !wasActive, false, direction};
+}
+
+void HeldDpadScroll::Reset() noexcept {
+    owner_.clear(); pressedAt_ = 0; direction_ = 0; active_ = false; blocked_ = true;
+}
+
 RightStickScrollUpdate RightStickScrollKinetics::Update(
     const short x,
     const short y,

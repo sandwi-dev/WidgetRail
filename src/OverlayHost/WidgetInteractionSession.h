@@ -112,7 +112,8 @@ public:
     // never scrolls the content. Explicit directional/pointer input retires it.
     [[nodiscard]] std::optional<std::wstring> SettleFocus(
         const WidgetInteractionAuthority& authority,
-        std::wstring_view focusedElementId, const RenderResult& renderResult);
+        std::wstring_view focusedElementId, const RenderResult& renderResult,
+        std::optional<float> preferredCrossAxis = std::nullopt, int travelDirection = 0);
     [[nodiscard]] const std::optional<FreeScrollBinding>& binding() const noexcept {
         return binding_;
     }

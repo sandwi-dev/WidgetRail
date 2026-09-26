@@ -28,6 +28,16 @@ internal static class ControllerSettingsScenarios
             await widget.OnActionAsync(new WidgetActionEvent("controllers.open-shortcut.toggle", "controllers.open-shortcut"));
             if ((await store.LoadAsync()).Controllers.OpenShortcut != ControllerOpenShortcut.ViewMenu)
                 throw new Exception("Shortcut must switch back to View + Menu.");
+            if ((await store.LoadAsync()).Controllers.HoldDpadToScroll)
+                throw new Exception("Held D-pad scrolling must be opt-in.");
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.hold-scroll.toggle", "controllers.hold-scroll"));
+            var heldSettings = await store.LoadAsync();
+            if (!heldSettings.Controllers.HoldDpadToScroll || heldSettings.Controllers.ExclusiveControl ||
+                heldSettings.Controllers.OpenShortcut != ControllerOpenShortcut.ViewMenu)
+                throw new Exception("Held scrolling must persist independently of shortcut and controller isolation.");
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.hold-scroll.toggle", "controllers.hold-scroll"));
+            if ((await store.LoadAsync()).Controllers.HoldDpadToScroll)
+                throw new Exception("Held scrolling can be disabled.");
             await widget.OnActionAsync(new WidgetActionEvent("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
             if ((await store.LoadAsync()).Controllers.ExclusiveControl) throw new Exception("Unavailable enable persisted.");
             service.Status = new(ControllerControlState.Off, true, true, true);

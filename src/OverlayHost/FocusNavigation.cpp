@@ -742,7 +742,9 @@ std::optional<std::wstring> FindFreeScrollReentryTarget(
     const std::wstring_view scrollId,
     const declarative::ScrollAxis axis,
     const std::wstring_view activeScopeId,
-    const RenderResult& renderResult) {
+    const RenderResult& renderResult,
+    const std::optional<float> preferredCrossAxis,
+    const int travelDirection) {
     if (axis == declarative::ScrollAxis::None || scrollId.empty())
         return std::nullopt;
     const auto viewport = renderResult.scrollViewports.find(scrollId);
@@ -798,7 +800,7 @@ std::optional<std::wstring> FindFreeScrollReentryTarget(
         return hasFullyVisible && !candidate.fullyVisible;
     });
     if (candidates.empty()) return std::nullopt;
-    std::ranges::sort(candidates, [axis](const Candidate& left,
+    std::ranges::sort(candidates, [axis, preferredCrossAxis, travelDirection](const Candidate& left,
                                         const Candidate& right) {
         const auto primary = [axis](const Rect& rect) {
             return axis == declarative::ScrollAxis::Vertical ? rect.y : rect.x;
@@ -806,6 +808,15 @@ std::optional<std::wstring> FindFreeScrollReentryTarget(
         const auto secondary = [axis](const Rect& rect) {
             return axis == declarative::ScrollAxis::Vertical ? rect.x : rect.y;
         };
+        if (preferredCrossAxis) {
+            const auto columnDistance = [&](const Rect& rect) {
+                const auto center = secondary(rect) + (axis == declarative::ScrollAxis::Vertical ? rect.width : rect.height) * .5F;
+                return std::abs(center - *preferredCrossAxis);
+            };
+            const float direction = travelDirection > 0 ? -1.0F : 1.0F;
+            return std::tuple{columnDistance(left.rect), direction * primary(left.rect), left.id} <
+                std::tuple{columnDistance(right.rect), direction * primary(right.rect), right.id};
+        }
         return std::tuple{
                    primary(left.rect), secondary(left.rect), left.id} <
             std::tuple{

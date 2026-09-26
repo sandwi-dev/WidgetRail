@@ -2,7 +2,8 @@
 // action routing/accessibility continue through the uncached geometry pass.
 CompositionPaintIdentity CompositionIdentity(const WidgetCompositionNode& raster,
     const std::vector<std::pair<const WidgetNode*, int>>& operations,
-    const std::set<std::wstring>& ancestors) {
+    const std::set<std::wstring>& ancestors,
+    const std::set<std::wstring>* captureMembers = nullptr) {
     CompositionPaintIdentity key;
     key.Text(snapshot->instanceId); key.Text(snapshot->activeInputScopeId);
     key.Text(options.artworkAuthorityId); key.Text(options.artworkWidgetId);
@@ -22,7 +23,8 @@ CompositionPaintIdentity CompositionIdentity(const WidgetCompositionNode& raster
     const auto localClip = [&](Rect box) {
         localBox(Intersection(box, raster.bounds));
     };
-    localClip(viewport);
+    key.Scalar(captureMembers != nullptr);
+    localClip(captureMembers ? raster.bounds : viewport);
     key.Scalar(raster.bounds.width); key.Scalar(raster.bounds.height);
     // Only primitives rasterized in capture-local space may ignore placement.
     // Keep less common painter paths conservative until their local pixel
@@ -58,9 +60,11 @@ CompositionPaintIdentity CompositionIdentity(const WidgetCompositionNode& raster
         key.Scalar(item.node->collectionResetGeneration.value_or(0));
         // Traversed ancestors contribute clips, not their screen positions.
         // Rounded tile masks additionally depend on the complete tile shape.
-        localClip(shown.visibleBox); localClip(shown.ancestorClip);
-        if (item.node->kind == L"actionSurface" && item.baseStyle.overflow() == NativeOverflow::Clip)
-            localBox(ScaleRect(shown.borderBox, shown.motion.value.scale));
+        if (!captureMembers || captureMembers->contains(id)) {
+            localClip(shown.visibleBox); localClip(shown.ancestorClip);
+            if (item.node->kind == L"actionSurface" && item.baseStyle.overflow() == NativeOverflow::Clip)
+                localBox(ScaleRect(shown.borderBox, shown.motion.value.scale));
+        }
         key.Scalar(shown.motion.value.opacity); key.Scalar(shown.motion.value.scale);
         key.Style(item.baseStyle);
         if (item.node->kind == L"actionSurface") key.Style(item.paintStyle);

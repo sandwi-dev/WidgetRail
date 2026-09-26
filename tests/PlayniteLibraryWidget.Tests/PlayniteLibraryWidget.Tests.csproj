@@ -16,4 +16,9 @@
           Link="styles\default.wrss"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\RendererFixtureExporter.cs" Link="fixture\RendererFixtureExporter.cs" />
+    <Compile Include="..\Shared\RendererFixtureBridgeProtocolException.cs" Link="fixture\RendererFixtureBridgeProtocolException.cs" />
+    <Compile Include="..\..\src\WidgetBridge\BridgeRenderStyles.cs" Link="fixture\BridgeRenderStyles.cs" />
+  </ItemGroup>
 </Project>

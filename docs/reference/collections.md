@@ -47,6 +47,44 @@ Use stable item IDs and preserve the provider's ordering through one traversal.
 Sorting just the currently loaded page can duplicate or reorder entries when
 another page arrives.
 
+## Rendering and controller scrolling contract
+
+The collection resource owns data and loading. The host owns layout, clipping,
+pixel reuse, navigation and continuous scrolling. There is no widget animation
+timer or per-frame scroll callback to implement.
+
+- Capture the cursor resource once per view and use that capture for both its
+  item presentation and scroll metadata. Give each item its provider-stable key;
+  do not use its current row/page index as identity.
+- Keep the scroll container, content and item IDs stable when adjacent pages
+  arrive. Append/evict through the cursor resource so the host receives the
+  matching window change and anchor. Use refresh/reset for a changed query or
+  ordering, not as a notification that another page loaded.
+- Use regular rows or `ResponsiveGrid` with theme-defined sizing/aspect ratios
+  for large libraries. Clipped tiles permit the host to skip invisible visual
+  subtrees. Visible-overflow and unusual nested layouts retain the conservative
+  rendering path; clipping is not permission to discard focus or accessibility
+  semantics.
+- Keep existing items interactive during adjacent loading. The host can hold
+  movement at the loaded boundary and continue after the new window is admitted.
+  It does not replay a queue of navigation commands against the arriving page.
+- The Controllers setting **Hold D-pad to scroll** is optional and off by default.
+  A tap retains normal focus navigation. A vertical hold uses the current active
+  scroll/input scope, then lands in the originating column where possible on release. Widgets
+  use the same standard Scroll and collection contracts as right-stick scrolling;
+  do not add a second D-pad repeat loop.
+- Modal scopes, collection resets, widget replacement, and loss of input authority
+  retire the old gesture. A parent page cannot continue receiving held navigation
+  through its modal.
+
+`ShowScrollbar` controls the indicator and its reserved gutter together. It does
+not turn off scrolling, cursor loading, or host rendering optimizations.
+
+Pixel retention is an implementation detail rather than an SDK promise about a
+specific number of render calls. Authors should produce immutable view snapshots
+and preserve the identities above; changing theme, text size, content or clipping
+must remain free to repaint or relayout.
+
 ## What triggers more cursor data?
 
 The host uses viewport and navigation demand. It can request adjacent data near

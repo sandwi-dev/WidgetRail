@@ -51,6 +51,12 @@ D-pad and left-stick navigation move focus and reveal the target control.
 Right-stick scrolling moves the viewport; focus settles after scrolling stops
 instead of jumping with every arriving page.
 
+Users can enable **Hold D-pad to scroll** in Settings → Controllers. Taps still
+move focus normally; holding Up/Down scrolls the active container and release
+lands on a visible item in the originating column where possible. The host owns this gesture,
+including its loading-boundary and scope handling. Widgets need no repeat loop
+or additional capability. See the [collection contract](../reference/collections.md#rendering-and-controller-scrolling-contract).
+
 Scroll positions belong to the widget instance, the container's own input scope,
 and its stable ID. Changing the active scope to a modal does not reset the parent
 page's viewport. The dialog keeps independent scroll state. Explicit collection

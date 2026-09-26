@@ -476,6 +476,14 @@ int main() {
               widgetrail::declarative::ScrollAxis::Vertical,
               L"root", reentry) == L"fully-first",
           "vertical re-entry chooses the topmost fully visible enabled descendant");
+    Check(FindFreeScrollReentryTarget(reentryRoot, L"inner.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical, L"root", reentry, 110.0F, 1) == L"fully-second",
+          "held downward scrolling lands at the trailing visible row in the original column");
+    reentry.navigationRects[L"fully-second"] = {140.0F, 72.0F, 60.0F, 44.0F};
+    Check(FindFreeScrollReentryTarget(reentryRoot, L"inner.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical, L"root", reentry, 110.0F, 1) == L"fully-first",
+          "held scrolling retains the original column before preferring a farther row");
+    reentry.navigationRects[L"fully-second"] = {10.0F, 72.0F, 200.0F, 44.0F};
 
     reentry.navigationRects[L"fully-first"] = {10.0F, 126.0F, 200.0F, 44.0F};
     reentry.hitRegions[2].rect = reentry.navigationRects[L"fully-first"];

@@ -213,6 +213,26 @@ void CheckShortcutResolutionContract() {
 } // namespace
 
 int main() {
+    {
+        widgetrail::input::HeldDpadScroll held;
+        Check(!held.Update(1, true, L"grid", 0).active, "held input on ownership entry requires neutral");
+        (void)held.Update(0, true, L"grid", 10);
+        Check(!held.Update(1, true, L"grid", 20).active && !held.Update(1, true, L"grid", 379).active,
+            "first press and short hold keep single-step navigation");
+        const auto start = held.Update(1, true, L"grid", 380);
+        Check(start.active && start.started && start.direction == 1, "vertical hold enters continuous scrolling once");
+        Check(!held.Update(1, true, L"grid", 400).started, "repeated samples do not restart a held gesture");
+        const auto reverse = held.Update(-1, true, L"grid", 410);
+        Check(reverse.active && reverse.direction == -1, "active held scrolling reverses without accumulating old movement");
+        const auto release = held.Update(0, true, L"grid", 420);
+        Check(release.ended && !release.active, "release stops a held gesture");
+        (void)held.Update(1, true, L"grid", 430);
+        Check(!held.Update(1, true, L"modal", 900).active && !held.Update(1, true, L"modal", 1400).active,
+            "changed scope cannot inherit a held gesture");
+        (void)held.Update(0, false, {}, 1500);
+        (void)held.Update(1, false, {}, 1600);
+        Check(!held.Update(1, true, L"grid", 2100).active, "ineligible input cannot become active merely by entering a scroll container");
+    }
     CheckShortcutResolutionContract();
     using widgetrail::input::NavigationDirection;
 

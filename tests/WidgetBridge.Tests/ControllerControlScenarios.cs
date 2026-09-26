@@ -22,11 +22,12 @@ internal static class ControllerControlScenarios
             var ready = new ControllerControlStatus(ControllerControlState.Off, true, true, true);
             control.Report(ready);
             await store.UpdateAsync(current => current with
-            { Controllers = current.Controllers with { OpenShortcut = ControllerOpenShortcut.ViewMenu } });
+            { Controllers = current.Controllers with { OpenShortcut = ControllerOpenShortcut.ViewMenu, HoldDpadToScroll = true } });
             var enabled = await control.SetAsync(true, default);
             Check(enabled.Accepted && enabled.Status.State == ControllerControlState.Starting,
                 "Saving intent cannot claim active routing.");
             var saved = await control.ReadPreferenceAsync(default);
+            Check(saved.HoldDpadToScroll, "Controller ownership changes preserve held scrolling preference.");
             Check(saved.ExclusiveControl && saved.Revision == 1, "Preference and revision must persist together.");
             Check(saved.OpenShortcut == ControllerOpenShortcut.ViewMenu,
                 "Changing Exclusive control must preserve the selected overlay shortcut.");

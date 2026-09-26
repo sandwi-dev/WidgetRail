@@ -4550,9 +4550,11 @@ std::optional<ControllerControlPreference> WidgetBridgeClient::ExchangeControlle
             if (responseId != requestId || response.GetNamedString(L"type") != L"controller-control")
                 throw std::runtime_error("Unexpected controller response");
             const auto result = response.GetNamedObject(L"payload");
-            if ((result.Size() != 2 && result.Size() != 3) || (result.Size() == 3 && !result.HasKey(L"openShortcut")) ||
+            const auto expectedFields = 2U + (result.HasKey(L"openShortcut") ? 1U : 0U) + (result.HasKey(L"holdDpadToScroll") ? 1U : 0U);
+            if (result.Size() != expectedFields ||
                 result.GetNamedValue(L"exclusiveControl").ValueType() != JsonValueType::Boolean ||
-                result.GetNamedValue(L"revision").ValueType() != JsonValueType::Number)
+                result.GetNamedValue(L"revision").ValueType() != JsonValueType::Number ||
+                (result.HasKey(L"holdDpadToScroll") && result.GetNamedValue(L"holdDpadToScroll").ValueType() != JsonValueType::Boolean))
                 throw std::runtime_error("Invalid controller preference");
             const auto revision = result.GetNamedNumber(L"revision");
             if (!std::isfinite(revision) || revision < 0 || revision > 9'007'199'254'740'990.0 || std::floor(revision) != revision)
@@ -4560,7 +4562,7 @@ std::optional<ControllerControlPreference> WidgetBridgeClient::ExchangeControlle
             const auto shortcut = result.GetNamedString(L"openShortcut", L"guide");
             if (shortcut != L"guide" && shortcut != L"viewMenu")
                 throw std::runtime_error("Invalid controller shortcut");
-            return ControllerControlPreference{result.GetNamedBoolean(L"exclusiveControl"), static_cast<long long>(revision), shortcut == L"viewMenu"};
+            return ControllerControlPreference{result.GetNamedBoolean(L"exclusiveControl"), static_cast<long long>(revision), shortcut == L"viewMenu", result.GetNamedBoolean(L"holdDpadToScroll", false)};
         }
     } catch (...) { Fail(L"Controller settings exchange failed."); }
     return std::nullopt;

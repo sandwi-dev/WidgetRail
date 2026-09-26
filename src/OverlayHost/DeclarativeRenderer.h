@@ -223,6 +223,7 @@ struct RenderResult final {
     std::map<std::wstring, std::uint32_t, std::less<>> textLineCounts;
     std::map<std::wstring, std::wstring, std::less<>> backgroundArtworkHandles;
     std::size_t fullLayoutBuildCount{};
+    std::size_t compositionPaintNodeVisits{};
     std::size_t tileClipLayerCreates{};
     std::size_t tileClipGeometryCreates{};
     std::size_t tileClipPushes{};
@@ -401,6 +402,8 @@ struct DeclarativeRenderOptions final {
     /// allowing that descendant to pull the viewport back until re-entry.
     bool suppressFocusedDescendantFollow{};
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+    /// Compare whole-item retention with the conservative clipped painter.
+    bool disableIndependentCapturesForTesting{};
     /// Injects a terminal diagnostic after target-backed drawing so tests can
     /// prove rejected frames do not commit renderer-owned presentation state.
     bool failAfterNodeDrawForTesting{};

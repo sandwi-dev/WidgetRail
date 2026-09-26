@@ -86,18 +86,42 @@ bool DrawWidgetComposition() {
     std::wstring focusKey;
     bool focusTargetsOverflow{};
     std::map<std::wstring, std::wstring> parents;
+    std::map<const WidgetNode*, std::size_t> paintOrder;
     std::vector<std::wstring> path;
     std::map<std::size_t, std::vector<std::pair<const WidgetNode*, int>>> paintOperations;
+    std::map<std::wstring, const WidgetNode*> captureRoots;
+    std::map<std::size_t, const WidgetNode*> captureBands;
+    const auto captureBounds = [&](const WidgetNode& root) {
+        const auto id = NarrowStableId(root.id);
+        const auto& box = presentation.at(id).borderBox;
+        const auto& item = prepared.at(id);
+        auto bounds = UnionRect(widgetrail::surface::PaintBounds(box, item.baseStyle, options.pixelScale),
+            widgetrail::surface::PaintBounds(box, item.paintStyle, options.pixelScale));
+        if (const auto focused = compositionFocusStyles.find(root.id); focused != compositionFocusStyles.end())
+            bounds = UnionRect(bounds, widgetrail::surface::PaintBounds(box, focused->second, options.pixelScale));
+        return bounds;
+    };
     const auto split = [&] { band.reset(); };
     const auto addGroup = [&](std::wstring id, std::wstring parent, WidgetCompositionKind kind,
                               std::wstring clock, std::wstring key, int order, Rect bounds, Rect clip) {
         split();
+        if (const auto root = captureRoots.find(parent); root != captureRoots.end()) captureRoots[id] = root->second;
         scene->nodes.push_back(
             {id, std::move(parent), std::move(clock), std::move(key), kind, order, bounds, clip});
         return id;
     };
     const auto op = [&](const WidgetNode &node, int phase, const std::wstring &parent, Rect bounds) {
-        bounds = Intersection(bounds, viewport);
+        const auto capture = captureRoots.find(parent);
+        const bool independentClip = (phase < 3 || phase == 5) && capture != captureRoots.end();
+        if (independentClip) {
+            const auto& shown = presentation.at(NarrowStableId(node.id));
+            const auto& style = prepared.at(NarrowStableId(node.id)).paintStyle;
+            bounds = phase == 0 || phase == 5
+                ? widgetrail::surface::PaintBounds(shown.borderBox, style, options.pixelScale)
+                : shown.borderBox;
+            if (&node == capture->second && (phase == 0 || phase == 5)) bounds = captureBounds(node);
+            bounds = Intersection(bounds, captureBounds(*capture->second));
+        } else bounds = Intersection(bounds, viewport);
         if (bounds.width <= .01F || bounds.height <= .01F)
             return;
         if (!band || scene->nodes[*band].parent != parent) {
@@ -118,6 +142,7 @@ bool DrawWidgetComposition() {
             scene->nodes[*band].bounds = UnionRect(scene->nodes[*band].bounds, bounds);
         compositionPhases[{node.id, phase}] = *band;
         paintOperations[*band].push_back({&node, phase});
+        if (independentClip) captureBands[*band] = capture->second;
     };
     const auto visit = [&](const auto &self, const WidgetNode &node, std::wstring parent,
                            bool surfaceDone, std::wstring scope, std::wstring itemIdentity) -> void {
@@ -127,7 +152,19 @@ bool DrawWidgetComposition() {
         const auto styleNode = prepared.find(NarrowStableId(node.id));
         if (position == presentation.end() || styleNode == prepared.end())
             return;
+        const auto& candidate = position->second;
+        const auto& candidateStyle = styleNode->second.paintStyle;
+        const auto visualBounds = Intersection(
+            widgetrail::surface::PaintBounds(candidate.borderBox, candidateStyle, options.pixelScale), candidate.ancestorClip);
+        if ((node.children.empty() || (node.kind != L"backgroundSurface" &&
+                node.kind != L"focusPresentationSurface" && ClipsDescendants(node, styleNode->second.baseStyle))) &&
+            (visualBounds.width <= .01F || visualBounds.height <= .01F)) {
+            // Clipped descendants cannot contribute pixels. Their logical
+            // navigation/scroll geometry is still published independently.
+            return;
+        }
         parents[node.id] = path.empty() ? L"" : path.back();
+        paintOrder.emplace(&node, paintOrder.size());
         path.push_back(node.id);
         const auto &shown = position->second;
         const auto &style = styleNode->second.paintStyle;
@@ -169,6 +206,32 @@ bool DrawWidgetComposition() {
                 focusTargetsOverflow = true;
         }
         const auto beforeParent = parent;
+        const auto supportsCapture = [&](const auto& self, const WidgetNode& child) -> bool {
+            if (child.transition || child.kind == L"scroll" || child.kind == L"modalLayer" ||
+                child.kind == L"backgroundSurface" || child.kind == L"focusPresentationSurface") return false;
+            for (const auto& descendant : child.children) if (!self(self, descendant)) return false;
+            return true;
+        };
+        const bool inScroll = std::any_of(path.begin(), path.end(), [&](const auto& id) {
+            return prepared.at(NarrowStableId(id)).node->kind == L"scroll";
+        });
+        const bool roundedAncestor = std::any_of(path.begin(), path.end(), [&](const auto& id) {
+            const auto& ancestor = prepared.at(NarrowStableId(id));
+            return id != node.id && ancestor.node->kind == L"actionSurface" && ancestor.baseStyle.overflow() == NativeOverflow::Clip;
+        });
+        const bool translatedAncestor = std::any_of(path.begin(), path.end(), [&](const auto& id) {
+            const auto& motion = presentation.at(NarrowStableId(id)).motion.value;
+            return motion.translationX != 0 || motion.translationY != 0;
+        });
+        // Moving an antialiased fractional clip from the painter to a visual
+        // can apply edge coverage differently. Preserve that painter path for
+        // authored subpixel translations instead of changing their pixels.
+        bool independentCapture = visibleControl && inScroll && !roundedAncestor &&
+            !translatedAncestor &&
+            (node.children.empty() || ClipsDescendants(node, styleNode->second.baseStyle)) && supportsCapture(supportsCapture, node);
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        independentCapture = independentCapture && !options.disableIndependentCapturesForTesting;
+#endif
         if (spec) {
             if (!spec->layout)
                 parent = addGroup(L"content/" + spec->groupId, parent, WidgetCompositionKind::Content,
@@ -178,14 +241,15 @@ bool DrawWidgetComposition() {
                 parent = addGroup(L"layout/" + node.id, parent, WidgetCompositionKind::Layout, spec->groupId,
                                   spec->key, spec->order, shown.borderBox, shown.ancestorClip);
         }
-        if (controlScale && visibleControl) {
+        if ((controlScale || independentCapture) && visibleControl) {
             parent = addGroup(L"control/" + node.id, parent, WidgetCompositionKind::Control,
                 scope, targetKey, 0, shown.borderBox, shown.ancestorClip);
             auto &control = scene->nodes.back();
-            control.controlScale = style.scale();
-            control.controlDuration = static_cast<unsigned>(style.transitionDurationMilliseconds());
+            control.controlScale = controlScale ? style.scale() : 1.0F;
+            control.controlDuration = controlScale ? static_cast<unsigned>(style.transitionDurationMilliseconds()) : 0;
             control.controlCurve = style.transitionEasing() == NativeTransitionEasing::Linear ? animation::Curve{1, 0, 0}
                 : style.transitionEasing() == NativeTransitionEasing::EaseOut ? animation::EaseOut : animation::Smooth;
+            if (independentCapture) captureRoots[parent] = &node;
         }
         const bool compositorBackground =
             node.kind == L"backgroundSurface" &&
@@ -351,6 +415,22 @@ bool DrawWidgetComposition() {
             id = parent->second;
         }
     }
+    // Each capture follows only its contribution paths. In particular, painting
+    // one cell must not scan every sibling in a large retained cursor window.
+    // Retain authored order, including selection surfaces and modal children.
+    for (const auto& [index, members] : compositionBandNodes) {
+        auto& children = compositionBandChildren[index];
+        for (const auto& id : members) {
+            const auto parent = parents.find(id);
+            if (parent == parents.end() || parent->second.empty()) continue;
+            const auto* node = prepared.at(NarrowStableId(id)).node;
+            const auto* ancestor = prepared.at(NarrowStableId(parent->second)).node;
+            if (ancestor->kind == L"focusPresentationSurface") continue; // Its fragment has an explicit traversal path.
+            children[ancestor].push_back(node);
+        }
+        for (auto& [_, siblings] : children)
+            std::sort(siblings.begin(), siblings.end(), [&](auto* a, auto* b) { return paintOrder.at(a) < paintOrder.at(b); });
+    }
     auto *mainTarget = target;
     bool animationActive{};
     composingScene = true;
@@ -368,7 +448,32 @@ bool DrawWidgetComposition() {
         const auto size = D2D1::SizeF(node.bounds.width, node.bounds.height);
         const auto pixels = D2D1::SizeU(static_cast<UINT32>(std::round(size.width * scale)),
                                         static_cast<UINT32>(std::round(size.height * scale)));
-        auto identity = CompositionIdentity(node, paintOperations[index], compositionBandNodes[index]);
+        struct RestoreProjection final {
+            std::vector<std::pair<PresentationNode*, PresentationNode>> saved;
+            ~RestoreProjection() { for (auto& [location, value] : saved) *location = value; }
+        } projection;
+        std::set<std::wstring> captureMembers;
+        const auto capture = captureBands.find(index);
+        const WidgetNode* captureRoot = capture == captureBands.end() ? nullptr : capture->second;
+        if (captureRoot) {
+            const auto project = [&](const auto& self, const WidgetNode& part, Rect clip) -> void {
+                if (!compositionBandNodes[index].contains(part.id)) return;
+                auto& shown = presentation.at(NarrowStableId(part.id));
+                projection.saved.emplace_back(&shown, shown);
+                captureMembers.insert(part.id);
+                shown.ancestorClip = clip;
+                shown.visibleBox = Intersection(shown.borderBox, clip);
+                const auto& style = prepared.at(NarrowStableId(part.id)).baseStyle;
+                const auto childClip = ClipsDescendants(part, style) ? Intersection(clip, shown.contentBox) : clip;
+                for (const auto& child : part.children) self(self, child, childClip);
+            };
+            // The raster itself bounds the capture. Do not introduce an extra
+            // fractional clip at the shadow's unsnapped paint envelope: adding
+            // that envelope to a translated float coordinate changes its phase.
+            project(project, *captureRoot, CompositionRasterBounds(captureBounds(*captureRoot), scale));
+        }
+        auto identity = CompositionIdentity(node, paintOperations[index], compositionBandNodes[index],
+            captureRoot ? &captureMembers : nullptr);
         const auto prior = owner->compositionPaintCache_.find(node.id);
         if (identity.cacheable && prior != owner->compositionPaintCache_.end() && identity == prior->second.identity) {
             node.bitmap = prior->second.bitmap;
@@ -430,7 +535,8 @@ bool DrawWidgetComposition() {
         target->Clear(D2D1::ColorF(0, 0));
         target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
         target->SetTransform(D2D1::Matrix3x2F::Translation(-node.bounds.x, -node.bounds.y));
-        DrawNode(snapshot->root);
+        DrawNode(captureRoot ? *captureRoot : snapshot->root,
+            captureRoot ? prepared.at(NarrowStableId(captureRoot->id)).inputScope : std::wstring_view{});
         DrawDeferredFocus();
         status = target->EndDraw();
         if (SUCCEEDED(status))

@@ -71,8 +71,13 @@ Raster placement and clipping remain independent of upload identity.
 
 Capture-local pixel identity is separate from compositor placement. Moving an
 unchanged text row or poster can retain its bitmap and GPU surface. Effective
-clips are compared within the capture; newly exposed or differently clipped edge
-content still repaints. Rounded tile masks retain their complete local shape.
+clips are compared within the capture. Simple controls inside scroll containers
+capture their full item pixels, with the live outer viewport clip applied by the
+compositor; moving an item across that edge does not recapture its artwork.
+Internal rounded tile masks remain in the capture. Complex subtrees (nested scroll,
+transitions, presentation surfaces, live media, visible-overflow descendants,
+subpixel-translated clips, or an outer rounded tile mask)
+retain the conservative clipped-capture path.
 Text, surfaces, artwork and tile masks rasterize in capture-local coordinates so
 fractional DPI and baseline snapping cannot depend on the previous screen position.
 Float cancellation noise within 0.0001 physical pixels of the layout grid is
@@ -86,6 +91,17 @@ Loading indicators retain their existing admission and painting behavior.
 This is bounded per-band reuse, not a texture of the entire collection.
 Existing cursor loading, anchor restoration, artwork protection and logical input
 coordinates remain authoritative.
+
+Capture traversal follows a per-band contribution index in authored order instead
+of rescanning every sibling. Fully clipped visual subtrees are culled when their
+overflow rules prove they cannot paint outside their bounds. Logical offscreen
+navigation data remains available; revealability uses prepared parent links rather
+than a fresh tree search per control. Physical-pixel projection subtracts snapped
+scroll displacement before converting to DIPs, avoiding precision loss at deep
+offsets. Capture-local zero is canonicalized so signed zero cannot invalidate pixels.
+The full-item capture uses its pixel-aligned raster envelope rather than an extra
+fractional shadow clip. Shadow padding must not become a changing paint dependency
+as an otherwise unchanged item moves through the viewport.
 
 ## Diagnostics
 
@@ -114,6 +130,22 @@ exact pixels, resizing, nested clipping, cursor eviction/reset and current focus
 geometry. The reported timings exclude the comparison/replay work. The ordinary
 suite also enforces pixel-reuse budgets. `OverlayChromeTests --focus-scroll-pixels`
 checks real compositor placement and GPU reuse while interrupting a focus fade.
+
+`--scroll-large-coordinates` adds 240-item/deep-offset cases at those scales.
+`--scroll-capture-parity` compares full-item captures with conservative raster
+clipping using flat, square tiles, including resizing, cursor eviction/reset,
+authored translation and nested scrolling. Textured artwork, rounded masks and
+depth are checked separately with byte-identical retained-versus-fresh captures;
+the old truncated raster path can produce different antialias coverage at rounded
+edges and is not a pixel identity oracle for those effects.
+For production widget structures, export the Playnite layout fixtures with
+`WRAIL_PLAYNITE_LAYOUT_OUTPUT` or the standalone YouTube Music tests' `--export-layout`.
+The `.renderer.json` files include the production Bridge-resolved default theme
+and package styles. Pass one to `build.ps1 -ScrollWorkloadFixture <path>` to build
+and run the native `ScrollWorkloadProbe`. This probe has no renderer test geometry
+instrumentation, honors the widget's surface hints, and substitutes deterministic
+in-memory artwork. It reports near-start/deep scrolling and the largest changed
+raster bands. It does not measure provider/network delay or display FPS.
 
 For physical evidence, launch with `--scroll-diagnostics-quiet`, exercise the
 widget, then hide the overlay. The bounded in-memory trace is saved under

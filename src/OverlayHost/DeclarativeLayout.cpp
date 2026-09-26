@@ -712,12 +712,16 @@ const LayoutBox* LayoutResult::Find(
 void ProjectLayoutBox(LayoutBox& box, const float translatedX, const float translatedY,
     const Rect ancestorClip, const float pixelScale) noexcept {
     const float scale = std::isfinite(pixelScale) && pixelScale > 0 ? pixelScale : 1.0F;
-    const auto snap = [scale](float value) { return std::round(value * scale) / scale; };
+    const auto pixel = [scale](float value) { return std::round(value * scale); };
     const auto project = [&](Rect raw) {
-        const auto left = snap(raw.x), top = snap(raw.y);
-        return Rect{left - snap(translatedX), top - snap(translatedY),
-            std::max(0.0F, snap(raw.x + raw.width) - left),
-            std::max(0.0F, snap(raw.y + raw.height) - top)};
+        // Subtract on the physical-pixel grid before converting back to DIPs.
+        // Subtracting two large, separately divided float coordinates loses
+        // precision deep into a collection and changes otherwise identical
+        // capture bounds/clips at fractional scale.
+        const auto left = pixel(raw.x), top = pixel(raw.y);
+        return Rect{(left - pixel(translatedX)) / scale, (top - pixel(translatedY)) / scale,
+            std::max(0.0F, pixel(raw.x + raw.width) - left) / scale,
+            std::max(0.0F, pixel(raw.y + raw.height) - top) / scale};
     };
     box.unroundedBorderBox = box.unscrolledBorderBox;
     box.unroundedBorderBox.x -= translatedX;

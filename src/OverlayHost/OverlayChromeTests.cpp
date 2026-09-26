@@ -1859,8 +1859,10 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         ShowWindow(window, SW_SHOWNOACTIVATE); DwmFlush();
         commit(sceneFor(true)); Sleep(30); DwmFlush();
         auto scrolled = sceneFor(false);
-        for (auto& item : scrolled->focusTargets) item.bounds.y -= 8;
-        for (auto& node : scrolled->nodes) if (node.id != L"background") node.bounds.y -= 8;
+        for (auto& item : scrolled->focusTargets) { item.bounds.y -= 8; item.clip = {0, 20, 160, 40}; }
+        for (auto& node : scrolled->nodes) if (node.id != L"background") {
+            node.bounds.y -= 8; node.clip = {0, 20, 160, 40};
+        }
         const auto beforeScroll = surface.widgetCompositionCounters();
         commit(scrolled); DwmFlush();
         const auto afterScroll = surface.widgetCompositionCounters();
@@ -1874,6 +1876,9 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
             << (int)GetGValue(current) << ',' << (int)GetBValue(current) << std::endl;
         Check(GetRValue(old) > 120 && GetGValue(old) < 5 && GetGValue(current) >= 60,
             "scroll during focus fade cannot retain the previous control's highlighted background");
+        const auto outside = pixel(30, 16);
+        Check(GetRValue(outside) < 5 && GetGValue(outside) < 5 && GetBValue(outside) > 245,
+            "compositor clips a full retained item capture at the stationary scroll viewport");
         surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
         return;
     }

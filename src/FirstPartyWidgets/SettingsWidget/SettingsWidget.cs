@@ -387,6 +387,11 @@ public sealed class SettingsWidget : Widget
                 await ToggleControllerShortcutAsync(cancellationToken).ConfigureAwait(false);
                 return;
             }
+            if (action.ActionId == "controllers.hold-scroll.toggle" && CurrentPage == SettingsPage.Controllers)
+            {
+                await ToggleHeldDpadScrollAsync(cancellationToken).ConfigureAwait(false);
+                return;
+            }
             if (action.ActionId is "controllers.exclusive-control.toggle" or "controllers.restore" &&
                 CurrentPage == SettingsPage.Controllers)
             {
@@ -810,6 +815,32 @@ public sealed class SettingsWidget : Widget
                 StatusMessage = saved.Controllers.OpenShortcut == ControllerOpenShortcut.Guide
                     ? "Controller shortcut set to Guide"
                     : "Controller shortcut set to View + Menu";
+            }
+        }
+        catch (PlatformSettingsException exception)
+        {
+            SetOperation($"Save failed ({exception.Code})", busy: false, error: true);
+            return;
+        }
+        Invalidate();
+    }
+
+    private async Task ToggleHeldDpadScrollAsync(CancellationToken cancellationToken)
+    {
+        SetOperation("Saving scrolling preference…", busy: true, error: false);
+        try
+        {
+            var saved = await _store.UpdateAsync(current => current with
+            {
+                Controllers = current.Controllers with { HoldDpadToScroll = !current.Controllers.HoldDpadToScroll },
+            }, cancellationToken).ConfigureAwait(false);
+            lock (_stateLock)
+            {
+                _settings = saved;
+                _settingsValid = true;
+                _busy = false;
+                _error = false;
+                StatusMessage = saved.Controllers.HoldDpadToScroll ? "Held D-pad scrolling enabled" : "Held D-pad scrolling disabled";
             }
         }
         catch (PlatformSettingsException exception)

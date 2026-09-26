@@ -41,6 +41,10 @@ internal static class ControllerSettingsPresentation
                 UI.Text("Choose Guide or press View and Menu together to open and close the overlay. Press this option to switch shortcuts.",
                     "controllers.open-help", "Controller shortcut help").Classes("page-help", "controllers-help"),
                 UI.Text("Input behavior", "controllers.input-heading", "Input behavior").Classes("section-heading"),
+                UI.Switch("Hold D-pad to scroll", state.Settings.Controllers.HoldDpadToScroll,
+                    "controllers.hold-scroll.toggle", "controllers.hold-scroll").Busy(state.Busy).Classes("setting-row"),
+                UI.Text("Tap Up or Down to move focus. Hold to scroll vertically; release to focus a visible item in the same column where possible.",
+                    "controllers.hold-scroll.help").Classes("page-help", "controllers-help"),
                 toggle,
                 UI.Text($"Status - {statusText}", "controllers.status", $"Status - {statusText}")
                     .Classes("settings-status", "controllers-status"),

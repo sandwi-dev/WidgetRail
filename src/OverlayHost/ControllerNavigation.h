@@ -77,6 +77,25 @@ struct StickNavigationEvent final {
 
 enum class FreeScrollAxis { None, Horizontal, Vertical };
 
+struct HeldDpadScrollDecision final {
+    bool active{}, started{}, ended{};
+    int direction{};
+};
+
+// Opt-in held navigation, separate from single-step repeat decoding. Ownership
+// loss requires neutral input before a new hold can take over a scroll surface.
+class HeldDpadScroll final {
+public:
+    [[nodiscard]] HeldDpadScrollDecision Update(int direction, bool eligible,
+        std::wstring_view owner, std::uint64_t now);
+    void Reset() noexcept;
+private:
+    std::wstring owner_;
+    std::uint64_t pressedAt_{};
+    int direction_{};
+    bool active_{}, blocked_{true};
+};
+
 struct RightStickScrollUpdate final {
     FreeScrollAxis axis{FreeScrollAxis::None};
     float deltaDip{};

@@ -75,6 +75,13 @@ D-pad and left-stick movement choose a focus target and reveal it. Navigation
 uses layout geometry, collection context, and any explicit links. Offscreen
 items can still be candidates within their scroll collection.
 
+The optional **Hold D-pad to scroll** preference changes sustained vertical
+D-pad input in an active scroll container into continuous scrolling. Taps and
+left-stick navigation keep their normal behavior. The host owns the hold timer,
+loading-boundary handling and same-column landing; widgets do not implement a
+raw-input repeat loop. The gesture cannot cross input scopes or survive a
+collection reset, widget replacement, or loss of input authority.
+
 Right-stick scrolling moves the viewport and settles focus after scrolling
 stops. See [Collections](collections.md) rather than writing a second paging
 or focus-follow system inside the widget.

@@ -711,15 +711,16 @@ bool FreeScrollInteractionState::ShouldSettle(const std::uint64_t now) const noe
 
 std::optional<std::wstring> FreeScrollInteractionState::SettleFocus(
     const WidgetInteractionAuthority& authority,
-    const std::wstring_view focusedElementId, const RenderResult& renderResult) {
+    const std::wstring_view focusedElementId, const RenderResult& renderResult,
+    const std::optional<float> preferredCrossAxis, const int travelDirection) {
     if (!binding_ || authority.retainedRefresh ||
         !BindingMatches(*binding_, authority, focusedElementId) ||
         !IsExactScrollAuthorityCurrent(authority.semantics->root,
             binding_->scrollId, binding_->axis, renderResult)) return std::nullopt;
-    auto target = IsVisibleFreeScrollFocus(authority, *binding_, focusedElementId, renderResult)
+    auto target = !preferredCrossAxis && IsVisibleFreeScrollFocus(authority, *binding_, focusedElementId, renderResult)
         ? std::optional<std::wstring>{std::wstring{focusedElementId}}
         : FindFreeScrollReentryTarget(authority.semantics->root, binding_->scrollId,
-            binding_->axis, authority.semantics->activeInputScopeId, renderResult);
+            binding_->axis, authority.semantics->activeInputScopeId, renderResult, preferredCrossAxis, travelDirection);
     if (!target) return std::nullopt; // Keep the gesture pending until a page is rendered.
     binding_->focusedElementId = *target;
     focusSettled_ = true;

@@ -204,5 +204,18 @@ public sealed partial class PlayniteLibraryLayoutTests
         if (Environment.GetEnvironmentVariable("WRAIL_PLAYNITE_LAYOUT_OUTPUT") is not { Length: > 0 } directory) return;
         Directory.CreateDirectory(directory);
         File.WriteAllBytes(Path.Combine(directory, name + ".snapshot.json"), SnapshotJson.Serialize(snapshot));
+        WidgetRail.Tests.RendererFixtureExporter.Write(Path.Combine(directory, name + ".renderer.json"), snapshot, CompileStyles());
+    }
+
+    [TestMethod]
+    public void LargeLibraryRendererFixtureUsesProductionPresentationAndStyles()
+    {
+        var items = Enumerable.Range(0, 150).Select(index => PlayniteLibraryItem.From(Item(
+            "scroll-app-" + index, "scroll-game-" + index, "Scrolling library game " + index, "Steam", "fixture.art." + index))).ToArray();
+        var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
+            Snapshot(WidgetPagedResourceStatus.Ready, items), PlayniteLibraryPrivateState.Empty,
+            PlayniteLibraryRoute.Browse, []))).RenderSnapshot("playnite.scroll.fixture", 1);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        ExportFixture("Library-Scroll", snapshot);
     }
 }

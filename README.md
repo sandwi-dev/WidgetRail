@@ -37,6 +37,10 @@ left stick. The right stick scrolls content, and a contextual guide shows the
 actions available for the current selection. Text fields support an on-screen
 controller keyboard.
 
+Enable **Settings → Controllers → Hold D-pad to scroll** for continuous vertical
+scrolling on a held press. Taps keep normal navigation; releasing lands on a
+visible item in the same column where possible.
+
 When a selection has additional actions, the guide shows **Options** with its
 controller button. Tiles also show a small **⋯** indicator while focused.
 

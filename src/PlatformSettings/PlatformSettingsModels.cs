@@ -155,6 +155,8 @@ public sealed record ControllerSettings
     public bool ExclusiveControl { get; init; }
     public long Revision { get; init; }
     public ControllerOpenShortcut OpenShortcut { get; init; } = ControllerOpenShortcut.ViewMenu;
+    /// <summary>Opt-in continuous vertical scrolling after holding the D-pad; taps retain ordinary focus navigation.</summary>
+    public bool HoldDpadToScroll { get; init; }
 }
 
 public sealed record BuiltInWidgetSettings

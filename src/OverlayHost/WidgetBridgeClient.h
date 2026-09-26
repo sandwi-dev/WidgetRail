@@ -913,6 +913,7 @@ struct ControllerControlPreference final {
     bool exclusiveControl{};
     long long revision{};
     bool viewMenuShortcut{};
+    bool holdDpadToScroll{};
 };
 
 class WidgetBridgeClient final {
