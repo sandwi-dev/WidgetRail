@@ -235,6 +235,9 @@ Six additional production Spotify/Games and Apps fixtures pass the same comparis
 At 980×700 DIPs, the 50-row Spotify queue prepares 138 nodes versus 696 eagerly;
 the 64-item Games and Apps library prepares 157 versus 694. These preparation
 counts establish reduced native work for these fixtures, not latency guarantees.
+The [fixed-viewport profile](native-collection-profile.md) records routed focus and
+scroll CPU distributions, slice counts and memory for increasing retained windows.
+It exposes remaining preparation overhead; it does not establish live frame rate.
 The renderer measures items under a real containing block, shares immutable
 measurement dependencies between staged frames, and projects raw coordinates
 before pixel snapping. Final snapping normalizes float noise at 1/1024 physical

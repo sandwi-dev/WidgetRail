@@ -1,6 +1,8 @@
 #include "DeclarativeRenderer.h"
 #include "WidgetBridgeClient.h"
 #include "ControllerNavigation.h"
+#include "FocusNavigation.h"
+#include <psapi.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <algorithm>
@@ -9,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <set>
 #include <thread>
 
 using Microsoft::WRL::ComPtr;
@@ -71,12 +74,15 @@ void UseEagerCollections(WidgetNode& node) {
     grid.children = std::move(node.children);
     node.children = {std::move(grid)};
 }
+#include "CollectionWorkloadProfile.inl"
 }
 
 int wmain(int argc, wchar_t** argv) {
     try {
-        Require(argc == 2 || (argc == 3 && (std::wstring_view(argv[2]) == L"--cadence" || std::wstring_view(argv[2]) == L"--admission" || std::wstring_view(argv[2]) == L"--eager" || std::wstring_view(argv[2]) == L"--compare")),
-            "Usage: ScrollWorkloadProbe <renderer-fixture.json> [--cadence|--admission|--eager|--compare]");
+        const bool profile = argc == 5 && std::wstring_view(argv[2]) == L"--profile" &&
+            (std::wstring_view(argv[4]) == L"realized" || std::wstring_view(argv[4]) == L"eager");
+        Require(profile || argc == 2 || (argc == 3 && (std::wstring_view(argv[2]) == L"--cadence" || std::wstring_view(argv[2]) == L"--admission" || std::wstring_view(argv[2]) == L"--eager" || std::wstring_view(argv[2]) == L"--compare")),
+            "Usage: ScrollWorkloadProbe <renderer-fixture.json> [--cadence|--admission|--eager|--compare|--profile COUNT realized|eager]");
         std::ifstream file(std::filesystem::path(argv[1]), std::ios::binary);
         Require(static_cast<bool>(file), "Fixture missing");
         std::string payload{std::istreambuf_iterator<char>(file), {}};
@@ -108,6 +114,11 @@ int wmain(int argc, wchar_t** argv) {
         while (images.GetState(key) != RemoteImageState::Ready && std::chrono::steady_clock::now() < deadline)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         Require(images.GetState(key) == RemoteImageState::Ready, "Fixture artwork unavailable");
+        if (profile) {
+            ProfileCollection(*snapshot, std::stoul(argv[3]), std::wstring_view(argv[4]) == L"eager",
+                d2d.Get(), write.Get(), images, target.Get());
+            return 0;
+        }
         DeclarativeRenderer renderer(d2d.Get(), write.Get(), &images);
         DeclarativeRenderOptions options;
         options.pixelScale = 1.25F; options.compositorWidgetTransitions = true;

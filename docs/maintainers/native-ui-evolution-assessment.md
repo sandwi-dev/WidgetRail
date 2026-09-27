@@ -33,6 +33,9 @@ group requests and collection-focus/page settlement follow successful submission
 Renderer (29,787), interaction (411), pinned-owner (409) and host-contract (517)
 checks pass, with a coherent Release host/runtime build. Main-host injected
 submission/lifecycle coverage and remaining collection acceptance are still open.
+The [fixed-viewport profile](native-collection-profile.md) shows substantially less
+focus work, mixed scroll improvements and no consistent memory reduction. Playnite
+still has material preparation cost; scheduling/local-preparation work remains.
 WIDGE-294–298 have not
 started. No live-overlay performance improvement is claimed. Details:
 [collection lifecycle](native-collection-lifecycle.md).
