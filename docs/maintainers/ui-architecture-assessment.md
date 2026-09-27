@@ -3,9 +3,10 @@
 Assessment date: 2026-09-26. WidgetRail baseline: `092ee64d`.
 This is a source-based architecture assessment, not a runtime comparison or a migration decision.
 
-2026-09-27: the [Compose migration plan](compose-migration-plan.md) now defines
-the proposed replacement direction and qualification gates. The recommendations
-below document the earlier decision; their native-evolution priority is historical.
+2026-09-27: the [WinUI 3 migration plan](winui3-migration-plan.md) now defines
+the primary replacement direction and qualification gates, following the user's
+preference for C# and Windows integration. Compose is a fallback. Recommendations
+below document earlier decisions; native-evolution and Compose priorities are historical.
 
 ## Recommendation
 

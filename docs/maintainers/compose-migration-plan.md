@@ -1,5 +1,9 @@
 # Compose Multiplatform migration plan
 
+Superseded as the primary direction by the [WinUI 3 migration plan](winui3-migration-plan.md).
+Retained as a fallback assessment. The proposal below is historical; no Compose
+implementation is scheduled alongside WinUI.
+
 Status: proposed implementation plan, 2026-09-27. This document authorizes no
 release or main-branch integration. The current request is to create the plan.
 Implementation and physical acceptance remain separate steps.
