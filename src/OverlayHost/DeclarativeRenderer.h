@@ -113,6 +113,7 @@ struct DeclarativeRenderTiming final {
     std::wstring collectionAdmissionSummary;
     std::size_t preparedNodes{};
     std::size_t reusedPreparedNodes{};
+    std::uint64_t solidBrushCreates{}, gradientBrushCreates{}, gradientStopCreates{}, paintResourceHits{};
     std::size_t deferredViewportItems{};
     std::size_t intrinsicMeasures{};
 };
@@ -244,6 +245,7 @@ struct RenderResult final {
     std::size_t fullLayoutBuildCount{};
     std::size_t compositionPaintNodeVisits{};
     std::size_t tileClipLayerCreates{};
+    std::size_t tileClipManagedPushes{};
     std::size_t tileClipGeometryCreates{};
     std::size_t tileClipPushes{};
     std::size_t focusFollowPassCount{};
@@ -445,6 +447,8 @@ struct DeclarativeRenderOptions final {
     /// Compare whole-item retention with the conservative clipped painter.
     bool disableIndependentCapturesForTesting{};
     bool disableRetainedLayoutForTesting{};
+    bool disablePaintResourceReuseForTesting{};
+    bool disablePreparedStyleReuseForTesting{};
     /// Injects a terminal diagnostic after target-backed drawing so tests can
     /// prove rejected frames do not commit renderer-owned presentation state.
     bool failAfterNodeDrawForTesting{};
@@ -927,6 +931,7 @@ private:
     ID2D1RenderTarget* tileClipTarget_{};
     std::vector<TileClipResources> tileClipResources_;
     surface::ShadowCache surfaceShadows_;
+    paint::Resources paintResources_;
     std::unordered_map<std::wstring, BitmapCacheEntry> bitmaps_;
     std::size_t bitmapBytes_{};
     std::uint64_t bitmapAccessClock_{};
@@ -965,6 +970,8 @@ private:
         Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> target;
         std::weak_ptr<void> lease;
         std::size_t bytes{};
+        D2D1_SIZE_U pixels{};
+        D2D1_SIZE_F logical{};
     };
     std::vector<CompositionCapture> compositionCaptures_;
     std::map<std::wstring, CompositionPaintEntry> compositionPaintCache_;

@@ -2,6 +2,7 @@
 
 #include "DeclarativeLayout.h"
 #include "NativeStyle.h"
+#include "PaintResources.h"
 #include <d2d1_1.h>
 #include <wrl/client.h>
 #include <algorithm>
@@ -44,8 +45,14 @@ inline D2D1_COLOR_F Shade(D2D1_COLOR_F color, float amount) noexcept {
 }
 
 inline bool Fill(ID2D1RenderTarget *target, D2D1_ROUNDED_RECT bounds,
-                 D2D1_COLOR_F top, D2D1_COLOR_F bottom) {
+                 D2D1_COLOR_F top, D2D1_COLOR_F bottom, paint::Resources* resources = nullptr) {
     if (!target) return false;
+    if (resources) {
+        const auto brush = resources->Gradient(target, {bounds.rect.left, bounds.rect.top}, {bounds.rect.left, bounds.rect.bottom}, top, bottom);
+        if (!brush) return false;
+        target->FillRoundedRectangle(bounds, brush.Get());
+        return true;
+    }
     const D2D1_GRADIENT_STOP stops[]{{0, top}, {1, bottom}};
     Microsoft::WRL::ComPtr<ID2D1GradientStopCollection> colors;
     Microsoft::WRL::ComPtr<ID2D1LinearGradientBrush> brush;
@@ -80,10 +87,12 @@ public:
     [[nodiscard]] Stats stats() const noexcept { return {entries_.size(), bytes_, creates_, hits_}; }
 
     bool Draw(ID2D1RenderTarget *target, Rect bounds, float radius, float blur,
-              float offsetX, float offsetY, D2D1_COLOR_F color, float scale) {
+              float offsetX, float offsetY, D2D1_COLOR_F color, float scale, paint::Resources* resources = nullptr) {
         if (!target || bounds.width <= 0 || bounds.height <= 0 || color.a <= 0) return false;
         Microsoft::WRL::ComPtr<ID2D1SolidColorBrush> brush;
-        if (FAILED(target->CreateSolidColorBrush(color, brush.GetAddressOf()))) return false;
+        if (resources) brush = resources->Solid(target, color);
+        else (void)target->CreateSolidColorBrush(color, brush.GetAddressOf());
+        if (!brush) return false;
         radius = std::clamp(radius, 0.0F, std::min(bounds.width, bounds.height) * .5F);
         if (blur <= 0) {
             target->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(bounds.x + offsetX, bounds.y + offsetY,

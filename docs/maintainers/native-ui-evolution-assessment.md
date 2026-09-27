@@ -30,7 +30,15 @@ match full-rebuild pixels and geometry. An insertion prepares 13 nodes with eith
 12 or 120 unrelated siblings (full rebuild: 36/252). WIDGE-294 is complete for
 integration: bridge/session/pinned gates and the normal Release host/runtime build pass.
 See [local preparation](native-local-preparation.md) for boundaries and transport limits.
-WIDGE-295 through WIDGE-298 have not started. No live-overlay FPS improvement is claimed.
+WIDGE-294 merged at `1f8f3c79`. WIDGE-295 adds bounded immutable paint resources,
+managed clip layers, unchanged-style reuse and cheaper capture bookkeeping.
+Three paired offscreen runs show median focus CPU improvements of 8–10% and
+scroll improvements of 3–10%; seven production fixtures retain exact pixel parity.
+Renderer (47,819), chrome/composition and pinned gates plus the normal Release
+host/runtime build pass. WIDGE-295 is complete for integration.
+See [painting measurements](native-painting-reuse.md).
+WIDGE-296 through WIDGE-298 have not started.
+No live-overlay FPS improvement is claimed.
 Details and verification limits: [collection lifecycle](native-collection-lifecycle.md).
 
 ## Decision

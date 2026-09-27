@@ -1626,8 +1626,8 @@ void TileDescendantsRespectResolvedShapeAndOverflow() {
             Check(pixel(x + 1, y + 1)[3] == (radius > 0 ? 0 : 255),
                 "poster artwork shares the root's square or rounded outer shape");
         }
-        Check(initial.tileClipLayerCreates == (radius > 0 ? 1U : 0U),
-            "square tiles need no layer and rounded tiles allocate one reusable layer");
+        Check(initial.tileClipLayerCreates == (radius > 0 && initial.tileClipManagedPushes == 0 ? 1U : 0U),
+            "square tiles need no layer; rounded tiles use managed layers or one legacy layer");
         Check(renderer.PlanFocusUpdate(snapshot, L"", tile.id, viewport).has_value(), "tile focus plans a retained paint");
         const auto focused = draw(tile.id);
         Check(focused.fullLayoutBuildCount == 0 && focused.tileClipLayerCreates == 0 && focused.tileClipGeometryCreates == 0,
@@ -1659,7 +1659,7 @@ void TileDescendantsRespectResolvedShapeAndOverflow() {
         overflowContent.baseStyle.erase(L"translate-x");
         renderer.DiscardTargetResources();
         const auto recovered = draw();
-        Check(recovered.tileClipLayerCreates == (radius > 0 ? 1U : 0U) && pixel(x + 130, y + 140)[3] == 0,
+        Check(recovered.tileClipLayerCreates == (radius > 0 && recovered.tileClipManagedPushes == 0 ? 1U : 0U) && pixel(x + 130, y + 140)[3] == 0,
             "target-resource recovery recreates only the necessary clip and preserves clipping");
     }
 }
@@ -2053,7 +2053,7 @@ void RetainedPosterPaintPreservesArtwork() {
         return result;
     };
     const auto firstFrame = draw();
-    Check(firstFrame.tileClipPushes == 3 && firstFrame.tileClipLayerCreates == 1 && firstFrame.tileClipGeometryCreates == 1,
+    Check(firstFrame.tileClipPushes == 3 && firstFrame.tileClipLayerCreates == (firstFrame.tileClipManagedPushes ? 0U : 1U) && firstFrame.tileClipGeometryCreates == 1,
         "only visible posters push masks and equal-sized posters share clip resources");
     for (const auto next : {L"retained.poster.1", L"retained.poster.2", L"retained.poster.1"}) {
         const auto plan = renderer.PlanFocusUpdate(snapshot, focus, next, viewport);
@@ -2493,6 +2493,93 @@ struct MotionRasterFixture final {
         return result;
     }
 };
+
+void PaintResourceReusePreservesPixelsAndLifetime() {
+    using namespace widgetrail;
+    MotionRasterFixture cached, uncached;
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"paint.resources"; snapshot.sequence = 1;
+    snapshot.activeInputScopeId = L"root"; snapshot.root = Node(L"root", L"stack");
+    snapshot.root.baseStyle = {{L"padding", LengthList(L"19px")}, {L"gap", LengthList(L"7px")},
+        {L"background", Color(L"#183044c0")}, {L"overflow", Keyword(L"clip")}};
+    for (int i = 0; i < 4; ++i) {
+        auto item = Node((L"button." + std::to_wstring(i)).c_str(), L"button");
+        item.actionId = item.id; item.text = L"Wrapping text, shaded surfaces and transparent shadows";
+        item.baseStyle = {{L"width", Length(265)}, {L"height", Length(62)}, {L"corner-radius", Length(9)},
+            {L"surface-shading", Number(.12)}, {L"background", Color(L"#607890b0")}, {L"color", Color(L"#f0e0d0e0")},
+            {L"shadow-color", Color(L"#15203080")}, {L"shadow-blur", Length(7)}, {L"shadow-offset-y", Length(3)},
+            {L"border-width", Length(2)}, {L"border-color", Color(L"#102030b0")}};
+        item.focusedStyle = {{L"scale", Number(1.04)}, {L"background", Color(L"#a07890b0")}};
+        item.pressedStyle = {{L"scale", Number(.98)}, {L"background", Color(L"#50a090a0")}};
+        if (i % 2 == 0) {
+            item.kind = L"actionSurface"; item.actionSurfaceOrientation = L"vertical";
+            item.baseStyle[L"overflow"] = Keyword(L"clip");
+            auto caption = Node((L"caption." + std::to_wstring(i)).c_str(), L"text");
+            caption.text = std::exchange(item.text, {});
+            item.children.push_back(std::move(caption));
+        }
+        snapshot.root.children.push_back(std::move(item));
+    }
+    DeclarativeRenderOptions options; options.accessibility.reducedMotion = true;
+    const Rect viewport{0, 0, 340, 330};
+    const auto pixels = [](MotionRasterFixture& fixture) {
+        std::vector<BYTE> value(1280 * 800 * 4);
+        Check(SUCCEEDED(fixture.bitmap->CopyPixels(nullptr, 1280 * 4, static_cast<UINT>(value.size()), value.data())), "read brush resource pixels");
+        return value;
+    };
+    for (const float scale : {1.0F, 1.25F, 1.5F}) for (int frame = 0; frame < 4; ++frame) {
+        options.pixelScale = scale;
+        options.pressedElementId = frame == 2 ? L"button.2" : L"";
+        const auto focus = frame == 0 ? L"" : L"button.2";
+        const auto actual = cached.Draw(snapshot, focus, viewport, options);
+        auto referenceOptions = options; referenceOptions.disablePaintResourceReuseForTesting = true;
+        const auto expected = uncached.Draw(snapshot, focus, viewport, referenceOptions);
+        Check(pixels(cached) == pixels(uncached), "cached immutable brushes preserve fractional text, gradients, depth, alpha and focus pixels");
+        Check(actual.timing.paintResourceHits > 0 && actual.timing.solidBrushCreates < expected.timing.solidBrushCreates,
+            "brush reuse removes repeated resource creation");
+        if (frame == 3) Check(actual.timing.gradientStopCreates == 0, "unchanged gradient colors retain their stop collections");
+    }
+    // A new target may share its D2D device; only a changed domain retires resources.
+    const auto oldDomain = cached.renderer->GetImageBitmapCacheStats().resourceGeneration;
+    cached.renderer->DiscardTargetResources();
+    Check(SUCCEEDED(cached.wic->CreateBitmap(1280, 800, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad,
+        cached.bitmap.ReleaseAndGetAddressOf())), "replacement brush canvas");
+    Check(SUCCEEDED(cached.d2d->CreateWicBitmapRenderTarget(cached.bitmap.Get(), D2D1::RenderTargetProperties(),
+        cached.target.ReleaseAndGetAddressOf())), "replacement brush domain");
+    const auto replaced = cached.Draw(snapshot, L"button.2", viewport, options);
+    if (cached.renderer->GetImageBitmapCacheStats().resourceGeneration != oldDomain)
+        Check(replaced.timing.solidBrushCreates > 0 && replaced.timing.gradientStopCreates > 0,
+            "resource-domain replacement recreates paint resources");
+    else
+        Check(replaced.timing.paintResourceHits > 0, "a replacement target on the same device reuses paint resources");
+    auto referenceOptions = options; referenceOptions.disablePaintResourceReuseForTesting = true;
+    (void)uncached.Draw(snapshot, L"button.2", viewport, referenceOptions);
+    Check(pixels(cached) == pixels(uncached), "domain replacement preserves resource pixels");
+    cached.renderer->ReleaseCachedImages();
+    const auto retired = cached.Draw(snapshot, L"button.2", viewport, options);
+    Check(retired.timing.solidBrushCreates > 0 && retired.timing.gradientStopCreates > 0 && pixels(cached) == pixels(uncached),
+        "explicit domain retirement recreates paint resources with identical pixels");
+
+    paint::Resources resources;
+    const auto retained = resources.Solid(cached.target.Get(), D2D1::ColorF(1, 0, 0));
+    for (int i = 0; i < 160; ++i) {
+        const auto color = D2D1::ColorF(i / 160.0F, .3F, .7F, .8F);
+        Check(resources.Solid(cached.target.Get(), color) != nullptr, "resource palette churn creates solid brush");
+        Check(resources.Gradient(cached.target.Get(), {0, 0}, {0, static_cast<float>(i + 1)}, color, D2D1::ColorF(0, .5F)) != nullptr,
+            "resource palette churn creates gradient brush");
+        Check(resources.RoundedRectangle(cached.d2d.Get(), 40 + static_cast<float>(i), 60, 8) != nullptr,
+            "geometry palette churn creates immutable clip geometry");
+    }
+    const auto stats = resources.stats();
+    Check(stats.solids <= paint::Resources::MaximumEntriesPerKind && stats.gradients <= paint::Resources::MaximumEntriesPerKind &&
+        stats.stopCollections <= paint::Resources::MaximumEntriesPerKind && stats.geometries <= paint::Resources::MaximumEntriesPerKind &&
+        stats.evictions > 0, "all paint resource kinds remain bounded");
+    resources.Clear();
+    Check(resources.stats().solids == 0 && resources.stats().gradients == 0 && resources.stats().stopCollections == 0 && resources.stats().geometries == 0,
+        "resource retirement releases every cache reference");
+    cached.target->BeginDraw(); cached.target->FillRectangle({0, 0, 10, 10}, retained.Get());
+    Check(SUCCEEDED(cached.target->EndDraw()), "an outstanding draw lease remains valid after cache eviction and retirement");
+}
 
 void StructuralLocalLayoutMatchesFullRebuild() {
     using namespace widgetrail;
@@ -9420,6 +9507,7 @@ int main(int argc, char** argv) {
     ResponsiveGridFlowsThroughNativePlanning();
     FramePublicationRequiresHostAcknowledgement();
     StructuralLocalLayoutMatchesFullRebuild();
+    PaintResourceReusePreservesPixelsAndLifetime();
     FocusMotionUsesStableSnapshotIdentity();
     SubtreeTranslationKeepsPresentationGeometryAligned();
     TranslationRetargetsAndSnapsDeterministically();

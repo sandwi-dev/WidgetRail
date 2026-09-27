@@ -9,7 +9,7 @@ std::size_t ProfilePrivateBytes() {
 }
 
 void ProfileCollection(WidgetSnapshot snapshot, const std::size_t requestedCount, const bool eager,
-    ID2D1Factory* d2d, IDWriteFactory* write, RemoteImageCache& images, ID2D1RenderTarget* target) {
+    ID2D1Factory* d2d, IDWriteFactory* write, RemoteImageCache& images, ID2D1RenderTarget* target, const bool reusePaint = true) {
     WidgetNode* collection{};
     const auto choose = [&](const auto& self, WidgetNode& node) -> void {
         if (node.collectionLayout && (!collection || node.children.size() > collection->children.size())) collection = &node;
@@ -41,6 +41,8 @@ void ProfileCollection(WidgetSnapshot snapshot, const std::size_t requestedCount
     target->SetDpi(120, 120);
     DeclarativeRenderOptions options;
     options.pixelScale = 1.25F;
+    options.disablePaintResourceReuseForTesting = !reusePaint;
+    options.disablePreparedStyleReuseForTesting = !reusePaint;
     options.compositorWidgetTransitions = true;
     options.compositorBackgroundAvailable = true;
     options.deferPublication = true;
@@ -83,6 +85,8 @@ void ProfileCollection(WidgetSnapshot snapshot, const std::size_t requestedCount
         options.suppressFocusedDescendantFollow = scrolling;
         std::vector<std::uint64_t> inputCpu, frames, preparation, nodes, slices;
         std::size_t moved{}, blocked{};
+        std::uint64_t solids{}, gradients{}, stops{}, resourceHits{};
+        std::uint64_t clipGeometries{}, clipLayers{};
         for (unsigned sample = 0; sample < 96; ++sample) {
             options.animationTimestampMilliseconds = 11000 + (scrolling ? 2000 : 0) + sample * 16;
             const auto started = std::chrono::steady_clock::now();
@@ -119,6 +123,12 @@ void ProfileCollection(WidgetSnapshot snapshot, const std::size_t requestedCount
                 Require(settled, "Profile scroll preparation did not converge");
             }
             rendered = draw();
+            solids += rendered.timing.solidBrushCreates;
+            gradients += rendered.timing.gradientBrushCreates;
+            stops += rendered.timing.gradientStopCreates;
+            resourceHits += rendered.timing.paintResourceHits;
+            clipGeometries += rendered.tileClipGeometryCreates;
+            clipLayers += rendered.tileClipLayerCreates;
             inputCpu.push_back(micros(started));
             if (!scrolling) Require(rendered.focusRects.contains(focus), "Profile focused item was not revealed");
             frames.push_back(rendered.timing.totalMicroseconds);
@@ -149,6 +159,8 @@ void ProfileCollection(WidgetSnapshot snapshot, const std::size_t requestedCount
             << " prepared-p50=" << percentile(nodes, 50) << " prepared-p95=" << percentile(nodes, 95)
             << " slices-p95=" << percentile(slices, 95)
             << " private-growth-bytes=" << (peakPrivate > privateBefore ? peakPrivate - privateBefore : 0)
-            << " active-raster-peak-bytes=" << peakRaster << '\n';
+            << " active-raster-peak-bytes=" << peakRaster << " paint-reuse=" << reusePaint
+            << " solid-creates=" << solids << " gradient-creates=" << gradients << " stop-creates=" << stops
+            << " resource-hits=" << resourceHits << " clip-geometries=" << clipGeometries << " clip-layers=" << clipLayers << '\n';
     }
 }

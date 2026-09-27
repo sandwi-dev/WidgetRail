@@ -80,10 +80,10 @@ void UseEagerCollections(WidgetNode& node) {
 
 int wmain(int argc, wchar_t** argv) {
     try {
-        const bool profile = argc == 5 && std::wstring_view(argv[2]) == L"--profile" &&
+        const bool profile = (argc == 5 || (argc == 6 && std::wstring_view(argv[5]) == L"no-paint-reuse")) && std::wstring_view(argv[2]) == L"--profile" &&
             (std::wstring_view(argv[4]) == L"realized" || std::wstring_view(argv[4]) == L"eager");
         Require(profile || argc == 2 || (argc == 3 && (std::wstring_view(argv[2]) == L"--cadence" || std::wstring_view(argv[2]) == L"--admission" || std::wstring_view(argv[2]) == L"--eager" || std::wstring_view(argv[2]) == L"--compare" || std::wstring_view(argv[2]) == L"--compare-retained")),
-            "Usage: ScrollWorkloadProbe <renderer-fixture.json> [--cadence|--admission|--eager|--compare|--compare-retained|--profile COUNT realized|eager]");
+            "Usage: ScrollWorkloadProbe <renderer-fixture.json> [--cadence|--admission|--eager|--compare|--compare-retained|--profile COUNT realized|eager [no-paint-reuse]]");
         std::ifstream file(std::filesystem::path(argv[1]), std::ios::binary);
         Require(static_cast<bool>(file), "Fixture missing");
         std::string payload{std::istreambuf_iterator<char>(file), {}};
@@ -121,7 +121,7 @@ int wmain(int argc, wchar_t** argv) {
         }
         if (profile) {
             ProfileCollection(*snapshot, std::stoul(argv[3]), std::wstring_view(argv[4]) == L"eager",
-                d2d.Get(), write.Get(), images, target.Get());
+                d2d.Get(), write.Get(), images, target.Get(), argc != 6);
             return 0;
         }
         DeclarativeRenderer renderer(d2d.Get(), write.Get(), &images);
