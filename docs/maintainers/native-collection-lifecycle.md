@@ -2,9 +2,9 @@
 
 Implementation begins with an internal logical geometry model in
 `CollectionLayoutState` and the protocol-v59 declaration below. The declaration is
-validated end to end on the task branch. Renderer realization and logical
-directional navigation and UIA realization are connected; scheduling and widget
-adoption remain. Do not release these helpers until the full integration gates pass.
+validated end to end on the task branch. Renderer realization, logical navigation,
+UIA and the representative widgets are connected. Remaining host lifecycle and
+scheduling gates are recorded below. Do not release until those gates pass.
 
 ## Declarative contract
 
@@ -125,8 +125,14 @@ selection and availability. Failed captures do not replace the previous cache;
 provider eviction drops cached declarations independently of host realization.
 
 Playnite Browse grids and regular YouTube Music rows now use these declarations;
-music rows keep a cache per retained section with explicit immutable render inputs.
-Grouped Home shelves and empty-state content keep their generic layout.
+Playnite Browse retains an immutable declaration cache; music rows keep a cache
+per retained section. Both pass explicit render inputs. Spotify queue, playlist
+tracks, search rows and playlist grids preserve their captured cursor metadata
+while opting into collection layout. Games and Apps uses it for the curated
+library and running-app grids. Its catalog mixes explicit page controls with a
+grid and retains ordinary Scroll. Grouped Home shelves and empty-state content
+keep their generic layout. Public author guidance is in
+[collections](../reference/collections.md#native-list-and-grid-realization).
 
 `DeclarativeRenderer::PrepareCollections` now provides host-thread work slices
 bounded by new item measurements and elapsed time. Protected/visible demand precedes
@@ -191,8 +197,7 @@ with later explicit invalidation allowed. Component failure tests are not eviden
 of physical compositor display timing or a complete injected main-host test.
 
 Remaining delivery includes host frame-budgeted scheduling and
-resource protection, broader provider-window/scale/scroll validation, and adoption
-in other suitable widgets. The initial realization path
+resource protection and broader provider-window/scale/scroll validation. The realization path
 still rebuilds the small outer layout on collection updates/scroll; localized
 preparation and scheduling must follow before declaring the delivery complete.
 Existing generic Scroll behavior remains available.
@@ -226,6 +231,10 @@ painting and excludes only scrollbar tracks, whose thumbs intentionally reflect
 estimated unmeasured extent. Hidden decoration is not required to retain geometry.
 Artwork readiness is awaited before comparison. `--eager` supplies a same-build
 timing reference; these synthetic offscreen measurements are not live overlay FPS.
+Six additional production Spotify/Games and Apps fixtures pass the same comparison.
+At 980×700 DIPs, the 50-row Spotify queue prepares 138 nodes versus 696 eagerly;
+the 64-item Games and Apps library prepares 157 versus 694. These preparation
+counts establish reduced native work for these fixtures, not latency guarantees.
 The renderer measures items under a real containing block, shares immutable
 measurement dependencies between staged frames, and projects raw coordinates
 before pixel snapping. Final snapping normalizes float noise at 1/1024 physical

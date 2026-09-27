@@ -886,7 +886,7 @@ internal static class SpotifyPresentation
                     : SpotifyCollectionIdentity.FocusId(
                         "spotify.queue.item", mode, queue.Items[index + 1].Key)))
             .ToArray();
-        var scroll = UI.VerticalScroll("spotify.queue.scroll", rows)
+        var scroll = UI.CollectionList("spotify.queue.scroll", 82, items: rows)
             .Classes("spotify-page-scroll") with
         { CollectionAnchorKey = queue.Anchor?.Value };
         var content = new List<WidgetElement>
@@ -938,17 +938,16 @@ internal static class SpotifyPresentation
                 entry.Row.CollectionItem(entry.Item.Key)
                     .Classes("spotify-media-row", "spotify-playlist-row"))
             .ToList<WidgetElement>();
-        if (rows.Count == 0)
-            rows.Add(SparsePagePlaceholder("playlist", mode));
-        var grid = UI.ResponsiveGrid(
-                "spotify.playlists.grid", 280, 3, rows.ToArray())
-            .Classes("spotify-playlist-grid");
-        var scroll = playlistPresentation.Present([grid]);
+        var scroll = rows.Count == 0
+            ? playlistPresentation.Present([UI.ResponsiveGrid("spotify.playlists.grid", 280, 3,
+                    SparsePagePlaceholder("playlist", mode)).Classes("spotify-playlist-grid")])
+                .Classes("spotify-page-scroll")
+            : playlistPresentation.PresentCollectionGrid(rows).Classes("spotify-page-scroll", "spotify-playlist-grid");
         var content = new List<WidgetElement>
         {
             UI.SectionHeader("Your playlists", $"spotify.playlists.header.{mode}",
                 "LIBRARY", trailing: SectionRefresh("playlists", mode)),
-            scroll.Classes("spotify-page-scroll"),
+            scroll,
         };
         if (playlists.Error is { } retainedError)
             content.Add(RetainedPageError(retainedError.Message, mode));
@@ -987,7 +986,7 @@ internal static class SpotifyPresentation
                         : SpotifyCollectionIdentity.FocusId(
                             "spotify.playlist.track", mode, items.Items[index + 1].Key)))
             .ToList<WidgetElement>();
-        var scroll = itemPresentation.Present(rows);
+        var scroll = rows.Count == 0 ? itemPresentation.Present(rows) : itemPresentation.PresentCollectionList(rows);
         var loading = items.Status is WidgetPagedResourceStatus.Loading or
             WidgetPagedResourceStatus.Refreshing or
             WidgetPagedResourceStatus.LoadingAdjacent;
@@ -1276,7 +1275,9 @@ internal static class SpotifyPresentation
                 rows.Add(UI.Text(results.Error is not null ? "Search couldn't finish. Try again." :
                     results.Status == WidgetPagedResourceStatus.Ready ? "No results. Try another search or result type." : "Searching Spotify…",
                     "spotify.search.message").Classes("spotify-search-message"));
-            children.Add(search.Results.Present(rows).Classes("spotify-page-scroll"));
+            children.Add((results.Items.Count == 0
+                ? search.Results.Present(rows)
+                : search.Results.PresentCollectionList(rows)).Classes("spotify-page-scroll"));
             if (results.Error is { } error)
                 children.Add(UI.Alert("Search unavailable", error.Message, AlertTone.Warning, "spotify.search.error",
                     new ComponentAction("Try again", "spotify.page.retry", WidgetGlyph.Refresh)));

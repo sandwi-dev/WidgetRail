@@ -11,7 +11,9 @@ renderer or Skia integration benchmark has been performed.
 WIDGE-293–298 integrate only into `codex/native-ui-integration`; `main` stays untouched.
 WIDGE-293 now has protocol-v59 list/grid declarations, logical geometry, renderer
 realization/navigation, UIA reveal without focus transfer, and immutable SDK item
-reuse. Playnite Browse and regular YouTube Music rows use the contract. Styled
+reuse. Playnite Browse, regular YouTube Music rows, Spotify lists/playlist grid,
+and Games and Apps library/running grids use the contract. Playnite also reuses
+unchanged immutable poster declarations. Public collection guidance is updated. Styled
 fixtures match eager visible geometry/content pixels at three widths and 100%/125%
 scale, excluding estimated scrollbar thumbs. Native/managed gates cover margins,
 pixel-phase stability, anchors, resets and renderer failure rollback.
@@ -23,8 +25,7 @@ Renderer, session retry/lifecycle and production pinned-owner tests pass.
 Directional offscreen focus waits for prepared geometry; scrolling rolls back pending
 distance. Incoming focus-group targets are prepared before admission, and UIA reveals
 use bounded timer slices without moving focus. Renderer progress/rollback and pinned
-host tests pass. Final paint/device publication, broader cursor/lifecycle validation,
-and further widget adoption remain.
+host tests pass. Broader cursor/lifecycle and scheduling validation remain.
 Draw-failure hardening gates interaction and preserves unseen accessibility
 reveals. Renderer scene state now waits for an exact host frame acknowledgement;
 rejected frames retain committed layout, scroll, motion and raster leases. Main

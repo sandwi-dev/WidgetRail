@@ -181,7 +181,10 @@ static async Task RunningAppRouteConfirmsCurrentIdentity()
     await widget.OnActionAsync(new("games.open-running", "games.open-running"));
     await WaitUntil(() => widget.Page == GamesAppsPage.Running &&
         widget.ViewState == GamesAppsViewState.Ready);
-    var tile = ActionSurfaces(Snapshot(widget, 900).Root).Single(candidate =>
+    var runningSnapshot = Snapshot(widget, 900);
+    Assert.True(Nodes(runningSnapshot.Root).Any(node => node.CollectionLayout?.Kind == CollectionLayoutKind.AdaptiveGrid));
+    WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("GamesApps-Running", runningSnapshot);
+    var tile = ActionSurfaces(runningSnapshot.Root).Single(candidate =>
         candidate.ActionId == "games.toggle-curation");
     Assert.Equal("artwork-running", widget.Items.Single().Presentation.Artwork.Items.Single().Handle);
     Assert.Equal(0, fake.RunningRegistrations.Count);
@@ -1476,7 +1479,7 @@ static async Task ResolvedIconRenders()
     Assert.True(artwork.ImageSource is null);
     Assert.Equal(ImageFit.Contain, artwork.ImageFit);
     Assert.True(artwork.Glyph is null);
-    Assert.Equal(ProtocolConstants.WidgetTransitionVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.CollectionLayoutVersion, snapshot.ProtocolVersion);
     Assert.Valid(snapshot);
     await Background(widget);
 }
@@ -1594,8 +1597,10 @@ static async Task ManyAppsUseCompactRail()
     Assert.Equal(600d, snapshot.Surface!.PreferredHeight);
     Assert.Equal(300d, snapshot.Surface.MinimumHeight);
     var scroll = Nodes(snapshot.Root).Single(node => node.Id == "games.library.scroll");
-    var grid = Nodes(scroll).Single(node => node.Id == "games.library.grid");
-    Assert.Equal(ViewNodeKind.Grid, grid.Kind);
+    Assert.Equal(CollectionLayoutKind.AdaptiveGrid, scroll.CollectionLayout!.Kind);
+    Assert.Equal(240d, scroll.CollectionLayout.MinimumColumnWidth);
+    Assert.Equal(3, scroll.CollectionLayout.MaximumColumns);
+    Assert.Equal(8, scroll.Children.Select(item => item.CollectionItemKey).Distinct().Count());
     var launches = ActionSurfaces(scroll).Where(tile => tile.ActionId == "games.launch").ToArray();
     Assert.Equal(8, launches.Length);
     Assert.True(launches.All(launch => Nodes(launch).Single(node =>
@@ -1632,6 +1637,7 @@ static async Task MaximumLongLibraryIsBounded()
     await WaitUntil(() => widget.CuratedItems.Count == 64);
 
     var snapshot = Snapshot(widget, 239);
+    WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("GamesApps-Library", snapshot);
     var launches = ActionSurfaces(snapshot.Root)
         .Where(tile => tile.ActionId == "games.launch").ToArray();
     Assert.Equal(64, launches.Length);

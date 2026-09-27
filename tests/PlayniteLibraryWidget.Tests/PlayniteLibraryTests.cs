@@ -2704,6 +2704,7 @@ public sealed partial class PlayniteLibraryTests
             "_application", "_gate", "_launchGeneration", "_launchStateRecency",
             "_launchStates", "_homeLibrary", "_browseLibrary", "_hiddenRows", "_model", "_navigation", "_organization",
             "_actionFeedbackExpiry", "_playniteFeedbackExpiry",
+            "_browseItems", // Derived immutable declarations; never a source of render state.
             "_createdCategoriesPendingReconciliation", "_browseReloadAttempt",
             "_livePlayniteAuthority", "_presentationAuthority", "_homeQueryAuthorityGeneration",
             "_browseQueryAuthorityGeneration",

@@ -71,7 +71,26 @@ internal static class PlayniteLibraryPresentation
     };
 
 
-    internal static WidgetView Render(PlayniteLibraryPresentationState state)
+    // Complete immutable render inputs; no factory reads mutable widget state.
+    internal sealed record TileInput(
+        string Title, string Source, string SavedId, string? ArtworkHandle,
+        bool Launching, PlayniteLibraryLaunchState? LaunchState,
+        PlayniteLibraryItem? Current, bool Favorite, bool Interactive,
+        WidgetCollectionItemKey Key, bool CollectionItem,
+        IReadOnlyList<PlayniteLibraryCategory>? Categories, string? CompletionStatus,
+        bool FocusSummaryContext, bool BrowseLayout);
+
+    internal static WidgetCollectionItems<TileInput> CreateBrowseItemCache() =>
+        new(item => item.Key, RenderTile);
+
+    private static WidgetElement RenderTile(TileInput item) => Tile(
+        item.Title, item.Source, item.SavedId, item.ArtworkHandle,
+        item.Launching ? item.SavedId : null, item.LaunchState, item.Current,
+        item.Favorite, item.Interactive, item.Key, item.CollectionItem,
+        item.Categories, item.CompletionStatus, item.FocusSummaryContext, item.BrowseLayout);
+
+    internal static WidgetView Render(PlayniteLibraryPresentationState state,
+        WidgetCollectionItems<TileInput>? browseItems = null)
     {
         var snapshot = state.Collection;
         // Home and Browse retain their last admitted action surface while the
@@ -379,27 +398,30 @@ internal static class PlayniteLibraryPresentation
                 : PlayniteLibraryHeroRailPolicy.Project(
                     state, state.HeroSavedId, state.HeroIndex);
             catalogBackgroundArtwork = DefaultBackgroundArtwork(rail.Selected);
-            var tiles = rail.Items.Select(row => Tile(
+            var tileInputs = rail.Items.Select(row => new TileInput(
                     row.Display.DisplayName,
                     row.Display.SourceAttribution,
                     row.Display.SavedId,
                     row.Current?.Presentation.Artwork.Find(
                         WidgetAppLibraryArtworkRole.Tile)?.Handle,
-                    state.LaunchingSavedId,
+                    string.Equals(state.LaunchingSavedId, row.Display.SavedId, StringComparison.Ordinal),
                     LaunchStateFor(state.LaunchStates, row.Display.SavedId),
                     row.Current,
                     row.Favorite,
                     renderActionsEnabled && !state.OrganizationBusy && !state.BrowseRetained,
                     row.Key,
                     row.CollectionItem,
-                    categories: state.Route is PlayniteLibraryRoute.Library or
+                    Categories: state.Route is PlayniteLibraryRoute.Library or
                         PlayniteLibraryRoute.Browse
                         ? state.Organization.Categories : null,
-                    completionStatus: state.CompletionStatuses.GetValueOrDefault(
+                    CompletionStatus: state.CompletionStatuses.GetValueOrDefault(
                         row.Display.SavedId),
-                    focusSummaryContext: state.Route == PlayniteLibraryRoute.Library,
-                    browseLayout: state.Route == PlayniteLibraryRoute.Browse))
+                    FocusSummaryContext: state.Route == PlayniteLibraryRoute.Library,
+                    BrowseLayout: state.Route == PlayniteLibraryRoute.Browse))
                 .ToArray();
+            var tiles = state.Route == PlayniteLibraryRoute.Browse && browseItems is not null
+                ? browseItems.Capture(tileInputs).ToArray()
+                : tileInputs.Select(RenderTile).ToArray();
             catalogPage = true;
             catalogAnchorKey = rail.CatalogAnchorKey;
             if (snapshot.Status == WidgetPagedResourceStatus.Ready &&

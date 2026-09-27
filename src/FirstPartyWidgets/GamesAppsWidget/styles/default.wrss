@@ -111,7 +111,7 @@
 }
 
 /* Tile margins supply the inter-item gap as well as focus-scale clearance. */
-.wrail-responsive-grid { gap: 0px; }
+.wrail-responsive-grid, .games-collection-scroll { gap: 0px; }
 
 .games-app-tile {
   min-width: 0px;

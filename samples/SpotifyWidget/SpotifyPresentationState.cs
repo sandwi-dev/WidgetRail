@@ -25,6 +25,18 @@ internal sealed record SpotifyCursorPresentation<TItem>(
     internal ScrollElement Present(IReadOnlyList<WidgetElement> children) =>
         Viewport with { Children = children };
 
+    internal ScrollElement PresentCollectionList(IReadOnlyList<WidgetElement> children)
+    {
+        var declaration = UI.CollectionList(Viewport.Id, 82, items: children.ToArray());
+        return Viewport with { Children = declaration.Children, CollectionLayout = declaration.CollectionLayout };
+    }
+
+    internal ScrollElement PresentCollectionGrid(IReadOnlyList<WidgetElement> children)
+    {
+        var declaration = UI.CollectionGrid(Viewport.Id, 280, 82, 3, children.ToArray());
+        return Viewport with { Children = declaration.Children, CollectionLayout = declaration.CollectionLayout };
+    }
+
     internal static SpotifyCursorPresentation<TItem> Capture(
         WidgetCursorResource<TItem> resource,
         string operationKey,
