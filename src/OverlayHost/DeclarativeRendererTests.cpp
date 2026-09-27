@@ -8043,6 +8043,61 @@ void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
         "external live surfaces preserve direct rendering and stationary placement");
 }
 
+void BufferedPreparationDoesNotGateVisibleScrolling() {
+    using namespace widgetrail;
+    for (const bool grid : {false, true}) for (const bool horizontal : {false, true})
+        for (const float scale : {1.0F, 1.25F}) {
+        if (grid && horizontal) continue;
+        MotionRasterFixture actualFixture, referenceFixture;
+        auto& actual = *actualFixture.renderer;
+        auto& reference = *referenceFixture.renderer;
+        WidgetSnapshot snapshot; snapshot.instanceId = L"scroll.cadence"; snapshot.sequence = 1;
+        snapshot.root = Node(L"items", L"scroll"); snapshot.root.scrollAxis = horizontal ? L"horizontal" : L"vertical";
+        snapshot.root.showScrollbar = false;
+        snapshot.root.collectionLayout = WidgetNode::CollectionLayout{grid, 180,
+            grid ? std::optional<double>{140} : std::nullopt, std::nullopt};
+        snapshot.root.baseStyle = {{L"gap", Length(8)}, {L"background", Color(L"#112233")}};
+        for (unsigned i = 0; i < 80; ++i) {
+            auto item = FixedButton((L"item." + std::to_wstring(i)).c_str(), 180);
+            item.collectionItemKey = L"key." + std::to_wstring(i);
+            item.baseStyle[L"width"] = horizontal ? Length(180) : Length(100, L"%");
+            item.baseStyle[L"background"] = Color(i % 2 ? L"#223344" : L"#445566");
+            snapshot.root.children.push_back(std::move(item));
+        }
+        const Rect bounds{.4F, .8F, 580, 240};
+        DeclarativeRenderOptions options; options.pixelScale = scale;
+        options.suppressFocusedDescendantFollow = true; options.accessibility.reducedMotion = true;
+        (void)actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        (void)referenceFixture.Draw(snapshot, L"item.0", bounds, options);
+        const auto axis = horizontal ? declarative::ScrollAxis::Horizontal : declarative::ScrollAxis::Vertical;
+        unsigned blocked{}, moved{};
+        std::vector<BYTE> actualPixels(1280 * 800 * 4), referencePixels(actualPixels.size());
+        for (unsigned frame = 0; frame < 120; ++frame) {
+            const float delta = frame >= 48 && frame < 72 ? -12.0F : 12.0F;
+            FocusedFreeScrollPlanDiagnostic diagnostic;
+            const auto movement = actual.PlanPreparedFreeScroll(snapshot, L"item.0", axis,
+                delta, bounds, L"items", options, &diagnostic, {1, 1000000});
+            if (!movement) { ++blocked; continue; }
+            ++moved;
+            Check(reference.PlanFocusedFreeScroll(snapshot, L"item.0", axis, delta, bounds, L"items").has_value(),
+                "cadence reference accepts the same requested distance");
+            reference.CancelPresentationUpdatePlan();
+            const auto result = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+            const auto full = referenceFixture.Draw(snapshot, L"item.0", bounds, options);
+            Near(result.scrollOffsets.at(L"items"), full.scrollOffsets.at(L"items"),
+                "incremental ahead preparation preserves exact viewport position through reversal");
+            Check(SUCCEEDED(actualFixture.bitmap->CopyPixels(nullptr, 1280 * 4, static_cast<UINT>(actualPixels.size()), actualPixels.data())) &&
+                  SUCCEEDED(referenceFixture.bitmap->CopyPixels(nullptr, 1280 * 4, static_cast<UINT>(referencePixels.size()), referencePixels.data())),
+                "cadence fixture captures both frames");
+            Check(actualPixels == referencePixels, "every moving frame matches fully prepared visible pixels");
+        }
+        std::cout << "SCROLL-CADENCE grid=" << grid << " horizontal=" << horizontal << " scale=" << scale
+            << " moved=" << moved << " blocked=" << blocked << '\n';
+        Check(blocked == 0 && moved == 120,
+            "optional adjacent measurement never stalls a covered visible viewport");
+    }
+}
+
 void RetainedCollectionPlacementPreservesGeometryAndPixels() {
     using namespace widgetrail;
     for (const bool grid : {false, true}) for (const bool horizontal : {false, true})
@@ -9674,6 +9729,7 @@ int main(int argc, char** argv) {
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
     CollectionRealizationMatchesEagerGeometry();
     RetainedCollectionPlacementPreservesGeometryAndPixels();
+    BufferedPreparationDoesNotGateVisibleScrolling();
     ResourceAliasesRetainBackingStorage();
     SurfaceDepthUsesBoundedSharedPainting();
     RetainedCompositionPixelsRespectInvalidation();

@@ -54,6 +54,10 @@ checks. Playnite/Spotify/YouTube Music packages are rebuilt for the next physica
 comparison. See [resource accounting](native-resource-budgets.md).
 WIDGE-297 is in initial inspection; WIDGE-298 has not started.
 No live-overlay FPS improvement is claimed.
+WIDGE-293 physical follow-up separates required scroll geometry from optional
+buffered preparation: covered viewports keep moving while adjacent rows prepare.
+The regression's 12 blocked grid steps per 120 drop to zero, with exact reference
+pixels at 100%/125% scale and through reversal; cursor/page admission stays atomic.
 Details and verification limits: [collection lifecycle](native-collection-lifecycle.md).
 
 ## Decision

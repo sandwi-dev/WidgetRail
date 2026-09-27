@@ -46,7 +46,10 @@ CollectionRenderState& CollectionState(const WidgetNode& node) {
 // Placement may reuse a committed measure result only while its realized
 // window covers every required/protected item. Crossing that window goes back
 // through measurement; estimated geometry never substitutes for an item layout.
-bool CollectionPlacementIsCovered() const {
+enum class CollectionCoverage { VisibleAndProtected, BufferedAndProtected };
+
+bool CollectionPlacementIsCovered(
+    const CollectionCoverage coverage = CollectionCoverage::BufferedAndProtected) const {
     if (collectionNodes.empty()) return false;
     for (const auto& [id, node] : collectionNodes) {
         const auto* box = layout.Find(NarrowStableId(id));
@@ -88,14 +91,23 @@ bool CollectionPlacementIsCovered() const {
             return cached != state.items.end() && cached->second.measuredContext == state.contextRevision &&
                 !cached->second.layout.boxes.empty() && layout.Find(NarrowStableId(item.id));
         };
-        for (auto index = demand.bufferedBegin; index < demand.bufferedEnd; ++index)
+        const auto begin = coverage == CollectionCoverage::BufferedAndProtected ? demand.bufferedBegin : demand.visibleBegin;
+        const auto end = coverage == CollectionCoverage::BufferedAndProtected ? demand.bufferedEnd : demand.visibleEnd;
+        for (auto index = begin; index < end; ++index)
             if (!ready(index)) return false;
-        if (!std::ranges::all_of(demand.protectedItems, ready)) return false;
+        for (const auto& key : protectedKeys)
+            if (const auto index = state.geometry.Find(key); index && !ready(*index)) return false;
     }
     return true;
 }
 
 bool PrepareRetainedCollectionLayout() {
+    // A completed ahead-of-viewport batch must be adopted through the normal
+    // transactional layout path. Otherwise retaining the old placement would
+    // discard the newly prepared rows when this frame is acknowledged.
+    if (std::ranges::any_of(owner->collectionPreparations_, [&](const auto& branch) {
+            return branch.ready && branch.Matches(*snapshot);
+        })) return false;
     // The caller has already proved an unchanged admitted snapshot, viewport
     // and measurement options. Copy only committed collection state, never a
     // speculative measurement batch from another frame.
@@ -106,7 +118,7 @@ bool PrepareRetainedCollectionLayout() {
             collections.emplace(key, prior->second);
         collectionNodes.emplace(node.id, &node);
     });
-    if (!CollectionPlacementIsCovered()) {
+    if (!CollectionPlacementIsCovered(CollectionCoverage::VisibleAndProtected)) {
         // A full pass must still be allowed to adopt a ready preparation batch.
         // Do not strand committed-only entries ahead of CollectionState's warm merge.
         collections.clear();
