@@ -18,6 +18,7 @@ enum class ActionKind {
     Invoke,
     SetValue,
     Focus,
+    Realize,
 };
 
 struct ActionRequest final {
@@ -54,6 +55,8 @@ struct ResolvedAction final {
     std::wstring nodeId;
     std::wstring protocolButton;
     std::optional<double> requestedValue;
+    std::wstring scrollId;
+    declarative::ScrollAxis scrollAxis{declarative::ScrollAxis::None};
 };
 
 /// Revalidates a queued request against the exact current worker generation

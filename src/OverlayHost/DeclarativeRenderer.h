@@ -419,6 +419,8 @@ struct DeclarativeRenderOptions final {
     /// Right-stick free scroll deliberately retains semantic focus without
     /// allowing that descendant to pull the viewport back until re-entry.
     bool suppressFocusedDescendantFollow{};
+    // Host-authorized reveal independent of controller focus (for UIA).
+    std::wstring realizeElementId;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     /// Compare whole-item retention with the conservative clipped painter.
     bool disableIndependentCapturesForTesting{};

@@ -7842,6 +7842,22 @@ void CollectionRealizationMatchesEagerGeometry() {
         Check(initial.realizableFocusIds.contains(L"item.90") &&
             initial.logicalCollections.at(L"items").itemIdentities.size() == 128 &&
             !initial.navigationRects.contains(L"item.90"), "renderer publishes logical focus authority without offscreen rectangles");
+        options.realizeElementId = L"item.90";
+        options.suppressFocusedDescendantFollow = true;
+        const auto revealed = draw(lazy, snapshot, L"item.0");
+        Check(revealed.focusRects.contains(L"item.90") && revealed.realizableFocusIds.contains(L"item.0"),
+            "UIA realization reveals the requested logical item while retaining actual focus identity");
+        if (revealed.currentFocusRect) {
+            const auto& targetRect = revealed.elementRects.at(L"item.90");
+            Check(std::abs(revealed.currentFocusRect->x - targetRect.x) > 1 ||
+                std::abs(revealed.currentFocusRect->y - targetRect.y) > 1,
+                "UIA realization never paints focus on its reveal target");
+        }
+        const auto revealedOffset = revealed.scrollOffsets.at(L"items");
+        options.realizeElementId.clear();
+        const auto afterReveal = draw(lazy, snapshot, L"item.0");
+        Near(afterReveal.scrollOffsets.at(L"items"), revealedOffset, "UIA viewport remains after one-shot realization", 1.0F / scale);
+        options.suppressFocusedDescendantFollow = false;
         const auto deep = draw(lazy, snapshot, L"item.90");
         Check(deep.focusRects.contains(L"item.90"), "unrealized focus target is measured and revealed");
         const auto stable = draw(lazy, snapshot, L"item.90");

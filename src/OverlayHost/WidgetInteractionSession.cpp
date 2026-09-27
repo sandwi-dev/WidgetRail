@@ -697,6 +697,7 @@ RightStickScrollUpdate FreeScrollInteractionState::SampleRightStick(
     const std::uint64_t now) noexcept {
     const auto sample = kinetics_.Update(x, y, now);
     if (sample.moving) {
+        if (binding_) binding_->focusPolicy = FreeScrollFocusPolicy::SettleOnRelease;
         neutralSince_.reset();
         focusSettled_ = false;
     } else if (!neutralSince_) {
@@ -707,7 +708,7 @@ RightStickScrollUpdate FreeScrollInteractionState::SampleRightStick(
 
 bool FreeScrollInteractionState::ShouldSettle(const std::uint64_t now) const noexcept {
     constexpr std::uint64_t settleDelayMilliseconds = 120;
-    return binding_ && !focusSettled_ && neutralSince_ &&
+    return binding_ && binding_->focusPolicy == FreeScrollFocusPolicy::SettleOnRelease && !focusSettled_ && neutralSince_ &&
         now >= *neutralSince_ && now - *neutralSince_ >= settleDelayMilliseconds;
 }
 
@@ -719,6 +720,8 @@ std::optional<std::wstring> FreeScrollInteractionState::SettleFocus(
         !BindingMatches(*binding_, authority, focusedElementId) ||
         !IsExactScrollAuthorityCurrent(authority.semantics->root,
             binding_->scrollId, binding_->axis, renderResult)) return std::nullopt;
+    if (binding_->focusPolicy == FreeScrollFocusPolicy::Preserve)
+        return std::wstring{focusedElementId};
     auto target = !preferredCrossAxis && IsVisibleFreeScrollFocus(authority, *binding_, focusedElementId, renderResult)
         ? std::optional<std::wstring>{std::wstring{focusedElementId}}
         : FindFreeScrollReentryTarget(authority.semantics->root, binding_->scrollId,
@@ -770,14 +773,15 @@ bool FreeScrollInteractionState::Bind(
     const WidgetInteractionAuthority& authority,
     const std::wstring_view focusedElementId,
     const std::wstring_view scrollId,
-    const declarative::ScrollAxis axis) {
+    const declarative::ScrollAxis axis,
+    const FreeScrollFocusPolicy focusPolicy) {
     if (!authority.semantics || axis == declarative::ScrollAxis::None ||
         scrollId.empty()) {
         return false;
     }
     const bool changed = !binding_ ||
         binding_->scrollId != scrollId ||
-        binding_->axis != axis;
+        binding_->axis != axis || binding_->focusPolicy != focusPolicy;
     binding_ = FreeScrollBinding{
         std::wstring{authority.widgetId},
         authority.semantics->instanceId,
@@ -793,6 +797,7 @@ bool FreeScrollInteractionState::Bind(
         binding_->collectionResetGeneration = collection ? collection->collectionResetGeneration.value_or(0) : 0;
     }
     refreshDeferred_ = false;
+    binding_->focusPolicy = focusPolicy;
     return changed;
 }
 
@@ -828,7 +833,7 @@ FreeScrollReentryRequest FreeScrollInteractionState::ResolveReentry(
     neutralSince_.reset();
     focusSettled_ = false;
     kinetics_.Reset();
-    if (IsVisibleFreeScrollFocus(
+    if (request.retiredBinding->focusPolicy == FreeScrollFocusPolicy::Preserve || IsVisibleFreeScrollFocus(
             authority, *request.retiredBinding, focusedElementId,
             renderResult)) {
         request.disposition =
@@ -860,8 +865,9 @@ FreeScrollAuthorityDecision WidgetInteractionSession::EvaluateFreeScrollAuthorit
 bool WidgetInteractionSession::BindFreeScroll(
     const WidgetInteractionAuthority& authority,
     const std::wstring_view scrollId,
-    const declarative::ScrollAxis axis) {
-    return freeScroll_.Bind(authority, focusedElementId_, scrollId, axis);
+    const declarative::ScrollAxis axis,
+    const FreeScrollFocusPolicy focusPolicy) {
+    return freeScroll_.Bind(authority, focusedElementId_, scrollId, axis, focusPolicy);
 }
 
 std::optional<FreeScrollBinding> WidgetInteractionSession::ClearFreeScroll() noexcept {

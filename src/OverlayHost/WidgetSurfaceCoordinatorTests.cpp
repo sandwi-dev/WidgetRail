@@ -2051,6 +2051,51 @@ int main() {
         }
 
         {
+            widgetrail::pinned::WidgetSurfaceCoordinator realization;
+            const auto realizationRoot = placementRoot / L"collection-realization";
+            Check(realization.Initialize(GetModuleHandleW(nullptr), nullptr, WM_APP + 0x416,
+                d2d.Get(), write.Get(), nullptr, error, realizationRoot / L"placement.ini"),
+                "UIA collection fixture uses production surface coordinator");
+            realization.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = ScrollSnapshot(1, false, 80);
+            admission.snapshot.protocolVersion = 59;
+            auto& list = admission.snapshot.root.children[0];
+            list.collectionLayout = widgetrail::WidgetNode::CollectionLayout{false, 44};
+            list.collectionAnchorKey = L"key.0"; list.collectionResetGeneration = 1;
+            for (std::size_t index = 0; index < list.children.size(); ++index)
+                list.children[index].collectionItemKey = L"key." + std::to_wstring(index);
+            Check(realization.Pin(admission, error) && realization.CommitSetup(error) && realization.ToggleInteractionMode(),
+                "UIA collection surface enters interactive mode");
+            UpdateWindow(realization.window());
+            Check(realization.EnterControllerFocus(), "UIA collection fixture has initial controller focus");
+            UpdateWindow(realization.window());
+            const auto priorFocus = realization.focusedElementId();
+            auto targetItem = FindAutomationId(realization.window(), L"widget:pin.scroll.item.70");
+            Check(targetItem != nullptr, "real UIA client discovers unrealized item in pinned surface");
+            ComPtr<IUIAutomationVirtualizedItemPattern> realizePattern;
+            Check(SUCCEEDED(targetItem->GetCurrentPatternAs(UIA_VirtualizedItemPatternId,
+                IID_PPV_ARGS(realizePattern.GetAddressOf()))) && realizePattern,
+                "real UIA client obtains VirtualizedItem pattern");
+            Check(SUCCEEDED(realizePattern->Realize()), "real UIA client requests realization");
+            MSG message{};
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&message); DispatchMessageW(&message);
+            }
+            UpdateWindow(realization.window());
+            const auto offset = realization.ScrollOffsetForTesting(L"pin.scroll");
+            BOOL offscreen = TRUE;
+            Check(offset && *offset > 1000 && SUCCEEDED(targetItem->get_CurrentIsOffscreen(&offscreen)) && !offscreen,
+                "UIA realization passes through host queue and renderer to visible geometry");
+            Check(realization.focusedElementId() == priorFocus && realization.TakeInputRequests().empty(),
+                "UIA realization neither changes controller focus nor dispatches widget actions");
+            Check(realization.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin), "UIA realization surface tears down");
+            realization.Dispose();
+            std::error_code realizationCleanup;
+            std::filesystem::remove_all(realizationRoot, realizationCleanup);
+        }
+
+        {
             widgetrail::pinned::WidgetSurfaceCoordinator pagination;
             const auto paginationRoot = placementRoot / L"scroll-pagination";
             Check(pagination.Initialize(

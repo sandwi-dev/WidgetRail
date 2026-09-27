@@ -17,7 +17,10 @@ Renderer realization and logical directional navigation now pass native fixtures
 vertical/horizontal lists, adaptive grids, wrapped rows and posters match eager
 initial pixels at 100%/125%, with deep focus, prepend, reset, hot resize and known
 provider-window and failed-frame rollback checks. The coherent native host/runtime
-build passes. UIA realization, scheduling, SDK item reuse and widget adoption remain;
+build passes. UIA realization now reveals offscreen admitted items without moving
+controller focus, including a production pinned-host fixture. The immutable SDK
+item cache passes reuse, eviction and failed-capture tests (SDK 122/122).
+Scheduling, broader cursor/lifetime validation and widget adoption remain;
 WIDGE-294–298 have not started. No real-widget runtime
 performance improvement is claimed yet. Details:
 [collection lifecycle](native-collection-lifecycle.md).

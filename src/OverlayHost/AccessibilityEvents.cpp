@@ -46,6 +46,8 @@ bool SameStructure(const Tree& left, const Tree& right) {
         const auto& before = left.nodes[index];
         const auto& after = right.nodes[index];
         if (before.domain != after.domain || before.id != after.id ||
+            before.collectionItemKey != after.collectionItemKey ||
+            before.supportsRealization != after.supportsRealization || before.virtualized != after.virtualized ||
             before.role != after.role ||
             before.parent != after.parent || before.children != after.children ||
             SupportsInvoke(before) != SupportsInvoke(after) ||

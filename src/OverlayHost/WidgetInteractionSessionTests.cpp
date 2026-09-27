@@ -2488,6 +2488,20 @@ void LogicalCollectionNavigationDoesNotRequireOffscreenGeometry() {
     session.SetFocus(L"logical.widget", snapshot, L"item.0");
     Check(session.ResolveDirectionalFocus(L"logical.widget", snapshot, NavigationDirection::Down, result).target == L"item.3",
         "shared interaction pipeline accepts realization target without geometry");
+    const WidgetInteractionAuthority authority{L"logical.widget", &snapshot, L"runtime", L"presentation", false};
+    (void)session.BindFreeScroll(authority, L"collection", declarative::ScrollAxis::Vertical, FreeScrollFocusPolicy::Preserve);
+    (void)session.SampleRightStick(0, 0, 1000);
+    Check(!session.freeScrollState().ShouldSettle(2000), "UIA realization does not settle controller focus after a timer");
+    Check(session.freeScrollState().SettleFocus(authority, L"item.0", result) == L"item.0",
+        "ordinary action after UIA reveal retains its original focus target");
+    const auto resume = session.ResolveFreeScrollReentry(authority, result);
+    Check(resume.disposition == FreeScrollReentryDisposition::ResumeDirectionalInput && !resume.target,
+        "directional input after UIA reveal resumes from actual focus without a recovery jump");
+    (void)session.BindFreeScroll(authority, L"collection", declarative::ScrollAxis::Vertical, FreeScrollFocusPolicy::Preserve);
+    (void)session.SampleRightStick(0, -32767, 2100);
+    (void)session.SampleRightStick(0, 0, 2300);
+    Check(session.freeScrollState().ShouldSettle(2500), "new physical scrolling takes ownership from UIA-preserved focus policy");
+    (void)session.ClearFreeScroll();
     root.children[3].isDisabled = true;
     Check(move(L"item.0", NavigationDirection::Down).target == L"item.6", "logical navigation skips disabled same-column target");
     root.scrollNearEndActionId = L"load.more";

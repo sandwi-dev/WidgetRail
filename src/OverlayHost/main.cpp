@@ -11242,6 +11242,7 @@ private:
     }
 
     void ClearFreeScrollReentry(const std::wstring_view reason) {
+        pendingAccessibilityRealization_.reset();
         continuousScrollFrames_.Clear();
         heldDpadBoundaryStop_ = false;
         heldDpadScroll_.Reset();
@@ -11391,6 +11392,7 @@ private:
         const auto sample = interactionSession_.SampleRightStick(
             heldDirection ? 0 : frame.state.rightThumbX,
             heldDirection ? static_cast<short>(*heldDirection > 0 ? -32767 : 32767) : frame.state.rightThumbY, now);
+        if (sample.moving) pendingAccessibilityRealization_.reset();
         if (!sample.moving) {
             continuousScrollFrames_.Neutral();
             if (!continuousScrollFrames_.pending()) return ApplyContinuousFreeScroll(sample, now, false);
@@ -13070,6 +13072,18 @@ private:
                                  request.widgetId);
                 continue;
             }
+            if (resolved->kind == widgetrail::accessibility::ActionKind::Realize) {
+                ClearFreeScrollReentry(L"accessibility-realize");
+                const widgetrail::input::WidgetInteractionAuthority authority{
+                    request.widgetId, snapshot, descriptor->runtimeGeneration, descriptor->presentationGeneration, false};
+                (void)interactionSession_.BindFreeScroll(authority, resolved->scrollId, resolved->scrollAxis,
+                    widgetrail::input::FreeScrollFocusPolicy::Preserve);
+                pendingAccessibilityRealization_ = request;
+                pendingContentRenderPlan_.reset();
+                if (declarativeRenderer_) declarativeRenderer_->CancelPresentationUpdatePlan();
+                InvalidateRect(window_, nullptr, FALSE);
+                continue;
+            }
             RetirePendingFocusGroupEntryForUserIntent(
                 request.widgetId, *snapshot, L"accessibility-action");
 
@@ -13218,6 +13232,7 @@ private:
     }
 
     void ClearAccessibilityTree() noexcept {
+        pendingAccessibilityRealization_.reset();
         accessibilityTree_ = {};
         widgetAccessibilityTree_ = {};
         accessibilityProvider_.Clear();
@@ -18708,6 +18723,15 @@ private:
                 options.suppressFocusedDescendantFollow =
                     freeScrollDecision.followSuppressed &&
                     (!inertRetainedSnapshot || retainedRefreshFreeScroll);
+                if (pendingAccessibilityRealization_) {
+                    const auto& request = *pendingAccessibilityRealization_;
+                    if (!inertRetainedSnapshot && descriptor && request.widgetId == renderedWidget &&
+                        widgetrail::accessibility::ResolveActionRequest(request, renderedWidget,
+                            descriptor->runtimeGeneration, *snapshot)) {
+                        options.realizeElementId = request.nodeId;
+                        options.suppressFocusedDescendantFollow = true;
+                    } else pendingAccessibilityRealization_.reset();
+                }
 
                 const std::wstring provisionalRenderedFocusId = renderedFocusId;
                 std::optional<widgetrail::input::WidgetInteractionAuthority>
@@ -19179,6 +19203,7 @@ private:
                     lastWidgetRenderResult_ = result;
                 }
                 if (!inertRetainedSnapshot && result.succeeded) {
+                    if (!options.realizeElementId.empty()) pendingAccessibilityRealization_.reset();
                     ReconcileWindowPreviews(*snapshot, result);
                     ReconcileScrollPaginationPrefetch(
                         widget, semanticSnapshot, result);
@@ -19478,6 +19503,7 @@ private:
     std::uint64_t fixedChromePlacementCount_{};
     std::optional<widgetrail::accessibility::ProjectionKey>
         pendingActionFailureAccessibilityProjection_;
+    std::optional<widgetrail::accessibility::ActionRequest> pendingAccessibilityRealization_;
     bool awaitingSuccessfulOpenPaint_{};
     ULONGLONG nextOpenPaintRetryAt_{};
     std::wstring pendingContentRevealWidget_;

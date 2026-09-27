@@ -479,6 +479,7 @@ private:
     input::WidgetFocusGroupMemory focusGroupMemory_;
     input::WidgetSurfaceFocusMemory collectionFocusMemory_;
     input::FreeScrollInteractionState freeScroll_;
+    std::optional<accessibility::ActionRequest> pendingAccessibilityRealization_;
     input::WidgetInteractionSession sliderInteraction_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;
     std::vector<input::ScrollPaginationDiagnostic> paginationDiagnostics_;

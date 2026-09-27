@@ -700,6 +700,79 @@ int main() {
           "stale provider cannot enqueue into a replacement runtime");
     Check(host.TakeActions().empty(), "stale provider leaves the action queue unchanged");
 
+    {
+        using widgetrail::accessibility::ActionKind;
+        using widgetrail::accessibility::HostAction;
+        using widgetrail::accessibility::ResolveActionRequest;
+        auto virtualTree = Tree(L"generation-virtual", 20);
+        virtualTree.nodes.resize(1); virtualTree.focusedNode.reset();
+        auto& virtualNode = virtualTree.nodes[0];
+        virtualNode.focused = false; virtualNode.bounds = {};
+        virtualNode.offscreen = true; virtualNode.supportsRealization = true; virtualNode.virtualized = true;
+        virtualNode.collectionItemKey = L"logical.next";
+        host.Publish(virtualTree, {100, 200, 2, 800, 600});
+        ComPtr<IRawElementProviderFragment> itemFragment;
+        Check(SUCCEEDED(rootFragment->Navigate(NavigateDirection_FirstChild, itemFragment.GetAddressOf())),
+            "virtual item remains discoverable in the logical tree");
+        ComPtr<IRawElementProviderSimple> item;
+        Check(SUCCEEDED(itemFragment.As(&item)), "virtual item exposes its logical provider");
+        ComPtr<IUnknown> virtualPattern;
+        Check(SUCCEEDED(item->GetPatternProvider(UIA_VirtualizedItemPatternId, virtualPattern.GetAddressOf())) && virtualPattern,
+            "unrealized item advertises VirtualizedItem");
+        ComPtr<IVirtualizedItemProvider> virtualItem;
+        Check(SUCCEEDED(virtualPattern.As(&virtualItem)) && SUCCEEDED(virtualItem->Realize()),
+            "Realize queues a host request");
+        auto realization = host.TakeActions();
+        Check(realization.size() == 1 && realization[0].kind == ActionKind::Realize && realization[0].actionId.empty() &&
+            realization[0].snapshotSequence == 20 && realization[0].hostAction == HostAction::None,
+            "Realize carries exact authority without an invocation or focus command");
+        const auto virtualRuntimeId = RuntimeId(itemFragment.Get());
+        virtualNode.virtualized = false; virtualNode.offscreen = false; virtualNode.bounds = {10, 20, 100, 40};
+        ++virtualTree.snapshotSequence;
+        host.Publish(virtualTree, {100, 200, 2, 800, 600});
+        Check(RuntimeId(itemFragment.Get()) == virtualRuntimeId && SUCCEEDED(virtualItem->Realize()) && host.TakeActions().empty(),
+            "realization keeps logical provider identity and repeated Realize is a no-op");
+        virtualPattern.Reset();
+        Check(SUCCEEDED(item->GetPatternProvider(UIA_VirtualizedItemPatternId, virtualPattern.GetAddressOf())) && !virtualPattern,
+            "realized item no longer advertises virtualization");
+        ComPtr<IUnknown> scrollPattern;
+        Check(SUCCEEDED(item->GetPatternProvider(UIA_ScrollItemPatternId, scrollPattern.GetAddressOf())) && scrollPattern,
+            "realized collection item retains ScrollItem");
+        ComPtr<IScrollItemProvider> scrollItem;
+        Check(SUCCEEDED(scrollPattern.As(&scrollItem)), "ScrollItem is queryable");
+        virtualNode.offscreen = true; virtualNode.enabled = false; ++virtualTree.snapshotSequence;
+        host.Publish(virtualTree, {100, 200, 2, 800, 600});
+        Check(SUCCEEDED(scrollItem->ScrollIntoView()), "disabled logical item may still be revealed for inspection");
+        realization = host.TakeActions();
+        Check(realization.size() == 1 && realization[0].kind == ActionKind::Realize, "ScrollItem does not focus disabled item");
+
+        auto source = Snapshot(); source.sequence = virtualTree.snapshotSequence;
+        source.root.children.resize(1); source.root.kind = L"scroll"; source.root.scrollAxis = L"vertical";
+        source.root.collectionLayout = widgetrail::WidgetNode::CollectionLayout{false, 44};
+        source.root.children[0].collectionItemKey = L"logical.next";
+        source.root.children[0].isDisabled = true;
+        const auto admitted = ResolveActionRequest(realization[0], L"music", L"generation-virtual", source);
+        Check(admitted && admitted->scrollId == source.root.id && admitted->protocolButton.empty(),
+            "host admits disabled-item realization only through its collection owner");
+        source.sequence++;
+        Check(!ResolveActionRequest(realization[0], L"music", L"generation-virtual", source), "stale realization is cancelled");
+        virtualNode.collectionItemKey = L"replacement.key"; ++virtualTree.snapshotSequence;
+        host.Publish(virtualTree, {100, 200, 2, 800, 600});
+        Check(scrollItem->ScrollIntoView() == UIA_E_ELEMENTNOTAVAILABLE,
+            "recycled focus ID cannot transfer a retained provider to another logical item");
+        Check(host.TakeActions().empty(), "retired logical provider cannot queue actions");
+        virtualNode.id = L"a"; virtualNode.collectionItemKey = L"bc";
+        auto second = virtualNode; second.id = L"ab"; second.collectionItemKey = L"c";
+        virtualTree.nodes.push_back(second);
+        host.Publish(virtualTree, {100, 200, 2, 800, 600});
+        ComPtr<IRawElementProviderFragment> firstIdentity, secondIdentity;
+        Check(SUCCEEDED(rootFragment->Navigate(NavigateDirection_FirstChild, firstIdentity.GetAddressOf())) &&
+            SUCCEEDED(firstIdentity->Navigate(NavigateDirection_NextSibling, secondIdentity.GetAddressOf())),
+            "distinct logical identity fixture exposes both items");
+        Check(RuntimeId(firstIdentity.Get()) != RuntimeId(secondIdentity.Get()),
+            "runtime identity separates focus ID, logical key and scope components");
+    }
+
     host.Publish(HostTree(), {100, 200, 2, 800, 600});
     ComPtr<IUnknown> selectionUnknown;
     Check(SUCCEEDED(root->GetPatternProvider(

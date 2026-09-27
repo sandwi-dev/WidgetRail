@@ -46,6 +46,8 @@ enum class SelectActivationResult {
     Opened,
 };
 
+enum class FreeScrollFocusPolicy { SettleOnRelease, Preserve };
+
 struct FreeScrollBinding final {
     std::wstring widgetId;
     std::wstring widgetInstanceId;
@@ -56,6 +58,7 @@ struct FreeScrollBinding final {
     std::wstring scrollId;
     declarative::ScrollAxis axis{declarative::ScrollAxis::None};
     std::uint64_t collectionResetGeneration{};
+    FreeScrollFocusPolicy focusPolicy{FreeScrollFocusPolicy::SettleOnRelease};
 };
 
 enum class FreeScrollAuthorityDisposition {
@@ -104,7 +107,8 @@ public:
         const WidgetInteractionAuthority& authority,
         std::wstring_view focusedElementId,
         std::wstring_view scrollId,
-        declarative::ScrollAxis axis);
+        declarative::ScrollAxis axis,
+        FreeScrollFocusPolicy focusPolicy = FreeScrollFocusPolicy::SettleOnRelease);
     [[nodiscard]] std::optional<FreeScrollBinding> Clear() noexcept;
     [[nodiscard]] bool SetRefreshDeferred(bool deferred) noexcept;
     [[nodiscard]] bool ShouldSettle(std::uint64_t now) const noexcept;
@@ -482,7 +486,8 @@ public:
     [[nodiscard]] bool BindFreeScroll(
         const WidgetInteractionAuthority& authority,
         std::wstring_view scrollId,
-        declarative::ScrollAxis axis);
+        declarative::ScrollAxis axis,
+        FreeScrollFocusPolicy focusPolicy = FreeScrollFocusPolicy::SettleOnRelease);
     [[nodiscard]] std::optional<FreeScrollBinding> ClearFreeScroll() noexcept;
     [[nodiscard]] bool SetRefreshDeferred(bool deferred) noexcept;
     [[nodiscard]] const std::optional<FreeScrollBinding>& freeScrollBinding()

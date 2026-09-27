@@ -865,6 +865,7 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
     const std::uint64_t now) {
     const auto sample = freeScroll_.SampleRightStick(
         rightThumbX, rightThumbY, now);
+    if (sample.moving) pendingAccessibilityRealization_.reset();
     if (!pinned() || !controllerFocused_ ||
         policy_.interactionMode() != InteractionMode::Focusable ||
         !renderer_ || !window_ || focusedElementId_.empty()) {
@@ -933,6 +934,7 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
 }
 
 void WidgetSurfaceCoordinator::ClearFreeScroll() noexcept {
+    pendingAccessibilityRealization_.reset();
     (void)freeScroll_.Clear();
 }
 
@@ -2437,7 +2439,15 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
                 snapshot);
             if (!resolved || policy_.interactionMode() != InteractionMode::Focusable)
                 continue;
-            if (resolved->kind == accessibility::ActionKind::Focus) {
+            if (resolved->kind == accessibility::ActionKind::Realize) {
+                ClearFreeScroll();
+                const input::WidgetInteractionAuthority authority{
+                    admission_->widgetId, &snapshot, admission_->runtimeGeneration, admission_->presentationGeneration, false};
+                (void)freeScroll_.Bind(authority, focusedElementId_, resolved->scrollId, resolved->scrollAxis,
+                    input::FreeScrollFocusPolicy::Preserve);
+                pendingAccessibilityRealization_ = request;
+                RequestPaint();
+            } else if (resolved->kind == accessibility::ActionKind::Focus) {
                 if (!EnterControllerFocus() || GetFocus() != window_) continue;
                 TransitionPinnedFocus(resolved->nodeId);
                 PublishAccessibility();
@@ -2749,6 +2759,13 @@ void WidgetSurfaceCoordinator::Paint() {
     }
     options.suppressFocusedDescendantFollow =
         freeScrollDecision.followSuppressed;
+    if (pendingAccessibilityRealization_) {
+        if (accessibility::ResolveActionRequest(*pendingAccessibilityRealization_, admission_->widgetId,
+                admission_->runtimeGeneration, selectedSnapshot)) {
+            options.realizeElementId = pendingAccessibilityRealization_->nodeId;
+            options.suppressFocusedDescendantFollow = true;
+        } else pendingAccessibilityRealization_.reset();
+    }
     const declarative::Rect viewport = compactMedia && !showHostSetupChrome
         ? declarative::Rect{
               kPinnedBorderDip, kPinnedBorderDip,
@@ -2788,6 +2805,7 @@ void WidgetSurfaceCoordinator::Paint() {
                 : std::wstring_view{},
             viewport, options);
     }
+    if (renderResult.succeeded && !options.realizeElementId.empty()) pendingAccessibilityRealization_.reset();
     if (!compactMedia && sliderInteraction_.selectPopup()) {
         const auto* node = input::FindNodeInInputScope(
             selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId);

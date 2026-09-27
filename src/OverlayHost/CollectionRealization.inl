@@ -169,6 +169,10 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
         }
         std::vector<std::wstring> protectedKeys;
         if (!state.lastFocusedKey.empty()) protectedKeys.push_back(state.lastFocusedKey);
+        if (!options.realizeElementId.empty()) {
+            for (const auto& item : node.children)
+                if (item.id == options.realizeElementId) protectedKeys.push_back(item.collectionItemKey);
+        }
         if (node.collectionNavigation) {
             for (const auto& item : node.children)
                 if (item.id == node.collectionNavigation->targetFocusId) protectedKeys.push_back(item.collectionItemKey);

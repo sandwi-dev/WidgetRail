@@ -3,7 +3,7 @@
 Implementation begins with an internal logical geometry model in
 `CollectionLayoutState` and the protocol-v59 declaration below. The declaration is
 validated end to end on the task branch. Renderer realization and logical
-directional navigation are connected; UIA realization, scheduling and widget
+directional navigation and UIA realization are connected; scheduling and widget
 adoption remain. Do not release these helpers until the full integration gates pass.
 
 ## Declarative contract
@@ -113,7 +113,18 @@ projects item boxes through the collection's actual clip, and publishes logical
 navigation authority separately from rendered rectangles. Unknown offscreen
 geometry is never invented for directional search.
 
-Remaining delivery includes UIA realization, frame-budgeted scheduling and
+UIA exposes lightweight logical providers and VirtualizedItem/ScrollItem patterns.
+Realization is an authority-checked reveal, not an invocation or focus transfer.
+Providers survive visual eviction but reject recycled item identities and scopes.
+The host protects the requested item and preserves controller focus until physical
+navigation resumes. A production pinned-host fixture verifies this behavior.
+
+`WidgetCollectionItems<TItem>` reuses bounded immutable item declarations by key
+and input equality. Its pure factory must receive every render input, including
+selection and availability. Failed captures do not replace the previous cache;
+provider eviction drops cached declarations independently of host realization.
+
+Remaining delivery includes frame-budgeted scheduling and
 resource protection, broader provider-window/scale/scroll validation, and adoption
 in Playnite grids and variable-height music rows. The initial realization path
 still rebuilds the small outer layout on collection updates/scroll; localized

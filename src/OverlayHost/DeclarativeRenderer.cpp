@@ -1278,7 +1278,7 @@ struct DeclarativeRenderer::RenderPass final {
         std::size_t presentationFollowAttempts{};
         bool lastPresentationFollowChanged{};
         for (std::size_t followPass = 0;
-             !options.suppressFocusedDescendantFollow &&
+             (!options.suppressFocusedDescendantFollow || !options.realizeElementId.empty()) &&
                  followPass < kMaximumFocusFollowPasses;
              ++followPass) {
             ++presentationFollowAttempts;
@@ -1996,10 +1996,15 @@ struct DeclarativeRenderer::RenderPass final {
         return summary;
     }
 
-    [[nodiscard]] std::vector<const WidgetNode*> FocusPath() const {
+    [[nodiscard]] std::wstring_view RevealTargetId() const noexcept {
+        return options.realizeElementId.empty() ? std::wstring_view{focusedId}
+            : std::wstring_view{options.realizeElementId};
+    }
+
+    [[nodiscard]] std::vector<const WidgetNode*> RevealPath() const {
         std::vector<const WidgetNode*> path;
-        if (!prepared.contains(NarrowStableId(focusedId))) return path;
-        if (!focusedId.empty()) (void)FindNodePath(snapshot->root, focusedId, path);
+        if (!prepared.contains(NarrowStableId(RevealTargetId()))) return path;
+        if (!RevealTargetId().empty()) (void)FindNodePath(snapshot->root, RevealTargetId(), path);
         return path;
     }
 
@@ -2072,9 +2077,9 @@ struct DeclarativeRenderer::RenderPass final {
             currentOffset - targetDelta, 0.0F, maximumOffset);
     }
 
-    [[nodiscard]] std::pair<bool, bool> FocusedBoundaryOf(
+    [[nodiscard]] std::pair<bool, bool> RevealBoundaryOf(
         const WidgetNode& scroll) const {
-        const auto focusPath = FocusPath();
+        const auto focusPath = RevealPath();
         if (focusPath.empty()) return {};
         const auto focusedScope = ScopeForPath(focusPath, focusPath.size());
         std::vector<const WidgetNode*> scrollPath;
@@ -2087,13 +2092,13 @@ struct DeclarativeRenderer::RenderPass final {
             scroll, inheritedScope, focusedScope, focusableIds);
         if (focusableIds.empty()) return {};
         return {
-            focusableIds.front() == focusedId,
-            focusableIds.back() == focusedId,
+            focusableIds.front() == RevealTargetId(),
+            focusableIds.back() == RevealTargetId(),
         };
     }
 
-    [[nodiscard]] Rect FocusRevealBounds(const Rect& layoutBounds) const {
-        const auto style = prepared.find(NarrowStableId(focusedId));
+    [[nodiscard]] Rect RevealBounds(const Rect& layoutBounds) const {
+        const auto style = prepared.find(NarrowStableId(RevealTargetId()));
         if (style == prepared.end()) return layoutBounds;
         // Reveal the authored endpoint, not the current animation sample. The
         // compositor can enlarge a control without another UI-thread paint.
@@ -2103,14 +2108,14 @@ struct DeclarativeRenderer::RenderPass final {
         return ScaleRect(layoutBounds, scale);
     }
 
-    [[nodiscard]] bool ApplyFocusedDescendantFollow(
+    [[nodiscard]] bool ApplyDescendantReveal(
         const bool usePresentationGeometry = false) {
-        if (focusedId.empty()) return false;
-        const auto* focusBox = layout.Find(NarrowStableId(focusedId));
+        if (RevealTargetId().empty()) return false;
+        const auto* focusBox = layout.Find(NarrowStableId(RevealTargetId()));
         if (!focusBox) return false;
-        const auto presentedFocus = presentation.find(NarrowStableId(focusedId));
+        const auto presentedFocus = presentation.find(NarrowStableId(RevealTargetId()));
         if (usePresentationGeometry && presentedFocus == presentation.end()) return false;
-        const auto path = FocusPath();
+        const auto path = RevealPath();
         if (path.empty()) return false;
         bool changed = false;
         // Inner offsets change the target geometry seen by outer viewports.
@@ -2127,11 +2132,11 @@ struct DeclarativeRenderer::RenderPass final {
             const auto viewportBox = usePresentationGeometry
                 ? presentedScroll->second.contentBox
                 : scrollBox->contentBox;
-            const auto targetRect = FocusRevealBounds(usePresentationGeometry
+            const auto targetRect = RevealBounds(usePresentationGeometry
                 ? presentedFocus->second.borderBox
                 : focusBox->borderBox);
             const auto [atLeadingBoundary, atTrailingBoundary] =
-                FocusedBoundaryOf(scroll);
+                RevealBoundaryOf(scroll);
             RecordFocusFollowNodeMetadata(
                 scroll.id,
                 scrollBox->scrollAxis,
@@ -2244,15 +2249,15 @@ struct DeclarativeRenderer::RenderPass final {
     [[nodiscard]] FocusFollowSample CaptureFocusFollowSample(
         const bool usePresentationGeometry) const {
         FocusFollowSample sample;
-        const auto* focusBox = layout.Find(NarrowStableId(focusedId));
-        const auto presentedFocus = presentation.find(NarrowStableId(focusedId));
-        if (focusedId.empty()) return sample;
+        const auto* focusBox = layout.Find(NarrowStableId(RevealTargetId()));
+        const auto presentedFocus = presentation.find(NarrowStableId(RevealTargetId()));
+        if (RevealTargetId().empty()) return sample;
         if (!focusBox ||
             (usePresentationGeometry && presentedFocus == presentation.end())) {
             sample.complete = false;
             return sample;
         }
-        const auto path = FocusPath();
+        const auto path = RevealPath();
         if (path.empty()) {
             sample.complete = false;
             return sample;
@@ -2280,7 +2285,7 @@ struct DeclarativeRenderer::RenderPass final {
             const auto viewportBox = usePresentationGeometry
                 ? presentedScroll->second.contentBox
                 : scrollBox->contentBox;
-            auto targetRect = FocusRevealBounds(usePresentationGeometry
+            auto targetRect = RevealBounds(usePresentationGeometry
                 ? presentedFocus->second.borderBox
                 : focusBox->borderBox);
             const float offsetDelta = scrollBox->scrollOffset - offset;
@@ -2330,7 +2335,7 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     [[nodiscard]] bool FocusedTargetVisibleInPresentation() const {
-        if (focusedId.empty()) return true;
+        if (RevealTargetId().empty()) return true;
         const auto sample = CaptureFocusFollowSample(true);
         return sample.complete && sample.allTargetsVisible;
     }
@@ -2441,7 +2446,7 @@ struct DeclarativeRenderer::RenderPass final {
     [[nodiscard]] FocusFollowAttemptResult FollowFocusedDescendant(
         const bool usePresentationGeometry) {
         const auto before = CaptureFocusFollowSample(usePresentationGeometry);
-        const bool changed = ApplyFocusedDescendantFollow(usePresentationGeometry);
+        const bool changed = ApplyDescendantReveal(usePresentationGeometry);
         const auto after = CaptureFocusFollowSample(usePresentationGeometry);
         auto attempt = RecordFocusFollowPass(
             before, after, changed, usePresentationGeometry);
@@ -3022,7 +3027,7 @@ struct DeclarativeRenderer::RenderPass final {
         // the target geometry observed by each outer viewport. The wire tree
         // depth is bounded to 32, so this loop has a matching hard ceiling and
         // performs no relayout once offsets are stable.
-        if (followStaticFocus) {
+        if (followStaticFocus || !options.realizeElementId.empty()) {
             const auto followStarted = std::chrono::steady_clock::now();
             std::size_t followAttempts{};
             bool lastFollowChanged{};
