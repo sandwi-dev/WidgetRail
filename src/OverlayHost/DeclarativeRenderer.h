@@ -312,6 +312,17 @@ enum class IncrementalPresentationWork {
     ScrollOnly,
 };
 
+enum class CollectionPreparationStatus { Ready, Pending, Failed };
+struct CollectionPreparationBudget final {
+    std::size_t maximumNewMeasurements{8};
+    std::uint64_t maximumMicroseconds{2000};
+};
+struct CollectionPreparationResult final {
+    CollectionPreparationStatus status{CollectionPreparationStatus::Failed};
+    std::size_t newMeasurements{};
+    std::uint64_t elapsedMicroseconds{};
+};
+
 struct IncrementalPresentationPlan final {
     IncrementalPresentationWork work{IncrementalPresentationWork::PaintOnly};
     declarative::Rect damage;
@@ -482,6 +493,16 @@ public:
         std::wstring_view focusedElementId,
         declarative::Rect viewport,
         const DeclarativeRenderOptions& options = {});
+    /// Host-thread preparation only: no paint, focus admission or published
+    /// scroll mutation. Call before beginning a frame; Pending retains reusable
+    /// measurements for a later slice. One indivisible item may exceed the time
+    /// budget. Hosts must retain the previous scene until Ready, then Render
+    /// the same admitted request. Render still supports synchronous fallback.
+    [[nodiscard]] CollectionPreparationResult PrepareCollections(
+        const WidgetSnapshot& snapshot, std::wstring_view focusedElementId,
+        declarative::Rect viewport, const DeclarativeRenderOptions& options = {},
+        CollectionPreparationBudget budget = {});
+    void CancelCollectionPreparation() noexcept;
     [[nodiscard]] bool PaintPackageIcon(
         ID2D1RenderTarget* renderTarget,
         const WidgetPackageIcon& icon,
@@ -704,6 +725,9 @@ private:
         std::uint64_t resetGeneration{};
     };
     std::unordered_map<std::wstring, CollectionRenderState> collections_;
+    std::unordered_map<std::wstring, CollectionRenderState> preparingCollections_;
+    std::wstring preparingInstance_, preparingScope_;
+    std::uint64_t preparingSequence_{};
     struct IncrementalNodeState final {
         NativeRenderStyle baseStyle;
         NativeStyleContext styleContext;

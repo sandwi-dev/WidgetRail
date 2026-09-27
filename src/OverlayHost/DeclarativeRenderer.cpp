@@ -498,6 +498,10 @@ struct DeclarativeRenderer::RenderPass final {
     std::uint64_t layoutNanoseconds{};
     std::uint64_t styleCacheHits{};
     std::uint64_t styleCacheMisses{};
+    struct CollectionSlicePending final {};
+    std::optional<CollectionPreparationBudget> preparationBudget;
+    std::chrono::steady_clock::time_point preparationStarted;
+    std::size_t preparationMeasurements{};
     DeclarativeRenderer* owner{};
     std::unordered_map<std::wstring, ScrollStateEntry>* scrollState{};
     std::uint64_t* scrollAccessClock{};
@@ -6624,6 +6628,8 @@ RenderResult DeclarativeRenderer::Render(
         }
         incrementalLayoutCache_ = std::move(cache);
         collections_ = std::move(pass.collections);
+        if (preparingInstance_ == snapshot.instanceId && preparingScope_ == snapshot.activeInputScopeId &&
+            preparingSequence_ == snapshot.sequence) CancelCollectionPreparation();
         if (stagedScrollOffsets) {
             scrollOffsets_ = std::move(*stagedScrollOffsets);
             scrollStateAccessClock_ = stagedScrollClock;
@@ -6717,6 +6723,72 @@ RenderResult DeclarativeRenderer::Render(
             << " scale=" << options.pixelScale << " sequence-changed=" << !timing.collectionAdmissionSummary.empty();
     });
     return pass.result;
+}
+
+void DeclarativeRenderer::CancelCollectionPreparation() noexcept {
+    preparingCollections_.clear();
+    preparingInstance_.clear();
+    preparingScope_.clear();
+    preparingSequence_ = 0;
+}
+
+CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
+    const WidgetSnapshot& snapshot, const std::wstring_view focusedElementId,
+    const Rect viewport, const DeclarativeRenderOptions& options,
+    const CollectionPreparationBudget budget) {
+    const auto started = std::chrono::steady_clock::now();
+    CollectionPreparationResult result;
+    if (!FiniteRect(viewport) || viewport.width < 0 || viewport.height < 0 ||
+        budget.maximumNewMeasurements == 0 || budget.maximumMicroseconds == 0) {
+        CancelCollectionPreparation();
+        return result;
+    }
+    const auto hasCollection = [&](const auto& self, const WidgetNode& node) -> bool {
+        return node.collectionLayout.has_value() || std::ranges::any_of(node.children,
+            [&](const auto& child) { return self(self, child); });
+    };
+    if (!hasCollection(hasCollection, snapshot.root)) {
+        CancelCollectionPreparation();
+        result.status = CollectionPreparationStatus::Ready;
+        return result;
+    }
+    if (preparingInstance_ != snapshot.instanceId || preparingScope_ != snapshot.activeInputScopeId)
+        CancelCollectionPreparation();
+    preparingInstance_ = snapshot.instanceId;
+    preparingScope_ = snapshot.activeInputScopeId;
+    preparingSequence_ = snapshot.sequence;
+    RenderPass pass;
+    pass.owner = this;
+    pass.snapshot = &snapshot;
+    pass.focusedId = focusedElementId;
+    pass.pressedId = options.pressedElementId;
+    pass.viewport = viewport;
+    pass.options = options;
+    pass.compactMode = IsCompactResponsiveSurface(options.responsiveViewport.value_or(Size{viewport.width, viewport.height}));
+    pass.preparationBudget = budget;
+    pass.preparationStarted = started;
+    auto stagedScroll = scrollOffsets_;
+    auto stagedClock = scrollStateAccessClock_;
+    pass.scrollState = &stagedScroll;
+    pass.scrollAccessClock = &stagedClock;
+    try {
+        pass.BuildLayout(!options.suppressFocusedDescendantFollow, true,
+            options.suppressFocusedDescendantFollow
+                ? RenderPass::CollectionAnchorPolicy::ReconcileContentChanges
+                : RenderPass::CollectionAnchorPolicy::Reconcile);
+        const bool errors = std::ranges::any_of(pass.result.diagnostics,
+            [](const auto& diagnostic) { return diagnostic.severity == RenderDiagnosticSeverity::Error; });
+        result.status = !errors && pass.layout.valid()
+            ? CollectionPreparationStatus::Ready : CollectionPreparationStatus::Failed;
+    } catch (const RenderPass::CollectionSlicePending&) {
+        result.status = CollectionPreparationStatus::Pending;
+    }
+    if (result.status == CollectionPreparationStatus::Failed) CancelCollectionPreparation();
+    else preparingCollections_ = std::move(pass.collections);
+    result.newMeasurements = pass.preparationMeasurements;
+    result.elapsedMicroseconds = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - started).count());
+    return result;
 }
 
 RenderResult DeclarativeRenderer::PrepareFocusEntry(
@@ -7014,6 +7086,7 @@ bool DeclarativeRenderer::EnsureSurfaceClip(
 void DeclarativeRenderer::ForgetWidgetState(
     const std::wstring_view widgetInstanceId) noexcept {
     if (widgetInstanceId.empty()) return;
+    if (preparingInstance_ == widgetInstanceId) CancelCollectionPreparation();
     if (widgetTransitions_.OwnsInstance(widgetInstanceId) || compositionInstance_ == widgetInstanceId) CancelWidgetTransitions();
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     ++gRendererWidgetStateRetirementCount;

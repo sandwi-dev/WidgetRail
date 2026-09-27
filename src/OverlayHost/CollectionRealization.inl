@@ -23,6 +23,19 @@ CollectionRenderState& CollectionState(const WidgetNode& node) {
         const auto previous = owner->collections_.find(key);
         found = collections.emplace(key, previous == owner->collections_.end()
             ? CollectionRenderState{} : previous->second).first;
+        if (owner->preparingInstance_ == snapshot->instanceId &&
+            owner->preparingScope_ == snapshot->activeInputScopeId && owner->preparingSequence_ == snapshot->sequence) {
+            if (const auto warm = owner->preparingCollections_.find(key); warm != owner->preparingCollections_.end()) {
+                // Reuse measurements, never an uncommitted anchor/extent tree.
+                // Source/context comparison below revalidates them even when
+                // a newer request supersedes a partially prepared snapshot.
+                found->second.items = warm->second.items;
+                found->second.context = warm->second.context;
+                found->second.contextRevision = warm->second.contextRevision;
+                found->second.itemRevision = warm->second.itemRevision;
+                found->second.resetGeneration = warm->second.resetGeneration;
+            }
+        }
     }
     if (!collectionSlots.contains(node.id)) collectionSlots.emplace(node.id, collectionSlots.size());
     collectionNodes[node.id] = &node;
@@ -40,6 +53,14 @@ void PrepareCollectionItem(const WidgetNode& item, CollectionItemLayout& cached,
     const float font = state.context.style.fontSizePx() / textScale;
     auto root = PrepareNode(item, parentId, itemWidth, parentHeight, font, background, scope);
     if (cached.measuredContext != state.contextRevision || cached.layout.boxes.empty()) {
+        if (preparationBudget) {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - preparationStarted).count();
+            if (preparationMeasurements >= preparationBudget->maximumNewMeasurements ||
+                (preparationMeasurements != 0 && static_cast<std::uint64_t>(elapsed) >= preparationBudget->maximumMicroseconds))
+                throw CollectionSlicePending{};
+            ++preparationMeasurements;
+        }
         LayoutOptions settings;
         settings.pixelScale = options.pixelScale;
         settings.fillAutoRoot = false;
@@ -58,7 +79,7 @@ void PrepareCollectionItem(const WidgetNode& item, CollectionItemLayout& cached,
             containingBlock.width = itemWidth;
             if (state.context.adaptiveGrid) {
                 containingBlock.layoutMode = LayoutMode::ResponsiveGrid;
-                containingBlock.gridMinimumColumnWidth = 44;
+                containingBlock.gridMinimumColumnWidth = static_cast<float>(protocol_contract::MinimumGridColumnWidth);
                 containingBlock.gridMaximumColumns = 1;
             }
             if (state.context.horizontal) {
@@ -203,6 +224,17 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
             state.realized.clear();
             for (auto index = demand.bufferedBegin; index < demand.bufferedEnd; ++index) state.realized.push_back(index);
             state.realized.insert(state.realized.end(), demand.protectedItems.begin(), demand.protectedItems.end());
+            if (preparationBudget) {
+                // Required/protected targets precede optional adjacent work.
+                // Placement and painting remain in semantic item order.
+                std::stable_sort(state.realized.begin(), state.realized.end(), [&](const auto a, const auto b) {
+                    const auto priority = [&](const auto index) {
+                        return std::find(protectedKeys.begin(), protectedKeys.end(), node.children[index].collectionItemKey) != protectedKeys.end() ? 0
+                            : index >= demand.visibleBegin && index < demand.visibleEnd ? 1 : 2;
+                    };
+                    return priority(a) < priority(b);
+                });
+            }
             std::vector<collection::Measurement> measurements;
             for (const auto index : state.realized) {
                 if (!preparedItems.insert(index).second) continue;

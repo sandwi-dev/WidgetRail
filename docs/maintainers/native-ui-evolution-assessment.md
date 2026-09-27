@@ -8,26 +8,19 @@ renderer or Skia integration benchmark has been performed.
 
 ## Implementation progress
 
-The assessment above describes the original investigation. Native implementation
-is now authorized under WIDGE-293–298, with completed tasks integrating only into
-`codex/native-ui-integration`; `main` stays untouched. WIDGE-293 has a tested
-logical collection geometry/demand model and validated protocol-v59 list/grid
-declarations (SDK 121/121, native parser/model and contract parity checks passed).
-Renderer realization and logical directional navigation now pass native fixtures:
-vertical/horizontal lists, adaptive grids, wrapped rows and posters match eager
-initial pixels at 100%/125%, with deep focus, prepend, reset, hot resize and known
-provider-window and failed-frame rollback checks. The coherent native host/runtime
-build passes. UIA realization now reveals offscreen admitted items without moving
-controller focus, including a production pinned-host fixture. The immutable SDK
-item cache passes reuse, eviction and failed-capture tests (SDK 122/122).
-Playnite Browse and regular YouTube Music rows now use the contract; music rows
-reuse immutable SDK declarations. Production-styled fixtures match eager visible
-geometry/content pixels at 620/980/1400 DIPs and 100%/125% scale (estimated scrollbar
-thumbs excluded). This exposed and fixed containing-block/margin and fractional
-pixel-phase defects. Immutable measurement sources avoid deep offscreen copies.
-Scheduling, broader cursor/lifetime validation and further widget adoption remain;
-WIDGE-294–298 have not started. No real-widget runtime
-performance improvement is claimed yet. Details:
+WIDGE-293–298 integrate only into `codex/native-ui-integration`; `main` stays untouched.
+WIDGE-293 now has protocol-v59 list/grid declarations, logical geometry, renderer
+realization/navigation, UIA reveal without focus transfer, and immutable SDK item
+reuse. Playnite Browse and regular YouTube Music rows use the contract. Styled
+fixtures match eager visible geometry/content pixels at three widths and 100%/125%
+scale, excluding estimated scrollbar thumbs. Native/managed gates cover margins,
+pixel-phase stability, anchors, resets and renderer failure rollback.
+
+A bounded preparation API now preserves committed geometry while returning explicit
+Ready/Pending/Failed states; cancellation and rendering an older scene during
+preparation are tested. Host scheduling/admission integration, broader cursor and
+lifecycle validation, and further widget adoption remain. WIDGE-294–298 have not
+started. No live-overlay performance improvement is claimed. Details:
 [collection lifecycle](native-collection-lifecycle.md).
 
 ## Decision

@@ -7821,6 +7821,15 @@ void CollectionRealizationMatchesEagerGeometry() {
             full.root.children = {std::move(body)};
             full.root.baseStyle[L"gap"] = LengthList(L"0px");
         }
+        bool preparationReady{};
+        std::size_t preparationSlices{};
+        for (; preparationSlices < 128; ++preparationSlices) {
+            const auto preparation = lazy.PrepareCollections(snapshot, L"item.0", bounds, options, {1, 1000000});
+            Check(preparation.status != CollectionPreparationStatus::Failed && preparation.newMeasurements <= 1,
+                "collection preflight bounds each measurement slice without treating pending work as failure");
+            if (preparation.status == CollectionPreparationStatus::Ready) { preparationReady = true; break; }
+        }
+        Check(preparationReady && preparationSlices > 0, "collection preflight makes progress across bounded slices");
         const auto initial = draw(lazy, snapshot, L"item.0");
         std::vector<BYTE> lazyPixels(width * height * 4);
         ok(bitmap->CopyPixels(nullptr, width * 4, static_cast<UINT>(lazyPixels.size()), lazyPixels.data()));
@@ -7847,6 +7856,39 @@ void CollectionRealizationMatchesEagerGeometry() {
         Check(initial.realizableFocusIds.contains(L"item.90") &&
             initial.logicalCollections.at(L"items").itemIdentities.size() == 128 &&
             !initial.navigationRects.contains(L"item.90"), "renderer publishes logical focus authority without offscreen rectangles");
+        const auto pendingDeep = lazy.PrepareCollections(snapshot, L"item.90", bounds, options, {1, 1000000});
+        Check(pendingDeep.status == CollectionPreparationStatus::Pending,
+            "a distant target has a distinct pending preparation state");
+        const auto retainedAfterPending = draw(lazy, snapshot, L"item.0");
+        Near(retainedAfterPending.scrollOffsets.at(L"items"), initial.scrollOffsets.at(L"items"),
+            "unfinished target preparation cannot publish its scroll position");
+        Check(lazy.PrepareCollections(snapshot, L"item.0", bounds, options, {0, 1000}).status == CollectionPreparationStatus::Failed,
+            "invalid preparation budget fails without replacing committed content");
+        if (content == 0 && !grid && !horizontal && scale == 1) {
+            auto incoming = snapshot;
+            ++incoming.sequence;
+            incoming.root.collectionResetGeneration = 8;
+            incoming.root.children.front().baseStyle[L"height"] = Length(112);
+            bool incomingReady{};
+            for (int slice = 0; slice < 128; ++slice) {
+                const auto preparing = lazy.PrepareCollections(incoming, L"item.0", bounds, options, {1, 1000000});
+                Check(preparing.status != CollectionPreparationStatus::Failed && preparing.newMeasurements <= 1,
+                    "replacement preparation stays bounded while old scene is still rendered");
+                const auto oldScene = draw(lazy, snapshot, L"item.0");
+                Near(oldScene.elementRects.at(L"item.0").height, initial.elementRects.at(L"item.0").height,
+                    "prepared incoming measurements cannot replace old scene geometry");
+                if (preparing.status == CollectionPreparationStatus::Ready) { incomingReady = true; break; }
+            }
+            Check(incomingReady, "old-scene rendering does not starve incoming preparation");
+            const auto admitted = draw(lazy, incoming, L"item.0");
+            Near(admitted.elementRects.at(L"item.0").height, 112, "ready replacement publishes matching measurements");
+            (void)lazy.PrepareCollections(snapshot, L"item.90", bounds, options, {1, 1});
+            lazy.CancelCollectionPreparation();
+            const auto afterCancel = draw(lazy, incoming, L"item.0");
+            Near(afterCancel.scrollOffsets.at(L"items"), admitted.scrollOffsets.at(L"items"),
+                "cancelled preparation preserves committed viewport");
+            (void)draw(lazy, snapshot, L"item.0");
+        }
         options.realizeElementId = L"item.90";
         options.suppressFocusedDescendantFollow = true;
         const auto revealed = draw(lazy, snapshot, L"item.0");

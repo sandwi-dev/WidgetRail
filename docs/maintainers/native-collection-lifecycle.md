@@ -128,7 +128,18 @@ Playnite Browse grids and regular YouTube Music rows now use these declarations;
 music rows keep a cache per retained section with explicit immutable render inputs.
 Grouped Home shelves and empty-state content keep their generic layout.
 
-Remaining delivery includes frame-budgeted scheduling and
+`DeclarativeRenderer::PrepareCollections` now provides host-thread work slices
+bounded by new item measurements and elapsed time. Protected/visible demand precedes
+optional buffered items inside each collection. An indivisible item can overrun the
+time budget; at least one new item is allowed to make progress. Pending is distinct
+from failure. Only measurement caches survive a slice: committed scroll, geometry,
+focus presentation and pixels remain unchanged. Source/context proofs revalidate
+reuse on changed requests; explicit cancellation and widget retirement release it.
+The host must call this before beginning paint and retain the prior admitted scene
+until ready. This API is component-tested but not yet wired to host frame scheduling
+or atomic input admission; synchronous Render remains the current host path.
+
+Remaining delivery includes host frame-budgeted scheduling and
 resource protection, broader provider-window/scale/scroll validation, and adoption
 in other suitable widgets. The initial realization path
 still rebuilds the small outer layout on collection updates/scroll; localized
