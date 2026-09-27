@@ -135,9 +135,22 @@ time budget; at least one new item is allowed to make progress. Pending is disti
 from failure. Only measurement caches survive a slice: committed scroll, geometry,
 focus presentation and pixels remain unchanged. Source/context proofs revalidate
 reuse on changed requests; explicit cancellation and widget retirement release it.
-The host must call this before beginning paint and retain the prior admitted scene
-until ready. This API is component-tested but not yet wired to host frame scheduling
-or atomic input admission; synchronous Render remains the current host path.
+The host calls this before beginning paint and retains the prior admitted scene
+until ready. Session completions can opt into a preparation hold: validated
+candidates stay outside Snapshot/Presentation, retaining the existing transport
+admission lock and old input/UIA authority. Approval re-enters normal admission
+validation with exact request/generation. Retry, lifecycle change and retirement
+discard obsolete candidates; staged candidates count toward the bounded queue.
+Main and pinned snapshot replacements use timer slices and shared render constraints.
+Hidden/non-presented snapshots need no visual preparation. Genuine preparation
+failure uses the existing synchronous diagnostic path; Pending never becomes a
+worker error. Production pinned-owner tests preserve old snapshot/focus/offset
+through multiple slices before admitting a replacement. The session tests cover
+old authority, coalesced refresh, stale approval, retry and lifecycle cancellation.
+
+Scroll-only demand, directional/group focus and the final paint/device transaction
+still need scheduling/admission integration; synchronous Render remains their
+fallback. A newly ready snapshot is not proof of successful D2D EndDraw/presentation.
 
 Remaining delivery includes host frame-budgeted scheduling and
 resource protection, broader provider-window/scale/scroll validation, and adoption

@@ -16,10 +16,12 @@ fixtures match eager visible geometry/content pixels at three widths and 100%/12
 scale, excluding estimated scrollbar thumbs. Native/managed gates cover margins,
 pixel-phase stability, anchors, resets and renderer failure rollback.
 
-A bounded preparation API now preserves committed geometry while returning explicit
-Ready/Pending/Failed states; cancellation and rendering an older scene during
-preparation are tested. Host scheduling/admission integration, broader cursor and
-lifecycle validation, and further widget adoption remain. WIDGE-294–298 have not
+A bounded preparation API preserves committed geometry with explicit Ready/Pending/
+Failed states. Incoming main/pinned snapshots now prepare in host timer slices
+before session admission; old input/UIA authority remains current meanwhile.
+Renderer, session retry/lifecycle and production pinned-owner tests pass.
+Scroll/focus preparation scheduling, broader cursor/lifecycle validation, and
+further widget adoption remain. WIDGE-294–298 have not
 started. No live-overlay performance improvement is claimed. Details:
 [collection lifecycle](native-collection-lifecycle.md).
 

@@ -2089,6 +2089,27 @@ int main() {
                 "UIA realization passes through host queue and renderer to visible geometry");
             Check(realization.focusedElementId() == priorFocus && realization.TakeInputRequests().empty(),
                 "UIA realization neither changes controller focus nor dispatches widget actions");
+            auto replacement = admission.snapshot;
+            replacement.sequence = 2;
+            for (auto& item : replacement.root.children[0].children) item.text += L" changed";
+            bool replacementReady{};
+            std::size_t slices{};
+            for (; slices < 128; ++slices) {
+                const auto prepared = realization.PrepareSnapshot(admission.widgetId, admission.runtimeGeneration,
+                    replacement, {}, false, {1, 1000000});
+                Check(prepared.status != widgetrail::CollectionPreparationStatus::Failed && prepared.newMeasurements <= 1,
+                    "pinned candidate preparation obeys item budget");
+                Check(realization.PaintTraceForTesting().snapshotSequence == 1 && realization.focusedElementId() == priorFocus &&
+                    realization.ScrollOffsetForTesting(L"pin.scroll") == offset,
+                    "pinned preparation preserves admitted scene, focus and viewport");
+                if (prepared.status == widgetrail::CollectionPreparationStatus::Ready) { replacementReady = true; break; }
+            }
+            Check(replacementReady && slices > 0, "pinned preparation completes across multiple slices");
+            Check(realization.UpdateSnapshot(admission.widgetId, admission.runtimeGeneration, replacement),
+                "prepared pinned replacement admits through the existing owner");
+            UpdateWindow(realization.window());
+            Check(realization.PaintTraceForTesting().snapshotSequence == 2 && realization.focusedElementId() == priorFocus,
+                "pinned replacement publishes only after preparation and admission");
             Check(realization.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin), "UIA realization surface tears down");
             realization.Dispose();
             std::error_code realizationCleanup;

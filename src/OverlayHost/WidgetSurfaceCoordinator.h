@@ -205,6 +205,10 @@ public:
         std::wstring& error,
         std::optional<std::filesystem::path> placementPath = std::nullopt);
     [[nodiscard]] bool Pin(WidgetSurfaceAdmission admission, std::wstring& error);
+    [[nodiscard]] CollectionPreparationResult PrepareSnapshot(
+        std::wstring_view widgetId, std::wstring_view runtimeGeneration,
+        const WidgetSnapshot& snapshot, const std::vector<PinnedLayoutOption>& layouts,
+        bool compactMediaSessionAvailable, CollectionPreparationBudget budget = {});
     [[nodiscard]] bool UpdateSnapshot(
         std::wstring_view widgetId,
         std::wstring_view runtimeGeneration,
@@ -374,6 +378,8 @@ public:
     }
 
 private:
+    [[nodiscard]] DeclarativeRenderOptions RenderOptions(float widthDip, float heightDip, float dpiScale) const;
+    [[nodiscard]] static declarative::Rect ContentViewport(float widthDip, float heightDip, bool compactMedia, bool adjustmentActive);
     static LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
     [[nodiscard]] bool CreateWindowForAdmission(std::wstring& error);

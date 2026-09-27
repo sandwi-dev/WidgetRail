@@ -727,7 +727,7 @@ private:
     std::unordered_map<std::wstring, CollectionRenderState> collections_;
     std::unordered_map<std::wstring, CollectionRenderState> preparingCollections_;
     std::wstring preparingInstance_, preparingScope_;
-    std::uint64_t preparingSequence_{};
+    long long preparingSequence_{};
     struct IncrementalNodeState final {
         NativeRenderStyle baseStyle;
         NativeStyleContext styleContext;

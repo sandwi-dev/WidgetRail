@@ -642,8 +642,13 @@ void StalledSessionDoesNotBlockHostOrNeighborIntent() {
     }
     bridge.changed.notify_all();
     const auto events = WaitEvents(coordinator, [](const auto& value) {
+        // Independent completions may arrive in successive UI drains. Wait
+        // for both owners rather than assuming one completion batch.
         return std::any_of(value.begin(), value.end(), [](const auto& event) {
             return event.widgetId == L"slow" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        }) && std::any_of(value.begin(), value.end(), [](const auto& event) {
+            return event.widgetId == L"fast" &&
                    event.kind == WidgetSessionEventKind::SnapshotAdmitted;
         });
     });
@@ -2737,7 +2742,83 @@ void PresentationCoalescingPreservesAuthority() {
     assert(!TryCoalescePresentationEvents(first, second));
 }
 
+void PreparedAdmissionRetainsTheCommittedCheckpoint() {
+    FakeBridge bridge;
+    bridge.catalog = {Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1")};
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 1);
+    auto operations = bridge.Operations();
+    operations.deferPresentationAdmission = true;
+    WidgetSessionCoordinator coordinator(std::move(operations));
+    assert(coordinator.EstablishCatalog());
+    const auto waitFor = [&](const WidgetSessionEventKind kind) {
+        return WaitEvents(coordinator, [&](const auto& events) {
+            return std::ranges::any_of(events, [&](const auto& event) { return event.kind == kind; });
+        });
+    };
+    coordinator.SetLifecycleTargets({{L"alpha", WidgetLifecycleState::Interactive}});
+    (void)waitFor(WidgetSessionEventKind::SnapshotAwaitingPreparation);
+    auto pending = coordinator.PendingPresentationPreparation(L"alpha");
+    assert(pending && pending->snapshot->sequence == 1 && !coordinator.Snapshot(L"alpha"));
+    assert(coordinator.PendingRequestCount() == 1);
+    assert(!coordinator.ApprovePresentationPreparation(L"alpha", pending->requestId + 1, pending->generation));
+    assert(coordinator.ApprovePresentationPreparation(L"alpha", pending->requestId, pending->generation));
+    assert(!coordinator.Snapshot(L"alpha"));
+    (void)waitFor(WidgetSessionEventKind::SnapshotAdmitted);
+    assert(coordinator.Snapshot(L"alpha")->sequence == 1);
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 2);
+    }
+    assert(coordinator.RequestSnapshot(L"alpha", true));
+    (void)waitFor(WidgetSessionEventKind::SnapshotAwaitingPreparation);
+    pending = coordinator.PendingPresentationPreparation(L"alpha");
+    assert(pending && pending->snapshot->sequence == 2);
+    assert(coordinator.Snapshot(L"alpha")->sequence == 1);
+    assert(coordinator.Presentation(L"alpha").HasCommittedViewAuthority(WidgetCommittedViewUse::Interaction));
+    assert(!coordinator.Failure(L"alpha") && coordinator.TakeEvents().empty());
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 3);
+    }
+    (void)coordinator.RequestSnapshot(L"alpha");
+    assert(coordinator.PendingPresentationPreparation(L"alpha")->requestId == pending->requestId);
+    assert(coordinator.ApprovePresentationPreparation(L"alpha", pending->requestId, pending->generation));
+    (void)waitFor(WidgetSessionEventKind::SnapshotAwaitingPreparation);
+    assert(coordinator.Snapshot(L"alpha")->sequence == 2);
+    pending = coordinator.PendingPresentationPreparation(L"alpha");
+    assert(pending && pending->snapshot->sequence == 3);
+    const auto cancelledRequest = pending->requestId, cancelledGeneration = pending->generation;
+    coordinator.SetLifecycleTargets({{L"alpha", WidgetLifecycleState::Background}});
+    assert(!coordinator.PendingPresentationPreparation(L"alpha"));
+    assert(!coordinator.ApprovePresentationPreparation(L"alpha", cancelledRequest, cancelledGeneration));
+    (void)waitFor(WidgetSessionEventKind::SnapshotAwaitingPreparation);
+    pending = coordinator.PendingPresentationPreparation(L"alpha");
+    assert(pending && pending->requestId != cancelledRequest && pending->lifecycle == WidgetLifecycleState::Background);
+    assert(coordinator.Snapshot(L"alpha")->sequence == 2 && !coordinator.Failure(L"alpha"));
+    assert(coordinator.ApprovePresentationPreparation(L"alpha", pending->requestId, pending->generation));
+    (void)waitFor(WidgetSessionEventKind::SnapshotAdmitted);
+    assert(coordinator.Snapshot(L"alpha")->sequence == 3);
+    coordinator.SetLifecycleTargets({{L"alpha", WidgetLifecycleState::Interactive}});
+    (void)waitFor(WidgetSessionEventKind::LifecycleChanged);
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 4);
+    }
+    assert(coordinator.RequestSnapshot(L"alpha"));
+    (void)waitFor(WidgetSessionEventKind::SnapshotAwaitingPreparation);
+    const auto obsolete = *coordinator.PendingPresentationPreparation(L"alpha");
+    assert(coordinator.RequestSnapshot(L"alpha", true));
+    assert(!coordinator.ApprovePresentationPreparation(L"alpha", obsolete.requestId, obsolete.generation));
+    (void)waitFor(WidgetSessionEventKind::SnapshotAwaitingPreparation);
+    pending = coordinator.PendingPresentationPreparation(L"alpha");
+    assert(pending && pending->requestId != obsolete.requestId && pending->generation != obsolete.generation);
+    assert(coordinator.ApprovePresentationPreparation(L"alpha", pending->requestId, pending->generation));
+    (void)waitFor(WidgetSessionEventKind::SnapshotAdmitted);
+    assert(coordinator.Snapshot(L"alpha")->sequence == 4 && coordinator.PendingRequestCount() == 0);
+}
+
 int main() {
+    PreparedAdmissionRetainsTheCommittedCheckpoint();
     PresentationCoalescingPreservesAuthority();
     CatalogReplacementAndLastGoodSnapshot();
     StaleCompletionAndProtocolFailure();
@@ -2771,5 +2852,5 @@ int main() {
     VirtualWindowReplacementOwnsMutationAndUnknownPosition();
     VirtualWindowFreshSessionRequiresReplacement();
     VirtualWindowErrorAndRetryKeepForwardAuthority();
-    std::cout << "WidgetSessionCoordinatorTests passed (32 scenarios)\n";
+    std::cout << "WidgetSessionCoordinatorTests passed (33 scenarios)\n";
 }

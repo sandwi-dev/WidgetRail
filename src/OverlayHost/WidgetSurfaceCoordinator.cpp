@@ -312,6 +312,35 @@ bool WidgetSurfaceCoordinator::Pin(
     return true;
 }
 
+CollectionPreparationResult WidgetSurfaceCoordinator::PrepareSnapshot(
+    const std::wstring_view widgetIdValue, const std::wstring_view runtimeGenerationValue,
+    const WidgetSnapshot& snapshot, const std::vector<PinnedLayoutOption>& layouts,
+    const bool compactMediaSessionAvailable, const CollectionPreparationBudget budget) {
+    if (!pinned() || widgetIdValue != admission_->widgetId || runtimeGenerationValue != admission_->runtimeGeneration ||
+        snapshot.instanceId != admission_->instanceId || !EnsureGraphicsResources()) return {};
+    const auto nextLayouts = BuildLayoutOptions(admission_->initialContentWidthDip, admission_->initialContentHeightDip,
+        layouts, snapshot, compactMediaSessionAvailable, admission_->fullWidgetPinningSupported);
+    if (!nextLayouts) return {};
+    if (nextLayouts->empty()) return {CollectionPreparationStatus::Ready}; // Ordinary admission retires this pin.
+    const auto selected = std::ranges::find_if(*nextLayouts, [&](const auto& layout) { return layout.id == SelectedLayoutId(); });
+    if (compactMediaPresentation() && selected == nextLayouts->end()) return {CollectionPreparationStatus::Ready};
+    const auto& nextLayout = selected == nextLayouts->end() ? nextLayouts->front() : *selected;
+    const auto& nextSnapshot = nextLayout.projection ? *nextLayout.projection : snapshot;
+    RECT client{};
+    if (!GetClientRect(window_, &client)) return {};
+    const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+    const float width = static_cast<float>(client.right - client.left) / scale;
+    const float height = static_cast<float>(client.bottom - client.top) / scale;
+    auto options = RenderOptions(width, height, scale);
+    const auto focus = input::FindNodeInInputScope(nextSnapshot, focusedElementId_, nextSnapshot.activeInputScopeId)
+        ? focusedElementId_ : nextSnapshot.initialFocusId;
+    options.suppressFocusedDescendantFollow = freeScroll_.Evaluate(
+        {admission_->widgetId, &nextSnapshot, admission_->runtimeGeneration, admission_->presentationGeneration, false}, focus).followSuppressed;
+    return renderer_->PrepareCollections(nextSnapshot, controllerFocused_ ? std::wstring_view{focus} : std::wstring_view{},
+        ContentViewport(width, height, nextLayout.kind == PinnedLayoutOption::Kind::CompactMedia,
+            placementSession_.has_value() || opacityPreviewOriginal_.has_value()), options, budget);
+}
+
 bool WidgetSurfaceCoordinator::UpdateSnapshot(
     const std::wstring_view widgetIdValue,
     const std::wstring_view runtimeGenerationValue,
@@ -2631,6 +2660,34 @@ bool WidgetSurfaceCoordinator::EnsureGraphicsResources() {
     return true;
 }
 
+DeclarativeRenderOptions WidgetSurfaceCoordinator::RenderOptions(
+    const float widthDip, const float heightDip, const float dpiScale) const {
+    DeclarativeRenderOptions options;
+    options.pixelScale = dpiScale;
+    options.collectAccessibility = ResolveSurfacePresentationPolicy(policy_.interactionMode()).exposeInteractiveSemantics;
+    options.responsiveViewport = {widthDip, heightDip};
+    options.surfaceBackground = NativeColor{22.0F / 255.0F, 33.0F / 255.0F, 46.0F / 255.0F, 1.0F};
+    options.accessibility.reducedMotion = true;
+    options.animationTimestampMilliseconds = GetTickCount64();
+    options.artworkWidgetId = admission_->widgetId;
+    options.sizeArtworkToDisplay = true;
+    options.artworkRuntimeGeneration = admission_->runtimeGeneration;
+    options.artworkPresentationGeneration = admission_->presentationGeneration;
+    options.packageContentDigest = admission_->packageContentDigest;
+    options.packageIconAssets = admission_->packageIconAssets;
+    options.artworkAuthorityId = admission_->widgetId + L"\x1f" + admission_->runtimeGeneration + L"\x1f" + admission_->presentationGeneration;
+    return options;
+}
+
+declarative::Rect WidgetSurfaceCoordinator::ContentViewport(
+    const float widthDip, const float heightDip, const bool compactMedia, const bool adjustmentActive) {
+    return compactMedia && !adjustmentActive
+        ? declarative::Rect{kPinnedBorderDip, kPinnedBorderDip,
+              std::max(1.0F, widthDip - kPinnedBorderDip * 2.0F), std::max(1.0F, heightDip - kPinnedBorderDip * 2.0F)}
+        : declarative::Rect{kSideInsetDip, kChromeHeightDip,
+              std::max(1.0F, widthDip - kSideInsetDip * 2.0F), std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip)};
+}
+
 void WidgetSurfaceCoordinator::Paint() {
     ++workCounters_.paintMessages;
     PAINTSTRUCT paint{};
@@ -2708,14 +2765,7 @@ void WidgetSurfaceCoordinator::Paint() {
                         widthDip - kSideInsetDip, 31.0F),
             secondaryBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
     }
-    DeclarativeRenderOptions options;
-    options.pixelScale = dpiScale;
-    options.collectAccessibility = ResolveSurfacePresentationPolicy(
-        policy_.interactionMode()).exposeInteractiveSemantics;
-    options.responsiveViewport = {widthDip, heightDip};
-    options.surfaceBackground = NativeColor{22.0F / 255.0F, 33.0F / 255.0F, 46.0F / 255.0F, 1.0F};
-    options.accessibility.reducedMotion = true;
-    options.animationTimestampMilliseconds = GetTickCount64();
+    auto options = RenderOptions(widthDip, heightDip, dpiScale);
     const auto& selectedSnapshot = SelectedSnapshot();
     auto sliderPresentation = sliderInteraction_.PrepareRenderPresentation(
         selectedSnapshot,
@@ -2728,15 +2778,6 @@ void WidgetSurfaceCoordinator::Paint() {
         sliderPresentation.pressedElementId;
     options.activeSliderElementId =
         sliderPresentation.activeSliderElementId;
-    options.artworkWidgetId = admission_->widgetId;
-    options.sizeArtworkToDisplay = true;
-    options.artworkRuntimeGeneration = admission_->runtimeGeneration;
-    options.artworkPresentationGeneration = admission_->presentationGeneration;
-    options.packageContentDigest = admission_->packageContentDigest;
-    options.packageIconAssets = admission_->packageIconAssets;
-    options.artworkAuthorityId = admission_->widgetId + L"\x1f" +
-        admission_->runtimeGeneration + L"\x1f" +
-        admission_->presentationGeneration;
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     lastArtworkRuntimeGenerationForTesting_ = options.artworkRuntimeGeneration;
     lastArtworkPresentationGenerationForTesting_ =
@@ -2766,15 +2807,7 @@ void WidgetSurfaceCoordinator::Paint() {
             options.suppressFocusedDescendantFollow = true;
         } else pendingAccessibilityRealization_.reset();
     }
-    const declarative::Rect viewport = compactMedia && !showHostSetupChrome
-        ? declarative::Rect{
-              kPinnedBorderDip, kPinnedBorderDip,
-              std::max(1.0F, widthDip - kPinnedBorderDip * 2.0F),
-              std::max(1.0F, heightDip - kPinnedBorderDip * 2.0F)}
-        : declarative::Rect{
-              kSideInsetDip, kChromeHeightDip,
-              std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
-              std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip)};
+    const auto viewport = ContentViewport(widthDip, heightDip, compactMedia, adjustmentActive);
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     lastContentViewportForTesting_ = viewport;
 #endif

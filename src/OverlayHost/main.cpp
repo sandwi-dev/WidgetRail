@@ -106,6 +106,7 @@ constexpr UINT_PTR kDeveloperInspectorTimer = 21;
 constexpr UINT_PTR kCompositionRecoveryTimer = 22;
 constexpr UINT_PTR kWindowPreviewTimer = 20;
 constexpr UINT_PTR kControllerOpenShortcutTimer = 10;
+constexpr UINT_PTR kCollectionPreparationTimer = 23;
 constexpr UINT kVisibleControllerTimerMilliseconds = 15;
 constexpr UINT kPlatformEventMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
@@ -743,6 +744,7 @@ public:
                   },
                   [this] { return bridge_.bridgeSessionGeneration(); },
                   widgetrail::CompareWidgetSnapshots,
+                  true,
               },
               [this] {
                   if (window_)
@@ -2620,6 +2622,9 @@ private:
             } else if (wParam == kZOrderSettleTimer) {
                 KillTimer(window_, kZOrderSettleTimer);
                 ReassertOverlayZOrder();
+            } else if (wParam == kCollectionPreparationTimer) {
+                KillTimer(window_, kCollectionPreparationTimer);
+                PumpCollectionPreparation();
             } else if (wParam == kCatalogRetryTimer) {
                 KillTimer(window_, kCatalogRetryTimer);
                 bridge_.RetryWidgetCatalogChangedRevision();
@@ -6953,6 +6958,10 @@ private:
 
     void ProcessWidgetSessionEvents() {
         for (auto& event : sessions_.TakeEvents()) {
+            if (event.kind == widgetrail::WidgetSessionEventKind::SnapshotAwaitingPreparation) {
+                SetTimer(window_, kCollectionPreparationTimer, 1, nullptr);
+                continue;
+            }
             if (event.kind ==
                     widgetrail::WidgetSessionEventKind::BridgeSessionReplaced &&
                 event.catalog) {
@@ -7248,6 +7257,53 @@ private:
                     event.correlationId, event.widgetId, true, GetTickCount64());
             }
         }
+    }
+
+    void PumpCollectionPreparation() {
+        const auto started = std::chrono::steady_clock::now();
+        bool pendingWork{};
+        for (const auto& descriptor : sessions_.descriptors()) {
+            const auto pending = sessions_.PendingPresentationPreparation(descriptor.id);
+            if (!pending) continue;
+            if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(3)) {
+                pendingWork = true;
+                continue;
+            }
+            widgetrail::CollectionPreparationResult preparation{widgetrail::CollectionPreparationStatus::Ready};
+            const auto& snapshot = *pending->snapshot;
+            if (pinnedSurfaceCoordinator_.pinned() && pinnedSurfaceCoordinator_.widgetId() == descriptor.id) {
+                const auto mediaKey = CurrentEmbeddedMediaSessionKey(descriptor.id);
+                const auto* media = mediaKey ? mediaSessions_.Find(*mediaKey) : nullptr;
+                preparation = pinnedSurfaceCoordinator_.PrepareSnapshot(descriptor.id, descriptor.runtimeGeneration,
+                    snapshot, ResolvePinnedLayouts(snapshot), media && media->authority && media->coordinator);
+            } else if (state_.surface() == widgetrail::Surface::Widget && state_.activeWidget() == descriptor.id && declarativeRenderer_) {
+                const auto target = DesiredWidgetSurfaceTarget(&snapshot);
+                const auto extent = DesiredContentPanelExtentDip(&snapshot);
+                const auto geometry = compositionSurface_.available()
+                    ? widgetrail::ComputePanelLocalSurfaceGeometry(static_cast<float>(extent.widthDip), static_cast<float>(extent.heightDip))
+                    : widgetrail::ComputeOverlaySurfaceGeometry(target.windowWidthDip, target.windowHeightDip,
+                        target.panelWidthDip, target.panelHeightDip);
+                if (geometry) {
+                    const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
+                        (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
+                    auto options = WidgetRenderOptions(descriptor.id, &descriptor, *geometry, scale);
+                    const auto focus = interactionSession_.FocusRestoreCandidate(descriptor.id, snapshot);
+                    const widgetrail::input::WidgetInteractionAuthority authority{
+                        descriptor.id, &snapshot, descriptor.runtimeGeneration, descriptor.presentationGeneration, false};
+                    options.suppressFocusedDescendantFollow = interactionSession_.EvaluateFreeScrollAuthority(authority).followSuppressed;
+                    preparation = declarativeRenderer_->PrepareCollections(snapshot, focus,
+                        {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options);
+                }
+            }
+            if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) {
+                pendingWork = true;
+                continue;
+            }
+            // A genuine preparation error takes the existing synchronous render
+            // diagnostic path. Pending work never becomes a worker/runtime error.
+            (void)sessions_.ApprovePresentationPreparation(descriptor.id, pending->requestId, pending->generation);
+        }
+        if (pendingWork) SetTimer(window_, kCollectionPreparationTimer, 16, nullptr);
     }
 
     std::wstring_view DisplayWidgetName(const std::wstring_view id) const noexcept {
@@ -8194,6 +8250,7 @@ private:
     }
 
     void HideOverlay() {
+        if (declarativeRenderer_) declarativeRenderer_->CancelCollectionPreparation();
         ResetWindowPreviews();
         visibleSessionStartedAt_ = 0;
         foregroundAcquisitionFeedback_.Hide();
@@ -8790,8 +8847,9 @@ private:
         return widgetrail::WidgetSurfaceRequest{widgetrail::WidgetSurfaceMode::Compact};
     }
 
-    [[nodiscard]] widgetrail::ResolvedWidgetSurface DesiredWidgetSurfaceTarget() const {
-        const auto request = CurrentWidgetSurfaceRequest();
+    [[nodiscard]] widgetrail::ResolvedWidgetSurface DesiredWidgetSurfaceTarget(
+        const widgetrail::WidgetSnapshot* candidate = nullptr) const {
+        const auto request = candidate ? WidgetSurfaceRequestForSnapshot(*candidate) : CurrentWidgetSurfaceRequest();
         if (!request ||
             (request->widthMode == widgetrail::WidgetSurfaceAxisMode::Preferred &&
              request->heightMode == widgetrail::WidgetSurfaceAxisMode::Preferred)) {
@@ -8840,8 +8898,8 @@ private:
                 : CurrentTextScale(),
         };
 
-        const widgetrail::WidgetSnapshot* measurementSnapshot{};
-        if (state_.surface() == widgetrail::Surface::Widget) {
+        const widgetrail::WidgetSnapshot* measurementSnapshot{candidate};
+        if (!candidate && state_.surface() == widgetrail::Surface::Widget) {
             const auto* admitted = SnapshotFor(state_.activeWidget());
             const auto presentation = sessions_.Presentation(state_.activeWidget());
             measurementSnapshot = admitted
@@ -8934,8 +8992,8 @@ private:
     }
 
     [[nodiscard]] widgetrail::OverlayPresentationExtent
-    DesiredContentPanelExtentDip() const {
-        const auto target = DesiredWidgetSurfaceTarget();
+    DesiredContentPanelExtentDip(const widgetrail::WidgetSnapshot* candidate = nullptr) const {
+        const auto target = DesiredWidgetSurfaceTarget(candidate);
         const auto shellGeometry = widgetrail::ComputeOverlaySurfaceGeometry(
             target.windowWidthDip, target.windowHeightDip,
             target.panelWidthDip, target.panelHeightDip);
@@ -18482,6 +18540,29 @@ private:
                     : widgetrail::shell::OuterChromeBoundary::ColorKeyAliased);
     }
 
+    [[nodiscard]] widgetrail::DeclarativeRenderOptions WidgetRenderOptions(
+        const std::wstring_view widgetId, const widgetrail::WidgetDescriptor* descriptor,
+        const widgetrail::OverlaySurfaceGeometry& geometry, const float physicalPixelsPerDip) const {
+        widgetrail::DeclarativeRenderOptions options;
+        options.pixelScale = physicalPixelsPerDip;
+        options.responsiveViewport = {geometry.panelWidth, geometry.panelHeight};
+        options.surfaceBackground = effectivePanelBackground_;
+        const float inset = std::max(0.0F, geometry.widgetViewportX - geometry.panelX);
+        options.surfaceCornerRadiusPx = std::max(0.0F, panelCornerRadius_ - inset);
+        if (appearanceState_.current()) options.accessibility = CurrentAccessibilityPolicy();
+        options.artworkWidgetId = widgetId;
+        options.sizeArtworkToDisplay = true;
+        if (descriptor) {
+            options.artworkRuntimeGeneration = descriptor->runtimeGeneration;
+            options.artworkPresentationGeneration = descriptor->presentationGeneration;
+            options.packageContentDigest = descriptor->packageContentDigest;
+            options.packageIconAssets = descriptor->iconAssets;
+            options.artworkAuthorityId = std::wstring{widgetId} + L"\x1f" +
+                descriptor->runtimeGeneration + L"\x1f" + descriptor->presentationGeneration;
+        }
+        return options;
+    }
+
     void DrawWidget(
         const float width,
         const float height,
@@ -18646,8 +18727,7 @@ private:
                     ? CurrentAccessibilityPolicy()
                     : widgetrail::NativeAccessibilityPolicy{};
                 const auto presentationTime = GetTickCount64();
-                widgetrail::DeclarativeRenderOptions options;
-                options.pixelScale = physicalPixelsPerDip;
+                auto options = WidgetRenderOptions(renderedWidget, descriptor, *geometry, physicalPixelsPerDip);
                 if (windowPreviewInstance_ != snapshot->instanceId) {
                     ResetWindowPreviews();
                     windowPreviewInstance_ = snapshot->instanceId;
@@ -18661,27 +18741,7 @@ private:
                         return Microsoft::WRL::ComPtr<ID2D1Bitmap1>{};
                     return windowPreviews_.Bitmap(target, id);
                 };
-                options.responsiveViewport = widgetrail::declarative::Size{
-                    geometry->panelWidth,
-                    geometry->panelHeight,
-                };
-                options.surfaceBackground = effectivePanelBackground_;
-                const float panelContentInset = std::max(
-                    0.0F, geometry->widgetViewportX - panelLeft);
-                options.surfaceCornerRadiusPx = std::max(
-                    0.0F, panelCornerRadius_ - panelContentInset);
-                if (appearanceState_.current())
-                    options.accessibility = accessibilityPolicy;
                 options.animationTimestampMilliseconds = presentationTime;
-                options.artworkWidgetId = std::wstring{renderedWidget};
-                options.sizeArtworkToDisplay = true;
-                if (descriptor) {
-                    options.artworkRuntimeGeneration = descriptor->runtimeGeneration;
-                    options.artworkPresentationGeneration =
-                        descriptor->presentationGeneration;
-                    options.packageContentDigest = descriptor->packageContentDigest;
-                    options.packageIconAssets = descriptor->iconAssets;
-                }
                 options.compositorBackgroundAvailable =
                     compositionSurface_.available() && !inertRetainedSnapshot;
                 options.compositorWidgetTransitions = layer == CompositionPaintLayer::Content &&
@@ -18698,12 +18758,6 @@ private:
                         : widgetrail::animation::ModalStyle::None;
                 }
                 options.retainedCompositorBackground = lastWidgetRenderResult_.compositorBackground;
-                if (descriptor) {
-                    options.artworkAuthorityId =
-                        std::wstring{renderedWidget} + L"\x1f" +
-                        descriptor->runtimeGeneration + L"\x1f" +
-                        descriptor->presentationGeneration;
-                }
                 const bool matchingFreeScrollBinding =
                     interactionSession_.freeScrollBinding() &&
                     (freeScrollDecision.disposition ==
