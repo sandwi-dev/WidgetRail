@@ -2155,6 +2155,40 @@ int main(int argc, char** argv) {
     budget.Observe(8000); budget.Observe(8000);
     Check(budget.Available(20000, 0, 2778, false) == 0, "expensive work initially yields on a high-refresh display");
     Check(budget.Available(120000, 0, 2778, false) > 0, "aged indivisible work cannot starve on a high-refresh display");
+    for (const std::uint64_t period : {2778, 4166, 8333, 16667}) {
+        for (std::uint64_t phase = 0; phase < period; phase += 37) {
+            widgetrail::PreparationFrameBudget past, future;
+            const auto now = period * 10 + phase;
+            Check(past.Available(now, period * 8, period, false) ==
+                future.Available(now, period * 12, period, false),
+                "past and future DWM references produce the same cadence budget");
+        }
+        widgetrail::PreparationFrameBudget edge;
+        const auto now = period * 10;
+        Check(edge.Available(now, now + 1, period, false) == 0,
+            "future vblank immediately ahead reserves the deadline margin");
+        Check(edge.Available(now, now + period, period, false) > 0,
+            "exact future cadence boundary allows the new frame");
+        Check(edge.Available(now, now + 1, period, true) == 0,
+            "paint priority is preserved for future timing");
+    }
+    widgetrail::PreparationFrameBudget fallback;
+    Check(fallback.Available(0, 0, 0, false) == 1000, "missing timing uses bounded fallback");
+    fallback.Observe(8000);
+    Check(fallback.Available(0, 0, 0, false) == 0,
+        "fallback honors observed cost even when the clock starts at zero");
+    Check(fallback.Available(99999, 0, 0, false) == 0, "fallback does not prematurely promote expensive work");
+    Check(fallback.Available(100000, 0, 0, false) == 1000, "fallback eventually promotes aged work");
+    Check(fallback.Available(100001, 0, 0, true) == 0, "aged fallback never precedes pending paint");
+    Check(fallback.Available(1, 0, 0, false) == 0, "clock rollback restarts the starvation interval");
+    widgetrail::PreparationFrameBudget futureCost;
+    futureCost.Observe(8000);
+    Check(futureCost.Available(10000, 12500, 10000, false) == 0,
+        "future timing honors measured cost instead of falling back");
+    Check(futureCost.Available(110000, 112500, 10000, false) == 1000,
+        "future timing preserves aged-work promotion");
+    Check(futureCost.Available(110001, 110002, 10000, false) == 0,
+        "aged work cannot spend the deadline reserve");
     CheckFocusFadeCompositor(false, 1, true, widgetrail::animation::FocusStyle::Settle);
     CheckFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckControllerGlyphs(d2d.Get(), wic.Get());

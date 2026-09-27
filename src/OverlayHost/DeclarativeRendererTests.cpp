@@ -1,6 +1,7 @@
 #include "ControllerGuideVisual.h"
 #include "PopupMenuVisual.h"
 #include "DeclarativeRenderer.h"
+#include "WidgetRenderMotionPolicy.h"
 #include "NativeIcons.h"
 #include "RemoteImageCache.h"
 
@@ -8430,6 +8431,53 @@ void CollectionRealizationMatchesEagerGeometry() {
         DeclarativeRenderOptions options;
         options.pixelScale = scale; options.accessibility.reducedMotion = true;
         Rect bounds{0, 0, 600, 240};
+        if (!grid && !horizontal && content == 0 && scale == 1.0F) {
+            // Construct preparation and paint options independently through the
+            // actual host policy, including its conservative backend cases.
+            for (int scenario = 0; scenario < 9; ++scenario) {
+                DeclarativeRenderer host(d2d.Get(), write.Get(), nullptr);
+                auto candidate = snapshot;
+                widgetrail::PlatformAppearance appearance;
+                appearance.sectionAnimation = L"paging";
+                appearance.widgetAnimationSpeed = 1.25;
+                appearance.animateWidgetModals = scenario != 3;
+                if (scenario == 2) candidate.embeddedMediaSession.emplace();
+                auto prepareOptions = options;
+                widgetrail::ApplyWidgetRenderMotionPolicy(prepareOptions, &appearance, candidate, scenario != 1);
+                Check(prepareOptions.compositorWidgetTransitions == (scenario != 1 && scenario != 2),
+                    "host policy preserves conservative and embedded-media rendering");
+                Check(host.PrepareCollections(candidate, L"item.0", bounds, prepareOptions, {1024, 1000000}).status ==
+                    CollectionPreparationStatus::Ready, "host-policy collection preparation completes");
+                auto paintOptions = options;
+                if (scenario == 4) appearance.widgetAnimationSpeed = 1.5;
+                widgetrail::ApplyWidgetRenderMotionPolicy(paintOptions, &appearance, candidate, scenario != 1);
+                auto paintBounds = bounds;
+                if (scenario == 5) paintBounds.width -= 1;
+                if (scenario == 6) ++candidate.sequence;
+                if (scenario == 8) paintOptions.suppressFocusedDescendantFollow = true;
+                target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0));
+                const auto painted = host.Render(target.Get(), candidate,
+                    scenario == 7 ? L"item.1" : L"item.0", paintBounds, paintOptions);
+                ok(target->EndDraw());
+                Check(painted.succeeded, "host-policy preparation can be painted");
+                Check(painted.timing.reusedCollectionPreparation == (scenario < 4),
+                    "matching host options reuse preparation; settings, viewport, source, focus and scroll policy changes reject it");
+                if (scenario < 4) {
+                    std::vector<BYTE> preparedPixels(width * height * 4), rebuiltPixels(preparedPixels.size());
+                    ok(bitmap->CopyPixels(nullptr, width * 4, static_cast<UINT>(preparedPixels.size()), preparedPixels.data()));
+                    DeclarativeRenderer reference(d2d.Get(), write.Get(), nullptr);
+                    Check(reference.PrepareCollections(candidate, L"item.0", bounds, paintOptions, {1024, 1000000}).status ==
+                        CollectionPreparationStatus::Ready, "host-policy pixel reference warms identical measurements");
+                    paintOptions.disablePreparedCollectionFrameForTesting = true;
+                    target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0));
+                    const auto rebuilt = reference.Render(target.Get(), candidate, L"item.0", bounds, paintOptions);
+                    ok(target->EndDraw());
+                    ok(bitmap->CopyPixels(nullptr, width * 4, static_cast<UINT>(rebuiltPixels.size()), rebuiltPixels.data()));
+                    Check(rebuilt.succeeded && !rebuilt.timing.reusedCollectionPreparation && preparedPixels == rebuiltPixels,
+                        "host-policy frame adoption matches rebuilding pixel for pixel");
+                }
+            }
+        }
         const auto draw = [&](DeclarativeRenderer& renderer, const WidgetSnapshot& document, const wchar_t* focus) {
             target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0));
             auto result = renderer.Render(target.Get(), document, focus, bounds, options);
