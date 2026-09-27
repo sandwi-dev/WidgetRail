@@ -25,6 +25,8 @@ distance. Incoming focus-group targets are prepared before admission, and UIA re
 use bounded timer slices without moving focus. Renderer progress/rollback and pinned
 host tests pass. Final paint/device publication, broader cursor/lifecycle validation,
 and further widget adoption remain.
+Draw-failure hardening now gates interaction and preserves unseen accessibility
+reveals until a successful replacement; pinned injected-failure tests pass.
 WIDGE-294–298 have not
 started. No live-overlay performance improvement is claimed. Details:
 [collection lifecycle](native-collection-lifecycle.md).

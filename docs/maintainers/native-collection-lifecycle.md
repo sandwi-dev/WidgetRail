@@ -176,6 +176,15 @@ Final paint/device transactions still need audit/integration. A newly ready snap
 or focus target is not proof of successful D2D EndDraw/presentation. Existing focus
 settlement remains synchronous after the relevant collection measurements are ready.
 
+The draw-failure audit adds a fail-closed recovery gate: failed main/pinned frames
+retire interactive geometry and accessibility, and unseen UIA reveals are consumed
+only after successful EndDraw/composition submission. Pinned recovery is bounded to
+three timer retries; later explicit invalidations may retry. Injected E_FAIL and
+D2DERR_RECREATE_TARGET tests confirm the original reveal survives and only a successful
+replacement exposes geometry. This does not yet make every renderer cache and focus
+mutation a transaction with physical presentation; that broader publication work
+remains open.
+
 Remaining delivery includes host frame-budgeted scheduling and
 resource protection, broader provider-window/scale/scroll validation, and adoption
 in other suitable widgets. The initial realization path

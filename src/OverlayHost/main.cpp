@@ -7815,6 +7815,7 @@ private:
                 std::to_wstring(GetLastError()));
             return false;
         }
+        CompleteWidgetFramePublication();
         if (frames.contentRendererWork &&
             *frames.contentRendererWork != widgetrail::IncrementalPresentationWork::NoRaster)
             widgetContextMenuPixelsPending_ = frames.widgetContextMenuPainted;
@@ -12816,6 +12817,7 @@ private:
 
     const widgetrail::WidgetSnapshot* InteractionSnapshotFor(
         const std::wstring_view widgetId) const noexcept {
+        if (widgetFramePublicationFailed_ && widgetId == state_.activeWidget()) return nullptr;
         const auto presentation = sessions_.Presentation(widgetId);
         if (!presentation.HasCommittedViewAuthority(
                 widgetrail::WidgetCommittedViewUse::Interaction))
@@ -13381,8 +13383,8 @@ private:
         }
     }
 
-    void ClearAccessibilityTree() noexcept {
-        pendingAccessibilityRealization_.reset();
+    void ClearAccessibilityTree(const bool preservePendingRealization = false) noexcept {
+        if (!preservePendingRealization) pendingAccessibilityRealization_.reset();
         accessibilityTree_ = {};
         widgetAccessibilityTree_ = {};
         accessibilityProvider_.Clear();
@@ -17682,7 +17684,28 @@ private:
         return true;
     }
 
+    void BlockWidgetFramePublication() {
+        widgetFramePublicationFailed_ = true;
+        paintedAccessibilityRealization_.reset();
+        // Provider publication is retired, but an unseen reveal remains a
+        // pending intent until a successful replacement paint acknowledges it.
+        ClearAccessibilityTree(true);
+    }
+
+    void CompleteWidgetFramePublication() {
+        if (lastWidgetRenderResult_.succeeded && committedWidgetVisualState_)
+            widgetFramePublicationFailed_ = false;
+        if (paintedAccessibilityRealization_ && pendingAccessibilityRealization_ &&
+            paintedAccessibilityRealization_->widgetId == pendingAccessibilityRealization_->widgetId &&
+            paintedAccessibilityRealization_->runtimeGeneration == pendingAccessibilityRealization_->runtimeGeneration &&
+            paintedAccessibilityRealization_->snapshotSequence == pendingAccessibilityRealization_->snapshotSequence &&
+            paintedAccessibilityRealization_->nodeId == pendingAccessibilityRealization_->nodeId)
+            pendingAccessibilityRealization_.reset();
+        paintedAccessibilityRealization_.reset();
+    }
+
     void DisableCompositionFallback(const std::wstring_view reason) {
+        BlockWidgetFramePublication();
         const auto fallbackAnchor = fixedChromeAnchor_;
         const auto removedReason = compositionSurface_.graphicsDevice()
             ? compositionSurface_.graphicsDevice()->GetDeviceRemovedReason() : S_OK;
@@ -17920,6 +17943,7 @@ private:
             state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
                 : state_.selectedWidget());
+        CompleteWidgetFramePublication();
         if (frames.overlayFullscreenGeometry) {
             const auto& fullscreen = *frames.overlayFullscreenGeometry;
             const HRESULT mediaResult = ReconcileEmbeddedMediaPresentation(
@@ -18073,9 +18097,11 @@ private:
 
         const HRESULT result = renderTarget_->EndDraw();
         if (result == D2DERR_RECREATE_TARGET) {
+            BlockWidgetFramePublication();
             DiscardGraphicsResources();
             ReprimeOpenAfterRenderTargetLoss();
         } else if (SUCCEEDED(result)) {
+            CompleteWidgetFramePublication();
             if (performanceCountersActive_) ++performanceSuccessfulFrames_;
             AppendFallbackPresentationCheckpoint();
             pendingWidgetPresentationImpact_.reset();
@@ -18083,6 +18109,8 @@ private:
             activeContentRenderPlan_.reset();
             BeginOpenAfterSuccessfulPaint();
             ReconcileCommittedEmbeddedMediaSurface();
+        } else {
+            DisableCompositionFallback(L"fallback EndDraw failed");
         }
         EndPaint(window_, &paint);
     }
@@ -18863,7 +18891,7 @@ private:
                          widgetrail::input::FreeScrollAuthorityDisposition::Current ||
                      freeScrollDecision.disposition ==
                          widgetrail::input::FreeScrollAuthorityDisposition::Retained);
-                if (interactionSession_.freeScrollBinding() &&
+                if (!widgetFramePublicationFailed_ && interactionSession_.freeScrollBinding() &&
                     renderedWidget == state_.activeWidget() &&
                     freeScrollDecision.disposition ==
                         widgetrail::input::FreeScrollAuthorityDisposition::Replaced) {
@@ -19015,6 +19043,7 @@ private:
                     }
                 }
                 currentCompositionRenderTiming_ = result.timing;
+                if (!result.succeeded) widgetFramePublicationFailed_ = true;
                 if (options.suppressFocusedDescendantFollow &&
                     interactionSession_.freeScrollBinding()) {
                     const auto& binding = *interactionSession_.freeScrollBinding();
@@ -19351,12 +19380,12 @@ private:
                     ClearAccessibilityTree();
                 } else if (accessibilityActive_ && !result.succeeded) {
                     lastWidgetRenderResult_ = result;
-                    ClearAccessibilityTree();
+                    ClearAccessibilityTree(true);
                 } else {
                     lastWidgetRenderResult_ = result;
                 }
                 if (!inertRetainedSnapshot && result.succeeded) {
-                    if (!options.realizeElementId.empty()) pendingAccessibilityRealization_.reset();
+                    if (!options.realizeElementId.empty()) paintedAccessibilityRealization_ = pendingAccessibilityRealization_;
                     ReconcileWindowPreviews(*snapshot, result);
                     ReconcileScrollPaginationPrefetch(
                         widget, semanticSnapshot, result);
@@ -19658,6 +19687,8 @@ private:
         pendingActionFailureAccessibilityProjection_;
     std::optional<widgetrail::accessibility::ActionRequest> pendingAccessibilityRealization_;
     bool accessibilityRealizationReady_{};
+    std::optional<widgetrail::accessibility::ActionRequest> paintedAccessibilityRealization_;
+    bool widgetFramePublicationFailed_{};
     std::optional<std::pair<std::uint64_t, std::wstring>> preparedCandidateGroupFocus_;
     bool awaitingSuccessfulOpenPaint_{};
     ULONGLONG nextOpenPaintRetryAt_{};

@@ -289,6 +289,8 @@ public:
     [[nodiscard]] bool CancelOpacity() noexcept;
     void ReconcileDisplayEnvironment() noexcept;
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    void FailNextEndDrawForTesting(HRESULT failure) noexcept { nextEndDrawFailureForTesting_ = failure; }
+    [[nodiscard]] bool AccessibilityRevealPendingForTesting() const noexcept { return pendingAccessibilityRealization_.has_value(); }
     void ReconcileDisplayEnvironmentForTesting(
         const std::vector<MonitorWorkArea>& monitors) noexcept;
     [[nodiscard]] std::optional<POINT> PointerPointForTesting(
@@ -461,10 +463,13 @@ private:
     unsigned int opacityPercent_{kMaximumOpacityPercent};
     std::optional<unsigned int> opacityPreviewOriginal_;
     RenderResult lastRenderResult_;
+    bool framePublicationFailed_{};
+    unsigned int frameRecoveryAttempts_{};
     std::optional<CommittedMediaViewportPresentation> committedMediaViewport_;
     std::uint64_t nextCommittedFrameGeneration_{1};
     bool mediaViewportGeometryDirty_{true};
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    HRESULT nextEndDrawFailureForTesting_{S_OK};
     bool lastHostCanvasTransparentForTesting_{};
     bool lastHostChromeVisibleForTesting_{};
     bool lastHostBorderVisibleForTesting_{};

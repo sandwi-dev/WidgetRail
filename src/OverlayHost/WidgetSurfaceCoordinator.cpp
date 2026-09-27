@@ -25,6 +25,7 @@ constexpr UINT kAccessibilityActionMessage = WM_APP + 0x316;
 constexpr UINT_PTR kBackgroundSurfaceAnimationTimer = 1;
 constexpr UINT_PTR kFocusRealizationTimer = 2;
 constexpr UINT_PTR kAccessibilityRealizationTimer = 3;
+constexpr UINT_PTR kFrameRecoveryTimer = 4;
 constexpr UINT kBackgroundSurfaceAnimationTimerMilliseconds = 15;
 constexpr float kChromeHeightDip = surface_geometry::kPinnedChromeHeightDip;
 constexpr float kSideInsetDip = surface_geometry::kPinnedSideInsetDip;
@@ -595,7 +596,7 @@ bool WidgetSurfaceCoordinator::ExitControllerFocus() noexcept {
 bool WidgetSurfaceCoordinator::MoveControllerFocus(
     const input::NavigationDirection direction,
     const bool sliderAdjustmentEligible) {
-    if (!controllerFocused_ || direction == input::NavigationDirection::None ||
+    if (framePublicationFailed_ || !controllerFocused_ || direction == input::NavigationDirection::None ||
         !pinned()) return false;
     if (compactMediaPresentation()) return true;
     const auto& snapshot = SelectedSnapshot();
@@ -1030,7 +1031,7 @@ bool WidgetSurfaceCoordinator::QueueResolvedInput(
     std::optional<input::WidgetInteractionActionRequest> sliderActionRequest,
     std::optional<input::WidgetInteractionActionRequest> selectActionRequest) {
     sliderInteraction_.focusRealization().Clear();
-    if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
+    if (framePublicationFailed_ || !pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
         nodeId.empty() || protocolButton.empty()) return false;
     if (inputRequests_.size() >= kMaximumPendingInputRequests) {
         if (sliderActionRequest) {
@@ -1754,6 +1755,8 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     // reentrant reconciliation must observe pinned() == false before that work
     // begins rather than rediscovering the retiring HWND as a valid endpoint.
     tearingDown_ = true;
+    framePublicationFailed_ = false;
+    frameRecoveryAttempts_ = 0;
     lastStopReason_ = reason;
     if (beforeWindowRetirement_) beforeWindowRetirement_(reason);
     if (selectedLayoutIndex_ < layoutOptions_.size())
@@ -2331,6 +2334,11 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
     case WM_ERASEBKGND:
         return 1;
     case WM_TIMER:
+        if (wParam == kFrameRecoveryTimer) {
+            KillTimer(window_, kFrameRecoveryTimer);
+            if (pinned()) RequestPaint();
+            return 0;
+        }
         if (wParam == kAccessibilityRealizationTimer) {
             KillTimer(window_, kAccessibilityRealizationTimer);
             PumpAccessibilityRealization();
@@ -2432,6 +2440,7 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
             continue;
         if (request.domain == accessibility::ElementDomain::Widget ||
             request.domain == accessibility::ElementDomain::WidgetOption) {
+            if (framePublicationFailed_) continue;
             if (request.hostAction == accessibility::HostAction::ExpandSelect) {
                 if (request.kind != accessibility::ActionKind::Invoke ||
                     request.hostTargetId != request.nodeId ||
@@ -2872,7 +2881,7 @@ void WidgetSurfaceCoordinator::Paint() {
     const auto freeScrollDecision =
         input::SurfaceInteractionTransactions::EvaluateFreeScroll(
             freeScroll_, authority, focusedElementId_, lastRenderResult_);
-    if (freeScroll_.binding() &&
+    if (!framePublicationFailed_ && freeScroll_.binding() &&
         freeScrollDecision.disposition !=
             input::FreeScrollAuthorityDisposition::Current) {
         ClearFreeScroll();
@@ -2917,7 +2926,6 @@ void WidgetSurfaceCoordinator::Paint() {
                 : std::wstring_view{},
             viewport, options);
     }
-    if (renderResult.succeeded && !options.realizeElementId.empty()) pendingAccessibilityRealization_.reset();
     if (!compactMedia && sliderInteraction_.selectPopup()) {
         const auto* node = input::FindNodeInInputScope(
             selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId);
@@ -3024,13 +3032,34 @@ void WidgetSurfaceCoordinator::Paint() {
             adjustmentActive ? chromeBrush_.Get() : textBrush_.Get(),
             adjustmentActive ? kAdjustBorderDip : kPinnedBorderDip);
     }
-    const HRESULT result = renderTarget_->EndDraw();
+    HRESULT result = renderTarget_->EndDraw();
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    if (FAILED(nextEndDrawFailureForTesting_)) result = std::exchange(nextEndDrawFailureForTesting_, S_OK);
+#endif
     bool mediaViewportReconciled{};
     bool backgroundSurfaceDiagnosticsQueued{};
     bool pinnedResizeDiagnosticsQueued{};
     input::ScrollPaginationSessionOutcome paginationOutcome;
-    if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
-    else if (SUCCEEDED(result)) {
+    if (FAILED(result) || !renderResult.succeeded) {
+        framePublicationFailed_ = true;
+        lastRenderResult_ = {};
+        lastRenderResult_.diagnostics = renderResult.diagnostics;
+        if (FAILED(result)) lastRenderResult_.diagnostics.push_back({RenderDiagnosticSeverity::Error,
+            L"", L"end_draw_failed", std::to_wstring(static_cast<unsigned long>(result))});
+        inputRequests_.clear();
+        accessibilityProvider_.Clear();
+        committedMediaViewport_.reset();
+        mediaViewportGeometryDirty_ = true;
+        ReleaseGraphicsResources();
+        // Do not consume a reveal on failed pixels. A bounded retry rebuilds
+        // the same request; later input/image updates can retry after exhaustion.
+        if (frameRecoveryAttempts_ < 3)
+            SetTimer(window_, kFrameRecoveryTimer, 16U << frameRecoveryAttempts_++, nullptr);
+    } else {
+        framePublicationFailed_ = false;
+        frameRecoveryAttempts_ = 0;
+        KillTimer(window_, kFrameRecoveryTimer);
+        if (!options.realizeElementId.empty()) pendingAccessibilityRealization_.reset();
         constexpr std::size_t maximumPendingDiagnostics = 16;
         for (const auto& diagnostic : renderResult.diagnostics) {
             if (!diagnostic.code.starts_with(L"background_crossfade_")) continue;
@@ -3117,8 +3146,6 @@ void WidgetSurfaceCoordinator::Paint() {
             }
         }
         PublishAccessibility();
-    } else {
-        KillTimer(window_, kBackgroundSurfaceAnimationTimer);
     }
     EndPaint(window_, &paint);
     const bool paginationNotification =
@@ -3132,7 +3159,7 @@ void WidgetSurfaceCoordinator::Paint() {
 }
 
 void WidgetSurfaceCoordinator::PublishAccessibility() {
-    if (!pinned()) return;
+    if (!pinned() || framePublicationFailed_) return;
     const auto& snapshot = SelectedSnapshot();
     RECT client{};
     GetClientRect(window_, &client);

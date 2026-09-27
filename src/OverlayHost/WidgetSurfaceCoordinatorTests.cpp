@@ -381,6 +381,7 @@ widgetrail::WidgetSnapshot SliderSnapshot(
     slider.kind = L"slider";
     slider.accessibilityLabel = L"Provider-neutral pinned slider";
     slider.valueChangedActionId = L"fixture-slider.changed";
+    slider.hasProgress = true;
     slider.hasSliderRange = true;
     slider.minimum = 0.0;
     slider.maximum = 100.0;
@@ -577,6 +578,7 @@ widgetrail::WidgetSnapshot MediaTimelineSnapshot(
         slider.accessibilityLabel = L"Playback position";
         slider.valueChangedActionId = L"media.seek";
         slider.focusPersistenceId = L"media.transport.seek";
+        slider.hasProgress = true;
         slider.hasSliderRange = true;
         slider.minimum = 0.0;
         slider.maximum = 213000.0;
@@ -1174,6 +1176,7 @@ int main() {
                       SliderSnapshot(3, 45.0)),
                   "authoritative successor acknowledges the pinned slider value");
             UpdateWindow(slider.window());
+            CheckRenderSucceeded(slider.PaintTraceForTesting(), "updated slider frame paints before accepting navigation");
             Check(slider.HandleFocusedSliderModeButton(L"a", 1'100),
                   "A exits active pinned slider adjustment");
             Check(slider.MoveControllerFocus(
@@ -2127,6 +2130,32 @@ int main() {
             UpdateWindow(realization.window());
             Check(realization.focusedElementId() == L"pin.scroll.item.40" && realization.TakeInputRequests().empty(),
                 "pinned timer admits prepared directional focus without dispatching an action");
+            for (const auto failure : {E_FAIL, D2DERR_RECREATE_TARGET}) {
+                const auto revealId = failure == E_FAIL ? L"widget:pin.scroll.item.60" : L"widget:pin.scroll.item.20";
+                auto offscreenItem = FindAutomationId(realization.window(), revealId);
+                ComPtr<IUIAutomationScrollItemPattern> reveal;
+                Check(offscreenItem && SUCCEEDED(offscreenItem->GetCurrentPatternAs(UIA_ScrollItemPatternId,
+                    IID_PPV_ARGS(reveal.GetAddressOf()))) && reveal, "draw-failure fixture finds a revealable item");
+                realization.FailNextEndDrawForTesting(failure);
+                Check(SUCCEEDED(reveal->ScrollIntoView()), "draw-failure fixture requests reveal");
+                const auto failDeadline = GetTickCount64() + 2000;
+                while (realization.PaintTraceForTesting().declarativeRenderSucceeded && GetTickCount64() < failDeadline) {
+                    PumpPendingMessages(); Sleep(1);
+                }
+                Check(!realization.PaintTraceForTesting().declarativeRenderSucceeded &&
+                    realization.AccessibilityRevealPendingForTesting() && realization.focusedElementId() == L"pin.scroll.item.40",
+                    "failed EndDraw retires published geometry without consuming the unseen reveal or moving focus");
+                Check(!realization.MoveControllerFocus(widgetrail::input::NavigationDirection::Down, true) &&
+                    realization.TakeInputRequests().empty(), "failed frame cannot route interaction through stale geometry");
+                InvalidateRect(realization.window(), nullptr, FALSE);
+                UpdateWindow(realization.window());
+                auto recoveredItem = FindAutomationId(realization.window(), revealId);
+                BOOL recoveredOffscreen = TRUE;
+                Check(realization.PaintTraceForTesting().declarativeRenderSucceeded &&
+                    !realization.AccessibilityRevealPendingForTesting() && recoveredItem &&
+                    SUCCEEDED(recoveredItem->get_CurrentIsOffscreen(&recoveredOffscreen)) && !recoveredOffscreen,
+                    "successful replacement frame completes the original accessibility reveal");
+            }
             Check(realization.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin), "UIA realization surface tears down");
             realization.Dispose();
             std::error_code realizationCleanup;
