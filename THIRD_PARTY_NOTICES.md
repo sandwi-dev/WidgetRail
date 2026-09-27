@@ -3,6 +3,15 @@
 WidgetRail includes or uses the third-party components below. These retain
 their own licenses; the project license does not replace these terms.
 
+## WinUIEx 2.9.3 (WinUI frontend)
+
+Project: https://github.com/dotMorten/WinUIEx
+
+Copyright (c) 2021 Morten Nielsen. License: MIT.
+The complete license is retained in `third_party/WinUIEx/LICENSE` and copied into
+the WinUI frontend output. The pinned NuGet library supplies transparent window
+backdrop integration; its source is not copied into WidgetRail.
+
 ## Kenney Input Prompts 1.5A
 
 Created by Kenney, available at https://kenney.nl/assets/input-prompts

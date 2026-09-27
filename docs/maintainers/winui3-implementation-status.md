@@ -21,16 +21,26 @@ are untouched. Migration is active and incomplete.
   membership, independent of realization. Its 15 tests pass. This policy component
   does not implement layout, spatial navigation, painting, or animation.
 - Feature inventory: [contracts](winui-feature-contracts.md).
+- Replaced custom backdrop code with pinned WinUIEx 2.9.3. Basic transparency
+  now passes a controlled red/green desktop-background test at three margin
+  coordinates. WinUIEx owns the native DWM/message integration rather than a
+  copied implementation in our frontend. License retained and packaged.
+- The shared script `scripts/Test-WinUiTransparency.ps1` records pixel results and
+  screenshots. A real pointer click reached Close after the test. Test PID 22148
+  exited; no validation frontend is intentionally left running.
+- [Native binding inventory](winui-platform-binding.md) identifies existing ABI
+  reuse and the separate View+Menu observer that must also be exported/preserved.
 
 ## Failed / unproven gates
 
-The top-level Window plus transparent SystemBackdrop brush does NOT yet show the
+The original top-level Window plus transparent SystemBackdrop brush did NOT show the
 desktop through the empty margins. Both window and desktop-composited screenshots
 show opaque margins. Extending content into the titlebar did not correct this.
 An external diagnostic DwmExtendFrameIntoClientArea(-1) call returned success but
 made the window white; it was not added to production. A subsequent external style
 probe did not establish transparency either. Test window PID 11060 was closed
-through Shell.Close afterward. Do not count an API success as alpha proof.
+through Shell.Close afterward. This attempt was replaced, not hidden behind a
+passing build. WinUIEx then passed the basic alpha proof described above.
 
 The first winapp launch with --output-appx-directory failed registration (missing
 appxmanifest.xml); default project-mode deployment succeeded. Revisit a supported
@@ -41,16 +51,15 @@ Raw debug-process sample was roughly 98 MB private / 142 MB working set; this is
 empty-shell observation, NOT a full-product memory comparison or acceptance result.
 
 No controller routing, real widget transport, lazy collection port, native media,
-pinned projection, screenshot alpha comparison, or frame-latency gate has passed.
+pinned projection, transparent-area input policy, or frame-latency gate has passed.
 Do not claim migration readiness based on shell build or source-selection tests.
 
 ## Next actions
 
-1. Resolve true supported desktop transparency. Inspect version-matched WinUI/native
-   hosting behavior; consider documented DesktopWindowXamlSource/native hosting if
-   necessary. Prove pixels against a controlled changing background and separately
-   prove pointer delivery/hit testing. No undocumented root surgery or unstable
-   CompositionEngine opt-in as a workaround.
+1. Extend basic desktop-alpha proof to input regions, native media, pinning,
+   monitor/DPI changes and recovery. The shell still has a visible DWM outline;
+   finish intended chrome policy through supported window APIs. No undocumented
+   root surgery or unstable CompositionEngine opt-in as a workaround.
 2. Connect existing platform ABI input/activation rather than rewrite it. Prefer
    framework APIs whenever they remove custom code.
 3. Connect immutable source selection to real page/item metadata and shared WinUI

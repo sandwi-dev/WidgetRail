@@ -10,10 +10,13 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
-        SystemBackdrop = new TransparentWindowBackdrop();
+        SystemBackdrop = new WinUIEx.TransparentTintBackdrop();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
             presenter.SetBorderAndTitleBar(false, false);
+            presenter.IsResizable = false;
+            presenter.IsMaximizable = false;
+            presenter.IsMinimizable = false;
         }
         // Initial validation window uses physical pixels. Production placement
         // will come from the existing platform adapter's monitor/DPI policy.

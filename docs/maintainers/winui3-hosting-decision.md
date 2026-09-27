@@ -5,10 +5,23 @@ Status: implementation direction; runtime capability proof outstanding. Research
 the current WidgetRail checkout. No window was launched for this research.
 
 Subsequent runtime checks are recorded in [implementation status](winui3-implementation-status.md).
-The window now builds and runs, but the transparent backdrop alone leaves opaque
-desktop margins. This proposed route has not passed the alpha gate.
+The transparent backdrop alone left opaque margins. The selected implementation
+now uses pinned **WinUIEx 2.9.3 TransparentTintBackdrop**, which supplies the
+documented windowing/DWM integration around WinUI. Three margin pixels followed
+both red and green controlled windows beneath the shell, and a physical pointer
+click reached the Close control. This passes basic desktop alpha, not all hosting
+gates. Media, input-region policy, device recovery and multi-monitor/DPI remain.
 
-## Immediate direction
+## Current direction
+
+Keep WinUI's top-level Window, with `WinUIEx.TransparentTintBackdrop` instead of
+maintaining our own backdrop/DWM/message-hook implementation. NuGet source commit
+`72f2975d2a237c0d7ad1113fe617d5894e66feb6`, MIT license in `third_party/WinUIEx`.
+The former `TransparentWindowBackdrop.cs` has been removed. Reproduce basic alpha
+with `scripts/Test-WinUiTransparency.ps1 -AppPid <running-shell-pid>`; evidence is
+under `artifacts/winui-shell/alpha-*`. No unstable composition engine is enabled.
+
+## Original public-API investigation (superseded implementation)
 
 Start with one C# WinUI `Window` and its `AppWindow`, with a custom transparent
 `SystemBackdrop`. Keep WinUI in charge of its HWND and composition tree. Use the
