@@ -1334,7 +1334,7 @@ void CheckWidgetAnimationPolicies() {
 
 #include "LoadingIndicatorCompositionTests.inl"
 
-void CheckWidgetCompositorPixels(const bool popupOnly = false) {
+void CheckWidgetCompositorPixels(const bool popupOnly = false, const bool orderingOnly = false) {
     using namespace widgetrail;
     Check(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)!=0,
         "pixel fixture uses physical screen coordinates");
@@ -1418,6 +1418,7 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
     DwmFlush();
     Check(GetRValue(pixel()) > 220, "initial compositor section is red");
     if (!popupOnly) {
+    if (!orderingOnly) {
     commit(makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Lime)));
     const auto movingInput = surface.MapWidgetCompositionInput({64, 64});
     Check(!std::isfinite(movingInput.x) || (movingInput.x == 64 && movingInput.y <= 64),
@@ -1463,8 +1464,13 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
     Sleep(290);
     DwmFlush();
     Check(GetBValue(pixel()) > 220, "interrupted paging converges to the latest page");
+    }
     const auto modalScene = [&] {
         auto scene = makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue));
+        // Playnite replaces its leading background raster when opening details,
+        // while retaining later siblings. A new first child must be inserted
+        // behind those retained visuals, not just ordered correctly on a cold tree.
+        scene->nodes.front().id = L"modal.background";
         WidgetCompositionNode scrim;
         scrim.id = L"modal.scrim";
         scrim.kind = WidgetCompositionKind::Scrim;
@@ -1499,6 +1505,13 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
     Sleep(290);
     DwmFlush();
     Check(GetRValue(pixel()) > 220, "modal pixels are above their backdrop");
+    const auto stableModal = surface.widgetCompositionCounters();
+    commit(modalScene());
+    DwmFlush();
+    Check(GetRValue(pixel()) > 220, "unchanged modal retains correct ordering after background replacement");
+    Check(surface.widgetCompositionCounters().visualAdds == stableModal.visualAdds &&
+              surface.widgetCompositionCounters().visualRemoves == stableModal.visualRemoves,
+          "stable modal ordering requires no visual-tree mutations");
     const auto outsideModal = surface.MapWidgetCompositionInput({18, 18});
     Check(!std::isfinite(outsideModal.x), "modal backdrop never maps input into the parent content");
     commit(makeScene(L"library", D2D1::ColorF(D2D1::ColorF::Blue)));
@@ -1515,6 +1528,11 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
     Sleep(290);
     DwmFlush();
     Check(GetRValue(pixel()) > 220, "an interrupted modal exit reopens correctly");
+    if (orderingOnly) {
+        DestroyWindow(window);
+        std::cout << "Widget modal ordering pixel checks passed.\n";
+        return;
+    }
     auto reduced = makeScene(L"home", D2D1::ColorF(D2D1::ColorF::Lime));
     reduced->reducedMotion = true;
     commit(reduced);
@@ -2100,9 +2118,11 @@ int main(int argc, char** argv) {
         CoUninitialize(); return EXIT_SUCCESS;
     }
     if (argc==2 && (std::string_view(argv[1])=="--widget-motion-pixels" ||
-                   std::string_view(argv[1])=="--popup-motion-pixels")) {
+                   std::string_view(argv[1])=="--popup-motion-pixels" ||
+                   std::string_view(argv[1])=="--widget-ordering-pixels")) {
         Check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_MULTITHREADED)),"pixel proof COM initialization");
-        CheckWidgetCompositorPixels(std::string_view(argv[1])=="--popup-motion-pixels");
+        CheckWidgetCompositorPixels(std::string_view(argv[1])=="--popup-motion-pixels",
+            std::string_view(argv[1])=="--widget-ordering-pixels");
         CoUninitialize(); return EXIT_SUCCESS;
     }
     for (const float scale : {0.75F, 1.0F, 1.25F, 1.5F, 2.0F}) {
