@@ -8,7 +8,12 @@ renderer or Skia integration benchmark has been performed.
 
 ## Implementation progress
 
-WIDGE-293–298 integrate only into `codex/native-ui-integration`; `main` stays untouched.
+WIDGE-293–299 integrate only into `codex/native-ui-integration`; `main` stays untouched.
+WIDGE-299 follows the physical scrolling reports with frame-budgeted preparation,
+retained preparation checkpoints, incremental compositor edges, and section-entry
+and loading-boundary focus corrections. Automated and compositor pixel gates pass;
+the new Release candidate awaits physical comparison. See
+[frame scheduling and validation](native-frame-scheduling.md).
 WIDGE-293 has protocol-v59 list/grid declarations, logical navigation, UIA realization,
 immutable item reuse, bounded preparation and host-acknowledged frame publication.
 Playnite, YouTube Music, Spotify and Games and Apps use the applicable contracts;
