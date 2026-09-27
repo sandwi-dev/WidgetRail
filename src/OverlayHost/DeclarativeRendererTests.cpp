@@ -9862,7 +9862,14 @@ void PlaybackPreparationWorkload(bool composition = false, bool depth = false, b
 #endif
 }
 
+#include "PageArrivalReversalProbe.inl"
+
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--page-arrival-reversal") {
+        Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "page reversal probe COM initialization");
+        const bool passed = PageArrivalReversalProbe();
+        CoUninitialize(); return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+    }
     if (argc == 2 && std::string_view(argv[1]) == "--scroll-capture-parity") {
         Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "capture parity COM initialization");
         for (float scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
