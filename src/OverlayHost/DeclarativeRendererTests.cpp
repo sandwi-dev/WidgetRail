@@ -7793,6 +7793,7 @@ void CollectionRealizationMatchesEagerGeometry() {
                 if (content == 2) {
                     item.actionSurfacePresentation = L"poster";
                     item.baseStyle[L"height"] = Length(188);
+                    item.baseStyle[L"margin"] = LengthList(L"6px");
                     item.baseStyle[L"padding"] = LengthList(L"0px");
                     item.baseStyle[L"justify"] = Keyword(L"end");
                 }
@@ -7830,6 +7831,10 @@ void CollectionRealizationMatchesEagerGeometry() {
             if (id == L"items") continue;
             const auto found = reference.elementRects.find(id);
             Check(found != reference.elementRects.end(), "realized item exists in eager reference");
+            if (std::abs(rect.x - found->second.x) > .01F || std::abs(rect.y - found->second.y) > .01F)
+                std::wcerr << L"COLLECTION-MISMATCH " << id << L" grid=" << grid << L" horizontal=" << horizontal
+                    << L" actual-offset=" << initial.scrollOffsets.at(L"items") << L" eager-offset=" << reference.scrollOffsets.at(L"items")
+                    << L" width=" << rect.width << L" eager-width=" << found->second.width << L'\n';
             Near(rect.x, found->second.x, "realized item x matches eager");
             Near(rect.y, found->second.y, "realized item y matches eager");
             Near(rect.width, found->second.width, "realized item width matches eager");
@@ -7900,11 +7905,13 @@ void CollectionRealizationMatchesEagerGeometry() {
         snapshot.root.virtualCollectionWindow = VirtualCollectionWindow{1, VirtualCollectionWindowChange::Replace,
             600, 5000, true, true, 52};
         ++snapshot.sequence;
+        options.suppressFocusedDescendantFollow = true;
         const auto positioned = draw(lazy, snapshot, L"inserted");
         Near(positioned.scrollOffsets.at(L"items"), static_cast<float>(600 / (grid ? 2 : 1) * 60),
             "known provider position starts at the admitted line, including gaps", 1.0F);
         Check(positioned.focusRects.contains(L"inserted") && !positioned.focusFollowBoundHit,
             "known provider prefix keeps first admitted item visible");
+        options.suppressFocusedDescendantFollow = false;
         snapshot.root.virtualCollectionWindow.reset();
         snapshot.root.collectionStartIndex = -1;
         if (content == 0 && !grid) {

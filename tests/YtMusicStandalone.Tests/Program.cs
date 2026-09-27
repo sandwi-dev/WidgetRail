@@ -641,11 +641,16 @@ static async Task BrowsePresentation()
     var (widget, service) = await Start();
     try
     {
+        service.PageOverride = new("Library result", [new("PL.fixture", "playlist", "Fixture playlist")]);
         await widget.OnActionAsync(new("tab.library", "test"));
-        await Until(() => Nodes(widget.Render().CreateSnapshot("ui", 1).Root).Any(n => n.Text == "Library result"));
+        await Until(() => Nodes(widget.Render().CreateSnapshot("ui", 1).Root)
+            .Any(n => n.Id == "item.0"));
         var view = widget.Render().CreateSnapshot("ui", 2);
         var toolbar = Nodes(view.Root).Single(n => n.Id == "library.toolbar");
         var scroll = Nodes(view.Root).Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal));
+        Check(scroll.CollectionLayout is { Kind: CollectionLayoutKind.List }, "Library must declare host-realized rows");
+        Check(scroll.Children.All(row => row.CollectionItemKey is not null && row.Kind == ViewNodeKind.ActionSurface),
+            "Every logical row keeps its own stable key and action surface");
         Check(!Nodes(scroll).Any(n => n.Id is "library.toolbar" or "page.heading"), "Library header moves with the list");
         Check(toolbar.Kind == ViewNodeKind.Row && toolbar.Children[0].Id == "library.filters" && toolbar.Children[1].Id == "refresh", "Refresh is not alongside the library filters");
         Check(Nodes(view.Root).Single(n => n.Id == "player.main.scroll").ShowScrollbar == false, "Player still reserves a scrollbar gutter");
@@ -656,6 +661,8 @@ static async Task BrowsePresentation()
         var headings = Nodes(widget.Render().CreateSnapshot("ui", 4).Root).Where(n => n.Id.StartsWith("section.title.", StringComparison.Ordinal)).Select(n => n.Text).ToArray();
         Check(headings.SequenceEqual(new[] { "Quick picks", "For you" }), "Home lost section order or repeated headings within a section");
         var grids = Nodes(widget.Render().CreateSnapshot("ui", 5).Root).Where(n => n.Kind == ViewNodeKind.Grid).ToArray();
+        Check(Nodes(widget.Render().CreateSnapshot("ui", 5).Root).All(n => n.CollectionLayout is null),
+            "Heterogeneous Home shelves must retain generic layout");
         Check(grids.Length == 2 && grids[0].Children.Count == 2 && grids[1].Children.Count == 1, "Home did not group posters by section");
         Check(grids.SelectMany(g => g.Children).All(n => n.ActionSurfacePresentation == ActionSurfacePresentation.Poster), "Home still uses list rows");
     }
@@ -673,6 +680,9 @@ static async Task QueueRefresh()
         service.PlaybackTick();
         var after = Nodes(widget.Render().CreateSnapshot("queue", 3).Root).Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal));
         Check(before.CollectionResetGeneration == after.CollectionResetGeneration, "Playback progress reset queue scrolling");
+        Check(before.Children.Count == after.Children.Count && before.Children.Zip(after.Children).All(pair =>
+                pair.First.CollectionItemKey == pair.Second.CollectionItemKey && ReferenceEquals(pair.First.Children, pair.Second.Children)),
+            "Playback ticks must reuse immutable row subtrees without changing their keys");
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
         service.ReplaceQueue([new("new", "song", "New queue song")]);
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);

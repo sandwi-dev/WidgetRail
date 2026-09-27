@@ -20,7 +20,12 @@ provider-window and failed-frame rollback checks. The coherent native host/runti
 build passes. UIA realization now reveals offscreen admitted items without moving
 controller focus, including a production pinned-host fixture. The immutable SDK
 item cache passes reuse, eviction and failed-capture tests (SDK 122/122).
-Scheduling, broader cursor/lifetime validation and widget adoption remain;
+Playnite Browse and regular YouTube Music rows now use the contract; music rows
+reuse immutable SDK declarations. Production-styled fixtures match eager visible
+geometry/content pixels at 620/980/1400 DIPs and 100%/125% scale (estimated scrollbar
+thumbs excluded). This exposed and fixed containing-block/margin and fractional
+pixel-phase defects. Immutable measurement sources avoid deep offscreen copies.
+Scheduling, broader cursor/lifetime validation and further widget adoption remain;
 WIDGE-294–298 have not started. No real-widget runtime
 performance improvement is claimed yet. Details:
 [collection lifecycle](native-collection-lifecycle.md).

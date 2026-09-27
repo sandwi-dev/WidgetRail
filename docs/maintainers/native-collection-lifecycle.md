@@ -124,9 +124,13 @@ and input equality. Its pure factory must receive every render input, including
 selection and availability. Failed captures do not replace the previous cache;
 provider eviction drops cached declarations independently of host realization.
 
+Playnite Browse grids and regular YouTube Music rows now use these declarations;
+music rows keep a cache per retained section with explicit immutable render inputs.
+Grouped Home shelves and empty-state content keep their generic layout.
+
 Remaining delivery includes frame-budgeted scheduling and
 resource protection, broader provider-window/scale/scroll validation, and adoption
-in Playnite grids and variable-height music rows. The initial realization path
+in other suitable widgets. The initial realization path
 still rebuilds the small outer layout on collection updates/scroll; localized
 preparation and scheduling must follow before declaring the delivery complete.
 Existing generic Scroll behavior remains available.
@@ -151,4 +155,16 @@ multiple collections, hot resize/DPI changes, known provider prefixes and failed
 frame rollback. Logical navigation tests exercise unmeasured targets and stale
 scope/query/order authority. Collection scroll state is staged with the frame and
 committed only after successful rendering. These fixtures are not a substitute
-for real-widget workload and UIA validation.
+for broader widget lifecycle validation.
+
+Production Playnite and YouTube Music fixture exports now feed
+`ScrollWorkloadProbe --compare`: eager and realized visible geometry/content pixels
+match at 620/980/1400 DIP widths and 100%/125% scale. The comparison retains themed
+painting and excludes only scrollbar tracks, whose thumbs intentionally reflect
+estimated unmeasured extent. Hidden decoration is not required to retain geometry.
+Artwork readiness is awaited before comparison. `--eager` supplies a same-build
+timing reference; these synthetic offscreen measurements are not live overlay FPS.
+The renderer measures items under a real containing block, shares immutable
+measurement dependencies between staged frames, and projects raw coordinates
+before pixel snapping. Final snapping normalizes float noise at 1/1024 physical
+pixel precision, without changing layout constraints or scroll accumulation.

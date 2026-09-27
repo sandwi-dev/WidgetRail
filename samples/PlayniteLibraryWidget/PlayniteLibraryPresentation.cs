@@ -877,11 +877,8 @@ internal static class PlayniteLibraryPresentation
         string? nearEndActionId,
         params WidgetElement[] tiles)
     {
-        var grid = UI.ResponsiveGrid(
-                "playnite-library.browse.grid", CompactPosterWidth,
-                maximumColumns: CompactPosterMaximumColumns, tiles)
-            .Classes("playnite-library-browse-grid");
-        var scroll = UI.VerticalScroll(scrollId, grid)
+        var scroll = UI.CollectionGrid(scrollId, CompactPosterWidth, 225,
+                maximumColumns: CompactPosterMaximumColumns, items: tiles)
             .Classes("playnite-library-catalog-scroll",
                 "playnite-library-browse-scroll") with
             {

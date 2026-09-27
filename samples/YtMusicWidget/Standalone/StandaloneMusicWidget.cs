@@ -24,6 +24,8 @@ public sealed partial class StandaloneMusicWidget : Widget
         public string ScrollId { get; } = "music.scroll." + id;
         public string GroupId { get; } = "music.content." + id;
         public WidgetCursorResource<BrowseEntry> Collection { get; set; } = null!;
+        public WidgetCollectionItems<BrowseRow> PresentationItems { get; } =
+            new(row => row.Entry.Key, RenderBrowseRow);
         public MusicPage Page { get; set; } = new("Home", []);
         public IReadOnlyList<MusicItem> Source { get; set; } = [];
         public BrowseEntry[] Items { get; set; } = [];

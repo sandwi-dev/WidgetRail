@@ -1018,7 +1018,7 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(libraryAction, libraryNavigation.Id));
         var browse = Snapshot(widget, 40_002);
         Assert.IsTrue(Nodes(browse.Root).Any(node =>
-            node.Id == "playnite-library.browse.grid"),
+            node.Id == PlayniteLibraryPresentation.ScrollId),
             "The Home library-navigation primary action must enter Browse.");
         await widget.OnActionAsync(new WidgetActionEvent(
             "playnite-library.search.commit", "playnite-library.search")
@@ -1958,7 +1958,7 @@ public sealed partial class PlayniteLibraryTests
                 node.Id == "playnite-library.search"));
 
             var grid = Nodes(snapshot.Root).Single(node =>
-                node.Id == "playnite-library.browse.grid");
+                node.Id == PlayniteLibraryPresentation.ScrollId);
             Assert.IsNull(grid.InitialChildFocusId,
                 "Mutable Browse results must not retain native remembered-child authority.");
 

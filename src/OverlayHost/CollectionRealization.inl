@@ -43,25 +43,43 @@ void PrepareCollectionItem(const WidgetNode& item, CollectionItemLayout& cached,
         LayoutOptions settings;
         settings.pixelScale = options.pixelScale;
         settings.fillAutoRoot = false;
-        settings.fillAutoRootWidth = !state.context.horizontal;
+        settings.fillAutoRootWidth = true;
         settings.intrinsicRootHeight = !state.context.horizontal;
-        if (state.context.horizontal && !root.height) root.height = parentHeight;
         settings.responsiveViewport = options.responsiveViewport.value_or(Size{viewport.width, viewport.height});
         const auto measure = [this](const LayoutElement& element, const declarative::MeasureConstraints& constraints) {
             return MeasureLeaf(element, constraints);
         };
+        const auto itemRoot = [&] {
+            // Measure under a real containing block. Treating the item itself
+            // as Taffy's root changes margin placement, shrink-to-fit sizing
+            // and horizontal cross-axis stretch.
+            LayoutElement containingBlock;
+            containingBlock.id = std::string(1, '\x1f') + "item-measure";
+            containingBlock.width = itemWidth;
+            if (state.context.adaptiveGrid) {
+                containingBlock.layoutMode = LayoutMode::ResponsiveGrid;
+                containingBlock.gridMinimumColumnWidth = 44;
+                containingBlock.gridMaximumColumns = 1;
+            }
+            if (state.context.horizontal) {
+                containingBlock.height = parentHeight;
+                containingBlock.direction = LayoutDirection::Row;
+                containingBlock.scrollAxis = declarative::ScrollAxis::Horizontal;
+            }
+            containingBlock.children.push_back(root);
+            return containingBlock;
+        };
         {
             PreparationTimer timer{layoutNanoseconds};
-            layout = declarative::ComputeLayout(root, {0, 0, itemWidth, parentHeight}, measure, settings);
+            layout = declarative::ComputeLayout(itemRoot(), {0, 0, itemWidth, parentHeight}, measure, settings);
         }
         result.timing.intrinsicMeasures += layout.intrinsicMeasures;
         // Preserve the same parent-relative correction semantics as the normal
         // renderer, now bounded to this item's subtree.
         root = PrepareNode(item, parentId, itemWidth, parentHeight, font, background, scope);
-        if (state.context.horizontal && !root.height) root.height = parentHeight;
         {
             PreparationTimer timer{layoutNanoseconds};
-            layout = declarative::ComputeLayout(root, {0, 0, itemWidth, parentHeight}, measure, settings);
+            layout = declarative::ComputeLayout(itemRoot(), {0, 0, itemWidth, parentHeight}, measure, settings);
         }
         result.timing.intrinsicMeasures += layout.intrinsicMeasures;
         cached.layout = layout;
@@ -94,8 +112,10 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
     // The estimate pass establishes the actual containing block. No item UI
     // is prepared under the root's guessed parent width.
     if (retainedLayoutPhase != 0 && box) {
-        const auto width = std::max(0.0F, box->contentBox.width);
-        const auto height = std::max(0.0F, box->contentBox.height);
+        // Track geometry uses unrounded constraints, just like the containing
+        // Taffy grid. Snap only after projecting into the actual pixel phase.
+        const auto width = std::max(0.0F, box->unscrolledContentBox.width);
+        const auto height = std::max(0.0F, box->unscrolledContentBox.height);
         const auto columnGap = style.gapPx().right;
         const auto columns = policy.adaptiveGrid
             ? static_cast<std::size_t>(std::clamp(std::floor(
@@ -108,7 +128,7 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
         const CollectionMeasureContext context{style, state.columnWidth, height,
             viewport.width, viewport.height, options.rootFontSizePx, options.pixelScale,
             options.accessibility.textScale, static_cast<int>(options.accessibility.minimumFontWeight), compactMode, horizontal,
-            options.playStationControls};
+            options.playStationControls, policy.adaptiveGrid};
         const auto offsetEntry = ScrollState().find(ScrollStateKey(node.id));
         double offset = offsetEntry == ScrollState().end() ? box->scrollOffset : offsetEntry->second.offset;
         const auto anchor = state.geometry.CaptureAnchor(offset - state.leadingExtent);
@@ -127,9 +147,9 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
         for (const auto& item : node.children) {
             admitted.insert(item.collectionItemKey);
             auto& cached = state.items[item.collectionItemKey];
-            if (!cached.revision || !SameCollectionMeasurement(cached.source, item)) {
+            if (!cached.revision || !cached.source || !SameCollectionMeasurement(*cached.source, item)) {
                 cached = {};
-                cached.source = item;
+                cached.source = std::make_shared<const WidgetNode>(item);
                 cached.revision = ++state.itemRevision;
             }
             descriptors.push_back({item.collectionItemKey, cached.revision, policy.estimatedItemExtent});
@@ -268,8 +288,8 @@ void AttachCollectionLayouts(declarative::LayoutResult& computed) {
         result.logicalCollections.insert_or_assign(id, std::move(logical));
         const bool horizontal = scroll->scrollAxis == declarative::ScrollAxis::Horizontal;
         const auto clip = Intersection(scroll->visibleBox, scroll->contentBox);
-        const float translatedX = scroll->unscrolledContentBox.x - scroll->contentBox.x + (horizontal ? scroll->scrollOffset : 0);
-        const float translatedY = scroll->unscrolledContentBox.y - scroll->contentBox.y + (horizontal ? 0 : scroll->scrollOffset);
+        const float translatedX = scroll->unscrolledBorderBox.x - scroll->unroundedBorderBox.x + (horizontal ? scroll->scrollOffset : 0);
+        const float translatedY = scroll->unscrolledBorderBox.y - scroll->unroundedBorderBox.y + (horizontal ? 0 : scroll->scrollOffset);
         for (const auto index : state.realized) {
             const auto& item = node->children[index];
             const auto& cached = state.items.at(item.collectionItemKey);

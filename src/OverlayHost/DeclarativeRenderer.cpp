@@ -5052,6 +5052,7 @@ struct DeclarativeRenderer::RenderPass final {
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         if (!composingScene || compositionBand < 0) {
         result.elementRects[node.id] = presented.borderBox;
+        if (const auto* box = layout.Find(NarrowStableId(node.id))) result.elementUnroundedRects[node.id] = box->unroundedBorderBox;
         result.elementVisibleRects[node.id] = presented.visibleBox;
         if (node.kind == L"actionSurface" &&
             node.actionSurfacePresentation == L"poster" &&
@@ -6501,6 +6502,7 @@ RenderResult DeclarativeRenderer::Render(
                         // Geometry probes describe the retained logical layout,
                         // including decoration that was not prepared or painted.
                         pass.result.elementRects[node.id] = box->borderBox;
+                        pass.result.elementUnroundedRects[node.id] = box->unroundedBorderBox;
                         pass.result.elementVisibleRects[node.id] = box->visibleBox;
 #endif
                     }

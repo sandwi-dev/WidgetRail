@@ -162,29 +162,17 @@ public sealed partial class StandaloneMusicWidget
                     .Classes("music-home-section"));
                 sectionTiles.Clear();
             }
+            var presentedRows = _browse.PresentationItems.Capture(entries.Select((entry, position) =>
+                new BrowseRow(entry, _kind == "home", _tab == "queue" && entry.Index == state.Index,
+                    position == 0 && !collection.Snapshot.HasBefore ? TopEntry(state) : null,
+                    state.Current is not null)).ToArray());
             for (var position = 0; position < entries.Count; position++)
             {
                 var entry = entries[position];
                 var index = entry.Index;
                 var item = entry.Item;
-                var playing = _tab == "queue" && index == state.Index;
                 var home = _kind == "home";
-                var subtitle = string.IsNullOrWhiteSpace(item.Subtitle) ? null : item.Subtitle;
-                var label = (item.Kind == "song" ? "Play " : "Open ") + item.Title + ". " + item.Subtitle;
-                var row = home
-                    ? UI.PosterTile(item.Title, Title(item.Kind), "item." + index, "item." + index,
-                        subtitle: subtitle, artwork: item.Artwork.StartsWith("https://", StringComparison.Ordinal) ? Artwork(item) : null,
-                        accessibilityLabel: label).Classes("music-home-poster")
-                    : UI.Tile(item.Title, playing ? "Now playing" : Title(item.Kind), "item." + index, "item." + index,
-                        subtitle: subtitle, artwork: Artwork(item), accessibilityLabel: label).Classes("music-track");
-                row = row.Selected(playing);
-                if (position == 0 && !collection.Snapshot.HasBefore) row = row.FocusUp(TopEntry(state));
-                // Grid navigation owns horizontal neighbours between Home posters.
-                if (!home && state.Current is not null) row = row.FocusLeft("player.main.toggle");
-                if (item.Kind is "song" or "playlist" or "album") row = row.ContextMenuShortcut(ControllerButton.Menu)
-                    .ContextAction("next." + index, "Play next");
-                if (item.Kind == "song") row = row.ContextAction("radio." + index, "Start radio");
-                var presented = collection.PresentItem(entry, row);
+                var presented = presentedRows[position];
                 if (home)
                 {
                     if (section != (string.IsNullOrWhiteSpace(item.Section) ? "Recommendations" : item.Section))
@@ -208,7 +196,9 @@ public sealed partial class StandaloneMusicWidget
                 if (_tab != "search") rows.Add(UI.Button("Search music", "tab.search", "empty.search").Classes("music-primary"));
             }
         }
-        var scroll = collection.Present(UI.VerticalScroll(_browse.ScrollId, rows.ToArray())).Classes("music-scroll");
+        var scroll = collection.Present(_kind != "home" && entries.Count > 0 && rows.Count == entries.Count
+            ? UI.CollectionList(_browse.ScrollId, 90, items: rows.ToArray())
+            : UI.VerticalScroll(_browse.ScrollId, rows.ToArray())).Classes("music-scroll");
         // Filter buttons must not replace the remembered selection inside a Library list.
         if (_kind == "library" && state.Connected)
         {
@@ -217,6 +207,31 @@ public sealed partial class StandaloneMusicWidget
         }
         content.Add(scroll);
         return UI.Stack("music.browse", content.ToArray()).Classes("music-browse");
+    }
+
+    // Every factory input is immutable and explicit, including focus neighbours
+    // and playback state. Timer/status updates can reuse unchanged declarations.
+    private sealed record BrowseRow(BrowseEntry Entry, bool Home, bool Playing, string? FocusUp, bool HasPlayer);
+
+    private static WidgetElement RenderBrowseRow(BrowseRow input)
+    {
+        var item = input.Entry.Item;
+        var index = input.Entry.Index;
+        var subtitle = string.IsNullOrWhiteSpace(item.Subtitle) ? null : item.Subtitle;
+        var label = (item.Kind == "song" ? "Play " : "Open ") + item.Title + ". " + item.Subtitle;
+        var row = input.Home
+            ? UI.PosterTile(item.Title, Title(item.Kind), "item." + index, "item." + index,
+                subtitle: subtitle, artwork: item.Artwork.StartsWith("https://", StringComparison.Ordinal) ? Artwork(item) : null,
+                accessibilityLabel: label).Classes("music-home-poster")
+            : UI.Tile(item.Title, input.Playing ? "Now playing" : Title(item.Kind), "item." + index, "item." + index,
+                subtitle: subtitle, artwork: Artwork(item), accessibilityLabel: label).Classes("music-track");
+        row = row.Selected(input.Playing);
+        if (input.FocusUp is not null) row = row.FocusUp(input.FocusUp);
+        if (!input.Home && input.HasPlayer) row = row.FocusLeft("player.main.toggle");
+        if (item.Kind is "song" or "playlist" or "album") row = row.ContextMenuShortcut(ControllerButton.Menu)
+            .ContextAction("next." + index, "Play next");
+        if (item.Kind == "song") row = row.ContextAction("radio." + index, "Start radio");
+        return row;
     }
 
     private WidgetElement RefreshControl() => _loading

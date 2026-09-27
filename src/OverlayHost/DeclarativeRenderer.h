@@ -227,6 +227,7 @@ struct RenderResult final {
     // only interactive geometry so ordinary paints do not allocate two maps
     // for every decorative and structural node.
     std::map<std::wstring, declarative::Rect, std::less<>> elementRects;
+    std::map<std::wstring, declarative::Rect, std::less<>> elementUnroundedRects;
     std::map<std::wstring, declarative::Rect, std::less<>> posterArtworkRects;
     std::map<std::wstring, declarative::Rect, std::less<>> elementVisibleRects;
     std::map<std::wstring, float, std::less<>> sliderThumbXs;
@@ -675,7 +676,9 @@ private:
     std::array<RetainedLayoutPass, 2> retainedLayout_;
     std::wstring retainedLayoutOwner_;
     struct CollectionItemLayout final {
-        WidgetNode source;
+        // Measurement dependencies are immutable between revisions. Staging a
+        // frame must not deep-copy every offscreen semantic subtree.
+        std::shared_ptr<const WidgetNode> source;
         std::uint64_t revision{};
         std::uint64_t measuredContext{};
         declarative::LayoutResult layout;
@@ -686,7 +689,7 @@ private:
         NativeRenderStyle style;
         float width{}, height{}, viewportWidth{}, viewportHeight{}, rootFont{}, pixelScale{}, textScale{};
         int minimumFontWeight{};
-        bool compact{}, horizontal{}, playStationControls{};
+        bool compact{}, horizontal{}, playStationControls{}, adaptiveGrid{};
         bool operator==(const CollectionMeasureContext&) const = default;
     };
     struct CollectionRenderState final {
