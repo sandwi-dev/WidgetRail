@@ -57,7 +57,7 @@ specific integration need.
 | Guide/View+Menu, device routing, activation, display/window APIs | Extract the relevant code behind a narrow adapter; preserve supported backend behavior |
 | `WidgetBridge`, `WidgetRuntime`, `WidgetWorkerHost`, `WidgetCatalog` | Keep service/sandbox responsibilities; remove native renderer-specific preparation |
 | `PlatformBroker`, `Windows*Provider`, `WidgetApplicationRuntime` | Preserve useful capability/provider and full-trust application behavior |
-| `WidgetProtocol`, `WidgetSdk`, presentation helpers | Version a WinUI-independent semantic UI contract; retain C# authoring and business helpers |
+| `WidgetProtocol`, `WidgetSdk`, presentation helpers | Version a supported declarative subset of WinUI; retain C# authoring and business helpers, with one thin frontend adapter for both trust levels |
 | `WidgetStyling` / WRSS | Move to semantic tokens and bounded component overrides; port accepted themes explicitly |
 | Artwork, media, capture | Preserve security/session responsibilities; select framework-compatible presentation and cache ownership |
 | Settings, credentials, private widget data | Preserve user meaning and authority; explicit reversible data migration |
@@ -124,21 +124,49 @@ engine is planned as part of the initial migration.
 
 ## SDK, presentation and interaction contracts
 
-### Safe UI declarations
+### WinUI-aligned declarations and one shared adapter
 
-Both sandboxed and full-trust workers publish bounded data and semantic actions.
-The trusted frontend maps those declarations to compiled WinUI components. Workers
-do not provide executable controls, assemblies, native handles or markup extensions.
+Both sandboxed and full-trust workers publish the same serializable, bounded UI
+declarations and semantic action IDs over the process boundary. Both use the same
+SDK, protocol and trusted frontend adapter. Full trust changes what the worker can
+access and execute; it does not provide a separate in-process UI extension path.
+Neither trust level sends live WinUI controls or executable UI code to the frontend.
+
+The SDK should closely mirror the supported WinUI control and layout model rather
+than invent a toolkit-neutral equivalent. Follow WinUI names, values and semantics
+where practical: for example, `Grid`, row/column definitions with Auto/star/fixed
+sizing, row/column spans, alignment and spacing. Arbitrary compositions of supported
+controls remain possible; arbitrary custom layout algorithms are not part of the
+worker contract. WinUI performs layout, focus traversal and virtualization.
+
+The adapter validates declarations, creates controls, assigns supported properties,
+connects semantic actions, and updates/reuses controls by stable identity. It is
+an IPC-to-control adapter, not a second layout, focus or rendering engine. Trusted
+compiled XAML supplies reusable templates and themes; dynamic widget trees can be
+assembled programmatically in C#. Widget authors do not need to write XAML or load
+WinUI in their worker process.
+
+Maintain an explicit allowlist of components and properties, with supported defaults,
+value limits, version requirements and documented differences from WinUI. Generate
+repetitive schema/property mappings and conformance cases from that allowlist where
+useful; do not automatically expose the entire WinUI API. Framework upgrades must
+not silently expand the wire contract or change its supported semantics. Include
+property-reset/removal and recycled-container tests as well as initial creation.
+
+Workers do not provide executable controls, assemblies, native handles or markup extensions.
 Do not pass widget-supplied XAML to `XamlReader.Load`; XAML is a frontend implementation
-format, not the community sandbox wire format. Full trust changes worker authority,
-not the default renderer or extension mechanism.
+format, not the widget wire format for either trust level. Callbacks, unrestricted
+bindings/reflection, resource loading and thread/platform objects are not mirrored
+merely because WinUI exposes them.
 
-Define typed components for flow containers, text/rich text, images/posters, buttons,
-sliders, selects, toggles, menus, progress, rails, text entry, virtualized collections,
-widget-local dialogs and authorized media slots. Include automation names/roles,
-error states and explicit unsupported-feature responses. Keep schema and validators
-shared in managed code where possible. Unknown component/property versions must
-fail clearly rather than silently render a broken UI.
+Use direct mappings for supported standard controls, such as `StackPanel`, `Grid`,
+`TextBlock`, `Button`, `Slider`, `ListView` and `GridView`. Add WidgetRail components
+where they provide product behavior: poster tiles, controller hints, navigation
+rails, cursor collections, widget-local dialogs and authorized media slots. These
+compose framework controls rather than define competing layout semantics. Include
+automation names/roles, error states and explicit unsupported-feature responses.
+Keep schema and validators shared in managed code where possible. Unknown
+component/property versions must fail clearly rather than silently render a broken UI.
 
 Collections expose stable keys, typed immutable item data and bounded declarative
 item templates/variants. Materialize controls on demand via trusted templates or
@@ -256,11 +284,11 @@ Each ends with a reviewable artifact, executable where applicable, and evidence.
 | WU-01: baseline and product contract | Archived pre-WIDGE-293/current builds and matching widgets; feature inventory, normalized-input replay scenarios, resource budgets | Complete repeatable baseline; no gaps in critical traces |
 | WU-02: shell and controller foundation | Pinned .NET/Windows App SDK build, WinUI window, native adapter, rail and basic settings, packaged smoke build | Real transparency/hit testing, activation/show/hide, input ownership, two controllers, DPI/monitor behavior and basic-UI memory pass |
 | WU-03: media, pinning and accessibility | WebView2, live preview and pinned window in that shell; themed dialog/menu over them; automation peers | Z-order/clipping/lifetime and device recovery pass; Narrator/NVDA/UIA work; hosting model selected |
-| WU-04: safe widget frontend and SDK | New protocol/components/templates, theme resolver, broker client and actual AppContainer widget | Malformed/stale/oversized input rejected; crash/restart and capability isolation verified; no eager UI tree per item |
+| WU-04: safe widget frontend and SDK | WinUI-aligned allowlisted declarations, thin shared adapter, WidgetRail components/templates, theme resolver and broker client | Sandboxed and full-trust workers use the same UI path; mapping/reset/recycling conformance passes; malformed/stale/oversized input rejected; crash/restart and capability isolation verified; no eager UI tree per item |
 | WU-05: Playnite end to end | Bridge-backed Home/Library, search/filter, virtualized posters, details/actions and artwork | Full-host controller/loading/modal suite and physical behavior pass; measured against pre-WIDGE-293 |
 | WU-06: music and dynamic updates | YouTube Music and Spotify, rails/lists/queue, playback and pinned views | Frequent updates, variable-height rows, artwork and playback do not reset focus or interrupt traversal |
 | WU-07: product feature completion | Games and Apps, remaining built-ins/samples, tray/guide, settings, keyboard, popup controls and gallery | Feature inventory complete across controller, pointer, keyboard, themes, UIA and error states |
-| WU-08: author and theme migration | SDK docs, examples/templates, version requirements, theme conversion diagnostics, rebuilt packages | Author can build a widget using C# declarations without host-specific focus workarounds |
+| WU-08: author and theme migration | Supported WinUI subset and differences, WidgetRail components, SDK examples/templates, version requirements, theme conversion diagnostics, rebuilt packages | Author can build a widget using C# declarations without XAML, host-specific focus workarounds or different UI contracts per trust level |
 | WU-09: qualification and cutover | Repeated comparative report, install/upgrade/rollback tests, physical acceptance | All product/resource gates pass before main/release integration |
 | WU-10: old UI retirement | Remove unused native renderer/layout/focus/preparation/animation code and associated dependencies | No production route depends on old UI; native services/media/input still pass tests |
 
@@ -377,7 +405,10 @@ schema downgrades. Do not assume same-language migration means binary compatibil
 Author documentation must explain ownership: stable item keys and generation,
 async providers, cancellation, page/collection state, local UI interaction, themes,
 modal focus, capabilities and media lifetime. Include runnable examples and a
-conformance gallery. Authors should not need XAML or access to WinUI internals.
+conformance gallery. Document direct WinUI mappings separately from WidgetRail
+components, including unsupported APIs and deliberate semantic differences. Do
+not promise toolkit neutrality or complete WinUI API parity. Authors should not
+need XAML or access to WinUI internals, regardless of the worker's trust level.
 
 Implementation stays on `codex/winui3-*` worktrees with a dedicated integration
 branch. Preserve both native comparators and evidence. Do not merge the native
