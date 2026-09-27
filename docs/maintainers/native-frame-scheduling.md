@@ -162,3 +162,9 @@ A deterministic 240 Hz workload now admits 120/120 fitting steps; the old whole-
 batch estimate admits fewer than 20 under the same opportunities. Renderer tests
 also require the reported step cost to be positive and bounded by total cost.
 Actual scrolling smoothness still requires physical verification.
+
+The subsequent [Flutter/Compose page-admission review](native-page-admission-review.md)
+adds an opt-in red regression for arrival during reversal. It exposes extra
+realization holds and a grid-prepend checkpoint/anchor failure that the existing
+green suite missed. Treat that review as the next correctness gate before further
+scheduling changes; it does not claim physical acceptance of this candidate.
