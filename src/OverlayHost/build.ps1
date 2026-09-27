@@ -8,6 +8,7 @@ param(
     [switch]$SkipTests,
     [switch]$SkipPackaging,
     [switch]$SemanticChurnTestsOnly,
+    [switch]$CollectionLayoutTestsOnly,
     [switch]$DeclarativeLayoutTestsOnly,
     [switch]$DeclarativeRendererTestsOnly,
     [string]$ScrollWorkloadFixture,
@@ -68,6 +69,7 @@ if ($WidgetSwitchFallbackAuthorityTestsOnly -and
 
 $primaryTestSelectors = @(
     [pscustomobject]@{ Name = 'SemanticChurnTestsOnly'; Selected = [bool]$SemanticChurnTestsOnly }
+    [pscustomobject]@{ Name = 'CollectionLayoutTestsOnly'; Selected = [bool]$CollectionLayoutTestsOnly }
     [pscustomobject]@{ Name = 'DeclarativeLayoutTestsOnly'; Selected = [bool]$DeclarativeLayoutTestsOnly }
     [pscustomobject]@{ Name = 'DeclarativeRendererTestsOnly'; Selected = [bool]$DeclarativeRendererTestsOnly }
     [pscustomobject]@{ Name = 'ScrollWorkloadFixture'; Selected = -not [string]::IsNullOrWhiteSpace($ScrollWorkloadFixture) }
@@ -805,6 +807,24 @@ function Invoke-SemanticChurnPerformanceTests {
     & (Join-Path $outputDirectory 'SemanticChurnPerformanceTests.exe')
     if ($LASTEXITCODE -ne 0) {
         throw "SemanticChurnPerformanceTests failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-CollectionLayoutTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'CollectionLayoutStateTests.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
+        "/Fo:$layoutTestObjectDirectory\",
+        "/Fe:$outputDirectory\CollectionLayoutStateTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "CollectionLayoutStateTests build failed with exit code $LASTEXITCODE."
+    }
+    & (Join-Path $outputDirectory 'CollectionLayoutStateTests.exe')
+    if ($LASTEXITCODE -ne 0) {
+        throw "CollectionLayoutStateTests failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -1765,6 +1785,11 @@ function Invoke-OverlayProcessOwnerTests {
     }
 }
 
+if ($CollectionLayoutTestsOnly) {
+    Invoke-CollectionLayoutTests
+    return
+}
+
 if ($SemanticChurnTestsOnly) {
     if ($SkipTests) {
         throw 'SemanticChurnTestsOnly cannot be combined with SkipTests.'
@@ -2461,6 +2486,8 @@ if (-not $SkipTests) {
     if ($LASTEXITCODE -ne 0) {
         throw "OverlayStateTests failed with exit code $LASTEXITCODE."
     }
+
+    Invoke-CollectionLayoutTests
 
     $imageTestArguments = $common + @(
         (Join-Path $projectDirectory 'RemoteImageCacheTests.cpp'),
