@@ -73,11 +73,15 @@ CompositionPaintIdentity CompositionIdentity(const WidgetCompositionNode& raster
         if (node.imageSource.empty() && node.artworkHandle.empty()) return;
         const auto source = ImageKey(node, CachedImageSize(node));
         key.Text(source);
-        auto ready = owner->imageCache_ ? owner->imageCache_->GetReadyImage(source) : nullptr;
-        // Pending/failed/previous-size fallbacks run the original demand path.
-        // Only an immutable ready image may authorize retaining its pixels.
-        if (!ready) key.cacheable = false;
-        else key.images.emplace_back(ready);
+        const auto gpu = owner->bitmaps_.find(source);
+        if (gpu != owner->bitmaps_.end() && gpu->second.contentIdentity) {
+            key.images.emplace_back(gpu->second.contentIdentity);
+        } else {
+            const auto ready = owner->imageCache_ ? owner->imageCache_->GetReadyImage(source) : nullptr;
+            // Pending/failed/previous-size fallbacks run the original demand path.
+            if (!ready || !ready->contentIdentity) key.cacheable = false;
+            else key.images.emplace_back(ready->contentIdentity);
+        }
     };
     key.Scalar(operations.size());
     for (const auto& [nodePointer, phase] : operations) {

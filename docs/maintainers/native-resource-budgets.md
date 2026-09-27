@@ -69,15 +69,53 @@ and masks. Encoded artwork payload copies follow their buffers into the worker.
 After an idle timeout under pressure, the decoder worker retires its transport
 and helper; the next request can reopen them without a poison/circuit penalty.
 
-## Remaining work
+## Realization and content identity
 
-- Finish realization-driven demand cancellation, including stale completions,
-  multiple visible/hidden/pinned owners and failed/superseded frames.
-- Audit immutable image identity independently from CPU storage retention, and
-  ensure explicit invalidation cannot reuse stale GPU/capture pixels.
-- Finish aggregate peak/steady profiles and pressure validation across scrolling,
-  replacement, modals, motion, device loss and owner retirement. Validate the
-  provisional retention target against those measurements.
+The renderer publishes committed, pending and current desired image sets separately.
+A rejected frame retains desired retry demand until superseded; old committed
+pixels stay protected until replacement. Realized adjacent candidates are bounded
+to a viewport on either side and at most 256 keys; up to eight new adjacent requests
+are admitted per successful frame, behind visible work and existing cache limits.
+
+`SetImageDemand` unions owners. Removing the last interested owner retires queued
+work and requests cancellation outside the cache lock. Workers compare the exact
+request lifetime before publishing, so even a fetcher that ignores cancellation
+cannot complete a same-key replacement. Normal decoder cancellation terminates its
+request without charging the decoder fault circuit. Dispatched bridge exchanges
+use shutdown cancellation only: they drain their acknowledgment instead of
+aborting shared pipe framing when one item leaves the viewport. Replies are
+ignored after retirement, but same-key re-admission still needs per-demand bridge
+correlation before this task is complete. Main-overlay hiding suspends
+demand without clearing logical widget state; pinned owners remain independent.
+
+Each ready image publication has a bounded shared content token. GPU copies and
+paint signatures can retain that token without retaining CPU pixels. CPU eviction
+therefore preserves valid GPU/raster reuse. Explicit cache clearing advances the
+cache epoch; renderers retire stale GPU and captured content on their next bind.
+Tokens live only with corresponding cache/frame owners; there is no permanent
+per-URL revision map.
+
+## Measurements and remaining validation
+
+Saved production-layout fixtures at 980x700 DIPs / 125% scale produced the following
+known-storage readings. Artwork is a deterministic shared 192x320 substitute, so
+these are layout/cache probes, not a measurement of a user's unique artwork set.
+
+| Fixture | Loaded items | Focus retained | Scroll retained / peak |
+|---|---:|---:|---:|
+| Playnite Library | 64 / 150 | 23.6 MiB | 28.2 MiB |
+| Spotify Tracks | 12 | 29.2 MiB | 31.7 MiB |
+| Games and Apps Library | 64 | 20.0 MiB | 22.3 MiB |
+
+Separate two-renderer scroll/replace/reorder/clip fixtures reached 47.99-102.06 MiB
+of tracked storage at 100-150% scale. After submitted scene retirement and hiding
+both owners, lowering the target to zero and reclaiming returned every tracked
+allocation to zero. This validates ownership/reclamation, not driver residency.
+The provisional 384 MiB target leaves working-set/transition overlap headroom;
+it remains a policy choice, not a measured universal minimum or a process cap.
+
+Per-demand correlation through asynchronous bridge artwork replies and final
+production host/pinned integration gates remain before WIDGE-296 closes.
 
 Known-byte accounting does not claim to measure driver residency, Direct2D's
 internal layer pool, allocator overhead or other process memory.
@@ -91,10 +129,11 @@ reader lifetime beyond eviction, copy lifetime, shared pressure with a protected
 surface reservation, visible retry and reclamation after protection is removed.
 Run the native `-UiResourceBudgetTestsOnly` and `-TrustedArtworkTestsOnly` gates.
 The latest checkpoint passes 32 core checks, the full remote-image suite and
-47,844 renderer checks and 49,458 chrome/composition checks. The normal Release
+47,872 renderer checks and 49,458 chrome/composition checks. The normal Release
 host/runtime build passes. WIC tests verify alias lifetime, failure-preserved
 destinations and scene/reader retirement; compositor fixtures verify accounting
 returns to zero on reset. A blocked decode test observes allocated bytes before
 cache publication; transport tests verify independent output lifetime and idle
-retirement/readmission without poisoning. Cancellation and aggregate production
-pressure behavior are not yet fully verified.
+retirement/readmission without poisoning. Cancellation tests cover late same-key completions, shared owners and a
+re-entrant stop callback. Renderer checks cover CPU eviction versus explicit
+invalidation, view replacement, hide/resume, and reclamation after scrolling.

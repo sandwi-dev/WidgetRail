@@ -129,7 +129,9 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
                 L"Trusted artwork decode exceeded its time budget.");
         }
         if (stopToken.stop_requested() || shuttingDown_) {
-            PoisonProcess(true);
+            // Withdrawn view demand is not malformed artwork or a hung decoder.
+            // Terminate this request without charging the fault circuit breaker.
+            CloseProcess(true);
             return Failure(E_ABORT, L"Trusted artwork decode was cancelled.");
         }
         const DWORD remaining = static_cast<DWORD>(

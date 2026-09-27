@@ -8396,6 +8396,7 @@ private:
         SetWindowPos(chromeWindow_, HWND_NOTOPMOST, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         DiscardGraphicsResources();
+        if (declarativeRenderer_) declarativeRenderer_->SuspendImageDemand();
         HWND restoreTarget = reinterpret_cast<HWND>(
             WidgetRailOverlayPlatformRememberedForegroundTarget(platform_));
         const auto activation = std::exchange(pendingTaskWindowActivation_, std::nullopt);
@@ -18121,6 +18122,12 @@ private:
 
     void Paint() {
         GraphicsDrawGuard drawGuard(graphicsDrawDepth_);
+        if (uiResourceBudget_->Read().needsReclamation()) {
+            if (declarativeRenderer_) declarativeRenderer_->ReclaimIdleResources();
+            pinnedSurfaceCoordinator_.ReclaimIdleResources();
+            popupShadows_.Reclaim();
+            if (imageCache_) imageCache_->ReclaimIdleImages();
+        }
         PAINTSTRUCT paint{};
         BeginPaint(window_, &paint);
         if (state_.surface() == widgetrail::Surface::Hidden || graphicsRecoveryInProgress_) {

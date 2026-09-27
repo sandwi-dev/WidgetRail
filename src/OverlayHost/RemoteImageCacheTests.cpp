@@ -336,6 +336,85 @@ void ResourceBudgetImageOwnership() {
     }
 }
 
+void RealizedDemandCancelsOnlyAfterLastOwnerAndRejectsStaleCompletion() {
+    using namespace widgetrail;
+    std::mutex mutex; std::condition_variable changed;
+    bool started{}, cancelled{}, release{}; int fetches{}, completions{};
+    RemoteImageCache* observed{};
+    const std::wstring source = L"https://example.test/realized.png";
+    const std::wstring queuedSource = L"https://example.test/withdrawn-before-fetch.png";
+    RemoteImageCache cache({}, [&](std::wstring_view, RemoteImageState state) {
+        assert(state == RemoteImageState::Ready);
+        { std::scoped_lock lock(mutex); ++completions; } changed.notify_all();
+    }, [&](std::wstring_view, std::stop_token token, const RemoteImageLimits& limits) {
+        int attempt{};
+        { std::scoped_lock lock(mutex); attempt = ++fetches; }
+        if (attempt == 1) {
+            std::stop_callback stopped(token, [&] {
+                // Re-entering from cancellation must not deadlock cache ownership.
+                (void)observed->GetStats();
+                { std::scoped_lock lock(mutex); cancelled = true; } changed.notify_all();
+            });
+            std::unique_lock lock(mutex); started = true; changed.notify_all();
+            assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return release; }));
+            // Deliberately return success after cancellation: a late provider
+            // result must not complete the same-key replacement request.
+        }
+        RemoteDecodedImage image; image.width = image.height = 1; image.stride = 4;
+        assert(image.AllocatePixels(4, limits.resourceBudget));
+        std::fill(image.premultipliedBgra.begin(), image.premultipliedBgra.end(), static_cast<std::uint8_t>(attempt));
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    });
+    observed = &cache;
+    int mainOwner{}, pinnedOwner{};
+    cache.SetImageDemand(&mainOwner, {source}, {source, queuedSource});
+    cache.SetImageDemand(&pinnedOwner, {source}, {source, queuedSource});
+    assert(cache.Request(source) == RemoteImageRequestResult::Queued);
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return started; })); }
+    assert(cache.Request(queuedSource) == RemoteImageRequestResult::Queued);
+    cache.ReleaseImageProtection(&mainOwner);
+    assert(cache.GetState(source) == RemoteImageState::Loading);
+    { std::scoped_lock lock(mutex); assert(!cancelled); }
+    cache.ReleaseImageProtection(&pinnedOwner);
+    { std::scoped_lock lock(mutex); assert(cancelled); }
+    assert(cache.GetState(source) == RemoteImageState::Missing && cache.GetState(queuedSource) == RemoteImageState::Missing &&
+        cache.GetStats().queuedOrLoading == 0);
+    cache.SetImageDemand(&mainOwner, {source}, {source});
+    assert(cache.Request(source) == RemoteImageRequestResult::Queued);
+    { std::scoped_lock lock(mutex); release = true; } changed.notify_all();
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return completions == 1; })); }
+    assert(fetches == 2 && cache.GetReadyImage(source)->premultipliedBgra.front() == 2);
+    cache.ReleaseImageProtection(&mainOwner);
+    assert(cache.GetState(source) == RemoteImageState::Ready); // Ready retention is budget-owned, not cancelled.
+    cache.Shutdown();
+    assert(completions == 1);
+}
+
+void RetiredArtworkDispatchDrainsSharedTransport() {
+    using namespace widgetrail;
+    std::mutex mutex; std::condition_variable changed;
+    bool started{}, release{}, returned{}, transportCancelled{};
+    const TrustedArtworkDemandAuthority authority{L"widget", L"runtime", L"view"};
+    const auto key = RemoteImageCache::TrustedArtworkKey(L"widget", L"poster", L"cover");
+    RemoteImageCache cache({}, {}, {}, [&](std::wstring_view, const TrustedArtworkDemandAuthority&, std::stop_token stop) {
+        std::stop_callback cancelled(stop, [&] { std::scoped_lock lock(mutex); transportCancelled = true; });
+        std::unique_lock lock(mutex); started = true; changed.notify_all();
+        assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return release; }));
+        returned = true; changed.notify_all();
+        return TrustedArtworkRequestDisposition::Accepted;
+    });
+    int owner{};
+    cache.SetImageDemand(&owner, {key}, {key});
+    assert(cache.RequestTrustedArtwork(key, authority) == RemoteImageRequestResult::Queued);
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return started; })); }
+    cache.ReleaseImageProtection(&owner);
+    assert(cache.GetState(key) == RemoteImageState::Missing);
+    { std::scoped_lock lock(mutex); assert(!transportCancelled); release = true; } changed.notify_all();
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return returned; })); }
+    cache.Shutdown();
+    assert(cache.GetState(key) == RemoteImageState::Missing);
+}
+
 void DecodeOutputIsAccountedBeforePublication() {
     using namespace widgetrail;
     auto budget = std::make_shared<resources::UiResourceBudget>(1024);
@@ -390,6 +469,8 @@ void DecoderTransportAndOutputAccounting() {
 
 int main() {
     DecoderTransportAndOutputAccounting();
+    RealizedDemandCancelsOnlyAfterLastOwnerAndRejectsStaleCompletion();
+    RetiredArtworkDispatchDrainsSharedTransport();
     DecodeOutputIsAccountedBeforePublication();
     ResourceBudgetImageOwnership();
     VerifyFailedArtworkRecovery();
@@ -607,6 +688,7 @@ int main() {
         {
             RemoteImageLimits shutdownLimits;
             shutdownLimits.maximumArtworkDecodeMilliseconds = 10'000;
+            shutdownLimits.maximumArtworkDecoderRestarts = 1;
             shutdownLimits.artworkDecoderShutdownMilliseconds = 250;
             ArtworkDecoderProcessOwner decoder(
                 shutdownLimits, ExecutableSibling(L"ArtworkDecoderTestHost.exe"));
@@ -627,6 +709,9 @@ int main() {
             assert(std::chrono::steady_clock::now() - cancellationStarted <
                    std::chrono::seconds(1));
             assert(decoder.Stats().terminated == 1);
+            assert(decoder.Stats().failed == 0 && decoder.Stats().circuitRejected == 0);
+            const auto resumed = decoder.Decode(png, L"image/png", {}, artworkdecoder::TestBehavior::Succeed);
+            assert(resumed.succeeded() && decoder.Stats().starts == 2 && decoder.Stats().circuitRejected == 0);
             decoder.Shutdown();
         }
 

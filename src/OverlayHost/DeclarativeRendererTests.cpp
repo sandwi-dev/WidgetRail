@@ -6656,7 +6656,9 @@ void TrustedArtworkTerminalFallbackIsStable() {
     };
     auto playniteLibrary = makeSnapshot(L"playnite-library");
     auto gamesApps = makeSnapshot(L"games-apps");
-    DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
+    // Two concurrently interested surfaces require two resource owners.
+    DeclarativeRenderer launcherRenderer{d2d.Get(), write.Get(), &cache};
+    DeclarativeRenderer gamesRenderer{d2d.Get(), write.Get(), &cache};
     const Rect viewport{0.0F, 0.0F, 420.0F, 360.0F};
     const auto render = [&](WidgetSnapshot& snapshot, const std::wstring_view widgetId,
                             const std::wstring_view runtime = L"transition-runtime") {
@@ -6665,6 +6667,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
         options.artworkWidgetId = widgetId;
         options.artworkRuntimeGeneration = runtime;
         options.artworkPresentationGeneration = L"transition-presentation";
+        auto& renderer = widgetId == L"playnite-library" ? launcherRenderer : gamesRenderer;
         target->BeginDraw();
         target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
         auto result = renderer.Render(
@@ -6843,6 +6846,23 @@ void TrustedArtworkTerminalFallbackIsStable() {
         "same-handle recovery replaces the fallback with actual artwork pixels");
     Check(sameRects(replacementFrame.focusRects, gamesPending.focusRects),
         "same-handle recovery preserves widget navigation geometry");
+    auto emptyGames = gamesApps; emptyGames.root.children.clear(); ++emptyGames.sequence;
+    (void)render(emptyGames, L"games-apps", L"replacement-runtime");
+    const auto pendingGame = widgetrail::RemoteImageCache::TrustedArtworkKey(L"games-apps", L"pending", pendingHandle);
+    const auto pendingLauncher = widgetrail::RemoteImageCache::TrustedArtworkKey(L"playnite-library", L"pending", pendingHandle);
+    Check(cache.GetState(pendingGame) == widgetrail::RemoteImageState::Missing &&
+        cache.GetState(pendingLauncher) == widgetrail::RemoteImageState::Loading,
+        "replacing one realized view cancels its pending artwork without disturbing another owner");
+    launcherRenderer.SuspendImageDemand();
+    Check(cache.GetState(pendingLauncher) == widgetrail::RemoteImageState::Missing,
+        "hidden owner releases pending demand without retiring its logical widget");
+    const auto resumedView = render(playniteLibrary, L"playnite-library");
+    Check(sameRects(resumedView.focusRects, recovered.focusRects) &&
+        cache.GetState(pendingLauncher) == widgetrail::RemoteImageState::Loading,
+        "reopening resumes realized demand and preserves navigation geometry");
+    launcherRenderer.ForgetWidgetState(playniteLibrary.instanceId);
+    Check(cache.GetState(pendingLauncher) == widgetrail::RemoteImageState::Missing,
+        "widget retirement cancels its final pending artwork demand");
     cache.Shutdown();
 }
 
@@ -8728,6 +8748,25 @@ void RetainedCompositionPixelsRespectInvalidation() {
     Check(resolved.widgetComposition->paintCacheMisses > 0, "artwork readiness repaints its owning layer");
     Check(draw().widgetComposition->paintCacheMisses == 0, "ready artwork participates in immutable pixel reuse");
     matchesFresh();
+    // CPU retention and immutable GPU identity are independent. Pressure may
+    // reclaim decoded pixels without turning every retained raster into a miss.
+    const auto imageSource = snapshot.root.children[1].imageSource;
+    const auto retentionTarget = images.ResourceBudget()->Read().retentionTarget;
+    images.ResourceBudget()->SetRetentionTarget(0);
+    images.ReleaseImageProtection(&renderer);
+    images.ReclaimIdleImages();
+    Check(images.GetState(imageSource) == RemoteImageState::Missing, "pressure evicts unprotected decoded storage");
+    images.ResourceBudget()->SetRetentionTarget(retentionTarget);
+    Check(draw().widgetComposition->paintCacheMisses == 0,
+        "CPU eviction preserves retained pixels backed by the same immutable GPU content");
+    { std::scoped_lock lock(readyMutex); ready = false; }
+    images.Clear();
+    Check(draw().widgetComposition->paintCacheMisses > 0,
+        "explicit cache invalidation retires GPU identity and retained raster pixels");
+    { std::unique_lock lock(readyMutex); Check(readyChanged.wait_for(lock, std::chrono::seconds(3), [&] { return ready; }),
+        "explicit invalidation requests fresh image content"); }
+    draw();
+    Check(draw().widgetComposition->paintCacheMisses == 0, "freshly published image content becomes cacheable again");
     renderer.ForgetWidgetState(snapshot.instanceId);
     Check(draw().widgetComposition->paintCacheHits == 0, "widget retirement clears retained paint state");
     snapshot.root.kind = L"scroll"; snapshot.root.scrollAxis = L"vertical";

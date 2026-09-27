@@ -258,6 +258,17 @@ void CompositionScrollRetention(float scale, bool grid, bool horizontal, bool be
         "outer nested scroll plans with retained pixels");
     Check(fresh.PlanFocusedFreeScroll(snapshot, L"item.4", declarative::ScrollAxis::Vertical, 13.7F, viewport, L"root").has_value(),
         "outer nested reference scroll plans");
-    const auto nested = draw(retained, false, frames + 8), nestedReference = draw(fresh, true, frames + 8);
+    auto nested = draw(retained, false, frames + 8), nestedReference = draw(fresh, true, frames + 8);
     Check(replay(nested) == replay(nestedReference), "nested scroll clipping remains exact after translation");
+    const auto resourceBudget = artwork.ResourceBudget();
+    const auto resources = resourceBudget->Read();
+    std::cout << "SCROLL-RESOURCES owners=2 scale=" << scale << " grid=" << grid << " horizontal=" << horizontal
+        << " live-bytes=" << resources.allocatedBytes << " peak-bytes=" << resources.peakAllocatedBytes
+        << " protected-bytes=" << resources.protectedBytes << " allocations=" << resources.allocations << '\n';
+    nested.widgetComposition.reset(); nestedReference.widgetComposition.reset();
+    retained.SuspendImageDemand(); fresh.SuspendImageDemand();
+    resourceBudget->SetRetentionTarget(0);
+    retained.ReclaimIdleResources(); fresh.ReclaimIdleResources(); artwork.ReclaimIdleImages();
+    Check(resourceBudget->Read().allocatedBytes == 0 && resourceBudget->Read().allocations == 0,
+        "shared pressure retires idle image, mask and raster storage after both scrolled owners hide");
 }

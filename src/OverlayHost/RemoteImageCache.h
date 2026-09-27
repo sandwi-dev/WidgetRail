@@ -1,4 +1,6 @@
 #pragma once
+
+#include <atomic>
 #include "ImageDecodeSize.h"
 #include "ScrollDiagnostics.h"
 #include "UiResourceBudget.h"
@@ -133,6 +135,7 @@ struct RemoteImageLimits {
 struct RemoteDecodedImage {
     // Declared before pixels so accounting retires after the backing vector.
     resources::UiResourceBudget::Lease resourceAllocation;
+    std::shared_ptr<const void> contentIdentity;
     UINT32 width{};
     UINT32 height{};
     UINT32 stride{};
@@ -141,7 +144,7 @@ struct RemoteDecodedImage {
     RemoteDecodedImage() = default;
     RemoteDecodedImage(RemoteDecodedImage&&) noexcept = default;
     RemoteDecodedImage(const RemoteDecodedImage& other)
-        : width(other.width), height(other.height), stride(other.stride), premultipliedBgra(other.premultipliedBgra), mimeType(other.mimeType) {
+        : contentIdentity(other.contentIdentity), width(other.width), height(other.height), stride(other.stride), premultipliedBgra(other.premultipliedBgra), mimeType(other.mimeType) {
         if (other.resourceAllocation && !premultipliedBgra.empty()) {
             resourceAllocation = other.resourceAllocation->Duplicate(premultipliedBgra.capacity());
             if (!resourceAllocation) throw std::bad_alloc();
@@ -151,6 +154,7 @@ struct RemoteDecodedImage {
     RemoteDecodedImage& operator=(RemoteDecodedImage other) noexcept { Swap(other); return *this; }
     void Swap(RemoteDecodedImage& other) noexcept {
         resourceAllocation.swap(other.resourceAllocation);
+        contentIdentity.swap(other.contentIdentity);
         std::swap(width, other.width); std::swap(height, other.height); std::swap(stride, other.stride);
         premultipliedBgra.swap(other.premultipliedBgra); mimeType.swap(other.mimeType);
     }
@@ -266,6 +270,7 @@ public:
 
     RemoteImageCache(const RemoteImageCache&) = delete;
     RemoteImageCache& operator=(const RemoteImageCache&) = delete;
+    [[nodiscard]] std::uint64_t ContentEpoch() const noexcept { return contentEpoch_.load(std::memory_order_relaxed); }
     [[nodiscard]] const std::shared_ptr<resources::UiResourceBudget>& ResourceBudget() const noexcept { return resourceBudget_; }
 
     [[nodiscard]] RemoteImageRequestResult Request(std::wstring url, ImageDecodeSize size = {});
@@ -340,10 +345,14 @@ public:
         std::wstring_view url,
         ID2D1Bitmap** bitmap);
     [[nodiscard]] HRESULT CreateTrackedBitmap(ID2D1RenderTarget* target, std::wstring_view key,
-        resources::UiResource<ID2D1Bitmap>& bitmap);
+        resources::UiResource<ID2D1Bitmap>& bitmap, std::shared_ptr<const void>* contentIdentity = nullptr);
 
     static std::wstring VariantKey(std::wstring_view source, ImageDecodeSize size);
     void ProtectImages(const void* owner, std::set<std::wstring> keys);
+    // Visible/published keys protect storage. Realized keys additionally retain
+    // pending demand; removing the last owner cancels only unfinished work.
+    void SetImageDemand(const void* owner, std::set<std::wstring> visibleKeys,
+        std::set<std::wstring> realizedKeys);
     void ReleaseImageProtection(const void* owner);
     void ReclaimIdleImages();
     bool CanPrefetch(std::wstring_view key) const;
@@ -387,6 +396,7 @@ private:
         bool budgetRejected{};
         std::size_t rejectedBytes{};
         resources::UiResourceBudget::Pin resourceProtection;
+        std::shared_ptr<std::stop_source> cancellation{std::make_shared<std::stop_source>()};
     };
 
     struct ArtworkDemand final {
@@ -411,7 +421,10 @@ private:
     bool ProtectedLocked(std::wstring_view key) const;
     void RefreshResourceProtectionLocked();
     void ReclaimIdleImagesLocked();
+    void RetireUndemanded(std::set<std::wstring> priorKeys);
+    std::map<const void*, std::set<std::wstring>> imageDemands_;
     std::map<const void*, std::set<std::wstring>> protectedImages_;
+    std::atomic<std::uint64_t> contentEpoch_{1};
     std::shared_ptr<resources::UiResourceBudget> resourceBudget_;
     RemoteImageLimits limits_;
     CompletionCallback completion_;

@@ -56,6 +56,7 @@ private:
     struct Image final {
         ComputedCompositorBackground descriptor;
         resources::UiResource<ID2D1Bitmap> bitmap;
+        resources::UiResourceBudget::Pin protection;
         bool surfaceComposite{};
     };
     struct Proposal final {

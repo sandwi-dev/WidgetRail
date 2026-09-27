@@ -3889,7 +3889,8 @@ struct DeclarativeRenderer::RenderPass final {
         }
         return size;
     }
-    std::set<std::wstring> visibleImageKeys;
+    std::set<std::wstring> visibleImageKeys, realizedImageKeys;
+    std::vector<const WidgetNode*> adjacentImages;
     std::set<std::wstring> visibleContentImageKeys;
     std::map<std::wstring, std::set<std::wstring>> visibleBackgroundImageKeys;
     void GatherVisibleImages(const WidgetNode& node) {
@@ -3899,6 +3900,9 @@ struct DeclarativeRenderer::RenderPass final {
             else visibleContentImageKeys.insert(std::move(key));
         };
         const auto geometry = presentation.find(NarrowStableId(node.id));
+        // Match DrawNode's realization boundary; never walk descendants of a
+        // logical item that this pass did not prepare or present.
+        if (geometry == presentation.end()) return;
         // Poster artwork is deliberately excluded from layout. Both its decode
         // size and visibility come from the full-bleed parent tile used by DrawNode.
         const WidgetNode* posterArtwork = node.kind == L"actionSurface" &&
@@ -3908,6 +3912,19 @@ struct DeclarativeRenderer::RenderPass final {
             const auto* box = layout.Find(NarrowStableId(node.id));
             posterArtworkBounds.insert_or_assign(posterArtwork->id,
                 box ? box->unscrolledBorderBox : geometry->second.borderBox);
+        }
+        if (geometry != presentation.end() && realizedImageKeys.size() < 256) {
+            const auto& box = geometry->second.borderBox;
+            // Existing realization supplies the candidates. Bound the eager
+            // fallback too, to one viewport of adjacent artwork on each side.
+            const bool nearby = box.x + box.width > viewport.x - viewport.width &&
+                box.x < viewport.x + 2 * viewport.width && box.y + box.height > viewport.y - viewport.height &&
+                box.y < viewport.y + 2 * viewport.height;
+            const auto adjacent = [&](const WidgetNode& image) {
+                if (realizedImageKeys.size() >= 256 || (image.imageSource.empty() && image.artworkHandle.empty())) return;
+                if (realizedImageKeys.insert(ImageKey(image, CachedImageSize(image))).second) adjacentImages.push_back(&image);
+            };
+            if (nearby) { adjacent(node); if (posterArtwork) adjacent(*posterArtwork); }
         }
         if (geometry != presentation.end() && geometry->second.visibleBox.width > 0.5F && geometry->second.visibleBox.height > 0.5F) {
             if (posterArtwork)
@@ -3932,7 +3949,25 @@ struct DeclarativeRenderer::RenderPass final {
                 }
             }
         }
+        if (node.kind == L"focusPresentationSurface")
+            if (const auto* fragment = PresentationFor(node)) GatherVisibleImages(*fragment);
         for (const auto& child : node.children) GatherVisibleImages(child);
+    }
+
+    void RequestAdjacentImages() {
+        if (!owner->imageCache_ || !options.sizeArtworkToDisplay) return;
+        unsigned queued{};
+        for (const auto* image : adjacentImages) {
+            const auto size = CachedImageSize(*image);
+            const auto key = ImageKey(*image, size);
+            if (visibleImageKeys.contains(key) || !owner->imageCache_->CanPrefetch(key)) continue;
+            const auto request = image->imageSource.empty()
+                ? owner->imageCache_->RequestTrustedArtwork(key,
+                    {options.artworkWidgetId, options.artworkRuntimeGeneration, options.artworkPresentationGeneration}, size)
+                : owner->imageCache_->Request(image->imageSource, size);
+            // Adjacent demand never occupies the entire shared pending queue.
+            if (request == RemoteImageRequestResult::Queued && ++queued == 8) break;
+        }
     }
 
     bool DrawImage(
@@ -5568,18 +5603,44 @@ void DeclarativeRenderer::CancelWidgetTransitions() noexcept {
     compositionCaptures_.clear();
     compositionPaintCache_.clear();
 }
+void DeclarativeRenderer::SuspendImageDemand() {
+    imageDemandActive_ = false;
+    PublishImageProtection();
+    ReclaimIdleResources();
+}
 void DeclarativeRenderer::PublishImageProtection() {
+    std::vector<resources::UiResourceBudget::Pin> pins;
+    const auto pin = [&](const auto& bitmap) { if (auto value = bitmap.Protect()) pins.push_back(std::move(value)); };
+    const auto backgrounds = [&](const auto& entries) {
+        for (const auto& [_, entry] : entries) { pin(entry.committedBitmap); pin(entry.incomingBitmap); }
+    };
+    const auto transitions = [&](const auto& entries) {
+        for (const auto& [_, entry] : entries) { pin(entry.current); pin(entry.outgoing); }
+    };
+    // Last-valid background and transition owners may outlive the image cache.
+    // Account that bounded presentation working set independently from demand.
+    backgrounds(focusBackgrounds_); transitions(transitionVisuals_);
+    if (pendingPublication_) { backgrounds(pendingPublication_->backgrounds); transitions(pendingPublication_->visuals); }
+    if (!imageDemandActive_) {
+        bitmapProtection_ = std::move(pins);
+        if (imageCache_) imageCache_->ReleaseImageProtection(this);
+        return;
+    }
     auto keys = protectedImageKeys_;
+    keys.insert(desiredImageKeys_.begin(), desiredImageKeys_.end());
     if (pendingPublication_) keys.insert(pendingPublication_->imageKeys.begin(), pendingPublication_->imageKeys.end());
     keys.insert(chromeImageKeys_.begin(), chromeImageKeys_.end());
-    std::vector<resources::UiResourceBudget::Pin> pins;
-    pins.reserve(keys.size());
+    pins.reserve(pins.size() + keys.size());
     for (const auto& key : keys) {
         const auto entry = bitmaps_.find(key);
         if (entry != bitmaps_.end()) if (auto pin = entry->second.bitmap.Protect()) pins.push_back(std::move(pin));
     }
     bitmapProtection_ = std::move(pins);
-    if (imageCache_) imageCache_->ProtectImages(this, std::move(keys));
+    auto demand = committedImageDemand_;
+    demand.insert(desiredImageDemand_.begin(), desiredImageDemand_.end());
+    demand.insert(keys.begin(), keys.end());
+    if (pendingPublication_) demand.insert(pendingPublication_->imageDemand.begin(), pendingPublication_->imageDemand.end());
+    if (imageCache_) imageCache_->SetImageDemand(this, std::move(keys), std::move(demand));
 }
 void DeclarativeRenderer::SetChromeImageProtection(std::set<std::wstring> keys) {
     chromeImageKeys_ = std::move(keys);
@@ -5589,7 +5650,10 @@ bool DeclarativeRenderer::VisibleContentImageCompleted(std::uint64_t resourceHas
     return visibleContentImageHashes_.contains(resourceHash);
 }
 bool DeclarativeRenderer::ImageProtected(std::wstring_view key) const {
-    return protectedImageKeys_.contains(std::wstring{key}) || chromeImageKeys_.contains(std::wstring{key});
+    if (!imageDemandActive_) return false;
+    const std::wstring value{key};
+    return protectedImageKeys_.contains(value) || desiredImageKeys_.contains(value) || chromeImageKeys_.contains(value) ||
+        (pendingPublication_ && pendingPublication_->imageKeys.contains(value));
 }
 
 DeclarativeRenderer::DeclarativeRenderer(
@@ -5606,6 +5670,7 @@ DeclarativeRenderer::DeclarativeRenderer(
       artworkRenderDiagnostic_(std::move(artworkRenderDiagnostic)),
       scrollDiagnostics_(std::move(scrollDiagnostics)),
       surfaceShadows_(resourceBudget_) {
+    imageContentEpoch_ = imageCache_ ? imageCache_->ContentEpoch() : 0;
     if (imageCache_ && resourceBudget_ != imageCache_->ResourceBudget())
         throw std::invalid_argument("Renderer and image cache must share a resource budget.");
 }
@@ -6424,6 +6489,8 @@ bool DeclarativeRenderer::CommitFramePublication(const std::uint64_t id) {
     compositionPaintCache_ = std::move(publication->paintCache);
     compositionInstance_ = std::move(publication->compositionInstance);
     protectedImageKeys_ = std::move(publication->imageKeys);
+    committedImageDemand_ = std::move(publication->imageDemand);
+    committedImageInstance_ = publication->instance;
     visibleContentImageHashes_ = std::move(publication->visibleImageHashes);
     std::erase_if(collectionPreparations_, [&](const auto& branch) {
         return branch.ready && branch.instance == publication->instance && branch.scope == publication->scope &&
@@ -6645,8 +6712,7 @@ RenderResult DeclarativeRenderer::Render(
             D2DRect(viewport), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
     }
     const auto clipSetupFinished = std::chrono::steady_clock::now();
-    const auto priorImageProtection = protectedImageKeys_;
-    if (options.sizeArtworkToDisplay) {
+    {
         pass.GatherVisibleImages(snapshot.root);
         if (options.retainedCompositorBackground) {
             const auto& background = *options.retainedCompositorBackground;
@@ -6655,7 +6721,10 @@ RenderResult DeclarativeRenderer::Render(
                     ? RemoteImageCache::TrustedArtworkKey(background.artworkWidgetId, background.nodeId, background.artworkHandle, background.decodeSize)
                     : RemoteImageCache::VariantKey(background.imageSource, background.decodeSize));
         }
-        protectedImageKeys_.insert(pass.visibleImageKeys.begin(), pass.visibleImageKeys.end());
+        imageDemandActive_ = true;
+        desiredImageKeys_ = pass.visibleImageKeys;
+        desiredImageDemand_ = pass.realizedImageKeys;
+        desiredImageInstance_ = snapshot.instanceId;
         PublishImageProtection();
     }
     const auto composed = pass.DrawWidgetComposition();
@@ -6990,14 +7059,15 @@ RenderResult DeclarativeRenderer::Render(
             publication->visibleImageHashes.insert(RemoteImageCache::OpaqueDiagnosticHash(key));
     }
     if (pass.result.succeeded) {
+        pass.RequestAdjacentImages();
         publication->imageKeys = std::move(pass.visibleImageKeys);
+        publication->imageDemand = std::move(pass.realizedImageKeys);
         publication->id = ++nextPublicationId_;
         publication->resourceGeneration = bitmapResourceGeneration_;
         pass.result.publicationId = publication->id;
-        protectedImageKeys_ = priorImageProtection;
         pendingPublication_ = std::move(publication);
         if (!options.deferPublication) (void)CommitFramePublication(pass.result.publicationId);
-    } else protectedImageKeys_ = priorImageProtection;
+    }
     PublishImageProtection();
     if (scrollDiagnostics_) scrollDiagnostics_->Record("render", [&](auto& out) {
         const auto& timing = pass.result.timing;
@@ -7273,6 +7343,10 @@ ImageBitmapCacheStats DeclarativeRenderer::GetImageBitmapCacheStats() const noex
 
 bool DeclarativeRenderer::BindBitmapResourceDomain(
     ID2D1RenderTarget* renderTarget) noexcept {
+    if (imageCache_ && imageContentEpoch_ != imageCache_->ContentEpoch()) {
+        imageContentEpoch_ = imageCache_->ContentEpoch();
+        ClearBitmapCache(true);
+    }
     if (!renderTarget) return false;
     // CreateCompatibleRenderTarget guarantees resource sharing with its parent.
     // Its COM identity is different on WIC/legacy targets, not a device loss.
@@ -7428,6 +7502,13 @@ bool DeclarativeRenderer::EnsureSurfaceClip(
 void DeclarativeRenderer::ForgetWidgetState(
     const std::wstring_view widgetInstanceId) noexcept {
     if (widgetInstanceId.empty()) return;
+    if (committedImageInstance_ == widgetInstanceId) {
+        protectedImageKeys_.clear(); committedImageDemand_.clear(); committedImageInstance_.clear();
+    }
+    if (desiredImageInstance_ == widgetInstanceId) {
+        desiredImageKeys_.clear(); desiredImageDemand_.clear(); desiredImageInstance_.clear();
+    }
+    try { PublishImageProtection(); } catch (...) {}
     if (pendingPublication_ && pendingPublication_->instance == widgetInstanceId) RejectFramePublication();
     std::erase_if(collectionPreparations_, [&](const auto& branch) { return branch.instance == widgetInstanceId; });
     if (widgetTransitions_.OwnsInstance(widgetInstanceId) || compositionInstance_ == widgetInstanceId) CancelWidgetTransitions();
@@ -7531,7 +7612,7 @@ resources::UiResource<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         if (pass.visibleImageKeys.contains(source)) {
             pass.visibleImageKeys.insert(best->first);
             pass.visibleContentImageKeys.insert(best->first);
-            protectedImageKeys_.insert(best->first);
+            desiredImageKeys_.insert(best->first);
             PublishImageProtection();
         }
         presentationState = ImagePresentationState::Ready;
@@ -7604,7 +7685,8 @@ resources::UiResource<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     }
     resources::UiResource<ID2D1Bitmap> bitmap;
     const auto uploadStarted = scrollDiagnostics_ ? ScrollDiagnostics::Clock::now() : ScrollDiagnostics::Clock::time_point{};
-    const auto result = imageCache_->CreateTrackedBitmap(renderTarget, source, bitmap);
+    std::shared_ptr<const void> contentIdentity;
+    const auto result = imageCache_->CreateTrackedBitmap(renderTarget, source, bitmap, &contentIdentity);
     if (scrollDiagnostics_) pass.scrollUploadMicroseconds += ScrollDiagnostics::Micros(ScrollDiagnostics::Clock::now() - uploadStarted);
     if (FAILED(result) || !bitmap) {
         if (ArtworkRenderDiagnosticsEnabled())
@@ -7635,7 +7717,7 @@ resources::UiResource<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         bitmapBytes_ += byteCount;
         bitmaps_.emplace(
             source,
-            BitmapCacheEntry{bitmap, byteCount, ++bitmapAccessClock_, imageIdentity});
+            BitmapCacheEntry{bitmap, byteCount, ++bitmapAccessClock_, imageIdentity, std::move(contentIdentity)});
     }
     return bitmap;
 }
@@ -7700,7 +7782,8 @@ resources::UiResource<ID2D1Bitmap> DeclarativeRenderer::GetPackageIconBitmap(
     }
     if (state != RemoteImageState::Ready) return {};
     resources::UiResource<ID2D1Bitmap> bitmap;
-    if (FAILED(imageCache_->CreateTrackedBitmap(renderTarget, key, bitmap)) || !bitmap) return {};
+    std::shared_ptr<const void> contentIdentity;
+    if (FAILED(imageCache_->CreateTrackedBitmap(renderTarget, key, bitmap, &contentIdentity)) || !bitmap) return {};
     ++bitmapCreates_;
     const auto pixelSize = bitmap->GetPixelSize();
     const auto byteCount64 = static_cast<std::uint64_t>(pixelSize.width) *
@@ -7709,7 +7792,7 @@ resources::UiResource<ID2D1Bitmap> DeclarativeRenderer::GetPackageIconBitmap(
         const auto byteCount = static_cast<std::size_t>(byteCount64);
         if (!TrimBitmapCache(byteCount)) return bitmap;
         bitmapBytes_ += byteCount;
-        bitmaps_.emplace(key, BitmapCacheEntry{bitmap, byteCount, ++bitmapAccessClock_});
+        bitmaps_.emplace(key, BitmapCacheEntry{bitmap, byteCount, ++bitmapAccessClock_, {}, std::move(contentIdentity)});
     }
     return bitmap;
 }

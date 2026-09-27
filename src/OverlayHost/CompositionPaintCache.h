@@ -14,7 +14,7 @@ struct CompositionPaintIdentity final {
     static constexpr std::size_t MaximumRetainedBytes = 4 * 1024 * 1024;
     std::string values;
     std::vector<NativeRenderStyle> styles;
-    std::vector<std::weak_ptr<const RemoteDecodedImage>> images;
+    std::vector<std::weak_ptr<const void>> images;
     bool cacheable{true};
 
     template<class T> requires(std::is_arithmetic_v<T> || std::is_enum_v<T>)

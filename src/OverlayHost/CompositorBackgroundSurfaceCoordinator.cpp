@@ -164,6 +164,7 @@ bool CompositorBackgroundSurfaceCoordinator::RebaseOutgoing(
         diagnostic = L"rebase=failed";
         return false;
     }
+    result.protection = result.bitmap.Protect();
     return true;
 }
 
@@ -193,6 +194,7 @@ CompositorBackgroundSurfaceCoordinator::Stage(
             return StageDisposition::Failed;
         proposal.image.bitmap = renderer.ResolveCompositorBackgroundBitmap(
             resources.Get(), proposal.image.descriptor);
+        proposal.image.protection = proposal.image.bitmap.Protect();
     }
     const bool hasImage = !proposal.image.descriptor.imageSource.empty() ||
         !proposal.image.descriptor.artworkHandle.empty();

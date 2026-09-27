@@ -631,6 +631,9 @@ public:
     void DiscardTargetResources() noexcept;
     // Render-thread-only; frame ownership and active presentation are preserved.
     void ReclaimIdleResources();
+    // Hide retires resource demand while preserving logical focus/scroll state.
+    // A subsequent Render resumes demand from its actual realized view.
+    void SuspendImageDemand();
 
     /// Releases cached image resources when an entire presentation endpoint
     /// is retired. Ordinary target recreation continues to use
@@ -846,6 +849,7 @@ private:
         std::size_t bytes{};
         std::uint64_t lastUse{};
         std::wstring imageIdentity;
+        std::shared_ptr<const void> contentIdentity;
     };
     struct FocusBackgroundEntry final {
         std::wstring widgetId;
@@ -892,7 +896,10 @@ private:
     bool TrimBitmapCache(std::size_t incomingBytes) noexcept;
     void PublishImageProtection();
     bool ImageProtected(std::wstring_view key) const;
-    std::set<std::wstring> protectedImageKeys_;
+    std::set<std::wstring> protectedImageKeys_, desiredImageKeys_;
+    std::set<std::wstring> committedImageDemand_, desiredImageDemand_;
+    std::wstring committedImageInstance_, desiredImageInstance_;
+    bool imageDemandActive_{true};
     std::vector<resources::UiResourceBudget::Pin> bitmapProtection_;
     std::set<std::wstring> chromeImageKeys_;
     std::set<std::uint64_t> visibleContentImageHashes_;
@@ -949,6 +956,7 @@ private:
     std::uint64_t bitmapSupersededArtworkEvictions_{};
     std::uint64_t bitmapResourceInvalidations_{};
     std::uint64_t bitmapResourceGeneration_{};
+    std::uint64_t imageContentEpoch_{};
     declarative::FocusSurfaceSelectionMemory focusSelectionMemory_;
     std::map<std::wstring, std::wstring> selectedPresentationSources_;
     std::unordered_map<std::wstring, FocusBackgroundEntry> focusBackgrounds_;
@@ -1000,7 +1008,7 @@ private:
         std::uint64_t backgroundClock{};
         decltype(compositionPaintCache_) paintCache;
         std::wstring compositionInstance;
-        decltype(protectedImageKeys_) imageKeys;
+        decltype(protectedImageKeys_) imageKeys, imageDemand;
         decltype(visibleContentImageHashes_) visibleImageHashes;
     };
     std::unique_ptr<FramePublication> pendingPublication_;

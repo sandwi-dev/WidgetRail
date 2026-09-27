@@ -41,8 +41,10 @@ WIDGE-295 merged at `28436e2e`. WIDGE-296 has a shared allocation/protection cor
 and CPU-cache lifetime/pressure integration, including host decode buffers and
 shared decoder transport. Tracked GPU/capture/compositor ownership, shared frame
 protection, idle reclamation and decoder transport retirement are connected.
-Realization-driven cancellation and aggregate pressure validation remain;
-see [resource accounting](native-resource-budgets.md).
+Realization-driven cancellation, independent image content identity, hide/resume
+and shared-pressure reclamation pass focused tests. Production-layout probes
+retain about 20-32 MiB of known storage with shared substitute artwork. Bridge
+reply correlation for same-key re-admission and final host/pinned gates remain. See [resource accounting](native-resource-budgets.md).
 WIDGE-297 and WIDGE-298 have not started.
 No live-overlay FPS improvement is claimed.
 Details and verification limits: [collection lifecycle](native-collection-lifecycle.md).
