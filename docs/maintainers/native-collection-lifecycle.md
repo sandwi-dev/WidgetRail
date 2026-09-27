@@ -172,18 +172,23 @@ Main and pinned UIA requests also prepare on timers before applying reveal optio
 to paint. They preserve original controller focus and reject stale request authority;
 pending work exposes neither partial geometry nor speculative accessibility bounds.
 
-Final paint/device transactions still need audit/integration. A newly ready snapshot
-or focus target is not proof of successful D2D EndDraw/presentation. Existing focus
-settlement remains synchronous after the relevant collection measurements are ready.
+Renderer state is staged behind a unique frame publication token. Production main
+and pinned hosts acknowledge it only after successful EndDraw/composition
+submission. Until then, the previous layout, collection geometry, scroll state,
+motion/selection state and paint-cache leases remain the committed checkpoint.
+Rejecting/superseding a frame or losing its target invalidates its token. Reusable
+measurement/style caches remain speculative caches, never scene authority. Scroll
+input planning retains requested movement separately from the published geometry;
+it cannot authorize input against an unsubmitted frame.
 
-The draw-failure audit adds a fail-closed recovery gate: failed main/pinned frames
-retire interactive geometry and accessibility, and unseen UIA reveals are consumed
-only after successful EndDraw/composition submission. Pinned recovery is bounded to
-three timer retries; later explicit invalidations may retry. Injected E_FAIL and
-D2DERR_RECREATE_TARGET tests confirm the original reveal survives and only a successful
-replacement exposes geometry. This does not yet make every renderer cache and focus
-mutation a transaction with physical presentation; that broader publication work
-remains open.
+Main group-entry acknowledgements own exact request/runtime/scope/sequence identity
+without retaining snapshot pointers. Submission failure discards only this
+acknowledgement, leaving the one-shot request pending for a newly drawn retry.
+Collection-focus settlement and pagination reconciliation follow successful frame
+submission too. Failed main/pinned frames retire interactive geometry and UIA
+publication; unseen reveals remain pending. Pinned recovery has three timer retries,
+with later explicit invalidation allowed. Component failure tests are not evidence
+of physical compositor display timing or a complete injected main-host test.
 
 Remaining delivery includes host frame-budgeted scheduling and
 resource protection, broader provider-window/scale/scroll validation, and adoption

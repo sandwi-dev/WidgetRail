@@ -28,6 +28,17 @@ struct WidgetInteractionAuthority final {
     bool retainedRefresh{};
 };
 
+// Owned acknowledgement for a rendered group-entry target. It does not consume
+// the request: the host retains it only until that frame's submission succeeds.
+// No snapshot pointers survive across the drawing/submission boundary.
+struct FocusGroupEntryPublication final {
+    std::wstring widget, instance, runtime, presentation, scope, group, target;
+    long long sequence{}, requestId{};
+    [[nodiscard]] static std::optional<FocusGroupEntryPublication> Capture(
+        const WidgetInteractionAuthority&, std::wstring_view target);
+    [[nodiscard]] bool Matches(const WidgetInteractionAuthority&) const noexcept;
+};
+
 // One uncommitted logical focus target. Repeated navigation from the same
 // origin replaces this intent; it never builds a queue of future focus moves.
 class FocusRealizationIntent final {

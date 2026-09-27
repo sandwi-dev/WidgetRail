@@ -8,6 +8,28 @@
 
 namespace widgetrail::input {
 
+std::optional<FocusGroupEntryPublication> FocusGroupEntryPublication::Capture(
+    const WidgetInteractionAuthority& authority, const std::wstring_view target) {
+    if (!authority.semantics || authority.retainedRefresh || target.empty() ||
+        !authority.semantics->focusGroupEntryRequest) return std::nullopt;
+    const auto& snapshot = *authority.semantics;
+    return FocusGroupEntryPublication{
+        std::wstring{authority.widgetId}, snapshot.instanceId,
+        std::wstring{authority.runtimeGeneration}, std::wstring{authority.presentationGeneration},
+        snapshot.activeInputScopeId, snapshot.focusGroupEntryRequest->groupId,
+        std::wstring{target}, snapshot.sequence, snapshot.focusGroupEntryRequest->requestId};
+}
+
+bool FocusGroupEntryPublication::Matches(const WidgetInteractionAuthority& authority) const noexcept {
+    if (!authority.semantics || authority.retainedRefresh) return false;
+    const auto& snapshot = *authority.semantics;
+    return widget == authority.widgetId && instance == snapshot.instanceId &&
+        runtime == authority.runtimeGeneration && presentation == authority.presentationGeneration &&
+        scope == snapshot.activeInputScopeId && sequence == snapshot.sequence &&
+        snapshot.focusGroupEntryRequest && requestId == snapshot.focusGroupEntryRequest->requestId &&
+        group == snapshot.focusGroupEntryRequest->groupId;
+}
+
 SelectPopupLayout ComputeSelectPopupLayout(
     const declarative::Rect anchor,
     const declarative::Rect viewport,

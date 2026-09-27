@@ -195,6 +195,7 @@ struct RenderResult final {
     std::shared_ptr<const WidgetCompositionScene> widgetComposition;
     bool playStationControls{};
     bool succeeded{};
+    std::uint64_t publicationId{};
     std::shared_ptr<const RenderInspection> inspection;
     /// True only while at least one paint-only node transition requires a
     /// future frame. The renderer never owns a timer or animation thread.
@@ -386,6 +387,9 @@ struct DeclarativeRenderOptions final {
 #endif
     bool playStationControls{controller::UsePlayStationControls()};
     bool collectInspection{};
+    // Host acknowledges only after EndDraw/composition submission succeeds.
+    // Default synchronous callers retain immediate publication behavior.
+    bool deferPublication{};
     std::function<Microsoft::WRL::ComPtr<ID2D1Bitmap1>(ID2D1RenderTarget*, std::wstring_view)> windowPreviewBitmap;
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};
@@ -496,6 +500,8 @@ public:
         std::wstring_view focusedElementId,
         declarative::Rect viewport,
         const DeclarativeRenderOptions& options = {});
+    [[nodiscard]] bool CommitFramePublication(std::uint64_t publicationId);
+    void RejectFramePublication() noexcept;
     /// Host-thread preparation only: no paint, focus admission or published
     /// scroll mutation. Call before beginning a frame; Pending retains reusable
     /// measurements for a later slice. One indivisible item may exceed the time
@@ -949,6 +955,28 @@ private:
     std::map<std::wstring, CompositionPaintEntry> compositionPaintCache_;
     std::optional<IncrementalLayoutCache> incrementalLayoutCache_;
     std::optional<PendingIncrementalPlan> pendingIncrementalPlan_;
+    struct FramePublication final {
+        std::uint64_t id{}, resourceGeneration{};
+        std::wstring instance, scope, focus;
+        long long sequence{};
+        decltype(incrementalLayoutCache_) layout;
+        decltype(collections_) collections;
+        decltype(scrollOffsets_) scrollOffsets;
+        std::uint64_t scrollClock{};
+        decltype(motionTimeline_) motion;
+        decltype(widgetTransitions_) transitions;
+        decltype(transitionVisuals_) visuals;
+        decltype(focusSelectionMemory_) selection;
+        decltype(selectedPresentationSources_) selectionSources;
+        decltype(focusBackgrounds_) backgrounds;
+        std::uint64_t backgroundClock{};
+        decltype(compositionPaintCache_) paintCache;
+        std::wstring compositionInstance;
+        decltype(protectedImageKeys_) imageKeys;
+        decltype(visibleContentImageHashes_) visibleImageHashes;
+    };
+    std::unique_ptr<FramePublication> pendingPublication_;
+    std::uint64_t nextPublicationId_{};
 };
 
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING

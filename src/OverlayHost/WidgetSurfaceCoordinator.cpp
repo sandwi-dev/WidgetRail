@@ -2751,6 +2751,7 @@ void WidgetSurfaceCoordinator::PumpFocusRealization() {
 DeclarativeRenderOptions WidgetSurfaceCoordinator::RenderOptions(
     const float widthDip, const float heightDip, const float dpiScale) const {
     DeclarativeRenderOptions options;
+    options.deferPublication = true;
     options.pixelScale = dpiScale;
     options.collectAccessibility = ResolveSurfacePresentationPolicy(policy_.interactionMode()).exposeInteractiveSemantics;
     options.responsiveViewport = {widthDip, heightDip};
@@ -3036,6 +3037,8 @@ void WidgetSurfaceCoordinator::Paint() {
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     if (FAILED(nextEndDrawFailureForTesting_)) result = std::exchange(nextEndDrawFailureForTesting_, S_OK);
 #endif
+    if (SUCCEEDED(result) && renderResult.succeeded && renderResult.publicationId &&
+        !renderer_->CommitFramePublication(renderResult.publicationId)) result = E_FAIL;
     bool mediaViewportReconciled{};
     bool backgroundSurfaceDiagnosticsQueued{};
     bool pinnedResizeDiagnosticsQueued{};

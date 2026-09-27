@@ -5477,6 +5477,7 @@ DeclarativeRenderer::~DeclarativeRenderer() {
     if (imageCache_) imageCache_->ReleaseImageProtection(this);
 }
 void DeclarativeRenderer::CancelWidgetTransitions() noexcept {
+    RejectFramePublication();
     widgetTransitions_.Clear();
     transitionVisuals_.clear();
     compositionInstance_.clear();
@@ -5486,6 +5487,7 @@ void DeclarativeRenderer::CancelWidgetTransitions() noexcept {
 void DeclarativeRenderer::PublishImageProtection() {
     if (!imageCache_) return;
     auto keys = protectedImageKeys_;
+    if (pendingPublication_) keys.insert(pendingPublication_->imageKeys.begin(), pendingPublication_->imageKeys.end());
     keys.insert(chromeImageKeys_.begin(), chromeImageKeys_.end());
     imageCache_->ProtectImages(this, std::move(keys));
 }
@@ -6262,12 +6264,55 @@ WidgetComputedStyle ResolveDeclarativeComputedStyle(
     return result;
 }
 
+void DeclarativeRenderer::RejectFramePublication() noexcept {
+    const bool pending = pendingPublication_ != nullptr;
+    pendingPublication_.reset();
+    if (pending) {
+        // Resource protection is conservative on allocation failure; scene
+        // authority is already rejected and the next publication refreshes it.
+        try { PublishImageProtection(); } catch (...) {}
+    }
+}
+
+bool DeclarativeRenderer::CommitFramePublication(const std::uint64_t id) {
+    if (!id || !pendingPublication_ || pendingPublication_->id != id ||
+        pendingPublication_->resourceGeneration != bitmapResourceGeneration_) return false;
+    auto publication = std::move(pendingPublication_);
+    incrementalLayoutCache_ = std::move(publication->layout);
+    collections_ = std::move(publication->collections);
+    scrollOffsets_ = std::move(publication->scrollOffsets);
+    scrollStateAccessClock_ = publication->scrollClock;
+    motionTimeline_ = std::move(publication->motion);
+    widgetTransitions_ = std::move(publication->transitions);
+    transitionVisuals_ = std::move(publication->visuals);
+    focusSelectionMemory_ = std::move(publication->selection);
+    selectedPresentationSources_ = std::move(publication->selectionSources);
+    focusBackgrounds_ = std::move(publication->backgrounds);
+    focusBackgroundAccessClock_ = publication->backgroundClock;
+    RecalculateFocusBackgroundCompositeBytes();
+    compositionPaintCache_ = std::move(publication->paintCache);
+    compositionInstance_ = std::move(publication->compositionInstance);
+    protectedImageKeys_ = std::move(publication->imageKeys);
+    visibleContentImageHashes_ = std::move(publication->visibleImageHashes);
+    if (preparationReady_ && preparingInstance_ == publication->instance && preparingScope_ == publication->scope &&
+        preparingSequence_ == publication->sequence && preparingFocus_ == publication->focus) CancelCollectionPreparation();
+    PublishImageProtection();
+    return true;
+}
+
 RenderResult DeclarativeRenderer::Render(
     ID2D1RenderTarget* renderTarget,
     const WidgetSnapshot& snapshot,
     const std::wstring_view focusedElementId,
     const Rect viewport,
     const DeclarativeRenderOptions& options) {
+    RejectFramePublication();
+    auto publication = std::make_unique<FramePublication>();
+    publication->instance = snapshot.instanceId;
+    publication->scope = snapshot.activeInputScopeId;
+    publication->focus = focusedElementId;
+    publication->sequence = snapshot.sequence;
+    publication->motion = motionTimeline_;
     const auto renderStarted = std::chrono::steady_clock::now();
     const auto textHitsBefore = textLayoutCache_.hits;
     const auto textMissesBefore = textLayoutCache_.misses;
@@ -6282,6 +6327,7 @@ RenderResult DeclarativeRenderer::Render(
         Size{viewport.width, viewport.height});
     pass.compactMode = IsCompactResponsiveSurface(responsiveViewport);
     pass.options = options;
+    pass.motionTimeline = &publication->motion;
     pass.result.playStationControls = options.playStationControls;
     const auto* previousCollectionCache = incrementalLayoutCache_ &&
             incrementalLayoutCache_->instanceId == snapshot.instanceId
@@ -6308,7 +6354,7 @@ RenderResult DeclarativeRenderer::Render(
         scrollDiagnosticLastSequence_ = snapshot.sequence;
         scrollDiagnosticLastGeometryTime_ = animationTimestamp;
     }
-    motionTimeline_.BeginFrame(animationTimestamp);
+    publication->motion.BeginFrame(animationTimestamp);
 
     if (renderTarget && !BindBitmapResourceDomain(renderTarget)) {
         pass.Add({}, L"image_resource_domain",
@@ -6357,7 +6403,7 @@ RenderResult DeclarativeRenderer::Render(
     const bool hasCollections = containsCollection(containsCollection, snapshot.root);
     std::optional<decltype(scrollOffsets_)> stagedScrollOffsets;
     auto stagedScrollClock = scrollStateAccessClock_;
-    if (hasCollections) {
+    {
         stagedScrollOffsets = scrollOffsets_;
         pass.scrollState = &*stagedScrollOffsets;
         pass.scrollAccessClock = &stagedScrollClock;
@@ -6457,7 +6503,7 @@ RenderResult DeclarativeRenderer::Render(
     const auto deferredFocusFinished = std::chrono::steady_clock::now();
     // Always retire unseen style-motion nodes, including frames already kept
     // alive by a section, modal or loading indicator.
-    const auto styleAnimationActive = motionTimeline_.EndFrame();
+    const auto styleAnimationActive = publication->motion.EndFrame();
     const bool otherAnimationActive = pass.result.animationActive || styleAnimationActive;
     pass.result.animationActive =
         otherAnimationActive || pass.backgroundSurfaceAnimationActive;
@@ -6474,24 +6520,24 @@ RenderResult DeclarativeRenderer::Render(
         });
     pass.result.succeeded = !hasErrors && pass.layout.valid() && renderTarget;
     if (pass.result.succeeded && pass.result.widgetComposition && !pass.result.widgetComposition->directContent)
-        compositionPaintCache_ = std::move(pass.nextCompositionPaintCache);
-    else compositionPaintCache_.clear();
+        publication->paintCache = std::move(pass.nextCompositionPaintCache);
+    publication->compositionInstance = pass.result.widgetComposition && !pass.result.widgetComposition->directContent
+        ? snapshot.instanceId : compositionInstance_;
     if (pass.result.succeeded) {
         pass.transitions.End();
-        widgetTransitions_ = std::move(pass.transitions);
+        publication->transitions = std::move(pass.transitions);
         std::erase_if(pass.transitionVisuals, [](const auto& entry) { return !entry.second.seen; });
-        transitionVisuals_ = std::move(pass.transitionVisuals);
+        publication->visuals = std::move(pass.transitionVisuals);
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
-        for (const auto& [_, visual] : transitionVisuals_)
+        for (const auto& [_, visual] : publication->visuals)
             pass.result.transitionRetainedBytes += visual.bytes + visual.outgoingBytes + visual.spareBytes;
 #endif
         pass.ResolveSelections();
-        selectedPresentationSources_ = SelectionSources(pass.selections);
-        focusSelectionMemory_ = std::move(pass.selectionMemory);
+        publication->selectionSources = SelectionSources(pass.selections);
+        publication->selection = std::move(pass.selectionMemory);
         pass.RetireInactiveFocusBackgroundTransitions();
-        focusBackgrounds_ = std::move(pass.focusBackgrounds);
-        RecalculateFocusBackgroundCompositeBytes();
-        focusBackgroundAccessClock_ = pass.focusBackgroundAccessClock;
+        publication->backgrounds = std::move(pass.focusBackgrounds);
+        publication->backgroundClock = pass.focusBackgroundAccessClock;
         if (pass.backgroundSurfaceSettleWake &&
             !pass.backgroundSurfaceAnimationActive && !otherAnimationActive)
             pass.result.backgroundSurfaceSettleWake =
@@ -6693,16 +6739,13 @@ RenderResult DeclarativeRenderer::Render(
                 }
             }
         }
-        incrementalLayoutCache_ = std::move(cache);
-        collections_ = std::move(pass.collections);
-        if (preparationReady_ && preparingInstance_ == snapshot.instanceId && preparingScope_ == snapshot.activeInputScopeId &&
-            preparingSequence_ == snapshot.sequence && preparingFocus_ == focusedElementId) CancelCollectionPreparation();
+        publication->layout = std::move(cache);
+        publication->collections = std::move(pass.collections);
         if (stagedScrollOffsets) {
-            scrollOffsets_ = std::move(*stagedScrollOffsets);
-            scrollStateAccessClock_ = stagedScrollClock;
+            publication->scrollOffsets = std::move(*stagedScrollOffsets);
+            publication->scrollClock = stagedScrollClock;
         }
     } else {
-        incrementalLayoutCache_.reset();
         retainedLayout_ = {};
     }
     if (styleCache_.size() > 4096) {
@@ -6765,11 +6808,18 @@ RenderResult DeclarativeRenderer::Render(
             if (!pass.result.compositorBackground || pass.result.compositorBackground->nodeId != surfaceId)
                 pass.visibleContentImageKeys.insert(keys.begin(), keys.end());
         }
-        visibleContentImageHashes_.clear();
         for (const auto& key : pass.visibleContentImageKeys)
-            visibleContentImageHashes_.insert(RemoteImageCache::OpaqueDiagnosticHash(key));
+            publication->visibleImageHashes.insert(RemoteImageCache::OpaqueDiagnosticHash(key));
     }
-    protectedImageKeys_ = pass.result.succeeded ? std::move(pass.visibleImageKeys) : priorImageProtection;
+    if (pass.result.succeeded) {
+        publication->imageKeys = std::move(pass.visibleImageKeys);
+        publication->id = ++nextPublicationId_;
+        publication->resourceGeneration = bitmapResourceGeneration_;
+        pass.result.publicationId = publication->id;
+        protectedImageKeys_ = priorImageProtection;
+        pendingPublication_ = std::move(publication);
+        if (!options.deferPublication) (void)CommitFramePublication(pass.result.publicationId);
+    } else protectedImageKeys_ = priorImageProtection;
     PublishImageProtection();
     if (scrollDiagnostics_) scrollDiagnostics_->Record("render", [&](auto& out) {
         const auto& timing = pass.result.timing;
@@ -6980,6 +7030,7 @@ ContentMeasureResult DeclarativeRenderer::MeasureContent(
 }
 
 void DeclarativeRenderer::DiscardTargetResources() noexcept {
+    RejectFramePublication();
     // BeginDraw may return another transient device-context interface for the
     // same D2D device. Target-local clips/layout are discarded here, while the
     // bounded bitmap cache remains owned by its explicit resource domain and
@@ -7169,6 +7220,7 @@ bool DeclarativeRenderer::EnsureSurfaceClip(
 void DeclarativeRenderer::ForgetWidgetState(
     const std::wstring_view widgetInstanceId) noexcept {
     if (widgetInstanceId.empty()) return;
+    if (pendingPublication_ && pendingPublication_->instance == widgetInstanceId) RejectFramePublication();
     if (preparingInstance_ == widgetInstanceId) CancelCollectionPreparation();
     if (widgetTransitions_.OwnsInstance(widgetInstanceId) || compositionInstance_ == widgetInstanceId) CancelWidgetTransitions();
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING

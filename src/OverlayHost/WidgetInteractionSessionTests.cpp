@@ -760,6 +760,26 @@ void OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority() {
     const auto confirmed = session.PreviewFocusGroupEntryRequest(authority, render);
     Check(confirmed.current && confirmed.target == preview.target,
           "final preparation validates the same exact remembered target");
+    auto publication = FocusGroupEntryPublication::Capture(authority, *confirmed.target);
+    Check(publication && publication->Matches(authority) &&
+        session.FocusGroupEntryRequestPending(authority),
+        "staging a submitted target retains the unconsumed one-shot intent");
+    publication.reset(); // EndDraw/submission failure: discard only the acknowledgement.
+    Check(session.FocusGroupEntryRequestPending(authority), "failed frame leaves group request retryable");
+    publication = FocusGroupEntryPublication::Capture(authority, *confirmed.target);
+    auto changed = successor;
+    ++changed.sequence;
+    Check(!publication->Matches(Authority(changed, L"entry.widget", L"runtime-a", L"presentation-a")),
+        "another sequence requires a new drawn acknowledgement even for the same request");
+    changed = successor; changed.activeInputScopeId = L"other";
+    Check(!publication->Matches(Authority(changed, L"entry.widget", L"runtime-a", L"presentation-a")),
+        "scope changes retire a drawn group acknowledgement");
+    changed = successor; ++changed.focusGroupEntryRequest->requestId;
+    Check(!publication->Matches(Authority(changed, L"entry.widget", L"runtime-a", L"presentation-a")),
+        "new requests cannot inherit an earlier frame's target");
+    Check(!publication->Matches(Authority(successor, L"entry.widget", L"runtime-b", L"presentation-a")) &&
+        !publication->Matches(Authority(successor, L"entry.widget", L"runtime-a", L"presentation-b")),
+        "runtime and presentation replacement reject drawn group acknowledgements");
     const auto applied = session.CommitPreparedFocusGroupEntryRequest(
         authority, confirmed.target);
     Check(applied.consumed && applied.target == L"entry.remembered",

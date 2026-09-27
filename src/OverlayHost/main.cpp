@@ -7809,13 +7809,14 @@ private:
             std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - geometryStarted).count());
         if (!placed) {
+            BlockWidgetFramePublication();
             presentationTransaction_.RejectCompositionAdmission();
             AppendDiagnostic(
                 L"Committed composition surface could not be placed error=" +
                 std::to_wstring(GetLastError()));
             return false;
         }
-        CompleteWidgetFramePublication();
+        if (!CompleteWidgetFramePublication()) return false;
         if (frames.contentRendererWork &&
             *frames.contentRendererWork != widgetrail::IncrementalPresentationWork::NoRaster)
             widgetContextMenuPixelsPending_ = frames.widgetContextMenuPainted;
@@ -17686,15 +17687,59 @@ private:
 
     void BlockWidgetFramePublication() {
         widgetFramePublicationFailed_ = true;
+        pendingRendererPublicationId_ = 0;
+        pendingGroupFocusPublication_.reset();
+        if (declarativeRenderer_) declarativeRenderer_->RejectFramePublication();
         paintedAccessibilityRealization_.reset();
         // Provider publication is retired, but an unseen reveal remains a
         // pending intent until a successful replacement paint acknowledges it.
         ClearAccessibilityTree(true);
     }
 
-    void CompleteWidgetFramePublication() {
-        if (lastWidgetRenderResult_.succeeded && committedWidgetVisualState_)
+    bool CompleteWidgetFramePublication() {
+        const bool publishedWidgetFrame = pendingRendererPublicationId_ != 0;
+        if (pendingRendererPublicationId_) {
+            const auto publication = std::exchange(pendingRendererPublicationId_, 0);
+            if (!declarativeRenderer_ || !declarativeRenderer_->CommitFramePublication(publication)) {
+                BlockWidgetFramePublication();
+                InvalidateRect(window_, nullptr, FALSE);
+                return false;
+            }
+        }
+        if (publishedWidgetFrame && lastWidgetRenderResult_.succeeded && committedWidgetVisualState_)
             widgetFramePublicationFailed_ = false;
+        if (auto pending = std::exchange(pendingGroupFocusPublication_, std::nullopt)) {
+            const auto* snapshot = InteractionSnapshotFor(pending->widget);
+            const auto authority = snapshot ? InteractionAuthority(pending->widget, *snapshot) : std::nullopt;
+            if (authority && pending->Matches(*authority) && WidgetOwnsInputFocus(pending->widget) &&
+                !textEntryModal_.active()) {
+                const auto entry = interactionSession_.CommitPreparedFocusGroupEntryRequest(*authority, pending->target);
+                if (entry.consumed) {
+                    ClearFreeScrollReentry(L"focus-group-entry-request");
+                    (void)interactionSession_.MoveFocus(pending->widget, *snapshot, pending->target, false, false);
+                    (void)scrollEvidenceProbe_.RecordTarget(pending->target, L"focus-group-entry-request");
+                    AppendDiagnostic(L"Focus-group entry request widget=" + pending->widget +
+                        L" state=settled-consumed target=" + pending->target);
+                }
+            }
+        }
+        if (publishedWidgetFrame && !widgetFramePublicationFailed_ && committedWidgetVisualState_) {
+            const auto& visual = *committedWidgetVisualState_;
+            const auto* snapshot = InteractionSnapshotFor(visual.widgetId);
+            const auto authority = snapshot ? InteractionAuthority(visual.widgetId, *snapshot) : std::nullopt;
+            if (authority && snapshot->instanceId == visual.instanceId && snapshot->sequence == visual.snapshotSequence &&
+                authority->runtimeGeneration == visual.runtimeGeneration &&
+                authority->presentationGeneration == visual.presentationGeneration) {
+                ReconcileScrollPaginationPrefetch(visual.widgetId, *snapshot, lastWidgetRenderResult_);
+                if (WidgetOwnsInputFocus(visual.widgetId) && !textEntryModal_.active()) {
+                    if (auto next = interactionSession_.ResolvePendingCollectionFocus(
+                            *authority, interactionSession_.focusedElementId(), lastWidgetRenderResult_)) {
+                        const auto moved = interactionSession_.MoveFocus(visual.widgetId, *snapshot, *next);
+                        InvalidateWidgetFocusChange(moved.priorFocus, moved.sliderDamageNodeIds);
+                    }
+                }
+            }
+        }
         if (paintedAccessibilityRealization_ && pendingAccessibilityRealization_ &&
             paintedAccessibilityRealization_->widgetId == pendingAccessibilityRealization_->widgetId &&
             paintedAccessibilityRealization_->runtimeGeneration == pendingAccessibilityRealization_->runtimeGeneration &&
@@ -17702,6 +17747,7 @@ private:
             paintedAccessibilityRealization_->nodeId == pendingAccessibilityRealization_->nodeId)
             pendingAccessibilityRealization_.reset();
         paintedAccessibilityRealization_.reset();
+        return true;
     }
 
     void DisableCompositionFallback(const std::wstring_view reason) {
@@ -17943,7 +17989,7 @@ private:
             state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
                 : state_.selectedWidget());
-        CompleteWidgetFramePublication();
+        if (!CompleteWidgetFramePublication()) return false;
         if (frames.overlayFullscreenGeometry) {
             const auto& fullscreen = *frames.overlayFullscreenGeometry;
             const HRESULT mediaResult = ReconcileEmbeddedMediaPresentation(
@@ -18101,7 +18147,10 @@ private:
             DiscardGraphicsResources();
             ReprimeOpenAfterRenderTargetLoss();
         } else if (SUCCEEDED(result)) {
-            CompleteWidgetFramePublication();
+            if (!CompleteWidgetFramePublication()) {
+                EndPaint(window_, &paint);
+                return;
+            }
             if (performanceCountersActive_) ++performanceSuccessfulFrames_;
             AppendFallbackPresentationCheckpoint();
             pendingWidgetPresentationImpact_.reset();
@@ -18671,6 +18720,7 @@ private:
         const std::wstring_view widgetId, const widgetrail::WidgetDescriptor* descriptor,
         const widgetrail::OverlaySurfaceGeometry& geometry, const float physicalPixelsPerDip) const {
         widgetrail::DeclarativeRenderOptions options;
+        options.deferPublication = true;
         options.pixelScale = physicalPixelsPerDip;
         options.responsiveViewport = {geometry.panelWidth, geometry.panelHeight};
         options.surfaceBackground = effectivePanelBackground_;
@@ -19043,6 +19093,7 @@ private:
                     }
                 }
                 currentCompositionRenderTiming_ = result.timing;
+                pendingRendererPublicationId_ = result.succeeded ? result.publicationId : 0;
                 if (!result.succeeded) widgetFramePublicationFailed_ = true;
                 if (options.suppressFocusedDescendantFollow &&
                     interactionSession_.freeScrollBinding()) {
@@ -19056,31 +19107,12 @@ private:
                     }
                 }
                 const auto& semanticSnapshot = *snapshot;
-                bool focusGroupEntryMoved{};
+                pendingGroupFocusPublication_.reset();
                 if (result.succeeded && focusGroupEntryPrepared &&
-                    focusGroupEntryAuthority) {
-                    const auto entry =
-                        interactionSession_.CommitPreparedFocusGroupEntryRequest(
-                            *focusGroupEntryAuthority,
-                            preparedFocusGroupEntryTarget);
-                    if (entry.consumed) {
-                        const auto priorFocus =
-                            interactionSession_.focusedElementId();
-                        if (entry.target && *entry.target != priorFocus) {
-                            ClearFreeScrollReentry(L"focus-group-entry-request");
-                            const auto focus = interactionSession_.MoveFocus(
-                                renderedWidget, semanticSnapshot, *entry.target,
-                                false, false);
-                            focusGroupEntryMoved = focus.changed;
-                            (void)scrollEvidenceProbe_.RecordTarget(
-                                *entry.target, L"focus-group-entry-request");
-                        }
-                        AppendDiagnostic(
-                            L"Focus-group entry request widget=" +
-                            std::wstring{renderedWidget} +
-                            L" state=settled-consumed target=" +
-                            (entry.target ? *entry.target : L"none"));
-                    }
+                    focusGroupEntryAuthority && preparedFocusGroupEntryTarget) {
+                    pendingGroupFocusPublication_ =
+                        widgetrail::input::FocusGroupEntryPublication::Capture(
+                            *focusGroupEntryAuthority, *preparedFocusGroupEntryTarget);
                 }
                 if (result.succeeded) {
                     const std::wstring inputOwner =
@@ -19352,9 +19384,8 @@ private:
                 if (result.succeeded) pendingWidgetCompositionScene_ = result.widgetComposition;
                 if (WidgetOwnsInputFocus(renderedWidget) &&
                     !textEntryModal_.active() && !inertRetainedSnapshot &&
-                    !focusGroupEntryWaiting) {
-                    if (!options.suppressFocusedDescendantFollow ||
-                        focusGroupEntryMoved) {
+                    !focusGroupEntryWaiting && !pendingGroupFocusPublication_) {
+                    if (!options.suppressFocusedDescendantFollow) {
                         (void)ReconcileResponsiveFocusPersistence(
                             renderedWidget, semanticSnapshot, result);
                         if (const auto visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
@@ -19387,14 +19418,6 @@ private:
                 if (!inertRetainedSnapshot && result.succeeded) {
                     if (!options.realizeElementId.empty()) paintedAccessibilityRealization_ = pendingAccessibilityRealization_;
                     ReconcileWindowPreviews(*snapshot, result);
-                    ReconcileScrollPaginationPrefetch(
-                        widget, semanticSnapshot, result);
-                    if (auto next = interactionSession_.ResolvePendingCollectionFocus(
-                            {widget, &semanticSnapshot, descriptor->runtimeGeneration, descriptor->presentationGeneration, false},
-                            interactionSession_.focusedElementId(), result)) {
-                        const auto moved = interactionSession_.MoveFocus(widget, semanticSnapshot, *next);
-                        InvalidateWidgetFocusChange(moved.priorFocus, moved.sliderDamageNodeIds);
-                    }
                 }
                 if (!inertRetainedSnapshot && result.succeeded) {
                     committedWidgetVisualState_ = CommittedWidgetVisualState{
@@ -19427,7 +19450,7 @@ private:
                         std::wstring{widget}, descriptor->runtimeGeneration,
                         semanticSnapshot, result,
                         state_.focusRegion() == widgetrail::FocusRegion::Widget
-                            ? std::wstring_view{interactionSession_.focusedElementId()}
+                            ? std::wstring_view{renderedFocusId}
                             : std::wstring_view{},
                         options.sliderValueOverrides,
                         selectPopup ? &*selectPopup : nullptr,
@@ -19689,6 +19712,8 @@ private:
     bool accessibilityRealizationReady_{};
     std::optional<widgetrail::accessibility::ActionRequest> paintedAccessibilityRealization_;
     bool widgetFramePublicationFailed_{};
+    std::uint64_t pendingRendererPublicationId_{};
+    std::optional<widgetrail::input::FocusGroupEntryPublication> pendingGroupFocusPublication_;
     std::optional<std::pair<std::uint64_t, std::wstring>> preparedCandidateGroupFocus_;
     bool awaitingSuccessfulOpenPaint_{};
     ULONGLONG nextOpenPaintRetryAt_{};

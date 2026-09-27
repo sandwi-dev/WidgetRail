@@ -362,7 +362,7 @@ void TestPinnedBackgroundCrossfadeDiagnosticWakeContract() {
           "pinned timer retains settle authority and promotes damage collisions to a full repaint");
 
     const auto pinnedPaint = coordinator.find(
-        "const HRESULT result = renderTarget_->EndDraw();");
+        "HRESULT result = renderTarget_->EndDraw();");
     const auto pinnedPaintEnd = coordinator.find(
         "void WidgetSurfaceCoordinator::PublishAccessibility()", pinnedPaint);
     Check(pinnedPaint != std::string::npos &&
@@ -370,9 +370,13 @@ void TestPinnedBackgroundCrossfadeDiagnosticWakeContract() {
           "pinned paint completion owner is present");
     const auto pinnedSchedule = coordinator.substr(
         pinnedPaint, pinnedPaintEnd - pinnedPaint);
-    Check(pinnedSchedule.find("else if (SUCCEEDED(result))") !=
+    Check(pinnedSchedule.find("if (FAILED(result) || !renderResult.succeeded)") !=
                   std::string::npos &&
-              pinnedSchedule.find("if (!renderResult.succeeded)") !=
+              pinnedSchedule.find("CommitFramePublication(renderResult.publicationId)") !=
+                  std::string::npos &&
+              pinnedSchedule.find("framePublicationFailed_ = true;") !=
+                  std::string::npos &&
+              pinnedSchedule.find("framePublicationFailed_ = false;") !=
                   std::string::npos &&
               pinnedSchedule.find("backgroundSurfaceAnimationDamage") !=
                   std::string::npos &&
@@ -811,11 +815,10 @@ void TestOneShotFocusGroupEntryHostContract() {
         "declarativeRenderer_->Render(", actualRender + 1);
     const auto succeeded = render.find(
         "if (result.succeeded && focusGroupEntryPrepared", actualRender);
-    const auto commit = render.find(
-        "CommitPreparedFocusGroupEntryRequest(", succeeded);
-    const auto move = render.find("interactionSession_.MoveFocus(", commit);
+    const auto staged = render.find(
+        "FocusGroupEntryPublication::Capture(", succeeded);
     const auto semanticPublication = render.find(
-        "if (result.succeeded)", move);
+        "if (result.succeeded)", staged);
     Check(candidatePreparation != std::string::npos &&
               candidatePreview != std::string::npos &&
               candidateTargetGate != std::string::npos &&
@@ -823,15 +826,28 @@ void TestOneShotFocusGroupEntryHostContract() {
               finalPreview != std::string::npos &&
               projection != std::string::npos && actualRender != std::string::npos &&
               duplicateActualRender == std::string::npos &&
-              succeeded != std::string::npos && commit != std::string::npos &&
-              move != std::string::npos && semanticPublication != std::string::npos &&
+              succeeded != std::string::npos && staged != std::string::npos &&
+              semanticPublication != std::string::npos &&
               candidatePreparation < candidatePreview &&
               candidatePreview < candidateTargetGate &&
               candidateTargetGate < finalPreparation && finalPreparation < finalPreview &&
               finalPreview < projection && projection < actualRender &&
-              actualRender < succeeded && succeeded < commit && commit < move &&
-              move < semanticPublication,
-          "candidate and final focus preparation settle before exactly one actual raster, then commit before semantic publication");
+              actualRender < succeeded && succeeded < staged && staged < semanticPublication &&
+              render.find("CommitPreparedFocusGroupEntryRequest(") == std::string::npos,
+          "candidate and final focus preparation settle before one raster and stage an unconsumed acknowledgement");
+    const auto completionBegin = source.find("bool CompleteWidgetFramePublication()");
+    const auto completionEnd = source.find("void DisableCompositionFallback", completionBegin);
+    Check(completionBegin != std::string::npos && completionEnd != std::string::npos,
+        "host has an explicit frame publication boundary");
+    const auto completion = source.substr(completionBegin, completionEnd - completionBegin);
+    const auto rendererCommit = completion.find("CommitFramePublication(publication)");
+    const auto authorityCheck = completion.find("pending->Matches(*authority)");
+    const auto commit = completion.find("CommitPreparedFocusGroupEntryRequest(");
+    const auto move = completion.find("interactionSession_.MoveFocus(", commit);
+    Check(rendererCommit != std::string::npos && authorityCheck != std::string::npos &&
+        commit != std::string::npos && move != std::string::npos &&
+        rendererCommit < authorityCheck && authorityCheck < commit && commit < move,
+        "host acknowledges exact group authority only after renderer frame publication");
     Check(render.find("focusGroupEntryPrepared = true;", candidatePreview) >
               candidateTargetGate,
           "targetless deferred entry remains pending instead of preparing a null target");
@@ -840,7 +856,7 @@ void TestOneShotFocusGroupEntryHostContract() {
               render.find("!focusGroupEntryWaiting", actualRender) !=
                   std::string::npos,
           "targetless pending entry suppresses final responsive and first-hit focus recovery");
-    const auto committedFocus = render.substr(commit, semanticPublication - commit);
+    const auto committedFocus = completion.substr(commit, completion.find("if (publishedWidgetFrame", commit) - commit);
     Check(committedFocus.find("false, false") != std::string::npos &&
               committedFocus.find("InvalidateRect(") == std::string::npos,
           "the already-rendered focus target commits without retiring presentation state or scheduling a fallback frame");

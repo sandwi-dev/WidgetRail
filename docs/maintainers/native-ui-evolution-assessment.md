@@ -25,8 +25,13 @@ distance. Incoming focus-group targets are prepared before admission, and UIA re
 use bounded timer slices without moving focus. Renderer progress/rollback and pinned
 host tests pass. Final paint/device publication, broader cursor/lifecycle validation,
 and further widget adoption remain.
-Draw-failure hardening now gates interaction and preserves unseen accessibility
-reveals until a successful replacement; pinned injected-failure tests pass.
+Draw-failure hardening gates interaction and preserves unseen accessibility
+reveals. Renderer scene state now waits for an exact host frame acknowledgement;
+rejected frames retain committed layout, scroll, motion and raster leases. Main
+group requests and collection-focus/page settlement follow successful submission.
+Renderer (29,787), interaction (411), pinned-owner (409) and host-contract (517)
+checks pass, with a coherent Release host/runtime build. Main-host injected
+submission/lifecycle coverage and remaining collection acceptance are still open.
 WIDGE-294–298 have not
 started. No live-overlay performance improvement is claimed. Details:
 [collection lifecycle](native-collection-lifecycle.md).
