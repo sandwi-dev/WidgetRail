@@ -198,14 +198,14 @@ new input, scrolling, lifecycle changes and recycled IDs cancel obsolete intents
 Already measured targets keep their ordinary path. Preparation caches retain
 bounded intermediate measurements through old-scene repaints and multi-pass reveal.
 
-`PlanPreparedFreeScroll` tentatively applies one sample and checks required
-coverage. The open host defers newly demanded preparation until after submission;
-synchronous callers retain the sliced preparation path. Pending/Failed restores
-offset/paint-plan state. Later cadence samples
-retry from the committed viewport instead of accumulating movement debt. Already
-measured buffered demand bypasses preparation. Provider boundary loading remains
-distinct from preparation. Renderer tests compare sliced movement with synchronous
-measurement/anchor correction and exercise old-scene repaints between slices.
+`PlanPreparedFreeScroll` tentatively applies one sample and checks coverage. The
+open host defers optional lookahead, while loaded visible items are realized by
+the normal frame transaction. An unfinished incoming page cannot hold that
+movement. Non-deferred callers retain the bounded sliced path and roll back a
+Pending/Failed attempt. No path accumulates movement debt at provider boundaries.
+Cold adjacent rows are not measured by the visible frame; already valid adjacent
+measurements stay within the existing one-line retention window. See the
+[transaction model](native-collection-transactions.md) for ownership and admission.
 
 Ready slices can return prepared focus geometry without painting. The host resolves
 an incoming one-shot group request against that geometry and prepares its remembered
@@ -241,12 +241,14 @@ fake session transport exercise responsive focus, group-entry requests, UIA,
 submission rejection and source replacement without starting the overlay or workers.
 This is not physical DirectComposition submission/device-loss timing evidence.
 
-Preparation keeps at most two source branches (instance/scope/sequence), allowing
-current-source focus/UIA and incoming-page work to retain their own measurements.
-Within a source, context checks still invalidate incompatible constraints. A
-successful frame retires only matching ready focus/reveal preparation; an ordinary
-paint cannot consume an unseen UIA reveal. Invalid preparation retires only its
-source. Explicit cancellation clears all branches; widget retirement clears its own.
+Preparation keeps at most two source branches (instance/scope/sequence). Pending
+branches contain measurement caches only. Within the same instance/scope, item
+measurements can cross source revisions when stable key, content, exact context
+and reset generation match; geometry and scroll state cannot. Ready branches own
+complete prepared frames. Successful publication retires only the exact frame it
+adopted. An ordinary paint cannot consume unrelated lookahead or an unseen UIA
+reveal. Invalid preparation retires only its source; explicit cancellation clears
+all branches and widget retirement clears its own.
 The interleaving regression uses one-item slices, changed incoming width and
 old-scene repaints; both requests must complete while committed geometry stays stable.
 

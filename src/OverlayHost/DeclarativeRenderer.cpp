@@ -527,6 +527,7 @@ struct DeclarativeRenderer::RenderPass final {
     std::chrono::steady_clock::time_point preparationStarted;
     std::size_t preparationMeasurements{};
     std::uint64_t preparationFirstProgressMicroseconds{};
+    std::unordered_map<std::wstring, collection::Anchor> freeScrollAnchors;
     DeclarativeRenderer* owner{};
     std::unordered_map<std::wstring, ScrollStateEntry>* scrollState{};
     std::uint64_t* scrollAccessClock{};
@@ -6414,7 +6415,7 @@ std::optional<FocusedFreeScrollPlan> DeclarativeRenderer::PlanPreparedFreeScroll
                 1, protectedKeys, state.geometry.Size());
             const auto& items = scrollPath.back()->children;
             const auto ready = [&](const std::size_t index) {
-                if (index >= items.size() || std::ranges::find(state.realized, index) == state.realized.end()) return false;
+                if (index >= items.size()) return false;
                 const auto cached = state.items.find(items[index].collectionItemKey);
                 return cached != state.items.end() && cached->second.measuredContext == state.contextRevision &&
                     !cached->second.layout.boxes.empty();
@@ -6432,7 +6433,7 @@ std::optional<FocusedFreeScrollPlan> DeclarativeRenderer::PlanPreparedFreeScroll
         preparationOptions.suppressFocusedDescendantFollow = true;
         if (options.deferScrollPreparation) {
             const bool prepared = std::ranges::any_of(collectionPreparations_, [&](const auto& branch) {
-                return branch.ready && branch.frame && branch.Matches(snapshot) && branch.focus == focusedElementId &&
+                return branch.Ready() && branch.Matches(snapshot) && branch.focus == focusedElementId &&
                     branch.realization == preparationOptions.realizeElementId && branch.frame->SameInputScroll(scrollOffsets_) &&
                     SamePreparationContext(branch.frame->cache.viewport, branch.frame->cache.options, viewport, preparationOptions);
             });
@@ -6441,10 +6442,11 @@ std::optional<FocusedFreeScrollPlan> DeclarativeRenderer::PlanPreparedFreeScroll
             // measurements; it cannot publish an offset or replay input debt.
             pendingScrollPreparation_ = ScrollPreparation{snapshot.instanceId, snapshot.activeInputScopeId,
                 std::wstring{focusedElementId}, stateKey, snapshot.sequence, plan->offset, viewport, preparationOptions};
-            if (requiredReady) return plan;
-            rollback();
-            if (diagnostic) diagnostic->disposition = FocusedFreeScrollPlanDisposition::PreparationPending;
-            return std::nullopt;
+            // Loaded visible content belongs to the frame, not the prefetch
+            // queue. Render will realize missing visible items transactionally;
+            // only optional lookahead is deferred. Provider edges remain bounded
+            // by PlanFocusedFreeScroll and never accumulate movement debt.
+            return plan;
         }
         const auto preparation = PrepareCollections(snapshot, focusedElementId, viewport, preparationOptions, budget);
         if (scrollDiagnostics_) scrollDiagnostics_->Record("scroll-preparation", [&](auto& out) {
@@ -6604,9 +6606,7 @@ bool DeclarativeRenderer::CommitFramePublication(const std::uint64_t id) {
     committedImageInstance_ = publication->instance;
     visibleContentImageHashes_ = std::move(publication->visibleImageHashes);
     std::erase_if(collectionPreparations_, [&](const auto& branch) {
-        return branch.ready && branch.instance == publication->instance && branch.scope == publication->scope &&
-            branch.sequence == publication->sequence && branch.focus == publication->focus &&
-            branch.realization == publication->realization;
+        return publication->adoptedPreparation && branch.frame == publication->adoptedPreparation;
     });
     PublishImageProtection();
     return true;
@@ -6739,22 +6739,24 @@ RenderResult DeclarativeRenderer::Render(
     pass.reuseCommittedStyles = pass.reuseCommittedStyles && !options.disablePreparedStyleReuseForTesting;
 #endif
     bool retainedCollections{};
+    std::shared_ptr<PreparedCollectionFrame> adoptedPreparation;
     const auto ready = std::ranges::find_if(collectionPreparations_, [&](const auto& branch) {
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         if (options.disablePreparedCollectionFrameForTesting) return false;
 #endif
-        if (!branch.ready || !branch.frame || !branch.Matches(snapshot) || branch.focus != focusedElementId ||
+        if (!branch.Ready() || !branch.Matches(snapshot) || branch.focus != focusedElementId ||
             branch.realization != options.realizeElementId) return false;
         const auto& frame = *branch.frame;
         return SamePreparationContext(frame.cache.viewport, frame.cache.options, viewport, options) &&
             frame.SameInputScroll(scrollOffsets_) && frame.selections == layoutSelections;
     });
     if (ready != collectionPreparations_.end()) {
+        adoptedPreparation = ready->frame;
         const auto& frame = *ready->frame;
         pass.layout = frame.cache.layout;
         pass.textMeasurements = frame.cache.textMeasurements;
         pass.textMeasurementQueries = frame.cache.textMeasurementQueries;
-        pass.collections = ready->collections;
+        pass.collections = frame.collections;
         pass.VisitScrollNodes(snapshot.root, [&](const WidgetNode& node) {
             if (node.collectionLayout && pass.layout.Find(NarrowStableId(node.id))) pass.collectionNodes.emplace(node.id, &node);
         });
@@ -7109,6 +7111,7 @@ RenderResult DeclarativeRenderer::Render(
         }
         publication->layout = std::move(cache);
         publication->collections = std::move(pass.collections);
+        publication->adoptedPreparation = std::move(adoptedPreparation);
         if (stagedScrollOffsets) {
             publication->scrollOffsets = std::move(*stagedScrollOffsets);
             publication->scrollClock = stagedScrollClock;
@@ -7265,13 +7268,13 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
         collectionPreparations_.push_back(std::move(branch));
     }
     auto& branch = collectionPreparations_.back();
-    const auto resume = !branch.ready && branch.frame && branch.focus == focusedElementId &&
-        branch.realization == options.realizeElementId && branch.frame->SameInputScroll(scrollOffsets_) &&
-        SamePreparationContext(branch.frame->cache.viewport, branch.frame->cache.options, viewport, options)
-        ? branch.frame : nullptr;
+    const bool resumed = !branch.measurements.empty() || branch.Ready();
+    if (branch.frame) {
+        for (auto& [key, state] : branch.frame->collections)
+            branch.measurements.insert_or_assign(key, static_cast<CollectionMeasurements&&>(std::move(state)));
+    }
     branch.focus = focusedElementId;
     branch.realization = options.realizeElementId;
-    branch.ready = false;
     branch.frame.reset();
     RenderPass pass;
     pass.owner = this;
@@ -7285,14 +7288,9 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     pass.preparationStarted = started;
     auto stagedScroll = scrollOffsets_;
     auto stagedClock = scrollStateAccessClock_;
-    if (resume) {
-        // Offsets and their extent/anchor model are one speculative checkpoint.
-        // Restoring only offsets against the committed (pre-page) geometry can
-        // apply a prepend/eviction anchor correction twice.
-        pass.collections = branch.collections;
-        stagedScroll = resume->outputScroll;
-        stagedClock = std::max(stagedClock, resume->outputScrollClock);
-    }
+    // Always place against the latest committed geometry and scroll position.
+    // CollectionState imports warm measurements independently. A yielded pass
+    // has no authority to carry a partially changed coordinate system forward.
     auto stagedMotion = motionTimeline_;
     pass.motionTimeline = &stagedMotion;
     pass.options.animationTimestampMilliseconds = options.animationTimestampMilliseconds.value_or(GetTickCount64());
@@ -7322,27 +7320,28 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     const auto preparationBodyEnd = std::chrono::steady_clock::now();
     if (result.status == CollectionPreparationStatus::Failed) retireSource();
     else {
-        branch.collections = std::move(pass.collections);
-        branch.ready = result.status == CollectionPreparationStatus::Ready;
-        {
+        branch.measurements.clear();
+        if (result.status == CollectionPreparationStatus::Ready) {
             auto frame = std::make_shared<PreparedCollectionFrame>();
             frame->cache.viewport = viewport;
             frame->cache.options = options;
-            if (branch.ready) {
-                frame->cache.layout = std::move(pass.layout);
-                frame->cache.textMeasurements = std::move(pass.textMeasurements);
-                frame->cache.textMeasurementQueries = std::move(pass.textMeasurementQueries);
-            }
+            frame->cache.layout = std::move(pass.layout);
+            frame->cache.textMeasurements = std::move(pass.textMeasurements);
+            frame->cache.textMeasurementQueries = std::move(pass.textMeasurementQueries);
+            frame->collections = std::move(pass.collections);
             frame->inputScroll = scrollOffsets_;
             frame->outputScroll = std::move(stagedScroll);
             frame->outputScrollClock = stagedClock;
             frame->selections = SelectionSources(pass.selections, true);
-            if (branch.ready) for (const auto& [_, item] : pass.prepared) {
+            for (const auto& [_, item] : pass.prepared) {
                 auto& state = frame->cache.nodes[item.node->id];
                 state.baseStyle = item.baseStyle; state.styleContext = item.context;
                 state.effectiveBackground = item.effectiveBackground;
             }
             branch.frame = std::move(frame);
+        } else {
+            for (auto& [key, state] : pass.collections)
+                branch.measurements.emplace(key, static_cast<CollectionMeasurements&&>(std::move(state)));
         }
     }
     result.newMeasurements = pass.preparationMeasurements;
@@ -7355,7 +7354,7 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
         : result.elapsedMicroseconds;
     if (scrollDiagnostics_) scrollDiagnostics_->Record("collection-preparation", [&](auto& out) {
         out << "seq=" << snapshot.sequence << " status=" << static_cast<int>(result.status)
-            << " resumed=" << static_cast<bool>(resume) << " measurements=" << result.newMeasurements
+            << " resumed=" << resumed << " measurements=" << result.newMeasurements
             << " cpu-us=" << result.elapsedMicroseconds << " budget-us=" << budget.maximumMicroseconds
             << " minimum-progress-us=" << result.minimumProgressMicroseconds;
     });

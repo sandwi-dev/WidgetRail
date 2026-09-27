@@ -18845,6 +18845,7 @@ private:
         widgetrail::ApplyWidgetRenderMotionPolicy(options,
             appearanceState_.current() ? &*appearanceState_.current() : nullptr, snapshot,
             compositionSurface_.available() && compositorContent);
+        options.deferScrollPreparation = true;
         options.deferPublication = true;
         options.pixelScale = physicalPixelsPerDip;
         options.responsiveViewport = {geometry.panelWidth, geometry.panelHeight};

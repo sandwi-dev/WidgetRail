@@ -188,6 +188,12 @@ The two resources have different refresh behavior:
 After `Reset()`, neither resource fetches until another load is requested.
 Loading an adjacent page continues the existing traversal.
 
+The host separates provider loading from visible layout and optional lookahead.
+Moving through items already in the current window does not wait for an adjacent
+page to finish preparing. Keep item keys and the collection reset generation
+stable during adjacent loads so valid measurements can be reused. This is a
+lifecycle rule, not a guarantee that expensive item rendering fits every frame.
+
 For cursor collections, a successful refresh publishes a new reset generation.
 The host uses that signal to reset scroll position and remembered item focus.
 Adjacent loads retain that reset generation. Keep the scroll container ID stable;

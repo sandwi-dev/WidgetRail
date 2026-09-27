@@ -8226,16 +8226,17 @@ void BufferedPreparationDoesNotGateVisibleScrolling() {
             const auto advanced = actualFixture.Draw(snapshot, L"item.0", bounds, options);
             Check(advanced.scrollOffsets.at(L"items") > unchanged.scrollOffsets.at(L"items"),
                 "completed deferred movement publishes its intended viewport");
-            const auto prior = advanced.scrollOffsets.at(L"items");
             FocusedFreeScrollPlanDiagnostic pending;
-            (void)actual.PlanPreparedFreeScroll(snapshot, L"item.0", axis,
+            const auto loadedMove = actual.PlanPreparedFreeScroll(snapshot, L"item.0", axis,
                 1000, bounds, L"items", options, &pending);
-            Check(actual.HasPendingScrollPreparation(), "distant scroll queues preparation without publishing its distance");
+            Check(loadedMove.has_value(), "loaded content does not wait for optional lookahead");
+            const auto accepted = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+            const auto prior = accepted.scrollOffsets.at(L"items");
             ++snapshot.sequence;
             (void)actual.PreparePendingScroll(snapshot, L"item.0", {1, 1000000});
             Check(!actual.HasPendingScrollPreparation(), "page replacement cancels obsolete scroll preparation");
             const auto after = actualFixture.Draw(snapshot, L"item.0", bounds, options);
-            Near(after.scrollOffsets.at(L"items"), prior, "canceled preparation never jumps the committed viewport");
+            Near(after.scrollOffsets.at(L"items"), prior, "canceling obsolete lookahead preserves the accepted viewport");
         }
     }
 }
@@ -9865,6 +9866,11 @@ void PlaybackPreparationWorkload(bool composition = false, bool depth = false, b
 #include "PageArrivalReversalProbe.inl"
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view(argv[1]) == "--page-arrival-variable") {
+        Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "variable page reversal COM initialization");
+        const auto result = ProbePageReversal(false, 1.0F, false, 0, 1, true);
+        CoUninitialize(); return result.anchorFailures || result.incomplete || result.blocked ? EXIT_FAILURE : EXIT_SUCCESS;
+    }
     if (argc == 2 && std::string_view(argv[1]) == "--page-arrival-reversal") {
         Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "page reversal probe COM initialization");
         const bool passed = PageArrivalReversalProbe();
@@ -9948,6 +9954,7 @@ int main(int argc, char** argv) {
     NestedCollectionPreparationMakesProgress();
     RetainedCollectionPlacementPreservesGeometryAndPixels();
     BufferedPreparationDoesNotGateVisibleScrolling();
+    Check(PageArrivalReversalProbe(), "page arrival preserves loaded movement, anchors and bounded progress");
     LoadingChromeUsesBoundedReusableComposition();
     ResourceAliasesRetainBackingStorage();
     SurfaceDepthUsesBoundedSharedPainting();

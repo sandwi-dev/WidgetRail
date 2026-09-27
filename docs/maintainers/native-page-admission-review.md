@@ -4,6 +4,11 @@ Review baseline: `ca9e8088` (integration `bf5be092`), following physical PID 404
 This delivery adds a reference review and an opt-in diagnostic regression only.
 It does not change the renderer, scheduler, SDK, widgets or running candidate.
 
+Subsequent implementation: [collection transactions](native-collection-transactions.md).
+The findings below describe the original baseline. The regression now covers 72
+cases including variable heights and cursor eviction and is a required green
+gate for that correction; its original red results remain recorded here.
+
 ## Findings
 
 The new regression demonstrates that changing scheduler priority alone is

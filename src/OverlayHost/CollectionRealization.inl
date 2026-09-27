@@ -23,24 +23,39 @@ CollectionRenderState& CollectionState(const WidgetNode& node) {
         const auto previous = owner->collections_.find(key);
         found = collections.emplace(key, previous == owner->collections_.end()
             ? CollectionRenderState{} : previous->second).first;
-        if (const auto branch = std::ranges::find_if(owner->collectionPreparations_,
-                [&](const auto& candidate) { return candidate.Matches(*snapshot); });
-            branch != owner->collectionPreparations_.end()) {
-            if (const auto warm = branch->collections.find(key); warm != branch->collections.end()) {
-                // Reuse measurements, never an uncommitted anchor/extent tree.
-                // Source/context comparison below revalidates them even when
-                // a newer request supersedes a partially prepared snapshot.
-                found->second.items = warm->second.items;
-                found->second.context = warm->second.context;
-                found->second.contextRevision = warm->second.contextRevision;
-                found->second.itemRevision = warm->second.itemRevision;
-                found->second.resetGeneration = warm->second.resetGeneration;
-            }
-        }
     }
     if (!collectionSlots.contains(node.id)) collectionSlots.emplace(node.id, collectionSlots.size());
     collectionNodes[node.id] = &node;
     return found->second;
+}
+
+void ImportCollectionMeasurement(const WidgetNode& item, CollectionItemLayout& cached,
+    const CollectionRenderState& state, const std::wstring& collectionKey) {
+    if (options.accessibility.contrastHook ||
+        (cached.measuredContext == state.contextRevision && !cached.layout.boxes.empty())) return;
+    const auto import = [&](const CollectionMeasurements& source) {
+        if (source.resetGeneration != state.resetGeneration || source.context != state.context) return false;
+        const auto donor = source.items.find(item.collectionItemKey);
+        if (donor == source.items.end()) return false;
+        const auto& value = donor->second;
+        if (value.measuredContext != source.contextRevision || value.layout.boxes.empty() ||
+            !value.source || !SameCollectionMeasurement(*value.source, item)) return false;
+        // Measurement identities are local to the destination geometry. Share
+        // valid item work without importing its source's placement or revisions.
+        cached.layout = value.layout; cached.text = value.text; cached.queries = value.queries;
+        cached.measuredContext = state.contextRevision;
+        return true;
+    };
+    for (const auto& branch : owner->collectionPreparations_) {
+        if (branch.instance != snapshot->instanceId || branch.scope != snapshot->activeInputScopeId) continue;
+        if (branch.frame) {
+            const auto donor = branch.frame->collections.find(collectionKey);
+            if (donor != branch.frame->collections.end() && import(donor->second)) return;
+        } else {
+            const auto donor = branch.measurements.find(collectionKey);
+            if (donor != branch.measurements.end() && import(donor->second)) return;
+        }
+    }
 }
 
 // Placement may reuse a committed measure result only while its realized
@@ -102,13 +117,9 @@ bool CollectionPlacementIsCovered(
 }
 
 bool PrepareRetainedCollectionLayout() {
-    // A completed ahead-of-viewport batch must be adopted through the normal
-    // transactional layout path. Otherwise retaining the old placement would
-    // discard the newly prepared rows when this frame is acknowledged.
-    if (std::ranges::any_of(owner->collectionPreparations_, [&](const auto& branch) {
-            return branch.ready && branch.Matches(*snapshot) && branch.focus == focusedId &&
-                branch.realization == options.realizeElementId;
-        })) return false;
+    // Ready placement is adopted only by Render's exact-context proof. A
+    // different lookahead target cannot force a layout of an unchanged scene;
+    // its valid measurements remain available until actually consumed.
     // The caller has already proved an unchanged admitted snapshot, viewport
     // and measurement options. Copy only committed collection state, never a
     // speculative measurement batch from another frame.
@@ -228,6 +239,7 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
     const NativeRenderStyle& style, const std::wstring_view scope,
     const std::optional<NativeColor>& background) {
     auto& state = CollectionState(node);
+    const auto stateKey = ScrollStateKey(node.id);
     const auto& policy = *node.collectionLayout;
     const auto id = NarrowStableId(node.id);
     const bool horizontal = element.scrollAxis == declarative::ScrollAxis::Horizontal;
@@ -254,7 +266,29 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
             options.playStationControls, policy.adaptiveGrid};
         const auto offsetEntry = ScrollState().find(ScrollStateKey(node.id));
         double offset = offsetEntry == ScrollState().end() ? box->scrollOffset : offsetEntry->second.offset;
-        const auto anchor = state.geometry.CaptureAnchor(offset - state.leadingExtent);
+        auto anchor = state.geometry.CaptureAnchor(offset - state.leadingExtent);
+        if (options.suppressFocusedDescendantFollow && options.realizeElementId.empty() &&
+            owner->incrementalLayoutCache_ && owner->incrementalLayoutCache_->instanceId == snapshot->instanceId) {
+            // Movement is an intent relative to the last displayed viewport.
+            // Capturing after applying its numeric offset can select a newly
+            // exposed, still-estimated row and shift existing content when that
+            // row is measured. Keep the old visible key plus the input delta
+            // invariant through every correction pass of this transaction.
+            if (!freeScrollAnchors.contains(stateKey)) {
+                const auto committed = owner->collections_.find(stateKey);
+                const auto* boxBefore = owner->incrementalLayoutCache_->layout.Find(id);
+                if (committed != owner->collections_.end() && boxBefore) {
+                    auto intent = committed->second.geometry.CaptureAnchor(
+                        boxBefore->scrollOffset - committed->second.leadingExtent);
+                    if (intent) {
+                        intent->viewportOffset -= offset - boxBefore->scrollOffset;
+                        freeScrollAnchors.emplace(stateKey, std::move(*intent));
+                    }
+                }
+            }
+            if (const auto intent = freeScrollAnchors.find(stateKey); intent != freeScrollAnchors.end())
+                anchor = intent->second;
+        }
         if (state.resetGeneration != node.collectionResetGeneration.value_or(0)) {
             state.items.clear();
             state.lastFocusedKey.clear();
@@ -275,6 +309,7 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
                 cached.source = std::make_shared<const WidgetNode>(item);
                 cached.revision = ++state.itemRevision;
             }
+            ImportCollectionMeasurement(item, cached, state, stateKey);
             descriptors.push_back({item.collectionItemKey, cached.revision, policy.estimatedItemExtent});
             if (item.id == focusedId) state.lastFocusedKey = item.collectionItemKey;
         }
@@ -322,7 +357,8 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
         }
         std::set<std::size_t> preparedItems;
         for (;;) {
-            const auto demand = state.geometry.Plan(offset - state.leadingExtent, available, 1, protectedKeys, node.children.size());
+            const auto demand = state.geometry.Plan(offset - state.leadingExtent, available,
+                options.deferScrollPreparation && !preparationBudget ? 0 : 1, protectedKeys, node.children.size());
             state.realized.clear();
             for (auto index = demand.bufferedBegin; index < demand.bufferedEnd; ++index) state.realized.push_back(index);
             state.realized.insert(state.realized.end(), demand.protectedItems.begin(), demand.protectedItems.end());
@@ -369,6 +405,13 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
         }
         std::set<std::wstring, std::less<>> retained;
         for (const auto index : state.realized) retained.insert(node.children[index].collectionItemKey);
+        // Retaining a valid adjacent measurement does not require realizing or
+        // painting that item. Keep the same bounded one-line working set while
+        // leaving cold lookahead to preparation rather than the visible frame.
+        const auto retention = state.geometry.Plan(offset - state.leadingExtent, available, 1,
+            protectedKeys, node.children.size());
+        for (auto index = retention.bufferedBegin; index < retention.bufferedEnd; ++index)
+            retained.insert(node.children[index].collectionItemKey);
         for (auto& [key, cached] : state.items) {
             // A sliced focus reveal visits its old viewport before the target
             // viewport. Keep bounded intermediate measurements until the
