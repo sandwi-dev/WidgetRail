@@ -272,7 +272,72 @@ void VerifyRetiredArtworkDecodeCannotPublish() {
     }
 }
 
+void ResourceBudgetImageOwnership() {
+    using namespace widgetrail;
+    using namespace widgetrail::resources;
+    const auto fetch = [](std::wstring_view, std::stop_token, const RemoteImageLimits&) {
+        RemoteDecodedImage image;
+        image.width = 2; image.height = 1; image.stride = 8;
+        image.premultipliedBgra.assign(8, 42); image.mimeType = L"image/png";
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    };
+    for (const bool pressure : {false, true}) {
+        auto budget = std::make_shared<UiResourceBudget>(pressure ? 16 : 1024);
+        UiResourceBudget::Lease gpu;
+        UiResourceBudget::Pin visibleFrame;
+        if (pressure) { gpu = budget->Reserve(Kind::CompositorSurface, 8, Admission::Required); gpu->Commit(); visibleFrame = gpu->Protect(); }
+        std::mutex mutex; std::condition_variable completed; int completions{};
+        RemoteImageLimits limits;
+        limits.maximumEntries = 8; limits.maximumReadyEntries = pressure ? 8 : 1; limits.maximumDecodedBytes = 64;
+        RemoteImageCache cache(limits, [&](std::wstring_view, RemoteImageState) {
+            { std::scoped_lock lock(mutex); ++completions; } completed.notify_all();
+        }, fetch, {}, {}, {}, {}, budget);
+        const auto wait = [&](int count) {
+            std::unique_lock lock(mutex);
+            assert(completed.wait_for(lock, std::chrono::seconds(2), [&] { return completions >= count; }));
+        };
+        const std::wstring first = L"https://example.com/budget-first.png", second = L"https://example.com/budget-second.png";
+        int owner{};
+        if (pressure) cache.ProtectImages(&owner, {first});
+        assert(cache.Request(first) == RemoteImageRequestResult::Queued); wait(1);
+        assert(cache.GetState(first) == RemoteImageState::Ready);
+        if (!pressure) {
+            auto held = cache.GetReadyImage(first);
+            { auto copied = *held;
+              assert(budget->Read().allocatedBytes == 16 && copied.resourceAllocation != held->resourceAllocation);
+              assert(copied.premultipliedBgra == held->premultipliedBgra); }
+            assert(budget->Read().allocatedBytes == 8);
+            assert(cache.Request(second) == RemoteImageRequestResult::Queued); wait(2);
+            assert(cache.GetState(first) == RemoteImageState::Missing && cache.GetStats().decodedBytes == 8);
+            assert(budget->Read().allocatedBytes == 16 && held->premultipliedBgra[0] == 42);
+            cache.Clear();
+            assert(budget->Read().allocatedBytes == 8);
+            held.reset();
+            assert(budget->Read().allocatedBytes == 0 && budget->Read().peakAllocatedBytes == 16);
+        } else {
+            assert(budget->Read().protectedBytes == 16);
+            assert(cache.CanPrefetch(first) && !cache.CanPrefetch(second));
+            assert(cache.Request(second) == RemoteImageRequestResult::Queued); wait(2);
+            assert(cache.BudgetRejected(second) && cache.GetState(first) == RemoteImageState::Ready);
+            assert(!cache.ReleaseBudgetRejection(second));
+            assert(budget->Read().allocatedBytes == 16 && budget->Read().protectedBytes == 16);
+            cache.ProtectImages(&owner, {second});
+            assert(cache.ReleaseBudgetRejection(second));
+            assert(cache.Request(second) == RemoteImageRequestResult::Queued); wait(3);
+            assert(cache.GetState(second) == RemoteImageState::Ready && cache.GetState(first) == RemoteImageState::Missing);
+            assert(budget->Read().allocatedBytes == 16 && budget->Read().protectedBytes == 16);
+            cache.ReleaseImageProtection(&owner);
+            budget->SetRetentionTarget(8); cache.ReclaimIdleImages();
+            assert(cache.GetStats().decodedBytes == 0 && budget->Read().allocatedBytes == 8 && gpu->protectedFromEviction());
+            visibleFrame.reset(); gpu.reset();
+            assert(budget->Read().allocatedBytes == 0 && !budget->Read().needsReclamation());
+        }
+        cache.Shutdown();
+    }
+}
+
 int main() {
+    ResourceBudgetImageOwnership();
     VerifyFailedArtworkRecovery();
     VerifyRetiredArtworkDecodeCannotPublish();
     {

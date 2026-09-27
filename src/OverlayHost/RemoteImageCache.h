@@ -1,6 +1,7 @@
 #pragma once
 #include "ImageDecodeSize.h"
 #include "ScrollDiagnostics.h"
+#include "UiResourceBudget.h"
 #include <set>
 #include <map>
 
@@ -15,6 +16,7 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <new>
 #include <mutex>
 #include <optional>
 #include <stop_token>
@@ -23,6 +25,7 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 
 namespace widgetrail {
 
@@ -125,11 +128,36 @@ struct RemoteImageLimits {
 };
 
 struct RemoteDecodedImage {
+    // Declared before pixels so accounting retires after the backing vector.
+    resources::UiResourceBudget::Lease resourceAllocation;
     UINT32 width{};
     UINT32 height{};
     UINT32 stride{};
     std::vector<std::uint8_t> premultipliedBgra;
     std::wstring mimeType;
+    RemoteDecodedImage() = default;
+    RemoteDecodedImage(RemoteDecodedImage&&) noexcept = default;
+    RemoteDecodedImage(const RemoteDecodedImage& other)
+        : width(other.width), height(other.height), stride(other.stride), premultipliedBgra(other.premultipliedBgra), mimeType(other.mimeType) {
+        if (other.resourceAllocation && !premultipliedBgra.empty()) {
+            resourceAllocation = other.resourceAllocation->Duplicate(premultipliedBgra.capacity());
+            if (!resourceAllocation) throw std::bad_alloc();
+            resourceAllocation->Commit();
+        }
+    }
+    RemoteDecodedImage& operator=(RemoteDecodedImage other) noexcept { Swap(other); return *this; }
+    void Swap(RemoteDecodedImage& other) noexcept {
+        resourceAllocation.swap(other.resourceAllocation);
+        std::swap(width, other.width); std::swap(height, other.height); std::swap(stride, other.stride);
+        premultipliedBgra.swap(other.premultipliedBgra); mimeType.swap(other.mimeType);
+    }
+    [[nodiscard]] bool TrackAllocation(const std::shared_ptr<resources::UiResourceBudget>& budget) {
+        if (!budget) return false;
+        if (budget->Owns(resourceAllocation) && resourceAllocation->bytes() == premultipliedBgra.capacity()) return true;
+        auto allocation = budget->Reserve(resources::Kind::DecodedImage, premultipliedBgra.capacity(), resources::Admission::Required);
+        if (!allocation) return false;
+        allocation->Commit(); resourceAllocation = std::move(allocation); return true;
+    }
 };
 
 struct RemoteImageFetchResult {
@@ -213,11 +241,13 @@ public:
         ArtworkRequestFunction artworkRequest = {},
         ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic = {},
         PackageIconRequestFunction packageIconRequest = {},
-        std::shared_ptr<ScrollDiagnostics> scrollDiagnostics = {});
+        std::shared_ptr<ScrollDiagnostics> scrollDiagnostics = {},
+        std::shared_ptr<resources::UiResourceBudget> resourceBudget = {});
     ~RemoteImageCache();
 
     RemoteImageCache(const RemoteImageCache&) = delete;
     RemoteImageCache& operator=(const RemoteImageCache&) = delete;
+    [[nodiscard]] const std::shared_ptr<resources::UiResourceBudget>& ResourceBudget() const noexcept { return resourceBudget_; }
 
     [[nodiscard]] RemoteImageRequestResult Request(std::wstring url, ImageDecodeSize size = {});
     /// Queues a host-created opaque artwork cache key. Snapshot image sources
@@ -294,6 +324,7 @@ public:
     static std::wstring VariantKey(std::wstring_view source, ImageDecodeSize size);
     void ProtectImages(const void* owner, std::set<std::wstring> keys);
     void ReleaseImageProtection(const void* owner);
+    void ReclaimIdleImages();
     bool CanPrefetch(std::wstring_view key) const;
     bool BudgetRejected(std::wstring_view key) const;
     bool ReleaseBudgetRejection(std::wstring_view key);
@@ -333,6 +364,7 @@ private:
         ImageDecodeSize decodeSize{};
         bool budgetRejected{};
         std::size_t rejectedBytes{};
+        resources::UiResourceBudget::Pin resourceProtection;
     };
 
     struct ArtworkDemand final {
@@ -355,7 +387,10 @@ private:
         TrustedArtworkRequestDisposition disposition);
     void CompleteLocked(const std::wstring& url, RemoteImageFetchResult result);
     bool ProtectedLocked(std::wstring_view key) const;
+    void RefreshResourceProtectionLocked();
+    void ReclaimIdleImagesLocked();
     std::map<const void*, std::set<std::wstring>> protectedImages_;
+    std::shared_ptr<resources::UiResourceBudget> resourceBudget_;
     RemoteImageLimits limits_;
     CompletionCallback completion_;
     bool usesCustomFetch_{};

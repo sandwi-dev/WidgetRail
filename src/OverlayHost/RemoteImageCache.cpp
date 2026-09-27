@@ -319,8 +319,10 @@ RemoteImageCache::RemoteImageCache(
     ArtworkRequestFunction artworkRequest,
     ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic,
     PackageIconRequestFunction packageIconRequest,
-    std::shared_ptr<ScrollDiagnostics> scrollDiagnostics)
-    : limits_(limits),
+    std::shared_ptr<ScrollDiagnostics> scrollDiagnostics,
+    std::shared_ptr<resources::UiResourceBudget> resourceBudget)
+    : resourceBudget_(resourceBudget ? std::move(resourceBudget) : std::make_shared<resources::UiResourceBudget>()),
+      limits_(limits),
       completion_(std::move(completion)),
       usesCustomFetch_(static_cast<bool>(fetch)),
       fetch_(fetch ? std::move(fetch) : FetchAndDecodeSource),
@@ -384,10 +386,28 @@ bool RemoteImageCache::ProtectedLocked(std::wstring_view key) const {
 void RemoteImageCache::ProtectImages(const void* owner, std::set<std::wstring> keys) {
     std::scoped_lock lock(mutex_);
     protectedImages_.insert_or_assign(owner, std::move(keys));
+    RefreshResourceProtectionLocked();
+    ReclaimIdleImagesLocked();
 }
 void RemoteImageCache::ReleaseImageProtection(const void* owner) {
     std::scoped_lock lock(mutex_);
     protectedImages_.erase(owner);
+    RefreshResourceProtectionLocked();
+    ReclaimIdleImagesLocked();
+}
+void RemoteImageCache::RefreshResourceProtectionLocked() {
+    for (auto& [key, entry] : entries_) {
+        if (entry.image && entry.image->resourceAllocation && ProtectedLocked(key)) {
+            if (!entry.resourceProtection) entry.resourceProtection = entry.image->resourceAllocation->Protect();
+        } else entry.resourceProtection.reset();
+    }
+}
+void RemoteImageCache::ReclaimIdleImagesLocked() {
+    while (resourceBudget_->Read().needsReclamation() && EvictOneLocked({}, EvictionReason::BytePressure, true)) {}
+}
+void RemoteImageCache::ReclaimIdleImages() {
+    std::scoped_lock lock(mutex_);
+    ReclaimIdleImagesLocked();
 }
 bool RemoteImageCache::BudgetRejected(std::wstring_view key) const {
     std::scoped_lock lock(mutex_);
@@ -408,13 +428,18 @@ bool RemoteImageCache::ReleaseBudgetRejection(std::wstring_view key) {
     if (protectedCount >= std::min(limits_.maximumReadyEntries, limits_.maximumEntries) ||
         found->second.rejectedBytes > limits_.maximumDecodedBytes -
             std::min(protectedBytes, limits_.maximumDecodedBytes)) return false;
+    const auto resources = resourceBudget_->Read();
+    if (!ProtectedLocked(key) && (found->second.rejectedBytes > resources.retentionTarget ||
+        resources.liveBytes > resources.retentionTarget - found->second.rejectedBytes)) return false;
     entries_.erase(found);
     return true;
 }
 bool RemoteImageCache::CanPrefetch(std::wstring_view key) const {
     std::scoped_lock lock(mutex_);
+    const auto resources = resourceBudget_->Read();
     return ProtectedLocked(key) ||
-        (decodedBytes_ < limits_.maximumDecodedBytes * 3 / 4 &&
+        (!resources.needsReclamation() && resources.liveBytes < resources.retentionTarget - resources.retentionTarget / 4 &&
+         decodedBytes_ < limits_.maximumDecodedBytes * 3 / 4 &&
          PendingCountLocked() < std::max(std::size_t{1}, limits_.maximumPendingEntries / 2));
 }
 RemoteImageRequestResult RemoteImageCache::Request(std::wstring url, ImageDecodeSize size) {
@@ -1333,7 +1358,11 @@ void RemoteImageCache::CompleteLocked(const std::wstring& url, RemoteImageFetchR
     }
     if (result.succeeded()) {
         const auto bytes = result.image.premultipliedBgra.size();
-        while (ReadyCountLocked() >=
+        if (!result.image.TrackAllocation(resourceBudget_))
+            result = Failure(E_OUTOFMEMORY, L"Decoded image resource accounting could not be admitted.");
+        auto visibleProtection = result.succeeded() && ProtectedLocked(url) ? result.image.resourceAllocation->Protect()
+            : resources::UiResourceBudget::Pin{};
+        while (result.succeeded() && ReadyCountLocked() >=
                std::min(limits_.maximumReadyEntries, limits_.maximumEntries)) {
             if (!EvictOneLocked(url, EvictionReason::CountPressure, true)) {
                 entry.budgetRejected = true;
@@ -1353,8 +1382,19 @@ void RemoteImageCache::CompleteLocked(const std::wstring& url, RemoteImageFetchR
                 break;
             }
         }
+        while (result.succeeded() && resourceBudget_->Read().needsReclamation()) {
+            if (EvictOneLocked(url, EvictionReason::BytePressure, true)) continue;
+            // Required visible work can overlap an old frame; optional decoded
+            // retention may not displace live resources owned by another pool.
+            if (!visibleProtection) {
+                entry.budgetRejected = true; entry.rejectedBytes = bytes;
+                result = Failure(HRESULT_FROM_WIN32(ERROR_NOT_ENOUGH_MEMORY), L"Decoded image exceeds shared UI retention headroom.");
+            }
+            break;
+        }
         if (result.succeeded()) {
             entry.image = std::make_shared<RemoteDecodedImage>(std::move(result.image));
+            entry.resourceProtection = std::move(visibleProtection);
             entry.error.clear();
             entry.state = RemoteImageState::Ready;
             decodedBytes_ += bytes;
@@ -1366,6 +1406,7 @@ void RemoteImageCache::CompleteLocked(const std::wstring& url, RemoteImageFetchR
             return;
         }
     }
+    entry.resourceProtection.reset();
     entry.image.reset();
     entry.error = result.error.empty() ? L"Remote image request failed." : std::move(result.error);
     entry.state = RemoteImageState::Failed;
