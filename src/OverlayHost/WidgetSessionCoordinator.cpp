@@ -211,6 +211,7 @@ bool TryCoalescePresentationEvents(const WidgetSessionEvent& previous, WidgetSes
     combined.hasNonTextMeasureLayout |= prior.hasNonTextMeasureLayout;
     combined.selectOptionsChanged |= prior.selectOptionsChanged;
     combined.comparisonMicroseconds += prior.comparisonMicroseconds;
+    for (const auto& [id, effects] : prior.nodeEffects) combined.nodeEffects[id] |= effects;
     const auto merge = [](auto& destination, const auto& source) {
         for (const auto& id : source)
             if (std::find(destination.begin(), destination.end(), id) == destination.end())

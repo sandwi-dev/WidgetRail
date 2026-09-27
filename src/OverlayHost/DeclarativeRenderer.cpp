@@ -3086,7 +3086,7 @@ struct DeclarativeRenderer::RenderPass final {
         retainedLayoutPhase = -1;
     }
 
-    void PrepareAgainstCurrentLayout() {
+    void PrepareAgainstCurrentLayout(const std::set<std::wstring, std::less<>>* unchangedIds = nullptr) {
         // Paint needs current semantic pointers and resolved styles, not a new
         // Taffy input tree. Rebind pointers while reusing exact style contexts.
         prepared.clear();
@@ -3125,7 +3125,16 @@ struct DeclarativeRenderer::RenderPass final {
                     }
                 }
             }
-            PrepareStyle(node, parent, viewport.width, viewport.height, font, background, inheritedScope);
+            const auto* cached = unchangedIds && unchangedIds->contains(node.id) && owner->incrementalLayoutCache_ &&
+                    !options.collectInspection && node.id != focusedId && node.id != pressedId
+                ? &owner->incrementalLayoutCache_->nodes.at(node.id) : nullptr;
+            if (cached) {
+                prepared[id] = {&node, cached->baseStyle, cached->baseStyle, id, cached->effectiveBackground,
+                    cached->styleContext, ResolveInputScope(node, inheritedScope), parent};
+                ++result.timing.reusedPreparedNodes;
+            } else {
+                PrepareStyle(node, parent, viewport.width, viewport.height, font, background, inheritedScope);
+            }
             const auto inputScope = prepared.at(id).inputScope;
             const auto style = prepared.at(id).baseStyle;
             const auto surface = prepared.at(id).effectiveBackground;
@@ -3212,6 +3221,8 @@ struct DeclarativeRenderer::RenderPass final {
         layoutOptions.pixelScale = options.pixelScale;
         layoutOptions.responsiveViewport = options.responsiveViewport.value_or(
             Size{viewport.width, viewport.height});
+        std::set<std::wstring, std::less<>> unchangedIds;
+        for (const auto& [id, _] : nodes) unchangedIds.insert(id);
         for (const auto& boundaryId : boundaryIds) {
             std::vector<const WidgetNode*> path;
             if (!FindNodePath(snapshot->root, boundaryId, path) || path.empty())
@@ -3228,10 +3239,24 @@ struct DeclarativeRenderer::RenderPass final {
             const auto narrowParent = parent == nodes.end()
                 ? std::string{}
                 : NarrowStableId(parent->second.parentId);
-            // Re-rooting a subtree does not make it a new style root. Resolve
-            // the same inherited font/background context as a full-tree pass
-            // before clearing preparation for the local layout.
-            PrepareAgainstCurrentLayout();
+            // Resolve only the ancestor dependency chain. Re-rooting a local
+            // subtree must neither change its inheritance nor prepare siblings.
+            prepared.clear();
+            float inheritedFont = options.rootFontSizePx;
+            auto inheritedBackground = options.surfaceBackground;
+            std::wstring inheritedScope;
+            std::string ancestorParent;
+            const float inheritanceScale = std::clamp(options.accessibility.textScale, 0.85F, 1.5F);
+            for (std::size_t index = 0; index + 1 < path.size(); ++index) {
+                const auto& ancestor = *path[index];
+                PrepareStyle(ancestor, ancestorParent, viewport.width, viewport.height,
+                    inheritedFont, inheritedBackground, inheritedScope);
+                ancestorParent = NarrowStableId(ancestor.id);
+                const auto& current = prepared.at(ancestorParent);
+                inheritedFont = current.baseStyle.fontSizePx() / inheritanceScale;
+                inheritedBackground = current.effectiveBackground;
+                inheritedScope = current.inputScope;
+            }
             const auto preparedParent = prepared.find(narrowParent);
             const float textScale = std::isfinite(options.accessibility.textScale) &&
                     options.accessibility.textScale >= 0.85F &&
@@ -3243,8 +3268,25 @@ struct DeclarativeRenderer::RenderPass final {
             const auto parentBackground = preparedParent != prepared.end()
                 ? preparedParent->second.effectiveBackground
                 : options.surfaceBackground;
-            const auto parentInputScope = preparedParent != prepared.end()
-                ? preparedParent->second.inputScope : std::wstring_view{};
+            const std::wstring parentInputScope{preparedParent != prepared.end()
+                ? preparedParent->second.inputScope : std::wstring_view{}};
+            std::set<std::string, std::less<>> oldSubtree;
+            for (const auto& [id, state] : nodes) {
+                auto ancestor = id;
+                while (!ancestor.empty()) {
+                    if (ancestor == boundaryId) { oldSubtree.insert(NarrowStableId(id)); break; }
+                    const auto found = nodes.find(ancestor);
+                    if (found == nodes.end()) break;
+                    ancestor = found->second.parentId;
+                }
+            }
+            for (const auto& id : oldSubtree) {
+                unchangedIds.erase(WidenStableId(id));
+                layout.boxes.erase(id);
+                textMeasurements.erase(WidenStableId(id));
+                textMeasurementQueries.erase(WidenStableId(id));
+            }
+            std::erase_if(layout.issues, [&](const auto& issue) { return oldSubtree.contains(issue.elementId); });
             auto recompute = [&]() {
                 prepared.clear();
                 auto root = PrepareNode(
@@ -3271,13 +3313,18 @@ struct DeclarativeRenderer::RenderPass final {
                     },
                     layoutOptions);
             };
-            auto replacement = recompute();
-            if (!replacement.valid()) return false;
-            for (auto& [id, box] : replacement.boxes)
-                layout.boxes.insert_or_assign(std::move(id), std::move(box));
+            // Match full layout's estimate/correction semantics for percent/em
+            // descendants; stale removed-node boxes are never correction inputs.
+            for (int phase = 0; phase < 2; ++phase) {
+                auto replacement = recompute();
+                const auto* rootBox = replacement.Find(narrowBoundary);
+                if (!replacement.valid() || !rootBox || !SameRect(rootBox->unscrolledBorderBox, localViewport)) return false;
+                for (auto& [id, box] : replacement.boxes)
+                    layout.boxes.insert_or_assign(std::move(id), std::move(box));
+            }
         }
         ProjectScrollOffsets(true);
-        PrepareAgainstCurrentLayout();
+        PrepareAgainstCurrentLayout(&unchangedIds);
         return true;
     }
 
@@ -5667,8 +5714,7 @@ DeclarativeRenderer::PlanPresentationUpdate(
         cache->sequence != impact.baseSequence ||
         snapshot.sequence != impact.sequence ||
         !SameRect(cache->viewport, viewport) ||
-        HasWidgetPresentationEffect(
-            impact.effects, WidgetPresentationEffect::Structure) ||
+        (HasWidgetPresentationEffect(impact.effects, WidgetPresentationEffect::Structure) && impact.nodeEffects.empty()) ||
         HasWidgetPresentationEffect(
             impact.effects, WidgetPresentationEffect::SurfacePlacement) ||
         HasWidgetPresentationEffect(
@@ -5772,9 +5818,26 @@ DeclarativeRenderer::PlanPresentationUpdate(
         const auto boundary = localLayout
             ? cache->nodes.find(targetId)
             : cache->nodes.end();
-        const auto& damageId = boundary != cache->nodes.end()
+        auto damageId = boundary != cache->nodes.end()
             ? boundary->second.safeBoundaryId
             : targetId;
+        // A child-list mutation belongs to its stable container. Reuse its
+        // allocation only when it is a clipped, definite-size boundary whose
+        // resolved style did not change. Other mutations use the enclosing
+        // boundary, or the complete-layout fallback.
+        if (boundary != cache->nodes.end() && boundary->second.containsLayout &&
+            impact.nodeEffects.contains(targetId) &&
+            HasWidgetPresentationEffect(impact.nodeEffects.at(targetId), WidgetPresentationEffect::Structure)) {
+            std::vector<const WidgetNode*> candidatePath;
+            if (FindNodePath(snapshot.root, targetId, candidatePath)) {
+                RenderPass proof;
+                proof.owner = this; proof.options = cache->options; proof.viewport = viewport;
+                const auto& context = boundary->second.styleContext;
+                const auto style = proof.Adapt(*candidatePath.back(), false, false, context.parentWidthPx,
+                    context.parentHeightPx, context.parentFontSizePx, context.effectiveBackground).style;
+                if (style == boundary->second.baseStyle) damageId = targetId;
+            }
+        }
         const auto bounds = cache->nodes.find(damageId);
         if (bounds == cache->nodes.end()) return std::nullopt;
         damage = UnionRect(
@@ -5808,6 +5871,12 @@ DeclarativeRenderer::PlanPresentationUpdate(
     }
     damage = Intersection(damage, viewport);
     if (damage.width <= 0.0F || damage.height <= 0.0F) return std::nullopt;
+
+    // Structural preparation can conservatively fall back after remeasuring a
+    // boundary. The host opens its draw surface before that decision, so keep
+    // full transport damage while retaining the independently local CPU plan.
+    // An unproven partial raster must never publish new geometry over old pixels.
+    if (HasWidgetPresentationEffect(impact.effects, WidgetPresentationEffect::Structure)) damage = viewport;
 
     if (localLayout && boundaries.size() > 1) {
         const auto allBoundaries = boundaries;
@@ -6643,6 +6712,7 @@ RenderResult DeclarativeRenderer::Render(
                 descendantBoundary = node.id;
             }
             IncrementalNodeState state;
+            state.containsLayout = descendantBoundary == node.id;
             if (pass.windowDecorations && prepared == pass.prepared.end() && incrementalLayoutCache_) {
                 if (const auto prior = incrementalLayoutCache_->nodes.find(node.id); prior != incrementalLayoutCache_->nodes.end()) {
                     state = prior->second;
@@ -6800,6 +6870,7 @@ RenderResult DeclarativeRenderer::Render(
                 finished - started).count());
     };
     const auto preparedNodes = pass.result.timing.preparedNodes;
+    const auto reusedPreparedNodes = pass.result.timing.reusedPreparedNodes;
     const auto deferredViewportItems = pass.result.timing.deferredViewportItems;
     const auto intrinsicMeasures = pass.result.timing.intrinsicMeasures;
     pass.result.timing = DeclarativeRenderTiming{
@@ -6818,6 +6889,7 @@ RenderResult DeclarativeRenderer::Render(
     }
     pass.result.timing.snapshotComparisonMicroseconds = snapshotComparisonMicroseconds;
     pass.result.timing.preparedNodes = preparedNodes;
+    pass.result.timing.reusedPreparedNodes = reusedPreparedNodes;
     pass.result.timing.deferredViewportItems = deferredViewportItems;
     pass.result.timing.intrinsicMeasures = intrinsicMeasures;
     pass.result.timing.updatePlanningMicroseconds = updatePlanningMicroseconds;
