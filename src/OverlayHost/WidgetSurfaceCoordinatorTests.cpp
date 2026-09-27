@@ -2091,6 +2091,7 @@ int main() {
                 "UIA realization neither changes controller focus nor dispatches widget actions");
             auto replacement = admission.snapshot;
             replacement.sequence = 2;
+            replacement.root.children[0].children[0].focusDown = L"pin.scroll.item.40";
             for (auto& item : replacement.root.children[0].children) item.text += L" changed";
             bool replacementReady{};
             std::size_t slices{};
@@ -2110,6 +2111,17 @@ int main() {
             UpdateWindow(realization.window());
             Check(realization.PaintTraceForTesting().snapshotSequence == 2 && realization.focusedElementId() == priorFocus,
                 "pinned replacement publishes only after preparation and admission");
+            Check(realization.MoveControllerFocus(widgetrail::input::NavigationDirection::Down, true) &&
+                realization.focusedElementId() == priorFocus,
+                "pinned navigation retains origin while its distant target is unmeasured");
+            const auto focusDeadline = GetTickCount64() + 2000;
+            while (realization.focusedElementId() == priorFocus && GetTickCount64() < focusDeadline) {
+                PumpPendingMessages();
+                Sleep(1);
+            }
+            UpdateWindow(realization.window());
+            Check(realization.focusedElementId() == L"pin.scroll.item.40" && realization.TakeInputRequests().empty(),
+                "pinned timer admits prepared directional focus without dispatching an action");
             Check(realization.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin), "UIA realization surface tears down");
             realization.Dispose();
             std::error_code realizationCleanup;

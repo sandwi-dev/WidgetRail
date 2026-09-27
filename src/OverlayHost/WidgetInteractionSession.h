@@ -28,6 +28,25 @@ struct WidgetInteractionAuthority final {
     bool retainedRefresh{};
 };
 
+// One uncommitted logical focus target. Repeated navigation from the same
+// origin replaces this intent; it never builds a queue of future focus moves.
+class FocusRealizationIntent final {
+public:
+    [[nodiscard]] bool Stage(const WidgetInteractionAuthority&, std::wstring_view origin,
+        std::wstring_view target, const RenderResult&);
+    [[nodiscard]] std::optional<std::wstring> Target(const WidgetInteractionAuthority&, std::wstring_view origin);
+    [[nodiscard]] std::optional<std::wstring> TakeReady(const WidgetInteractionAuthority&,
+        std::wstring_view origin, const RenderResult& prepared);
+    void Clear() noexcept { pending_.reset(); }
+    [[nodiscard]] bool pending() const noexcept { return pending_.has_value(); }
+private:
+    struct Pending final {
+        std::wstring widget, instance, runtime, presentation, scope, origin, target, key;
+        long long sequence{};
+    };
+    std::optional<Pending> pending_;
+};
+
 struct SelectPopupBinding final {
     std::wstring widgetId;
     std::wstring widgetInstanceId;
@@ -231,7 +250,8 @@ public:
         FreeScrollInteractionState&, DeclarativeRenderer&,
         const WidgetInteractionAuthority&, std::wstring_view,
         const RenderResult&, declarative::ScrollAxis, float,
-        declarative::Rect, FocusedFreeScrollPlanDiagnostic* = nullptr);
+        declarative::Rect, FocusedFreeScrollPlanDiagnostic* = nullptr,
+        const DeclarativeRenderOptions* preparationOptions = nullptr);
     [[nodiscard]] static bool CommitFreeScroll(
         FreeScrollInteractionState&, const WidgetInteractionAuthority&,
         std::wstring_view, const FocusedFreeScrollPlan&);
@@ -424,6 +444,7 @@ struct ScrollPaginationDispatchOutcome final {
 /// actions, authorize text entry, or arbitrate final host/widget commands.
 class WidgetInteractionSession final {
 public:
+    [[nodiscard]] FocusRealizationIntent& focusRealization() noexcept { return focusRealization_; }
     [[nodiscard]] const std::wstring& focusedElementId() const noexcept {
         return focusedElementId_;
     }
@@ -669,6 +690,7 @@ private:
         const SliderDispatch& dispatch);
     void RefreshSliderDeadline() noexcept;
 
+    FocusRealizationIntent focusRealization_;
     enum class ScrollPaginationPrefetchStatus {
         Queued,
         InFlight,

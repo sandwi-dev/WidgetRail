@@ -6117,6 +6117,73 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
     return std::nullopt;
 }
 
+std::optional<FocusedFreeScrollPlan> DeclarativeRenderer::PlanPreparedFreeScroll(
+    const WidgetSnapshot& snapshot, const std::wstring_view focusedElementId, const declarative::ScrollAxis axis,
+    const float deltaDip, const Rect viewport, const std::wstring_view exactScrollId,
+    const DeclarativeRenderOptions& options, FocusedFreeScrollPlanDiagnostic* diagnostic,
+    const CollectionPreparationBudget budget) {
+    // The retained checkpoint proves whether this scroll owns a realized
+    // collection. Ordinary scrolls keep their existing inexpensive path.
+    std::vector<const WidgetNode*> scrollPath;
+    if (!incrementalLayoutCache_ || !FindNodePath(snapshot.root, exactScrollId, scrollPath) ||
+        scrollPath.empty() || !scrollPath.back()->collectionLayout)
+        return PlanFocusedFreeScroll(snapshot, focusedElementId, axis, deltaDip, viewport, exactScrollId, diagnostic);
+    auto previousOffsets = scrollOffsets_;
+    auto previousPlan = pendingIncrementalPlan_;
+    const auto previousClock = scrollStateAccessClock_;
+    const auto rollback = [&] {
+        scrollOffsets_ = std::move(previousOffsets);
+        pendingIncrementalPlan_ = std::move(previousPlan);
+        scrollStateAccessClock_ = previousClock;
+    };
+    try {
+        const auto plan = PlanFocusedFreeScroll(snapshot, focusedElementId, axis, deltaDip, viewport, exactScrollId, diagnostic);
+        if (!plan) { rollback(); return std::nullopt; }
+        const auto stateKey = ScrollScopePrefix(snapshot.instanceId, ScopeForPath(scrollPath, scrollPath.size())) +
+            std::wstring{exactScrollId};
+        const auto collection = collections_.find(stateKey);
+        const auto& previousOptions = incrementalLayoutCache_->options;
+        if (collection != collections_.end() && previousOptions.pixelScale == options.pixelScale &&
+            previousOptions.rootFontSizePx == options.rootFontSizePx && previousOptions.surfaceBackground == options.surfaceBackground &&
+            previousOptions.playStationControls == options.playStationControls &&
+            previousOptions.accessibility.textScale == options.accessibility.textScale &&
+            previousOptions.accessibility.minimumFontWeight == options.accessibility.minimumFontWeight &&
+            previousOptions.accessibility.reducedTransparency == options.accessibility.reducedTransparency &&
+            previousOptions.accessibility.reducedMotion == options.accessibility.reducedMotion &&
+            previousOptions.accessibility.minimumFocusRingPx == options.accessibility.minimumFocusRingPx &&
+            !previousOptions.accessibility.contrastHook &&
+            !options.accessibility.contrastHook) {
+            const auto& state = collection->second;
+            std::vector<std::wstring> protectedKeys;
+            if (!state.lastFocusedKey.empty()) protectedKeys.push_back(state.lastFocusedKey);
+            const auto demand = state.geometry.Plan(plan->offset - state.leadingExtent,
+                axis == declarative::ScrollAxis::Horizontal ? plan->viewport.width : plan->viewport.height,
+                1, protectedKeys, state.geometry.Size());
+            const auto& items = scrollPath.back()->children;
+            const auto ready = [&](const std::size_t index) {
+                if (index >= items.size()) return false;
+                const auto cached = state.items.find(items[index].collectionItemKey);
+                return cached != state.items.end() && cached->second.measuredContext == state.contextRevision &&
+                    !cached->second.layout.boxes.empty();
+            };
+            bool complete = std::ranges::all_of(demand.protectedItems, ready);
+            for (auto index = demand.bufferedBegin; complete && index < demand.bufferedEnd; ++index) complete = ready(index);
+            if (complete) return plan;
+        }
+        auto preparationOptions = options;
+        preparationOptions.suppressFocusedDescendantFollow = true;
+        const auto preparation = PrepareCollections(snapshot, focusedElementId, viewport, preparationOptions, budget);
+        if (preparation.status == CollectionPreparationStatus::Ready) return plan;
+        rollback();
+        if (diagnostic) diagnostic->disposition = preparation.status == CollectionPreparationStatus::Pending
+            ? FocusedFreeScrollPlanDisposition::PreparationPending : FocusedFreeScrollPlanDisposition::PreparationFailed;
+        return std::nullopt;
+    } catch (...) {
+        rollback();
+        throw;
+    }
+}
+
 std::optional<IncrementalPresentationPlan>
 DeclarativeRenderer::PlanRetainedPaint(
     const WidgetSnapshot& snapshot, const std::optional<Rect> requestedDamage) {
@@ -6628,8 +6695,8 @@ RenderResult DeclarativeRenderer::Render(
         }
         incrementalLayoutCache_ = std::move(cache);
         collections_ = std::move(pass.collections);
-        if (preparingInstance_ == snapshot.instanceId && preparingScope_ == snapshot.activeInputScopeId &&
-            preparingSequence_ == snapshot.sequence) CancelCollectionPreparation();
+        if (preparationReady_ && preparingInstance_ == snapshot.instanceId && preparingScope_ == snapshot.activeInputScopeId &&
+            preparingSequence_ == snapshot.sequence && preparingFocus_ == focusedElementId) CancelCollectionPreparation();
         if (stagedScrollOffsets) {
             scrollOffsets_ = std::move(*stagedScrollOffsets);
             scrollStateAccessClock_ = stagedScrollClock;
@@ -6729,7 +6796,9 @@ void DeclarativeRenderer::CancelCollectionPreparation() noexcept {
     preparingCollections_.clear();
     preparingInstance_.clear();
     preparingScope_.clear();
+    preparingFocus_.clear();
     preparingSequence_ = 0;
+    preparationReady_ = false;
 }
 
 CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
@@ -6756,6 +6825,7 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
         CancelCollectionPreparation();
     preparingInstance_ = snapshot.instanceId;
     preparingScope_ = snapshot.activeInputScopeId;
+    preparingFocus_ = focusedElementId;
     preparingSequence_ = snapshot.sequence;
     RenderPass pass;
     pass.owner = this;
@@ -6785,6 +6855,7 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     }
     if (result.status == CollectionPreparationStatus::Failed) CancelCollectionPreparation();
     else preparingCollections_ = std::move(pass.collections);
+    preparationReady_ = result.status == CollectionPreparationStatus::Ready;
     result.newMeasurements = pass.preparationMeasurements;
     result.elapsedMicroseconds = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - started).count());

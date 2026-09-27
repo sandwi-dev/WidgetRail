@@ -148,9 +148,23 @@ worker error. Production pinned-owner tests preserve old snapshot/focus/offset
 through multiple slices before admitting a replacement. The session tests cover
 old authority, coalesced refresh, stale approval, retry and lifecycle cancellation.
 
-Scroll-only demand, directional/group focus and the final paint/device transaction
-still need scheduling/admission integration; synchronous Render remains their
-fallback. A newly ready snapshot is not proof of successful D2D EndDraw/presentation.
+Directional offscreen targets use shared `FocusRealizationIntent`: one target,
+exact request/scope/sequence/item-key authority, and an unchanged origin until
+successful prepared visible geometry. Main and pinned timers perform the work;
+new input, scrolling, lifecycle changes and recycled IDs cancel obsolete intents.
+Already measured targets keep their ordinary path. Preparation caches retain
+bounded intermediate measurements through old-scene repaints and multi-pass reveal.
+
+`PlanPreparedFreeScroll` tentatively applies one sample, prepares newly demanded
+items, and restores offset/paint-plan state on Pending/Failed. Later cadence samples
+retry from the committed viewport instead of accumulating movement debt. Already
+measured buffered demand bypasses preparation. Provider boundary loading remains
+distinct from preparation. Renderer tests compare sliced movement with synchronous
+measurement/anchor correction and exercise old-scene repaints between slices.
+
+Group-entry scheduling and final paint/device transactions still need integration;
+synchronous Render remains their fallback. A newly ready snapshot or focus target
+is not proof of successful D2D EndDraw/presentation.
 
 Remaining delivery includes host frame-budgeted scheduling and
 resource protection, broader provider-window/scale/scroll validation, and adoption

@@ -176,6 +176,44 @@ bool IsVisibleFreeScrollFocus(
 
 } // namespace
 
+bool FocusRealizationIntent::Stage(const WidgetInteractionAuthority& authority,
+    const std::wstring_view origin, const std::wstring_view target, const RenderResult& render) {
+    Clear();
+    if (!authority.semantics || authority.retainedRefresh || origin.empty() || origin == target ||
+        render.navigationRects.contains(std::wstring{target}) || !render.realizableFocusIds.contains(std::wstring{target})) return false;
+    const auto& snapshot = *authority.semantics;
+    const auto* node = FindNodeInInputScope(snapshot, target, snapshot.activeInputScopeId);
+    if (!node || node->collectionItemKey.empty() || node->isDisabled || node->isBusy) return false;
+    pending_ = Pending{std::wstring{authority.widgetId}, snapshot.instanceId, std::wstring{authority.runtimeGeneration},
+        std::wstring{authority.presentationGeneration}, snapshot.activeInputScopeId, std::wstring{origin},
+        std::wstring{target}, node->collectionItemKey, snapshot.sequence};
+    return true;
+}
+
+std::optional<std::wstring> FocusRealizationIntent::Target(
+    const WidgetInteractionAuthority& authority, const std::wstring_view origin) {
+    if (!pending_) return std::nullopt;
+    const auto& p = *pending_;
+    const auto* snapshot = authority.semantics;
+    const auto* node = snapshot ? FindNodeInInputScope(*snapshot, p.target, snapshot->activeInputScopeId) : nullptr;
+    if (!snapshot || authority.retainedRefresh || p.widget != authority.widgetId || p.instance != snapshot->instanceId ||
+        p.runtime != authority.runtimeGeneration || p.presentation != authority.presentationGeneration ||
+        p.scope != snapshot->activeInputScopeId || p.sequence != snapshot->sequence || p.origin != origin ||
+        !node || node->collectionItemKey != p.key || node->isDisabled || node->isBusy) {
+        Clear(); return std::nullopt;
+    }
+    return p.target;
+}
+
+std::optional<std::wstring> FocusRealizationIntent::TakeReady(const WidgetInteractionAuthority& authority,
+    const std::wstring_view origin, const RenderResult& prepared) {
+    auto target = Target(authority, origin);
+    if (!target || !prepared.succeeded || !prepared.focusRects.contains(*target) || !IsEnabledFocusTarget(*target, prepared))
+        return std::nullopt;
+    Clear();
+    return target;
+}
+
 DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFocus(
     const WidgetSnapshot& snapshot, const std::wstring_view focusedElementId,
     const NavigationDirection direction, const RenderResult& renderResult,
@@ -318,7 +356,7 @@ std::optional<FocusedFreeScrollPlan> SurfaceInteractionTransactions::PlanFreeScr
     const std::wstring_view focusedElementId,
     const RenderResult& renderResult, const declarative::ScrollAxis axis,
     const float deltaDip, const declarative::Rect viewport,
-    FocusedFreeScrollPlanDiagnostic* diagnostic) {
+    FocusedFreeScrollPlanDiagnostic* diagnostic, const DeclarativeRenderOptions* preparationOptions) {
     const auto decision = EvaluateFreeScroll(
         state, authority, focusedElementId, renderResult);
     if (!authority.semantics ||
@@ -337,6 +375,9 @@ std::optional<FocusedFreeScrollPlan> SurfaceInteractionTransactions::PlanFreeScr
             return std::nullopt;
         exactScrollId = owner.scrollId;
     }
+    if (preparationOptions) return renderer.PlanPreparedFreeScroll(
+        *authority.semantics, focusedElementId, axis, deltaDip, viewport,
+        exactScrollId, *preparationOptions, diagnostic);
     return renderer.PlanFocusedFreeScroll(
         *authority.semantics, focusedElementId, axis, deltaDip, viewport,
         exactScrollId, diagnostic);
@@ -441,6 +482,7 @@ FocusMutation WidgetInteractionSession::MoveFocus(
     const std::wstring_view target,
     const bool retireSliderPresentations,
     const bool retirePressedPresentation) {
+    focusRealization_.Clear();
     if (focusedElementId_ != target) pendingCollectionFocus_.reset();
     auto result = SurfaceInteractionTransactions::MoveFocus(
         focusedElementId_, target);
@@ -461,12 +503,14 @@ FocusMutation WidgetInteractionSession::MoveFocus(
 }
 
 void WidgetInteractionSession::ClearFocus() noexcept {
+    focusRealization_.Clear();
     focusedElementId_.clear();
     sliders_.RetainAdjustmentMode({}, {}, {});
     pendingFocusGroupEntry_.reset();
 }
 
 void WidgetInteractionSession::ClearLiveFocus() noexcept {
+    focusRealization_.Clear();
     focusedElementId_.clear();
     sliders_.RetainAdjustmentMode({}, {}, {});
 }
@@ -951,6 +995,7 @@ std::vector<std::wstring> WidgetInteractionSession::CurrentSliderNodeIds(
 }
 
 InteractionVisualRetirement WidgetInteractionSession::RetirePresentations() {
+    focusRealization_.Clear();
     InteractionVisualRetirement result{
         sliders_.DeactivateAll(),
         pressed_.Clear(),

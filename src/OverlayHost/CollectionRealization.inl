@@ -268,7 +268,10 @@ LayoutElement PrepareCollection(const WidgetNode& node, LayoutElement element,
         std::set<std::wstring, std::less<>> retained;
         for (const auto index : state.realized) retained.insert(node.children[index].collectionItemKey);
         for (auto& [key, cached] : state.items) {
-            if (!retained.contains(key)) { cached.layout = {}; cached.text.clear(); cached.queries.clear(); cached.measuredContext = 0; }
+            // A sliced focus reveal visits its old viewport before the target
+            // viewport. Keep bounded intermediate measurements until the
+            // transaction finishes, rather than repeatedly evicting its work.
+            if (!preparationBudget && !retained.contains(key)) { cached.layout = {}; cached.text.clear(); cached.queries.clear(); cached.measuredContext = 0; }
         }
         if (!measurementOnly) StoreScrollOffset(ScrollStateKey(node.id), static_cast<float>(offset));
         element.scrollOffset = static_cast<float>(offset);

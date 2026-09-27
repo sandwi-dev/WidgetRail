@@ -378,6 +378,7 @@ public:
     }
 
 private:
+    void PumpFocusRealization();
     [[nodiscard]] DeclarativeRenderOptions RenderOptions(float widthDip, float heightDip, float dpiScale) const;
     [[nodiscard]] static declarative::Rect ContentViewport(float widthDip, float heightDip, bool compactMedia, bool adjustmentActive);
     static LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);

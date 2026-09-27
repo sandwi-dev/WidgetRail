@@ -354,6 +354,8 @@ enum class FocusedFreeScrollPlanDisposition {
     EmptyScrollViewport,
     OffsetBoundary,
     EmptyDamage,
+    PreparationPending,
+    PreparationFailed,
 };
 
 /// Bounded reason data for a rejected free-scroll plan. The host records this
@@ -576,6 +578,13 @@ public:
         declarative::Rect viewport,
         std::wstring_view exactScrollId = {},
         FocusedFreeScrollPlanDiagnostic* diagnostic = nullptr);
+    /// Tentatively plans movement and prepares its demand. Pending/Failed
+    /// restores the exact previous offset and paint plan, without movement debt.
+    [[nodiscard]] std::optional<FocusedFreeScrollPlan> PlanPreparedFreeScroll(
+        const WidgetSnapshot&, std::wstring_view focusedElementId, declarative::ScrollAxis,
+        float deltaDip, declarative::Rect viewport, std::wstring_view exactScrollId,
+        const DeclarativeRenderOptions&, FocusedFreeScrollPlanDiagnostic* = nullptr,
+        CollectionPreparationBudget = {});
 
     /// Reuses current committed geometry for artwork or animation paints.
     /// Omitted damage covers the widget; pending scroll layout is preserved.
@@ -726,8 +735,9 @@ private:
     };
     std::unordered_map<std::wstring, CollectionRenderState> collections_;
     std::unordered_map<std::wstring, CollectionRenderState> preparingCollections_;
-    std::wstring preparingInstance_, preparingScope_;
+    std::wstring preparingInstance_, preparingScope_, preparingFocus_;
     long long preparingSequence_{};
+    bool preparationReady_{};
     struct IncrementalNodeState final {
         NativeRenderStyle baseStyle;
         NativeStyleContext styleContext;

@@ -20,8 +20,11 @@ A bounded preparation API preserves committed geometry with explicit Ready/Pendi
 Failed states. Incoming main/pinned snapshots now prepare in host timer slices
 before session admission; old input/UIA authority remains current meanwhile.
 Renderer, session retry/lifecycle and production pinned-owner tests pass.
-Scroll/focus preparation scheduling, broader cursor/lifecycle validation, and
-further widget adoption remain. WIDGE-294–298 have not
+Directional offscreen focus now waits for measured geometry; scroll preparation
+rolls back pending distance and reuses already measured demand. Pinned focus and
+renderer rollback/progress tests pass. Group-entry scheduling, final paint/device
+publication, broader cursor/lifecycle validation, and further widget adoption remain.
+WIDGE-294–298 have not
 started. No live-overlay performance improvement is claimed. Details:
 [collection lifecycle](native-collection-lifecycle.md).
 

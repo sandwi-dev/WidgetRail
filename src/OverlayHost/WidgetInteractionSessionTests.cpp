@@ -2489,6 +2489,28 @@ void LogicalCollectionNavigationDoesNotRequireOffscreenGeometry() {
     Check(session.ResolveDirectionalFocus(L"logical.widget", snapshot, NavigationDirection::Down, result).target == L"item.3",
         "shared interaction pipeline accepts realization target without geometry");
     const WidgetInteractionAuthority authority{L"logical.widget", &snapshot, L"runtime", L"presentation", false};
+    FocusRealizationIntent intent;
+    Check(intent.Stage(authority, L"item.0", L"item.3", result) && intent.Target(authority, L"item.0") == L"item.3",
+        "logical focus stages one exact unmeasured target without moving the origin");
+    Check(!intent.TakeReady(authority, L"item.0", result), "logical identity alone cannot commit focus");
+    auto measured = result;
+    measured.succeeded = true;
+    measured.focusRects[L"item.3"] = {0, 0, 100, 100};
+    measured.navigationRects[L"item.3"] = measured.focusRects[L"item.3"];
+    Check(intent.TakeReady(authority, L"item.0", measured) == L"item.3" && !intent.pending(),
+        "successful measured geometry admits focus exactly once");
+    Check(intent.Stage(authority, L"item.0", L"item.3", result), "focus can be prepared again");
+    ++snapshot.sequence;
+    Check(!intent.Target(authority, L"item.0") && !intent.pending(), "snapshot admission cancels old pending navigation");
+    Check(intent.Stage(authority, L"item.0", L"item.3", result), "new sequence gets new focus authority");
+    Check(!intent.Target(authority, L"item.1"), "changed origin cannot inherit navigation intent");
+    Check(intent.Stage(authority, L"item.0", L"item.3", result), "recycled target fixture stages");
+    snapshot.root.children[3].collectionItemKey = L"recycled";
+    Check(!intent.Target(authority, L"item.0"), "recycled item ID cannot receive old focus intent");
+    snapshot.root.children[3].collectionItemKey = L"key.3";
+    Check(intent.Stage(authority, L"item.0", L"item.3", result), "replacement fixture stages");
+    Check(!intent.Stage(authority, L"item.0", L"item.0", result) && !intent.pending(),
+        "new navigation to a measured target cancels pending realization");
     (void)session.BindFreeScroll(authority, L"collection", declarative::ScrollAxis::Vertical, FreeScrollFocusPolicy::Preserve);
     (void)session.SampleRightStick(0, 0, 1000);
     Check(!session.freeScrollState().ShouldSettle(2000), "UIA realization does not settle controller focus after a timer");

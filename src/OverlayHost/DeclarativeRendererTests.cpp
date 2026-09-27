@@ -7856,12 +7856,52 @@ void CollectionRealizationMatchesEagerGeometry() {
         Check(initial.realizableFocusIds.contains(L"item.90") &&
             initial.logicalCollections.at(L"items").itemIdentities.size() == 128 &&
             !initial.navigationRects.contains(L"item.90"), "renderer publishes logical focus authority without offscreen rectangles");
+        if (content == 0 && !horizontal) {
+            DeclarativeRenderer synchronous(d2d.Get(), write.Get(), nullptr);
+            (void)draw(synchronous, snapshot, L"item.0");
+            Check(synchronous.PlanFocusedFreeScroll(snapshot, L"item.0", declarative::ScrollAxis::Vertical,
+                1000, bounds, L"items").has_value(), "synchronous reference accepts movement");
+            options.suppressFocusedDescendantFollow = true;
+            const auto synchronousMovement = draw(synchronous, snapshot, L"item.0");
+            options.suppressFocusedDescendantFollow = false;
+            FocusedFreeScrollPlanDiagnostic scrollDiagnostic;
+            auto movement = lazy.PlanPreparedFreeScroll(snapshot, L"item.0", declarative::ScrollAxis::Vertical,
+                1000, bounds, L"items", options, &scrollDiagnostic, {1, 1000000});
+            Check(!movement && scrollDiagnostic.disposition == FocusedFreeScrollPlanDisposition::PreparationPending,
+                "unprepared scroll demand yields without committing movement");
+            options.suppressFocusedDescendantFollow = true;
+            const auto pendingViewport = draw(lazy, snapshot, L"item.0");
+            Near(pendingViewport.scrollOffsets.at(L"items"), 0, "pending scroll cannot change the committed viewport");
+            for (int slice = 0; slice < 128 && !movement; ++slice) {
+                movement = lazy.PlanPreparedFreeScroll(snapshot, L"item.0", declarative::ScrollAxis::Vertical,
+                    1000, bounds, L"items", options, &scrollDiagnostic, {1, 1000000});
+                Check(movement || scrollDiagnostic.disposition == FocusedFreeScrollPlanDisposition::PreparationPending,
+                    "scroll slices retain valid authority");
+                if (!movement) (void)draw(lazy, snapshot, L"item.0");
+            }
+            Check(movement.has_value(), "scroll preparation makes progress despite retained paints");
+            Near(movement->offset, 1000, "repeated pending samples do not accumulate distance");
+            const auto scrolled = draw(lazy, snapshot, L"item.0");
+            Near(scrolled.scrollOffsets.at(L"items"), synchronousMovement.scrollOffsets.at(L"items"),
+                "sliced movement matches synchronous measurement and anchor correction");
+            options.suppressFocusedDescendantFollow = false;
+            (void)draw(lazy, snapshot, L"item.0");
+        }
         const auto pendingDeep = lazy.PrepareCollections(snapshot, L"item.90", bounds, options, {1, 1000000});
         Check(pendingDeep.status == CollectionPreparationStatus::Pending,
             "a distant target has a distinct pending preparation state");
         const auto retainedAfterPending = draw(lazy, snapshot, L"item.0");
         Near(retainedAfterPending.scrollOffsets.at(L"items"), initial.scrollOffsets.at(L"items"),
             "unfinished target preparation cannot publish its scroll position");
+        bool targetReady{};
+        for (int slice = 0; slice < 128; ++slice) {
+            const auto preparation = lazy.PrepareCollections(snapshot, L"item.90", bounds, options, {1, 1000000});
+            Check(preparation.status != CollectionPreparationStatus::Failed, "target preparation survives repaint of its origin");
+            (void)draw(lazy, snapshot, L"item.0");
+            if (preparation.status == CollectionPreparationStatus::Ready) { targetReady = true; break; }
+        }
+        Check(targetReady, "animation paints at the same sequence cannot starve pending offscreen focus");
+        lazy.CancelCollectionPreparation();
         Check(lazy.PrepareCollections(snapshot, L"item.0", bounds, options, {0, 1000}).status == CollectionPreparationStatus::Failed,
             "invalid preparation budget fails without replacing committed content");
         if (content == 0 && !grid && !horizontal && scale == 1) {

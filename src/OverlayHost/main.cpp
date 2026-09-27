@@ -7261,7 +7261,7 @@ private:
 
     void PumpCollectionPreparation() {
         const auto started = std::chrono::steady_clock::now();
-        bool pendingWork{};
+        bool pendingWork = PumpFocusRealization();
         for (const auto& descriptor : sessions_.descriptors()) {
             const auto pending = sessions_.PendingPresentationPreparation(descriptor.id);
             if (!pending) continue;
@@ -7304,6 +7304,42 @@ private:
             (void)sessions_.ApprovePresentationPreparation(descriptor.id, pending->requestId, pending->generation);
         }
         if (pendingWork) SetTimer(window_, kCollectionPreparationTimer, 16, nullptr);
+    }
+
+    bool PumpFocusRealization() {
+        auto& intent = interactionSession_.focusRealization();
+        if (!intent.pending()) return false;
+        const auto widget = state_.activeWidget();
+        const auto* snapshot = InteractionSnapshotFor(widget);
+        const auto authority = snapshot ? InteractionAuthority(widget, *snapshot) : std::nullopt;
+        if (!WidgetOwnsInputFocus(widget) || !snapshot || !authority || !declarativeRenderer_) {
+            intent.Clear(); return false;
+        }
+        const auto target = intent.Target(*authority, interactionSession_.focusedElementId());
+        if (!target) return false;
+        const auto surface = DesiredWidgetSurfaceTarget();
+        const auto extent = DesiredContentPanelExtentDip();
+        const auto geometry = compositionSurface_.available()
+            ? widgetrail::ComputePanelLocalSurfaceGeometry(static_cast<float>(extent.widthDip), static_cast<float>(extent.heightDip))
+            : widgetrail::ComputeOverlaySurfaceGeometry(surface.windowWidthDip, surface.windowHeightDip,
+                surface.panelWidthDip, surface.panelHeightDip);
+        if (!geometry) { intent.Clear(); return false; }
+        const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
+            (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
+        auto options = WidgetRenderOptions(widget, sessions_.FindDescriptor(widget), *geometry, scale);
+        const widgetrail::declarative::Rect viewport{
+            geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight};
+        const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, *target, viewport, options);
+        if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) return true;
+        if (preparation.status == widgetrail::CollectionPreparationStatus::Failed) { intent.Clear(); return false; }
+        const auto geometryResult = declarativeRenderer_->PrepareFocusEntry(*snapshot, *target, viewport, options);
+        const auto ready = intent.TakeReady(*authority, interactionSession_.focusedElementId(), geometryResult);
+        if (!ready) { intent.Clear(); return false; }
+        ObserveScrollPaginationFocusIntent(widget, *snapshot, interactionSession_.focusedElementId(), *ready,
+            widgetrail::input::ScrollPaginationIntentSource::DirectionalNavigation);
+        const auto focus = interactionSession_.MoveFocus(widget, *snapshot, *ready);
+        InvalidateWidgetFocusChange(focus.priorFocus, focus.sliderDamageNodeIds);
+        return false;
     }
 
     std::wstring_view DisplayWidgetName(const std::wstring_view id) const noexcept {
@@ -8250,6 +8286,7 @@ private:
     }
 
     void HideOverlay() {
+        interactionSession_.focusRealization().Clear();
         if (declarativeRenderer_) declarativeRenderer_->CancelCollectionPreparation();
         ResetWindowPreviews();
         visibleSessionStartedAt_ = 0;
@@ -11261,6 +11298,8 @@ private:
         case Disposition::EmptyScrollViewport: return L"empty-scroll-viewport";
         case Disposition::OffsetBoundary: return L"offset-boundary";
         case Disposition::EmptyDamage: return L"empty-damage";
+        case Disposition::PreparationPending: return L"preparation-pending";
+        case Disposition::PreparationFailed: return L"preparation-failed";
         default: return L"unknown";
         }
     }
@@ -11450,7 +11489,10 @@ private:
         const auto sample = interactionSession_.SampleRightStick(
             heldDirection ? 0 : frame.state.rightThumbX,
             heldDirection ? static_cast<short>(*heldDirection > 0 ? -32767 : 32767) : frame.state.rightThumbY, now);
-        if (sample.moving) pendingAccessibilityRealization_.reset();
+        if (sample.moving) {
+            pendingAccessibilityRealization_.reset();
+            interactionSession_.focusRealization().Clear();
+        }
         if (!sample.moving) {
             continuousScrollFrames_.Neutral();
             if (!continuousScrollFrames_.pending()) return ApplyContinuousFreeScroll(sample, now, false);
@@ -11620,12 +11662,17 @@ private:
                 *interactionSession_.freeScrollBinding()}
             : std::nullopt;
         widgetrail::FocusedFreeScrollPlanDiagnostic planDiagnostic;
+        const auto preparationOptions = WidgetRenderOptions(widget, descriptor, *geometry, metrics->physicalPixelsPerDip);
         const auto plan = widgetrail::input::SurfaceInteractionTransactions::PlanFreeScroll(
             interactionSession_.freeScrollState(), *declarativeRenderer_,
             authority, interactionSession_.focusedElementId(),
             lastWidgetRenderResult_, axis, sample.deltaDip, viewport,
-            &planDiagnostic);
+            &planDiagnostic, &preparationOptions);
         if (!plan) {
+            // Preparation consumed this sample, not its distance. A later
+            // cadence sample retries from the committed viewport; no backlog
+            // or provider-loading boundary is created while items are measured.
+            if (planDiagnostic.disposition == widgetrail::FocusedFreeScrollPlanDisposition::PreparationPending) return true;
             if (planDiagnostic.disposition == widgetrail::FocusedFreeScrollPlanDisposition::OffsetBoundary) {
                 continuousScrollFrames_.BlockLastFrame();
                 heldDpadBoundaryStop_ = heldDpad;
@@ -14462,6 +14509,7 @@ private:
             phase != widgetrail::input::NavigationEventPhase::Pressed) {
             return;
         }
+        interactionSession_.focusRealization().Clear();
         auto resolution = interactionSession_.ResolveDirectionalFocus(
             widgetId, *snapshot, navigationDirection, lastWidgetRenderResult_);
         if (developerInspector_) {
@@ -14525,6 +14573,11 @@ private:
             if (pendingFocusGroupEntry) {
                 RetirePendingFocusGroupEntryForUserIntent(
                     widgetId, *snapshot, L"directional-input");
+            }
+            if (interactionSession_.focusRealization().Stage(*postFlushAuthority,
+                    interactionSession_.focusedElementId(), *resolution.target, lastWidgetRenderResult_)) {
+                SetTimer(window_, kCollectionPreparationTimer, 1, nullptr);
+                return;
             }
             ObserveScrollPaginationFocusIntent(
                 widgetId, *snapshot, interactionSession_.focusedElementId(),
@@ -15281,6 +15334,7 @@ private:
             exactActionRequest = std::nullopt,
         const bool physicalPress = false,
         const HeldActionAuthority* exactHeldAction = nullptr) {
+        interactionSession_.focusRealization().Clear();
         if (state_.surface() == widgetrail::Surface::Hidden) {
             if (exactActionRequest) {
                 RejectWidgetActionRequest(

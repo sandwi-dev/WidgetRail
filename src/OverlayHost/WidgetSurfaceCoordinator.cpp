@@ -23,6 +23,7 @@ constexpr wchar_t kWindowClass[] = L"WidgetRail.PinnedSurface";
 constexpr wchar_t kWindowTitle[] = L"WidgetRail pinned surface";
 constexpr UINT kAccessibilityActionMessage = WM_APP + 0x316;
 constexpr UINT_PTR kBackgroundSurfaceAnimationTimer = 1;
+constexpr UINT_PTR kFocusRealizationTimer = 2;
 constexpr UINT kBackgroundSurfaceAnimationTimerMilliseconds = 15;
 constexpr float kChromeHeightDip = surface_geometry::kPinnedChromeHeightDip;
 constexpr float kSideInsetDip = surface_geometry::kPinnedSideInsetDip;
@@ -703,6 +704,7 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
             break;
         }
     }
+    sliderInteraction_.focusRealization().Clear();
     auto resolution = input::SurfaceInteractionTransactions::ResolveDirectionalFocus(
         snapshot, focusedElementId_, direction, lastRenderResult_,
         &focusGroupMemory_, admission_->widgetId);
@@ -714,6 +716,11 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     if (RecordPaginationOutcome(std::move(focusAdmission.pagination)))
         NotifyOwner();
     if (focusAdmission.retainFocus) return true;
+    if (focusAdmission.resolution.target && sliderInteraction_.focusRealization().Stage(authority,
+            focusedElementId_, *focusAdmission.resolution.target, lastRenderResult_)) {
+        SetTimer(window_, kFocusRealizationTimer, 1, nullptr);
+        return true;
+    }
     return focusAdmission.resolution.target
         ? applyFocus(*focusAdmission.resolution.target)
         : false;
@@ -894,7 +901,10 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
     const std::uint64_t now) {
     const auto sample = freeScroll_.SampleRightStick(
         rightThumbX, rightThumbY, now);
-    if (sample.moving) pendingAccessibilityRealization_.reset();
+    if (sample.moving) {
+        pendingAccessibilityRealization_.reset();
+        sliderInteraction_.focusRealization().Clear();
+    }
     if (!pinned() || !controllerFocused_ ||
         policy_.interactionMode() != InteractionMode::Focusable ||
         !renderer_ || !window_ || focusedElementId_.empty()) {
@@ -936,9 +946,10 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
     const auto axis = sample.axis == input::FreeScrollAxis::Horizontal
         ? declarative::ScrollAxis::Horizontal
         : declarative::ScrollAxis::Vertical;
+    const auto preparationOptions = RenderOptions(widthDip, heightDip, scale);
     const auto plan = input::SurfaceInteractionTransactions::PlanFreeScroll(
         freeScroll_, *renderer_, authority, focusedElementId_,
-        lastRenderResult_, axis, sample.deltaDip, viewport);
+        lastRenderResult_, axis, sample.deltaDip, viewport, nullptr, &preparationOptions);
     if (!plan) return false;
 
     const auto& damage = plan->render.damage;
@@ -973,6 +984,7 @@ void WidgetSurfaceCoordinator::RetireSliderInteraction() noexcept {
 
 void WidgetSurfaceCoordinator::TransitionPinnedFocus(
     const std::wstring_view target) {
+    sliderInteraction_.focusRealization().Clear();
     ClearFreeScroll();
     if (focusedElementId_ != target) RetireSliderInteraction();
     focusedElementId_ = target;
@@ -1016,6 +1028,7 @@ bool WidgetSurfaceCoordinator::QueueResolvedInput(
     const std::optional<double> requestedValue,
     std::optional<input::WidgetInteractionActionRequest> sliderActionRequest,
     std::optional<input::WidgetInteractionActionRequest> selectActionRequest) {
+    sliderInteraction_.focusRealization().Clear();
     if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
         nodeId.empty() || protocolButton.empty()) return false;
     if (inputRequests_.size() >= kMaximumPendingInputRequests) {
@@ -1808,6 +1821,7 @@ void WidgetSurfaceCoordinator::SetBeforeWindowRetirement(
 }
 
 void WidgetSurfaceCoordinator::OnOverlayHidden() noexcept {
+    sliderInteraction_.focusRealization().Clear();
     overlayVisible_ = false;
     if (setupNewPin_) {
         (void)CancelSetup();
@@ -2316,6 +2330,11 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
     case WM_ERASEBKGND:
         return 1;
     case WM_TIMER:
+        if (wParam == kFocusRealizationTimer) {
+            KillTimer(window_, kFocusRealizationTimer);
+            PumpFocusRealization();
+            return 0;
+        }
         if (wParam == kBackgroundSurfaceAnimationTimer) {
             if (!renderer_ || !lastRenderResult_.succeeded) {
                 KillTimer(window_, kBackgroundSurfaceAnimationTimer);
@@ -2658,6 +2677,34 @@ bool WidgetSurfaceCoordinator::EnsureGraphicsResources() {
             DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 12.0F, L"en-us",
             chromeFormat_.ReleaseAndGetAddressOf()))) return false;
     return true;
+}
+
+void WidgetSurfaceCoordinator::PumpFocusRealization() {
+    auto& intent = sliderInteraction_.focusRealization();
+    if (!pinned() || !controllerFocused_ || !renderer_ || !window_) { intent.Clear(); return; }
+    const auto& snapshot = SelectedSnapshot();
+    const input::WidgetInteractionAuthority authority{admission_->widgetId, &snapshot,
+        admission_->runtimeGeneration, admission_->presentationGeneration, false};
+    const auto target = intent.Target(authority, focusedElementId_);
+    if (!target) return;
+    RECT client{};
+    if (!GetClientRect(window_, &client)) { intent.Clear(); return; }
+    const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+    const float width = static_cast<float>(client.right - client.left) / scale;
+    const float height = static_cast<float>(client.bottom - client.top) / scale;
+    auto options = RenderOptions(width, height, scale);
+    const auto viewport = ContentViewport(width, height, compactMediaPresentation(),
+        placementSession_.has_value() || opacityPreviewOriginal_.has_value());
+    const auto preparation = renderer_->PrepareCollections(snapshot, *target, viewport, options);
+    if (preparation.status == CollectionPreparationStatus::Pending) {
+        SetTimer(window_, kFocusRealizationTimer, 16, nullptr); return;
+    }
+    if (preparation.status == CollectionPreparationStatus::Failed) { intent.Clear(); return; }
+    const auto geometry = renderer_->PrepareFocusEntry(snapshot, *target, viewport, options);
+    if (const auto ready = intent.TakeReady(authority, focusedElementId_, geometry)) {
+        TransitionPinnedFocus(*ready);
+        RequestPaint();
+    } else intent.Clear();
 }
 
 DeclarativeRenderOptions WidgetSurfaceCoordinator::RenderOptions(
