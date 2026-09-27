@@ -78,7 +78,8 @@ internal sealed record BridgeArtworkRequest(
     string WidgetId,
     string ArtworkHandle,
     string? RuntimeGeneration = null,
-    string? PresentationGeneration = null);
+    string? PresentationGeneration = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DemandId = null);
 internal sealed record BridgePackageIconRequest(
     string WidgetId,
     string RuntimeGeneration,
@@ -185,14 +186,16 @@ internal sealed record BridgeEncodedArtworkEvent(
     string RuntimeGeneration,
     string PresentationGeneration,
     string ContentType,
-    ReadOnlyMemory<byte> ContentBase64);
+    ReadOnlyMemory<byte> ContentBase64,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DemandId = null);
 internal sealed record BridgeLegacyArtworkEvent(
     string WidgetId,
     string ArtworkHandle,
     string RuntimeGeneration,
     string PresentationGeneration,
     string ContentType,
-    string ContentBase64);
+    string ContentBase64,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DemandId = null);
 
 internal static class BridgeJson
 {

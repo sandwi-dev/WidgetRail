@@ -37,7 +37,17 @@ scroll improvements of 3–10%; seven production fixtures retain exact pixel par
 Renderer (47,819), chrome/composition and pinned gates plus the normal Release
 host/runtime build pass. WIDGE-295 is complete for integration.
 See [painting measurements](native-painting-reuse.md).
-WIDGE-296 through WIDGE-298 have not started.
+WIDGE-295 merged at `28436e2e`. WIDGE-296 has a shared allocation/protection core
+and CPU-cache lifetime/pressure integration, including host decode buffers and
+shared decoder transport. Tracked GPU/capture/compositor ownership, shared frame
+protection, idle reclamation and decoder transport retirement are connected.
+Realization-driven cancellation, independent image content identity, hide/resume
+and shared-pressure reclamation pass focused tests. Production-layout probes
+retain about 20-32 MiB of known storage with shared substitute artwork. Bridge
+reply correlation protects same-key re-admission. Renderer (47,872), bridge,
+background/pinned gates and the normal Release build pass; WIDGE-296 is complete
+for integration. See [resource accounting](native-resource-budgets.md).
+WIDGE-297 and WIDGE-298 have not started.
 No live-overlay FPS improvement is claimed.
 Details and verification limits: [collection lifecycle](native-collection-lifecycle.md).
 

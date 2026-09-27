@@ -1,6 +1,10 @@
 #pragma once
+
+#include <atomic>
 #include "ImageDecodeSize.h"
 #include "ScrollDiagnostics.h"
+#include "UiResourceBudget.h"
+#include "UiResource.h"
 #include <set>
 #include <map>
 
@@ -15,6 +19,7 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <new>
 #include <mutex>
 #include <optional>
 #include <stop_token>
@@ -23,6 +28,7 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 
 namespace widgetrail {
 
@@ -122,14 +128,59 @@ struct RemoteImageLimits {
     DWORD sendTimeoutMilliseconds{3'000};
     DWORD receiveTimeoutMilliseconds{5'000};
     DWORD maximumRedirects{3};
+    // Host-side allocation context; not part of the decoder wire protocol.
+    std::shared_ptr<resources::UiResourceBudget> resourceBudget;
 };
 
 struct RemoteDecodedImage {
+    // Declared before pixels so accounting retires after the backing vector.
+    resources::UiResourceBudget::Lease resourceAllocation;
+    std::shared_ptr<const void> contentIdentity;
     UINT32 width{};
     UINT32 height{};
     UINT32 stride{};
     std::vector<std::uint8_t> premultipliedBgra;
     std::wstring mimeType;
+    RemoteDecodedImage() = default;
+    RemoteDecodedImage(RemoteDecodedImage&&) noexcept = default;
+    RemoteDecodedImage(const RemoteDecodedImage& other)
+        : contentIdentity(other.contentIdentity), width(other.width), height(other.height), stride(other.stride), premultipliedBgra(other.premultipliedBgra), mimeType(other.mimeType) {
+        if (other.resourceAllocation && !premultipliedBgra.empty()) {
+            resourceAllocation = other.resourceAllocation->Duplicate(premultipliedBgra.capacity());
+            if (!resourceAllocation) throw std::bad_alloc();
+            resourceAllocation->Commit();
+        }
+    }
+    RemoteDecodedImage& operator=(RemoteDecodedImage other) noexcept { Swap(other); return *this; }
+    void Swap(RemoteDecodedImage& other) noexcept {
+        resourceAllocation.swap(other.resourceAllocation);
+        contentIdentity.swap(other.contentIdentity);
+        std::swap(width, other.width); std::swap(height, other.height); std::swap(stride, other.stride);
+        premultipliedBgra.swap(other.premultipliedBgra); mimeType.swap(other.mimeType);
+    }
+    [[nodiscard]] bool AllocatePixels(std::size_t bytes, const std::shared_ptr<resources::UiResourceBudget>& budget) {
+        try {
+            auto allocation = budget ? budget->Reserve(resources::Kind::DecodedImage, bytes, resources::Admission::Required)
+                : resources::UiResourceBudget::Lease{};
+            if (budget && !allocation) return false;
+            std::vector<std::uint8_t> pixels(bytes);
+            if (allocation) {
+                if (!allocation->ResizeRequiredReservation(pixels.capacity())) return false;
+                allocation->Commit();
+            }
+            resourceAllocation.swap(allocation);
+            premultipliedBgra.swap(pixels);
+            // Pixels is destroyed before the prior allocation lease.
+            return true;
+        } catch (const std::bad_alloc&) { return false; }
+    }
+    [[nodiscard]] bool TrackAllocation(const std::shared_ptr<resources::UiResourceBudget>& budget) {
+        if (!budget) return false;
+        if (budget->Owns(resourceAllocation) && resourceAllocation->bytes() == premultipliedBgra.capacity()) return true;
+        auto allocation = budget->Reserve(resources::Kind::DecodedImage, premultipliedBgra.capacity(), resources::Admission::Required);
+        if (!allocation) return false;
+        allocation->Commit(); resourceAllocation = std::move(allocation); return true;
+    }
 };
 
 struct RemoteImageFetchResult {
@@ -199,7 +250,7 @@ public:
     using ArtworkRequestFunction = std::function<TrustedArtworkRequestDisposition(
         std::wstring_view key,
         const TrustedArtworkDemandAuthority& authority,
-        std::stop_token stopToken)>;
+        std::uint64_t demandGeneration, std::stop_token stopToken)>;
     using ArtworkDecodeDiagnosticCallback =
         std::function<void(const TrustedArtworkDecodeDiagnostic& diagnostic)>;
     using PackageIconRequestFunction = std::function<PackageIconRequest(
@@ -213,11 +264,14 @@ public:
         ArtworkRequestFunction artworkRequest = {},
         ArtworkDecodeDiagnosticCallback artworkDecodeDiagnostic = {},
         PackageIconRequestFunction packageIconRequest = {},
-        std::shared_ptr<ScrollDiagnostics> scrollDiagnostics = {});
+        std::shared_ptr<ScrollDiagnostics> scrollDiagnostics = {},
+        std::shared_ptr<resources::UiResourceBudget> resourceBudget = {});
     ~RemoteImageCache();
 
     RemoteImageCache(const RemoteImageCache&) = delete;
     RemoteImageCache& operator=(const RemoteImageCache&) = delete;
+    [[nodiscard]] std::uint64_t ContentEpoch() const noexcept { return contentEpoch_.load(std::memory_order_relaxed); }
+    [[nodiscard]] const std::shared_ptr<resources::UiResourceBudget>& ResourceBudget() const noexcept { return resourceBudget_; }
 
     [[nodiscard]] RemoteImageRequestResult Request(std::wstring url, ImageDecodeSize size = {});
     /// Queues a host-created opaque artwork cache key. Snapshot image sources
@@ -242,15 +296,16 @@ public:
         std::wstring_view artworkHandle,
         const TrustedArtworkDemandAuthority& authority,
         std::wstring contentType,
-        std::wstring contentBase64);
+        std::wstring contentBase64,
+        std::wstring_view demandId = {});
     [[nodiscard]] bool FailTrustedArtwork(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle,
-        const TrustedArtworkDemandAuthority& authority = {});
+        const TrustedArtworkDemandAuthority& authority = {}, std::wstring_view demandId = {});
     [[nodiscard]] bool RetireTrustedArtworkDemand(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle,
-        const TrustedArtworkDemandAuthority& authority);
+        const TrustedArtworkDemandAuthority& authority, std::wstring_view demandId = {});
     // A fresh admitted view is the retry trigger for retired artwork, even
     // when its semantic diff would otherwise require no raster work.
     [[nodiscard]] bool ConsumeRetiredArtworkForSnapshot(std::wstring_view widgetId);
@@ -290,10 +345,17 @@ public:
         ID2D1RenderTarget* renderTarget,
         std::wstring_view url,
         ID2D1Bitmap** bitmap);
+    [[nodiscard]] HRESULT CreateTrackedBitmap(ID2D1RenderTarget* target, std::wstring_view key,
+        resources::UiResource<ID2D1Bitmap>& bitmap, std::shared_ptr<const void>* contentIdentity = nullptr);
 
     static std::wstring VariantKey(std::wstring_view source, ImageDecodeSize size);
     void ProtectImages(const void* owner, std::set<std::wstring> keys);
+    // Visible/published keys protect storage. Realized keys additionally retain
+    // pending demand; removing the last owner cancels only unfinished work.
+    void SetImageDemand(const void* owner, std::set<std::wstring> visibleKeys,
+        std::set<std::wstring> realizedKeys);
     void ReleaseImageProtection(const void* owner);
+    void ReclaimIdleImages();
     bool CanPrefetch(std::wstring_view key) const;
     bool BudgetRejected(std::wstring_view key) const;
     bool ReleaseBudgetRejection(std::wstring_view key);
@@ -323,6 +385,7 @@ private:
         std::shared_ptr<const RemoteDecodedImage> image;
         std::wstring error;
         std::wstring pendingSource;
+        resources::UiResourceBudget::Lease encodedAllocation;
         std::vector<std::uint8_t> pendingBytes;
         std::wstring pendingMimeType;
         std::uint64_t lastUse{};
@@ -333,8 +396,15 @@ private:
         ImageDecodeSize decodeSize{};
         bool budgetRejected{};
         std::size_t rejectedBytes{};
+        resources::UiResourceBudget::Pin resourceProtection;
+        std::shared_ptr<std::stop_source> cancellation{std::make_shared<std::stop_source>()};
     };
 
+    static bool MatchesDemandId(const Entry& entry, std::wstring_view demandId) {
+        // Empty is the legacy/private test path. The production host always
+        // sends and requires a correlated reply for its generated demand ID.
+        return demandId.empty() || demandId == std::to_wstring(entry.demandGeneration);
+    }
     struct ArtworkDemand final {
         std::wstring key;
         TrustedArtworkDemandAuthority authority;
@@ -355,7 +425,13 @@ private:
         TrustedArtworkRequestDisposition disposition);
     void CompleteLocked(const std::wstring& url, RemoteImageFetchResult result);
     bool ProtectedLocked(std::wstring_view key) const;
+    void RefreshResourceProtectionLocked();
+    void ReclaimIdleImagesLocked();
+    void RetireUndemanded(std::set<std::wstring> priorKeys);
+    std::map<const void*, std::set<std::wstring>> imageDemands_;
     std::map<const void*, std::set<std::wstring>> protectedImages_;
+    std::atomic<std::uint64_t> contentEpoch_{1};
+    std::shared_ptr<resources::UiResourceBudget> resourceBudget_;
     RemoteImageLimits limits_;
     CompletionCallback completion_;
     bool usesCustomFetch_{};

@@ -241,7 +241,7 @@ void VerifyCompositorRebasePixels(
             D2D1::BitmapProperties(D2D1::PixelFormat(
                 DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96, 96),
             result.ReleaseAndGetAddressOf())), "compositor source bitmap failed");
-        return result;
+        return widgetrail::resources::UiResource<ID2D1Bitmap>::External(std::move(result));
     };
     const auto red = bitmap(false);
     const auto green = bitmap(true);
@@ -488,7 +488,7 @@ int wmain() {
             {}, {}, {},
             [&](const std::wstring_view key,
                 const widgetrail::TrustedArtworkDemandAuthority&,
-                std::stop_token) {
+                std::uint64_t, std::stop_token) {
                 requests.Push(key);
                 return widgetrail::TrustedArtworkRequestDisposition::Accepted;
             });
@@ -588,7 +588,7 @@ int wmain() {
             widgetrail::RemoteImageCache retargetCache(
                 {}, {}, {}, [](const std::wstring_view,
                                const widgetrail::TrustedArtworkDemandAuthority&,
-                               std::stop_token) {
+                               std::uint64_t, std::stop_token) {
                     return widgetrail::TrustedArtworkRequestDisposition::Accepted;
                 });
             const auto admitArtwork = [&](const std::wstring_view handle,

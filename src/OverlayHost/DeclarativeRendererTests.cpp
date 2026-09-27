@@ -386,7 +386,7 @@ void BackgroundImageFitAndDiagnosticsUseOneBoundedOwner() {
     widgetrail::RemoteImageCache pendingArtwork(
         {}, {}, {}, [](std::wstring_view,
                        const widgetrail::TrustedArtworkDemandAuthority&,
-                       std::stop_token) {
+                       std::uint64_t, std::stop_token) {
             return widgetrail::TrustedArtworkRequestDisposition::Accepted;
         });
     DeclarativeRenderer diagnosticRenderer{
@@ -2321,7 +2321,7 @@ void BackgroundSurfacePreservesForegroundAuthority() {
         {}, {}, {},
         [&](const std::wstring_view key,
             const widgetrail::TrustedArtworkDemandAuthority&,
-            std::stop_token) {
+            std::uint64_t, std::stop_token) {
             {
                 std::scoped_lock lock(requestMutex);
                 requestedArtwork.emplace_back(key);
@@ -6373,7 +6373,7 @@ void TrustedArtworkDemandDoesNotBlockTileRender() {
         },
         [&](std::wstring_view,
             const widgetrail::TrustedArtworkDemandAuthority& authority,
-            const std::stop_token token) {
+            std::uint64_t, const std::stop_token token) {
             std::unique_lock lock(demandMutex);
             observedAuthority = authority;
             demandEntered = true;
@@ -6587,7 +6587,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
         },
         [&](const std::wstring_view key,
             const widgetrail::TrustedArtworkDemandAuthority&,
-            std::stop_token) {
+            std::uint64_t, std::stop_token) {
             {
                 std::scoped_lock lock(transitionMutex);
                 requested.emplace_back(key);
@@ -6656,7 +6656,9 @@ void TrustedArtworkTerminalFallbackIsStable() {
     };
     auto playniteLibrary = makeSnapshot(L"playnite-library");
     auto gamesApps = makeSnapshot(L"games-apps");
-    DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
+    // Two concurrently interested surfaces require two resource owners.
+    DeclarativeRenderer launcherRenderer{d2d.Get(), write.Get(), &cache};
+    DeclarativeRenderer gamesRenderer{d2d.Get(), write.Get(), &cache};
     const Rect viewport{0.0F, 0.0F, 420.0F, 360.0F};
     const auto render = [&](WidgetSnapshot& snapshot, const std::wstring_view widgetId,
                             const std::wstring_view runtime = L"transition-runtime") {
@@ -6665,6 +6667,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
         options.artworkWidgetId = widgetId;
         options.artworkRuntimeGeneration = runtime;
         options.artworkPresentationGeneration = L"transition-presentation";
+        auto& renderer = widgetId == L"playnite-library" ? launcherRenderer : gamesRenderer;
         target->BeginDraw();
         target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
         auto result = renderer.Render(
@@ -6843,6 +6846,23 @@ void TrustedArtworkTerminalFallbackIsStable() {
         "same-handle recovery replaces the fallback with actual artwork pixels");
     Check(sameRects(replacementFrame.focusRects, gamesPending.focusRects),
         "same-handle recovery preserves widget navigation geometry");
+    auto emptyGames = gamesApps; emptyGames.root.children.clear(); ++emptyGames.sequence;
+    (void)render(emptyGames, L"games-apps", L"replacement-runtime");
+    const auto pendingGame = widgetrail::RemoteImageCache::TrustedArtworkKey(L"games-apps", L"pending", pendingHandle);
+    const auto pendingLauncher = widgetrail::RemoteImageCache::TrustedArtworkKey(L"playnite-library", L"pending", pendingHandle);
+    Check(cache.GetState(pendingGame) == widgetrail::RemoteImageState::Missing &&
+        cache.GetState(pendingLauncher) == widgetrail::RemoteImageState::Loading,
+        "replacing one realized view cancels its pending artwork without disturbing another owner");
+    launcherRenderer.SuspendImageDemand();
+    Check(cache.GetState(pendingLauncher) == widgetrail::RemoteImageState::Missing,
+        "hidden owner releases pending demand without retiring its logical widget");
+    const auto resumedView = render(playniteLibrary, L"playnite-library");
+    Check(sameRects(resumedView.focusRects, recovered.focusRects) &&
+        cache.GetState(pendingLauncher) == widgetrail::RemoteImageState::Loading,
+        "reopening resumes realized demand and preserves navigation geometry");
+    launcherRenderer.ForgetWidgetState(playniteLibrary.instanceId);
+    Check(cache.GetState(pendingLauncher) == widgetrail::RemoteImageState::Missing,
+        "widget retirement cancels its final pending artwork demand");
     cache.Shutdown();
 }
 
@@ -8408,6 +8428,89 @@ void CollectionRealizationMatchesEagerGeometry() {
     }
 }
 
+void ResourceAliasesRetainBackingStorage() {
+    using namespace widgetrail;
+    using namespace widgetrail::resources;
+    using Microsoft::WRL::ComPtr;
+    auto budget = std::make_shared<UiResourceBudget>(128);
+    ComPtr<ID2D1Factory> factory;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.GetAddressOf())), "tracked resource factory");
+    Check(SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf()))), "tracked resource WIC");
+    Check(SUCCEEDED(wic->CreateBitmap(16, 16, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf())), "tracked resource canvas");
+    Check(SUCCEEDED(factory->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf())), "tracked resource render target");
+    UiResource<ID2D1BitmapRenderTarget> capture;
+    const auto size = D2D1::SizeF(8, 8);
+    const auto pixels = D2D1::SizeU(8, 8);
+    Check(SUCCEEDED(UiResource<ID2D1BitmapRenderTarget>::Create(budget, Kind::RetainedRaster, 256,
+        [&](auto output) { return target->CreateCompatibleRenderTarget(&size, &pixels, nullptr,
+            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, output); }, capture)), "tracked compatible target creates");
+    UiResource<ID2D1Bitmap> bitmap;
+    Check(SUCCEEDED(UiResource<ID2D1Bitmap>::Alias(capture,
+        [&](auto output) { return capture->GetBitmap(output); }, bitmap)), "tracked bitmap aliases target");
+    Check(budget->Read().allocatedBytes == 256 && budget->Read().allocations == 1, "target and bitmap count one backing allocation");
+    const auto original = bitmap.Get();
+    Check(FAILED(UiResource<ID2D1Bitmap>::Create(budget, Kind::GpuImage, 64,
+        [](auto) { return E_FAIL; }, bitmap)), "failed resource factory reports failure");
+    Check(bitmap.Get() == original && budget->Read().allocatedBytes == 256 && budget->Read().liveBytes == 256,
+        "failed creation preserves destination and releases reservation");
+    bool called{};
+    Check(FAILED(UiResource<ID2D1Bitmap>::Create(budget, Kind::GpuImage, 64,
+        [&](auto) { called = true; return E_FAIL; }, bitmap, Admission::Optional)) && !called,
+        "optional admission rejects before allocating under pressure");
+    auto scene = std::make_shared<WidgetCompositionScene>();
+    scene->nodes.emplace_back().bitmap = bitmap;
+    scene->ProtectResources();
+    auto submitted = scene;
+    capture.Reset(); bitmap.Reset(); scene.reset();
+    Check(budget->Read().allocatedBytes == 256 && budget->Read().protectedBytes == 256,
+        "submitted frame retains and protects pixels after source cache and target retire");
+    Check(submitted->nodes.front().bitmap->GetPixelSize().width == 8,
+        "bitmap alias remains usable after target retirement");
+    auto independent = submitted->nodes.front().bitmap;
+    submitted.reset();
+    Check(budget->Read().allocatedBytes == 256 && budget->Read().protectedBytes == 0,
+        "frame protection ends independently from an external reader lifetime");
+    independent.Reset();
+    Check(budget->Read().allocatedBytes == 0 && budget->Read().allocations == 0,
+        "last COM alias retires backing allocation exactly once");
+    surface::ShadowCache shadows(budget);
+    target->BeginDraw();
+    Check(shadows.Draw(target.Get(), {2, 2, 10, 10}, 2, 2, 0, 0, D2D1::ColorF(0, .5F), 1), "tracked shadow creates under required pressure");
+    Check(SUCCEEDED(target->EndDraw()), "tracked shadow finishes drawing");
+    Check(budget->Read().allocatedBytes == shadows.stats().bytes && budget->Read().peakAllocatedBytes > shadows.stats().bytes,
+        "shadow scratch retires separately from its retained bitmap");
+    shadows.Reclaim();
+    Check(budget->Read().allocatedBytes == 0 && shadows.stats().entries == 0,
+        "owner thread pressure reclaims unused shadow masks");
+    std::mutex readyMutex; std::condition_variable readyCondition; bool ready{};
+    {
+        RemoteImageCache cache({}, [&](std::wstring_view, RemoteImageState state) {
+            { std::scoped_lock lock(readyMutex); ready = state == RemoteImageState::Ready; }
+            readyCondition.notify_all();
+        }, [](std::wstring_view, std::stop_token, const RemoteImageLimits& limits) {
+            RemoteDecodedImage image; image.width = 2; image.height = 1; image.stride = 8;
+            if (!image.AllocatePixels(8, limits.resourceBudget)) return RemoteImageFetchResult{E_OUTOFMEMORY, {}, L"allocation failed"};
+            return RemoteImageFetchResult{S_OK, std::move(image), {}};
+        }, {}, {}, {}, {}, budget);
+        const std::wstring source = L"https://example.test/gpu-lifetime.png";
+        Check(cache.Request(source) == RemoteImageRequestResult::Queued, "GPU lifetime requests decoded pixels");
+        { std::unique_lock lock(readyMutex);
+          Check(readyCondition.wait_for(lock, std::chrono::seconds(2), [&] { return ready; }), "GPU fixture image ready"); }
+        Check(SUCCEEDED(cache.CreateTrackedBitmap(target.Get(), source, bitmap)), "GPU upload acquires its own allocation");
+        Check(budget->Read().allocatedBytes == 16 && budget->Read().allocations == 2,
+            "decoded pixels and their GPU copy are distinct backing stores");
+        cache.Clear();
+        Check(budget->Read().allocatedBytes == 8 && bitmap->GetPixelSize().width == 2,
+            "GPU bitmap survives CPU cache eviction with only its own bytes retained");
+    }
+    Check(budget->Read().allocatedBytes == 8, "GPU bitmap outlives its originating image cache");
+    bitmap.Reset();
+    Check(budget->Read().allocatedBytes == 0, "CPU and GPU storage retire independently without leaked bytes");
+}
+
 void SurfaceDepthUsesBoundedSharedPainting() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -8645,6 +8748,25 @@ void RetainedCompositionPixelsRespectInvalidation() {
     Check(resolved.widgetComposition->paintCacheMisses > 0, "artwork readiness repaints its owning layer");
     Check(draw().widgetComposition->paintCacheMisses == 0, "ready artwork participates in immutable pixel reuse");
     matchesFresh();
+    // CPU retention and immutable GPU identity are independent. Pressure may
+    // reclaim decoded pixels without turning every retained raster into a miss.
+    const auto imageSource = snapshot.root.children[1].imageSource;
+    const auto retentionTarget = images.ResourceBudget()->Read().retentionTarget;
+    images.ResourceBudget()->SetRetentionTarget(0);
+    images.ReleaseImageProtection(&renderer);
+    images.ReclaimIdleImages();
+    Check(images.GetState(imageSource) == RemoteImageState::Missing, "pressure evicts unprotected decoded storage");
+    images.ResourceBudget()->SetRetentionTarget(retentionTarget);
+    Check(draw().widgetComposition->paintCacheMisses == 0,
+        "CPU eviction preserves retained pixels backed by the same immutable GPU content");
+    { std::scoped_lock lock(readyMutex); ready = false; }
+    images.Clear();
+    Check(draw().widgetComposition->paintCacheMisses > 0,
+        "explicit cache invalidation retires GPU identity and retained raster pixels");
+    { std::unique_lock lock(readyMutex); Check(readyChanged.wait_for(lock, std::chrono::seconds(3), [&] { return ready; }),
+        "explicit invalidation requests fresh image content"); }
+    draw();
+    Check(draw().widgetComposition->paintCacheMisses == 0, "freshly published image content becomes cacheable again");
     renderer.ForgetWidgetState(snapshot.instanceId);
     Check(draw().widgetComposition->paintCacheHits == 0, "widget retirement clears retained paint state");
     snapshot.root.kind = L"scroll"; snapshot.root.scrollAxis = L"vertical";
@@ -9491,6 +9613,7 @@ int main(int argc, char** argv) {
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
     CollectionRealizationMatchesEagerGeometry();
     RetainedCollectionPlacementPreservesGeometryAndPixels();
+    ResourceAliasesRetainBackingStorage();
     SurfaceDepthUsesBoundedSharedPainting();
     RetainedCompositionPixelsRespectInvalidation();
     CompositionScrollRetention(1.0F, false, false);

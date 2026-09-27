@@ -162,5 +162,9 @@ void ProfileCollection(WidgetSnapshot snapshot, const std::size_t requestedCount
             << " active-raster-peak-bytes=" << peakRaster << " paint-reuse=" << reusePaint
             << " solid-creates=" << solids << " gradient-creates=" << gradients << " stop-creates=" << stops
             << " resource-hits=" << resourceHits << " clip-geometries=" << clipGeometries << " clip-layers=" << clipLayers << '\n';
+        const auto resources = images.ResourceBudget()->Read();
+        std::cout << "COLLECTION-RESOURCES retained=" << requestedCount << " phase=" << (scrolling ? "scroll" : "focus")
+            << " live-bytes=" << resources.allocatedBytes << " peak-bytes=" << resources.peakAllocatedBytes
+            << " protected-bytes=" << resources.protectedBytes << " allocations=" << resources.allocations << '\n';
     }
 }

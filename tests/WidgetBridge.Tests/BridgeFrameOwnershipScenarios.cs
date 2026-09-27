@@ -15,6 +15,7 @@ internal static class BridgeFrameOwnershipScenarios
 
     internal static async Task TypedArtworkNotificationsPreserveWireContent()
     {
+        foreach (var demandId in new string?[] { null, "demand-1", "demand-2" })
         foreach (var length in new[] { 0, 1, 2, 3 })
         {
             var content = Enumerable.Range(0, length)
@@ -26,7 +27,7 @@ internal static class BridgeFrameOwnershipScenarios
                 0,
                 new BridgeEncodedArtworkEvent(
                     "sample", "artwork", "runtime", "presentation",
-                    length == 0 ? string.Empty : "image/png", content),
+                    length == 0 ? string.Empty : "image/png", content, demandId),
                 CancellationToken.None);
 
             var frame = stream.ToArray();
@@ -45,6 +46,10 @@ internal static class BridgeFrameOwnershipScenarios
                 payload.GetProperty("contentBase64").GetString());
             BoundaryAssert.Equal("sample", payload.GetProperty("widgetId").GetString());
             BoundaryAssert.Equal("artwork", payload.GetProperty("artworkHandle").GetString());
+            if (demandId is null)
+                BoundaryAssert.Equal(false, payload.TryGetProperty("demandId", out _));
+            else
+                BoundaryAssert.Equal(demandId, payload.GetProperty("demandId").GetString());
         }
 
         await using var legacyStream = new MemoryStream();

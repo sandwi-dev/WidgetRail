@@ -1824,6 +1824,10 @@ void WidgetSurfaceCoordinator::SetBeforeWindowRetirement(
     beforeWindowRetirement_ = std::move(callback);
 }
 
+void WidgetSurfaceCoordinator::ReclaimIdleResources() {
+    if (renderer_) renderer_->ReclaimIdleResources();
+}
+
 void WidgetSurfaceCoordinator::OnOverlayHidden() noexcept {
     sliderInteraction_.focusRealization().Clear();
     overlayVisible_ = false;

@@ -3,6 +3,7 @@
 #include "DeclarativeLayout.h"
 #include "NativeStyle.h"
 #include "PaintResources.h"
+#include "UiResource.h"
 #include <d2d1_1.h>
 #include <wrl/client.h>
 #include <algorithm>
@@ -70,6 +71,17 @@ inline bool Fill(ID2D1RenderTarget *target, D2D1_ROUNDED_RECT bounds,
 // at paint time, so themes and focus states reuse the same bounded alpha masks.
 class ShadowCache final {
 public:
+    explicit ShadowCache(std::shared_ptr<resources::UiResourceBudget> budget = {})
+        : budget_(budget ? std::move(budget) : std::make_shared<resources::UiResourceBudget>()) {}
+    void Reclaim() {
+        while (!entries_.empty() && budget_->Read().needsReclamation()) {
+            const auto oldest = std::min_element(entries_.begin(), entries_.end(), [](const auto& a, const auto& b) {
+                return a.second.used < b.second.used;
+            });
+            bytes_ -= oldest->second.bytes;
+            entries_.erase(oldest);
+        }
+    }
     struct Stats { std::size_t entries{}, bytes{}; std::uint64_t creates{}, hits{}; };
     static constexpr std::size_t MaximumBytes = 16 * 1024 * 1024, MaximumEntries = 32;
     void Clear() noexcept { entries_.clear(); bytes_ = 0; domain_.Reset(); }
@@ -151,11 +163,12 @@ private:
         auto operator<=>(const Key &) const = default;
     };
     struct Entry {
-        Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
+        resources::UiResource<ID2D1Bitmap> bitmap;
         float pad{}, capX{}, capY{}, width{}, height{};
         std::size_t bytes{};
         std::uint64_t used{};
     };
+    std::shared_ptr<resources::UiResourceBudget> budget_;
     Microsoft::WRL::ComPtr<IUnknown> domain_;
     std::map<Key, Entry> entries_;
     std::size_t bytes_{};
@@ -177,13 +190,18 @@ private:
         pixels.swap(scratch);
     }
 
-    static bool Create(ID2D1RenderTarget *target, Key key, Entry &entry) {
+    bool Create(ID2D1RenderTarget *target, Key key, Entry &entry) {
         const float radius = key.radiusEighths / 8.0F, scale = key.scaleMilli / 1000.0F;
         const int pad = key.boxRadius * 3 + 1, cap = pad + static_cast<int>(std::ceil(radius));
         const int width = key.width + pad * 2, height = key.height + pad * 2;
         const auto count = static_cast<std::size_t>(width) * height;
         if (width > 2048 || height > 2048 || count * 4 > MaximumBytes) return false;
+        auto temporary = budget_->Reserve(resources::Kind::ShadowMask, count * 12, resources::Admission::Required);
+        if (!temporary) return false;
         std::vector<float> alpha(count), scratch(count);
+        std::vector<std::uint32_t> pixels(count);
+        if (!temporary->ResizeRequiredReservation((alpha.capacity() + scratch.capacity()) * sizeof(float) + pixels.capacity() * sizeof(std::uint32_t))) return false;
+        temporary->Commit();
         const float centerX = width * .5F, centerY = height * .5F;
         for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
             const float dx = std::abs(x + .5F - centerX) - (key.width * .5F - radius);
@@ -197,14 +215,14 @@ private:
             Blur(alpha, scratch, width, height, key.boxRadius, false);
             Blur(alpha, scratch, width, height, key.boxRadius, true);
         }
-        std::vector<std::uint32_t> pixels(count);
         for (std::size_t i = 0; i < count; ++i) {
             const auto a = static_cast<std::uint32_t>(std::clamp(std::round(alpha[i] * 255), 0.0F, 255.0F));
             pixels[i] = a * 0x01010101U;
         }
         const auto properties = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
             D2D1_ALPHA_MODE_PREMULTIPLIED), 96 * scale, 96 * scale);
-        if (FAILED(target->CreateBitmap(D2D1::SizeU(width, height), pixels.data(), width * 4, properties, entry.bitmap.GetAddressOf()))) return false;
+        if (FAILED(resources::UiResource<ID2D1Bitmap>::Create(budget_, resources::Kind::ShadowMask, count * 4,
+                [&](auto output) { return target->CreateBitmap(D2D1::SizeU(width, height), pixels.data(), width * 4, properties, output); }, entry.bitmap))) return false;
         entry.pad = pad / scale;
         entry.capX = std::min(static_cast<float>(cap + pad), width * .5F) / scale;
         entry.capY = std::min(static_cast<float>(cap + pad), height * .5F) / scale;

@@ -427,6 +427,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             var artworkRequest = BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload);
             if (!BridgeRequestKey.IsBoundedIdentifier(artworkRequest.ArtworkHandle))
                 throw new BridgeProtocolException("Artwork handle is invalid.");
+            if (artworkRequest.DemandId is { } demandId &&
+                (demandId.Length > 64 || !BridgeRequestKey.IsBoundedIdentifier(demandId)))
+                throw new BridgeProtocolException("Artwork demand identifier is invalid.");
             if ((artworkRequest.RuntimeGeneration is null) !=
                     (artworkRequest.PresentationGeneration is null) ||
                 (artworkRequest.RuntimeGeneration is not null &&
@@ -501,7 +504,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                         artworkRequest.RuntimeGeneration!,
                         artworkRequest.PresentationGeneration!,
                         contentType,
-                        encodedArtwork.Bytes),
+                        encodedArtwork.Bytes, artworkRequest.DemandId),
                     _sessionCancellation).ConfigureAwait(false);
             }
             else
@@ -514,7 +517,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                         artworkRequest.RuntimeGeneration!,
                         artworkRequest.PresentationGeneration!,
                         contentType,
-                        legacyContentBase64),
+                        legacyContentBase64, artworkRequest.DemandId),
                     _sessionCancellation).ConfigureAwait(false);
             }
             break;

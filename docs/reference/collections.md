@@ -137,6 +137,25 @@ specific number of render calls. Authors should produce immutable view snapshots
 and preserve the identities above; changing theme, text size, content or clipping
 must remain free to repaint or relayout.
 
+## Artwork demand and retention
+
+Keep image URLs and artwork handles stable while their content is unchanged.
+Publish a new artwork revision when the underlying image changes; do not generate
+new image identities for focus movement, scrolling or realization alone.
+
+The host protects visible and submitted images, prepares a bounded amount of
+adjacent artwork, and cancels unfinished requests when no realized view needs
+them. A visible pinned surface has its own demand even while the main overlay is
+hidden. Providers must honor their existing cancellation token where possible
+and tolerate another request for the same asset when an item becomes visible
+again. Already-dispatched broker work may finish; the host rejects replies for
+retired demand. Cancellation does not mean that the image is unavailable.
+
+CPU pixels, GPU copies and retained drawing layers have separate lifetimes under
+a shared host retention budget. Authors do not need to duplicate artwork caches,
+manage GPU storage or infer collection position from image completion. Memory
+pressure may evict idle pixels without resetting cursor data, focus or scroll.
+
 ## What triggers more cursor data?
 
 The host uses viewport and navigation demand. It can request adjacent data near

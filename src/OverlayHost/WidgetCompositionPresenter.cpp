@@ -29,8 +29,8 @@ D2D1::Matrix3x2F Transform(Rect basis, Rect pose) {
 } // namespace
 
 WidgetCompositionPresenter::WidgetCompositionPresenter(IDCompositionDevice2 *composition,
-                                                       ID2D1Device *graphics)
-    : device_(composition), graphics_(graphics) {}
+                                                       ID2D1Device *graphics, std::shared_ptr<resources::UiResourceBudget> budget)
+    : resourceBudget_(std::move(budget)), device_(composition), graphics_(graphics) {}
 
 std::int64_t WidgetCompositionPresenter::Now() noexcept {
     LARGE_INTEGER v{};
@@ -58,13 +58,15 @@ HRESULT WidgetCompositionPresenter::Upload(Raster &raster, const WidgetCompositi
         if (FAILED(hr))
             return hr;
     }
-    Ptr<IDCompositionSurface> surface =
+    resources::UiResource<IDCompositionSurface> surface =
         raster.pixels.width == pixels.width && raster.pixels.height == pixels.height ? raster.surface
                                                                                      : nullptr;
     auto hr = S_OK;
     if (!surface)
-        hr = device_->CreateSurface(pixels.width, pixels.height, DXGI_FORMAT_B8G8R8A8_UNORM,
-                                    DXGI_ALPHA_MODE_PREMULTIPLIED, surface.GetAddressOf());
+        hr = resources::UiResource<IDCompositionSurface>::Create(resourceBudget_, resources::Kind::CompositorSurface,
+            static_cast<std::size_t>(pixels.width) * pixels.height * 4,
+            [&](auto output) { return device_->CreateSurface(pixels.width, pixels.height,
+                DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_ALPHA_MODE_PREMULTIPLIED, output); }, surface);
     const bool sameSolid = node.solid && raster.node.solid &&
         node.solid->r == raster.node.solid->r && node.solid->g == raster.node.solid->g &&
         node.solid->b == raster.node.solid->b && node.solid->a == raster.node.solid->a;
@@ -93,8 +95,18 @@ HRESULT WidgetCompositionPresenter::Upload(Raster &raster, const WidgetCompositi
         ++counters_.rasterUploads;
         counters_.uploadedBytes += static_cast<std::uint64_t>(pixels.width) * pixels.height * 4;
     } else ++counters_.rasterReuses;
-    if (SUCCEEDED(hr))
-        hr = raster.visual->SetContent(surface.Get());
+    auto nextNode = node;
+    auto surfacePin = surface.Protect();
+    auto bitmapPin = node.bitmap.Protect();
+    if (SUCCEEDED(hr)) hr = raster.visual->SetContent(surface.Get());
+    if (SUCCEEDED(hr)) {
+        // Preserve ownership when a later placement setter fails after SetContent.
+        raster.surfacePin = std::move(surfacePin);
+        raster.bitmapPin = std::move(bitmapPin);
+        raster.surface = surface;
+        raster.node = std::move(nextNode);
+        raster.pixels = pixels;
+    }
     const auto scale = scene_->scale;
     if (SUCCEEDED(hr))
         hr = raster.visual->SetOffsetX(node.bounds.x * scale);
@@ -104,11 +116,6 @@ HRESULT WidgetCompositionPresenter::Upload(Raster &raster, const WidgetCompositi
                                   node.bounds.height * scale / pixels.height, 0, 0};
     if (SUCCEEDED(hr))
         hr = static_cast<IDCompositionVisual2 *>(raster.visual.Get())->SetTransform(matrix);
-    if (SUCCEEDED(hr)) {
-        raster.surface = std::move(surface);
-        raster.node = node;
-        raster.pixels = pixels;
-    }
     return hr;
 }
 
@@ -273,14 +280,16 @@ HRESULT WidgetCompositionPresenter::Capture(const std::wstring &id, Raster &rast
         return E_OUTOFMEMORY;
     Ptr<ID2D1DeviceContext> context;
     auto hr = graphics_->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, context.GetAddressOf());
-    Ptr<ID2D1Bitmap1> bitmap;
+    resources::UiResource<ID2D1Bitmap1> bitmap;
     const auto properties =
         D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET,
                                 D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
                                 96 * scene_->scale, 96 * scene_->scale);
     if (SUCCEEDED(hr))
-        hr = context->CreateBitmap(D2D1::SizeU(static_cast<UINT32>(width), static_cast<UINT32>(height)),
-                                   nullptr, 0, properties, bitmap.GetAddressOf());
+        hr = resources::UiResource<ID2D1Bitmap1>::Create(resourceBudget_, resources::Kind::AnimationSurface,
+            static_cast<std::size_t>(width * height * 4), [&](auto output) {
+                return context->CreateBitmap(D2D1::SizeU(static_cast<UINT32>(width), static_cast<UINT32>(height)),
+                    nullptr, 0, properties, output); }, bitmap);
     if (FAILED(hr))
         return hr;
     context->SetTarget(bitmap.Get());
@@ -663,18 +672,23 @@ HRESULT WidgetCompositionPresenter::ConfigureFocusFade(Group &group, const Raste
     const float secondY = vertical ? static_cast<float>(height) : 0.0F;
     const bool compatibleAtlas = group.focusAtlas && group.focusAtlasPixels.width == atlasSize.width &&
         group.focusAtlasPixels.height == atlasSize.height;
+    auto atlas = group.focusAtlas;
+    auto atlasPin = group.focusAtlasPin;
     if (SUCCEEDED(hr) && !compatibleAtlas) {
-        group.focusAtlas.Reset();
-        hr = device_->CreateSurface(atlasSize.width, atlasSize.height, DXGI_FORMAT_B8G8R8A8_UNORM,
-            DXGI_ALPHA_MODE_PREMULTIPLIED, group.focusAtlas.GetAddressOf());
-        if (SUCCEEDED(hr)) group.focusAtlasPixels = atlasSize;
+        hr = resources::UiResource<IDCompositionSurface>::Create(resourceBudget_, resources::Kind::CompositorSurface,
+            static_cast<std::size_t>(atlasSize.width) * atlasSize.height * 4, [&](auto output) {
+                return device_->CreateSurface(atlasSize.width, atlasSize.height, DXGI_FORMAT_B8G8R8A8_UNORM,
+                    DXGI_ALPHA_MODE_PREMULTIPLIED, output); }, atlas);
+        if (SUCCEEDED(hr)) {
+            atlasPin = atlas.Protect();
+        }
     }
     const bool unchanged = compatibleAtlas && idle.node.rasterLease && focused.node.rasterLease &&
         group.idleAtlasLease.lock() == idle.node.rasterLease && group.focusedAtlasLease.lock() == focused.node.rasterLease;
     if (!unchanged) {
         Ptr<ID2D1DeviceContext> target;
         POINT offset{};
-        if (SUCCEEDED(hr)) hr = group.focusAtlas->BeginDraw(nullptr, IID_PPV_ARGS(target.GetAddressOf()), &offset);
+        if (SUCCEEDED(hr)) hr = atlas->BeginDraw(nullptr, IID_PPV_ARGS(target.GetAddressOf()), &offset);
         if (FAILED(hr)) return hr;
         target->SetDpi(96, 96);
         target->SetTransform(D2D1::Matrix3x2F::Translation(static_cast<float>(offset.x), static_cast<float>(offset.y)));
@@ -692,7 +706,7 @@ HRESULT WidgetCompositionPresenter::ConfigureFocusFade(Group &group, const Raste
         };
         hr = paint(idle, 0, 0);
         if (SUCCEEDED(hr)) hr = paint(focused, secondX, secondY);
-        const auto ended = group.focusAtlas->EndDraw();
+        const auto ended = atlas->EndDraw();
         if (SUCCEEDED(hr)) hr = ended;
         if (SUCCEEDED(hr)) {
             ++counters_.rasterUploads;
@@ -727,7 +741,12 @@ HRESULT WidgetCompositionPresenter::ConfigureFocusFade(Group &group, const Raste
     if (SUCCEEDED(hr)) hr = group.incoming->RemoveAllVisuals();
     if (SUCCEEDED(hr)) hr = group.incomingClip->RemoveAllVisuals();
     if (SUCCEEDED(hr)) hr = group.outgoingClip->RemoveAllVisuals();
-    if (SUCCEEDED(hr)) hr = group.incoming->SetContent(group.focusAtlas.Get());
+    if (SUCCEEDED(hr)) hr = group.incoming->SetContent(atlas.Get());
+    if (SUCCEEDED(hr)) {
+        group.focusAtlas = std::move(atlas);
+        group.focusAtlasPin = std::move(atlasPin);
+        group.focusAtlasPixels = atlasSize;
+    }
     if (SUCCEEDED(hr)) hr = group.incoming->SetEffect(group.focusBlend.Get());
     if (SUCCEEDED(hr)) hr = group.outgoingClip->SetClip(D2D1::RectF(0, 0, static_cast<float>(width), static_cast<float>(height)));
     if (SUCCEEDED(hr)) hr = group.outgoingClip->AddVisual(group.incoming.Get(), FALSE, nullptr);

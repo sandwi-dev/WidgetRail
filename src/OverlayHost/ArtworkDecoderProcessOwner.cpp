@@ -91,6 +91,7 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
     std::wstring startError;
     if (!EnsureProcess(startError))
         return Failure(HRESULT_FROM_WIN32(ERROR_RETRY), std::move(startError));
+    const auto mappingUse = mappingAllocation_ ? mappingAllocation_->Protect() : resources::UiResourceBudget::Pin{};
 
     const auto encodedBytes = bytes.size();
     const std::uint64_t correlation = nextCorrelation_++;
@@ -128,7 +129,9 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
                 L"Trusted artwork decode exceeded its time budget.");
         }
         if (stopToken.stop_requested() || shuttingDown_) {
-            PoisonProcess(true);
+            // Withdrawn view demand is not malformed artwork or a hung decoder.
+            // Terminate this request without charging the fault circuit breaker.
+            CloseProcess(true);
             return Failure(E_ABORT, L"Trusted artwork decode was cancelled.");
         }
         const DWORD remaining = static_cast<DWORD>(
@@ -152,37 +155,40 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
         break;
     }
 
-    if (header->magic != protocolMagic || header->version != protocolVersion ||
-        header->state != SharedState::Response ||
-        header->correlation != correlation) {
+    // Validate, reserve and copy against one owned metadata snapshot.
+    // The isolated decoder never supplies a later unchecked allocation size.
+    const SharedHeader response = *header;
+    if (response.magic != protocolMagic || response.version != protocolVersion ||
+        response.state != SharedState::Response ||
+        response.correlation != correlation) {
         ++failed_;
         PoisonProcess(true);
         return Failure(HRESULT_FROM_WIN32(ERROR_INVALID_DATA),
             L"Trusted artwork decoder returned an invalid response.");
     }
 
-    if (FAILED(header->result)) {
+    if (FAILED(response.result)) {
         ++failed_;
         SecureZeroMemory(view_ + encodedOffset, encodedBytes);
-        return Failure(header->result,
-            header->result == HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE)
+        return Failure(response.result,
+            response.result == HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE)
                 ? L"Trusted artwork dimensions exceed the allowed bound."
                 : contentType == ContentType::WebP &&
-                    header->result == WINCODEC_ERR_COMPONENTNOTFOUND
+                    response.result == WINCODEC_ERR_COMPONENTNOTFOUND
                 ? L"Trusted artwork WebP decoder is unavailable."
                 : L"Trusted artwork decoder rejected the image.");
     }
 
-    if (header->decodedBytes > limits_.maximumDecodedImageBytes ||
-        header->decodedBytes > maximumDecodedBytes ||
-        header->width == 0 || header->height == 0 ||
+    if (response.decodedBytes > limits_.maximumDecodedImageBytes ||
+        response.decodedBytes > maximumDecodedBytes ||
+        response.width == 0 || response.height == 0 ||
         (contentType != ContentType::Svg && requestedWidth != 0 &&
-            (header->width > 2048 || header->height > 2048 ||
-             static_cast<std::uint64_t>(header->width) * header->height >
+            (response.width > 2048 || response.height > 2048 ||
+             static_cast<std::uint64_t>(response.width) * response.height >
                 2ULL * requestedWidth * requestedHeight + 4096)) ||
-        header->stride != static_cast<std::uint64_t>(header->width) * 4U ||
-        static_cast<std::uint64_t>(header->stride) * header->height !=
-            header->decodedBytes) {
+        response.stride != static_cast<std::uint64_t>(response.width) * 4U ||
+        static_cast<std::uint64_t>(response.stride) * response.height !=
+            response.decodedBytes) {
         ++failed_;
         PoisonProcess(true);
         return Failure(HRESULT_FROM_WIN32(ERROR_INVALID_DATA),
@@ -190,15 +196,20 @@ RemoteImageFetchResult ArtworkDecoderProcessOwner::Decode(
     }
 
     RemoteDecodedImage image;
-    image.width = header->width;
-    image.height = header->height;
-    image.stride = header->stride;
+    image.width = response.width;
+    image.height = response.height;
+    image.stride = response.stride;
     image.mimeType = std::move(mimeType);
-    image.premultipliedBgra.resize(header->decodedBytes);
+    if (!image.AllocatePixels(response.decodedBytes, limits_.resourceBudget)) {
+        ++failed_;
+        SecureZeroMemory(view_ + encodedOffset, encodedBytes);
+        SecureZeroMemory(view_ + decodedOffset, response.decodedBytes);
+        return Failure(E_OUTOFMEMORY, L"Trusted artwork output allocation failed.");
+    }
     std::memcpy(image.premultipliedBgra.data(),
-                view_ + decodedOffset, header->decodedBytes);
+                view_ + decodedOffset, response.decodedBytes);
     SecureZeroMemory(view_ + encodedOffset, encodedBytes);
-    SecureZeroMemory(view_ + decodedOffset, header->decodedBytes);
+    SecureZeroMemory(view_ + decodedOffset, response.decodedBytes);
     ++completed_;
     return {S_OK, std::move(image), {}};
 }
@@ -238,12 +249,19 @@ bool ArtworkDecoderProcessOwner::StartProcess(std::wstring& error) {
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
     if (!mapping_) {
         constexpr std::uint64_t bytes = artworkdecoder::mappingBytes;
+        if (limits_.resourceBudget) {
+            mappingAllocation_ = limits_.resourceBudget->Reserve(resources::Kind::DecoderTransport,
+                static_cast<std::size_t>(bytes), resources::Admission::Required);
+            if (!mappingAllocation_) { error = L"Trusted artwork transport allocation could not be reserved."; return false; }
+        }
         mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, &security, PAGE_READWRITE,
             static_cast<DWORD>(bytes >> 32), static_cast<DWORD>(bytes), nullptr);
         if (!mapping_) {
+            mappingAllocation_.reset();
             error = L"Trusted artwork decoder shared memory creation failed.";
             return false;
         }
+        if (mappingAllocation_) mappingAllocation_->Commit();
         view_ = static_cast<std::byte*>(MapViewOfFile(
             mapping_, FILE_MAP_ALL_ACCESS, 0, 0, artworkdecoder::mappingBytes));
         requestEvent_ = CreateEventW(&security, FALSE, FALSE, nullptr);
@@ -253,6 +271,7 @@ bool ArtworkDecoderProcessOwner::StartProcess(std::wstring& error) {
             error = L"Trusted artwork decoder IPC creation failed.";
             if (view_) UnmapViewOfFile(std::exchange(view_, nullptr));
             CloseHandleIfPresent(mapping_);
+            mappingAllocation_.reset();
             CloseHandleIfPresent(requestEvent_);
             CloseHandleIfPresent(responseEvent_);
             CloseHandleIfPresent(stopEvent_);
@@ -369,6 +388,10 @@ void ArtworkDecoderProcessOwner::CloseProcess(const bool terminate) noexcept {
 void ArtworkDecoderProcessOwner::Shutdown() noexcept {
     if (shuttingDown_) return;
     shuttingDown_ = true;
+    RetireIdle();
+}
+
+void ArtworkDecoderProcessOwner::RetireIdle() noexcept {
     if (stopEvent_) SetEvent(stopEvent_);
     if (process_ && WaitForSingleObject(
             process_, limits_.artworkDecoderShutdownMilliseconds) == WAIT_TIMEOUT)
@@ -377,6 +400,7 @@ void ArtworkDecoderProcessOwner::Shutdown() noexcept {
         CloseProcess(false);
     if (view_) UnmapViewOfFile(std::exchange(view_, nullptr));
     CloseHandleIfPresent(mapping_);
+    mappingAllocation_.reset();
     CloseHandleIfPresent(requestEvent_);
     CloseHandleIfPresent(responseEvent_);
     CloseHandleIfPresent(stopEvent_);

@@ -327,6 +327,7 @@ public:
 #endif
     [[nodiscard]] bool Unpin(WidgetSurfaceStopReason reason) noexcept;
     void OnOverlayHidden() noexcept;
+    void ReclaimIdleResources();
     void OnOverlayShown() noexcept;
     void ReconcileCatalog(const std::vector<WidgetDescriptor>& descriptors) noexcept;
     void Dispose() noexcept;

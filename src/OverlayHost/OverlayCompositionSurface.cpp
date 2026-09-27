@@ -252,6 +252,7 @@ void OverlayCompositionSurface::Reset() noexcept {
     pinnedExternalContentPresentation_ = {};
     pinnedMediaChromeVisual_.Reset();
     pinnedMediaChromeSurface_.Reset();
+    pinnedMediaChromePin_.reset();
     pinnedMediaChromeAttached_ = false;
     pinnedMediaChromePresentation_.reset();
     pinnedMediaChromeWidth_ = 0;
@@ -539,6 +540,7 @@ HRESULT OverlayCompositionSurface::ReleasePinnedExternalContentEndpoint(
     if (SUCCEEDED(result)) {
         pinnedMediaChromeVisual_.Reset();
         pinnedMediaChromeSurface_.Reset();
+    pinnedMediaChromePin_.reset();
         pinnedMediaChromeAttached_ = false;
         pinnedMediaChromePresentation_.reset();
         pinnedMediaChromeWidth_ = 0;
@@ -647,13 +649,21 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
         result = device_->CreateVisual(
             pinnedMediaChromeVisual_.ReleaseAndGetAddressOf());
     if (SUCCEEDED(result) && replacement) {
-        result = device_->CreateSurface(
-            width, height, DXGI_FORMAT_B8G8R8A8_UNORM,
-            DXGI_ALPHA_MODE_PREMULTIPLIED,
-            pinnedMediaChromeSurface_.ReleaseAndGetAddressOf());
-        if (SUCCEEDED(result))
-            result = pinnedMediaChromeVisual_->SetContent(
-                pinnedMediaChromeSurface_.Get());
+        resources::UiResource<IDCompositionSurface> nextSurface;
+        result = resources::UiResource<IDCompositionSurface>::Create(resourceBudget_, resources::Kind::CompositorSurface,
+            static_cast<std::size_t>(width) * height * 4, [&](auto output) {
+                return device_->CreateSurface(width, height, DXGI_FORMAT_B8G8R8A8_UNORM,
+                    DXGI_ALPHA_MODE_PREMULTIPLIED, output); }, nextSurface);
+        if (SUCCEEDED(result)) {
+            resources::UiResourceBudget::Pin pin;
+            try { pin = nextSurface.Protect(); }
+            catch (const std::bad_alloc&) { return E_OUTOFMEMORY; }
+            result = pinnedMediaChromeVisual_->SetContent(nextSurface.Get());
+            if (SUCCEEDED(result)) {
+                pinnedMediaChromeSurface_ = std::move(nextSurface);
+                pinnedMediaChromePin_ = std::move(pin);
+            }
+        }
     }
     if (FAILED(result)) return result;
 
@@ -860,15 +870,17 @@ HRESULT OverlayCompositionSurface::BeginFrame(
     const auto& state = StateFor(layer);
     frame.replacement = !state.surface || width != state.width || height != state.height;
     if (frame.replacement) {
-        const HRESULT createResult = device_->CreateSurface(
-            width, height, DXGI_FORMAT_B8G8R8A8_UNORM,
-            DXGI_ALPHA_MODE_PREMULTIPLIED,
-            frame.surface.ReleaseAndGetAddressOf());
+        const HRESULT createResult = resources::UiResource<IDCompositionSurface>::Create(resourceBudget_, resources::Kind::CompositorSurface,
+            static_cast<std::size_t>(width) * height * 4, [&](auto output) {
+                return device_->CreateSurface(width, height, DXGI_FORMAT_B8G8R8A8_UNORM,
+                    DXGI_ALPHA_MODE_PREMULTIPLIED, output); }, frame.surface);
         if (FAILED(createResult)) return createResult;
     } else {
         frame.surface = state.surface;
     }
 
+    try { frame.surfacePin = frame.surface.Protect(); }
+    catch (const std::bad_alloc&) { frame = {}; return E_OUTOFMEMORY; }
     RECT fullUpdate{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
     const RECT* updateArea = frame.replacement || !update ? &fullUpdate : update;
     if (updateArea->left < 0 || updateArea->top < 0 ||
@@ -928,7 +940,13 @@ HRESULT OverlayCompositionSurface::CommitFrames(
     HRESULT result = S_OK;
     for (auto* frame : frames) {
         auto& state = StateFor(frame->layer);
-        if (frame->replacement) result = state.visual->SetContent(frame->surface.Get());
+        if (frame->replacement) {
+            result = state.visual->SetContent(frame->surface.Get());
+            if (SUCCEEDED(result)) {
+                state.stagedSurface = frame->surface;
+                state.stagedPin = frame->surfacePin;
+            }
+        }
         if (FAILED(result)) break;
         // Content placement belongs to the frame transaction. Guide and tray
         // offsets belong exclusively to the fixed-chrome session and remain
@@ -941,7 +959,7 @@ HRESULT OverlayCompositionSurface::CommitFrames(
                 try {
                     if (!widgetPresenter_)
                         widgetPresenter_ = std::make_unique<WidgetCompositionPresenter>(
-                            device_.Get(), d2dDevice_.Get());
+                            device_.Get(), d2dDevice_.Get(), resourceBudget_);
                     result = widgetPresenter_->Apply(frame->widgetScene,
                         presentationVisual_.Get(), content_.visual.Get(),
                         frame->visualOffsetX, frame->visualOffsetY);
@@ -956,7 +974,7 @@ HRESULT OverlayCompositionSurface::CommitFrames(
             auto& popup = frame->layer == Layer::Tray ? trayPopupPresenter_ : contentPopupPresenter_;
             try {
                 if (frame->popupScene && !popup)
-                    popup = std::make_unique<WidgetCompositionPresenter>(device_.Get(), d2dDevice_.Get());
+                    popup = std::make_unique<WidgetCompositionPresenter>(device_.Get(), d2dDevice_.Get(), resourceBudget_);
                 // Children sit above their parent's pixels and inherit its
                 // placement, opacity and shell transform on either HWND.
                 if (popup) result = popup->Apply(frame->popupScene, state.visual.Get(), nullptr, 0, 0);
@@ -989,6 +1007,8 @@ HRESULT OverlayCompositionSurface::CommitFrames(
             if (!frame->replacement) continue;
             auto& state = StateFor(frame->layer);
             state.surface = frame->surface;
+            state.surfacePin = frame->surfacePin;
+            state.stagedSurface.Reset(); state.stagedPin.reset();
             state.width = frame->width;
             state.height = frame->height;
         }

@@ -144,7 +144,7 @@ void VerifyFailedArtworkRecovery() {
             pixels.mimeType = L"image/png";
             return RemoteImageFetchResult{S_OK, std::move(pixels), {}};
         },
-        [&](std::wstring_view, const TrustedArtworkDemandAuthority&, std::stop_token) {
+        [&](std::wstring_view, const TrustedArtworkDemandAuthority&, std::uint64_t, std::stop_token) {
             { std::scoped_lock lock(mutex); ++demands; }
             changed.notify_all();
             return TrustedArtworkRequestDisposition::Accepted;
@@ -247,7 +247,7 @@ void VerifyRetiredArtworkDecodeCannotPublish() {
                 pixels.premultipliedBgra = {static_cast<std::uint8_t>(attempt), 0, 0, 0xff};
                 return RemoteImageFetchResult{S_OK, std::move(pixels), {}};
             },
-            [](std::wstring_view, const TrustedArtworkDemandAuthority&, std::stop_token) {
+            [](std::wstring_view, const TrustedArtworkDemandAuthority&, std::uint64_t, std::stop_token) {
                 return TrustedArtworkRequestDisposition::Accepted;
             });
         assert(cache.RequestTrustedArtwork(key, old) == RemoteImageRequestResult::Queued);
@@ -272,7 +272,267 @@ void VerifyRetiredArtworkDecodeCannotPublish() {
     }
 }
 
+void ResourceBudgetImageOwnership() {
+    using namespace widgetrail;
+    using namespace widgetrail::resources;
+    const auto fetch = [](std::wstring_view, std::stop_token, const RemoteImageLimits&) {
+        RemoteDecodedImage image;
+        image.width = 2; image.height = 1; image.stride = 8;
+        image.premultipliedBgra.assign(8, 42); image.mimeType = L"image/png";
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    };
+    for (const bool pressure : {false, true}) {
+        auto budget = std::make_shared<UiResourceBudget>(pressure ? 16 : 1024);
+        UiResourceBudget::Lease gpu;
+        UiResourceBudget::Pin visibleFrame;
+        if (pressure) { gpu = budget->Reserve(Kind::CompositorSurface, 8, Admission::Required); gpu->Commit(); visibleFrame = gpu->Protect(); }
+        std::mutex mutex; std::condition_variable completed; int completions{};
+        RemoteImageLimits limits;
+        limits.maximumEntries = 8; limits.maximumReadyEntries = pressure ? 8 : 1; limits.maximumDecodedBytes = 64;
+        RemoteImageCache cache(limits, [&](std::wstring_view, RemoteImageState) {
+            { std::scoped_lock lock(mutex); ++completions; } completed.notify_all();
+        }, fetch, {}, {}, {}, {}, budget);
+        const auto wait = [&](int count) {
+            std::unique_lock lock(mutex);
+            assert(completed.wait_for(lock, std::chrono::seconds(2), [&] { return completions >= count; }));
+        };
+        const std::wstring first = L"https://example.com/budget-first.png", second = L"https://example.com/budget-second.png";
+        int owner{};
+        if (pressure) cache.ProtectImages(&owner, {first});
+        assert(cache.Request(first) == RemoteImageRequestResult::Queued); wait(1);
+        assert(cache.GetState(first) == RemoteImageState::Ready);
+        if (!pressure) {
+            auto held = cache.GetReadyImage(first);
+            { auto copied = *held;
+              assert(budget->Read().allocatedBytes == 16 && copied.resourceAllocation != held->resourceAllocation);
+              assert(copied.premultipliedBgra == held->premultipliedBgra); }
+            assert(budget->Read().allocatedBytes == 8);
+            assert(cache.Request(second) == RemoteImageRequestResult::Queued); wait(2);
+            assert(cache.GetState(first) == RemoteImageState::Missing && cache.GetStats().decodedBytes == 8);
+            assert(budget->Read().allocatedBytes == 16 && held->premultipliedBgra[0] == 42);
+            cache.Clear();
+            assert(budget->Read().allocatedBytes == 8);
+            held.reset();
+            assert(budget->Read().allocatedBytes == 0 && budget->Read().peakAllocatedBytes == 16);
+        } else {
+            assert(budget->Read().protectedBytes == 16);
+            assert(cache.CanPrefetch(first) && !cache.CanPrefetch(second));
+            assert(cache.Request(second) == RemoteImageRequestResult::Queued); wait(2);
+            assert(cache.BudgetRejected(second) && cache.GetState(first) == RemoteImageState::Ready);
+            assert(!cache.ReleaseBudgetRejection(second));
+            assert(budget->Read().allocatedBytes == 16 && budget->Read().protectedBytes == 16);
+            cache.ProtectImages(&owner, {second});
+            assert(cache.ReleaseBudgetRejection(second));
+            assert(cache.Request(second) == RemoteImageRequestResult::Queued); wait(3);
+            assert(cache.GetState(second) == RemoteImageState::Ready && cache.GetState(first) == RemoteImageState::Missing);
+            assert(budget->Read().allocatedBytes == 16 && budget->Read().protectedBytes == 16);
+            cache.ReleaseImageProtection(&owner);
+            budget->SetRetentionTarget(8); cache.ReclaimIdleImages();
+            assert(cache.GetStats().decodedBytes == 0 && budget->Read().allocatedBytes == 8 && gpu->protectedFromEviction());
+            visibleFrame.reset(); gpu.reset();
+            assert(budget->Read().allocatedBytes == 0 && !budget->Read().needsReclamation());
+        }
+        cache.Shutdown();
+    }
+}
+
+void RealizedDemandCancelsOnlyAfterLastOwnerAndRejectsStaleCompletion() {
+    using namespace widgetrail;
+    std::mutex mutex; std::condition_variable changed;
+    bool started{}, cancelled{}, release{}; int fetches{}, completions{};
+    RemoteImageCache* observed{};
+    const std::wstring source = L"https://example.test/realized.png";
+    const std::wstring queuedSource = L"https://example.test/withdrawn-before-fetch.png";
+    RemoteImageCache cache({}, [&](std::wstring_view, RemoteImageState state) {
+        assert(state == RemoteImageState::Ready);
+        { std::scoped_lock lock(mutex); ++completions; } changed.notify_all();
+    }, [&](std::wstring_view, std::stop_token token, const RemoteImageLimits& limits) {
+        int attempt{};
+        { std::scoped_lock lock(mutex); attempt = ++fetches; }
+        if (attempt == 1) {
+            std::stop_callback stopped(token, [&] {
+                // Re-entering from cancellation must not deadlock cache ownership.
+                (void)observed->GetStats();
+                { std::scoped_lock lock(mutex); cancelled = true; } changed.notify_all();
+            });
+            std::unique_lock lock(mutex); started = true; changed.notify_all();
+            assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return release; }));
+            // Deliberately return success after cancellation: a late provider
+            // result must not complete the same-key replacement request.
+        }
+        RemoteDecodedImage image; image.width = image.height = 1; image.stride = 4;
+        assert(image.AllocatePixels(4, limits.resourceBudget));
+        std::fill(image.premultipliedBgra.begin(), image.premultipliedBgra.end(), static_cast<std::uint8_t>(attempt));
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    });
+    observed = &cache;
+    int mainOwner{}, pinnedOwner{};
+    cache.SetImageDemand(&mainOwner, {source}, {source, queuedSource});
+    cache.SetImageDemand(&pinnedOwner, {source}, {source, queuedSource});
+    assert(cache.Request(source) == RemoteImageRequestResult::Queued);
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return started; })); }
+    assert(cache.Request(queuedSource) == RemoteImageRequestResult::Queued);
+    cache.ReleaseImageProtection(&mainOwner);
+    assert(cache.GetState(source) == RemoteImageState::Loading);
+    { std::scoped_lock lock(mutex); assert(!cancelled); }
+    cache.ReleaseImageProtection(&pinnedOwner);
+    { std::scoped_lock lock(mutex); assert(cancelled); }
+    assert(cache.GetState(source) == RemoteImageState::Missing && cache.GetState(queuedSource) == RemoteImageState::Missing &&
+        cache.GetStats().queuedOrLoading == 0);
+    cache.SetImageDemand(&mainOwner, {source}, {source});
+    assert(cache.Request(source) == RemoteImageRequestResult::Queued);
+    { std::scoped_lock lock(mutex); release = true; } changed.notify_all();
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return completions == 1; })); }
+    assert(fetches == 2 && cache.GetReadyImage(source)->premultipliedBgra.front() == 2);
+    cache.ReleaseImageProtection(&mainOwner);
+    assert(cache.GetState(source) == RemoteImageState::Ready); // Ready retention is budget-owned, not cancelled.
+    cache.Shutdown();
+    assert(completions == 1);
+}
+
+void RetiredArtworkDispatchDrainsSharedTransport() {
+    using namespace widgetrail;
+    std::mutex mutex; std::condition_variable changed;
+    bool started{}, release{}, returned{}, transportCancelled{};
+    const TrustedArtworkDemandAuthority authority{L"widget", L"runtime", L"view"};
+    const auto key = RemoteImageCache::TrustedArtworkKey(L"widget", L"poster", L"cover");
+    RemoteImageCache cache({}, {}, {}, [&](std::wstring_view, const TrustedArtworkDemandAuthority&, std::uint64_t, std::stop_token stop) {
+        std::stop_callback cancelled(stop, [&] { std::scoped_lock lock(mutex); transportCancelled = true; });
+        std::unique_lock lock(mutex); started = true; changed.notify_all();
+        assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return release; }));
+        returned = true; changed.notify_all();
+        return TrustedArtworkRequestDisposition::Accepted;
+    });
+    int owner{};
+    cache.SetImageDemand(&owner, {key}, {key});
+    assert(cache.RequestTrustedArtwork(key, authority) == RemoteImageRequestResult::Queued);
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return started; })); }
+    cache.ReleaseImageProtection(&owner);
+    assert(cache.GetState(key) == RemoteImageState::Missing);
+    { std::scoped_lock lock(mutex); assert(!transportCancelled); release = true; } changed.notify_all();
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return returned; })); }
+    cache.Shutdown();
+    assert(cache.GetState(key) == RemoteImageState::Missing);
+}
+
+void CorrelatedArtworkRepliesCannotCompleteNewDemand() {
+    using namespace widgetrail;
+    std::mutex mutex; std::condition_variable changed;
+    std::vector<std::uint64_t> requests; unsigned completions{};
+    const TrustedArtworkDemandAuthority authority{L"widget", L"runtime", L"view"};
+    const auto key = RemoteImageCache::TrustedArtworkKey(L"widget", L"poster", L"cover");
+    const std::wstring png = L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    RemoteImageCache cache({}, [&](std::wstring_view, RemoteImageState state) {
+        assert(state == RemoteImageState::Ready);
+        { std::scoped_lock lock(mutex); ++completions; } changed.notify_all();
+    }, [](std::wstring_view, std::stop_token, const RemoteImageLimits& limits) {
+        RemoteDecodedImage image; image.width = image.height = 1; image.stride = 4;
+        assert(image.AllocatePixels(4, limits.resourceBudget));
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    }, [&](std::wstring_view, const TrustedArtworkDemandAuthority&, std::uint64_t generation, std::stop_token) {
+        { std::scoped_lock lock(mutex); requests.push_back(generation); } changed.notify_all();
+        return TrustedArtworkRequestDisposition::Accepted;
+    });
+    const auto waitRequests = [&](unsigned count) {
+        std::unique_lock lock(mutex);
+        assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return requests.size() == count; }));
+        return std::to_wstring(requests.back());
+    };
+    const auto waitCompletions = [&](unsigned count) {
+        std::unique_lock lock(mutex);
+        assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return completions == count; }));
+    };
+    int owner{};
+    cache.SetImageDemand(&owner, {key}, {key});
+    assert(cache.RequestTrustedArtwork(key, authority) == RemoteImageRequestResult::Queued);
+    const auto oldId = waitRequests(1);
+    cache.ReleaseImageProtection(&owner);
+    cache.SetImageDemand(&owner, {key}, {key});
+    assert(cache.RequestTrustedArtwork(key, authority) == RemoteImageRequestResult::Queued);
+    const auto newId = waitRequests(2); assert(newId != oldId);
+    assert(!cache.FailTrustedArtwork(L"widget", L"cover", authority, oldId));
+    assert(!cache.RetireTrustedArtworkDemand(L"widget", L"cover", authority, oldId));
+    const auto beforeLate = cache.ResourceBudget()->Read().peakAllocatedBytes;
+    assert(!cache.SupplyTrustedArtwork(L"widget", L"cover", authority, L"image/png", png, oldId));
+    assert(cache.ResourceBudget()->Read().peakAllocatedBytes == beforeLate);
+    assert(cache.GetState(key) == RemoteImageState::Loading);
+    assert(cache.SupplyTrustedArtwork(L"widget", L"cover", authority, L"image/png", png, newId));
+    waitCompletions(1); assert(cache.GetState(key) == RemoteImageState::Ready);
+    const ImageDecodeSize smallSize{64, 64}, largeSize{128, 128};
+    const auto smallKey = RemoteImageCache::TrustedArtworkKey(L"widget", L"poster", L"cover", smallSize);
+    const auto largeKey = RemoteImageCache::TrustedArtworkKey(L"widget", L"poster", L"cover", largeSize);
+    cache.SetImageDemand(&owner, {smallKey, largeKey}, {smallKey, largeKey});
+    assert(cache.RequestTrustedArtwork(smallKey, authority, smallSize) == RemoteImageRequestResult::Queued);
+    const auto smallId = waitRequests(3);
+    assert(cache.RequestTrustedArtwork(largeKey, authority, largeSize) == RemoteImageRequestResult::Queued);
+    const auto largeId = waitRequests(4);
+    assert(cache.SupplyTrustedArtwork(L"widget", L"cover", authority, L"image/png", png, smallId));
+    waitCompletions(2);
+    assert(cache.GetState(smallKey) == RemoteImageState::Ready && cache.GetState(largeKey) == RemoteImageState::Loading);
+    assert(cache.SupplyTrustedArtwork(L"widget", L"cover", authority, L"image/png", png, largeId));
+    waitCompletions(3); assert(cache.GetState(largeKey) == RemoteImageState::Ready);
+    cache.Shutdown();
+}
+
+void DecodeOutputIsAccountedBeforePublication() {
+    using namespace widgetrail;
+    auto budget = std::make_shared<resources::UiResourceBudget>(1024);
+    RemoteImageLimits limits; limits.resourceBudget = budget;
+    std::mutex mutex; std::condition_variable changed;
+    bool allocated{}, release{}, completed{};
+    RemoteImageCache cache(limits, [&](std::wstring_view, RemoteImageState state) {
+        assert(state == RemoteImageState::Ready);
+        { std::scoped_lock lock(mutex); completed = true; } changed.notify_all();
+    }, [&](std::wstring_view, std::stop_token, const RemoteImageLimits& requestLimits) {
+        RemoteDecodedImage image; image.width = 2; image.height = 1; image.stride = 8;
+        assert(image.AllocatePixels(8, requestLimits.resourceBudget));
+        { std::unique_lock lock(mutex); allocated = true; changed.notify_all();
+          assert(changed.wait_for(lock, std::chrono::seconds(2), [&] { return release; })); }
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    });
+    assert(cache.Request(L"https://example.com/in-flight.png") == RemoteImageRequestResult::Queued);
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(2), [&] { return allocated; })); }
+    assert(budget->Read().allocatedBytes == 8 && cache.GetStats().decodedBytes == 0);
+    { std::scoped_lock lock(mutex); release = true; } changed.notify_all();
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(2), [&] { return completed; })); }
+    assert(budget->Read().allocatedBytes == 8 && budget->Read().peakAllocatedBytes == 8 && cache.GetStats().decodedBytes == 8);
+    cache.Clear(); assert(budget->Read().allocatedBytes == 0);
+    cache.Shutdown();
+}
+
+void DecoderTransportAndOutputAccounting() {
+    using namespace widgetrail;
+    assert(SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)));
+    const auto png = EncodeWicImage(GUID_ContainerFormatPng, 2, 1);
+    auto budget = std::make_shared<resources::UiResourceBudget>();
+    RemoteImageLimits limits; limits.resourceBudget = budget;
+    ArtworkDecoderProcessOwner decoder(limits, ExecutableSibling(L"ArtworkDecoderTestHost.exe"));
+    auto result = decoder.Decode(png, L"image/png", {}, artworkdecoder::TestBehavior::Succeed);
+    assert(result.succeeded() && result.image.resourceAllocation);
+    const auto decoded = result.image.premultipliedBgra.capacity();
+    const auto live = budget->Read();
+    assert(live.allocatedByKind[static_cast<std::size_t>(resources::Kind::DecoderTransport)] == artworkdecoder::mappingBytes);
+    assert(live.allocatedBytes == artworkdecoder::mappingBytes + decoded && live.protectedBytes == 0);
+    const auto failures = decoder.Stats().failed;
+    decoder.RetireIdle();
+    assert(budget->Read().allocatedBytes == decoded && decoder.Stats().failed == failures);
+    auto resumed = decoder.Decode(png, L"image/png", {}, artworkdecoder::TestBehavior::Succeed);
+    assert(resumed.succeeded() && decoder.Stats().starts == 2 && decoder.Stats().failed == failures);
+    resumed.image = {};
+    decoder.Shutdown();
+    assert(budget->Read().allocatedBytes == decoded);
+    result = {};
+    assert(budget->Read().allocatedBytes == 0);
+    CoUninitialize();
+}
+
 int main() {
+    DecoderTransportAndOutputAccounting();
+    RealizedDemandCancelsOnlyAfterLastOwnerAndRejectsStaleCompletion();
+    RetiredArtworkDispatchDrainsSharedTransport();
+    CorrelatedArtworkRepliesCannotCompleteNewDemand();
+    DecodeOutputIsAccountedBeforePublication();
+    ResourceBudgetImageOwnership();
     VerifyFailedArtworkRecovery();
     VerifyRetiredArtworkDecodeCannotPublish();
     {
@@ -387,7 +647,7 @@ int main() {
             const auto backgroundKey = RemoteImageCache::TrustedArtworkKey(authority.widgetId,L"background",L"cover",{512,768});
             assert(posterKey != backgroundKey);
             assert(posterKey == RemoteImageCache::TrustedArtworkKey(authority.widgetId,L"another-poster",L"cover",{256,384}));
-            const auto accepted=[](std::wstring_view,const TrustedArtworkDemandAuthority&,std::stop_token) { return TrustedArtworkRequestDisposition::Accepted; };
+            const auto accepted=[](std::wstring_view,const TrustedArtworkDemandAuthority&,std::uint64_t, std::stop_token) { return TrustedArtworkRequestDisposition::Accepted; };
             RemoteImageCache variants(defaultLimits, {}, {}, accepted);
             assert(variants.RequestTrustedArtwork(posterKey,authority,{256,384}) == RemoteImageRequestResult::Queued);
             assert(variants.RequestTrustedArtwork(backgroundKey,authority,{512,768}) == RemoteImageRequestResult::Queued);
@@ -488,6 +748,7 @@ int main() {
         {
             RemoteImageLimits shutdownLimits;
             shutdownLimits.maximumArtworkDecodeMilliseconds = 10'000;
+            shutdownLimits.maximumArtworkDecoderRestarts = 1;
             shutdownLimits.artworkDecoderShutdownMilliseconds = 250;
             ArtworkDecoderProcessOwner decoder(
                 shutdownLimits, ExecutableSibling(L"ArtworkDecoderTestHost.exe"));
@@ -508,6 +769,9 @@ int main() {
             assert(std::chrono::steady_clock::now() - cancellationStarted <
                    std::chrono::seconds(1));
             assert(decoder.Stats().terminated == 1);
+            assert(decoder.Stats().failed == 0 && decoder.Stats().circuitRejected == 0);
+            const auto resumed = decoder.Decode(png, L"image/png", {}, artworkdecoder::TestBehavior::Succeed);
+            assert(resumed.succeeded() && decoder.Stats().starts == 2 && decoder.Stats().circuitRejected == 0);
             decoder.Shutdown();
         }
 
@@ -720,7 +984,7 @@ int main() {
             },
             {},
             [](std::wstring_view, const TrustedArtworkDemandAuthority&,
-               std::stop_token) {
+               std::uint64_t, std::stop_token) {
                 return TrustedArtworkRequestDisposition::Accepted;
             },
             [&](const TrustedArtworkDecodeDiagnostic& diagnostic) {
@@ -1157,7 +1421,7 @@ int main() {
             },
             [&](const std::wstring_view key,
                 const TrustedArtworkDemandAuthority&,
-                const std::stop_token token) {
+                std::uint64_t, const std::stop_token token) {
                 std::unique_lock lock(demandMutex);
                 ++demandCalls;
                 if (key.ends_with(L"artwork.async-b")) {
@@ -1264,7 +1528,7 @@ int main() {
             },
             {},
             [&](std::wstring_view, const TrustedArtworkDemandAuthority& origin,
-                std::stop_token) {
+                std::uint64_t, std::stop_token) {
                 if (++requests == 1)
                     return TrustedArtworkRequestDisposition::OriginRetired;
                 assert(owner->SupplyTrustedArtwork(
@@ -1322,7 +1586,7 @@ int main() {
             {},
             [&](std::wstring_view,
                 const TrustedArtworkDemandAuthority& authority,
-                std::stop_token) {
+                std::uint64_t, std::stop_token) {
                 std::unique_lock lock(replacementMutex);
                 const bool firstOriginA = observedOrigins.empty();
                 observedOrigins.push_back(authority);
@@ -1392,7 +1656,7 @@ int main() {
         RemoteImageCache shutdownCache(
             {}, {}, {},
             [&](std::wstring_view, const TrustedArtworkDemandAuthority&,
-                const std::stop_token token) {
+                std::uint64_t, const std::stop_token token) {
                 std::unique_lock lock(shutdownMutex);
                 shutdownDemandEntered = true;
                 shutdownChanged.notify_all();
@@ -1445,7 +1709,7 @@ int main() {
             return RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
         [&](std::wstring_view key, const TrustedArtworkDemandAuthority&,
-            std::stop_token) {
+            std::uint64_t, std::stop_token) {
             assert(key.starts_with(L"wrail-artwork\x1f"));
             constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
             const auto widgetEnd = key.find(L'\x1f', prefix.size());
@@ -1545,7 +1809,7 @@ int main() {
             return RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
         [](std::wstring_view, const TrustedArtworkDemandAuthority&,
-           std::stop_token) {
+           std::uint64_t, std::stop_token) {
             return TrustedArtworkRequestDisposition::Accepted;
         });
     const auto failedRevision =

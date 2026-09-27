@@ -1060,7 +1060,7 @@ public:
             [this](
                 std::wstring_view source,
                 const widgetrail::TrustedArtworkDemandAuthority& authority,
-                const std::stop_token stopToken) {
+                std::uint64_t demandGeneration, const std::stop_token stopToken) {
                 constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
                 const auto widgetSeparator = source.find(L'\x1f', prefix.size());
                 const auto handleSeparator = source.rfind(L'\x1f');
@@ -1074,7 +1074,7 @@ public:
                     return widgetrail::TrustedArtworkRequestDisposition::TerminalFailure;
                 const auto disposition = bridge_.RequestArtwork(
                     widgetId, handle, authority.runtimeGeneration,
-                    authority.presentationGeneration, stopToken);
+                    authority.presentationGeneration, stopToken, demandGeneration);
                 switch (disposition) {
                 case widgetrail::WidgetArtworkRequestDisposition::Accepted:
                     return widgetrail::TrustedArtworkRequestDisposition::Accepted;
@@ -1118,7 +1118,7 @@ public:
                 return {
                     widgetrail::PackageIconRequestDisposition::TerminalFailure,
                     {}};
-            }, gScrollDiagnostics);
+            }, gScrollDiagnostics, compositionSurface_.ResourceBudget());
         declarativeRenderer_ = std::make_unique<widgetrail::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get(),
             std::move(renderDiagnostic), gScrollDiagnostics);
@@ -1999,6 +1999,7 @@ private:
         if (controllerTick && state_.surface() != widgetrail::Surface::Hidden)
             PollController();
         for (auto& artwork : bridge_.TakeArtworkResults()) {
+            if (artwork.demandId.empty()) continue; // This host issues correlated requests only.
             const widgetrail::TrustedArtworkDemandAuthority authority{
                 artwork.widgetId,
                 artwork.runtimeGeneration,
@@ -2008,21 +2009,21 @@ private:
                 descriptor->runtimeGeneration != artwork.runtimeGeneration ||
                 descriptor->presentationGeneration != artwork.presentationGeneration) {
                 (void)imageCache_->RetireTrustedArtworkDemand(
-                    artwork.widgetId, artwork.artworkHandle, authority);
+                    artwork.widgetId, artwork.artworkHandle, authority, artwork.demandId);
                 continue;
             }
             if (artwork.contentBase64.empty())
                 (void)imageCache_->FailTrustedArtwork(
-                    artwork.widgetId, artwork.artworkHandle, authority);
+                    artwork.widgetId, artwork.artworkHandle, authority, artwork.demandId);
             else
             {
                 if (!imageCache_->SupplyTrustedArtwork(
                         artwork.widgetId, artwork.artworkHandle,
                         authority,
                         std::move(artwork.contentType),
-                        std::move(artwork.contentBase64)))
+                        std::move(artwork.contentBase64), artwork.demandId))
                     (void)imageCache_->FailTrustedArtwork(
-                        artwork.widgetId, artwork.artworkHandle, authority);
+                        artwork.widgetId, artwork.artworkHandle, authority, artwork.demandId);
             }
         }
         for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {
@@ -8396,6 +8397,7 @@ private:
         SetWindowPos(chromeWindow_, HWND_NOTOPMOST, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         DiscardGraphicsResources();
+        if (declarativeRenderer_) declarativeRenderer_->SuspendImageDemand();
         HWND restoreTarget = reinterpret_cast<HWND>(
             WidgetRailOverlayPlatformRememberedForegroundTarget(platform_));
         const auto activation = std::exchange(pendingTaskWindowActivation_, std::nullopt);
@@ -18121,6 +18123,12 @@ private:
 
     void Paint() {
         GraphicsDrawGuard drawGuard(graphicsDrawDepth_);
+        if (uiResourceBudget_->Read().needsReclamation()) {
+            if (declarativeRenderer_) declarativeRenderer_->ReclaimIdleResources();
+            pinnedSurfaceCoordinator_.ReclaimIdleResources();
+            popupShadows_.Reclaim();
+            if (imageCache_) imageCache_->ReclaimIdleImages();
+        }
         PAINTSTRUCT paint{};
         BeginPaint(window_, &paint);
         if (state_.surface() == widgetrail::Surface::Hidden || graphicsRecoveryInProgress_) {
@@ -18600,7 +18608,7 @@ private:
                 animations.speed = appearance->widgetAnimationSpeed;
             auto scene = widgetrail::shell::CapturePopupComposition(renderTarget_.Get(),
                 bounds, anchor, bounds, popupCaptureScale_, std::to_wstring(popupAnimationGeneration_),
-                CurrentAccessibilityPolicy().reducedMotion, animations, paint);
+                CurrentAccessibilityPolicy().reducedMotion, animations, paint, compositionSurface_.ResourceBudget());
             if (scene) {
                 pendingPopupCompositionScene_ = std::move(scene);
                 return;
@@ -19687,9 +19695,10 @@ private:
     float trayCornerRadius_{22.0F};
     float trayItemCornerRadius_{16.0F};
     float focusOutlineWidth_{2.0F};
+    std::shared_ptr<widgetrail::resources::UiResourceBudget> uiResourceBudget_{std::make_shared<widgetrail::resources::UiResourceBudget>()};
     std::unique_ptr<widgetrail::RemoteImageCache> imageCache_;
     std::unique_ptr<widgetrail::DeclarativeRenderer> declarativeRenderer_;
-    widgetrail::surface::ShadowCache popupShadows_;
+    widgetrail::surface::ShadowCache popupShadows_{uiResourceBudget_};
     widgetrail::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;
     std::wstring pinnedWorkDiagnosticWidgetId_;
     std::uint64_t pinnedWorkDiagnosticPaintBucket_{};
@@ -19753,7 +19762,7 @@ private:
 
     ComPtr<ID2D1Factory1> d2dFactory_;
     ComPtr<IDWriteFactory> writeFactory_;
-    widgetrail::OverlayCompositionSurface compositionSurface_;
+    widgetrail::OverlayCompositionSurface compositionSurface_{uiResourceBudget_};
     widgetrail::shell::CompositionRecoverySchedule compositionRecovery_;
     bool graphicsRecoveryInProgress_{};
     bool graphicsRecoveryShutdown_{};

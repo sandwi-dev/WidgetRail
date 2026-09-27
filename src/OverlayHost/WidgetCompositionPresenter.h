@@ -11,7 +11,8 @@ class WidgetCompositionPresenter final {
         std::uint64_t sceneCommits{}, rasterUploads{}, animationStarts{}, interruptionCaptures{};
         std::uint64_t rasterReuses{}, focusAtlasReuses{}, uploadedBytes{};
     };
-    WidgetCompositionPresenter(IDCompositionDevice2 *composition, ID2D1Device *graphics);
+    WidgetCompositionPresenter(IDCompositionDevice2 *composition, ID2D1Device *graphics,
+        std::shared_ptr<resources::UiResourceBudget> budget);
     ~WidgetCompositionPresenter() {
         Clear();
     }
@@ -38,17 +39,19 @@ class WidgetCompositionPresenter final {
     using Motion = animation::Motion;
     struct Raster {
         WidgetCompositionNode node;
-        Ptr<IDCompositionSurface> surface;
+        resources::UiResource<IDCompositionSurface> surface;
+        resources::UiResourceBudget::Pin surfacePin, bitmapPin;
         Ptr<IDCompositionVisual3> visual;
         D2D1_SIZE_U pixels{};
     };
     struct Group {
         WidgetCompositionNode node;
+        resources::UiResource<IDCompositionSurface> focusAtlas;
+        resources::UiResourceBudget::Pin focusAtlasPin;
         Ptr<IDCompositionVisual3> root, incoming, outgoing, incomingClip, outgoingClip;
         Motion motion, exit;
         Ptr<IDCompositionArithmeticCompositeEffect> focusBlend;
         Ptr<IDCompositionAffineTransform2DEffect> focusSample;
-        Ptr<IDCompositionSurface> focusAtlas;
         D2D1_SIZE_U focusAtlasPixels{};
         std::weak_ptr<void> idleAtlasLease, focusedAtlasLease;
         Raster previous;
@@ -58,6 +61,7 @@ class WidgetCompositionPresenter final {
         Rect resumeFocusBounds;
         std::size_t paintOrder{};
     };
+    std::shared_ptr<resources::UiResourceBudget> resourceBudget_;
     IDCompositionDevice2 *device_{};
     ID2D1Device *graphics_{};
     Ptr<IDCompositionVisual3> root_;

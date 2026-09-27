@@ -9,6 +9,7 @@ param(
     [switch]$SkipPackaging,
     [switch]$SemanticChurnTestsOnly,
     [switch]$CollectionLayoutTestsOnly,
+    [switch]$UiResourceBudgetTestsOnly,
     [switch]$DeclarativeLayoutTestsOnly,
     [switch]$DeclarativeRendererTestsOnly,
     [string]$ScrollWorkloadFixture,
@@ -71,6 +72,7 @@ if ($WidgetSwitchFallbackAuthorityTestsOnly -and
 $primaryTestSelectors = @(
     [pscustomobject]@{ Name = 'SemanticChurnTestsOnly'; Selected = [bool]$SemanticChurnTestsOnly }
     [pscustomobject]@{ Name = 'CollectionLayoutTestsOnly'; Selected = [bool]$CollectionLayoutTestsOnly }
+    [pscustomobject]@{ Name = 'UiResourceBudgetTestsOnly'; Selected = [bool]$UiResourceBudgetTestsOnly }
     [pscustomobject]@{ Name = 'DeclarativeLayoutTestsOnly'; Selected = [bool]$DeclarativeLayoutTestsOnly }
     [pscustomobject]@{ Name = 'DeclarativeRendererTestsOnly'; Selected = [bool]$DeclarativeRendererTestsOnly }
     [pscustomobject]@{ Name = 'ScrollWorkloadFixture'; Selected = -not [string]::IsNullOrWhiteSpace($ScrollWorkloadFixture) }
@@ -811,6 +813,19 @@ function Invoke-SemanticChurnPerformanceTests {
     if ($LASTEXITCODE -ne 0) {
         throw "SemanticChurnPerformanceTests failed with exit code $LASTEXITCODE."
     }
+}
+
+function Invoke-UiResourceBudgetTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'UiResourceBudgetTests.cpp'),
+        "/Fo:$layoutTestObjectDirectory\",
+        "/Fe:$outputDirectory\UiResourceBudgetTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) { throw "UiResourceBudgetTests build failed with exit code $LASTEXITCODE." }
+    & (Join-Path $outputDirectory 'UiResourceBudgetTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw "UiResourceBudgetTests failed with exit code $LASTEXITCODE." }
 }
 
 function Invoke-CollectionLayoutTests {
@@ -1797,6 +1812,11 @@ if ($CollectionLayoutTestsOnly) {
     Invoke-CollectionLayoutTests
     return
 }
+if ($UiResourceBudgetTestsOnly) {
+    if ($SkipTests) { throw 'UiResourceBudgetTestsOnly cannot be combined with SkipTests.' }
+    Invoke-UiResourceBudgetTests
+    return
+}
 
 if ($SemanticChurnTestsOnly) {
     if ($SkipTests) {
@@ -2509,6 +2529,7 @@ if (-not $SkipTests) {
     }
 
     Invoke-CollectionLayoutTests
+    Invoke-UiResourceBudgetTests
 
     $imageTestArguments = $common + @(
         (Join-Path $projectDirectory 'RemoteImageCacheTests.cpp'),

@@ -55,7 +55,8 @@ private:
     enum class StageDisposition { Committed, Pending, Failed };
     struct Image final {
         ComputedCompositorBackground descriptor;
-        Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
+        resources::UiResource<ID2D1Bitmap> bitmap;
+        resources::UiResourceBudget::Pin protection;
         bool surfaceComposite{};
     };
     struct Proposal final {
