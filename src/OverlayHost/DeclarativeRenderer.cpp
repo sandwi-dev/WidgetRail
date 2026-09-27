@@ -527,6 +527,7 @@ struct DeclarativeRenderer::RenderPass final {
     std::optional<bool> compositorControlSupport;
     std::map<std::wstring, NativeRenderStyle> compositionFocusStyles;
     std::map<std::pair<std::wstring, int>, std::size_t> compositionPhases;
+    std::set<std::wstring> compositionLoadingIndicators;
     std::map<std::size_t, std::set<std::wstring>> compositionBandNodes;
     using PaintChildren = std::map<const WidgetNode*, std::vector<const WidgetNode*>>;
     std::map<std::size_t, PaintChildren> compositionBandChildren;
@@ -4713,36 +4714,51 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
-    void DrawCollectionLoading(const WidgetNode& node, const NativeRenderStyle& style,
-        const Rect viewportRect, const float opacity) {
-        if (!target || node.kind != L"scroll" || (node.collectionLoading.empty() || node.collectionLoading == L"idle") ||
-            viewportRect.width < 32.0F || viewportRect.height < 24.0F) return;
+    struct CollectionLoadingGeometry { Rect badge, indicator, clip; };
+    std::optional<CollectionLoadingGeometry> CollectionLoadingBounds(const WidgetNode& node,
+        const NativeRenderStyle& style, const Rect viewportRect) const {
+        if (node.kind != L"scroll" || node.collectionLoading.empty() || node.collectionLoading == L"idle" ||
+            viewportRect.width < 32.0F || viewportRect.height < 24.0F) return std::nullopt;
         const float height = std::min(viewportRect.height - 8.0F, std::max(32.0F, style.fontSizePx() + 14.0F));
         const float width = std::min(viewportRect.width - 8.0F, std::max(130.0F, style.fontSizePx() * 6.0F + 38.0F));
-        Rect badge{viewportRect.x + (viewportRect.width - width) * 0.5F,
+        Rect badge{viewportRect.x + (viewportRect.width - width) * .5F,
             node.collectionLoading == L"before" ? viewportRect.y + 4.0F : viewportRect.y + viewportRect.height - height - 4.0F,
             width, height};
         if (node.scrollAxis == L"horizontal") {
             badge.x = node.collectionLoading == L"before" ? viewportRect.x + 4.0F : viewportRect.x + viewportRect.width - width - 4.0F;
             badge.y = viewportRect.y + viewportRect.height - height - 4.0F;
         }
-        const auto foreground = style.foreground().value_or(kDefaultText);
-        const auto luminance = foreground.red * 0.2126F + foreground.green * 0.7152F + foreground.blue * 0.0722F;
-        const NativeColor background = luminance > 0.5F ? kDefaultButton : NativeColor{0.96F, 0.97F, 0.99F, 0.96F};
-        auto fill = Brush(target, WithOpacity(background, opacity));
-        auto outline = Brush(target, WithOpacity(foreground, opacity * 0.3F));
-        target->PushAxisAlignedClip(D2DRect(viewportRect), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-        const D2D1_ROUNDED_RECT rounded{D2DRect(badge), height * 0.5F, height * 0.5F};
-        if (fill) target->FillRoundedRectangle(rounded, fill.Get());
-        if (outline) target->DrawRoundedRectangle(rounded, outline.Get(), 1.0F);
         const float iconSize = std::min(18.0F, height - 8.0F);
-        DrawLoadingIndicatorNode(node, style, {badge.x + 10.0F, badge.y + (height - iconSize) * 0.5F, iconSize, iconSize}, opacity);
-        WidgetNode label; label.id = node.id; label.text = L"Loading\u2026";
-        DrawTextContent(label, style, {badge.x + 36.0F, badge.y, std::max(0.0F, badge.width - 44.0F), badge.height},
-            opacity, NativeTextVerticalAlignment::Center);
+        return CollectionLoadingGeometry{badge,
+            {badge.x + 10.0F, badge.y + (height - iconSize) * .5F, iconSize, iconSize}, viewportRect};
+    }
+
+    void DrawCollectionLoading(const WidgetNode& node, const NativeRenderStyle& style,
+        const Rect viewportRect, const float opacity) {
+        const auto geometry = CollectionLoadingBounds(node, style, viewportRect);
+        if (!target || !geometry) return;
+        const auto badge = geometry->badge;
+        const bool independent = composingScene && compositionLoadingIndicators.contains(node.id);
+        target->PushAxisAlignedClip(D2DRect(geometry->clip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        if (PaintCompositionPhase(node.id, 7)) {
+            const auto foreground = style.foreground().value_or(kDefaultText);
+            const auto luminance = foreground.red * .2126F + foreground.green * .7152F + foreground.blue * .0722F;
+            const NativeColor background = luminance > .5F ? kDefaultButton : NativeColor{.96F, .97F, .99F, .96F};
+            auto fill = Brush(target, WithOpacity(background, opacity));
+            auto outline = Brush(target, WithOpacity(foreground, opacity * .3F));
+            const D2D1_ROUNDED_RECT rounded{D2DRect(badge), badge.height * .5F, badge.height * .5F};
+            if (fill) target->FillRoundedRectangle(rounded, fill.Get());
+            if (outline) target->DrawRoundedRectangle(rounded, outline.Get(), 1.0F);
+            WidgetNode label; label.id = node.id; label.text = L"Loading…";
+            DrawTextContent(label, style, {badge.x + 36.0F, badge.y, std::max(0.0F, badge.width - 44.0F), badge.height},
+                opacity, NativeTextVerticalAlignment::Center);
+            if (!independent) DrawLoadingIndicatorNode(node, style, geometry->indicator, opacity);
+        }
+        if (independent && PaintCompositionPhase(node.id, 6))
+            DrawLoadingIndicatorNode(node, style, geometry->indicator, opacity);
         target->PopAxisAlignedClip();
-        // This badge contributes no layout or input node. It follows existing
-        // scroll paints without forcing the entire widget to animate while waiting.
+        if (!independent && !options.accessibility.reducedMotion && PaintCompositionPhase(node.id, 7))
+            result.animationActive = true;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         result.collectionLoadingRects[node.id] = badge;
 #endif
@@ -4757,7 +4773,8 @@ struct DeclarativeRenderer::RenderPass final {
         auto brush = Brush(target, WithOpacity(
             style.foreground().value_or(kDefaultAccent), opacity));
         if (!brush) return;
-        const auto timestamp = options.animationTimestampMilliseconds.value_or(0);
+        const auto timestamp = composingScene && compositionLoadingIndicators.contains(node.id)
+            ? 0 : options.animationTimestampMilliseconds.value_or(0);
         const auto stroke = style.borderWidthPx() > 0.0F
             ? style.borderWidthPx()
             : 2.0F;
@@ -5422,7 +5439,7 @@ struct DeclarativeRenderer::RenderPass final {
             const auto visibleIndicatorRect = Intersection(
                 presented.contentBox, presented.visibleBox);
             DrawLoadingIndicatorNode(node, style, visibleIndicatorRect, opacity);
-            if (!options.accessibility.reducedMotion &&
+            if (!(composingScene && compositionLoadingIndicators.contains(node.id)) && !options.accessibility.reducedMotion &&
                 visibleIndicatorRect.width > 0.5F && visibleIndicatorRect.height > 0.5F) {
                 // The shell owns the next-frame cadence. Invisible or
                 // reduced-motion indicators never keep it awake.
@@ -5511,8 +5528,8 @@ struct DeclarativeRenderer::RenderPass final {
             }
             DrawNode(child, inputScope);
         });
-        if (PaintCompositionPhase(node.id, 2)) {
         DrawCollectionLoading(node, style, Intersection(presented.contentBox, presented.visibleBox), opacity);
+        if (PaintCompositionPhase(node.id, 2)) {
         if (indicator) {
             DrawScrollIndicator(*indicator, style, opacity);
         }

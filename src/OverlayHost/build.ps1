@@ -1310,6 +1310,7 @@ function Invoke-CompositionTests {
 
     $chromeArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayChromeTests.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'OverlayChrome.cpp'),
         (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
         (Join-Path $projectDirectory 'WidgetCompositionPresenter.cpp'),
@@ -2692,6 +2693,7 @@ if (-not $SkipTests) {
     $chromeTestArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayChromeTests.cpp'),
         (Join-Path $projectDirectory 'OverlayChrome.cpp'),
+        (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
         (Join-Path $projectDirectory 'WidgetCompositionPresenter.cpp'),
         (Join-Path $projectDirectory 'OverlayState.cpp'),

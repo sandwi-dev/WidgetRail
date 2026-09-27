@@ -8043,6 +8043,71 @@ void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
         "external live surfaces preserve direct rendering and stationary placement");
 }
 
+void LoadingChromeUsesBoundedReusableComposition() {
+    using namespace widgetrail;
+    for (float scale : {1.0F, 1.25F, 2.0F}) for (bool scrollbar : {false, true}) {
+        MotionRasterFixture fixture;
+        auto& renderer = *fixture.renderer;
+        WidgetSnapshot snapshot; snapshot.instanceId = L"loading.chrome"; snapshot.sequence = 1;
+        snapshot.root = Node(L"items", L"scroll"); snapshot.root.scrollAxis = L"vertical";
+        snapshot.root.showScrollbar = scrollbar; snapshot.root.collectionLoading = L"after";
+        snapshot.root.baseStyle = {{L"background", Color(L"#223344")}, {L"color", Color(L"#66cc99")}};
+        for (unsigned i = 0; i < 12; ++i) snapshot.root.children.push_back(FixedButton((L"item." + std::to_wstring(i)).c_str(), 50));
+        const Rect bounds{.4F, .8F, 580, 240};
+        DeclarativeRenderOptions options; options.pixelScale = scale; options.compositorWidgetTransitions = true;
+        options.animationTimestampMilliseconds = 0;
+        const auto draw = [&] { return fixture.Draw(snapshot, L"", bounds, options); };
+        const auto initial = draw();
+        Check(initial.widgetComposition && !initial.widgetComposition->directContent && !initial.animationActive,
+            "collection loader owns a compositor scene without requesting raster ticks");
+        unsigned rotations{}; std::size_t chromeBytes{};
+        for (const auto& node : initial.widgetComposition->nodes) {
+            if (node.kind == WidgetCompositionKind::IndeterminateRotation) ++rotations;
+            if (node.kind == WidgetCompositionKind::Raster && node.id.find(L"items") != std::wstring::npos && node.bitmap) {
+                const auto size = node.bitmap->GetPixelSize();
+                // The root background may cover the viewport; chrome phases do not.
+                if (node.id.ends_with(L"1:2") || node.id.ends_with(L"1:6") || node.id.ends_with(L"1:7"))
+                    chromeBytes += static_cast<std::size_t>(size.width) * size.height * 4;
+            }
+        }
+        Check(rotations == 1 && chromeBytes > 0 && chromeBytes < 50000 * scale * scale,
+            "loading badge plus scrollbar captures stay bounded to their actual chrome");
+        std::cout << "LOADING-CHROME scale=" << scale << " scrollbar=" << scrollbar << " bytes=" << chromeBytes << '\n';
+        options.animationTimestampMilliseconds = 300;
+        (void)renderer.PlanRetainedPaint(snapshot);
+        const auto later = draw();
+        Check(later.widgetComposition->paintCacheMisses == 0 && later.widgetComposition->paintedBytes == 0 && !later.animationActive,
+            "time advancement reuses all loading rasters and starts no UI-thread animation");
+        snapshot.root.collectionLoading = L"before"; ++snapshot.sequence;
+        const auto leading = draw();
+        Check(!leading.animationActive && leading.collectionLoadingRects.at(L"items").y < initial.collectionLoadingRects.at(L"items").y,
+            "loading direction changes placement without changing input or animation ownership");
+        Check(leading.widgetComposition->paintedBytes < 50000 * scale * scale,
+            "loading-only state changes leave the existing collection content cached");
+        options.compositorWidgetTransitions = false;
+        Check(draw().animationActive, "direct collection loader requests its fallback cadence");
+        options.accessibility.reducedMotion = true;
+        Check(!draw().animationActive, "direct collection reduced motion keeps loading static");
+        options.compositorWidgetTransitions = true; options.accessibility.reducedMotion = false;
+        snapshot.root.collectionLoading = L"idle"; ++snapshot.sequence;
+        const auto idle = draw();
+        Check(std::ranges::none_of(idle.widgetComposition->nodes, [](const auto& n) {
+            return n.kind == WidgetCompositionKind::IndeterminateRotation;
+        }), "idle collection retires its rotating visual");
+        Check(draw().widgetComposition->paintCacheMisses == 0, "idle declaration no longer disables capture reuse");
+        snapshot.root = Node(L"standalone", L"loadingIndicator"); ++snapshot.sequence;
+        const auto standalone = draw();
+        Check(!standalone.animationActive && std::ranges::any_of(standalone.widgetComposition->nodes, [](const auto& n) {
+            return n.kind == WidgetCompositionKind::IndeterminateRotation;
+        }), "standalone indicators use the same compositor primitive without needing focus");
+        options.accessibility.reducedMotion = true;
+        const auto reduced = draw();
+        Check(reduced.widgetComposition->reducedMotion && !reduced.animationActive, "reduced motion retains a static loading cue");
+        options.compositorWidgetTransitions = false; options.accessibility.reducedMotion = false;
+        Check(draw().animationActive, "non-composited indicator retains its raster fallback cadence");
+    }
+}
+
 void BufferedPreparationDoesNotGateVisibleScrolling() {
     using namespace widgetrail;
     for (const bool grid : {false, true}) for (const bool horizontal : {false, true})
@@ -9738,6 +9803,7 @@ int main(int argc, char** argv) {
     CollectionRealizationMatchesEagerGeometry();
     RetainedCollectionPlacementPreservesGeometryAndPixels();
     BufferedPreparationDoesNotGateVisibleScrolling();
+    LoadingChromeUsesBoundedReusableComposition();
     ResourceAliasesRetainBackingStorage();
     SurfaceDepthUsesBoundedSharedPainting();
     RetainedCompositionPixelsRespectInvalidation();

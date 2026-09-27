@@ -5,6 +5,7 @@
 #include "ControllerGuideVisual.h"
 #include "PopupCompositionScene.h"
 #include "SurfaceDepth.h"
+#include "NativeIcons.h"
 #pragma comment(lib, "dwrite.lib")
 
 #include <Windows.h>
@@ -1330,6 +1331,8 @@ void CheckWidgetAnimationPolicies() {
 
 }
 
+#include "LoadingIndicatorCompositionTests.inl"
+
 void CheckWidgetCompositorPixels(const bool popupOnly = false) {
     using namespace widgetrail;
     Check(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)!=0,
@@ -2060,6 +2063,12 @@ int main(int argc, char** argv) {
             CheckFocusFadeCompositor(true, scale, true, widgetrail::animation::FocusStyle::Fade, false, false, false, true);
         CoUninitialize(); return EXIT_SUCCESS;
     }
+    if (argc == 2 && std::string_view(argv[1]) == "--loading-indicator-pixels") {
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "loading proof COM initialization");
+        for (float scale : {1.0F, 1.25F, 2.0F}) CheckLoadingIndicatorComposition(true, scale);
+        CoUninitialize(); return EXIT_SUCCESS;
+    }
     if (argc == 2 && std::string_view(argv[1]) == "--surface-depth-pixels") {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         Check(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)), "depth COM initialization");
@@ -2124,6 +2133,7 @@ int main(int argc, char** argv) {
           "WIC factory is created");
 
     CheckFocusFadeCompositor(false);
+    CheckLoadingIndicatorComposition(false, 1);
     CheckFocusFadeCompositor(false, 1, true, widgetrail::animation::FocusStyle::Settle);
     CheckFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckControllerGlyphs(d2d.Get(), wic.Get());

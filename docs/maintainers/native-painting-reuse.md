@@ -80,3 +80,45 @@ of this verification.
 Reproduce paired profiles with `ScrollWorkloadProbe <fixture> --profile <count>
 realized`, adding `no-paint-reuse` for the bypass. Build the probe using the native
 `build.ps1 -ScrollWorkloadFixture <fixture>` entry point.
+
+## Loading feedback follow-up
+
+Collection loading chrome previously captured the entire collection viewport and
+advanced its spinner only when another event repainted the widget. Page admission
+could therefore make the spinner visibly hesitate even while the application was
+otherwise idle between frames.
+
+Loading badges now have separate bounded captures for their stationary background
+and label, their rotating arc, and the scrollbar. The arc uses the native
+`IndeterminateRotation` composition group with a canonical cached raster. Its
+900 ms loop runs on DirectComposition without host paint ticks or repeated uploads.
+Ordinary scene refreshes and placement changes preserve the loop; input-scope
+replacement starts a fresh owner. Completion removes it. Reduced motion retains a
+static arc. Loading feedback keeps the existing fixed cadence independently of the
+transition-speed setting. The decoration never remaps input or changes layout.
+
+Standalone `loadingIndicator` nodes use the same mechanism. Rounded ancestor clips
+and authored translations retain the conservative painter path; direct rendering
+now requests the existing animation cadence for collection badges too. These are
+host changes: widget authors continue to declare collection loading state or use
+the existing loading-indicator component. No SDK/package changes are needed.
+
+At 125% scale, the fixture's badge and arc occupy 32,304 captured bytes (39,328 with
+its scrollbar), rather than a viewport-sized capture. Time-only redraws reuse the
+captures with zero painted bytes. This is capture work eliminated, not an FPS claim.
+The physical trace that motivated this fix still had page-admission CPU frames of
+20.338 ms median and 23.228 ms p95; this change does not establish that all admission
+work now fits a display frame.
+
+Validation: 52,507 renderer checks, 49,503 chrome checks, 517 pinned-host checks,
+and 409 surface-coordinator checks pass. The
+Release host/runtime build also passes; physical acceptance remains separate. The
+`OverlayChromeTests --loading-indicator-pixels` probe verifies visible rotation at
+100%, 125%, and 200% scale while the host thread sleeps through multiple rotation
+cycles without further application painting, uploads, or commits. It also checks
+reduced motion and pixel removal. The probe pumps window/composition startup
+messages before intentionally blocking; immediately sleeping after creating the
+window previously sampled the initial arc before animation startup. Non-pixel
+checks cover clock reuse, scope retirement, input neutrality, fallback cadence,
+capture bounds, loading direction and idle cache reuse. Evidence is under
+`artifacts/native-loading-indicator/final-*.log`.

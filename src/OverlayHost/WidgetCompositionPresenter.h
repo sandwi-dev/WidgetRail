@@ -52,6 +52,10 @@ class WidgetCompositionPresenter final {
         Motion motion, exit;
         Ptr<IDCompositionArithmeticCompositeEffect> focusBlend;
         Ptr<IDCompositionAffineTransform2DEffect> focusSample;
+        Ptr<IDCompositionRotateTransform> rotation;
+        Ptr<IDCompositionAnimation> rotationCurve;
+        std::int64_t rotationStart{};
+        bool rotationRunning{};
         D2D1_SIZE_U focusAtlasPixels{};
         std::weak_ptr<void> idleAtlasLease, focusedAtlasLease;
         Raster previous;
@@ -82,6 +86,8 @@ class WidgetCompositionPresenter final {
                    float opacity, std::int64_t now) const;
     HRESULT Rebuild(IDCompositionVisual2 *above);
     HRESULT ConfigureFocusSurface(Group &group);
+    HRESULT ConfigureIndeterminateRotation(Group &group, bool restart, std::int64_t now);
+    float RotationAngle(const Group &group, std::int64_t now) const noexcept;
     HRESULT ConfigureFocusFade(Group &group, const Raster &idle, const Raster &focused);
     HRESULT CreateAnimation(float from, float to, const Motion &motion, IDCompositionAnimation **output);
     void DrawFocusFade(ID2D1RenderTarget *target, const Group &group,

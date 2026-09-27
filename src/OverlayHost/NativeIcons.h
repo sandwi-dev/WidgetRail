@@ -39,6 +39,8 @@ struct LoadingIndicatorArc final {
     float sweepDegrees{};
 };
 
+inline constexpr std::uint64_t LoadingIndicatorPeriodMilliseconds = 900;
+
 /// Deterministic native animation geometry. Reduced motion returns the same
 /// honest indeterminate arc for every timestamp.
 [[nodiscard]] LoadingIndicatorArc ComputeLoadingIndicatorArc(
