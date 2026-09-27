@@ -162,9 +162,19 @@ measured buffered demand bypasses preparation. Provider boundary loading remains
 distinct from preparation. Renderer tests compare sliced movement with synchronous
 measurement/anchor correction and exercise old-scene repaints between slices.
 
-Group-entry scheduling and final paint/device transactions still need integration;
-synchronous Render remains their fallback. A newly ready snapshot or focus target
-is not proof of successful D2D EndDraw/presentation.
+Ready slices can return prepared focus geometry without painting. The host resolves
+an incoming one-shot group request against that geometry and prepares its remembered
+target before snapshot admission; read-only prediction does not consume request
+authority or replay requests already below the runtime high-water mark. Ordinary
+render settlement retains the final exact-request/geometry validation.
+
+Main and pinned UIA requests also prepare on timers before applying reveal options
+to paint. They preserve original controller focus and reject stale request authority;
+pending work exposes neither partial geometry nor speculative accessibility bounds.
+
+Final paint/device transactions still need audit/integration. A newly ready snapshot
+or focus target is not proof of successful D2D EndDraw/presentation. Existing focus
+settlement remains synchronous after the relevant collection measurements are ready.
 
 Remaining delivery includes host frame-budgeted scheduling and
 resource protection, broader provider-window/scale/scroll validation, and adoption

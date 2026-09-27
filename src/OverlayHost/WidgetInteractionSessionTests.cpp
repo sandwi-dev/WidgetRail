@@ -734,6 +734,9 @@ void OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority() {
     session.SetFocus(L"entry.widget", snapshot, L"entry.remembered");
     auto authority = Authority(
         snapshot, L"entry.widget", L"runtime-a", L"presentation-a");
+    Check(session.PreviewCandidateFocusGroup(authority, render) == L"entry.remembered" &&
+        !session.FocusGroupEntryRequestPending(authority),
+        "candidate group preparation reads remembered target without admitting or consuming the request");
     Check(session.ObserveFocusGroupEntryRequest(
               authority, FocusGroupEntryAdmission::Active) ==
               FocusGroupEntryObservation::Pending,
@@ -763,6 +766,8 @@ void OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority() {
           "successful exact-current frame commits its already-rendered target once");
     Check(!session.CommitPreparedFocusGroupEntryRequest(authority, confirmed.target).consumed,
           "consumed request cannot apply twice");
+    Check(!session.PreviewCandidateFocusGroup(authority, render),
+        "a consumed request cannot drive speculative group preparation again");
     Check(session.ObserveFocusGroupEntryRequest(
               authority, FocusGroupEntryAdmission::Active) ==
               FocusGroupEntryObservation::Retired,

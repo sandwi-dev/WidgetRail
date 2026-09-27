@@ -7895,10 +7895,15 @@ void CollectionRealizationMatchesEagerGeometry() {
             "unfinished target preparation cannot publish its scroll position");
         bool targetReady{};
         for (int slice = 0; slice < 128; ++slice) {
-            const auto preparation = lazy.PrepareCollections(snapshot, L"item.90", bounds, options, {1, 1000000});
+            const auto preparation = lazy.PrepareCollections(snapshot, L"item.90", bounds, options, {1, 1000000}, true);
             Check(preparation.status != CollectionPreparationStatus::Failed, "target preparation survives repaint of its origin");
             (void)draw(lazy, snapshot, L"item.0");
-            if (preparation.status == CollectionPreparationStatus::Ready) { targetReady = true; break; }
+            if (preparation.status == CollectionPreparationStatus::Ready) {
+                Check(preparation.focusGeometry && preparation.focusGeometry->succeeded && preparation.focusGeometry->focusRects.contains(L"item.90"),
+                    "ready focus preparation includes visible target geometry without painting");
+                targetReady = true; break;
+            }
+            Check(!preparation.focusGeometry, "pending slices cannot leak partial focus geometry");
         }
         Check(targetReady, "animation paints at the same sequence cannot starve pending offscreen focus");
         lazy.CancelCollectionPreparation();

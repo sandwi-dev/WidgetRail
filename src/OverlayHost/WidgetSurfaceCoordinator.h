@@ -379,6 +379,7 @@ public:
 
 private:
     void PumpFocusRealization();
+    void PumpAccessibilityRealization();
     [[nodiscard]] DeclarativeRenderOptions RenderOptions(float widthDip, float heightDip, float dpiScale) const;
     [[nodiscard]] static declarative::Rect ContentViewport(float widthDip, float heightDip, bool compactMedia, bool adjustmentActive);
     static LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);
@@ -487,6 +488,7 @@ private:
     input::WidgetSurfaceFocusMemory collectionFocusMemory_;
     input::FreeScrollInteractionState freeScroll_;
     std::optional<accessibility::ActionRequest> pendingAccessibilityRealization_;
+    bool accessibilityRealizationReady_{};
     input::WidgetInteractionSession sliderInteraction_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;
     std::vector<input::ScrollPaginationDiagnostic> paginationDiagnostics_;

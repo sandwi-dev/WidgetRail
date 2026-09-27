@@ -321,6 +321,7 @@ struct CollectionPreparationResult final {
     CollectionPreparationStatus status{CollectionPreparationStatus::Failed};
     std::size_t newMeasurements{};
     std::uint64_t elapsedMicroseconds{};
+    std::shared_ptr<const RenderResult> focusGeometry;
 };
 
 struct IncrementalPresentationPlan final {
@@ -503,7 +504,7 @@ public:
     [[nodiscard]] CollectionPreparationResult PrepareCollections(
         const WidgetSnapshot& snapshot, std::wstring_view focusedElementId,
         declarative::Rect viewport, const DeclarativeRenderOptions& options = {},
-        CollectionPreparationBudget budget = {});
+        CollectionPreparationBudget budget = {}, bool collectFocusGeometry = false);
     void CancelCollectionPreparation() noexcept;
     [[nodiscard]] bool PaintPackageIcon(
         ID2D1RenderTarget* renderTarget,

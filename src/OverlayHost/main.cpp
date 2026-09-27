@@ -7262,6 +7262,7 @@ private:
     void PumpCollectionPreparation() {
         const auto started = std::chrono::steady_clock::now();
         bool pendingWork = PumpFocusRealization();
+        if (PumpAccessibilityRealization()) pendingWork = true;
         for (const auto& descriptor : sessions_.descriptors()) {
             const auto pending = sessions_.PendingPresentationPreparation(descriptor.id);
             if (!pending) continue;
@@ -7287,12 +7288,23 @@ private:
                     const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
                         (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
                     auto options = WidgetRenderOptions(descriptor.id, &descriptor, *geometry, scale);
-                    const auto focus = interactionSession_.FocusRestoreCandidate(descriptor.id, snapshot);
+                    auto focus = interactionSession_.FocusRestoreCandidate(descriptor.id, snapshot);
+                    if (preparedCandidateGroupFocus_ && preparedCandidateGroupFocus_->first == pending->requestId)
+                        focus = preparedCandidateGroupFocus_->second;
                     const widgetrail::input::WidgetInteractionAuthority authority{
                         descriptor.id, &snapshot, descriptor.runtimeGeneration, descriptor.presentationGeneration, false};
                     options.suppressFocusedDescendantFollow = interactionSession_.EvaluateFreeScrollAuthority(authority).followSuppressed;
                     preparation = declarativeRenderer_->PrepareCollections(snapshot, focus,
-                        {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options);
+                        {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options,
+                        {}, snapshot.focusGroupEntryRequest.has_value() && WidgetOwnsInputFocus(descriptor.id));
+                    if (preparation.focusGeometry) {
+                        const auto entry = interactionSession_.PreviewCandidateFocusGroup(authority, *preparation.focusGeometry);
+                        if (entry && *entry != focus) {
+                            preparedCandidateGroupFocus_ = std::pair{pending->requestId, *entry};
+                            pendingWork = true;
+                            continue;
+                        }
+                    }
                 }
             }
             if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) {
@@ -7302,8 +7314,40 @@ private:
             // A genuine preparation error takes the existing synchronous render
             // diagnostic path. Pending work never becomes a worker/runtime error.
             (void)sessions_.ApprovePresentationPreparation(descriptor.id, pending->requestId, pending->generation);
+            if (preparedCandidateGroupFocus_ && preparedCandidateGroupFocus_->first == pending->requestId)
+                preparedCandidateGroupFocus_.reset();
         }
         if (pendingWork) SetTimer(window_, kCollectionPreparationTimer, 16, nullptr);
+    }
+
+    bool PumpAccessibilityRealization() {
+        if (!pendingAccessibilityRealization_ || accessibilityRealizationReady_) return false;
+        const auto request = *pendingAccessibilityRealization_;
+        const auto widget = state_.activeWidget();
+        const auto* snapshot = InteractionSnapshotFor(widget);
+        const auto* descriptor = sessions_.FindDescriptor(widget);
+        if (!snapshot || !descriptor || !declarativeRenderer_ || state_.surface() != widgetrail::Surface::Widget ||
+            request.widgetId != widget || !widgetrail::accessibility::ResolveActionRequest(request, widget, descriptor->runtimeGeneration, *snapshot)) {
+            pendingAccessibilityRealization_.reset(); return false;
+        }
+        const auto surface = DesiredWidgetSurfaceTarget();
+        const auto extent = DesiredContentPanelExtentDip();
+        const auto geometry = compositionSurface_.available()
+            ? widgetrail::ComputePanelLocalSurfaceGeometry(static_cast<float>(extent.widthDip), static_cast<float>(extent.heightDip))
+            : widgetrail::ComputeOverlaySurfaceGeometry(surface.windowWidthDip, surface.windowHeightDip, surface.panelWidthDip, surface.panelHeightDip);
+        if (!geometry) { pendingAccessibilityRealization_.reset(); return false; }
+        const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
+            (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
+        auto options = WidgetRenderOptions(widget, descriptor, *geometry, scale);
+        options.suppressFocusedDescendantFollow = true;
+        options.realizeElementId = request.nodeId;
+        const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, interactionSession_.focusedElementId(),
+            {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options);
+        if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) return true;
+        if (preparation.status == widgetrail::CollectionPreparationStatus::Failed) { pendingAccessibilityRealization_.reset(); return false; }
+        accessibilityRealizationReady_ = true;
+        InvalidateRect(window_, nullptr, FALSE);
+        return false;
     }
 
     bool PumpFocusRealization() {
@@ -7329,11 +7373,11 @@ private:
         auto options = WidgetRenderOptions(widget, sessions_.FindDescriptor(widget), *geometry, scale);
         const widgetrail::declarative::Rect viewport{
             geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight};
-        const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, *target, viewport, options);
+        const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, *target, viewport, options, {}, true);
         if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) return true;
         if (preparation.status == widgetrail::CollectionPreparationStatus::Failed) { intent.Clear(); return false; }
-        const auto geometryResult = declarativeRenderer_->PrepareFocusEntry(*snapshot, *target, viewport, options);
-        const auto ready = intent.TakeReady(*authority, interactionSession_.focusedElementId(), geometryResult);
+        const auto ready = preparation.focusGeometry
+            ? intent.TakeReady(*authority, interactionSession_.focusedElementId(), *preparation.focusGeometry) : std::nullopt;
         if (!ready) { intent.Clear(); return false; }
         ObserveScrollPaginationFocusIntent(widget, *snapshot, interactionSession_.focusedElementId(), *ready,
             widgetrail::input::ScrollPaginationIntentSource::DirectionalNavigation);
@@ -13184,9 +13228,10 @@ private:
                 (void)interactionSession_.BindFreeScroll(authority, resolved->scrollId, resolved->scrollAxis,
                     widgetrail::input::FreeScrollFocusPolicy::Preserve);
                 pendingAccessibilityRealization_ = request;
+                accessibilityRealizationReady_ = false;
                 pendingContentRenderPlan_.reset();
                 if (declarativeRenderer_) declarativeRenderer_->CancelPresentationUpdatePlan();
-                InvalidateRect(window_, nullptr, FALSE);
+                SetTimer(window_, kCollectionPreparationTimer, 1, nullptr);
                 continue;
             }
             RetirePendingFocusGroupEntryForUserIntent(
@@ -18836,7 +18881,7 @@ private:
                     if (!inertRetainedSnapshot && descriptor && request.widgetId == renderedWidget &&
                         widgetrail::accessibility::ResolveActionRequest(request, renderedWidget,
                             descriptor->runtimeGeneration, *snapshot)) {
-                        options.realizeElementId = request.nodeId;
+                        if (accessibilityRealizationReady_) options.realizeElementId = request.nodeId;
                         options.suppressFocusedDescendantFollow = true;
                     } else pendingAccessibilityRealization_.reset();
                 }
@@ -19612,6 +19657,8 @@ private:
     std::optional<widgetrail::accessibility::ProjectionKey>
         pendingActionFailureAccessibilityProjection_;
     std::optional<widgetrail::accessibility::ActionRequest> pendingAccessibilityRealization_;
+    bool accessibilityRealizationReady_{};
+    std::optional<std::pair<std::uint64_t, std::wstring>> preparedCandidateGroupFocus_;
     bool awaitingSuccessfulOpenPaint_{};
     ULONGLONG nextOpenPaintRetryAt_{};
     std::wstring pendingContentRevealWidget_;

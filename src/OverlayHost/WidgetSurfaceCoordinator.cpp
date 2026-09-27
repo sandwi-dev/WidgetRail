@@ -24,6 +24,7 @@ constexpr wchar_t kWindowTitle[] = L"WidgetRail pinned surface";
 constexpr UINT kAccessibilityActionMessage = WM_APP + 0x316;
 constexpr UINT_PTR kBackgroundSurfaceAnimationTimer = 1;
 constexpr UINT_PTR kFocusRealizationTimer = 2;
+constexpr UINT_PTR kAccessibilityRealizationTimer = 3;
 constexpr UINT kBackgroundSurfaceAnimationTimerMilliseconds = 15;
 constexpr float kChromeHeightDip = surface_geometry::kPinnedChromeHeightDip;
 constexpr float kSideInsetDip = surface_geometry::kPinnedSideInsetDip;
@@ -2330,6 +2331,11 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
     case WM_ERASEBKGND:
         return 1;
     case WM_TIMER:
+        if (wParam == kAccessibilityRealizationTimer) {
+            KillTimer(window_, kAccessibilityRealizationTimer);
+            PumpAccessibilityRealization();
+            return 0;
+        }
         if (wParam == kFocusRealizationTimer) {
             KillTimer(window_, kFocusRealizationTimer);
             PumpFocusRealization();
@@ -2494,7 +2500,8 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
                 (void)freeScroll_.Bind(authority, focusedElementId_, resolved->scrollId, resolved->scrollAxis,
                     input::FreeScrollFocusPolicy::Preserve);
                 pendingAccessibilityRealization_ = request;
-                RequestPaint();
+                accessibilityRealizationReady_ = false;
+                SetTimer(window_, kAccessibilityRealizationTimer, 1, nullptr);
             } else if (resolved->kind == accessibility::ActionKind::Focus) {
                 if (!EnterControllerFocus() || GetFocus() != window_) continue;
                 TransitionPinnedFocus(resolved->nodeId);
@@ -2679,6 +2686,32 @@ bool WidgetSurfaceCoordinator::EnsureGraphicsResources() {
     return true;
 }
 
+void WidgetSurfaceCoordinator::PumpAccessibilityRealization() {
+    if (!pendingAccessibilityRealization_ || accessibilityRealizationReady_) return;
+    if (!pinned() || !renderer_ || !window_) { pendingAccessibilityRealization_.reset(); return; }
+    const auto& snapshot = SelectedSnapshot();
+    const auto request = *pendingAccessibilityRealization_;
+    if (!accessibility::ResolveActionRequest(request, admission_->widgetId, admission_->runtimeGeneration, snapshot)) {
+        pendingAccessibilityRealization_.reset(); return;
+    }
+    RECT client{};
+    if (!GetClientRect(window_, &client)) { pendingAccessibilityRealization_.reset(); return; }
+    const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+    const float width = static_cast<float>(client.right - client.left) / scale;
+    const float height = static_cast<float>(client.bottom - client.top) / scale;
+    auto options = RenderOptions(width, height, scale);
+    options.realizeElementId = request.nodeId;
+    options.suppressFocusedDescendantFollow = true;
+    const auto prepared = renderer_->PrepareCollections(snapshot, controllerFocused_ ? std::wstring_view{focusedElementId_} : std::wstring_view{},
+        ContentViewport(width, height, compactMediaPresentation(), placementSession_.has_value() || opacityPreviewOriginal_.has_value()), options);
+    if (prepared.status == CollectionPreparationStatus::Pending) {
+        SetTimer(window_, kAccessibilityRealizationTimer, 16, nullptr); return;
+    }
+    if (prepared.status == CollectionPreparationStatus::Failed) { pendingAccessibilityRealization_.reset(); return; }
+    accessibilityRealizationReady_ = true;
+    RequestPaint();
+}
+
 void WidgetSurfaceCoordinator::PumpFocusRealization() {
     auto& intent = sliderInteraction_.focusRealization();
     if (!pinned() || !controllerFocused_ || !renderer_ || !window_) { intent.Clear(); return; }
@@ -2695,13 +2728,12 @@ void WidgetSurfaceCoordinator::PumpFocusRealization() {
     auto options = RenderOptions(width, height, scale);
     const auto viewport = ContentViewport(width, height, compactMediaPresentation(),
         placementSession_.has_value() || opacityPreviewOriginal_.has_value());
-    const auto preparation = renderer_->PrepareCollections(snapshot, *target, viewport, options);
+    const auto preparation = renderer_->PrepareCollections(snapshot, *target, viewport, options, {}, true);
     if (preparation.status == CollectionPreparationStatus::Pending) {
         SetTimer(window_, kFocusRealizationTimer, 16, nullptr); return;
     }
     if (preparation.status == CollectionPreparationStatus::Failed) { intent.Clear(); return; }
-    const auto geometry = renderer_->PrepareFocusEntry(snapshot, *target, viewport, options);
-    if (const auto ready = intent.TakeReady(authority, focusedElementId_, geometry)) {
+    if (const auto ready = preparation.focusGeometry ? intent.TakeReady(authority, focusedElementId_, *preparation.focusGeometry) : std::nullopt) {
         TransitionPinnedFocus(*ready);
         RequestPaint();
     } else intent.Clear();
@@ -2850,7 +2882,7 @@ void WidgetSurfaceCoordinator::Paint() {
     if (pendingAccessibilityRealization_) {
         if (accessibility::ResolveActionRequest(*pendingAccessibilityRealization_, admission_->widgetId,
                 admission_->runtimeGeneration, selectedSnapshot)) {
-            options.realizeElementId = pendingAccessibilityRealization_->nodeId;
+            if (accessibilityRealizationReady_) options.realizeElementId = pendingAccessibilityRealization_->nodeId;
             options.suppressFocusedDescendantFollow = true;
         } else pendingAccessibilityRealization_.reset();
     }

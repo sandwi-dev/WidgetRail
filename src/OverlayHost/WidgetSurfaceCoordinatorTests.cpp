@@ -2082,9 +2082,14 @@ int main() {
             while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
                 TranslateMessage(&message); DispatchMessageW(&message);
             }
+            BOOL offscreen = TRUE;
+            const auto realizationDeadline = GetTickCount64() + 2000;
+            while (SUCCEEDED(targetItem->get_CurrentIsOffscreen(&offscreen)) && offscreen && GetTickCount64() < realizationDeadline) {
+                PumpPendingMessages();
+                Sleep(1);
+            }
             UpdateWindow(realization.window());
             const auto offset = realization.ScrollOffsetForTesting(L"pin.scroll");
-            BOOL offscreen = TRUE;
             Check(offset && *offset > 1000 && SUCCEEDED(targetItem->get_CurrentIsOffscreen(&offscreen)) && !offscreen,
                 "UIA realization passes through host queue and renderer to visible geometry");
             Check(realization.focusedElementId() == priorFocus && realization.TakeInputRequests().empty(),

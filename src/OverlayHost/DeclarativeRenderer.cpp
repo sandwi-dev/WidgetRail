@@ -6804,7 +6804,7 @@ void DeclarativeRenderer::CancelCollectionPreparation() noexcept {
 CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     const WidgetSnapshot& snapshot, const std::wstring_view focusedElementId,
     const Rect viewport, const DeclarativeRenderOptions& options,
-    const CollectionPreparationBudget budget) {
+    const CollectionPreparationBudget budget, const bool collectFocusGeometry) {
     const auto started = std::chrono::steady_clock::now();
     CollectionPreparationResult result;
     if (!FiniteRect(viewport) || viewport.width < 0 || viewport.height < 0 ||
@@ -6839,6 +6839,10 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     pass.preparationStarted = started;
     auto stagedScroll = scrollOffsets_;
     auto stagedClock = scrollStateAccessClock_;
+    auto stagedMotion = motionTimeline_;
+    pass.motionTimeline = &stagedMotion;
+    pass.options.animationTimestampMilliseconds = options.animationTimestampMilliseconds.value_or(GetTickCount64());
+    stagedMotion.BeginFrame(*pass.options.animationTimestampMilliseconds);
     pass.scrollState = &stagedScroll;
     pass.scrollAccessClock = &stagedClock;
     try {
@@ -6846,10 +6850,18 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
             options.suppressFocusedDescendantFollow
                 ? RenderPass::CollectionAnchorPolicy::ReconcileContentChanges
                 : RenderPass::CollectionAnchorPolicy::Reconcile);
+        if (collectFocusGeometry) {
+            pass.ResolvePresentationWithFocusFollow();
+            pass.CollectFocusGeometryTree(snapshot.root);
+        }
         const bool errors = std::ranges::any_of(pass.result.diagnostics,
             [](const auto& diagnostic) { return diagnostic.severity == RenderDiagnosticSeverity::Error; });
         result.status = !errors && pass.layout.valid()
             ? CollectionPreparationStatus::Ready : CollectionPreparationStatus::Failed;
+        if (collectFocusGeometry && result.status == CollectionPreparationStatus::Ready) {
+            pass.result.succeeded = true;
+            result.focusGeometry = std::make_shared<const RenderResult>(std::move(pass.result));
+        }
     } catch (const RenderPass::CollectionSlicePending&) {
         result.status = CollectionPreparationStatus::Pending;
     }

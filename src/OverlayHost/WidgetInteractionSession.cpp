@@ -653,6 +653,17 @@ FocusGroupEntryApplication WidgetInteractionSession::ConsumeFocusGroupEntryReque
     return {true, preview.target};
 }
 
+std::optional<std::wstring> WidgetInteractionSession::PreviewCandidateFocusGroup(
+    const WidgetInteractionAuthority& authority, const RenderResult& geometry) const {
+    if (!authority.semantics || authority.retainedRefresh) return std::nullopt;
+    const auto& snapshot = *authority.semantics;
+    if (!snapshot.focusGroupEntryRequest || !geometry.succeeded) return std::nullopt;
+    if (!FocusGroupEntryRequestPending(authority) && std::ranges::any_of(focusGroupEntryHighWater_, [&](const auto& entry) {
+            return SameFocusGroupEntryRuntime(entry, authority) && entry.requestId >= snapshot.focusGroupEntryRequest->requestId;
+        })) return std::nullopt;
+    return focusGroupMemory_.Resolve(authority.widgetId, snapshot, snapshot.focusGroupEntryRequest->groupId, geometry);
+}
+
 FocusGroupEntryPreview WidgetInteractionSession::PreviewFocusGroupEntryRequest(
     const WidgetInteractionAuthority& authority,
     const RenderResult& renderResult) const {

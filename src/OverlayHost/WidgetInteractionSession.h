@@ -489,6 +489,10 @@ public:
     [[nodiscard]] FocusGroupEntryPreview PreviewFocusGroupEntryRequest(
         const WidgetInteractionAuthority& authority,
         const RenderResult& renderResult) const;
+    // Read-only prediction for a validated candidate not yet session-admitted.
+    // Final request authority and geometry are still checked at consumption.
+    [[nodiscard]] std::optional<std::wstring> PreviewCandidateFocusGroup(
+        const WidgetInteractionAuthority&, const RenderResult&) const;
     [[nodiscard]] FocusGroupEntryApplication CommitPreparedFocusGroupEntryRequest(
         const WidgetInteractionAuthority& authority,
         const std::optional<std::wstring>& target);
