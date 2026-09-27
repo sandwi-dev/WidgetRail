@@ -799,6 +799,14 @@ void CheckRetainedTrayInvalidation() {
           "visible poster completion repaints content even while background advancement owns the wake");
     Check(!widgetrail::shell::RequiresImageReadyRepaint(false, true),
           "an independent background advance owns its background-only image-ready wake");
+    for (const bool backgroundAdvanced : {false, true}) {
+        Check(!widgetrail::shell::RequiresImageReadyRepaint(false, backgroundAdvanced, false, true),
+              "known offscreen artwork completion cannot repaint content with or without a compositor background");
+        Check(widgetrail::shell::RequiresImageReadyRepaint(false, backgroundAdvanced, true, true),
+              "known visible artwork completion always schedules content paint");
+        Check(widgetrail::shell::RequiresImageReadyRepaint(true, backgroundAdvanced, false, true),
+              "package icon wake remains independent of widget image demand");
+    }
     Check(widgetrail::shell::RequiresImageReadyRepaint(false, false) &&
               widgetrail::shell::RequiresImageReadyRepaint(true, false) &&
               widgetrail::shell::RequiresImageReadyRepaint(true, true),

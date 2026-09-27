@@ -168,8 +168,12 @@ struct RetainedTrayState final {
 [[nodiscard]] constexpr bool RequiresImageReadyRepaint(
     const bool currentTrayPackageIconCompleted,
     const bool compositorBackgroundAdvanced,
-    const bool visibleContentImageCompleted = false) noexcept {
-    return currentTrayPackageIconCompleted || visibleContentImageCompleted || !compositorBackgroundAdvanced;
+    const bool visibleContentImageCompleted = false,
+    const bool contentDemandKnown = false) noexcept {
+    // Once the renderer has published visibility, an adjacent/retired image
+    // has no content damage. Before that checkpoint keep the cold fallback.
+    return currentTrayPackageIconCompleted || visibleContentImageCompleted ||
+        (!contentDemandKnown && !compositorBackgroundAdvanced);
 }
 
 /// A color-keyed layered HWND cannot represent partially transparent pixels at

@@ -144,3 +144,33 @@ cache publication; transport tests verify independent output lifetime and idle
 retirement/readmission without poisoning. Cancellation tests cover late same-key completions, shared owners and a
 re-entrant stop callback. Renderer checks cover CPU eviction versus explicit
 invalidation, view replacement, hide/resume, and reclamation after scrolling.
+
+## Physical-candidate correction
+
+The first post-WIDGE-296 physical candidate used the new host with old installed
+community packages. It did not exercise the WIDGE-293 collection declarations in
+Playnite, Spotify or YouTube Music. Its rolling trace showed repeated exact-variant
+decode/eviction traffic; unmatched interaction samples do not establish an overall
+speedup or regression percentage. Evidence is preserved under
+`artifacts/native-resource-budgets/physical-comparison`.
+
+Adjacent prefetch now recognizes a retained GPU bitmap as satisfying demand even
+after its CPU copy is evicted. Optional requests also reserve entry-count headroom,
+including pending completions, rather than checking only bytes and pending slots.
+Visible requests retain priority. Once content visibility is published, offscreen
+image completions no longer request content paint merely because no compositor
+background advanced. Cold-state fallback and package-icon wakes remain intact.
+
+A regression fixture failed before the correction and passes afterward: three
+posters traverse the viewport, lose every CPU copy under pressure, and retain
+exactly three decodes through twelve further frames. Explicit invalidation still
+reloads all three. Entry-pressure tests cover ready and pending tiny images.
+The corrected gates pass 47,923 renderer checks, the remote-image suite and 49,464
+chrome checks. Widget validation passes Playnite 130, Spotify 82, and YouTube Music
+standalone 27 tests. New packages are Playnite 0.2.103, Spotify 0.3.79 and YouTube
+Music 0.3.25; physical comparisons must verify these selected installed versions.
+
+Existing quiet trace records now include adjacent GPU reuse/request counts,
+tracked/protected resource bytes and shared-pressure flags on evictions. These
+separate duplicate preparation from pressure-driven re-admission without adding
+per-image normal-log traffic. Live smoothness remains a physical-test result.

@@ -7379,6 +7379,67 @@ void PosterArtworkLoadsAtDisplaySizeUnderPressure(bool trusted) {
     }
 }
 
+void AdjacentArtworkReusesGpuAfterDecodedEviction() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d; ComPtr<IDWriteFactory> write; ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas; ComPtr<ID2D1RenderTarget> target;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "adjacent retention fixture resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.ReleaseAndGetAddressOf())));
+    ok(wic->CreateBitmap(200, 150, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf()));
+    ok(d2d->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.ReleaseAndGetAddressOf()));
+    std::atomic<unsigned> requests{};
+    RemoteImageCache cache({}, {}, [&](std::wstring_view, std::stop_token, const RemoteImageLimits&) {
+        ++requests;
+        RemoteDecodedImage image; image.width = image.height = 1; image.stride = 4;
+        image.premultipliedBgra = {0x10, 0x20, 0x30, 0xff};
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    });
+    auto snapshot = PosterAdmissionSnapshot(L"adjacent", L"horizontal");
+    snapshot.root.children.resize(3);
+    DeclarativeRenderer renderer(d2d.Get(), write.Get(), &cache);
+    DeclarativeRenderOptions options; options.sizeArtworkToDisplay = true;
+    options.suppressFocusedDescendantFollow = true;
+    const Rect viewport{0, 0, 200, 150};
+    const auto draw = [&] {
+        target->BeginDraw();
+        const auto result = renderer.Render(target.Get(), snapshot, snapshot.initialFocusId, viewport, options);
+        ok(target->EndDraw()); Check(result.succeeded, "adjacent retention frame succeeds");
+    };
+    const auto wait = [&](const std::wstring& key) {
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        while (cache.GetState(key) != RemoteImageState::Ready && std::chrono::steady_clock::now() < until)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        Check(cache.GetState(key) == RemoteImageState::Ready, "adjacent artwork completes");
+    };
+    draw();
+    for (const auto& poster : snapshot.root.children)
+        wait(RemoteImageCache::VariantKey(poster.children.front().imageSource, {128, 192}));
+    draw();
+    Check(renderer.PlanFocusedFreeScroll(snapshot, snapshot.initialFocusId,
+        declarative::ScrollAxis::Horizontal, 100, viewport, snapshot.root.id).has_value(), "scroll exposes prefetched poster");
+    draw();
+    Check(renderer.PlanFocusedFreeScroll(snapshot, snapshot.initialFocusId,
+        declarative::ScrollAxis::Horizontal, -100, viewport, snapshot.root.id).has_value(), "scroll returns poster to adjacent demand");
+    draw();
+    Check(renderer.GetImageBitmapCacheStats().entries == 3 && requests == 3,
+        "three posters have reusable GPU pixels after traversal");
+    const auto budget = cache.ResourceBudget();
+    const auto targetBytes = budget->Read().retentionTarget;
+    cache.ReleaseImageProtection(&renderer);
+    budget->SetRetentionTarget(0); cache.ReclaimIdleImages(); budget->SetRetentionTarget(targetBytes);
+    Check(cache.GetStats().readyEntries == 0, "pressure removes CPU copies without removing GPU copies");
+    for (int frame = 0; frame < 12; ++frame) draw();
+    Check(cache.GetStats().queuedOrLoading == 0 && cache.GetStats().readyEntries == 0 && requests == 3,
+        "adjacent GPU hits do not recreate evicted CPU copies on ordinary frames");
+    cache.Clear(); draw();
+    for (const auto& poster : snapshot.root.children)
+        wait(RemoteImageCache::VariantKey(poster.children.front().imageSource, {128, 192}));
+    Check(requests == 6, "explicit content invalidation still refreshes visible and adjacent artwork");
+}
+
 void ArtworkResizeKeepsReadyPixelsWithoutCrossingIdentity() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -9616,6 +9677,7 @@ int main(int argc, char** argv) {
     ResourceAliasesRetainBackingStorage();
     SurfaceDepthUsesBoundedSharedPainting();
     RetainedCompositionPixelsRespectInvalidation();
+    AdjacentArtworkReusesGpuAfterDecodedEviction();
     CompositionScrollRetention(1.0F, false, false);
     CompositionScrollRetention(1.25F, true, false);
     CompositionScrollRetention(1.5F, false, true);

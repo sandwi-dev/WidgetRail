@@ -2220,7 +2220,8 @@ private:
                     wParam != 0,
                     AdvanceCompositorBackground(GetTickCount64()),
                     declarativeRenderer_ && declarativeRenderer_->VisibleContentImageCompleted(
-                        static_cast<std::uint64_t>(lParam)))) {
+                        static_cast<std::uint64_t>(lParam)),
+                    declarativeRenderer_ && lastWidgetRenderResult_.succeeded)) {
                 if (wParam == 0 && SubmitRetainedWidgetPaint()) {
                     if (gScrollDiagnostics) gScrollDiagnostics->Record("invalidate", [](auto& out) { out << "reason=image-ready plan=retained"; });
                     return 0;

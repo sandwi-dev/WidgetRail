@@ -272,6 +272,46 @@ void VerifyRetiredArtworkDecodeCannotPublish() {
     }
 }
 
+void PrefetchReservesEntryHeadroom() {
+    using namespace widgetrail;
+    for (const unsigned pendingCount : {0U, 2U}) {
+        RemoteImageLimits limits;
+        limits.maximumEntries = limits.maximumReadyEntries = 8;
+        limits.maximumPendingEntries = 8;
+        limits.maximumDecodedBytes = 1024;
+        std::atomic<bool> release{};
+        RemoteImageCache cache(limits, {}, [&](std::wstring_view source, std::stop_token stop, const RemoteImageLimits&) {
+            while (source.ends_with(L"pending") && !release && !stop.stop_requested())
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            RemoteDecodedImage image;
+            image.width = image.height = 1; image.stride = 4;
+            image.premultipliedBgra = {0x10, 0x20, 0x30, 0xff};
+            return RemoteImageFetchResult{S_OK, std::move(image), {}};
+        });
+        for (unsigned i = 0; i < 6 - pendingCount; ++i) {
+            const auto key = L"https://example.test/" + std::to_wstring(i);
+            assert(cache.CanPrefetch(key));
+            assert(cache.Request(key) == RemoteImageRequestResult::Queued);
+            const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+            while (cache.GetState(key) != RemoteImageState::Ready && std::chrono::steady_clock::now() < until)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            assert(cache.GetState(key) == RemoteImageState::Ready);
+        }
+        for (unsigned i = 0; i < pendingCount; ++i) {
+            const auto key = L"https://example.test/" + std::to_wstring(i) + L"pending";
+            assert(cache.CanPrefetch(key));
+            assert(cache.Request(key) == RemoteImageRequestResult::Queued);
+        }
+        assert(!cache.CanPrefetch(L"https://example.test/optional"));
+        assert(cache.GetStats().evictions == 0);
+        int owner{};
+        cache.ProtectImages(&owner, {L"https://example.test/visible"});
+        assert(cache.CanPrefetch(L"https://example.test/visible"));
+        release = true;
+        cache.Shutdown();
+    }
+}
+
 void ResourceBudgetImageOwnership() {
     using namespace widgetrail;
     using namespace widgetrail::resources;
@@ -527,6 +567,7 @@ void DecoderTransportAndOutputAccounting() {
 }
 
 int main() {
+    PrefetchReservesEntryHeadroom();
     DecoderTransportAndOutputAccounting();
     RealizedDemandCancelsOnlyAfterLastOwnerAndRejectsStaleCompletion();
     RetiredArtworkDispatchDrainsSharedTransport();

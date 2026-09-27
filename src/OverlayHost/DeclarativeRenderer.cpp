@@ -3891,6 +3891,7 @@ struct DeclarativeRenderer::RenderPass final {
     }
     std::set<std::wstring> visibleImageKeys, realizedImageKeys;
     std::vector<const WidgetNode*> adjacentImages;
+    unsigned adjacentGpuHits{}, adjacentRequests{};
     std::set<std::wstring> visibleContentImageKeys;
     std::map<std::wstring, std::set<std::wstring>> visibleBackgroundImageKeys;
     void GatherVisibleImages(const WidgetNode& node) {
@@ -3960,13 +3961,21 @@ struct DeclarativeRenderer::RenderPass final {
         for (const auto* image : adjacentImages) {
             const auto size = CachedImageSize(*image);
             const auto key = ImageKey(*image, size);
-            if (visibleImageKeys.contains(key) || !owner->imageCache_->CanPrefetch(key)) continue;
+            // Decoded storage can be reclaimed independently from a reusable
+            // GPU copy. Prefetch must not refill that redundant CPU copy on
+            // every frame while an item remains just outside the viewport.
+            if (visibleImageKeys.contains(key)) continue;
+            if (owner->bitmaps_.contains(key)) { ++adjacentGpuHits; continue; }
+            if (!owner->imageCache_->CanPrefetch(key)) continue;
             const auto request = image->imageSource.empty()
                 ? owner->imageCache_->RequestTrustedArtwork(key,
                     {options.artworkWidgetId, options.artworkRuntimeGeneration, options.artworkPresentationGeneration}, size)
                 : owner->imageCache_->Request(image->imageSource, size);
             // Adjacent demand never occupies the entire shared pending queue.
-            if (request == RemoteImageRequestResult::Queued && ++queued == 8) break;
+            if (request == RemoteImageRequestResult::Queued) {
+                ++adjacentRequests;
+                if (++queued == 8) break;
+            }
         }
     }
 
@@ -7071,6 +7080,7 @@ RenderResult DeclarativeRenderer::Render(
     PublishImageProtection();
     if (scrollDiagnostics_) scrollDiagnostics_->Record("render", [&](auto& out) {
         const auto& timing = pass.result.timing;
+        const auto resources = resourceBudget_->Read();
         out << "instance=" << RemoteImageCache::OpaqueDiagnosticHash(snapshot.instanceId)
             << " seq=" << snapshot.sequence << " success=" << pass.result.succeeded
             << " work=" << diagnosticWork << " total-us=" << timing.totalMicroseconds
@@ -7084,6 +7094,8 @@ RenderResult DeclarativeRenderer::Render(
             << " paint-hits=" << timing.compositionPaintHits << " paint-misses=" << timing.compositionPaintMisses
             << " painted-bytes=" << timing.compositionPaintedBytes
             << " bitmap-bytes=" << bitmapBytes_ << " bitmap-entries=" << bitmaps_.size()
+            << " adjacent-gpu-hits=" << pass.adjacentGpuHits << " adjacent-requests=" << pass.adjacentRequests
+            << " resource-bytes=" << resources.liveBytes << " protected-resource-bytes=" << resources.protectedBytes
             << " free-scroll=" << options.suppressFocusedDescendantFollow
             << " scale=" << options.pixelScale << " sequence-changed=" << !timing.collectionAdmissionSummary.empty();
     });
@@ -7437,6 +7449,7 @@ bool DeclarativeRenderer::TrimBitmapCache(
         if (scrollDiagnostics_) scrollDiagnostics_->Record("bitmap-eviction", [&](auto& out) {
             out << "variant=" << RemoteImageCache::OpaqueDiagnosticHash(oldest->first)
                 << " reason=" << (bytePressure ? "bytes" : "count")
+                << " shared-pressure=" << sharedPressure
                 << " protected=" << ImageProtected(oldest->first)
                 << " bytes=" << oldest->second.bytes << " cache-bytes=" << bitmapBytes_;
         });
