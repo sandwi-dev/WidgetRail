@@ -947,7 +947,11 @@ HRESULT WidgetCompositionPresenter::ReconcileChildren(std::map<IDCompositionVisu
                 ++counters_.visualRemoves;
                 order.erase(existing);
             }
-            const auto hr = parent->AddVisual(child, i != 0, i ? next.children[i-1].Get() : nullptr);
+            // With no reference, TRUE inserts below every sibling. With a
+            // reference it inserts above that sibling. Both cases preserve
+            // our back-to-front order, including a new first child when later
+            // siblings are retained without issuing another AddVisual call.
+            const auto hr = parent->AddVisual(child, TRUE, i ? next.children[i-1].Get() : nullptr);
             if (FAILED(hr)) { visualChildren_.clear(); return hr; }
             ++counters_.visualAdds;
             order.insert(order.begin() + i, next.children[i]);
