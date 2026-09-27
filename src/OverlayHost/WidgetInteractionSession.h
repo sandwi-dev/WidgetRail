@@ -504,6 +504,7 @@ public:
     // Final request authority and geometry are still checked at consumption.
     [[nodiscard]] std::optional<std::wstring> PreviewCandidateFocusGroup(
         const WidgetInteractionAuthority&, const RenderResult&) const;
+    [[nodiscard]] bool CandidateFocusGroupEntryRequested(const WidgetInteractionAuthority&) const;
     [[nodiscard]] FocusGroupEntryApplication CommitPreparedFocusGroupEntryRequest(
         const WidgetInteractionAuthority& authority,
         const std::optional<std::wstring>& target);

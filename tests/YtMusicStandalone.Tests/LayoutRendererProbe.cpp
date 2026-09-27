@@ -30,6 +30,27 @@ int Run(int argc, wchar_t** argv) {
         for (const auto size : {widgetrail::declarative::Size{980, 700}, widgetrail::declarative::Size{620, 400}}) {
             widgetrail::DeclarativeRenderOptions options;
             options.responsiveViewport = size;
+            if (fixture == L"library") {
+                for (const auto scale : {1.0F,1.25F,2.0F}) {
+                auto preparationOptions = options;
+                preparationOptions.pixelScale = scale;
+                const widgetrail::declarative::Rect preparationViewport{1,1,size.width-2,size.width > 900 ? 643.8F : size.height-2};
+                preparationOptions.responsiveViewport = {size.width, preparationViewport.height+2};
+                for (const auto* focus : {L"item.0", L"item.5", L"item.6", L"item.20"}) {
+                    widgetrail::DeclarativeRenderer prepared{nullptr, factory.Get(), nullptr};
+                    bool ready{}; unsigned measurements{};
+                    for (unsigned slice = 0; slice < 128; ++slice) {
+                        const auto step = prepared.PrepareCollections(*snapshot, focus, preparationViewport, preparationOptions, {1,1}, true);
+                        measurements += static_cast<unsigned>(step.newMeasurements);
+                        Require(step.status != widgetrail::CollectionPreparationStatus::Failed, "production list preflight failed");
+                        if (step.status == widgetrail::CollectionPreparationStatus::Ready) { ready = true; break; }
+                    }
+                    std::wcout << L"SECTION-PREFLIGHT focus=" << focus << L" width=" << size.width << L" scale=" << scale
+                        << L" measurements=" << measurements << L" ready=" << ready << L'\n';
+                    Require(ready, "remembered list focus must finish preparation without D-pad or painting");
+                }
+                }
+            }
             const auto result = renderer.Render(nullptr, *snapshot, fixture == L"search" ? L"search" : L"item.0", {0, 0, size.width, size.height}, options);
             if (fixture == L"search") {
                 const auto* field = widgetrail::input::FindNodeInInputScope(*snapshot, L"search", snapshot->activeInputScopeId);

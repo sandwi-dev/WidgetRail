@@ -50,6 +50,8 @@ HRESULT WidgetCompositionPresenter::Upload(Raster &raster, const WidgetCompositi
     const auto pixels = node.solid ? D2D1::SizeU(1, 1) : node.bitmap->GetPixelSize();
     if (!pixels.width || !pixels.height)
         return E_INVALIDARG;
+    const bool placementChanged = !raster.visual || !Same(raster.node.bounds, node.bounds) ||
+        raster.pixels.width != pixels.width || raster.pixels.height != pixels.height;
     if (!raster.visual) {
         Ptr<IDCompositionVisual2> visual;
         auto hr = device_->CreateVisual(visual.GetAddressOf());
@@ -99,7 +101,7 @@ HRESULT WidgetCompositionPresenter::Upload(Raster &raster, const WidgetCompositi
     auto nextNode = node;
     auto surfacePin = surface.Protect();
     auto bitmapPin = node.bitmap.Protect();
-    if (SUCCEEDED(hr)) hr = raster.visual->SetContent(surface.Get());
+    if (SUCCEEDED(hr) && surface.Get() != raster.surface.Get()) hr = raster.visual->SetContent(surface.Get());
     if (SUCCEEDED(hr)) {
         // Preserve ownership when a later placement setter fails after SetContent.
         raster.surfacePin = std::move(surfacePin);
@@ -109,13 +111,13 @@ HRESULT WidgetCompositionPresenter::Upload(Raster &raster, const WidgetCompositi
         raster.pixels = pixels;
     }
     const auto scale = scene_->scale;
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(hr) && placementChanged)
         hr = raster.visual->SetOffsetX(node.bounds.x * scale);
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(hr) && placementChanged)
         hr = raster.visual->SetOffsetY(node.bounds.y * scale);
     const D2D_MATRIX_3X2_F matrix{node.bounds.width * scale / pixels.width,   0, 0,
                                   node.bounds.height * scale / pixels.height, 0, 0};
-    if (SUCCEEDED(hr))
+    if (SUCCEEDED(hr) && placementChanged)
         hr = static_cast<IDCompositionVisual2 *>(raster.visual.Get())->SetTransform(matrix);
     return hr;
 }
@@ -538,7 +540,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         group.paintOrder = nodePaintOrder;
         if (reopening || scene_->reducedMotion)
             group.previous = {};
-        const auto clipped = group.root->SetClip(Box(node.clip, scene_->scale));
+        const auto clipped = boundsChanged ? group.root->SetClip(Box(node.clip, scene_->scale)) : S_OK;
         if (FAILED(clipped))
             return clipped;
         if (node.kind == WidgetCompositionKind::IndeterminateRotation) {
@@ -624,6 +626,10 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
     const auto hr = Rebuild(above);
     if (FAILED(hr))
         return hr;
+    if (attached_ && parent_.Get() == parent && above_.Get() == above) {
+        ++counters_.sceneCommits;
+        return S_OK;
+    }
     if (attached_ && parent_) {
         const auto detached = parent_->RemoveVisual(root_.Get());
         if (FAILED(detached))
@@ -631,6 +637,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         attached_ = false;
     }
     parent_ = parent;
+    above_ = above;
     const auto attached = parent_->AddVisual(root_.Get(), FALSE, above);
     if (SUCCEEDED(attached)) {
         attached_ = true;
@@ -788,10 +795,6 @@ HRESULT WidgetCompositionPresenter::ConfigureFocusFade(Group &group, const Raste
         if (SUCCEEDED(hr)) hr = group.focusBlend->SetCoefficient2(before.Get());
         if (SUCCEEDED(hr)) hr = group.focusBlend->SetCoefficient3(after.Get());
     }
-    if (SUCCEEDED(hr)) hr = group.root->RemoveAllVisuals();
-    if (SUCCEEDED(hr)) hr = group.incoming->RemoveAllVisuals();
-    if (SUCCEEDED(hr)) hr = group.incomingClip->RemoveAllVisuals();
-    if (SUCCEEDED(hr)) hr = group.outgoingClip->RemoveAllVisuals();
     if (SUCCEEDED(hr)) hr = group.incoming->SetContent(atlas.Get());
     if (SUCCEEDED(hr)) {
         group.focusAtlas = std::move(atlas);
@@ -800,14 +803,11 @@ HRESULT WidgetCompositionPresenter::ConfigureFocusFade(Group &group, const Raste
     }
     if (SUCCEEDED(hr)) hr = group.incoming->SetEffect(group.focusBlend.Get());
     if (SUCCEEDED(hr)) hr = group.outgoingClip->SetClip(D2D1::RectF(0, 0, static_cast<float>(width), static_cast<float>(height)));
-    if (SUCCEEDED(hr)) hr = group.outgoingClip->AddVisual(group.incoming.Get(), FALSE, nullptr);
-    if (SUCCEEDED(hr)) hr = group.incomingClip->AddVisual(group.outgoingClip.Get(), FALSE, nullptr);
     // Place the clipped result, not the graph's untransformed source input.
     const auto scale = scene_->scale;
     const D2D_MATRIX_3X2_F matrix{idle.node.bounds.width * scale / idle.pixels.width, 0, 0,
         idle.node.bounds.height * scale / idle.pixels.height, idle.node.bounds.x * scale, idle.node.bounds.y * scale};
     if (SUCCEEDED(hr)) hr = static_cast<IDCompositionVisual2 *>(group.incomingClip.Get())->SetTransform(matrix);
-    if (SUCCEEDED(hr)) hr = group.root->AddVisual(group.incomingClip.Get(), FALSE, nullptr);
     return hr;
 }
 
@@ -843,34 +843,30 @@ void WidgetCompositionPresenter::DrawFocusFade(ID2D1RenderTarget *target, const 
 }
 
 HRESULT WidgetCompositionPresenter::Rebuild(IDCompositionVisual2 *) {
-    auto hr = root_->RemoveAllVisuals();
-    if (FAILED(hr))
-        return hr;
+    auto hr = S_OK;
+    std::map<IDCompositionVisual*, VisualChildren> desired;
+    const auto ensure = [&](IDCompositionVisual* parent) -> VisualChildren& {
+        auto& entry = desired[parent]; entry.parent = parent; return entry;
+    };
+    const auto append = [&](IDCompositionVisual* parent, IDCompositionVisual* child) {
+        ensure(parent).children.emplace_back(child); return S_OK;
+    };
+    ensure(root_.Get());
     for (auto &[_, group] : groups_) {
-        if (group.node.kind == WidgetCompositionKind::FocusSurface) continue;
-        hr = group.root->RemoveAllVisuals();
-        if (SUCCEEDED(hr))
-            hr = group.incomingClip->RemoveAllVisuals();
-        if (SUCCEEDED(hr))
-            hr = group.outgoingClip->RemoveAllVisuals();
-        if (SUCCEEDED(hr))
-            hr = group.incoming->RemoveAllVisuals();
-        if (SUCCEEDED(hr))
-            hr = group.outgoing->RemoveAllVisuals();
-        if (SUCCEEDED(hr) && group.previous.visual)
-            hr = group.outgoing->AddVisual(group.previous.visual.Get(), TRUE, nullptr);
-        if (SUCCEEDED(hr))
-            hr = group.outgoingClip->AddVisual(group.outgoing.Get(), FALSE, nullptr);
-        if (SUCCEEDED(hr))
-            hr = group.root->AddVisual(group.outgoingClip.Get(), FALSE, nullptr);
-        if (FAILED(hr))
-            return hr;
+        for (auto* visual : {group.root.Get(), group.incomingClip.Get(), group.outgoingClip.Get(),
+                             group.incoming.Get(), group.outgoing.Get()}) ensure(visual);
+        if (group.node.kind == WidgetCompositionKind::FocusSurface) {
+            append(group.outgoingClip.Get(), group.incoming.Get());
+            append(group.incomingClip.Get(), group.outgoingClip.Get());
+            append(group.root.Get(), group.incomingClip.Get());
+            continue;
+        }
+        if (group.previous.visual) append(group.outgoing.Get(), group.previous.visual.Get());
+        append(group.outgoingClip.Get(), group.outgoing.Get());
+        append(group.root.Get(), group.outgoingClip.Get());
         if (!group.closing) {
-            hr = group.incomingClip->AddVisual(group.incoming.Get(), FALSE, nullptr);
-            if (SUCCEEDED(hr))
-                hr = group.root->AddVisual(group.incomingClip.Get(), TRUE, group.outgoingClip.Get());
-            if (FAILED(hr))
-                return hr;
+            append(group.incomingClip.Get(), group.incoming.Get());
+            append(group.root.Get(), group.incomingClip.Get());
         } else {
             hr = Animate(group.outgoing.Get(), group.outgoingClip.Get(), group.exit,
                          group.previous.node.bounds);
@@ -879,14 +875,6 @@ HRESULT WidgetCompositionPresenter::Rebuild(IDCompositionVisual2 *) {
         }
     }
     std::set<std::wstring> usedRasters;
-    std::map<IDCompositionVisual *, IDCompositionVisual *> lastChild;
-    const auto append = [&](IDCompositionVisual *parent, IDCompositionVisual *child) {
-        auto *&previous = lastChild[parent];
-        const auto result = parent->AddVisual(child, previous != nullptr, previous);
-        if (SUCCEEDED(result))
-            previous = child;
-        return result;
-    };
     for (const auto &node : scene_->nodes) {
         auto *parent = node.parent.empty() ? root_.Get() : groups_.at(node.parent).incoming.Get();
         if (node.kind == WidgetCompositionKind::Raster) {
@@ -917,7 +905,55 @@ HRESULT WidgetCompositionPresenter::Rebuild(IDCompositionVisual2 *) {
         if (FAILED(hr))
             return hr;
     }
+    hr = ReconcileChildren(std::move(desired));
+    if (FAILED(hr)) return hr;
     std::erase_if(rasters_, [&](const auto &entry) { return !usedRasters.contains(entry.first); });
+    return S_OK;
+}
+
+HRESULT WidgetCompositionPresenter::ReconcileChildren(std::map<IDCompositionVisual*, VisualChildren> desired) {
+    // Detach removals/reparented children first, retaining COM leases until the
+    // entire transaction succeeds. Stable ordered edges issue no DComp calls.
+    for (auto& [parent, old] : visualChildren_) {
+        const auto next = desired.find(parent);
+        for (auto it = old.children.begin(); it != old.children.end();) {
+            const bool keep = next != desired.end() && std::ranges::any_of(next->second.children,
+                [&](const auto& child) { return child.Get() == it->Get(); });
+            if (keep) { ++it; continue; }
+            const auto hr = parent->RemoveVisual(it->Get());
+            if (FAILED(hr)) { visualChildren_.clear(); return hr; }
+            ++counters_.visualRemoves;
+            it = old.children.erase(it);
+        }
+    }
+    for (auto& [parent, next] : desired) {
+        if (!visualChildren_.contains(parent)) {
+            // Newly owned visuals, or recovery after a partial API failure.
+            const auto hr = parent->RemoveAllVisuals();
+            if (FAILED(hr)) { visualChildren_.clear(); return hr; }
+            ++counters_.visualResets;
+            visualChildren_.emplace(parent, VisualChildren{next.parent, {}});
+        }
+    }
+    for (auto& [parent, next] : desired) {
+        auto& order = visualChildren_.at(parent).children;
+        for (std::size_t i = 0; i < next.children.size(); ++i) {
+            auto* child = next.children[i].Get();
+            if (i < order.size() && order[i].Get() == child) continue;
+            const auto existing = std::find_if(order.begin(), order.end(), [&](const auto& v) { return v.Get() == child; });
+            if (existing != order.end()) {
+                const auto hr = parent->RemoveVisual(child);
+                if (FAILED(hr)) { visualChildren_.clear(); return hr; }
+                ++counters_.visualRemoves;
+                order.erase(existing);
+            }
+            const auto hr = parent->AddVisual(child, i != 0, i ? next.children[i-1].Get() : nullptr);
+            if (FAILED(hr)) { visualChildren_.clear(); return hr; }
+            ++counters_.visualAdds;
+            order.insert(order.begin() + i, next.children[i]);
+        }
+    }
+    visualChildren_ = std::move(desired);
     return S_OK;
 }
 
@@ -947,6 +983,7 @@ HRESULT WidgetCompositionPresenter::Advance() {
         it = groups_.erase(it);
         changed = true;
     }
+    if (changed) visualChildren_.clear(); // Advance retired edges outside scene application.
     return changed ? device_->Commit() : S_FALSE;
 }
 
@@ -1012,9 +1049,11 @@ void WidgetCompositionPresenter::Clear() noexcept {
         parent_->RemoveVisual(root_.Get());
     attached_ = false;
     groups_.clear();
+    visualChildren_.clear();
     rasters_.clear();
     root_.Reset();
     parent_.Reset();
+    above_.Reset();
     scene_.reset();
 }
 } // namespace widgetrail

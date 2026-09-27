@@ -101,6 +101,11 @@ position fallback. It must not silently carry an unrelated item's anchor forward
 
 ## Preparation and publication
 
+For the subsequent frame-budgeted scheduler, speculative scroll checkpoints,
+ready-layout reuse and section-entry ordering, see
+[native frame scheduling](native-frame-scheduling.md). The contracts below still
+govern source identity and atomic publication.
+
 Ordinary scrolling separates visible/protected readiness from optional buffered
 readiness. A covered committed window may move while a bounded preparation slice
 measures adjacent rows. Pending optional work is retained for the next cadence
@@ -169,8 +174,9 @@ keep their generic layout. Public author guidance is in
 bounded by new item measurements and elapsed time. Protected/visible demand precedes
 optional buffered items inside each collection. An indivisible item can overrun the
 time budget; at least one new item is allowed to make progress. Pending is distinct
-from failure. Only measurement caches survive a slice: committed scroll, geometry,
-focus presentation and pixels remain unchanged. Source/context proofs revalidate
+from failure. Measurements and their matching speculative scroll/anchor checkpoint
+survive a slice; committed scroll, geometry, focus presentation and pixels remain
+unchanged. Source/context proofs revalidate
 reuse on changed requests; explicit cancellation and widget retirement release it.
 The host calls this before beginning paint and retains the prior admitted scene
 until ready. Session completions can opt into a preparation hold: validated
@@ -192,8 +198,10 @@ new input, scrolling, lifecycle changes and recycled IDs cancel obsolete intents
 Already measured targets keep their ordinary path. Preparation caches retain
 bounded intermediate measurements through old-scene repaints and multi-pass reveal.
 
-`PlanPreparedFreeScroll` tentatively applies one sample, prepares newly demanded
-items, and restores offset/paint-plan state on Pending/Failed. Later cadence samples
+`PlanPreparedFreeScroll` tentatively applies one sample and checks required
+coverage. The open host defers newly demanded preparation until after submission;
+synchronous callers retain the sliced preparation path. Pending/Failed restores
+offset/paint-plan state. Later cadence samples
 retry from the committed viewport instead of accumulating movement debt. Already
 measured buffered demand bypasses preparation. Provider boundary loading remains
 distinct from preparation. Renderer tests compare sliced movement with synchronous

@@ -116,6 +116,7 @@ struct DeclarativeRenderTiming final {
     std::uint64_t solidBrushCreates{}, gradientBrushCreates{}, gradientStopCreates{}, paintResourceHits{};
     std::size_t deferredViewportItems{};
     std::size_t intrinsicMeasures{};
+    bool reusedCollectionPreparation{};
 };
 
 // Opt-in developer data from the same prepared/presented nodes used to paint.
@@ -382,6 +383,8 @@ struct FocusedFreeScrollPlanDiagnostic final {
 };
 
 struct DeclarativeRenderOptions final {
+    // Host scheduling policy, never a widget declaration.
+    bool deferScrollPreparation{};
     bool compositorWidgetTransitions{};
     bool suppressWidgetCompositionMotion{};
     animation::Options widgetAnimations;
@@ -449,6 +452,7 @@ struct DeclarativeRenderOptions final {
     bool disableRetainedLayoutForTesting{};
     bool disablePaintResourceReuseForTesting{};
     bool disablePreparedStyleReuseForTesting{};
+    bool disablePreparedCollectionFrameForTesting{};
     /// Injects a terminal diagnostic after target-backed drawing so tests can
     /// prove rejected frames do not commit renderer-owned presentation state.
     bool failAfterNodeDrawForTesting{};
@@ -599,6 +603,11 @@ public:
         float deltaDip, declarative::Rect viewport, std::wstring_view exactScrollId,
         const DeclarativeRenderOptions&, FocusedFreeScrollPlanDiagnostic* = nullptr,
         CollectionPreparationBudget = {});
+
+    [[nodiscard]] bool HasPendingScrollPreparation() const noexcept { return pendingScrollPreparation_.has_value(); }
+    void CancelScrollPreparation() noexcept { pendingScrollPreparation_.reset(); }
+    CollectionPreparationResult PreparePendingScroll(const WidgetSnapshot&, std::wstring_view focusedElementId,
+        CollectionPreparationBudget);
 
     /// Reuses current committed geometry for artwork or animation paints.
     /// Omitted damage covers the widget; pending scroll layout is preserved.
@@ -758,11 +767,13 @@ private:
         }
     };
     std::unordered_map<std::wstring, CollectionRenderState> collections_;
+    struct PreparedCollectionFrame;
     struct CollectionPreparation final {
         std::unordered_map<std::wstring, CollectionRenderState> collections;
         std::wstring instance, scope, focus, realization;
         long long sequence{};
         bool ready{};
+        std::shared_ptr<PreparedCollectionFrame> frame;
         [[nodiscard]] bool Matches(const WidgetSnapshot& snapshot) const noexcept {
             return instance == snapshot.instanceId && scope == snapshot.activeInputScopeId && sequence == snapshot.sequence;
         }
@@ -770,6 +781,14 @@ private:
     // One published source and one incoming source may prepare concurrently.
     // LRU-bounded speculative measurements never own scroll or scene authority.
     std::vector<CollectionPreparation> collectionPreparations_;
+    struct ScrollPreparation {
+        std::wstring instance, scope, focus, stateKey;
+        long long sequence{};
+        float offset{};
+        declarative::Rect viewport;
+        DeclarativeRenderOptions options;
+    };
+    std::optional<ScrollPreparation> pendingScrollPreparation_;
     struct IncrementalNodeState final {
         NativeRenderStyle baseStyle;
         NativeStyleContext styleContext;
@@ -843,6 +862,24 @@ private:
         std::wstring anchorKey;
         float anchorPosition{};
         bool hasAnchorPosition{};
+    };
+    struct PreparedCollectionFrame final {
+        IncrementalLayoutCache cache;
+        std::unordered_map<std::wstring, ScrollStateEntry> inputScroll, outputScroll;
+        std::uint64_t outputScrollClock{};
+        std::map<std::wstring, std::wstring> selections;
+        [[nodiscard]] bool SameInputScroll(const decltype(inputScroll)& current) const {
+            if (inputScroll.size() != current.size()) return false;
+            for (const auto& [key, a] : inputScroll) {
+                const auto found = current.find(key);
+                if (found == current.end()) return false;
+                const auto& b = found->second;
+                if (a.offset != b.offset || a.collectionResetGeneration != b.collectionResetGeneration ||
+                    a.anchorKey != b.anchorKey || a.anchorPosition != b.anchorPosition || a.hasAnchorPosition != b.hasAnchorPosition)
+                    return false;
+            }
+            return true;
+        }
     };
     struct BitmapCacheEntry final {
         resources::UiResource<ID2D1Bitmap> bitmap;
