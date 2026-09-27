@@ -1,4 +1,5 @@
 #include "DeclarativeRenderer.h"
+#include "WidgetRenderMotionPolicy.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetSurfaceFocus.h"
 #include "NativeStyle.h"
@@ -36,6 +37,10 @@ int Run(int argc, wchar_t** argv) {
                 preparationOptions.pixelScale = scale;
                 const widgetrail::declarative::Rect preparationViewport{1,1,size.width-2,size.width > 900 ? 643.8F : size.height-2};
                 preparationOptions.responsiveViewport = {size.width, preparationViewport.height+2};
+                widgetrail::PlatformAppearance appearance;
+                appearance.widgetAnimationSpeed = 1.25;
+                appearance.sectionAnimation = L"paging";
+                widgetrail::ApplyWidgetRenderMotionPolicy(preparationOptions, &appearance, *snapshot, true);
                 for (const auto* focus : {L"item.0", L"item.5", L"item.6", L"item.20"}) {
                     widgetrail::DeclarativeRenderer prepared{nullptr, factory.Get(), nullptr};
                     bool ready{}; unsigned measurements{};
@@ -48,6 +53,15 @@ int Run(int argc, wchar_t** argv) {
                     std::wcout << L"SECTION-PREFLIGHT focus=" << focus << L" width=" << size.width << L" scale=" << scale
                         << L" measurements=" << measurements << L" ready=" << ready << L'\n';
                     Require(ready, "remembered list focus must finish preparation without D-pad or painting");
+                    auto paintOptions = options;
+                    paintOptions.pixelScale = scale;
+                    paintOptions.responsiveViewport = preparationOptions.responsiveViewport;
+                    widgetrail::ApplyWidgetRenderMotionPolicy(paintOptions, &appearance, *snapshot, true);
+                    // Null-target renders inspect layout only in this probe;
+                    // WIC pixel equivalence is covered by the renderer suite.
+                    const auto adopted = prepared.Render(nullptr, *snapshot, focus, preparationViewport, paintOptions);
+                    Require(adopted.timing.reusedCollectionPreparation,
+                        "host motion policy must allow production-list preparation reuse");
                 }
                 }
             }

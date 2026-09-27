@@ -34,6 +34,7 @@
 #include "ScrollEvidenceProbe.h"
 #include "ScrollDiagnostics.h"
 #include "PreparationFrameBudget.h"
+#include "WidgetRenderMotionPolicy.h"
 #include <source_location>
 #include "LocalWidgetPackageImport.h"
 #include "MediaSessionManager.h"
@@ -7333,7 +7334,7 @@ private:
                 if (geometry) {
                     const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
                         (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
-                    auto options = WidgetRenderOptions(descriptor.id, &descriptor, *geometry, scale);
+                    auto options = WidgetRenderOptions(descriptor.id, &descriptor, snapshot, *geometry, scale);
                     const widgetrail::input::WidgetInteractionAuthority authority{
                         descriptor.id, &snapshot, descriptor.runtimeGeneration, descriptor.presentationGeneration, false};
                     const bool groupEntry = WidgetOwnsInputFocus(descriptor.id) &&
@@ -7410,7 +7411,7 @@ private:
         if (!geometry) { pendingAccessibilityRealization_.reset(); return false; }
         const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
             (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
-        auto options = WidgetRenderOptions(widget, descriptor, *geometry, scale);
+        auto options = WidgetRenderOptions(widget, descriptor, *snapshot, *geometry, scale);
         options.suppressFocusedDescendantFollow = true;
         options.realizeElementId = request.nodeId;
         const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, interactionSession_.focusedElementId(),
@@ -7442,7 +7443,7 @@ private:
         if (!geometry) { intent.Clear(); return false; }
         const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
             (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
-        auto options = WidgetRenderOptions(widget, sessions_.FindDescriptor(widget), *geometry, scale);
+        auto options = WidgetRenderOptions(widget, sessions_.FindDescriptor(widget), *snapshot, *geometry, scale);
         const widgetrail::declarative::Rect viewport{
             geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight};
         const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, *target, viewport, options, budget, true);
@@ -11782,7 +11783,7 @@ private:
                 *interactionSession_.freeScrollBinding()}
             : std::nullopt;
         widgetrail::FocusedFreeScrollPlanDiagnostic planDiagnostic;
-        auto preparationOptions = WidgetRenderOptions(widget, descriptor, *geometry, metrics->physicalPixelsPerDip);
+        auto preparationOptions = WidgetRenderOptions(widget, descriptor, *snapshot, *geometry, metrics->physicalPixelsPerDip);
         preparationOptions.deferScrollPreparation = true;
         const auto plan = widgetrail::input::SurfaceInteractionTransactions::PlanFreeScroll(
             interactionSession_.freeScrollState(), *declarativeRenderer_,
@@ -18829,8 +18830,12 @@ private:
 
     [[nodiscard]] widgetrail::DeclarativeRenderOptions WidgetRenderOptions(
         const std::wstring_view widgetId, const widgetrail::WidgetDescriptor* descriptor,
-        const widgetrail::OverlaySurfaceGeometry& geometry, const float physicalPixelsPerDip) const {
+        const widgetrail::WidgetSnapshot& snapshot, const widgetrail::OverlaySurfaceGeometry& geometry,
+        const float physicalPixelsPerDip, const bool compositorContent = true) const {
         widgetrail::DeclarativeRenderOptions options;
+        widgetrail::ApplyWidgetRenderMotionPolicy(options,
+            appearanceState_.current() ? &*appearanceState_.current() : nullptr, snapshot,
+            compositionSurface_.available() && compositorContent);
         options.deferPublication = true;
         options.pixelScale = physicalPixelsPerDip;
         options.responsiveViewport = {geometry.panelWidth, geometry.panelHeight};
@@ -19015,7 +19020,8 @@ private:
                     ? CurrentAccessibilityPolicy()
                     : widgetrail::NativeAccessibilityPolicy{};
                 const auto presentationTime = GetTickCount64();
-                auto options = WidgetRenderOptions(renderedWidget, descriptor, *geometry, physicalPixelsPerDip);
+                auto options = WidgetRenderOptions(renderedWidget, descriptor, *snapshot, *geometry, physicalPixelsPerDip,
+                    layer == CompositionPaintLayer::Content && !inertRetainedSnapshot);
                 if (windowPreviewInstance_ != snapshot->instanceId) {
                     ResetWindowPreviews();
                     windowPreviewInstance_ = snapshot->instanceId;
@@ -19032,19 +19038,8 @@ private:
                 options.animationTimestampMilliseconds = presentationTime;
                 options.compositorBackgroundAvailable =
                     compositionSurface_.available() && !inertRetainedSnapshot;
-                options.compositorWidgetTransitions = layer == CompositionPaintLayer::Content &&
-                    compositionSurface_.available() && !inertRetainedSnapshot && !snapshot->embeddedMediaSession;
                 options.suppressWidgetCompositionMotion =
                     widgetContextMenu_.has_value() || interactionSession_.selectPopup().has_value();
-                if (const auto& appearance = appearanceState_.current()) {
-                    options.widgetAnimations.focus = widgetrail::animation::ParseFocusStyle(appearance->focusAnimation);
-                    options.widgetAnimations.section = widgetrail::animation::ParseSectionStyle(appearance->sectionAnimation);
-                    options.widgetAnimations.speed = appearance->widgetAnimationSpeed;
-                    options.widgetAnimations.modal = appearance->animateWidgetModals
-                        ? (appearance->modalAnimation == L"zoom" ? widgetrail::animation::ModalStyle::Zoom
-                                                                : widgetrail::animation::ModalStyle::Lift)
-                        : widgetrail::animation::ModalStyle::None;
-                }
                 options.retainedCompositorBackground = lastWidgetRenderResult_.compositorBackground;
                 const bool matchingFreeScrollBinding =
                     interactionSession_.freeScrollBinding() &&

@@ -111,3 +111,33 @@ pass. Desktop pixel checks pass for sections, dialogs, popups, focus fades and
 loading indicators. The section/popup probe now pumps HWND startup messages before
 starting its measured interval, matching the spinner probe; it still pauses the
 host thread throughout that interval. The Release host/runtime bundle builds.
+
+## Post-candidate corrections
+
+The physical follow-up confirmed YouTube section switching works, but exposed
+two preparation integration defects. DWM's `qpcVBlank` was ahead of the caller's
+clock in all 300 live probe samples, despite a valid 240 Hz refresh period. The
+budget now normalizes past or future references onto the same cadence, rather
+than treating future timestamps as missing timing. The bounded fallback for
+missing/invalid periods also honors cost admission and aged-work promotion.
+Microsoft documents `qpcVBlank` as the QPC value before vertical blank, without
+requiring it to precede the caller's sample:
+[DWM_TIMING_INFO](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ns-dwmapi-dwm_timing_info).
+This remains a scheduling estimate, not a guaranteed frame deadline.
+
+The host now resolves compositor eligibility and global motion settings through
+`ApplyWidgetRenderMotionPolicy` for both preparation and painting, using the
+actual candidate snapshot. Previously only painting received those settings,
+so the exact preparation-context check rejected ready frames. Embedded media
+and non-compositor/inert surfaces keep their conservative path. The renderer's
+reuse checks remain unchanged; settings, viewport, source, focus and scroll-policy
+changes still reject stale preparation.
+
+The correction passes 57,318 renderer checks and 50,410 chrome checks, including
+past/future cadence equivalence at several refresh rates, deadline margins,
+fallback starvation prevention and host-policy adoption/invalidation. The
+production-styled YouTube fixture checks reuse at first/sixth/seventh/later items,
+compact/preferred viewports and 100/125/200% scaling. A repeat live timing probe
+sent none of its 300 valid future samples through the fixed fallback. These
+results establish the corrections, not elimination of all scrolling stutter;
+physical performance acceptance remains separate.
