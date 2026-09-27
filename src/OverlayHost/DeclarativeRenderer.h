@@ -739,6 +739,11 @@ private:
         float columnWidth{}, columnGap{};
         double leadingExtent{}, trailingExtent{};
         std::uint64_t resetGeneration{};
+        [[nodiscard]] std::pair<float, float> AdmittedScrollRange(const float viewportExtent) const noexcept {
+            const auto distance = geometry.Extent() - viewportExtent;
+            return {static_cast<float>(leadingExtent),
+                static_cast<float>(leadingExtent + (distance > 0 ? distance : 0))};
+        }
     };
     std::unordered_map<std::wstring, CollectionRenderState> collections_;
     std::unordered_map<std::wstring, CollectionRenderState> preparingCollections_;

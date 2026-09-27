@@ -8,37 +8,20 @@ renderer or Skia integration benchmark has been performed.
 
 ## Implementation progress
 
-WIDGE-293â€“298 integrate only into `codex/native-ui-integration`; `main` stays untouched.
-WIDGE-293 now has protocol-v59 list/grid declarations, logical geometry, renderer
-realization/navigation, UIA reveal without focus transfer, and immutable SDK item
-reuse. Playnite Browse, regular YouTube Music rows, Spotify lists/playlist grid,
-and Games and Apps library/running grids use the contract. Playnite also reuses
-unchanged immutable poster declarations. Public collection guidance is updated. Styled
-fixtures match eager visible geometry/content pixels at three widths and 100%/125%
-scale, excluding estimated scrollbar thumbs. Native/managed gates cover margins,
-pixel-phase stability, anchors, resets and renderer failure rollback.
+WIDGE-293–298 integrate only into `codex/native-ui-integration`; `main` stays untouched.
+WIDGE-293 has protocol-v59 list/grid declarations, logical navigation, UIA realization,
+immutable item reuse, bounded preparation and host-acknowledged frame publication.
+Playnite, YouTube Music, Spotify and Games and Apps use the applicable contracts;
+public author guidance is updated. Same-snapshot placement now reuses covered
+collection geometry, with exact constraint and logical provider-boundary checks.
 
-A bounded preparation API preserves committed geometry with explicit Ready/Pending/
-Failed states. Incoming main/pinned snapshots now prepare in host timer slices
-before session admission; old input/UIA authority remains current meanwhile.
-Renderer, session retry/lifecycle and production pinned-owner tests pass.
-Directional offscreen focus waits for prepared geometry; scrolling rolls back pending
-distance. Incoming focus-group targets are prepared before admission, and UIA reveals
-use bounded timer slices without moving focus. Renderer progress/rollback and pinned
-host tests pass. Broader cursor/lifecycle and scheduling validation remain.
-Draw-failure hardening gates interaction and preserves unseen accessibility
-reveals. Renderer scene state now waits for an exact host frame acknowledgement;
-rejected frames retain committed layout, scroll, motion and raster leases. Main
-group requests and collection-focus/page settlement follow successful submission.
-Renderer (29,787), interaction (411), pinned-owner (409) and host-contract (517)
-checks pass, with a coherent Release host/runtime build. Main-host injected
-submission/lifecycle coverage and remaining collection acceptance are still open.
-The [fixed-viewport profile](native-collection-profile.md) shows substantially less
-focus work, mixed scroll improvements and no consistent memory reduction. Playnite
-still has material preparation cost; scheduling/local-preparation work remains.
-WIDGE-294â€“298 have not
-started. No live-overlay performance improvement is claimed. Details:
-[collection lifecycle](native-collection-lifecycle.md).
+The renderer suite passes 38,103 checks and pinned-owner tests pass 409. Seven
+production fixtures match a full-layout reference over stateful focus/scroll/UIA
+sequences at three widths and two scales. The [fixed-viewport profile](native-collection-profile.md)
+records reduced focus work, mixed total timing and no consistent memory reduction.
+Remaining WIDGE-293 work includes the host lifecycle/publication audit and scheduling
+acceptance. WIDGE-294–298 have not started. No live-overlay FPS improvement is claimed.
+Details and verification limits: [collection lifecycle](native-collection-lifecycle.md).
 
 ## Decision
 

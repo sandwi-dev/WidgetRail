@@ -202,6 +202,28 @@ still rebuilds the small outer layout on collection updates/scroll; localized
 preparation and scheduling must follow before declaring the delivery complete.
 Existing generic Scroll behavior remains available.
 
+### Retained placement
+
+An exact committed snapshot can reuse collection layout for a paint/focus/scroll
+plan when its realized buffer covers every required and protected item. The host
+projects offsets and refreshes current paint/interaction state without rebuilding
+the outer Taffy tree or remeasuring those items. Changed source/constraints,
+unrealized demand, or offsets requiring anchor reconciliation take the full path.
+Eligibility checks the exact final containing block, including unrounded width
+and height; dimensions that merely round to the same pixels are not equivalent
+measurement contexts. A failed reuse attempt still permits a ready preparation
+batch to supply the full pass's measurements.
+
+This follows the placement-versus-remeasurement distinction in Compose's
+[`LazyGridMeasureResult`](https://github.com/androidx/androidx/blob/a095da93f8e98dea8748ceed79ea8427aade245f/compose/foundation/foundation/src/commonMain/kotlin/androidx/compose/foundation/lazy/grid/LazyGridMeasureResult.kt).
+The implementation uses WidgetRail's own geometry, scope and publication model.
+
+Provider window limits come from the entire admitted logical collection, not the
+currently realized rectangles. Retaining extra overscan must not change scroll
+admission or permit movement into unloaded virtual space. Planning and reuse
+share the logical scroll range and unrounded viewport extent; fractional display
+reveal overshoots are reconciled through measurement before placement.
+
 ## Verification
 
 `CollectionLayoutStateTests` is registered in CMake and the canonical native
@@ -238,6 +260,11 @@ counts establish reduced native work for these fixtures, not latency guarantees.
 The [fixed-viewport profile](native-collection-profile.md) records routed focus and
 scroll CPU distributions, slice counts and memory for increasing retained windows.
 It exposes remaining preparation overhead; it does not establish live frame rate.
+`ScrollWorkloadProbe --compare-retained` compares stateful focus, small/large
+scrolls, reversal and UIA reveal with a full-layout reference. Seven production
+fixtures pass 20 frames at each of three widths and two scales, including scrollbar
+pixels. Native tests additionally verify non-aligned provider prefixes, loaded-edge
+clamping, exact constraint invalidation, pressed state and rejected-frame rollback.
 The renderer measures items under a real containing block, shares immutable
 measurement dependencies between staged frames, and projects raw coordinates
 before pixel snapping. Final snapping normalizes float noise at 1/1024 physical

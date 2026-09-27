@@ -75,14 +75,15 @@ void UseEagerCollections(WidgetNode& node) {
     node.children = {std::move(grid)};
 }
 #include "CollectionWorkloadProfile.inl"
+#include "CollectionPlacementComparison.inl"
 }
 
 int wmain(int argc, wchar_t** argv) {
     try {
         const bool profile = argc == 5 && std::wstring_view(argv[2]) == L"--profile" &&
             (std::wstring_view(argv[4]) == L"realized" || std::wstring_view(argv[4]) == L"eager");
-        Require(profile || argc == 2 || (argc == 3 && (std::wstring_view(argv[2]) == L"--cadence" || std::wstring_view(argv[2]) == L"--admission" || std::wstring_view(argv[2]) == L"--eager" || std::wstring_view(argv[2]) == L"--compare")),
-            "Usage: ScrollWorkloadProbe <renderer-fixture.json> [--cadence|--admission|--eager|--compare|--profile COUNT realized|eager]");
+        Require(profile || argc == 2 || (argc == 3 && (std::wstring_view(argv[2]) == L"--cadence" || std::wstring_view(argv[2]) == L"--admission" || std::wstring_view(argv[2]) == L"--eager" || std::wstring_view(argv[2]) == L"--compare" || std::wstring_view(argv[2]) == L"--compare-retained")),
+            "Usage: ScrollWorkloadProbe <renderer-fixture.json> [--cadence|--admission|--eager|--compare|--compare-retained|--profile COUNT realized|eager]");
         std::ifstream file(std::filesystem::path(argv[1]), std::ios::binary);
         Require(static_cast<bool>(file), "Fixture missing");
         std::string payload{std::istreambuf_iterator<char>(file), {}};
@@ -114,6 +115,10 @@ int wmain(int argc, wchar_t** argv) {
         while (images.GetState(key) != RemoteImageState::Ready && std::chrono::steady_clock::now() < deadline)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         Require(images.GetState(key) == RemoteImageState::Ready, "Fixture artwork unavailable");
+        if (argc == 3 && std::wstring_view(argv[2]) == L"--compare-retained") {
+            CompareCollectionPlacement(*snapshot, d2d.Get(), write.Get(), images, target.Get(), canvas.Get());
+            return 0;
+        }
         if (profile) {
             ProfileCollection(*snapshot, std::stoul(argv[3]), std::wstring_view(argv[4]) == L"eager",
                 d2d.Get(), write.Get(), images, target.Get());

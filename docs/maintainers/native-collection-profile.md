@@ -61,6 +61,27 @@ Earlier `profile-*` logs used unconditional focus preflight and omitted retained
 focus planning; those are superseded by `routed-profile-*` logs. They must not be
 used as the production-routing comparison.
 
+## Retained-placement follow-up
+
+Placement reuse removes repeated outer layout when the committed measured window
+covers the new demand. Eligibility includes exact containing-block constraints and
+the admitted logical scroll range. Stateful comparisons caught and corrected both
+constraint drift and provider limits that previously depended on realized rows.
+
+The same largest-window workload after this change (`retained-range-profile-*`):
+
+| Fixture | Focus preparation p95, before → after | Focus CPU p95, before → after | Scroll CPU p95, before → after |
+|---|---:|---:|---:|
+| Spotify 50 | 2.02 → 0.44 ms | 8.22 → 8.87 ms | 6.94 → 5.98 ms |
+| Games and Apps 64 | 4.23 → 1.41 ms | 11.75 → 12.08 ms | 7.76 → 8.60 ms |
+| Playnite 150 | 11.61 → 1.16 ms | 29.32 → 27.79 ms | 14.39 → 12.36 ms |
+
+These sequential single-run samples show substantially less layout preparation,
+but not a uniform end-to-end win. Playnite's focus prepared-node p95 drops from
+1,301 to 489; its frame p95 is still 22.52 ms in this software-target workload.
+Painting/finalization and aggregate retention remain separate improvement areas.
+Do not attribute small differences across runs to one cause without more evidence.
+
 ## Reproduce
 
 Set `WRAIL_COLLECTION_LAYOUT_OUTPUT` while running the Spotify/Games and Apps test
@@ -77,3 +98,8 @@ Choose a count no larger than the exported item window. `--compare` independentl
 checks visible geometry/content pixels against eager rendering at three widths
 and two scales, excluding estimated scrollbar thumbs. A profile is not a
 replacement for those correctness checks or the cursor lifecycle tests.
+
+`--compare-retained` is the stateful full-layout comparison for placement reuse;
+unlike the eager comparison, both sides share the same logical/estimated window
+and compare all pixels, including scrollbar thumbs. It also asserts that reuse
+actually occurred, rather than passing by falling back on every frame.

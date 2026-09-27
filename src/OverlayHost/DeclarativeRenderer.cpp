@@ -1300,10 +1300,15 @@ struct DeclarativeRenderer::RenderPass final {
                 followAttempt.repeatedOffsetState;
             if (stableOrRepeated) break;
             presentationMatchesLayout = false;
-            BuildLayout(
-                false,
-                true,
-                CollectionAnchorPolicy::PreserveFocusFollowOffsets);
+            if (CollectionPlacementIsCovered()) {
+                ProjectScrollOffsets(true);
+                SynchronizeScrollState();
+            } else {
+                BuildLayout(
+                    false,
+                    true,
+                    CollectionAnchorPolicy::PreserveFocusFollowOffsets);
+            }
         }
         if (options.suppressFocusedDescendantFollow) {
             presentation.clear();
@@ -6041,7 +6046,20 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
         float maximumOffset = box->maximumScrollOffset;
         // Sequential cursors cannot seek into spacer-only ranges. Keep a real
         // boundary item visible so the existing edge demand can load more.
-        if (candidate.virtualCollectionWindow && cache->collections.contains(candidate.id)) {
+        if (candidate.virtualCollectionWindow && candidate.collectionLayout) {
+            const auto collection = collections_.find(stateKey);
+            if (collection == collections_.end() || collection->second.geometry.Size() != candidate.children.size())
+                return reject(FocusedFreeScrollPlanDisposition::MissingCheckpoint);
+            // Loaded provider data and realized visuals have different lifetimes.
+            // Limit movement by the complete logical window, not whichever item
+            // rectangles happened to survive the previous viewport's overscan.
+            const auto& state = collection->second;
+            const float extent = axis == declarative::ScrollAxis::Vertical
+                ? box->unscrolledContentBox.height : box->unscrolledContentBox.width;
+            const auto range = state.AdmittedScrollRange(extent);
+            minimumOffset = std::clamp(range.first, 0.0F, maximumOffset);
+            maximumOffset = std::clamp(range.second, minimumOffset, maximumOffset);
+        } else if (candidate.virtualCollectionWindow && cache->collections.contains(candidate.id)) {
             const auto& collection = cache->collections.at(candidate.id);
             float first = std::numeric_limits<float>::max();
             float last = std::numeric_limits<float>::lowest();
@@ -6408,7 +6426,7 @@ RenderResult DeclarativeRenderer::Render(
         pass.scrollState = &*stagedScrollOffsets;
         pass.scrollAccessClock = &stagedScrollClock;
     }
-    const bool pendingMatches = !hasCollections &&
+    const bool pendingMatches =
         preparationOptionsMatch() && pendingIncrementalPlan_ &&
         pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster &&
         incrementalLayoutCache_ &&
@@ -6416,7 +6434,21 @@ RenderResult DeclarativeRenderer::Render(
         pendingIncrementalPlan_->baseSequence == incrementalLayoutCache_->sequence &&
         pendingIncrementalPlan_->sequence == snapshot.sequence &&
         SameRect(incrementalLayoutCache_->viewport, viewport);
-    if (pendingMatches) {
+    bool retainedCollections{};
+    if (hasCollections && pendingMatches && incrementalLayoutCache_->sequence == snapshot.sequence &&
+        (pendingIncrementalPlan_->work == IncrementalPresentationWork::PaintOnly ||
+         pendingIncrementalPlan_->work == IncrementalPresentationWork::ScrollOnly) &&
+        incrementalLayoutCache_->options.artworkAuthorityId == options.artworkAuthorityId &&
+        incrementalLayoutCache_->options.artworkRuntimeGeneration == options.artworkRuntimeGeneration &&
+        incrementalLayoutCache_->options.packageContentDigest == options.packageContentDigest) {
+        pass.layout = incrementalLayoutCache_->layout;
+        pass.textMeasurements = incrementalLayoutCache_->textMeasurements;
+        pass.textMeasurementQueries = incrementalLayoutCache_->textMeasurementQueries;
+        retainedCollections = pass.PrepareRetainedCollectionLayout();
+    }
+    if (retainedCollections) {
+        pass.SynchronizeScrollState();
+    } else if (pendingMatches && !hasCollections) {
         pass.layout = incrementalLayoutCache_->layout;
         pass.textMeasurements = incrementalLayoutCache_->textMeasurements;
         pass.textMeasurementQueries = incrementalLayoutCache_->textMeasurementQueries;

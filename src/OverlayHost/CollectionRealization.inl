@@ -42,6 +42,89 @@ CollectionRenderState& CollectionState(const WidgetNode& node) {
     return found->second;
 }
 
+// Placement may reuse a committed measure result only while its realized
+// window covers every required/protected item. Crossing that window goes back
+// through measurement; estimated geometry never substitutes for an item layout.
+bool CollectionPlacementIsCovered() const {
+    if (collectionNodes.empty()) return false;
+    for (const auto& [id, node] : collectionNodes) {
+        const auto* box = layout.Find(NarrowStableId(id));
+        const auto found = collections.find(ScrollStateKey(id));
+        if (!box || found == collections.end()) return false;
+        const auto& state = found->second;
+        if (!state.contextRevision || state.geometry.Size() != node->children.size() ||
+            state.resetGeneration != node->collectionResetGeneration.value_or(0)) return false;
+        // The outer correction pass can slightly change the final containing
+        // block. Do not reuse measurements made against its earlier estimate,
+        // even if both dimensions round to the same displayed pixel.
+        const auto width = std::max(0.0F, box->unscrolledContentBox.width);
+        const auto height = std::max(0.0F, box->unscrolledContentBox.height);
+        const auto columnWidth = state.context.horizontal ? width :
+            std::max(0.0F, (width - static_cast<float>(state.geometry.Columns() - 1) * state.columnGap) /
+                static_cast<float>(state.geometry.Columns()));
+        if (state.context.width != columnWidth || state.context.height != height) return false;
+        const auto scroll = ScrollState().find(ScrollStateKey(id));
+        const auto offset = scroll == ScrollState().end() ? box->scrollOffset : scroll->second.offset;
+        const auto available = state.context.horizontal ? width : height;
+        const auto range = state.AdmittedScrollRange(available);
+        // Focus/UIA reveal uses displayed bounds and can request a fractional
+        // overshoot at an estimated provider edge. Measurement must reconcile
+        // that request before placement, just as for a new realization window.
+        if (offset < range.first - .001F || offset > range.second + .001F) return false;
+        std::vector<std::wstring> protectedKeys;
+        for (const auto& item : node->children) {
+            if (item.id == focusedId || item.id == options.realizeElementId ||
+                (node->collectionNavigation && item.id == node->collectionNavigation->targetFocusId))
+                protectedKeys.push_back(item.collectionItemKey);
+        }
+        const auto demand = state.geometry.Plan(offset - state.leadingExtent,
+            available, 1, protectedKeys, node->children.size());
+        const auto ready = [&](const std::size_t index) {
+            if (index >= node->children.size() ||
+                std::ranges::find(state.realized, index) == state.realized.end()) return false;
+            const auto& item = node->children[index];
+            const auto cached = state.items.find(item.collectionItemKey);
+            return cached != state.items.end() && cached->second.measuredContext == state.contextRevision &&
+                !cached->second.layout.boxes.empty() && layout.Find(NarrowStableId(item.id));
+        };
+        for (auto index = demand.bufferedBegin; index < demand.bufferedEnd; ++index)
+            if (!ready(index)) return false;
+        if (!std::ranges::all_of(demand.protectedItems, ready)) return false;
+    }
+    return true;
+}
+
+bool PrepareRetainedCollectionLayout() {
+    // The caller has already proved an unchanged admitted snapshot, viewport
+    // and measurement options. Copy only committed collection state, never a
+    // speculative measurement batch from another frame.
+    VisitScrollNodes(snapshot->root, [&](const WidgetNode& node) {
+        if (!node.collectionLayout || !layout.Find(NarrowStableId(node.id))) return;
+        const auto key = ScrollStateKey(node.id);
+        if (const auto prior = owner->collections_.find(key); prior != owner->collections_.end())
+            collections.emplace(key, prior->second);
+        collectionNodes.emplace(node.id, &node);
+    });
+    if (!CollectionPlacementIsCovered()) {
+        // A full pass must still be allowed to adopt a ready preparation batch.
+        // Do not strand committed-only entries ahead of CollectionState's warm merge.
+        collections.clear();
+        collectionNodes.clear();
+        return false;
+    }
+    for (const auto& [id, node] : collectionNodes) {
+        auto& state = collections.at(ScrollStateKey(id));
+        for (const auto& item : node->children)
+            if (item.id == focusedId) state.lastFocusedKey = item.collectionItemKey;
+    }
+    ProjectScrollOffsets(true);
+    PrepareAgainstCurrentLayout();
+    retainedLayoutPhase = 1;
+    AttachCollectionLayouts(layout);
+    retainedLayoutPhase = -1;
+    return true;
+}
+
 void PrepareCollectionItem(const WidgetNode& item, CollectionItemLayout& cached,
     const std::string& parentId, const CollectionRenderState& state,
     const std::wstring_view scope, const std::optional<NativeColor>& background) {

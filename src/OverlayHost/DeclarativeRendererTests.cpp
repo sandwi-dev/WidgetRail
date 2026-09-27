@@ -7772,6 +7772,133 @@ void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
         "external live surfaces preserve direct rendering and stationary placement");
 }
 
+void RetainedCollectionPlacementPreservesGeometryAndPixels() {
+    using namespace widgetrail;
+    for (const bool grid : {false, true}) for (const bool horizontal : {false, true})
+        for (const float scale : {1.0F, 1.25F}) for (const bool providerWindow : {false, true}) {
+        if (grid && horizontal) continue;
+        MotionRasterFixture actualFixture, referenceFixture;
+        auto& actual = *actualFixture.renderer;
+        auto& reference = *referenceFixture.renderer;
+        WidgetSnapshot snapshot;
+        snapshot.instanceId = L"retained.collection"; snapshot.sequence = 1;
+        snapshot.activeInputScopeId = L"page";
+        snapshot.root = Node(L"page", L"stack"); snapshot.root.inputScopeId = L"page";
+        snapshot.root.baseStyle = {{L"background", Color(L"#112233")}, {L"gap", Length(8)}};
+        auto heading = Node(L"heading", L"text"); heading.text = L"Collection";
+        auto scroll = Node(L"items", L"scroll"); scroll.scrollAxis = horizontal ? L"horizontal" : L"vertical";
+        scroll.showScrollbar = false; scroll.collectionAnchorKey = L"key.0";
+        if (providerWindow) {
+            scroll.collectionStartIndex = 13;
+            scroll.virtualCollectionWindow = VirtualCollectionWindow{1, VirtualCollectionWindowChange::Replace,
+                13, 1000, true, true, 72};
+        }
+        scroll.collectionLayout = WidgetNode::CollectionLayout{grid, 72,
+            grid ? std::optional<double>{130} : std::nullopt, 3};
+        if (!grid) scroll.collectionLayout->maximumColumns.reset();
+        scroll.baseStyle = {{L"flex-grow", Number(1)}, {L"min-height", Length(0)},
+            {L"gap", Length(6)}, {L"padding", LengthList(L"9.2px")}};
+        for (unsigned i = 0; i < 80; ++i) {
+            auto item = FixedButton((L"item." + std::to_wstring(i)).c_str(), 58);
+            item.collectionItemKey = L"key." + std::to_wstring(i);
+            item.baseStyle[L"margin"] = LengthList(L"3px");
+            item.baseStyle[L"background"] = Color(L"#223344");
+            item.baseStyle[L"width"] = horizontal ? Length(118) : Length(100, L"%");
+            item.focusedStyle = {{L"background", Color(L"#556677")}, {L"scale", Number(1.02)}};
+            item.pressedStyle = {{L"background", Color(L"#778899")}};
+            scroll.children.push_back(std::move(item));
+        }
+        snapshot.root.children = {heading, scroll};
+        DeclarativeRenderOptions options;
+        options.pixelScale = scale; options.accessibility.reducedMotion = true; options.collectAccessibility = true;
+        Rect bounds{.4F, .8F, 580, 240};
+        const auto pixels = [](const MotionRasterFixture& fixture) {
+            std::vector<BYTE> bytes(1280 * 800 * 4);
+            Check(SUCCEEDED(fixture.bitmap->CopyPixels(nullptr, 1280 * 4, static_cast<UINT>(bytes.size()), bytes.data())),
+                "retained collection pixel read");
+            return bytes;
+        };
+        const auto compare = [&](const RenderResult& result, const RenderResult& expected) {
+            Check(result.logicalCollections.at(L"items").itemIdentities == expected.logicalCollections.at(L"items").itemIdentities &&
+                result.realizableFocusIds == expected.realizableFocusIds, "retained placement preserves logical navigation authority");
+            for (const auto& [id, rect] : result.elementRects) {
+                const auto match = expected.elementRects.find(id);
+                if (match == expected.elementRects.end()) continue; // retained overscan may keep extra invisible items
+                if (std::abs(rect.x - match->second.x) > .01F || std::abs(rect.y - match->second.y) > .01F)
+                    std::wcerr << L"RETAINED-COLLECTION id=" << id << L" grid=" << grid << L" horizontal=" << horizontal
+                        << L" scale=" << scale << L" offset=" << result.scrollOffsets.at(L"items")
+                        << L" reference-offset=" << expected.scrollOffsets.at(L"items")
+                        << L" max=" << result.scrollViewports.at(L"items").maximumOffset
+                        << L" reference-max=" << expected.scrollViewports.at(L"items").maximumOffset << L'\n';
+                Near(rect.x, match->second.x, "retained collection x");
+                Near(rect.y, match->second.y, "retained collection y");
+                Near(rect.width, match->second.width, "retained collection width");
+                Near(rect.height, match->second.height, "retained collection height");
+            }
+            Check(pixels(actualFixture) == pixels(referenceFixture), "retained collection pixels match full layout exactly");
+        };
+        (void)actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        (void)referenceFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(actual.PlanFocusUpdate(snapshot, L"item.0", L"item.1", bounds).has_value(), "collection focus has a committed plan");
+        const auto focused = actualFixture.Draw(snapshot, L"item.1", bounds, options);
+        const auto fullFocus = referenceFixture.Draw(snapshot, L"item.1", bounds, options);
+        compare(focused, fullFocus);
+        // A cold outer correction can change the final containing block. Its
+        // next frame may settle that measurement context; warm geometry must
+        // then admit focus-only placement without any item/outer layout work.
+        Check(actual.PlanFocusUpdate(snapshot, L"item.1", L"item.0", bounds).has_value(), "warm collection focus plan");
+        const auto warmFocus = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(warmFocus.fullLayoutBuildCount == 0 && warmFocus.timing.intrinsicMeasures == 0,
+            "settled in-window focus requires placement and painting without outer or item layout");
+        compare(warmFocus, referenceFixture.Draw(snapshot, L"item.0", bounds, options));
+        Check(actual.PlanFocusUpdate(snapshot, L"item.0", L"item.1", bounds).has_value(), "return focus plan");
+        compare(actualFixture.Draw(snapshot, L"item.1", bounds, options),
+            referenceFixture.Draw(snapshot, L"item.1", bounds, options));
+        options.suppressFocusedDescendantFollow = true;
+        const auto axis = horizontal ? declarative::ScrollAxis::Horizontal : declarative::ScrollAxis::Vertical;
+        for (const float delta : {.4F, .4F, 900.0F, 1'000'000.0F, -800.0F}) {
+            Check(actual.PlanFocusedFreeScroll(snapshot, L"item.1", axis, delta, bounds, L"items").has_value() &&
+                reference.PlanFocusedFreeScroll(snapshot, L"item.1", axis, delta, bounds, L"items").has_value(), "collection scroll plan");
+            // Force the comparison through a complete layout at the same requested offset.
+            reference.CancelPresentationUpdatePlan();
+            const auto shifted = actualFixture.Draw(snapshot, L"item.1", bounds, options);
+            const auto full = referenceFixture.Draw(snapshot, L"item.1", bounds, options);
+            if (delta < 1 && delta > 0)
+                Check(shifted.fullLayoutBuildCount == 0 && shifted.timing.intrinsicMeasures == 0,
+                    "sub-row scrolling reuses covered item measurements");
+            else Check(shifted.fullLayoutBuildCount > 0, "crossing realization boundary rebuilds the item window");
+            compare(shifted, full);
+        }
+        options.suppressFocusedDescendantFollow = false;
+        (void)actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        (void)referenceFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(actual.PlanFocusUpdate(snapshot, L"item.0", L"item.1", bounds).has_value(), "failed retained candidate has focus plan");
+        options.deferPublication = true;
+        const auto unsubmitted = actualFixture.Draw(snapshot, L"item.1", bounds, options);
+        actual.RejectFramePublication();
+        Check(!actual.CommitFramePublication(unsubmitted.publicationId), "rejected placement cannot commit later");
+        options.deferPublication = false;
+        Check(actual.PlanRetainedPaint(snapshot).has_value(), "rejection retains the prior committed checkpoint");
+        compare(actualFixture.Draw(snapshot, L"item.0", bounds, options),
+            referenceFixture.Draw(snapshot, L"item.0", bounds, options));
+        options.pressedElementId = L"item.0";
+        Check(actual.PlanRetainedPaint(snapshot).has_value(), "pressed state keeps exact geometry authority");
+        compare(actualFixture.Draw(snapshot, L"item.0", bounds, options),
+            referenceFixture.Draw(snapshot, L"item.0", bounds, options));
+        ++snapshot.sequence;
+        snapshot.root.children[1].children[0].text = L"Updated title";
+        Check(!actual.PlanRetainedPaint(snapshot), "changed collection source cannot inherit a placement-only plan");
+        const auto changed = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(changed.fullLayoutBuildCount > 0, "changed source follows measurement path");
+        compare(changed, referenceFixture.Draw(snapshot, L"item.0", bounds, options));
+        Check(actual.PlanRetainedPaint(snapshot).has_value(), "scale test starts from retained plan");
+        options.pixelScale = scale == 1 ? 1.25F : 1.0F;
+        const auto scaled = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(scaled.fullLayoutBuildCount > 0, "display scale changes invalidate placement reuse");
+        compare(scaled, referenceFixture.Draw(snapshot, L"item.0", bounds, options));
+    }
+}
+
 void CollectionRealizationMatchesEagerGeometry() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -9136,6 +9263,7 @@ int main(int argc, char** argv) {
     RetainedPosterPaintPreservesArtwork();
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
     CollectionRealizationMatchesEagerGeometry();
+    RetainedCollectionPlacementPreservesGeometryAndPixels();
     SurfaceDepthUsesBoundedSharedPainting();
     RetainedCompositionPixelsRespectInvalidation();
     CompositionScrollRetention(1.0F, false, false);
