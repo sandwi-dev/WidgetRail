@@ -1702,6 +1702,7 @@ WidgetNode ParseNode(const JsonObject& source) {
             throw winrt::hresult_invalid_argument(L"Collection descriptor limit exceeded.");
         for (const auto& child : node.children) {
             if ((child.kind != L"button" && child.kind != L"actionSurface") ||
+                child.isSelect || child.isTextEntry ||
                 child.collectionItemKey.empty() || !keys.insert(child.collectionItemKey).second ||
                 (!child.visibleWhen.empty() && child.visibleWhen != L"always"))
                 throw winrt::hresult_invalid_argument(L"Collections require direct, always-present keyed buttons or action surfaces.");

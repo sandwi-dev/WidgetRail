@@ -7741,6 +7741,178 @@ void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
         "external live surfaces preserve direct rendering and stationary placement");
 }
 
+void CollectionRealizationMatchesEagerGeometry() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "collection test graphics resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    for (const int content : {0, 1, 2}) for (const bool grid : {false, true})
+        for (const bool horizontal : {false, true}) for (const float scale : {1.0F, 1.25F}) {
+        if (grid && horizontal) continue;
+        const UINT width = static_cast<UINT>(600 * scale), height = static_cast<UINT>(240 * scale);
+        ComPtr<IWICBitmap> bitmap;
+        ComPtr<ID2D1RenderTarget> target;
+        ok(wic->CreateBitmap(width, height, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, bitmap.GetAddressOf()));
+        ok(d2d->CreateWicBitmapRenderTarget(bitmap.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
+        target->SetDpi(96 * scale, 96 * scale);
+        WidgetSnapshot snapshot;
+        snapshot.instanceId = L"lazy.collection"; snapshot.sequence = 1; snapshot.protocolVersion = 59;
+        snapshot.root = Node(L"items", L"scroll"); snapshot.activeInputScopeId = L"items";
+        snapshot.root.scrollAxis = horizontal ? L"horizontal" : L"vertical"; snapshot.root.showScrollbar = false;
+        snapshot.root.collectionAnchorKey = L"key.0";
+        snapshot.root.collectionResetGeneration = 1;
+        snapshot.root.collectionLayout = WidgetNode::CollectionLayout{grid, 52,
+            grid ? std::optional<double>{160} : std::nullopt, std::nullopt};
+        snapshot.root.baseStyle = {{L"padding", LengthList(L"12px")}, {L"gap", LengthList(L"8px")},
+            {L"background", Color(L"#161616")}};
+        for (int index = 0; index < 128; ++index) {
+            auto item = Node((L"item." + std::to_wstring(index)).c_str(), L"button");
+            item.collectionItemKey = L"key." + std::to_wstring(index);
+            item.text = L"Item " + std::to_wstring(index); item.actionId = L"open";
+            item.baseStyle = {{L"height", Length(44 + index % 3 * 8)}, {L"flex-shrink", Number(0)},
+                {L"padding", LengthList(L"6px")}, {L"font-size", Length(17)},
+                {L"background", Color(L"#242424")}, {L"color", Color(L"#f0f0f0")}};
+            if (content != 0) {
+                item.kind = L"actionSurface"; item.actionSurfaceOrientation = L"vertical";
+                item.baseStyle.erase(L"height");
+                item.accessibilityLabel = item.text;
+                item.text.clear();
+                auto body = Node((item.id + L".body").c_str(), L"stack");
+                body.baseStyle = {{L"width", Length(100, L"%")}, {L"padding", LengthList(L"5.2px")}};
+                auto copy = Node((item.id + L".copy").c_str(), L"text");
+                copy.text = index % 2 ? L"Short item description." :
+                    L"A longer content-sized row with multiple words that wrap inside the available column width.";
+                copy.baseStyle = {{L"width", Length(100, L"%")}, {L"font-size", Length(17)}};
+                body.children.push_back(copy);
+                item.children.push_back(body);
+                if (content == 2) {
+                    item.actionSurfacePresentation = L"poster";
+                    item.baseStyle[L"height"] = Length(188);
+                    item.baseStyle[L"padding"] = LengthList(L"0px");
+                    item.baseStyle[L"justify"] = Keyword(L"end");
+                }
+            }
+            snapshot.root.children.push_back(item);
+        }
+        DeclarativeRenderer lazy(d2d.Get(), write.Get(), nullptr), eager(d2d.Get(), write.Get(), nullptr);
+        DeclarativeRenderOptions options;
+        options.pixelScale = scale; options.accessibility.reducedMotion = true;
+        Rect bounds{0, 0, 600, 240};
+        const auto draw = [&](DeclarativeRenderer& renderer, const WidgetSnapshot& document, const wchar_t* focus) {
+            target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0));
+            auto result = renderer.Render(target.Get(), document, focus, bounds, options);
+            ok(target->EndDraw());
+            if (!result.succeeded) for (const auto& diagnostic : result.diagnostics)
+                std::wcerr << diagnostic.code << L": " << diagnostic.message << L'\n';
+            Check(result.succeeded, "collection render succeeds");
+            return result;
+        };
+        auto full = snapshot; full.root.collectionLayout.reset();
+        if (grid) {
+            auto body = Node(L"grid", L"grid"); body.gridMinimumColumnWidth = 160;
+            body.baseStyle = {{L"gap", LengthList(L"8px")}};
+            body.children = std::move(full.root.children);
+            full.root.children = {std::move(body)};
+            full.root.baseStyle[L"gap"] = LengthList(L"0px");
+        }
+        const auto initial = draw(lazy, snapshot, L"item.0");
+        std::vector<BYTE> lazyPixels(width * height * 4);
+        ok(bitmap->CopyPixels(nullptr, width * 4, static_cast<UINT>(lazyPixels.size()), lazyPixels.data()));
+        const auto reference = draw(eager, full, L"item.0");
+        std::vector<BYTE> eagerPixels(lazyPixels.size());
+        ok(bitmap->CopyPixels(nullptr, width * 4, static_cast<UINT>(eagerPixels.size()), eagerPixels.data()));
+        for (const auto& [id, rect] : initial.elementRects) {
+            if (id == L"items") continue;
+            const auto found = reference.elementRects.find(id);
+            Check(found != reference.elementRects.end(), "realized item exists in eager reference");
+            Near(rect.x, found->second.x, "realized item x matches eager");
+            Near(rect.y, found->second.y, "realized item y matches eager");
+            Near(rect.width, found->second.width, "realized item width matches eager");
+            Near(rect.height, found->second.height, "realized item height matches eager");
+        }
+        Check(lazyPixels == eagerPixels, "initial collection pixels match eager reference exactly");
+        Check(initial.timing.preparedNodes < reference.timing.preparedNodes / 2,
+            "offscreen descriptors do not become prepared UI subtrees");
+        Check(!initial.elementRects.contains(L"item.90"), "unneeded item has no realized geometry");
+        Check(initial.realizableFocusIds.contains(L"item.90") &&
+            initial.logicalCollections.at(L"items").itemIdentities.size() == 128 &&
+            !initial.navigationRects.contains(L"item.90"), "renderer publishes logical focus authority without offscreen rectangles");
+        const auto deep = draw(lazy, snapshot, L"item.90");
+        Check(deep.focusRects.contains(L"item.90"), "unrealized focus target is measured and revealed");
+        const auto stable = draw(lazy, snapshot, L"item.90");
+        Near(horizontal ? stable.elementRects.at(L"item.90").x : stable.elementRects.at(L"item.90").y,
+            horizontal ? deep.elementRects.at(L"item.90").x : deep.elementRects.at(L"item.90").y,
+            "second deep frame preserves the viewport anchor", 1.0F / scale);
+        auto extra = snapshot.root.children.front(); extra.id = L"inserted"; extra.collectionItemKey = L"inserted.key";
+        snapshot.root.children.insert(snapshot.root.children.begin(), extra);
+        snapshot.root.collectionStartIndex = -1; ++snapshot.sequence;
+        const auto prepended = draw(lazy, snapshot, L"item.90");
+        Near(horizontal ? prepended.elementRects.at(L"item.90").x : prepended.elementRects.at(L"item.90").y,
+            horizontal ? stable.elementRects.at(L"item.90").x : stable.elementRects.at(L"item.90").y,
+            "non-aligned prepend preserves visible item", 1.0F / scale);
+        snapshot.root.collectionResetGeneration = 2; ++snapshot.sequence;
+        const auto reset = draw(lazy, snapshot, L"item.0");
+        Check(reset.focusRects.contains(L"item.0") && !reset.elementRects.contains(L"item.90"),
+            "query reset does not inherit previous realized focus target");
+        bounds = {0, 0, 420, 300}; options.pixelScale = 1.5F;
+        ok(wic->CreateBitmap(630, 450, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, bitmap.ReleaseAndGetAddressOf()));
+        ok(d2d->CreateWicBitmapRenderTarget(bitmap.Get(), D2D1::RenderTargetProperties(), target.ReleaseAndGetAddressOf()));
+        target->SetDpi(144, 144);
+        const auto resized = draw(lazy, snapshot, L"item.90");
+        Check(resized.focusRects.contains(L"item.90") && !resized.focusFollowBoundHit,
+            "hot DPI and viewport change realizes focus without a reveal loop");
+        Check(resized.logicalCollections.at(L"items").columns == (grid ? 2U : 1U),
+            "adaptive column count follows actual resized container width");
+        options.failAfterNodeDrawForTesting = true;
+        target->BeginDraw();
+        const auto failed = lazy.Render(target.Get(), snapshot, L"item.0", bounds, options);
+        ok(target->EndDraw());
+        Check(!failed.succeeded, "injected collection frame failure is observable");
+        options.failAfterNodeDrawForTesting = false;
+        options.suppressFocusedDescendantFollow = true;
+        const auto recovered = draw(lazy, snapshot, L"item.90");
+        Near(recovered.scrollOffsets.at(L"items"), resized.scrollOffsets.at(L"items"),
+            "failed realization does not publish its temporary scroll position", 1.0F / options.pixelScale);
+        options.suppressFocusedDescendantFollow = false;
+        snapshot.root.collectionResetGeneration = 3;
+        snapshot.root.collectionStartIndex = 600;
+        snapshot.root.virtualCollectionWindow = VirtualCollectionWindow{1, VirtualCollectionWindowChange::Replace,
+            600, 5000, true, true, 52};
+        ++snapshot.sequence;
+        const auto positioned = draw(lazy, snapshot, L"inserted");
+        Near(positioned.scrollOffsets.at(L"items"), static_cast<float>(600 / (grid ? 2 : 1) * 60),
+            "known provider position starts at the admitted line, including gaps", 1.0F);
+        Check(positioned.focusRects.contains(L"inserted") && !positioned.focusFollowBoundHit,
+            "known provider prefix keeps first admitted item visible");
+        snapshot.root.virtualCollectionWindow.reset();
+        snapshot.root.collectionStartIndex = -1;
+        if (content == 0 && !grid) {
+            auto second = snapshot.root;
+            second.id = L"another.collection"; second.collectionAnchorKey = L"second.key.0";
+            for (auto& child : second.children) {
+                child.id = L"second." + child.id;
+                child.collectionItemKey = L"second." + child.collectionItemKey;
+            }
+            auto first = snapshot.root; first.children.erase(first.children.begin());
+            first.baseStyle[L"height"] = Length(90); second.baseStyle[L"height"] = Length(90);
+            second.children.erase(second.children.begin());
+            snapshot.root = Node(L"two.collections", L"stack"); snapshot.activeInputScopeId = snapshot.root.id;
+            snapshot.root.children = {first, second}; ++snapshot.sequence;
+            const auto two = draw(lazy, snapshot, L"item.0");
+            Check(two.logicalCollections.size() == 2 && two.elementRects.contains(L"second.item.0"),
+                "multiple collection layout boundaries keep unique host geometry IDs");
+        }
+        std::cout << "COLLECTION content=" << content << " grid=" << grid << " horizontal=" << horizontal
+                  << " scale=" << scale << " prepared=" << initial.timing.preparedNodes
+                  << " eager-prepared=" << reference.timing.preparedNodes << '\n';
+    }
+}
+
 void SurfaceDepthUsesBoundedSharedPainting() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -8803,6 +8975,7 @@ int main(int argc, char** argv) {
     TileDescendantsRespectResolvedShapeAndOverflow();
     RetainedPosterPaintPreservesArtwork();
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
+    CollectionRealizationMatchesEagerGeometry();
     SurfaceDepthUsesBoundedSharedPainting();
     RetainedCompositionPixelsRespectInvalidation();
     CompositionScrollRetention(1.0F, false, false);

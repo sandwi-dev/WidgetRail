@@ -786,6 +786,7 @@ function Invoke-SemanticChurnPerformanceTests {
         (Join-Path $projectDirectory 'SemanticChurnPerformanceTests.cpp'),
         (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
         (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
@@ -851,6 +852,7 @@ function Invoke-DeclarativeRendererTests {
         '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
         (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
@@ -885,7 +887,7 @@ function Invoke-SettingsContentRendererTests {
     if ($LASTEXITCODE -ne 0) { throw 'Settings renderer fixture export failed.' }
     $arguments = $common + @('/DWRAIL_DECLARATIVE_RENDERER_TESTING', '/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING') +
         @('SettingsContentRendererTests.cpp', 'WidgetBridgeClient.cpp', 'PublicSuffixDomainAuthority.cpp',
-          'DeclarativeRenderer.cpp', 'DeclarativeLayout.cpp', 'NativeStyle.cpp', 'NativeTextLayout.cpp',
+          'DeclarativeRenderer.cpp', 'CollectionLayoutState.cpp', 'DeclarativeLayout.cpp', 'NativeStyle.cpp', 'NativeTextLayout.cpp',
           'DeclarativeMotion.cpp', 'NativeIcons.cpp', 'RemoteImageCache.cpp', 'ArtworkDecoderProcessOwner.cpp' |
             ForEach-Object { Join-Path $projectDirectory $_ }) +
         @("/Fo:$objectDirectory\", "/Fe:$outputDirectory\SettingsContentRendererTests.exe", '/link', '/SUBSYSTEM:CONSOLE') +
@@ -902,7 +904,7 @@ function Invoke-ScrollWorkloadProbe {
     New-Item -ItemType Directory -Path $objectDirectory -Force | Out-Null
     $arguments = $common + @('/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING', '/DWRAIL_DECLARATIVE_RENDERER_TESTING') +
         @('ScrollWorkloadProbe.cpp', 'ControllerNavigation.cpp', 'WidgetBridgeClient.cpp', 'PublicSuffixDomainAuthority.cpp',
-          'DeclarativeRenderer.cpp', 'DeclarativeLayout.cpp', 'NativeStyle.cpp', 'NativeTextLayout.cpp',
+          'DeclarativeRenderer.cpp', 'CollectionLayoutState.cpp', 'DeclarativeLayout.cpp', 'NativeStyle.cpp', 'NativeTextLayout.cpp',
           'DeclarativeMotion.cpp', 'NativeIcons.cpp', 'RemoteImageCache.cpp', 'ArtworkDecoderProcessOwner.cpp' |
             ForEach-Object { Join-Path $projectDirectory $_ }) +
         @("/Fo:$objectDirectory\", "/Fe:$outputDirectory\ScrollWorkloadProbe.exe", '/link', '/SUBSYSTEM:CONSOLE') +
@@ -923,6 +925,7 @@ function Invoke-BackgroundSurfaceHostTests {
         (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
         (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
         (Join-Path $projectDirectory 'CompositorBackgroundSurfaceCoordinator.cpp'),
         (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
         (Join-Path $projectDirectory 'WidgetCompositionPresenter.cpp'),
@@ -1010,6 +1013,7 @@ function Invoke-WidgetSurfaceCoordinatorTests {
         (Join-Path $projectDirectory 'FocusNavigation.cpp'),
         (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
         (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
@@ -1093,6 +1097,7 @@ function Invoke-WidgetInteractionTests {
             (Join-Path $projectDirectory 'SliderInteraction.cpp'),
             (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
             (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
             (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
             (Join-Path $projectDirectory 'NativeStyle.cpp'),
             (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
@@ -1365,6 +1370,7 @@ function Invoke-CompositionTests {
         '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
         (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
@@ -1931,6 +1937,7 @@ function Invoke-TrustedArtworkTests {
         '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
         (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
@@ -2142,6 +2149,7 @@ $hostArguments = $hostCompileArguments + @(
     (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
     (Join-Path $projectDirectory 'OverlayTransition.cpp'),
     (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
     (Join-Path $projectDirectory 'ControllerGuide.cpp'),
     (Join-Path $projectDirectory 'SliderInteraction.cpp'),
@@ -2880,6 +2888,7 @@ if (-not $SkipTests) {
         (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
         (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
         (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
@@ -3068,6 +3077,7 @@ if (-not $SkipTests) {
         '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
         (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
@@ -3096,6 +3106,7 @@ if (-not $SkipTests) {
         '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'SharedComponentGeometryTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+        (Join-Path $projectDirectory 'CollectionLayoutState.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
         (Join-Path $projectDirectory 'NativeTextLayout.cpp'),

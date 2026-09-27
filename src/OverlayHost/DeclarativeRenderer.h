@@ -4,6 +4,7 @@
 #include "ControllerPrompt.h"
 
 #include "DeclarativeLayout.h"
+#include "CollectionLayoutState.h"
 #include "DeclarativeMotion.h"
 #include "WidgetTransitions.h"
 #include "WidgetCompositionScene.h"
@@ -61,6 +62,18 @@ struct RenderScrollViewport final {
     declarative::Rect rect;
     float offset{};
     float maximumOffset{};
+};
+
+// Committed logical navigation authority; no fabricated offscreen rectangles.
+struct RenderLogicalCollection final {
+    WidgetNode::CollectionLayout policy;
+    WidgetComputedStyle containerStyle;
+    std::wstring inputScope;
+    std::size_t columns{1}, firstColumn{};
+    std::int64_t startIndex{};
+    std::uint64_t resetGeneration{};
+    std::optional<std::uint64_t> firstItemIndex;
+    std::vector<std::pair<std::wstring, std::wstring>> itemIdentities; // focus ID, key
 };
 
 /// Exact shared geometry for a Button's optional leading visual, label, and
@@ -244,6 +257,8 @@ struct RenderResult final {
     std::map<std::wstring, declarative::Rect, std::less<>> navigationRects;
     std::map<std::wstring, bool, std::less<>> navigationEnabled;
     std::set<std::wstring, std::less<>> revealableFocusIds;
+    std::set<std::wstring, std::less<>> realizableFocusIds;
+    std::map<std::wstring, RenderLogicalCollection, std::less<>> logicalCollections;
     std::map<std::wstring, std::wstring, std::less<>> focusScopes;
     std::map<std::wstring, float, std::less<>> scrollOffsets;
     std::map<std::wstring, RenderScrollViewport, std::less<>> scrollViewports;
@@ -657,6 +672,33 @@ private:
     // constraints/measurements. Local measurement and modal trees stay stateless.
     std::array<RetainedLayoutPass, 2> retainedLayout_;
     std::wstring retainedLayoutOwner_;
+    struct CollectionItemLayout final {
+        WidgetNode source;
+        std::uint64_t revision{};
+        std::uint64_t measuredContext{};
+        declarative::LayoutResult layout;
+        std::map<std::wstring, TextMeasurementProof, std::less<>> text;
+        std::map<std::wstring, std::vector<TextMeasurementProof>, std::less<>> queries;
+    };
+    struct CollectionMeasureContext final {
+        NativeRenderStyle style;
+        float width{}, height{}, viewportWidth{}, viewportHeight{}, rootFont{}, pixelScale{}, textScale{};
+        int minimumFontWeight{};
+        bool compact{}, horizontal{}, playStationControls{};
+        bool operator==(const CollectionMeasureContext&) const = default;
+    };
+    struct CollectionRenderState final {
+        collection::CollectionLayoutState geometry;
+        std::map<std::wstring, CollectionItemLayout, std::less<>> items;
+        CollectionMeasureContext context;
+        std::uint64_t contextRevision{}, itemRevision{};
+        std::wstring lastFocusedKey;
+        std::vector<std::size_t> realized;
+        float columnWidth{}, columnGap{};
+        double leadingExtent{}, trailingExtent{};
+        std::uint64_t resetGeneration{};
+    };
+    std::unordered_map<std::wstring, CollectionRenderState> collections_;
     struct IncrementalNodeState final {
         NativeRenderStyle baseStyle;
         NativeStyleContext styleContext;

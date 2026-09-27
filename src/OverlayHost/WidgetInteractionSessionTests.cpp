@@ -2451,7 +2451,65 @@ void AnchoredSelectPopupIsExactAndBounded() {
 
 } // namespace
 
+void LogicalCollectionNavigationDoesNotRequireOffscreenGeometry() {
+    using namespace widgetrail;
+    using namespace widgetrail::input;
+    WidgetNode root; root.id = L"collection"; root.kind = L"scroll"; root.scrollAxis = L"vertical";
+    root.collectionLayout = WidgetNode::CollectionLayout{true, 100, 100, 3};
+    root.collectionResetGeneration = 1;
+    RenderResult result;
+    RenderLogicalCollection logical;
+    logical.policy = *root.collectionLayout; logical.columns = 3;
+    logical.inputScope = L"collection"; logical.resetGeneration = 1;
+    for (int index = 0; index < 10; ++index) {
+        auto item = Button((L"item." + std::to_wstring(index)).c_str());
+        item.collectionItemKey = L"key." + std::to_wstring(index);
+        logical.itemIdentities.emplace_back(item.id, item.collectionItemKey);
+        result.realizableFocusIds.insert(item.id);
+        result.navigationEnabled[item.id] = true;
+        result.focusScopes[item.id] = L"collection";
+        root.children.push_back(item);
+    }
+    result.logicalCollections.emplace(root.id, logical);
+    result.scrollViewports.emplace(root.id, RenderScrollViewport{declarative::ScrollAxis::Vertical, {0, 0, 300, 100}, 0, 300});
+    result.focusRects[L"item.0"] = {0, 0, 100, 100};
+    result.navigationRects[L"item.0"] = result.focusRects[L"item.0"];
+    const auto move = [&](std::wstring_view id, NavigationDirection direction) {
+        return FindDirectionalFocusTargetInOwningSubtrees(root, id, direction, result, {});
+    };
+    Check(move(L"item.0", NavigationDirection::Down).target == L"item.3", "logical grid moves to unmeasured same-column item");
+    Check(move(L"item.0", NavigationDirection::Right).target == L"item.1", "logical grid horizontal movement stays in row");
+    Check(!move(L"item.2", NavigationDirection::Right).target, "logical grid does not wrap to next row horizontally");
+    Check(IsEnabledFocusTarget(L"item.3", result) && !result.navigationRects.contains(L"item.3"),
+        "realizable authority is distinct from fabricated geometry");
+    WidgetSnapshot snapshot; snapshot.instanceId = L"logical.instance"; snapshot.sequence = 1;
+    snapshot.activeInputScopeId = L"collection"; snapshot.root = root;
+    WidgetInteractionSession session;
+    session.SetFocus(L"logical.widget", snapshot, L"item.0");
+    Check(session.ResolveDirectionalFocus(L"logical.widget", snapshot, NavigationDirection::Down, result).target == L"item.3",
+        "shared interaction pipeline accepts realization target without geometry");
+    root.children[3].isDisabled = true;
+    Check(move(L"item.0", NavigationDirection::Down).target == L"item.6", "logical navigation skips disabled same-column target");
+    root.scrollNearEndActionId = L"load.more";
+    Check(move(L"item.8", NavigationDirection::Down).loadingBoundary,
+        "incomplete final line requests provider instead of jumping columns");
+    root.scrollNearEndActionId.clear();
+    Check(move(L"item.8", NavigationDirection::Down).target == L"item.9", "terminal partial row uses nearest column");
+    root.collectionResetGeneration = 2;
+    Check(move(L"item.0", NavigationDirection::Down).staleAuthority, "logical navigation rejects query reset before geometry admission");
+    root.collectionResetGeneration = 1;
+    root.inputScopeId = L"new.scope";
+    Check(move(L"item.0", NavigationDirection::Down).staleAuthority, "changed semantic scope invalidates logical authority");
+    root.inputScopeId.clear();
+    std::swap(root.children[1], root.children[2]);
+    Check(move(L"item.0", NavigationDirection::Down).staleAuthority, "logical navigation rejects unadmitted reorder");
+    std::swap(root.children[1], root.children[2]);
+    result.focusScopes[L"item.0"] = L"dialog";
+    Check(move(L"item.0", NavigationDirection::Down).staleAuthority, "logical navigation cannot cross modal input scope");
+}
+
 int main() {
+    LogicalCollectionNavigationDoesNotRequireOffscreenGeometry();
     FocusAndSurfaceLifecycle();
     FocusRestorationPrecedesInteractiveAdmission();
     HostFocusRestorationUsesPresentationAuthority();

@@ -83,6 +83,7 @@ public:
     [[nodiscard]] std::uint64_t Generation() const noexcept { return generation_; }
     [[nodiscard]] std::uint64_t GeometryRevision() const noexcept { return geometryRevision_; }
     [[nodiscard]] std::size_t Size() const noexcept { return items_.size(); }
+    [[nodiscard]] std::size_t Columns() const noexcept { return layout_.columns; }
     [[nodiscard]] double Extent() const noexcept;
     [[nodiscard]] std::optional<std::size_t> Find(const std::wstring& key) const;
     [[nodiscard]] Geometry At(std::size_t index) const;

@@ -544,7 +544,8 @@ bool IsEnabledFocusTarget(
     if (enabled != renderResult.navigationEnabled.end()) {
         return enabled->second &&
             (renderResult.focusRects.contains(id) ||
-             renderResult.revealableFocusIds.contains(id));
+             renderResult.revealableFocusIds.contains(id) ||
+             renderResult.realizableFocusIds.contains(id));
     }
     // Compatibility for synthetic/older render results used by host seams.
     const auto region = std::find_if(
@@ -670,6 +671,55 @@ DirectionalSubtreeFocusResolution FindDirectionalFocusTargetInOwningSubtrees(
         const auto* owner = *item;
         const bool responsiveGrid = IsResponsiveGrid(*owner);
         const bool matchingScroll = ScrollMatchesAxis(*owner, axis);
+        if (owner->collectionLayout && (matchingScroll || owner->collectionLayout->adaptiveGrid)) {
+            const auto committed = renderResult.logicalCollections.find(owner->id);
+            if (committed == renderResult.logicalCollections.end()) return {{}, true};
+            const auto& logical = committed->second;
+            std::wstring_view currentScope = root.inputScopeId.empty() ? std::wstring_view{root.id} : std::wstring_view{root.inputScopeId};
+            for (const auto* ancestor : path) {
+                if (!ancestor->inputScopeId.empty()) currentScope = ancestor->inputScopeId;
+                if (ancestor == owner) break;
+            }
+            const auto focusScope = renderResult.focusScopes.find(std::wstring{currentId});
+            if (logical.policy != *owner->collectionLayout || logical.containerStyle != owner->baseStyle ||
+                currentScope != logical.inputScope ||
+                logical.startIndex != owner->collectionStartIndex.value_or(0) ||
+                logical.resetGeneration != owner->collectionResetGeneration.value_or(0) ||
+                logical.firstItemIndex != (owner->virtualCollectionWindow ? owner->virtualCollectionWindow->firstItemIndex : std::nullopt) ||
+                logical.itemIdentities.size() != owner->children.size() || logical.columns == 0 ||
+                focusScope == renderResult.focusScopes.end() || focusScope->second != logical.inputScope)
+                return {{}, true};
+            std::optional<std::size_t> current;
+            for (std::size_t index = 0; index < owner->children.size(); ++index) {
+                const auto& child = owner->children[index];
+                if (logical.itemIdentities[index] != std::pair{child.id, child.collectionItemKey}) return {{}, true};
+                if (child.id == currentId) current = index;
+            }
+            if (!current) return {{}, true};
+            const bool previous = direction == NavigationDirection::Up || direction == NavigationDirection::Left;
+            const bool byLine = logical.policy.adaptiveGrid && axis == declarative::ScrollAxis::Vertical;
+            const auto stride = byLine ? logical.columns : 1U;
+            const auto lineOf = [&](std::size_t index) { return (logical.firstColumn + index) / logical.columns; };
+            auto index = *current;
+            for (std::size_t attempts = 0; attempts < owner->children.size(); ++attempts) {
+                const bool beyond = previous ? index < stride : index + stride >= owner->children.size();
+                if (beyond) {
+                    const bool loading = matchingScroll && !(previous ? owner->scrollNearStartActionId : owner->scrollNearEndActionId).empty();
+                    if (loading) return {{}, false, true};
+                    if (byLine && previous && lineOf(index) > 0) index = 0;
+                    else if (byLine && !previous && lineOf(index) < lineOf(owner->children.size() - 1))
+                        index = owner->children.size() - 1;
+                    else break;
+                } else index = previous ? index - stride : index + stride;
+                if (logical.policy.adaptiveGrid && !byLine && lineOf(index) != lineOf(*current)) break;
+                const auto& target = owner->children[index];
+                if (!target.isDisabled && !target.isBusy && IsEnabledFocusTarget(target.id, renderResult))
+                    return {target.id, false};
+            }
+            // A terminal collection boundary may exit toward surrounding UI;
+            // an unloaded provider boundary above must retain focus and paginate.
+            continue;
+        }
         if (!responsiveGrid && !matchingScroll) continue;
         if (matchingScroll) {
             const auto viewport = renderResult.scrollViewports.find(owner->id);

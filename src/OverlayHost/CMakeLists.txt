@@ -88,7 +88,7 @@ add_executable(OverlayHost WIN32
     WidgetSurfaceCoordinator.cpp
     OverlayTargeting.cpp
     OverlayTransition.cpp
-    DeclarativeRenderer.cpp
+    DeclarativeRenderer.cpp CollectionLayoutState.cpp
     GuideInputCompatibility.cpp
     ../OverlayPlatformInterop/OverlayPlatformInterop.cpp
     ../OverlayPlatformInterop/OverlayPlatformPolicy.cpp
@@ -268,7 +268,7 @@ if(WRAIL_BUILD_TESTS)
         WidgetSurfaceCoordinatorTests.cpp WidgetSurfaceCoordinator.cpp
         PinnedSurfacePolicy.cpp PinnedSurfacePlacement.cpp AccessibilityProvider.cpp AccessibilityEvents.cpp
         AccessibilityTree.cpp ControllerNavigation.cpp FocusNavigation.cpp WidgetSurfaceFocus.cpp
-        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
+        DeclarativeRenderer.cpp CollectionLayoutState.cpp DeclarativeLayout.cpp NativeStyle.cpp
         NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp
         ArtworkDecoderProcessOwner.cpp)
     target_compile_features(WidgetSurfaceCoordinatorTests PRIVATE cxx_std_20)
@@ -438,7 +438,7 @@ if(WRAIL_BUILD_TESTS)
 
     add_executable(BackgroundSurfaceHostTests
         BackgroundSurfaceHostTests.cpp WidgetBridgeClient.cpp
-        PublicSuffixDomainAuthority.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
+        PublicSuffixDomainAuthority.cpp DeclarativeRenderer.cpp CollectionLayoutState.cpp DeclarativeLayout.cpp
         CompositorBackgroundSurfaceCoordinator.cpp OverlayCompositionSurface.cpp
         WidgetCompositionPresenter.cpp
         NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp
@@ -473,7 +473,7 @@ if(WRAIL_BUILD_TESTS)
     add_executable(WidgetInteractionSessionTests
         WidgetInteractionSessionTests.cpp WidgetInteractionSession.cpp
         ControllerNavigation.cpp FocusNavigation.cpp SliderInteraction.cpp
-        WidgetSurfaceFocus.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
+        WidgetSurfaceFocus.cpp DeclarativeRenderer.cpp CollectionLayoutState.cpp DeclarativeLayout.cpp
         NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp
         NativeIcons.cpp RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp)
     target_compile_features(WidgetInteractionSessionTests PRIVATE cxx_std_20)
@@ -530,7 +530,7 @@ if(WRAIL_BUILD_TESTS)
     add_executable(RealHostAccessibilityTests
         RealHostAccessibilityTests.cpp AccessibilityTree.cpp HostAccessibility.cpp
         AccessibilityProvider.cpp AccessibilityEvents.cpp TrayLayout.cpp
-        WidgetBridgeClient.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
+        WidgetBridgeClient.cpp DeclarativeRenderer.cpp CollectionLayoutState.cpp DeclarativeLayout.cpp
         NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp
         RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp FocusNavigation.cpp)
     target_compile_features(RealHostAccessibilityTests PRIVATE cxx_std_20)
@@ -614,7 +614,7 @@ if(WRAIL_BUILD_TESTS)
     add_test(NAME DeveloperInspectorTests COMMAND DeveloperInspectorTests)
 
     add_executable(DeclarativeRendererTests
-        DeclarativeRendererTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
+        DeclarativeRendererTests.cpp DeclarativeRenderer.cpp CollectionLayoutState.cpp DeclarativeLayout.cpp
         NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp
         RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp)
     target_compile_features(DeclarativeRendererTests PRIVATE cxx_std_20)
@@ -629,7 +629,7 @@ if(WRAIL_BUILD_TESTS)
     # fixture supplies its semantic snapshot and bridge-computed WRSS styles.
     add_executable(YtMusicResponsiveRendererTests
         YtMusicResponsiveRendererTests.cpp WidgetBridgeClient.cpp
-        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
+        DeclarativeRenderer.cpp CollectionLayoutState.cpp DeclarativeLayout.cpp NativeStyle.cpp
         NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp
         ArtworkDecoderProcessOwner.cpp)
     target_compile_features(YtMusicResponsiveRendererTests PRIVATE cxx_std_20)
@@ -645,7 +645,7 @@ if(WRAIL_BUILD_TESTS)
     # surface contract. The target consumes a test-generated bridge response.
     add_executable(SettingsContentRendererTests
         SettingsContentRendererTests.cpp WidgetBridgeClient.cpp
-        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
+        DeclarativeRenderer.cpp CollectionLayoutState.cpp DeclarativeLayout.cpp NativeStyle.cpp
         NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp
         ArtworkDecoderProcessOwner.cpp)
     target_compile_features(SettingsContentRendererTests PRIVATE cxx_std_20)
@@ -661,7 +661,7 @@ if(WRAIL_BUILD_TESTS)
     # width consumption. The target consumes a test-generated bridge response.
     add_executable(AudioMixerWidthRendererTests
         AudioMixerWidthRendererTests.cpp WidgetBridgeClient.cpp
-        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
+        DeclarativeRenderer.cpp CollectionLayoutState.cpp DeclarativeLayout.cpp NativeStyle.cpp
         NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp
         ArtworkDecoderProcessOwner.cpp)
     target_compile_features(AudioMixerWidthRendererTests PRIVATE cxx_std_20)
@@ -677,7 +677,7 @@ if(WRAIL_BUILD_TESTS)
     # admission and constrained focus reveal.
     add_executable(NetworkFirstPageRendererTests
         NetworkFirstPageRendererTests.cpp WidgetBridgeClient.cpp
-        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
+        DeclarativeRenderer.cpp CollectionLayoutState.cpp DeclarativeLayout.cpp NativeStyle.cpp
         NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp
         ArtworkDecoderProcessOwner.cpp)
     target_compile_features(NetworkFirstPageRendererTests PRIVATE cxx_std_20)
@@ -690,7 +690,7 @@ if(WRAIL_BUILD_TESTS)
     widgetrail_link_taffy(NetworkFirstPageRendererTests)
 
     add_executable(SemanticChurnPerformanceTests
-        SemanticChurnPerformanceTests.cpp AccessibilityTree.cpp DeclarativeRenderer.cpp
+        SemanticChurnPerformanceTests.cpp AccessibilityTree.cpp DeclarativeRenderer.cpp CollectionLayoutState.cpp
         DeclarativeLayout.cpp NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp
         NativeIcons.cpp RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp)
     target_compile_features(SemanticChurnPerformanceTests PRIVATE cxx_std_20)
@@ -703,7 +703,7 @@ if(WRAIL_BUILD_TESTS)
     add_test(NAME SemanticChurnPerformanceTests COMMAND SemanticChurnPerformanceTests)
 
     add_executable(SharedComponentGeometryTests
-        SharedComponentGeometryTests.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
+        SharedComponentGeometryTests.cpp DeclarativeRenderer.cpp CollectionLayoutState.cpp DeclarativeLayout.cpp
         NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp NativeIcons.cpp
         RemoteImageCache.cpp ArtworkDecoderProcessOwner.cpp)
     target_compile_features(SharedComponentGeometryTests PRIVATE cxx_std_20)

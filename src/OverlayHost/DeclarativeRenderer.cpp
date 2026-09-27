@@ -7,6 +7,7 @@
 #include "NativeTextLayout.h"
 #include "RemoteImageCache.h"
 #include "WidgetContextMenuAuthority.h"
+#include "WidgetProtocolPresentationContract.generated.h"
 
 #include <algorithm>
 #include <array>
@@ -557,6 +558,10 @@ struct DeclarativeRenderer::RenderPass final {
     std::map<std::wstring, CollectionReconciliationTrace, std::less<>>
         collectionReconciliationOffsets;
     std::set<std::wstring, std::less<>> resetCollections;
+    std::unordered_map<std::wstring, CollectionRenderState> collections;
+    std::map<std::wstring, const WidgetNode*, std::less<>> collectionNodes;
+    std::map<std::wstring, std::size_t, std::less<>> collectionSlots;
+    std::set<std::wstring, std::less<>> newCollectionScrollStates, initializedCollectionScrolls;
     std::unordered_map<std::wstring, FocusBackgroundEntry> focusBackgrounds;
     std::uint64_t focusBackgroundAccessClock{};
     bool backgroundSurfaceAnimationActive{};
@@ -910,6 +915,8 @@ struct DeclarativeRenderer::RenderPass final {
         prepared[narrowId].effectiveBackground = effectiveBackground;
     }
 
+    #include "CollectionRealization.inl"
+
     [[nodiscard]] LayoutElement PrepareNode(
         const WidgetNode& node, const std::string_view parentId,
         const float fallbackParentWidth, const float fallbackParentHeight,
@@ -1068,6 +1075,7 @@ struct DeclarativeRenderer::RenderPass final {
                     L"Scroll requires the vertical or horizontal axis.",
                     RenderDiagnosticSeverity::Error);
             const auto key = ScrollStateKey(node.id);
+            if (node.collectionLayout && !ScrollState().contains(key)) newCollectionScrollStates.insert(node.id);
             if (!measurementOnly && node.collectionResetGeneration) {
                 auto& state = ScrollState()[key];
                 if (state.collectionResetGeneration != *node.collectionResetGeneration) {
@@ -1111,7 +1119,7 @@ struct DeclarativeRenderer::RenderPass final {
         // parent. Ordinary auto-sized nodes keep Taffy's inherited stretch;
         // definite dimensions, constraints, and aspect ratio still bound it.
         if (node.kind == L"loadingIndicator") element.stretchCrossAxis = false;
-        element.children.reserve(node.children.size() + 2U);
+        element.children.reserve(node.collectionLayout ? 1U : node.children.size() + 2U);
         const float textScale = std::isfinite(options.accessibility.textScale) &&
                 options.accessibility.textScale >= 0.85F &&
                 options.accessibility.textScale <= 1.5F
@@ -1127,6 +1135,8 @@ struct DeclarativeRenderer::RenderPass final {
                 element.children.push_back(std::move(*leading));
             }
         }
+        if (node.collectionLayout && node.kind == L"scroll")
+            return PrepareCollection(node, std::move(element), style, inputScope, effectiveBackground);
         if (node.kind == L"focusPresentationSurface") {
             const auto* fragment = PresentationFor(node);
             if (fragment && IsResponsiveVisible(*fragment)) {
@@ -2922,6 +2932,7 @@ struct DeclarativeRenderer::RenderPass final {
                 }
             }
         }
+        AttachCollectionLayouts(computed);
         return computed;
     }
 
@@ -6262,7 +6273,20 @@ RenderResult DeclarativeRenderer::Render(
             a.minimumFocusRingPx == b.minimumFocusRingPx && a.reducedMotion == b.reducedMotion &&
             a.reducedTransparency == b.reducedTransparency && !a.contrastHook && !b.contrastHook;
     };
-    const bool pendingMatches = preparationOptionsMatch() && pendingIncrementalPlan_ &&
+    const auto containsCollection = [&](const auto& self, const WidgetNode& node) -> bool {
+        if (node.collectionLayout) return true;
+        return std::ranges::any_of(node.children, [&](const WidgetNode& child) { return self(self, child); });
+    };
+    const bool hasCollections = containsCollection(containsCollection, snapshot.root);
+    std::optional<decltype(scrollOffsets_)> stagedScrollOffsets;
+    auto stagedScrollClock = scrollStateAccessClock_;
+    if (hasCollections) {
+        stagedScrollOffsets = scrollOffsets_;
+        pass.scrollState = &*stagedScrollOffsets;
+        pass.scrollAccessClock = &stagedScrollClock;
+    }
+    const bool pendingMatches = !hasCollections &&
+        preparationOptionsMatch() && pendingIncrementalPlan_ &&
         pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster &&
         incrementalLayoutCache_ &&
         pendingIncrementalPlan_->instanceId == snapshot.instanceId &&
@@ -6592,6 +6616,11 @@ RenderResult DeclarativeRenderer::Render(
             }
         }
         incrementalLayoutCache_ = std::move(cache);
+        collections_ = std::move(pass.collections);
+        if (stagedScrollOffsets) {
+            scrollOffsets_ = std::move(*stagedScrollOffsets);
+            scrollStateAccessClock_ = stagedScrollClock;
+        }
     } else {
         incrementalLayoutCache_.reset();
         retainedLayout_ = {};
@@ -6990,6 +7019,9 @@ void DeclarativeRenderer::ForgetWidgetState(
         retainedLayoutOwner_.clear();
     }
     std::erase_if(scrollOffsets_, [&](const auto& entry) {
+        return entry.first.starts_with(prefix);
+    });
+    std::erase_if(collections_, [&](const auto& entry) {
         return entry.first.starts_with(prefix);
     });
     motionTimeline_.ForgetPrefix(prefix);

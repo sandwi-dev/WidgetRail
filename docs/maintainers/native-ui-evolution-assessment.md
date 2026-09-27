@@ -2,8 +2,25 @@
 
 2026-09-26; production baseline `092ee64d`. Companion to the
 [end-to-end architecture assessment](ui-architecture-assessment.md).
-This is a design/effort assessment with source inspection and existing trace evidence.
-No replacement renderer, Skia integration or native redesign was implemented or tested here.
+The original design/effort assessment uses source inspection and saved trace
+evidence. Subsequent native implementation is tracked below; no replacement
+renderer or Skia integration benchmark has been performed.
+
+## Implementation progress
+
+The assessment above describes the original investigation. Native implementation
+is now authorized under WIDGE-293–298, with completed tasks integrating only into
+`codex/native-ui-integration`; `main` stays untouched. WIDGE-293 has a tested
+logical collection geometry/demand model and validated protocol-v59 list/grid
+declarations (SDK 121/121, native parser/model and contract parity checks passed).
+Renderer realization and logical directional navigation now pass native fixtures:
+vertical/horizontal lists, adaptive grids, wrapped rows and posters match eager
+initial pixels at 100%/125%, with deep focus, prepend, reset, hot resize and known
+provider-window and failed-frame rollback checks. The coherent native host/runtime
+build passes. UIA realization, scheduling, SDK item reuse and widget adoption remain;
+WIDGE-294–298 have not started. No real-widget runtime
+performance improvement is claimed yet. Details:
+[collection lifecycle](native-collection-lifecycle.md).
 
 ## Decision
 

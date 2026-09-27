@@ -1379,6 +1379,8 @@ void VerifyCollectionLayoutProtocol() {
     reject("\"adaptiveGrid\"", "\"list\"", "list cannot inherit grid fields");
     reject("\"scrollAxis\":\"vertical\"", "\"scrollAxis\":\"horizontal\"", "adaptive collection scrolls vertically");
     reject("\"collectionItemKey\":\"key.1\",", "", "collection item requires stable key");
+    reject("\"kind\":\"button\"", "\"kind\":\"textEntry\",\"textEntryValue\":\"\",\"textEntryMaximumLength\":100",
+        "text-entry button normalization cannot bypass collection item contract");
     reject("\"collectionItemKey\":\"key.1\",", "\"collectionItemKey\":\"key.1\",\"visibleWhen\":\"compactOnly\",",
         "conditional items cannot leave holes in logical collection");
 }

@@ -41,6 +41,7 @@ struct GeometricFocusGroupCandidate final {
 struct DirectionalSubtreeFocusResolution final {
     std::optional<std::wstring> target;
     bool staleAuthority{};
+    bool loadingBoundary{};
 };
 
 enum class DirectionalScrollExitDisposition {

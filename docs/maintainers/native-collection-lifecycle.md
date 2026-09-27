@@ -2,9 +2,9 @@
 
 Implementation begins with an internal logical geometry model in
 `CollectionLayoutState` and the protocol-v59 declaration below. The declaration is
-validated end to end on the task branch; renderer realization is still pending.
-Do not release or adopt these helpers in shipping widgets until that path is
-connected and the integration gates pass.
+validated end to end on the task branch. Renderer realization and logical
+directional navigation are connected; UIA realization, scheduling and widget
+adoption remain. Do not release these helpers until the full integration gates pass.
 
 ## Declarative contract
 
@@ -20,6 +20,8 @@ Each item is one controller target. Nested focusable content or per-item respons
 visibility requires an ordinary Scroll layout; filtering replaces logical items
 explicitly. The contract admits content-sized rows and poster content, rather than
 requiring a fixed item height. The host owns overscan and realization budgets.
+Collection placement starts at its content padding; collection-level flex
+justification does not redistribute rows. Style item contents to align their copy.
 
 Version 59 is required whenever the policy is present. Managed and native validators
 reject unsupported kinds, shapes, estimates and column limits. Policy changes use
@@ -104,11 +106,19 @@ objects. Prepare a staged copy when necessary, and publish it together with the
 matching geometry, focus and paint state. It does not itself implement atomic
 scene publication or a background measurement scheduler.
 
-Remaining delivery includes the descriptor-to-realized-subtree lifecycle,
-Taffy item measurement, provider-window
-extent integration, navigation/UIA realization, scheduler and resource protection,
-and adoption in Playnite grids and variable-height music rows. Existing generic
-Scroll behavior remains the production path until that integration passes.
+The renderer now uses one estimated extent boundary in the surrounding layout,
+and independently measures only realized item subtrees with Taffy. It retains
+valid item measurements, fills newly exposed lines after estimate correction,
+projects item boxes through the collection's actual clip, and publishes logical
+navigation authority separately from rendered rectangles. Unknown offscreen
+geometry is never invented for directional search.
+
+Remaining delivery includes UIA realization, frame-budgeted scheduling and
+resource protection, broader provider-window/scale/scroll validation, and adoption
+in Playnite grids and variable-height music rows. The initial realization path
+still rebuilds the small outer layout on collection updates/scroll; localized
+preparation and scheduling must follow before declaring the delivery complete.
+Existing generic Scroll behavior remains available.
 
 ## Verification
 
@@ -122,3 +132,12 @@ windows, anchors, partial rows, protected targets, bounds and empty viewports.
 These model tests do not establish renderer pixel equivalence, controller behavior,
 accessibility integration or frame-time improvements. Those remain integration
 gates before the collection task is complete.
+
+The connected renderer now also has eager-reference pixel/geometry fixtures for
+buttons, wrapped content rows and poster subtrees in vertical/horizontal lists
+and adaptive grids at 100%/125% scale. They cover deep focus, prepend, reset,
+multiple collections, hot resize/DPI changes, known provider prefixes and failed
+frame rollback. Logical navigation tests exercise unmeasured targets and stale
+scope/query/order authority. Collection scroll state is staged with the frame and
+committed only after successful rendering. These fixtures are not a substitute
+for real-widget workload and UIA validation.

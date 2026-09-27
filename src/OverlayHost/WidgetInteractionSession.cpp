@@ -252,6 +252,7 @@ DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFoc
     if (internal.staleAuthority) {
         return {DirectionalFocusDisposition::BlockedAuthority, {}};
     }
+    if (internal.loadingBoundary) return {DirectionalFocusDisposition::Boundary, {}};
     if (const auto geometric = FindGeometricFocusTarget(
             focusedElementId, direction, renderResult,
             focusGroupCandidates)) {
