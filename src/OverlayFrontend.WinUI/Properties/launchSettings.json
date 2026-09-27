@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "OverlayFrontend.WinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "OverlayFrontend.WinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
