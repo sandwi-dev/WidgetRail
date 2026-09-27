@@ -8072,6 +8072,43 @@ void CollectionRealizationMatchesEagerGeometry() {
             ++incoming.sequence;
             incoming.root.collectionResetGeneration = 8;
             incoming.root.children.front().baseStyle[L"height"] = Length(112);
+            {
+                DeclarativeRenderer interleaved(d2d.Get(), write.Get(), nullptr);
+                (void)draw(interleaved, snapshot, L"item.0");
+                auto revealOptions = options;
+                revealOptions.realizeElementId = L"item.70";
+                revealOptions.suppressFocusedDescendantFollow = true;
+                bool revealReady{}, replacementReady{};
+                for (int slice = 0; slice < 128 && !(revealReady && replacementReady); ++slice) {
+                    const auto reveal = interleaved.PrepareCollections(snapshot, L"item.0", bounds, revealOptions, {1, 1000000}, true);
+                    const auto replacement = interleaved.PrepareCollections(incoming, L"item.0",
+                        {0, 0, 480, 240}, options, {1, 1000000});
+                    Check(reveal.status != CollectionPreparationStatus::Failed && replacement.status != CollectionPreparationStatus::Failed &&
+                        reveal.newMeasurements <= 1 && replacement.newMeasurements <= 1,
+                        "interleaved current UIA and incoming width preparation keep independent slice budgets");
+                    revealReady = reveal.status == CollectionPreparationStatus::Ready;
+                    replacementReady = replacement.status == CollectionPreparationStatus::Ready;
+                    const auto oldScene = draw(interleaved, snapshot, L"item.0");
+                    Near(oldScene.elementRects.at(L"item.0").height, initial.elementRects.at(L"item.0").height,
+                        "interleaved speculative branches preserve the published scene");
+                }
+                Check(revealReady && replacementReady,
+                    "current UIA reveal and incoming changed constraints both make bounded progress when interleaved");
+                Check(interleaved.PrepareCollections(incoming, L"item.0", bounds, options, {0, 1}).status == CollectionPreparationStatus::Failed,
+                    "invalid incoming request retires only its own preparation branch");
+                const auto retainedReveal = interleaved.PrepareCollections(snapshot, L"item.0", bounds, revealOptions, {1, 1000000}, true);
+                Check(retainedReveal.status == CollectionPreparationStatus::Ready && retainedReveal.newMeasurements == 0 &&
+                    retainedReveal.focusGeometry && retainedReveal.focusGeometry->focusRects.contains(L"item.70"),
+                    "failure of incoming preparation preserves the completed current-source UIA measurements");
+                target->BeginDraw();
+                const auto revealedFrame = interleaved.Render(target.Get(), snapshot, L"item.0", bounds, revealOptions);
+                ok(target->EndDraw());
+                Check(revealedFrame.succeeded && revealedFrame.focusRects.contains(L"item.70"),
+                    "a completed interleaved reveal publishes its requested target");
+                interleaved.ForgetWidgetState(snapshot.instanceId);
+                Check(interleaved.PrepareCollections(snapshot, L"item.0", bounds, revealOptions, {1, 1000000}).status == CollectionPreparationStatus::Pending,
+                    "widget retirement discards both committed and speculative realization measurements");
+            }
             bool incomingReady{};
             for (int slice = 0; slice < 128; ++slice) {
                 const auto preparing = lazy.PrepareCollections(incoming, L"item.0", bounds, options, {1, 1000000});

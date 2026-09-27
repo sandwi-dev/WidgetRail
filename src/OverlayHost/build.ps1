@@ -30,6 +30,7 @@ param(
     [switch]$WidgetSwitchGeometryOnly,
     [switch]$TrustedArtworkTestsOnly,
     [switch]$WidgetSessionTestsOnly,
+    [switch]$WidgetPublicationTestsOnly,
     [switch]$WidgetInteractionTestsOnly,
     [switch]$WidgetBridgeCatalogTestsOnly,
     [switch]$LocalPackageImportTestsOnly,
@@ -88,6 +89,7 @@ $primaryTestSelectors = @(
     [pscustomobject]@{ Name = 'WidgetSwitchFallbackAuthorityReplay'; Selected = $hasFallbackAuthorityReplay }
     [pscustomobject]@{ Name = 'TrustedArtworkTestsOnly'; Selected = [bool]$TrustedArtworkTestsOnly }
     [pscustomobject]@{ Name = 'WidgetSessionTestsOnly'; Selected = [bool]$WidgetSessionTestsOnly }
+    [pscustomobject]@{ Name = 'WidgetPublicationTestsOnly'; Selected = [bool]$WidgetPublicationTestsOnly }
     [pscustomobject]@{ Name = 'WidgetInteractionTestsOnly'; Selected = [bool]$WidgetInteractionTestsOnly }
     [pscustomobject]@{ Name = 'WindowPreviewTestsOnly'; Selected = [bool]$WindowPreviewTestsOnly }
     [pscustomobject]@{ Name = 'WidgetBridgeCatalogTestsOnly'; Selected = [bool]$WidgetBridgeCatalogTestsOnly }
@@ -2110,6 +2112,12 @@ $versionResource = Join-Path $outputDirectory 'WidgetRailVersion.res'
 if ($LASTEXITCODE -ne 0) { throw 'Application version resource compilation failed.' }
 
 $hostCompileArguments = $common + @('/Zi')
+if ($WidgetPublicationTestsOnly) {
+    if ($SkipTests) { throw 'WidgetPublicationTestsOnly cannot be combined with SkipTests.' }
+    $hostCompileArguments += '/DWRAIL_WIDGET_PUBLICATION_TESTING'
+}
+$hostExecutableName = if ($WidgetPublicationTestsOnly) { 'WidgetFramePublicationTests.exe' } else { 'OverlayHost.exe' }
+$hostSubsystem = if ($WidgetPublicationTestsOnly) { '/SUBSYSTEM:CONSOLE' } else { '/SUBSYSTEM:WINDOWS' }
 if ($PinnedSliderRouteTestsOnly) {
     $hostCompileArguments += '/DWRAIL_PINNED_SLIDER_ROUTE_TESTING'
 }
@@ -2167,10 +2175,10 @@ $hostArguments = $hostCompileArguments + @(
     (Join-Path $projectDirectory 'HostAccessibility.cpp'),
     (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
     "/Fo:$hostObjectDirectory\",
-    "/Fe:$outputDirectory\OverlayHost.exe",
+    "/Fe:$outputDirectory\$hostExecutableName",
     '/link', $versionResource
 ) + $libraryArguments + @(
-    '/SUBSYSTEM:WINDOWS', '/Brepro', '/PDBALTPATH:%_PDB%',
+    $hostSubsystem, '/Brepro', '/PDBALTPATH:%_PDB%',
     '/MANIFEST:EMBED',
     "/MANIFESTINPUT:$(Join-Path $projectDirectory 'app.manifest')",
     'user32.lib', 'gdi32.lib', 'comctl32.lib', 'd2d1.lib', 'dwrite.lib', 'dwmapi.lib',
@@ -2185,6 +2193,11 @@ $hostArguments = $hostCompileArguments + @(
 & $cl $hostArguments
 if ($LASTEXITCODE -ne 0) {
     throw "OverlayHost build failed with exit code $LASTEXITCODE."
+}
+if ($WidgetPublicationTestsOnly) {
+    & (Join-Path $outputDirectory $hostExecutableName)
+    if ($LASTEXITCODE -ne 0) { throw "Widget frame publication host tests failed with exit code $LASTEXITCODE." }
+    return
 }
 
 $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'

@@ -746,10 +746,18 @@ private:
         }
     };
     std::unordered_map<std::wstring, CollectionRenderState> collections_;
-    std::unordered_map<std::wstring, CollectionRenderState> preparingCollections_;
-    std::wstring preparingInstance_, preparingScope_, preparingFocus_;
-    long long preparingSequence_{};
-    bool preparationReady_{};
+    struct CollectionPreparation final {
+        std::unordered_map<std::wstring, CollectionRenderState> collections;
+        std::wstring instance, scope, focus, realization;
+        long long sequence{};
+        bool ready{};
+        [[nodiscard]] bool Matches(const WidgetSnapshot& snapshot) const noexcept {
+            return instance == snapshot.instanceId && scope == snapshot.activeInputScopeId && sequence == snapshot.sequence;
+        }
+    };
+    // One published source and one incoming source may prepare concurrently.
+    // LRU-bounded speculative measurements never own scroll or scene authority.
+    std::vector<CollectionPreparation> collectionPreparations_;
     struct IncrementalNodeState final {
         NativeRenderStyle baseStyle;
         NativeStyleContext styleContext;
@@ -962,7 +970,7 @@ private:
     std::optional<PendingIncrementalPlan> pendingIncrementalPlan_;
     struct FramePublication final {
         std::uint64_t id{}, resourceGeneration{};
-        std::wstring instance, scope, focus;
+        std::wstring instance, scope, focus, realization;
         long long sequence{};
         decltype(incrementalLayoutCache_) layout;
         decltype(collections_) collections;

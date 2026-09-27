@@ -6312,8 +6312,11 @@ bool DeclarativeRenderer::CommitFramePublication(const std::uint64_t id) {
     compositionInstance_ = std::move(publication->compositionInstance);
     protectedImageKeys_ = std::move(publication->imageKeys);
     visibleContentImageHashes_ = std::move(publication->visibleImageHashes);
-    if (preparationReady_ && preparingInstance_ == publication->instance && preparingScope_ == publication->scope &&
-        preparingSequence_ == publication->sequence && preparingFocus_ == publication->focus) CancelCollectionPreparation();
+    std::erase_if(collectionPreparations_, [&](const auto& branch) {
+        return branch.ready && branch.instance == publication->instance && branch.scope == publication->scope &&
+            branch.sequence == publication->sequence && branch.focus == publication->focus &&
+            branch.realization == publication->realization;
+    });
     PublishImageProtection();
     return true;
 }
@@ -6329,6 +6332,7 @@ RenderResult DeclarativeRenderer::Render(
     publication->instance = snapshot.instanceId;
     publication->scope = snapshot.activeInputScopeId;
     publication->focus = focusedElementId;
+    publication->realization = options.realizeElementId;
     publication->sequence = snapshot.sequence;
     publication->motion = motionTimeline_;
     const auto renderStarted = std::chrono::steady_clock::now();
@@ -6875,12 +6879,7 @@ RenderResult DeclarativeRenderer::Render(
 }
 
 void DeclarativeRenderer::CancelCollectionPreparation() noexcept {
-    preparingCollections_.clear();
-    preparingInstance_.clear();
-    preparingScope_.clear();
-    preparingFocus_.clear();
-    preparingSequence_ = 0;
-    preparationReady_ = false;
+    collectionPreparations_.clear();
 }
 
 CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
@@ -6889,9 +6888,12 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     const CollectionPreparationBudget budget, const bool collectFocusGeometry) {
     const auto started = std::chrono::steady_clock::now();
     CollectionPreparationResult result;
+    const auto retireSource = [&] {
+        std::erase_if(collectionPreparations_, [&](const auto& branch) { return branch.Matches(snapshot); });
+    };
     if (!FiniteRect(viewport) || viewport.width < 0 || viewport.height < 0 ||
         budget.maximumNewMeasurements == 0 || budget.maximumMicroseconds == 0) {
-        CancelCollectionPreparation();
+        retireSource();
         return result;
     }
     const auto hasCollection = [&](const auto& self, const WidgetNode& node) -> bool {
@@ -6899,16 +6901,26 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
             [&](const auto& child) { return self(self, child); });
     };
     if (!hasCollection(hasCollection, snapshot.root)) {
-        CancelCollectionPreparation();
+        retireSource();
         result.status = CollectionPreparationStatus::Ready;
         return result;
     }
-    if (preparingInstance_ != snapshot.instanceId || preparingScope_ != snapshot.activeInputScopeId)
-        CancelCollectionPreparation();
-    preparingInstance_ = snapshot.instanceId;
-    preparingScope_ = snapshot.activeInputScopeId;
-    preparingFocus_ = focusedElementId;
-    preparingSequence_ = snapshot.sequence;
+    const auto found = std::ranges::find_if(collectionPreparations_,
+        [&](const auto& branch) { return branch.Matches(snapshot); });
+    if (found != collectionPreparations_.end()) {
+        std::rotate(found, found + 1, collectionPreparations_.end());
+    } else {
+        if (collectionPreparations_.size() == 2) collectionPreparations_.erase(collectionPreparations_.begin());
+        CollectionPreparation branch;
+        branch.instance = snapshot.instanceId;
+        branch.scope = snapshot.activeInputScopeId;
+        branch.sequence = snapshot.sequence;
+        collectionPreparations_.push_back(std::move(branch));
+    }
+    auto& branch = collectionPreparations_.back();
+    branch.focus = focusedElementId;
+    branch.realization = options.realizeElementId;
+    branch.ready = false;
     RenderPass pass;
     pass.owner = this;
     pass.snapshot = &snapshot;
@@ -6947,9 +6959,11 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     } catch (const RenderPass::CollectionSlicePending&) {
         result.status = CollectionPreparationStatus::Pending;
     }
-    if (result.status == CollectionPreparationStatus::Failed) CancelCollectionPreparation();
-    else preparingCollections_ = std::move(pass.collections);
-    preparationReady_ = result.status == CollectionPreparationStatus::Ready;
+    if (result.status == CollectionPreparationStatus::Failed) retireSource();
+    else {
+        branch.collections = std::move(pass.collections);
+        branch.ready = result.status == CollectionPreparationStatus::Ready;
+    }
     result.newMeasurements = pass.preparationMeasurements;
     result.elapsedMicroseconds = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - started).count());
@@ -7253,7 +7267,7 @@ void DeclarativeRenderer::ForgetWidgetState(
     const std::wstring_view widgetInstanceId) noexcept {
     if (widgetInstanceId.empty()) return;
     if (pendingPublication_ && pendingPublication_->instance == widgetInstanceId) RejectFramePublication();
-    if (preparingInstance_ == widgetInstanceId) CancelCollectionPreparation();
+    std::erase_if(collectionPreparations_, [&](const auto& branch) { return branch.instance == widgetInstanceId; });
     if (widgetTransitions_.OwnsInstance(widgetInstanceId) || compositionInstance_ == widgetInstanceId) CancelWidgetTransitions();
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     ++gRendererWidgetStateRetirementCount;

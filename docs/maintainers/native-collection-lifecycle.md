@@ -99,7 +99,7 @@ changes, clamped to the available extent. A reset or missing key yields no
 restoration: the host must select its documented surviving-neighbor or explicit
 position fallback. It must not silently carry an unrelated item's anchor forward.
 
-## Publication and remaining integration
+## Preparation and publication
 
 The model is host-thread confined and owns no actions, visual nodes, images or COM
 objects. Prepare a staged copy when necessary, and publish it together with the
@@ -190,17 +190,29 @@ it cannot authorize input against an unsubmitted frame.
 Main group-entry acknowledgements own exact request/runtime/scope/sequence identity
 without retaining snapshot pointers. Submission failure discards only this
 acknowledgement, leaving the one-shot request pending for a newly drawn retry.
-Collection-focus settlement and pagination reconciliation follow successful frame
+Responsive-focus recovery, collection-focus settlement and pagination reconciliation follow successful frame
 submission too. Failed main/pinned frames retire interactive geometry and UIA
 publication; unseen reveals remain pending. Pinned recovery has three timer retries,
-with later explicit invalidation allowed. Component failure tests are not evidence
-of physical compositor display timing or a complete injected main-host test.
+with later explicit invalidation allowed. The main host revalidates widget,
+instance, sequence and runtime/presentation generation before acknowledgement.
 
-Remaining delivery includes host frame-budgeted scheduling and
-resource protection and broader provider-window/scale/scroll validation. The realization path
-still rebuilds the small outer layout on collection updates/scroll; localized
-preparation and scheduling must follow before declaring the delivery complete.
-Existing generic Scroll behavior remains available.
+`WidgetPublicationTestsOnly` compiles actual main-host drawing, scheduling and
+publication methods into a separate console fixture. Its hidden WIC target and
+fake session transport exercise responsive focus, group-entry requests, UIA,
+submission rejection and source replacement without starting the overlay or workers.
+This is not physical DirectComposition submission/device-loss timing evidence.
+
+Preparation keeps at most two source branches (instance/scope/sequence), allowing
+current-source focus/UIA and incoming-page work to retain their own measurements.
+Within a source, context checks still invalidate incompatible constraints. A
+successful frame retires only matching ready focus/reveal preparation; an ordinary
+paint cannot consume an unseen UIA reveal. Invalid preparation retires only its
+source. Explicit cancellation clears all branches; widget retirement clears its own.
+The interleaving regression uses one-item slices, changed incoming width and
+old-scene repaints; both requests must complete while committed geometry stays stable.
+
+Generic Scroll remains available. Broader non-collection preparation and aggregate
+resource budgets are tracked separately in WIDGE-294 and WIDGE-296.
 
 ### Retained placement
 

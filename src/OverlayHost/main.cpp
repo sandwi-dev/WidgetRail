@@ -619,7 +619,12 @@ public:
     // The dashboard is catalog-owned. Persisted IDs are reconciled only after
     // the bridge supplies runnable worker descriptors, so an unavailable
     // bridge cannot expose inert native placeholder tiles.
+#if defined(WRAIL_WIDGET_PUBLICATION_TESTING)
+    static int RunPublicationTests();
+    explicit OverlayApp(widgetrail::WidgetSessionOperations testOperations = {})
+#else
     OverlayApp()
+#endif
         : state_(widgetrail::OverlayState::AwaitingCatalog(LoadPersistentState())),
           actionFailureFeedback_({
               [] { return GetTickCount64(); },
@@ -640,6 +645,9 @@ public:
               AppendDiagnostic(message);
           }),
           sessions_(
+#if defined(WRAIL_WIDGET_PUBLICATION_TESTING)
+              std::move(testOperations),
+#else
               widgetrail::WidgetSessionOperations{
                   [this](std::stop_token) {
                       return bridge_.EnsureStarted(
@@ -746,6 +754,7 @@ public:
                   widgetrail::CompareWidgetSnapshots,
                   true,
               },
+#endif
               [this] {
                   if (window_)
                       PostMessageW(window_, kWidgetSessionCompletionMessage, 0, 0);
@@ -17689,6 +17698,7 @@ private:
         widgetFramePublicationFailed_ = true;
         pendingRendererPublicationId_ = 0;
         pendingGroupFocusPublication_.reset();
+        pendingResponsiveFocusReconciliation_ = false;
         if (declarativeRenderer_) declarativeRenderer_->RejectFramePublication();
         paintedAccessibilityRealization_.reset();
         // Provider publication is retired, but an unseen reveal remains a
@@ -17698,7 +17708,21 @@ private:
 
     bool CompleteWidgetFramePublication() {
         const bool publishedWidgetFrame = pendingRendererPublicationId_ != 0;
+        const bool reconcileResponsiveFocus = std::exchange(pendingResponsiveFocusReconciliation_, false);
         if (pendingRendererPublicationId_) {
+            if (committedWidgetVisualState_) {
+                const auto& visual = *committedWidgetVisualState_;
+                const auto* source = PresentationSnapshotFor(visual.widgetId);
+                const auto* descriptor = sessions_.FindDescriptor(visual.widgetId);
+                if (state_.activeWidget() != visual.widgetId || !source || !descriptor ||
+                    source->instanceId != visual.instanceId || source->sequence != visual.snapshotSequence ||
+                    descriptor->runtimeGeneration != visual.runtimeGeneration ||
+                    descriptor->presentationGeneration != visual.presentationGeneration) {
+                    BlockWidgetFramePublication();
+                    InvalidateRect(window_, nullptr, FALSE);
+                    return false;
+                }
+            }
             const auto publication = std::exchange(pendingRendererPublicationId_, 0);
             if (!declarativeRenderer_ || !declarativeRenderer_->CommitFramePublication(publication)) {
                 BlockWidgetFramePublication();
@@ -17732,6 +17756,17 @@ private:
                 authority->presentationGeneration == visual.presentationGeneration) {
                 ReconcileScrollPaginationPrefetch(visual.widgetId, *snapshot, lastWidgetRenderResult_);
                 if (WidgetOwnsInputFocus(visual.widgetId) && !textEntryModal_.active()) {
+                    if (reconcileResponsiveFocus && interactionSession_.focusedElementId() == visual.focusId) {
+                        (void)ReconcileResponsiveFocusPersistence(visual.widgetId, *snapshot, lastWidgetRenderResult_);
+                        if (const auto visible = widgetrail::input::ResolveVisibleFocusTarget(
+                                interactionSession_.focusedElementId(), snapshot->activeInputScopeId, lastWidgetRenderResult_);
+                            visible && *visible != interactionSession_.focusedElementId()) {
+                            const auto moved = interactionSession_.MoveFocus(visual.widgetId, *snapshot, *visible, false, true);
+                            (void)scrollEvidenceProbe_.RecordTarget(*visible, L"reconcile");
+                            // The published frame used the old focus; repaint the recovered target.
+                            InvalidateWidgetFocusChange(moved.priorFocus, moved.sliderDamageNodeIds);
+                        }
+                    }
                     if (auto next = interactionSession_.ResolvePendingCollectionFocus(
                             *authority, interactionSession_.focusedElementId(), lastWidgetRenderResult_)) {
                         const auto moved = interactionSession_.MoveFocus(visual.widgetId, *snapshot, *next);
@@ -19382,27 +19417,10 @@ private:
                 }
                 declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;
                 if (result.succeeded) pendingWidgetCompositionScene_ = result.widgetComposition;
-                if (WidgetOwnsInputFocus(renderedWidget) &&
-                    !textEntryModal_.active() && !inertRetainedSnapshot &&
-                    !focusGroupEntryWaiting && !pendingGroupFocusPublication_) {
-                    if (!options.suppressFocusedDescendantFollow) {
-                        (void)ReconcileResponsiveFocusPersistence(
-                            renderedWidget, semanticSnapshot, result);
-                        if (const auto visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
-                            interactionSession_.focusedElementId(), semanticSnapshot.activeInputScopeId, result);
-                            visibleFocus && *visibleFocus != interactionSession_.focusedElementId()) {
-                            const auto focus = interactionSession_.MoveFocus(
-                                widget, semanticSnapshot, *visibleFocus,
-                                false, true);
-                            (void)scrollEvidenceProbe_.RecordTarget(
-                                *visibleFocus, L"reconcile");
-                            // The completed pass used the old focus state. Schedule one
-                            // more paint so the recovered target receives its ring.
-                            InvalidateWidgetFocusChange(
-                                focus.priorFocus, focus.sliderDamageNodeIds);
-                        }
-                    }
-                }
+                pendingResponsiveFocusReconciliation_ = result.succeeded &&
+                    WidgetOwnsInputFocus(renderedWidget) && !textEntryModal_.active() &&
+                    !inertRetainedSnapshot && !focusGroupEntryWaiting && !pendingGroupFocusPublication_ &&
+                    !options.suppressFocusedDescendantFollow;
                 if (inertRetainedSnapshot) {
                     // A conservative retained-authority raster is deliberately
                     // not the committed Current visual checkpoint. Prevent a
@@ -19713,6 +19731,7 @@ private:
     std::optional<widgetrail::accessibility::ActionRequest> paintedAccessibilityRealization_;
     bool widgetFramePublicationFailed_{};
     std::uint64_t pendingRendererPublicationId_{};
+    bool pendingResponsiveFocusReconciliation_{};
     std::optional<widgetrail::input::FocusGroupEntryPublication> pendingGroupFocusPublication_;
     std::optional<std::pair<std::uint64_t, std::wstring>> preparedCandidateGroupFocus_;
     bool awaitingSuccessfulOpenPaint_{};
@@ -19787,6 +19806,11 @@ private:
 };
 
 } // namespace
+
+#if defined(WRAIL_WIDGET_PUBLICATION_TESTING)
+#include "WidgetFramePublicationTests.inl"
+int wmain() { return OverlayApp::RunPublicationTests(); }
+#endif
 
 static int RunWidgetRail(HINSTANCE instance, int showCommand, bool& restart) {
     for (int index = 1; index < __argc; ++index) {

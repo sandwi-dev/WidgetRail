@@ -23,9 +23,10 @@ CollectionRenderState& CollectionState(const WidgetNode& node) {
         const auto previous = owner->collections_.find(key);
         found = collections.emplace(key, previous == owner->collections_.end()
             ? CollectionRenderState{} : previous->second).first;
-        if (owner->preparingInstance_ == snapshot->instanceId &&
-            owner->preparingScope_ == snapshot->activeInputScopeId && owner->preparingSequence_ == snapshot->sequence) {
-            if (const auto warm = owner->preparingCollections_.find(key); warm != owner->preparingCollections_.end()) {
+        if (const auto branch = std::ranges::find_if(owner->collectionPreparations_,
+                [&](const auto& candidate) { return candidate.Matches(*snapshot); });
+            branch != owner->collectionPreparations_.end()) {
+            if (const auto warm = branch->collections.find(key); warm != branch->collections.end()) {
                 // Reuse measurements, never an uncommitted anchor/extent tree.
                 // Source/context comparison below revalidates them even when
                 // a newer request supersedes a partially prepared snapshot.

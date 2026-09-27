@@ -706,13 +706,14 @@ void TestAcceptedWidgetOwnedFocusMemoryHostContract() {
         "declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;",
         "if (inertRetainedSnapshot) {");
     Check(renderReconciliation.find(
-              "if (WidgetOwnsInputFocus(renderedWidget) &&") !=
+              "WidgetOwnsInputFocus(renderedWidget)") !=
               std::string::npos &&
-              renderReconciliation.find("ReconcileResponsiveFocusPersistence(") !=
+              renderReconciliation.find("pendingResponsiveFocusReconciliation_ = result.succeeded") !=
               std::string::npos &&
-              renderReconciliation.find("ResolveVisibleFocusTarget(") !=
-              std::string::npos,
-          "fresh Current rendering cannot reconcile focus while Tray owns input");
+              renderReconciliation.find("ReconcileResponsiveFocusPersistence(") ==
+              std::string::npos &&
+              renderReconciliation.find("ResolveVisibleFocusTarget(") == std::string::npos,
+          "fresh Current rendering stages focus recovery only for the input owner; publication performs recovery");
 
     const auto stateTransition = section(
         "template <typename Mutation>\n    void ApplyStateTransition(",
