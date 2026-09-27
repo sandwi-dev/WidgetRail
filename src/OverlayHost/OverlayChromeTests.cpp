@@ -2189,6 +2189,23 @@ int main(int argc, char** argv) {
         "future timing preserves aged-work promotion");
     Check(futureCost.Available(110001, 110002, 10000, false) == 0,
         "aged work cannot spend the deadline reserve");
+    widgetrail::PreparationFrameBudget progressCost, wholeBatchCost;
+    unsigned progressSlices{}, batchSlices{};
+    // At 240 Hz, a 3 ms batch may contain several sub-millisecond steps.
+    // Requiring space for the previous full batch causes repeated 100 ms waits.
+    for (std::uint64_t frame = 0; frame < 120; ++frame) {
+        const auto now = 10000 + frame * 4166;
+        if (progressCost.Available(now, now + 3241, 4166, false)) {
+            ++progressSlices;
+            progressCost.Observe(900);
+        }
+        if (wholeBatchCost.Available(now, now + 3241, 4166, false)) {
+            ++batchSlices;
+            wholeBatchCost.Observe(3000);
+        }
+    }
+    Check(progressSlices == 120 && batchSlices < 20,
+        "admitting useful steps avoids batch-cost feedback and recurring starvation delays");
     CheckFocusFadeCompositor(false, 1, true, widgetrail::animation::FocusStyle::Settle);
     CheckFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckControllerGlyphs(d2d.Get(), wic.Get());

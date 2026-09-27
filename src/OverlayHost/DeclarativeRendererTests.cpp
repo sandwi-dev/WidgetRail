@@ -8501,6 +8501,9 @@ void CollectionRealizationMatchesEagerGeometry() {
             const auto preparation = lazy.PrepareCollections(snapshot, L"item.0", bounds, options, {1, 1000000});
             Check(preparation.status != CollectionPreparationStatus::Failed && preparation.newMeasurements <= 1,
                 "collection preflight bounds each measurement slice without treating pending work as failure");
+            Check(preparation.minimumProgressMicroseconds > 0 &&
+                preparation.minimumProgressMicroseconds <= preparation.elapsedMicroseconds,
+                "preparation reports a bounded useful-step cost including checkpoint overhead");
             if (preparation.status == CollectionPreparationStatus::Ready) { preparationReady = true; break; }
         }
         Check(preparationReady && preparationSlices > 0, "collection preflight makes progress across bounded slices");

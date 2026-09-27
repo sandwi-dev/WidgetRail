@@ -29,9 +29,10 @@ public:
         // still yields after the first measurement that consumes the allowance.
         return available >= estimate_ || (available >= 500 && now - *waitingSince_ >= 100000) ? available : 0;
     }
-    void Observe(std::uint64_t elapsed) noexcept {
-        // Estimate a complete slice, including style/preparation overhead.
-        estimate_ = std::clamp<std::uint64_t>((estimate_ * 3 + elapsed) / 4, 500, 3000);
+    void Observe(std::uint64_t minimumProgress) noexcept {
+        // Admission needs the cost of one useful step plus its setup/checkpoint,
+        // not the whole batch: a batch grows to consume its granted allowance.
+        estimate_ = std::clamp<std::uint64_t>((estimate_ * 3 + minimumProgress) / 4, 500, 3000);
         waitingSince_.reset();
     }
 private:

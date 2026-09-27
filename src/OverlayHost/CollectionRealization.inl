@@ -212,6 +212,11 @@ void PrepareCollectionItem(const WidgetNode& item, CollectionItemLayout& cached,
             for (const auto& child : node.children) self(self, child);
         };
         save(save, item);
+        if (preparationBudget && !preparationFirstProgressMicroseconds) {
+            preparationFirstProgressMicroseconds = std::max<std::uint64_t>(1,
+                static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - preparationStarted).count()));
+        }
     } else {
         for (const auto& [id, proof] : cached.text) textMeasurements.insert_or_assign(id, proof);
         for (const auto& [id, proofs] : cached.queries) textMeasurementQueries.insert_or_assign(id, proofs);

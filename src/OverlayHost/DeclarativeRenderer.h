@@ -327,6 +327,9 @@ struct CollectionPreparationResult final {
     std::size_t newMeasurements{};
     std::uint64_t elapsedMicroseconds{};
     std::shared_ptr<const RenderResult> focusGeometry;
+    // Observed cost to make one item of progress, including pass setup and
+    // checkpoint bookkeeping. A multi-item slice's total is not this cost.
+    std::uint64_t minimumProgressMicroseconds{};
 };
 
 struct IncrementalPresentationPlan final {

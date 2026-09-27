@@ -141,3 +141,24 @@ compact/preferred viewports and 100/125/200% scaling. A repeat live timing probe
 sent none of its 300 valid future samples through the fixed fallback. These
 results establish the corrections, not elimination of all scrolling stutter;
 physical performance acceptance remains separate.
+
+### Useful-step admission
+
+The next physical run exposed a cost-estimation regression: the restored deadline
+gate used an entire multi-item slice as the minimum cost of progress. On the
+240 Hz display, that cost approached the maximum available frame headroom and
+repeatedly forced work through the 100 ms starvation escape. In the retained
+Playnite samples, preparation frequency fell from approximately 45 to 9 slices
+per second, while median frame CPU work improved from 8.47 to 7.69 ms. These are
+different physical browsing samples, not a controlled throughput benchmark.
+
+Preparation now reports the measured time through its first completed item plus
+checkpoint bookkeeping as `minimumProgressMicroseconds`. Admission observes this
+cost from actual preparation results, independently of the batch's total time
+and subsequent publication. No-op/cancelled requests do not replace the estimate.
+The total slice allowance, deadline reserve and aged-work escape remain bounded
+as before. `minimum-progress-us` accompanies the existing diagnostic timings.
+A deterministic 240 Hz workload now admits 120/120 fitting steps; the old whole-
+batch estimate admits fewer than 20 under the same opportunities. Renderer tests
+also require the reported step cost to be positive and bounded by total cost.
+Actual scrolling smoothness still requires physical verification.
