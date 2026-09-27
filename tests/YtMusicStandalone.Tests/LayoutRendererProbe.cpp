@@ -30,6 +30,7 @@ int Run(int argc, wchar_t** argv) {
         const auto fixture = std::filesystem::path(argv[file]).stem().wstring();
         for (const auto size : {widgetrail::declarative::Size{980, 700}, widgetrail::declarative::Size{620, 400}}) {
             widgetrail::DeclarativeRenderOptions options;
+            options.deferScrollPreparation = true;
             options.responsiveViewport = size;
             if (fixture == L"library") {
                 for (const auto scale : {1.0F,1.25F,2.0F}) {

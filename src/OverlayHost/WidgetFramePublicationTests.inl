@@ -144,7 +144,7 @@ int OverlayApp::RunPublicationTests() {
             reveal.snapshotSequence = 2; reveal.activeInputScopeId = L"page"; reveal.nodeId = L"item.60";
             app.pendingAccessibilityRealization_ = reveal;
             app.accessibilityRealizationReady_ = false;
-            for (unsigned i = 0; app.PumpAccessibilityRealization(); ++i) check(i < 128, "UIA preparation bounded");
+            for (unsigned i = 0; app.PumpAccessibilityRealization({1, 1000000}); ++i) check(i < 128, "UIA preparation bounded");
             check(app.accessibilityRealizationReady_, "UIA target is prepared");
             (void)draw(); app.BlockWidgetFramePublication();
             check(app.pendingAccessibilityRealization_.has_value(), "unseen UIA reveal survives failed submission");

@@ -386,7 +386,8 @@ struct FocusedFreeScrollPlanDiagnostic final {
 };
 
 struct DeclarativeRenderOptions final {
-    // Host scheduling policy, never a widget declaration.
+    // Host lookahead policy, never a widget declaration. Loaded visible items
+    // are always realized by the frame; this defers optional offscreen work.
     bool deferScrollPreparation{};
     bool compositorWidgetTransitions{};
     bool suppressWidgetCompositionMotion{};
@@ -753,16 +754,18 @@ private:
         bool compact{}, horizontal{}, playStationControls{}, adaptiveGrid{};
         bool operator==(const CollectionMeasureContext&) const = default;
     };
-    struct CollectionRenderState final {
-        collection::CollectionLayoutState geometry;
+    struct CollectionMeasurements {
         std::map<std::wstring, CollectionItemLayout, std::less<>> items;
         CollectionMeasureContext context;
         std::uint64_t contextRevision{}, itemRevision{};
+        std::uint64_t resetGeneration{};
+    };
+    struct CollectionRenderState final : CollectionMeasurements {
+        collection::CollectionLayoutState geometry;
         std::wstring lastFocusedKey;
         std::vector<std::size_t> realized;
         float columnWidth{}, columnGap{};
         double leadingExtent{}, trailingExtent{};
-        std::uint64_t resetGeneration{};
         [[nodiscard]] std::pair<float, float> AdmittedScrollRange(const float viewportExtent) const noexcept {
             const auto distance = geometry.Extent() - viewportExtent;
             return {static_cast<float>(leadingExtent),
@@ -772,11 +775,13 @@ private:
     std::unordered_map<std::wstring, CollectionRenderState> collections_;
     struct PreparedCollectionFrame;
     struct CollectionPreparation final {
-        std::unordered_map<std::wstring, CollectionRenderState> collections;
+        // Pending work owns reusable measurements, never partially reconciled
+        // placement. Only a completed frame may contain geometry/scroll state.
+        std::unordered_map<std::wstring, CollectionMeasurements> measurements;
         std::wstring instance, scope, focus, realization;
         long long sequence{};
-        bool ready{};
         std::shared_ptr<PreparedCollectionFrame> frame;
+        [[nodiscard]] bool Ready() const noexcept { return frame != nullptr; }
         [[nodiscard]] bool Matches(const WidgetSnapshot& snapshot) const noexcept {
             return instance == snapshot.instanceId && scope == snapshot.activeInputScopeId && sequence == snapshot.sequence;
         }
@@ -868,6 +873,7 @@ private:
     };
     struct PreparedCollectionFrame final {
         IncrementalLayoutCache cache;
+        std::unordered_map<std::wstring, CollectionRenderState> collections;
         std::unordered_map<std::wstring, ScrollStateEntry> inputScroll, outputScroll;
         std::uint64_t outputScrollClock{};
         std::map<std::wstring, std::wstring> selections;
@@ -1037,6 +1043,7 @@ private:
         long long sequence{};
         decltype(incrementalLayoutCache_) layout;
         decltype(collections_) collections;
+        std::shared_ptr<PreparedCollectionFrame> adoptedPreparation;
         decltype(scrollOffsets_) scrollOffsets;
         std::uint64_t scrollClock{};
         decltype(motionTimeline_) motion;

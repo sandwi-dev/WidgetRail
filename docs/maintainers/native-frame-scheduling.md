@@ -7,13 +7,12 @@ are not display FPS or GPU execution measurements.
 
 ## Preparation ownership
 
-The open host opts into deferred scroll preparation. Input planning checks
-committed visible/protected coverage and coalesces one speculative viewport
-request. Covered movement is submitted immediately; missing required geometry
-holds the current offset. The request contains source, scope, focus, viewport and
-layout options. Timer work warms it without publishing input geometry or replaying
-accumulated movement. Replacement, scale/viewport change, focus change and explicit
-free-scroll retirement cancel obsolete requests.
+The open host defers optional scroll lookahead. Input planning coalesces one
+speculative viewport request, but movement through loaded content belongs to the
+normal frame transaction. Missing visible layout is realized in that frame;
+missing provider data still bounds the scroll range. Timer work warms adjacent
+items without publishing geometry or replaying accumulated distance. Replacement,
+scale/viewport change, focus change and retirement cancel obsolete requests.
 
 `PreparationFrameBudget` computes available CPU time from the DWM vblank clock and
 refresh period. It gives outstanding paints priority, leaves up to 1.5 ms (one
@@ -27,13 +26,14 @@ paint messages priority over timers. Work deferred for 100 ms may execute one
 indivisible measurement with less headroom; a high-refresh display must not cause
 permanent starvation when the measured cost exceeds every available frame window.
 
-Speculative preparation now retains tentative scroll state together with its
-matching collection extent/anchor model. Restarting every slice from the visible
-viewport discarded progress made while revealing offscreen focus. The checkpoint
-is reusable only with the same immutable source, target, exact viewport,
-measurement/presentation options and unchanged committed scroll geometry. LRU
-access timestamps do not invalidate geometry. Live scrolling or a changed request
-discards that checkpoint. Nothing becomes authoritative until normal frame commit.
+Pending preparation retains item measurements only, not a partial extent/scroll
+checkpoint. Every slice starts placement from the latest committed viewport and
+imports measurements by content, context and reset-generation proof. Only a
+completed pass creates a prepared frame, reusable with the same immutable source,
+target, viewport, options and input scroll state. LRU timestamps do not invalidate
+geometry. Live scrolling can invalidate prepared placement without discarding
+valid item measurements. Publication retires only the exact prepared frame it
+adopted; an unrelated paint cannot consume lookahead or an unseen UIA reveal.
 
 Ready preparation retains its final layout, text measurement proofs and base
 styles. The admitting frame rebinds semantic pointers, republishes logical
@@ -164,7 +164,8 @@ also require the reported step cost to be positive and bounded by total cost.
 Actual scrolling smoothness still requires physical verification.
 
 The subsequent [Flutter/Compose page-admission review](native-page-admission-review.md)
-adds an opt-in red regression for arrival during reversal. It exposes extra
-realization holds and a grid-prepend checkpoint/anchor failure that the existing
-green suite missed. Treat that review as the next correctness gate before further
-scheduling changes; it does not claim physical acceptance of this candidate.
+exposed extra realization holds and a grid-prepend checkpoint/anchor failure that
+the earlier green suite missed. The [collection transaction correction](native-collection-transactions.md)
+separates measurements, ready placement and publication, and makes loaded visible
+layout part of the frame. Its expanded arrival/reversal regression is now a required
+green gate. Physical performance acceptance remains separate.

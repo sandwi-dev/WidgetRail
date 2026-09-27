@@ -126,6 +126,7 @@ int wmain(int argc, wchar_t** argv) {
         }
         DeclarativeRenderer renderer(d2d.Get(), write.Get(), &images);
         DeclarativeRenderOptions options;
+        options.deferScrollPreparation = true;
         options.pixelScale = 1.25F; options.compositorWidgetTransitions = true;
         options.compositorBackgroundAvailable = true; options.accessibility.reducedMotion = true;
         options.suppressFocusedDescendantFollow = true;
