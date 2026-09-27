@@ -1,9 +1,31 @@
 # Native collection lifecycle
 
 Implementation begins with an internal logical geometry model in
-`CollectionLayoutState`. This document distinguishes that foundation from the
-SDK and renderer integration still required. It does not advertise an available
-lazy collection API to widget authors.
+`CollectionLayoutState` and the protocol-v59 declaration below. The declaration is
+validated end to end on the task branch; renderer realization is still pending.
+Do not release or adopt these helpers in shipping widgets until that path is
+connected and the integration gates pass.
+
+## Declarative contract
+
+`UI.CollectionList(id, estimatedItemExtent, axis, items)` declares a one-dimensional
+list. `UI.CollectionGrid(id, minimumColumnWidth, estimatedItemExtent, maximumColumns,
+items)` declares a vertical adaptive grid. Both produce Scroll elements carrying
+a typed `CollectionLayout` policy, so existing cursor `Capture().Present()` and
+scope/shortcut APIs remain usable. Their direct items must already carry unique
+`CollectionItem` keys and be Buttons or ActionSurfaces. The helper supplies a first
+anchor for a static collection; the cursor presentation replaces it as appropriate.
+
+Each item is one controller target. Nested focusable content or per-item responsive
+visibility requires an ordinary Scroll layout; filtering replaces logical items
+explicitly. The contract admits content-sized rows and poster content, rather than
+requiring a fixed item height. The host owns overscan and realization budgets.
+
+Version 59 is required whenever the policy is present. Managed and native validators
+reject unsupported kinds, shapes, estimates and column limits. Policy changes use
+the existing atomic `PresentationProperty.CollectionLayout` update with layout,
+paint, interaction and accessibility impact; they do not add a separate transport.
+The existing bounded wire tree and cursor limits still apply.
 
 ## Ownership and identities
 
@@ -82,8 +104,8 @@ objects. Prepare a staged copy when necessary, and publish it together with the
 matching geometry, focus and paint state. It does not itself implement atomic
 scene publication or a background measurement scheduler.
 
-Remaining delivery includes the validated SDK/protocol collection declaration,
-descriptor-to-realized-subtree lifecycle, Taffy item measurement, provider-window
+Remaining delivery includes the descriptor-to-realized-subtree lifecycle,
+Taffy item measurement, provider-window
 extent integration, navigation/UIA realization, scheduler and resource protection,
 and adoption in Playnite grids and variable-height music rows. Existing generic
 Scroll behavior remains the production path until that integration passes.

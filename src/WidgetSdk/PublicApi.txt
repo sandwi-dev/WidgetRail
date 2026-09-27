@@ -1694,6 +1694,8 @@ method static WidgetRail.WidgetSdk.UI.Card(string id, params WidgetRail.WidgetSd
 method static WidgetRail.WidgetSdk.UI.ChoiceRow(WidgetRail.WidgetSdk.WidgetIcon icon, string label, string action, string id, bool isSelected = false, bool isDisabled = false, bool isBusy = false, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.ChoiceRow(string label, string action, string id, bool isSelected = false, bool isDisabled = false, bool isBusy = false, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.CodeText(string text, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.TextElement
+method static WidgetRail.WidgetSdk.UI.CollectionGrid(string id, double minimumColumnWidth, double estimatedItemExtent, int? maximumColumns = null, params WidgetRail.WidgetSdk.WidgetElement[] items) -> WidgetRail.WidgetSdk.ScrollElement
+method static WidgetRail.WidgetSdk.UI.CollectionList(string id, double estimatedItemExtent, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical, params WidgetRail.WidgetSdk.WidgetElement[] items) -> WidgetRail.WidgetSdk.ScrollElement
 method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerButton button, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
 method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerPrompt prompt, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
 method static WidgetRail.WidgetSdk.UI.ControllerHint(WidgetRail.WidgetProtocol.ControllerButton button, string label, string id) -> WidgetRail.WidgetSdk.RowElement
@@ -2308,6 +2310,7 @@ property TState WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAu
 property TValue? WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Value { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfaceOrientation WidgetRail.WidgetSdk.ActionSurfaceElement.Orientation { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfacePresentation? WidgetRail.WidgetSdk.ActionSurfaceElement.Presentation { get; set; }
+property WidgetRail.WidgetProtocol.CollectionLayout? WidgetRail.WidgetSdk.ScrollElement.CollectionLayout { get; set; }
 property WidgetRail.WidgetProtocol.CollectionLoadingState WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.LoadingState { get; }
 property WidgetRail.WidgetProtocol.CollectionLoadingState? WidgetRail.WidgetSdk.ScrollElement.CollectionLoading { get; set; }
 property WidgetRail.WidgetProtocol.CollectionNavigationRequest? WidgetRail.WidgetSdk.ScrollElement.CollectionNavigation { get; set; }

@@ -316,6 +316,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.CollectionLoading => Read<CollectionLoadingState?>(change.Value),
                 PresentationProperty.VirtualCollectionWindow =>
                     Read<VirtualCollectionWindow?>(change.Value),
+                PresentationProperty.CollectionLayout => Read<CollectionLayout?>(change.Value),
                 PresentationProperty.FocusPresentation or
                 PresentationProperty.DefaultFocusPresentation => Read<ViewNode?>(change.Value),
                 PresentationProperty.Value or PresentationProperty.Minimum or PresentationProperty.Maximum or
@@ -487,6 +488,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ScrollNearEndActionId => node with { ScrollNearEndActionId = Read<string?>(change.Value) },
                 PresentationProperty.ScrollPaginationThreshold => node with { ScrollPaginationThreshold = Read<int?>(change.Value) },
                 PresentationProperty.VirtualCollectionWindow => node with { VirtualCollectionWindow = Read<VirtualCollectionWindow?>(change.Value) },
+                PresentationProperty.CollectionLayout => node with { CollectionLayout = Read<CollectionLayout?>(change.Value) },
                 PresentationProperty.CollectionStartIndex => node with { CollectionStartIndex = Read<long?>(change.Value) },
                 PresentationProperty.CollectionGeneration => node with { CollectionGeneration = Read<long?>(change.Value) },
                 PresentationProperty.CollectionResetGeneration => node with { CollectionResetGeneration = Read<long?>(change.Value) },

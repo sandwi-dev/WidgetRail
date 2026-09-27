@@ -368,6 +368,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.Transition is not null)
                 Add("widget-transition", ProtocolConstants.WidgetTransitionVersion,
                     $"{path}.transition", "Widget transitions require protocol version 58 or later.");
+            if (node.CollectionLayout is not null)
+                Add("collection-layout", ProtocolConstants.CollectionLayoutVersion,
+                    $"{path}.collectionLayout", "Collection realization requires protocol version 59 or later.");
             if (node.FocusBackgroundArtworkHandle is not null ||
                 node.UsesFocusedDescendantArtwork is true)
                 Add(
