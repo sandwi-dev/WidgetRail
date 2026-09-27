@@ -2,6 +2,7 @@
 #include "ImageDecodeSize.h"
 #include "ScrollDiagnostics.h"
 #include "UiResourceBudget.h"
+#include "UiResource.h"
 #include <set>
 #include <map>
 
@@ -338,6 +339,8 @@ public:
         ID2D1RenderTarget* renderTarget,
         std::wstring_view url,
         ID2D1Bitmap** bitmap);
+    [[nodiscard]] HRESULT CreateTrackedBitmap(ID2D1RenderTarget* target, std::wstring_view key,
+        resources::UiResource<ID2D1Bitmap>& bitmap);
 
     static std::wstring VariantKey(std::wstring_view source, ImageDecodeSize size);
     void ProtectImages(const void* owner, std::set<std::wstring> keys);
@@ -372,6 +375,7 @@ private:
         std::shared_ptr<const RemoteDecodedImage> image;
         std::wstring error;
         std::wstring pendingSource;
+        resources::UiResourceBudget::Lease encodedAllocation;
         std::vector<std::uint8_t> pendingBytes;
         std::wstring pendingMimeType;
         std::uint64_t lastUse{};

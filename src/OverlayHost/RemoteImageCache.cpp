@@ -512,7 +512,8 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(
                 *found->second.demandAuthority != authority) {
                 const auto generation = ++artworkDemandGeneration_;
                 encodedArtworkBytes_ -= found->second.pendingBytes.size();
-                found->second.pendingBytes.clear();
+                std::vector<std::uint8_t>{}.swap(found->second.pendingBytes);
+                found->second.encodedAllocation.reset();
                 found->second.pendingMimeType.clear();
                 std::erase(queue_, key);
                 found->second.state = RemoteImageState::Loading;
@@ -552,14 +553,13 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(
         }
         if (handleIsTerminal) {
             auto [failed, _] = entries_.emplace(key, Entry{
-                RemoteImageState::Failed, {}, L"Trusted artwork is unavailable.", {}, {}, {},
-                ++useCounter_});
+                .state = RemoteImageState::Failed, .error = L"Trusted artwork is unavailable.", .lastUse = ++useCounter_});
             failed->second.demandAuthority = authority;
             return RemoteImageRequestResult::AlreadyTracked;
         }
         const auto generation = ++artworkDemandGeneration_;
         auto [inserted, _] = entries_.emplace(key, Entry{
-            RemoteImageState::Loading, {}, {}, {}, {}, {}, ++useCounter_});
+            .state = RemoteImageState::Loading, .lastUse = ++useCounter_});
         inserted->second.decodeSize = size;
         inserted->second.demandAuthority = authority;
         inserted->second.demandGeneration = generation;
@@ -616,7 +616,7 @@ RemoteImageRequestResult RemoteImageCache::RequestPackageIcon(
         }
     }
     auto [entry, _] = entries_.emplace(key, Entry{
-        RemoteImageState::Queued, {}, {}, {}, {}, {}, ++useCounter_});
+        .state = RemoteImageState::Queued, .lastUse = ++useCounter_});
     entry->second.packageIconAuthority = std::move(authority);
     entry->second.demandGeneration = ++artworkDemandGeneration_;
     entry->second.packageIconQueued = true;
@@ -653,7 +653,15 @@ bool RemoteImageCache::SupplyTrustedArtwork(
     const TrustedArtworkDemandAuthority& authority,
     std::wstring contentType,
     std::wstring contentBase64) {
+    if (contentBase64.empty() || contentBase64.size() / 4 > limits_.maximumEncodedArtworkBytes / 3 + 1) return false;
+    auto temporary = resourceBudget_->Reserve(resources::Kind::EncodedArtwork,
+        contentBase64.size() / 4 * 3, resources::Admission::Required);
+    if (!temporary) return false;
     auto bytes = DecodeBoundedBase64(contentBase64, limits_.maximumEncodedArtworkBytes);
+    if (bytes) {
+        if (!temporary->ResizeRequiredReservation(bytes->capacity())) return false;
+        temporary->Commit();
+    }
     if (!bytes || !MatchesArtworkSignature(contentType, *bytes)) return false;
     std::scoped_lock lock(mutex_);
     if (shuttingDown_) return false;
@@ -677,7 +685,13 @@ bool RemoteImageCache::SupplyTrustedArtwork(
         if (!key.starts_with(prefix) || !key.ends_with(suffix) ||
             entry.state != RemoteImageState::Loading ||
             !entry.demandAuthority || *entry.demandAuthority != authority) continue;
-        entry.pendingBytes = *bytes;
+        auto allocation = resourceBudget_->Reserve(resources::Kind::EncodedArtwork, bytes->size(), resources::Admission::Required);
+        if (!allocation) return false;
+        std::vector<std::uint8_t> copy = *bytes;
+        if (!allocation->ResizeRequiredReservation(copy.capacity())) return false;
+        allocation->Commit();
+        entry.pendingBytes = std::move(copy);
+        entry.encodedAllocation = std::move(allocation);
         entry.pendingMimeType = contentType;
         encodedArtworkBytes_ += entry.pendingBytes.size();
         entry.state = RemoteImageState::Queued;
@@ -910,6 +924,21 @@ std::uint64_t RemoteImageCache::OpaqueDiagnosticHash(
     return result;
 }
 
+HRESULT RemoteImageCache::CreateTrackedBitmap(ID2D1RenderTarget* target, std::wstring_view key,
+    resources::UiResource<ID2D1Bitmap>& bitmap) {
+    if (!target) return E_POINTER;
+    auto image = GetReadyImage(key);
+    if (!image) return E_PENDING;
+    const auto bytes = static_cast<std::size_t>(image->stride) * image->height;
+    const auto properties = D2D1::BitmapProperties(
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96, 96);
+    return resources::UiResource<ID2D1Bitmap>::Create(resourceBudget_, resources::Kind::GpuImage, bytes,
+        [&](ID2D1Bitmap** output) {
+            return target->CreateBitmap(D2D1::SizeU(image->width, image->height),
+                image->premultipliedBgra.data(), image->stride, properties, output);
+        }, bitmap);
+}
+
 HRESULT RemoteImageCache::CreateBitmap(
     ID2D1RenderTarget* renderTarget,
     std::wstring_view url,
@@ -1021,7 +1050,7 @@ RemoteImageRequestResult RemoteImageCache::QueueLocked(std::wstring url, bool re
             return RemoteImageRequestResult::CapacityExceeded;
         }
     }
-    entries_.emplace(url, Entry{RemoteImageState::Queued, {}, {}, {}, {}, {}, ++useCounter_});
+    entries_.emplace(url, Entry{.state = RemoteImageState::Queued, .lastUse = ++useCounter_});
     queue_.push_back(std::move(url));
     condition_.notify_one();
     return RemoteImageRequestResult::Queued;
@@ -1082,14 +1111,21 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
         std::optional<PackageIconDemandAuthority> packageIconAuthority;
         std::uint64_t packageIconGeneration{};
         std::wstring source;
+        resources::UiResourceBudget::Lease encodedAllocation;
         std::vector<std::uint8_t> encodedArtwork;
         std::wstring encodedArtworkMime;
         {
             std::unique_lock lock(mutex_);
-            condition_.wait(lock, [this, &stopToken] {
+            const bool work = condition_.wait_for(lock, std::chrono::seconds(1), [this, &stopToken] {
                 return shuttingDown_ || stopToken.stop_requested() || !queue_.empty();
             });
             if (shuttingDown_ || stopToken.stop_requested()) break;
+            if (!work) {
+                const bool reclaim = resourceBudget_->Read().needsReclamation();
+                lock.unlock();
+                if (reclaim && artworkDecoder_) artworkDecoder_->RetireIdle();
+                continue;
+            }
             const auto priority = std::find_if(queue_.begin(), queue_.end(), [&](const auto& key) { return ProtectedLocked(key); });
             if (priority != queue_.end()) std::iter_swap(queue_.begin(), priority);
             url = std::move(queue_.front());
@@ -1112,6 +1148,7 @@ void RemoteImageCache::WorkerLoop(std::stop_token stopToken) {
                 found->second.pendingSource.clear();
             }
             if (!found->second.pendingBytes.empty()) {
+                encodedAllocation = std::move(found->second.encodedAllocation);
                 encodedArtwork = std::move(found->second.pendingBytes);
                 encodedArtworkMime = std::move(found->second.pendingMimeType);
                 encodedArtworkBytes_ -= encodedArtwork.size();

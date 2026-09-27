@@ -46,6 +46,9 @@ public:
             artworkdecoder::RasterVariant::OriginalColor);
     [[nodiscard]] ArtworkDecoderProcessStats Stats() const noexcept;
     void Shutdown() noexcept;
+    // Call only on the decode owner thread between requests. Releases idle IPC
+    // and process storage without poisoning the decoder or closing admission.
+    void RetireIdle() noexcept;
 
 private:
     [[nodiscard]] bool EnsureProcess(std::wstring& error);

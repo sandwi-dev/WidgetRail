@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DeclarativeLayout.h"
+#include "UiResource.h"
 #include "WidgetAnimationPolicy.h"
 #include "WidgetInteractionMotion.h"
 #include <d2d1.h>
@@ -30,7 +31,7 @@ struct WidgetCompositionNode final {
     WidgetCompositionKind kind{WidgetCompositionKind::Raster};
     int order{};
     declarative::Rect bounds, clip;
-    Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
+    resources::UiResource<ID2D1Bitmap> bitmap;
     std::optional<D2D1_COLOR_F> solid;
     // A live lease pins immutable pixels. Repainting must use a new token;
     // presenters can then reuse GPU content by identity, independent of position.
@@ -55,5 +56,14 @@ struct WidgetCompositionScene final {
     std::vector<animation::FocusTarget> focusTargets;
     std::size_t rasterBytes{};
     std::uint64_t paintCacheHits{}, paintCacheMisses{}, paintedBytes{};
+    // Protection belongs to this submitted/prepared scene, not its reusable cache entries.
+    void ProtectResources() {
+        std::vector<resources::UiResourceBudget::Pin> pins;
+        pins.reserve(nodes.size());
+        for (const auto& node : nodes) if (auto pin = node.bitmap.Protect()) pins.push_back(std::move(pin));
+        resourcePins_ = std::move(pins);
+    }
+private:
+    std::vector<resources::UiResourceBudget::Pin> resourcePins_;
 };
 } // namespace widgetrail

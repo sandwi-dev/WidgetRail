@@ -3717,7 +3717,7 @@ struct DeclarativeRenderer::RenderPass final {
         return true;
     }
 
-    [[nodiscard]] ComPtr<ID2D1Bitmap> CreateBackgroundSurfaceRebase(
+    [[nodiscard]] resources::UiResource<ID2D1Bitmap> CreateBackgroundSurfaceRebase(
         const WidgetNode& node,
         const WidgetNode& committedNode,
         ID2D1Bitmap* const committedBitmap,
@@ -3816,11 +3816,12 @@ struct DeclarativeRenderer::RenderPass final {
         const auto desiredPixels = D2D1::SizeU(
             static_cast<UINT32>(pixelWidth),
             static_cast<UINT32>(pixelHeight));
-        ComPtr<ID2D1BitmapRenderTarget> compositeTarget;
-        if (FAILED(target->CreateCompatibleRenderTarget(
+        resources::UiResource<ID2D1BitmapRenderTarget> compositeTarget;
+        if (FAILED(resources::UiResource<ID2D1BitmapRenderTarget>::Create(owner->resourceBudget_, resources::Kind::AnimationSurface,
+                static_cast<std::size_t>(estimatedBytes64), [&](ID2D1BitmapRenderTarget** output) { return target->CreateCompatibleRenderTarget(
                 &desiredSize, &desiredPixels, nullptr,
                 D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
-                compositeTarget.ReleaseAndGetAddressOf())) ||
+                output); }, compositeTarget)) ||
             !compositeTarget) {
             AddBackgroundSurfaceTransitionDiagnostic(
                 node, L"rebase-failed", L"compatible-target");
@@ -3843,8 +3844,9 @@ struct DeclarativeRenderer::RenderPass final {
             return {};
         }
 
-        ComPtr<ID2D1Bitmap> bitmap;
-        if (FAILED(compositeTarget->GetBitmap(bitmap.ReleaseAndGetAddressOf())) ||
+        resources::UiResource<ID2D1Bitmap> bitmap;
+        if (FAILED(resources::UiResource<ID2D1Bitmap>::Alias(compositeTarget,
+                [&](ID2D1Bitmap** output) { return compositeTarget->GetBitmap(output); }, bitmap)) ||
             !bitmap) {
             AddBackgroundSurfaceTransitionDiagnostic(
                 node, L"rebase-failed", L"compatible-target-bitmap");
@@ -3940,7 +3942,7 @@ struct DeclarativeRenderer::RenderPass final {
         const float opacity,
         const bool focused,
         const bool drawFailureFallback = true,
-        ComPtr<ID2D1Bitmap>* const resolvedBitmap = nullptr,
+        resources::UiResource<ID2D1Bitmap>* const resolvedBitmap = nullptr,
         ImagePresentationState* const resolvedState = nullptr,
         const bool useImageShape = true) {
         if (!target) return false;
@@ -4109,7 +4111,7 @@ struct DeclarativeRenderer::RenderPass final {
         };
         const auto startTransition = [&](FocusBackgroundEntry& entry,
                                          const WidgetNode& desired,
-                                         ComPtr<ID2D1Bitmap> bitmap,
+                                         resources::UiResource<ID2D1Bitmap> bitmap,
                                          const std::uint64_t now,
                                          const std::wstring_view event) {
             entry.incomingImageSource = desired.imageSource;
@@ -4121,7 +4123,7 @@ struct DeclarativeRenderer::RenderPass final {
         };
         const auto remember = [&] (
             const WidgetNode& desired,
-            ComPtr<ID2D1Bitmap> bitmap) {
+            resources::UiResource<ID2D1Bitmap> bitmap) {
             constexpr std::size_t maximumRetainedSurfaces = 256;
             if (!focusBackgrounds.contains(authority) &&
                 focusBackgrounds.size() >= maximumRetainedSurfaces) {
@@ -4355,7 +4357,7 @@ struct DeclarativeRenderer::RenderPass final {
             if (owner->imageCache_ && !defaultKey.empty() &&
                 owner->imageCache_->GetState(defaultKey) ==
                     RemoteImageState::Ready) {
-                ComPtr<ID2D1Bitmap> defaultBitmap;
+                resources::UiResource<ID2D1Bitmap> defaultBitmap;
                 if (DrawImage(
                         node, style, rect, opacity, false, false,
                         &defaultBitmap)) {
@@ -4994,14 +4996,15 @@ struct DeclarativeRenderer::RenderPass final {
         if (retainedBytes > maximumBytes) { visual = {}; return false; }
         // Ping-pong capture targets; never overwrite the committed or outgoing
         // image. A failed paint therefore cannot mutate the last valid visual.
-        ComPtr<ID2D1BitmapRenderTarget> surface = visual.spareTarget;
+        resources::UiResource<ID2D1BitmapRenderTarget> surface = visual.spareTarget;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         if (surface) ++result.transitionSurfaceReuses;
         else ++result.transitionSurfaceCreates;
 #endif
-        if (!surface && FAILED(target->CreateCompatibleRenderTarget(&desiredSize,
+        if (!surface && FAILED(resources::UiResource<ID2D1BitmapRenderTarget>::Create(owner->resourceBudget_, resources::Kind::AnimationSurface,
+            bytes, [&](ID2D1BitmapRenderTarget** output) { return target->CreateCompatibleRenderTarget(&desiredSize,
             &desiredPixels, nullptr,
-            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, surface.GetAddressOf()))) return false;
+            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, output); }, surface))) return false;
         transientCaptureBytes += allocationBytes;
         surface->BeginDraw();
         surface->Clear(D2D1::ColorF(0, 0));
@@ -5046,8 +5049,9 @@ struct DeclarativeRenderer::RenderPass final {
         target = destination;
         const auto status = surface->EndDraw();
         transientCaptureBytes -= allocationBytes;
-        ComPtr<ID2D1Bitmap> bitmap;
-        if (FAILED(status) || FAILED(surface->GetBitmap(bitmap.GetAddressOf()))) {
+        resources::UiResource<ID2D1Bitmap> bitmap;
+        if (FAILED(status) || FAILED(resources::UiResource<ID2D1Bitmap>::Alias(surface,
+                [&](ID2D1Bitmap** output) { return surface->GetBitmap(output); }, bitmap))) {
             visual = {};
             Add(node.id, L"transition_surface_failed", L"Transition surface paint failed; retain the last committed frame.",
                 RenderDiagnosticSeverity::Error);
@@ -5565,11 +5569,17 @@ void DeclarativeRenderer::CancelWidgetTransitions() noexcept {
     compositionPaintCache_.clear();
 }
 void DeclarativeRenderer::PublishImageProtection() {
-    if (!imageCache_) return;
     auto keys = protectedImageKeys_;
     if (pendingPublication_) keys.insert(pendingPublication_->imageKeys.begin(), pendingPublication_->imageKeys.end());
     keys.insert(chromeImageKeys_.begin(), chromeImageKeys_.end());
-    imageCache_->ProtectImages(this, std::move(keys));
+    std::vector<resources::UiResourceBudget::Pin> pins;
+    pins.reserve(keys.size());
+    for (const auto& key : keys) {
+        const auto entry = bitmaps_.find(key);
+        if (entry != bitmaps_.end()) if (auto pin = entry->second.bitmap.Protect()) pins.push_back(std::move(pin));
+    }
+    bitmapProtection_ = std::move(pins);
+    if (imageCache_) imageCache_->ProtectImages(this, std::move(keys));
 }
 void DeclarativeRenderer::SetChromeImageProtection(std::set<std::wstring> keys) {
     chromeImageKeys_ = std::move(keys);
@@ -5587,12 +5597,18 @@ DeclarativeRenderer::DeclarativeRenderer(
     IDWriteFactory* writeFactory,
     RemoteImageCache* imageCache,
     ArtworkRenderDiagnosticCallback artworkRenderDiagnostic,
-    std::shared_ptr<ScrollDiagnostics> scrollDiagnostics) noexcept
+    std::shared_ptr<ScrollDiagnostics> scrollDiagnostics,
+    std::shared_ptr<resources::UiResourceBudget> resourceBudget)
     : d2dFactory_(d2dFactory),
       writeFactory_(writeFactory),
       imageCache_(imageCache),
+      resourceBudget_(resourceBudget ? std::move(resourceBudget) : imageCache ? imageCache->ResourceBudget() : std::make_shared<resources::UiResourceBudget>()),
       artworkRenderDiagnostic_(std::move(artworkRenderDiagnostic)),
-      scrollDiagnostics_(std::move(scrollDiagnostics)) {}
+      scrollDiagnostics_(std::move(scrollDiagnostics)),
+      surfaceShadows_(resourceBudget_) {
+    if (imageCache_ && resourceBudget_ != imageCache_->ResourceBudget())
+        throw std::invalid_argument("Renderer and image cache must share a resource budget.");
+}
 
 void DeclarativeRenderer::ReportArtworkRenderDiagnostic(
     const WidgetNode& node,
@@ -5659,7 +5675,7 @@ void DeclarativeRenderer::ReportArtworkRenderDiagnostic(
     }
 }
 
-ComPtr<ID2D1Bitmap> DeclarativeRenderer::ResolveCompositorBackgroundBitmap(
+resources::UiResource<ID2D1Bitmap> DeclarativeRenderer::ResolveCompositorBackgroundBitmap(
     ID2D1RenderTarget* const renderTarget,
     const ComputedCompositorBackground& background) {
     if (!renderTarget || background.resourceGeneration != bitmapResourceGeneration_ ||
@@ -6425,6 +6441,7 @@ RenderResult DeclarativeRenderer::Render(
     const Rect viewport,
     const DeclarativeRenderOptions& options) {
     RejectFramePublication();
+    ReclaimIdleResources();
     auto publication = std::make_unique<FramePublication>();
     publication->instance = snapshot.instanceId;
     publication->scope = snapshot.activeInputScopeId;
@@ -7289,6 +7306,7 @@ bool DeclarativeRenderer::BindBitmapResourceDomain(
 void DeclarativeRenderer::ClearBitmapCache(
     const bool resourceInvalidation) noexcept {
     bitmaps_.clear();
+    bitmapProtection_.clear();
     bitmapBytes_ = 0;
     if (resourceInvalidation) {
         surfaceShadows_.Clear();
@@ -7301,6 +7319,23 @@ void DeclarativeRenderer::ClearBitmapCache(
         focusBackgroundCompositeBytes_ = 0;
         ++bitmapResourceInvalidations_;
     }
+}
+
+void DeclarativeRenderer::ReclaimIdleResources() {
+    if (!resourceBudget_->Read().needsReclamation()) return;
+    // Cache entries do not own frame protection. Submitted or pending scenes
+    // keep their rasters alive even if a reusable entry is removed here.
+    std::erase_if(compositionPaintCache_, [&](const auto& entry) {
+        const auto& allocation = entry.second.bitmap.Allocation();
+        return allocation && !allocation->protectedFromEviction();
+    });
+    std::erase_if(compositionCaptures_, [](const auto& capture) { return capture.lease.expired(); });
+    for (auto& [_, visual] : transitionVisuals_) {
+        visual.spareTarget.Reset(); visual.spareBytes = 0;
+    }
+    (void)TrimBitmapCache(0);
+    surfaceShadows_.Reclaim();
+    if (imageCache_) imageCache_->ReclaimIdleImages();
 }
 
 bool DeclarativeRenderer::TrimBitmapCache(
@@ -7317,10 +7352,11 @@ bool DeclarativeRenderer::TrimBitmapCache(
             : kMaximumBitmapBytes - focusBackgroundCompositeBytes_ - incomingBytes;
         const bool bytePressure = retainedPressure ||
             bitmapBytes_ > availableAfterRetained;
-        if (!countPressure && !bytePressure) break;
+        const bool sharedPressure = resourceBudget_->Read().needsReclamation();
+        if (!countPressure && !bytePressure && !sharedPressure) break;
         auto oldest = bitmaps_.end();
         for (auto entry = bitmaps_.begin(); entry != bitmaps_.end(); ++entry) {
-            if (ImageProtected(entry->first)) continue;
+            if (ImageProtected(entry->first) || (entry->second.bitmap.Allocation() && entry->second.bitmap.Allocation()->protectedFromEviction())) continue;
             if (oldest == bitmaps_.end() || entry->second.lastUse < oldest->second.lastUse) oldest = entry;
         }
         if (oldest == bitmaps_.end()) return false;
@@ -7436,7 +7472,7 @@ std::wstring_view LastRetiredRendererWidgetInstanceForTesting() noexcept {
 } // namespace testing
 #endif
 
-ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
+resources::UiResource<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     ID2D1RenderTarget* renderTarget,
     const WidgetNode& node,
     RenderPass& pass,
@@ -7480,7 +7516,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     const auto imageIdentity = FocusSelectionAuthority(pass.options) + L"\x1f" +
         (trustedArtwork ? RemoteImageCache::TrustedArtworkKey(artworkWidgetId, node.id, node.artworkHandle)
                         : node.imageSource);
-    const auto readyVariant = [&]() -> ComPtr<ID2D1Bitmap> {
+    const auto readyVariant = [&]() -> resources::UiResource<ID2D1Bitmap> {
         if (!pass.options.sizeArtworkToDisplay || presentationState != ImagePresentationState::Pending) return {};
         auto best = bitmaps_.end();
         double bestDistance = std::numeric_limits<double>::max();
@@ -7566,10 +7602,9 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         }
         return {};
     }
-    ComPtr<ID2D1Bitmap> bitmap;
+    resources::UiResource<ID2D1Bitmap> bitmap;
     const auto uploadStarted = scrollDiagnostics_ ? ScrollDiagnostics::Clock::now() : ScrollDiagnostics::Clock::time_point{};
-    const auto result = imageCache_->CreateBitmap(
-        renderTarget, source, bitmap.ReleaseAndGetAddressOf());
+    const auto result = imageCache_->CreateTrackedBitmap(renderTarget, source, bitmap);
     if (scrollDiagnostics_) pass.scrollUploadMicroseconds += ScrollDiagnostics::Micros(ScrollDiagnostics::Clock::now() - uploadStarted);
     if (FAILED(result) || !bitmap) {
         if (ArtworkRenderDiagnosticsEnabled())
@@ -7638,7 +7673,7 @@ DeclarativeRenderer::ResolvePackageIconDemandAuthority(
     };
 }
 
-ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetPackageIconBitmap(
+resources::UiResource<ID2D1Bitmap> DeclarativeRenderer::GetPackageIconBitmap(
     ID2D1RenderTarget* renderTarget,
     const WidgetPackageIcon& icon,
     const Rect destination,
@@ -7664,9 +7699,8 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetPackageIconBitmap(
         return {};
     }
     if (state != RemoteImageState::Ready) return {};
-    ComPtr<ID2D1Bitmap> bitmap;
-    if (FAILED(imageCache_->CreateBitmap(
-            renderTarget, key, bitmap.ReleaseAndGetAddressOf())) || !bitmap) return {};
+    resources::UiResource<ID2D1Bitmap> bitmap;
+    if (FAILED(imageCache_->CreateTrackedBitmap(renderTarget, key, bitmap)) || !bitmap) return {};
     ++bitmapCreates_;
     const auto pixelSize = bitmap->GetPixelSize();
     const auto byteCount64 = static_cast<std::uint64_t>(pixelSize.width) *

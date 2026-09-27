@@ -375,6 +375,12 @@ void DecoderTransportAndOutputAccounting() {
     const auto live = budget->Read();
     assert(live.allocatedByKind[static_cast<std::size_t>(resources::Kind::DecoderTransport)] == artworkdecoder::mappingBytes);
     assert(live.allocatedBytes == artworkdecoder::mappingBytes + decoded && live.protectedBytes == 0);
+    const auto failures = decoder.Stats().failed;
+    decoder.RetireIdle();
+    assert(budget->Read().allocatedBytes == decoded && decoder.Stats().failed == failures);
+    auto resumed = decoder.Decode(png, L"image/png", {}, artworkdecoder::TestBehavior::Succeed);
+    assert(resumed.succeeded() && decoder.Stats().starts == 2 && decoder.Stats().failed == failures);
+    resumed.image = {};
     decoder.Shutdown();
     assert(budget->Read().allocatedBytes == decoded);
     result = {};

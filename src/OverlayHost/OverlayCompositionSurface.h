@@ -78,6 +78,9 @@ PlanCompositionUpdateRasterMapping(
 // attaches it only after EndDraw has completed the full update rectangle.
 class OverlayCompositionSurface final {
 public:
+    explicit OverlayCompositionSurface(std::shared_ptr<resources::UiResourceBudget> budget = {})
+        : resourceBudget_(budget ? std::move(budget) : std::make_shared<resources::UiResourceBudget>()) {}
+    [[nodiscard]] const std::shared_ptr<resources::UiResourceBudget>& ResourceBudget() const noexcept { return resourceBudget_; }
     enum class ExternalContentEndpoint { Overlay, Pinned };
     enum class ExternalContentCoordinateSpace { ContentLocal, EndpointLocal };
     enum class Layer {
@@ -100,7 +103,8 @@ public:
         std::shared_ptr<const WidgetCompositionScene> widgetScene;
         std::shared_ptr<const WidgetCompositionScene> popupScene;
         Layer layer{Layer::Content};
-        Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
+        resources::UiResource<IDCompositionSurface> surface;
+        resources::UiResourceBudget::Pin surfacePin;
         Microsoft::WRL::ComPtr<ID2D1DeviceContext> target;
         POINT updateOffset{};
         RECT updateArea{};
@@ -336,6 +340,7 @@ public:
     void AbandonFrame(Frame& frame) noexcept;
 
 private:
+    std::shared_ptr<resources::UiResourceBudget> resourceBudget_;
     std::unique_ptr<WidgetCompositionPresenter> widgetPresenter_;
     std::unique_ptr<WidgetCompositionPresenter> contentPopupPresenter_, trayPopupPresenter_;
     Microsoft::WRL::ComPtr<ID3D11Device> d3dDevice_;
@@ -353,8 +358,9 @@ private:
     HWND chromeWindow_{};
     Microsoft::WRL::ComPtr<ID2D1Factory1> initializationFactory_;
     struct LayerState final {
+        resources::UiResource<IDCompositionSurface> surface, stagedSurface;
+        resources::UiResourceBudget::Pin surfacePin, stagedPin;
         Microsoft::WRL::ComPtr<IDCompositionVisual2> visual;
-        Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
         unsigned int width{};
         unsigned int height{};
     };
@@ -367,7 +373,8 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedExternalContentVisual_;
     bool pinnedExternalContentAttached_{};
     Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedMediaChromeVisual_;
-    Microsoft::WRL::ComPtr<IDCompositionSurface> pinnedMediaChromeSurface_;
+    resources::UiResource<IDCompositionSurface> pinnedMediaChromeSurface_;
+    resources::UiResourceBudget::Pin pinnedMediaChromePin_;
     bool pinnedMediaChromeAttached_{};
     std::optional<PinnedMediaChromePresentation>
         pinnedMediaChromePresentation_;

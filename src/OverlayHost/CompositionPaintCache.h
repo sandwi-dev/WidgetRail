@@ -46,7 +46,7 @@ struct CompositionPaintIdentity final {
 
 struct CompositionPaintEntry final {
     CompositionPaintIdentity identity;
-    Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
+    resources::UiResource<ID2D1Bitmap> bitmap;
     std::shared_ptr<void> lease;
 };
 } // namespace widgetrail

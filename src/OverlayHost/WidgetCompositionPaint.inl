@@ -63,7 +63,8 @@ bool DrawWidgetComposition() {
     if (hasLiveSurface(hasLiveSurface, snapshot->root)) {
         scene->directContent = true;
         scene->reducedMotion = true;
-        result.widgetComposition = std::move(scene);
+        scene->ProtectResources();
+    result.widgetComposition = std::move(scene);
         return false;
     }
     const auto needsLayers = [&](const auto &self, const WidgetNode &node) -> bool {
@@ -75,7 +76,8 @@ bool DrawWidgetComposition() {
     if (focusedId.empty() && !needsLayers(needsLayers, snapshot->root) &&
         owner->compositionInstance_ != snapshot->instanceId) {
         scene->directContent = true;
-        result.widgetComposition = std::move(scene);
+        scene->ProtectResources();
+    result.widgetComposition = std::move(scene);
         return false;
     }
     std::optional<std::size_t> band;
@@ -401,7 +403,8 @@ bool DrawWidgetComposition() {
         compositionPhases.clear();
         transitionSelections.clear();
         RestoreControlScaleFallback();
-        result.widgetComposition = std::move(scene);
+        scene->ProtectResources();
+    result.widgetComposition = std::move(scene);
         return false;
     }
     for (const auto &[phase, index] : compositionPhases) {
@@ -488,7 +491,7 @@ bool DrawWidgetComposition() {
         scene->paintedBytes += static_cast<std::size_t>(pixels.width) * pixels.height * 4;
         // Keep the old raster lease alive until the new frame is submitted.
         // A failed draw must not recycle a bitmap still used by committed pixels.
-        ComPtr<ID2D1BitmapRenderTarget> surface;
+        resources::UiResource<ID2D1BitmapRenderTarget> surface;
         CompositionCapture* leasedCapture{};
         node.rasterLease = std::make_shared<char>();
         auto &captures = owner->compositionCaptures_;
@@ -506,9 +509,10 @@ bool DrawWidgetComposition() {
         }
         auto status = S_OK;
         if (!surface) {
-            status = mainTarget->CreateCompatibleRenderTarget(
-                &size, &pixels, nullptr, D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, surface.GetAddressOf());
             const auto bytes = static_cast<std::size_t>(pixels.width) * pixels.height * 4;
+            status = resources::UiResource<ID2D1BitmapRenderTarget>::Create(owner->resourceBudget_, resources::Kind::RetainedRaster,
+                bytes, [&](ID2D1BitmapRenderTarget** output) { return mainTarget->CreateCompatibleRenderTarget(
+                    &size, &pixels, nullptr, D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, output); }, surface);
             std::size_t retained{};
             for (const auto &capture : captures)
                 retained += capture.bytes;
@@ -546,7 +550,8 @@ bool DrawWidgetComposition() {
         DrawDeferredFocus();
         status = target->EndDraw();
         if (SUCCEEDED(status))
-            status = surface->GetBitmap(node.bitmap.GetAddressOf());
+            status = resources::UiResource<ID2D1Bitmap>::Alias(surface,
+                [&](ID2D1Bitmap** output) { return surface->GetBitmap(output); }, node.bitmap);
         if (FAILED(status)) {
             Add(node.id, L"composition_capture_failed", L"Widget composition layer paint failed.",
                 RenderDiagnosticSeverity::Error);
@@ -566,6 +571,7 @@ bool DrawWidgetComposition() {
     deferredFocusNode = nullptr;
     deferredFocusStyle = nullptr;
     result.animationActive = result.animationActive || animationActive;
+    scene->ProtectResources();
     result.widgetComposition = std::move(scene);
     return true;
 }

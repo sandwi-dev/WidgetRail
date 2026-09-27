@@ -1663,7 +1663,7 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
                     Check(SUCCEEDED(popupTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Lime),
                         fill.GetAddressOf())), "popup capture brush");
                     popupTarget->FillRectangle(D2D1::RectF(16, 16, 112, 112), fill.Get());
-                });
+                }, surface.ResourceBudget());
             Check(frame.popupScene && frame.popupScene->nodes.size() == 2,
                 "popup is one bounded raster and one compositor group");
             if (captureOnly) frame.popupScene.reset();
@@ -1726,7 +1726,7 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
             Check(SUCCEEDED(target->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Lime),
                 fill.GetAddressOf())), "tray popup brush");
             target->FillRectangle(D2D1::RectF(16, 16, 112, 112), fill.Get());
-        });
+        }, surface.ResourceBudget());
     Check(SUCCEEDED(surface.EndFrame(trayFrame)), "tray popup frame ends");
     OverlayCompositionSurface::CommitTiming trayTiming;
     Check(SUCCEEDED(surface.CommitFrame(trayFrame, true, trayTiming)), "tray popup commits on chrome");
@@ -1800,7 +1800,7 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         marker.solid = D2D1::ColorF(D2D1::ColorF::White); scene->nodes.push_back(marker);
         return scene;
     };
-    std::map<std::wstring, std::pair<ComPtr<ID2D1Bitmap>, std::shared_ptr<void>>> retainedPixels;
+    std::map<std::wstring, std::pair<resources::UiResource<ID2D1Bitmap>, std::shared_ptr<void>>> retainedPixels;
     const auto commit = [&](std::shared_ptr<WidgetCompositionScene> scene) {
         OverlayCompositionSurface::Frame frame;
         Check(SUCCEEDED(surface.BeginFrame(static_cast<UINT>(160 * pixelScale), static_cast<UINT>(100 * pixelScale), frame)), "fade frame begins");
@@ -1838,7 +1838,9 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
             else
                 bitmapTarget->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(0, 0, size.width, size.height), 5, 5), brush.Get());
             Check(SUCCEEDED(bitmapTarget->EndDraw()), "fade bitmap paint");
-            Check(SUCCEEDED(bitmapTarget->GetBitmap(node.bitmap.GetAddressOf())), "fade bitmap capture");
+            ComPtr<ID2D1Bitmap> pixels;
+            Check(SUCCEEDED(bitmapTarget->GetBitmap(pixels.GetAddressOf())), "fade bitmap capture");
+            node.bitmap = resources::UiResource<ID2D1Bitmap>::External(std::move(pixels));
             if (!outline) {
                 node.rasterLease = std::make_shared<char>();
                 retainedPixels[node.id] = {node.bitmap, node.rasterLease};
@@ -1879,7 +1881,12 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
         const auto outside = pixel(30, 16);
         Check(GetRValue(outside) < 5 && GetGValue(outside) < 5 && GetBValue(outside) > 245,
             "compositor clips a full retained item capture at the stationary scroll viewport");
-        surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
+        Check(surface.ResourceBudget()->Read().allocatedBytes > 0 && surface.ResourceBudget()->Read().protectedBytes > 0,
+            "compositor backing stores remain accounted and protected while displayed");
+        surface.Reset();
+        Check(surface.ResourceBudget()->Read().allocatedBytes == 0 && surface.ResourceBudget()->Read().protectedBytes == 0,
+            "compositor reset retires surface, atlas, popup and frame accounting");
+        DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
         return;
     }
     if (depth) {
@@ -1922,7 +1929,12 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
             "a changed source uploads only its focus atlas; unrelated GPU pixels are reused");
         if (pixels) Check(GetRValue(pixel(120, 40)) > GetRValue(initial) + 40,
             "retained atlas invalidation presents the new theme color without stale pixels");
-        surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
+        Check(surface.ResourceBudget()->Read().allocatedBytes > 0 && surface.ResourceBudget()->Read().protectedBytes > 0,
+            "compositor backing stores remain accounted and protected while displayed");
+        surface.Reset();
+        Check(surface.ResourceBudget()->Read().allocatedBytes == 0 && surface.ResourceBudget()->Read().protectedBytes == 0,
+            "compositor reset retires surface, atlas, popup and frame accounting");
+        DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
         std::cout << "Surface depth compositor scale=" << pixelScale << " passed" << std::endl;
         return;
     }
@@ -1961,7 +1973,12 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
             "tight row settle arrives at the exact final border");
         Check(surface.paintCounters().content == paints && surface.widgetCompositionCounters().rasterUploads == counters.rasterUploads,
             "tight row movement stays compositor-owned");
-        surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
+        Check(surface.ResourceBudget()->Read().allocatedBytes > 0 && surface.ResourceBudget()->Read().protectedBytes > 0,
+            "compositor backing stores remain accounted and protected while displayed");
+        surface.Reset();
+        Check(surface.ResourceBudget()->Read().allocatedBytes == 0 && surface.ResourceBudget()->Read().protectedBytes == 0,
+            "compositor reset retires surface, atlas, popup and frame accounting");
+        DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
         std::cout << "Tight-row settle scale=" << pixelScale << " passed" << std::endl;
         return;
     }
@@ -2000,8 +2017,30 @@ void CheckFocusFadeCompositor(bool pixels, float pixelScale = 1, bool bitmaps = 
     if (pixels) Check(GetGValue(pixel(30, 40)) >= 60 && GetRValue(pixel(30, 40)) < 5,
         "None preserves the same final themed color as Fade");
     Sleep(260); surface.AdvanceWidgetComposition();
+    // Fail after a replacement surface has been assigned to the visual. Both
+    // displayed and staged storage must remain counted until graph reset.
+    const auto oldWidth = static_cast<UINT>(160 * pixelScale), oldHeight = static_cast<UINT>(100 * pixelScale);
+    OverlayCompositionSurface::Frame failedFrame;
+    Check(SUCCEEDED(surface.BeginFrame(oldWidth + 8, oldHeight + 8, failedFrame)), "staged accounting frame begins");
+    failedFrame.target->Clear(D2D1::ColorF(0, 0));
+    Check(SUCCEEDED(surface.EndFrame(failedFrame)), "staged accounting frame ends");
+    OverlayCompositionSurface::VisualPresentation invalidPlacement;
+    invalidPlacement.scaleX = 0;
+    OverlayCompositionSurface::CommitTiming failedTiming;
+    Check(FAILED(surface.CommitFrame(failedFrame, false, failedTiming, &invalidPlacement)), "invalid placement rejects staged frame");
+    const auto staged = surface.ResourceBudget()->Read();
+    const std::size_t expectedSurfaces = (static_cast<std::size_t>(oldWidth) * oldHeight +
+        static_cast<std::size_t>(oldWidth + 8) * (oldHeight + 8)) * 4;
+    Check(staged.allocatedByKind[static_cast<std::size_t>(resources::Kind::CompositorSurface)] >= expectedSurfaces &&
+        staged.protectedByKind[static_cast<std::size_t>(resources::Kind::CompositorSurface)] >= expectedSurfaces,
+        "failed commit preserves accounting for committed and staged surface ownership");
     std::cout << "Focus style=" << static_cast<int>(focusStyle) << " bitmap=" << bitmaps << " scale=" << pixelScale << " control-scale=" << scaleControls << " passed" << std::endl;
-    surface.Reset(); DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
+    Check(surface.ResourceBudget()->Read().allocatedBytes > 0 && surface.ResourceBudget()->Read().protectedBytes > 0,
+        "compositor backing stores remain accounted and protected while displayed");
+    surface.Reset();
+    Check(surface.ResourceBudget()->Read().allocatedBytes == 0 && surface.ResourceBudget()->Read().protectedBytes == 0,
+        "compositor reset retires surface, atlas, popup and frame accounting");
+    DestroyWindow(window); UnregisterClassW(name, wc.hInstance);
 }
 
 int main(int argc, char** argv) {

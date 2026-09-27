@@ -54,18 +54,30 @@ The mapping's logical capacity is counted once, not once per mapped process. It
 does not measure physical residency or the decoder process's private codec memory.
 Reclaiming an idle transport on its worker thread remains part of owner integration.
 
+`UiResource<T>` now couples a COM resource to its allocation lease. Compatible
+capture targets and their bitmap aliases count once; raster captures and DComp
+uploads count separately. The host injects one budget into its image cache,
+main/pinned renderers, popup masks and composition owner. Image bitmaps, retained
+rasters, interruption/background captures, popup captures, DComp surfaces/atlases,
+shadow masks and their temporary working buffers are accounted. Scene/frame pins
+protect live stores; protection objects are reused while any frame still owns one.
+A failed staged host frame retains its surface allocation until replacement/reset.
+
+Renderer pressure reclamation runs on its owner thread: it removes unprotected
+paint entries, idle capture targets, spare transition targets, idle image bitmaps
+and masks. Encoded artwork payload copies follow their buffers into the worker.
+After an idle timeout under pressure, the decoder worker retires its transport
+and helper; the next request can reopen them without a poison/circuit penalty.
+
 ## Remaining work
 
-- Connect the same budget to GPU image entries, compatible capture allocations,
-  retained/temporary animation bitmaps, compositor uploads/atlases and host surfaces.
-  Busy raster leases and allocation lifetime are different: an idle pooled target
-  still occupies storage, and several scenes may share it.
-- Distinguish source rasters from compositor copies while sharing the allocation
-  token when owner structures refer to the same backing store.
-- Coordinate owner-thread pressure reclamation and visible/adjacent artwork demand,
-  including cancellation, stale completions, hidden/pinned owners and failed frames.
-- Verify transient overlap and steady retention under scrolling, replacement,
-  modals, motion, device loss and reader/frame retirement; document aggregate limits.
+- Finish realization-driven demand cancellation, including stale completions,
+  multiple visible/hidden/pinned owners and failed/superseded frames.
+- Audit immutable image identity independently from CPU storage retention, and
+  ensure explicit invalidation cannot reuse stale GPU/capture pixels.
+- Finish aggregate peak/steady profiles and pressure validation across scrolling,
+  replacement, modals, motion, device loss and owner retirement. Validate the
+  provisional retention target against those measurements.
 
 Known-byte accounting does not claim to measure driver residency, Direct2D's
 internal layer pool, allocator overhead or other process memory.
@@ -79,6 +91,10 @@ reader lifetime beyond eviction, copy lifetime, shared pressure with a protected
 surface reservation, visible retry and reclamation after protection is removed.
 Run the native `-UiResourceBudgetTestsOnly` and `-TrustedArtworkTestsOnly` gates.
 The latest checkpoint passes 32 core checks, the full remote-image suite and
-47,819 renderer checks. A blocked decode test observes allocated bytes before
-cache publication; transport tests verify that mapping and copied output retire
-independently. GPU/surface accounting and cancellation are not yet verified.
+47,844 renderer checks and 49,458 chrome/composition checks. The normal Release
+host/runtime build passes. WIC tests verify alias lifetime, failure-preserved
+destinations and scene/reader retirement; compositor fixtures verify accounting
+returns to zero on reset. A blocked decode test observes allocated bytes before
+cache publication; transport tests verify independent output lifetime and idle
+retirement/readmission without poisoning. Cancellation and aggregate production
+pressure behavior are not yet fully verified.

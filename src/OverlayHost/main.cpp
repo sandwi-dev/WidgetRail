@@ -1118,7 +1118,7 @@ public:
                 return {
                     widgetrail::PackageIconRequestDisposition::TerminalFailure,
                     {}};
-            }, gScrollDiagnostics);
+            }, gScrollDiagnostics, compositionSurface_.ResourceBudget());
         declarativeRenderer_ = std::make_unique<widgetrail::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get(),
             std::move(renderDiagnostic), gScrollDiagnostics);
@@ -18600,7 +18600,7 @@ private:
                 animations.speed = appearance->widgetAnimationSpeed;
             auto scene = widgetrail::shell::CapturePopupComposition(renderTarget_.Get(),
                 bounds, anchor, bounds, popupCaptureScale_, std::to_wstring(popupAnimationGeneration_),
-                CurrentAccessibilityPolicy().reducedMotion, animations, paint);
+                CurrentAccessibilityPolicy().reducedMotion, animations, paint, compositionSurface_.ResourceBudget());
             if (scene) {
                 pendingPopupCompositionScene_ = std::move(scene);
                 return;
@@ -19687,9 +19687,10 @@ private:
     float trayCornerRadius_{22.0F};
     float trayItemCornerRadius_{16.0F};
     float focusOutlineWidth_{2.0F};
+    std::shared_ptr<widgetrail::resources::UiResourceBudget> uiResourceBudget_{std::make_shared<widgetrail::resources::UiResourceBudget>()};
     std::unique_ptr<widgetrail::RemoteImageCache> imageCache_;
     std::unique_ptr<widgetrail::DeclarativeRenderer> declarativeRenderer_;
-    widgetrail::surface::ShadowCache popupShadows_;
+    widgetrail::surface::ShadowCache popupShadows_{uiResourceBudget_};
     widgetrail::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;
     std::wstring pinnedWorkDiagnosticWidgetId_;
     std::uint64_t pinnedWorkDiagnosticPaintBucket_{};
@@ -19753,7 +19754,7 @@ private:
 
     ComPtr<ID2D1Factory1> d2dFactory_;
     ComPtr<IDWriteFactory> writeFactory_;
-    widgetrail::OverlayCompositionSurface compositionSurface_;
+    widgetrail::OverlayCompositionSurface compositionSurface_{uiResourceBudget_};
     widgetrail::shell::CompositionRecoverySchedule compositionRecovery_;
     bool graphicsRecoveryInProgress_{};
     bool graphicsRecoveryShutdown_{};

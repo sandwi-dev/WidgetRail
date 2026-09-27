@@ -136,6 +136,7 @@ private:
     Kind kind_;
     std::size_t bytes_, protections_{};
     Admission admission_;
+    std::weak_ptr<Protection> sharedProtection_;
     bool registered_{};
     bool allocated_{};
 };
@@ -161,10 +162,18 @@ private:
 };
 
 inline UiResourceBudget::Pin UiResourceBudget::Allocation::Protect() {
-    // Allocate before taking the lock: control-block allocation failure can
-    // destroy the new object, and no destructor may reacquire a held lock.
+    // Frames share a protection object as well as an allocation. Stable rasters
+    // need no per-frame heap allocation; the weak back-reference avoids cycles.
+    {
+        std::scoped_lock lock(state_->mutex);
+        if (auto pin = sharedProtection_.lock()) return pin;
+    }
+    // Allocate outside the lock; a failed/control-block destructor may release
+    // the allocation and must never reacquire a held budget mutex.
     auto pin = Pin(new Protection(shared_from_this()));
     std::scoped_lock lock(state_->mutex);
+    if (auto existing = sharedProtection_.lock()) return existing;
+    sharedProtection_ = pin;
     if (protections_++ == 0) {
         state_->snapshot.protectedBytes += bytes_;
         state_->snapshot.protectedByKind[static_cast<std::size_t>(kind_)] += bytes_;

@@ -8408,6 +8408,89 @@ void CollectionRealizationMatchesEagerGeometry() {
     }
 }
 
+void ResourceAliasesRetainBackingStorage() {
+    using namespace widgetrail;
+    using namespace widgetrail::resources;
+    using Microsoft::WRL::ComPtr;
+    auto budget = std::make_shared<UiResourceBudget>(128);
+    ComPtr<ID2D1Factory> factory;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> canvas;
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.GetAddressOf())), "tracked resource factory");
+    Check(SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf()))), "tracked resource WIC");
+    Check(SUCCEEDED(wic->CreateBitmap(16, 16, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, canvas.GetAddressOf())), "tracked resource canvas");
+    Check(SUCCEEDED(factory->CreateWicBitmapRenderTarget(canvas.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf())), "tracked resource render target");
+    UiResource<ID2D1BitmapRenderTarget> capture;
+    const auto size = D2D1::SizeF(8, 8);
+    const auto pixels = D2D1::SizeU(8, 8);
+    Check(SUCCEEDED(UiResource<ID2D1BitmapRenderTarget>::Create(budget, Kind::RetainedRaster, 256,
+        [&](auto output) { return target->CreateCompatibleRenderTarget(&size, &pixels, nullptr,
+            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, output); }, capture)), "tracked compatible target creates");
+    UiResource<ID2D1Bitmap> bitmap;
+    Check(SUCCEEDED(UiResource<ID2D1Bitmap>::Alias(capture,
+        [&](auto output) { return capture->GetBitmap(output); }, bitmap)), "tracked bitmap aliases target");
+    Check(budget->Read().allocatedBytes == 256 && budget->Read().allocations == 1, "target and bitmap count one backing allocation");
+    const auto original = bitmap.Get();
+    Check(FAILED(UiResource<ID2D1Bitmap>::Create(budget, Kind::GpuImage, 64,
+        [](auto) { return E_FAIL; }, bitmap)), "failed resource factory reports failure");
+    Check(bitmap.Get() == original && budget->Read().allocatedBytes == 256 && budget->Read().liveBytes == 256,
+        "failed creation preserves destination and releases reservation");
+    bool called{};
+    Check(FAILED(UiResource<ID2D1Bitmap>::Create(budget, Kind::GpuImage, 64,
+        [&](auto) { called = true; return E_FAIL; }, bitmap, Admission::Optional)) && !called,
+        "optional admission rejects before allocating under pressure");
+    auto scene = std::make_shared<WidgetCompositionScene>();
+    scene->nodes.emplace_back().bitmap = bitmap;
+    scene->ProtectResources();
+    auto submitted = scene;
+    capture.Reset(); bitmap.Reset(); scene.reset();
+    Check(budget->Read().allocatedBytes == 256 && budget->Read().protectedBytes == 256,
+        "submitted frame retains and protects pixels after source cache and target retire");
+    Check(submitted->nodes.front().bitmap->GetPixelSize().width == 8,
+        "bitmap alias remains usable after target retirement");
+    auto independent = submitted->nodes.front().bitmap;
+    submitted.reset();
+    Check(budget->Read().allocatedBytes == 256 && budget->Read().protectedBytes == 0,
+        "frame protection ends independently from an external reader lifetime");
+    independent.Reset();
+    Check(budget->Read().allocatedBytes == 0 && budget->Read().allocations == 0,
+        "last COM alias retires backing allocation exactly once");
+    surface::ShadowCache shadows(budget);
+    target->BeginDraw();
+    Check(shadows.Draw(target.Get(), {2, 2, 10, 10}, 2, 2, 0, 0, D2D1::ColorF(0, .5F), 1), "tracked shadow creates under required pressure");
+    Check(SUCCEEDED(target->EndDraw()), "tracked shadow finishes drawing");
+    Check(budget->Read().allocatedBytes == shadows.stats().bytes && budget->Read().peakAllocatedBytes > shadows.stats().bytes,
+        "shadow scratch retires separately from its retained bitmap");
+    shadows.Reclaim();
+    Check(budget->Read().allocatedBytes == 0 && shadows.stats().entries == 0,
+        "owner thread pressure reclaims unused shadow masks");
+    std::mutex readyMutex; std::condition_variable readyCondition; bool ready{};
+    {
+        RemoteImageCache cache({}, [&](std::wstring_view, RemoteImageState state) {
+            { std::scoped_lock lock(readyMutex); ready = state == RemoteImageState::Ready; }
+            readyCondition.notify_all();
+        }, [](std::wstring_view, std::stop_token, const RemoteImageLimits& limits) {
+            RemoteDecodedImage image; image.width = 2; image.height = 1; image.stride = 8;
+            if (!image.AllocatePixels(8, limits.resourceBudget)) return RemoteImageFetchResult{E_OUTOFMEMORY, {}, L"allocation failed"};
+            return RemoteImageFetchResult{S_OK, std::move(image), {}};
+        }, {}, {}, {}, {}, budget);
+        const std::wstring source = L"https://example.test/gpu-lifetime.png";
+        Check(cache.Request(source) == RemoteImageRequestResult::Queued, "GPU lifetime requests decoded pixels");
+        { std::unique_lock lock(readyMutex);
+          Check(readyCondition.wait_for(lock, std::chrono::seconds(2), [&] { return ready; }), "GPU fixture image ready"); }
+        Check(SUCCEEDED(cache.CreateTrackedBitmap(target.Get(), source, bitmap)), "GPU upload acquires its own allocation");
+        Check(budget->Read().allocatedBytes == 16 && budget->Read().allocations == 2,
+            "decoded pixels and their GPU copy are distinct backing stores");
+        cache.Clear();
+        Check(budget->Read().allocatedBytes == 8 && bitmap->GetPixelSize().width == 2,
+            "GPU bitmap survives CPU cache eviction with only its own bytes retained");
+    }
+    Check(budget->Read().allocatedBytes == 8, "GPU bitmap outlives its originating image cache");
+    bitmap.Reset();
+    Check(budget->Read().allocatedBytes == 0, "CPU and GPU storage retire independently without leaked bytes");
+}
+
 void SurfaceDepthUsesBoundedSharedPainting() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -9491,6 +9574,7 @@ int main(int argc, char** argv) {
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
     CollectionRealizationMatchesEagerGeometry();
     RetainedCollectionPlacementPreservesGeometryAndPixels();
+    ResourceAliasesRetainBackingStorage();
     SurfaceDepthUsesBoundedSharedPainting();
     RetainedCompositionPixelsRespectInvalidation();
     CompositionScrollRetention(1.0F, false, false);

@@ -386,6 +386,10 @@ void ArtworkDecoderProcessOwner::CloseProcess(const bool terminate) noexcept {
 void ArtworkDecoderProcessOwner::Shutdown() noexcept {
     if (shuttingDown_) return;
     shuttingDown_ = true;
+    RetireIdle();
+}
+
+void ArtworkDecoderProcessOwner::RetireIdle() noexcept {
     if (stopEvent_) SetEvent(stopEvent_);
     if (process_ && WaitForSingleObject(
             process_, limits_.artworkDecoderShutdownMilliseconds) == WAIT_TIMEOUT)

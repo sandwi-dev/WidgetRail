@@ -126,7 +126,7 @@ bool CompositorBackgroundSurfaceCoordinator::RebaseOutgoing(
         static_cast<float>(kFadeMilliseconds);
     const float inverse = 1.0F - linear;
     const float progress = 1.0F - inverse * inverse * inverse;
-    ComPtr<ID2D1BitmapRenderTarget> composite;
+    resources::UiResource<ID2D1BitmapRenderTarget> composite;
     const declarative::Rect bounds{
         static_cast<float>(left / pixelsPerDip),
         static_cast<float>(top / pixelsPerDip),
@@ -135,10 +135,10 @@ bool CompositorBackgroundSurfaceCoordinator::RebaseOutgoing(
     const auto size = D2D1::SizeF(bounds.width, bounds.height);
     const auto pixels = D2D1::SizeU(
         static_cast<UINT32>(pixelWidth), static_cast<UINT32>(pixelHeight));
-    if (FAILED(target->CreateCompatibleRenderTarget(
-            &size, &pixels, nullptr,
-            D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE,
-            composite.ReleaseAndGetAddressOf())) || !composite) {
+    if (FAILED(resources::UiResource<ID2D1BitmapRenderTarget>::Create(renderer.ResourceBudget(), resources::Kind::AnimationSurface,
+            static_cast<std::size_t>(pixelWidth * pixelHeight * 4), [&](auto output) {
+                return target->CreateCompatibleRenderTarget(&size, &pixels, nullptr,
+                    D2D1_COMPATIBLE_RENDER_TARGET_OPTIONS_NONE, output); }, composite))) {
         diagnostic = L"rebase=failed";
         return false;
     }
@@ -159,7 +159,8 @@ bool CompositorBackgroundSurfaceCoordinator::RebaseOutgoing(
     result.descriptor.bounds = bounds;
     result.surfaceComposite = true;
     if (FAILED(composite->EndDraw()) ||
-        FAILED(composite->GetBitmap(result.bitmap.ReleaseAndGetAddressOf()))) {
+        FAILED(resources::UiResource<ID2D1Bitmap>::Alias(composite,
+            [&](auto output) { return composite->GetBitmap(output); }, result.bitmap))) {
         diagnostic = L"rebase=failed";
         return false;
     }

@@ -491,7 +491,9 @@ public:
         IDWriteFactory* writeFactory,
         RemoteImageCache* imageCache,
         ArtworkRenderDiagnosticCallback artworkRenderDiagnostic = {},
-        std::shared_ptr<ScrollDiagnostics> scrollDiagnostics = {}) noexcept;
+        std::shared_ptr<ScrollDiagnostics> scrollDiagnostics = {},
+        std::shared_ptr<resources::UiResourceBudget> resourceBudget = {});
+    [[nodiscard]] const std::shared_ptr<resources::UiResourceBudget>& ResourceBudget() const noexcept { return resourceBudget_; }
 
     ~DeclarativeRenderer();
     void SetChromeImageProtection(std::set<std::wstring> keys);
@@ -537,7 +539,7 @@ public:
         std::wstring_view focusedElementId,
         declarative::Rect viewport,
         const DeclarativeRenderOptions& options = {});
-    [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap>
+    [[nodiscard]] resources::UiResource<ID2D1Bitmap>
     ResolveCompositorBackgroundBitmap(
         ID2D1RenderTarget* renderTarget,
         const ComputedCompositorBackground& background);
@@ -627,6 +629,8 @@ public:
         const DeclarativeRenderOptions& options = {});
 
     void DiscardTargetResources() noexcept;
+    // Render-thread-only; frame ownership and active presentation are preserved.
+    void ReclaimIdleResources();
 
     /// Releases cached image resources when an entire presentation endpoint
     /// is retired. Ordinary target recreation continues to use
@@ -838,7 +842,7 @@ private:
         bool hasAnchorPosition{};
     };
     struct BitmapCacheEntry final {
-        Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
+        resources::UiResource<ID2D1Bitmap> bitmap;
         std::size_t bytes{};
         std::uint64_t lastUse{};
         std::wstring imageIdentity;
@@ -851,13 +855,13 @@ private:
         std::wstring imageSource;
         std::wstring artworkHandle;
         std::wstring imageFit;
-        Microsoft::WRL::ComPtr<ID2D1Bitmap> committedBitmap;
+        resources::UiResource<ID2D1Bitmap> committedBitmap;
         bool committedBitmapIsSurfaceComposite{};
         std::size_t committedSurfaceCompositeBytes{};
         std::wstring incomingImageSource;
         std::wstring incomingArtworkHandle;
         std::wstring incomingImageFit;
-        Microsoft::WRL::ComPtr<ID2D1Bitmap> incomingBitmap;
+        resources::UiResource<ID2D1Bitmap> incomingBitmap;
         std::uint64_t transitionStartedAt{};
         std::wstring candidateImageSource;
         std::wstring candidateArtworkHandle;
@@ -867,13 +871,13 @@ private:
         std::uint64_t lastUse{};
     };
 
-    [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap> GetImageBitmap(
+    [[nodiscard]] resources::UiResource<ID2D1Bitmap> GetImageBitmap(
         ID2D1RenderTarget* renderTarget,
         const WidgetNode& node,
         RenderPass& pass,
         std::wstring_view artworkWidgetId,
         ImagePresentationState& presentationState);
-    [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap> GetPackageIconBitmap(
+    [[nodiscard]] resources::UiResource<ID2D1Bitmap> GetPackageIconBitmap(
         ID2D1RenderTarget* renderTarget,
         const WidgetPackageIcon& icon,
         declarative::Rect destination,
@@ -889,6 +893,7 @@ private:
     void PublishImageProtection();
     bool ImageProtected(std::wstring_view key) const;
     std::set<std::wstring> protectedImageKeys_;
+    std::vector<resources::UiResourceBudget::Pin> bitmapProtection_;
     std::set<std::wstring> chromeImageKeys_;
     std::set<std::uint64_t> visibleContentImageHashes_;
     void RecalculateFocusBackgroundCompositeBytes() noexcept;
@@ -908,6 +913,7 @@ private:
     ID2D1Factory* d2dFactory_{};
     IDWriteFactory* writeFactory_{};
     RemoteImageCache* imageCache_{};
+    std::shared_ptr<resources::UiResourceBudget> resourceBudget_;
     ArtworkRenderDiagnosticCallback artworkRenderDiagnostic_;
     std::shared_ptr<ScrollDiagnostics> scrollDiagnostics_;
     long long scrollDiagnosticLastSequence_{};
@@ -953,8 +959,8 @@ private:
     DeclarativeMotionTimeline motionTimeline_;
     WidgetTransitionCoordinator widgetTransitions_;
     struct TransitionVisual final {
-        Microsoft::WRL::ComPtr<ID2D1Bitmap> current, outgoing;
-        Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> currentTarget, outgoingTarget, spareTarget;
+        resources::UiResource<ID2D1Bitmap> current, outgoing;
+        resources::UiResource<ID2D1BitmapRenderTarget> currentTarget, outgoingTarget, spareTarget;
         declarative::Rect bounds, outgoingBounds;
         std::wstring key;
         std::size_t bytes{}, outgoingBytes{}, spareBytes{};
@@ -967,7 +973,7 @@ private:
     std::size_t compatiblePaintDepth_{};
     std::wstring compositionInstance_;
     struct CompositionCapture final {
-        Microsoft::WRL::ComPtr<ID2D1BitmapRenderTarget> target;
+        resources::UiResource<ID2D1BitmapRenderTarget> target;
         std::weak_ptr<void> lease;
         std::size_t bytes{};
         D2D1_SIZE_U pixels{};
