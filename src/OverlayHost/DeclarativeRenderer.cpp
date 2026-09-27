@@ -287,14 +287,6 @@ std::wstring gLastRetiredRendererWidgetInstance;
     }
 }
 
-[[nodiscard]] ComPtr<ID2D1SolidColorBrush> Brush(
-    ID2D1RenderTarget* target,
-    const NativeColor color) {
-    ComPtr<ID2D1SolidColorBrush> result;
-    if (target) (void)target->CreateSolidColorBrush(D2DColor(color), result.ReleaseAndGetAddressOf());
-    return result;
-}
-
 [[nodiscard]] std::optional<NativeImageFit> ExplicitImageFit(const WidgetNode& node) noexcept {
     if (node.imageFit == L"cover") return NativeImageFit::Cover;
     if (node.imageFit == L"contain") return NativeImageFit::Contain;
@@ -413,6 +405,11 @@ struct DeclarativeRenderer::PreparedNode final {
 };
 
 struct DeclarativeRenderer::RenderPass final {
+    ID2D1RenderTarget* managedClipTarget{};
+    ComPtr<ID2D1DeviceContext> managedClipContext;
+    [[nodiscard]] ComPtr<ID2D1SolidColorBrush> Brush(ID2D1RenderTarget* paintTarget, const NativeColor color) const {
+        return owner->paintResources_.Solid(paintTarget, D2DColor(color));
+    }
     enum class CollectionAnchorPolicy {
         Reconcile,
         ReconcileContentChanges,
@@ -427,6 +424,7 @@ struct DeclarativeRenderer::RenderPass final {
         DeclarativeMotionSample motion;
     };
     bool windowDecorations{};
+    bool reuseCommittedStyles{};
     int retainedLayoutPhase{-1};
 
     enum class FocusFollowPhase {
@@ -3125,9 +3123,19 @@ struct DeclarativeRenderer::RenderPass final {
                     }
                 }
             }
-            const auto* cached = unchangedIds && unchangedIds->contains(node.id) && owner->incrementalLayoutCache_ &&
+            const auto* cached = ((unchangedIds && unchangedIds->contains(node.id)) || reuseCommittedStyles) && owner->incrementalLayoutCache_ &&
+                    owner->incrementalLayoutCache_->nodes.contains(node.id) &&
                     !options.collectInspection && node.id != focusedId && node.id != pressedId
                 ? &owner->incrementalLayoutCache_->nodes.at(node.id) : nullptr;
+            if (cached) {
+                const auto* parentBox = layout.Find(parent);
+                const NativeStyleContext context{viewport.width, viewport.height,
+                    parentBox ? parentBox->contentBox.width : viewport.width,
+                    parentBox ? parentBox->contentBox.height : viewport.height,
+                    font, options.rootFontSizePx, false, background,
+                    (node.kind == L"button" || node.kind == L"actionSurface") ? std::optional<NativeColor>{kDefaultButton} : std::nullopt};
+                if (cached->styleContext != context) cached = nullptr;
+            }
             if (cached) {
                 prepared[id] = {&node, cached->baseStyle, cached->baseStyle, id, cached->effectiveBackground,
                     cached->styleContext, ResolveInputScope(node, inheritedScope), parent};
@@ -3393,7 +3401,7 @@ struct DeclarativeRenderer::RenderPass final {
         if (style.shadowColor() && style.shadowColor()->alpha > 0.0F) {
             const auto color = WithOpacity(*style.shadowColor(), opacity);
             if (!owner->surfaceShadows_.Draw(target, rect, radius, style.shadowBlurPx(),
-                style.shadowOffsetXPx(), style.shadowOffsetYPx(), {color.red, color.green, color.blue, color.alpha}, options.pixelScale))
+                style.shadowOffsetXPx(), style.shadowOffsetYPx(), {color.red, color.green, color.blue, color.alpha}, options.pixelScale, &owner->paintResources_))
                 Add(node.id, L"shadow_render_failed", L"The bounded surface shadow could not be rendered.");
         }
         auto background = style.background();
@@ -3401,12 +3409,13 @@ struct DeclarativeRenderer::RenderPass final {
             (node.kind == L"button" || node.kind == L"actionSurface"))
             background = kDefaultButton;
         if (background) {
-            auto brush = Brush(target, WithOpacity(*background, opacity));
             const auto base = WithOpacity(*background, opacity);
             const D2D1_COLOR_F color{base.red, base.green, base.blue, base.alpha};
             const bool shaded = style.surfaceShading() != 0 && surface::Fill(target, {D2DRect(rect), radius, radius},
-                surface::Shade(color, style.surfaceShading()), surface::Shade(color, -style.surfaceShading()));
-            if (!shaded && brush) target->FillRoundedRectangle({D2DRect(rect), radius, radius}, brush.Get());
+                surface::Shade(color, style.surfaceShading()), surface::Shade(color, -style.surfaceShading()), &owner->paintResources_);
+            if (!shaded) {
+                if (auto brush = Brush(target, base)) target->FillRoundedRectangle({D2DRect(rect), radius, radius}, brush.Get());
+            }
         }
         if (style.backgroundBlurPx() > 0.0F)
             Add(node.id, L"background_blur_fallback", L"Background blur is unavailable on the base render target; opaque fallback is used.");
@@ -4875,31 +4884,50 @@ struct DeclarativeRenderer::RenderPass final {
         if (owner->tileClipResources_.size() <= tileClipDepth)
             owner->tileClipResources_.resize(tileClipDepth + 1);
         auto& cached = owner->tileClipResources_[tileClipDepth];
-        if (!cached.layer) {
+        if (managedClipTarget != target) {
+            managedClipTarget = target;
+            managedClipContext.Reset();
+            (void)target->QueryInterface(IID_PPV_ARGS(managedClipContext.GetAddressOf()));
+        }
+        bool managedLayer = managedClipContext != nullptr;
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        managedLayer = managedLayer && !options.disablePaintResourceReuseForTesting;
+#endif
+        if (!managedLayer && !cached.layer) {
             if (FAILED(target->CreateLayer(nullptr, cached.layer.GetAddressOf()))) return false;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
             ++result.tileClipLayerCreates;
 #endif
         }
         if (!cached.geometry || cached.width != rect.width || cached.height != rect.height || cached.radius != radius) {
-            cached.geometry.Reset();
-            if (FAILED(owner->d2dFactory_->CreateRoundedRectangleGeometry(
-                {D2D1::RectF(0, 0, rect.width, rect.height), radius, radius}, cached.geometry.GetAddressOf()))) return false;
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+            const auto geometryCreatesBefore = owner->paintResources_.stats().geometryCreates;
+#endif
+            cached.geometry = owner->paintResources_.RoundedRectangle(owner->d2dFactory_, rect.width, rect.height, radius);
+            if (!cached.geometry) return false;
             cached.width = rect.width;
             cached.height = rect.height;
             cached.radius = radius;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
-            ++result.tileClipGeometryCreates;
+            result.tileClipGeometryCreates += owner->paintResources_.stats().geometryCreates - geometryCreatesBefore;
 #endif
         }
-        // Local geometry survives scrolling translations; one reusable layer
-        // per active nesting depth avoids allocating a mask for every poster.
+        // Device contexts manage and reuse their own layer resources. Legacy
+        // render targets retain the explicit layer-per-nesting-depth fallback.
         auto parameters = D2D1::LayerParameters();
         parameters.contentBounds = D2DRect(rect);
         parameters.geometricMask = cached.geometry.Get();
         parameters.maskAntialiasMode = D2D1_ANTIALIAS_MODE_PER_PRIMITIVE;
         parameters.maskTransform = D2D1::Matrix3x2F::Translation(rect.x, rect.y);
-        target->PushLayer(parameters, cached.layer.Get());
+        if (managedLayer) {
+            const D2D1_LAYER_PARAMETERS1 modern{parameters.contentBounds, parameters.geometricMask,
+                parameters.maskAntialiasMode, parameters.maskTransform, parameters.opacity, parameters.opacityBrush,
+                D2D1_LAYER_OPTIONS1_NONE};
+            managedClipContext->PushLayer(modern, nullptr);
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+            ++result.tileClipManagedPushes;
+#endif
+        } else target->PushLayer(parameters, cached.layer.Get());
         ++tileClipDepth;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         ++result.tileClipPushes;
@@ -6407,6 +6435,10 @@ RenderResult DeclarativeRenderer::Render(
     const auto renderStarted = std::chrono::steady_clock::now();
     const auto textHitsBefore = textLayoutCache_.hits;
     const auto textMissesBefore = textLayoutCache_.misses;
+    const auto paintResourcesBefore = paintResources_.stats();
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+    paintResources_.SetReuseEnabled(!options.disablePaintResourceReuseForTesting);
+#endif
     RenderPass pass;
     pass.owner = this;
     pass.target = renderTarget;
@@ -6507,6 +6539,22 @@ RenderResult DeclarativeRenderer::Render(
         pendingIncrementalPlan_->baseSequence == incrementalLayoutCache_->sequence &&
         pendingIncrementalPlan_->sequence == snapshot.sequence &&
         SameRect(incrementalLayoutCache_->viewport, viewport);
+    // A published immutable source can reuse base paint preparation while
+    // rebinding current node pointers and resolving the active focus/press.
+    // Layout-bearing presentations must still name the same source; dimensions
+    // and inherited style contexts are checked again at each reused node.
+    pass.ResolveSelections();
+    const auto layoutSelections = SelectionSources(pass.selections, true);
+    const bool sameLayoutSelections = std::ranges::all_of(layoutSelections, [&](const auto& selection) {
+        const auto prior = selectedPresentationSources_.find(selection.first);
+        return prior != selectedPresentationSources_.end() && prior->second == selection.second;
+    });
+    pass.reuseCommittedStyles = pendingMatches && incrementalLayoutCache_->sequence == snapshot.sequence &&
+        (pendingIncrementalPlan_->work == IncrementalPresentationWork::PaintOnly || pendingIncrementalPlan_->work == IncrementalPresentationWork::ScrollOnly) &&
+        sameLayoutSelections;
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+    pass.reuseCommittedStyles = pass.reuseCommittedStyles && !options.disablePreparedStyleReuseForTesting;
+#endif
     bool retainedCollections{};
     if (hasCollections && pendingMatches && incrementalLayoutCache_->sequence == snapshot.sequence &&
         (pendingIncrementalPlan_->work == IncrementalPresentationWork::PaintOnly ||
@@ -6890,6 +6938,11 @@ RenderResult DeclarativeRenderer::Render(
     pass.result.timing.snapshotComparisonMicroseconds = snapshotComparisonMicroseconds;
     pass.result.timing.preparedNodes = preparedNodes;
     pass.result.timing.reusedPreparedNodes = reusedPreparedNodes;
+    const auto paintResourcesAfter = paintResources_.stats();
+    pass.result.timing.solidBrushCreates = paintResourcesAfter.solidCreates - paintResourcesBefore.solidCreates;
+    pass.result.timing.gradientBrushCreates = paintResourcesAfter.gradientCreates - paintResourcesBefore.gradientCreates;
+    pass.result.timing.gradientStopCreates = paintResourcesAfter.stopCreates - paintResourcesBefore.stopCreates;
+    pass.result.timing.paintResourceHits = paintResourcesAfter.hits - paintResourcesBefore.hits;
     pass.result.timing.deferredViewportItems = deferredViewportItems;
     pass.result.timing.intrinsicMeasures = intrinsicMeasures;
     pass.result.timing.updatePlanningMicroseconds = updatePlanningMicroseconds;
@@ -7239,6 +7292,7 @@ void DeclarativeRenderer::ClearBitmapCache(
     bitmapBytes_ = 0;
     if (resourceInvalidation) {
         surfaceShadows_.Clear();
+        paintResources_.Clear();
         CancelWidgetTransitions();
         // Transition bitmaps belong to the same Direct2D resource domain.
         // Device/target replacement retires both sides atomically; the exact

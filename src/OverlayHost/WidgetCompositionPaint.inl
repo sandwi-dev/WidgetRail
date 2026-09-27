@@ -479,7 +479,7 @@ bool DrawWidgetComposition() {
             node.rasterLease = prior->second.lease;
             if (identityBytes + identity.Bytes() <= CompositionPaintIdentity::MaximumRetainedBytes) {
                 identityBytes += identity.Bytes();
-                nextPaintCache.emplace(node.id, prior->second);
+                nextPaintCache.emplace(node.id, CompositionPaintEntry{std::move(identity), node.bitmap, node.rasterLease});
             }
             ++scene->paintCacheHits;
             continue;
@@ -489,16 +489,18 @@ bool DrawWidgetComposition() {
         // Keep the old raster lease alive until the new frame is submitted.
         // A failed draw must not recycle a bitmap still used by committed pixels.
         ComPtr<ID2D1BitmapRenderTarget> surface;
+        CompositionCapture* leasedCapture{};
         node.rasterLease = std::make_shared<char>();
         auto &captures = owner->compositionCaptures_;
         for (auto &capture : captures) {
-            const auto actual = capture.target->GetPixelSize();
-            const auto logical = capture.target->GetSize();
+            const auto actual = capture.pixels;
+            const auto logical = capture.logical;
             if (capture.lease.expired() && actual.width == pixels.width && actual.height == pixels.height &&
                 std::abs(logical.width - size.width) < .01F &&
                 std::abs(logical.height - size.height) < .01F) {
                 surface = capture.target;
                 capture.lease = node.rasterLease;
+                leasedCapture = &capture;
                 break;
             }
         }
@@ -518,8 +520,12 @@ bool DrawWidgetComposition() {
                 retained -= unused->bytes;
                 captures.erase(unused);
             }
-            if (SUCCEEDED(status) && retained + bytes <= WidgetCompositionScene::MaximumBytes)
-                captures.push_back({surface, node.rasterLease, bytes});
+            if (SUCCEEDED(status) && retained + bytes <= WidgetCompositionScene::MaximumBytes) {
+                // Avoid querying every pooled COM target on each miss.
+                surface->SetDpi(96 * scale, 96 * scale);
+                captures.push_back({surface, node.rasterLease, bytes, surface->GetPixelSize(), surface->GetSize()});
+                leasedCapture = &captures.back();
+            }
         }
         if (FAILED(status)) {
             Add(node.id, L"composition_capture_failed", L"Could not prepare widget composition layer.",
@@ -530,6 +536,7 @@ bool DrawWidgetComposition() {
         transitionSurfacesPainted.clear();
         target = surface.Get();
         target->SetDpi(96 * scale, 96 * scale);
+        if (leasedCapture) leasedCapture->logical = target->GetSize();
         target->BeginDraw();
         target->Clear(D2D1::ColorF(0, 0));
         target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
