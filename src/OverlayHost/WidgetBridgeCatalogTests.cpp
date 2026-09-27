@@ -519,6 +519,8 @@ void VerifyArtworkRequestCancellationOwnership() {
                     request.find("\"presentationGeneration\":\"presentation-a\"") !=
                         std::string::npos,
                     "Artwork request omitted exact generation authority");
+            Require(request.find("\"demandId\":\"17\"") != std::string::npos,
+                    "Artwork request omitted its independent demand correlation");
             constexpr std::string_view response =
                 R"json({"protocolVersion":1,"type":"error","requestId":1,"payload":{"code":"stale_artwork_authority","message":"Artwork authority is stale or unavailable."}})json";
             const std::int32_t length = static_cast<std::int32_t>(response.size());
@@ -527,7 +529,7 @@ void VerifyArtworkRequestCancellationOwnership() {
         });
         const auto result = client.RequestArtwork(
             L"widget.test", L"artwork.replaced",
-            L"runtime-a", L"presentation-a");
+            L"runtime-a", L"presentation-a", {}, 17);
         server.join();
         Require(result == widgetrail::WidgetArtworkRequestDisposition::OriginRetired &&
                     !client.TransportTaintedForTesting(),
@@ -2698,6 +2700,19 @@ int main(int argc, char** argv) {
     CHECK(artwork->presentationGeneration == L"presentation-a");
     CHECK(artwork->contentType == L"image/jpeg");
     CHECK(artwork->contentBase64 == L"/9j/2Q==");
+    CHECK(artwork->demandId.empty()); // Legacy requests receive the legacy event shape.
+    const std::string correlatedJson = R"json({"type":"artwork","requestId":0,
+        "payload":{"widgetId":"games-apps","artworkHandle":"cover","runtimeGeneration":"runtime-a",
+        "presentationGeneration":"presentation-a","contentType":"","contentBase64":"","demandId":"demand-1"}})json";
+    const auto correlated = widgetrail::testing::ParseWidgetArtworkResultEvent(correlatedJson, error);
+    CHECK(correlated && correlated->demandId == L"demand-1" && correlated->contentBase64.empty());
+    auto oversizedDemand = correlatedJson;
+    oversizedDemand.replace(oversizedDemand.find("demand-1"), std::string("demand-1").size(), std::string(65, 'x'));
+    CHECK(!widgetrail::testing::ParseWidgetArtworkResultEvent(oversizedDemand, error));
+    CHECK(!error.empty());
+    auto malformedDemand = correlatedJson;
+    malformedDemand.replace(malformedDemand.find("\"demand-1\""), std::string("\"demand-1\"").size(), "42");
+    CHECK(!widgetrail::testing::ParseWidgetArtworkResultEvent(malformedDemand, error));
 
     error.clear();
     const auto webpArtwork = widgetrail::testing::ParseWidgetArtworkResultEvent(R"json({
@@ -2792,6 +2807,15 @@ int main(int argc, char** argv) {
     CHECK(!artworkResults.Push({
         L"games-apps", L"library.art.ffffffffffffffffffffffffffffffff",
         L"runtime-a", L"presentation-a", L"image/png", L"CCCC"}));
+
+    widgetrail::WidgetArtworkResultQueue correlatedResults;
+    CHECK(correlatedResults.Push({L"games-apps", L"cover", L"runtime-a", L"view", L"image/png", L"AAAA", L"first"}));
+    CHECK(correlatedResults.Push({L"games-apps", L"cover", L"runtime-a", L"view", L"", L"", L"second"}));
+    CHECK(correlatedResults.size() == 2);
+    CHECK(correlatedResults.Push({L"games-apps", L"cover", L"runtime-a", L"view", L"image/png", L"BBBB", L"first"}));
+    const auto correlatedReplies = correlatedResults.Take();
+    CHECK(correlatedReplies.size() == 2 && correlatedReplies[0].demandId == L"first" &&
+        correlatedReplies[0].contentBase64 == L"BBBB" && correlatedReplies[1].demandId == L"second");
 
     widgetrail::WidgetActionFailureQueue actionFailures;
     for (int index = 0; index <= 16; ++index) {

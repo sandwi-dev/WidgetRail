@@ -250,7 +250,7 @@ public:
     using ArtworkRequestFunction = std::function<TrustedArtworkRequestDisposition(
         std::wstring_view key,
         const TrustedArtworkDemandAuthority& authority,
-        std::stop_token stopToken)>;
+        std::uint64_t demandGeneration, std::stop_token stopToken)>;
     using ArtworkDecodeDiagnosticCallback =
         std::function<void(const TrustedArtworkDecodeDiagnostic& diagnostic)>;
     using PackageIconRequestFunction = std::function<PackageIconRequest(
@@ -296,15 +296,16 @@ public:
         std::wstring_view artworkHandle,
         const TrustedArtworkDemandAuthority& authority,
         std::wstring contentType,
-        std::wstring contentBase64);
+        std::wstring contentBase64,
+        std::wstring_view demandId = {});
     [[nodiscard]] bool FailTrustedArtwork(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle,
-        const TrustedArtworkDemandAuthority& authority = {});
+        const TrustedArtworkDemandAuthority& authority = {}, std::wstring_view demandId = {});
     [[nodiscard]] bool RetireTrustedArtworkDemand(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle,
-        const TrustedArtworkDemandAuthority& authority);
+        const TrustedArtworkDemandAuthority& authority, std::wstring_view demandId = {});
     // A fresh admitted view is the retry trigger for retired artwork, even
     // when its semantic diff would otherwise require no raster work.
     [[nodiscard]] bool ConsumeRetiredArtworkForSnapshot(std::wstring_view widgetId);
@@ -399,6 +400,11 @@ private:
         std::shared_ptr<std::stop_source> cancellation{std::make_shared<std::stop_source>()};
     };
 
+    static bool MatchesDemandId(const Entry& entry, std::wstring_view demandId) {
+        // Empty is the legacy/private test path. The production host always
+        // sends and requires a correlated reply for its generated demand ID.
+        return demandId.empty() || demandId == std::to_wstring(entry.demandGeneration);
+    }
     struct ArtworkDemand final {
         std::wstring key;
         TrustedArtworkDemandAuthority authority;

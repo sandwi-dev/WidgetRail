@@ -2110,17 +2110,24 @@ static async Task TrustedArtworkDemandIsExact()
         Assert.Equal(1, backend.AppLibraryLaunchCalls);
         Assert.Equal("provider-one", backend.LastLaunchedAppId);
 
+        var invalidDemand = await client.RequestAsync(
+            BridgeMessageTypes.ResolveArtwork,
+            new BridgeArtworkRequest("test-widget", firstHandle,
+                initialRuntimeGeneration, initialPresentationGeneration, new string('x', 65)));
+        Assert.Equal(BridgeMessageTypes.Error, invalidDemand.Type);
+        Assert.Equal(0, backend.AppLibraryIconCalls);
         var resolved = await client.RequestAsync(
             BridgeMessageTypes.ResolveArtwork,
             new BridgeArtworkRequest(
                 "test-widget", firstHandle,
-                initialRuntimeGeneration, initialPresentationGeneration));
+                initialRuntimeGeneration, initialPresentationGeneration, "demand-1"));
         Assert.Equal(BridgeMessageTypes.Acknowledged, resolved.Type);
         await iconStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         var concurrent = await client.RequestAsync(BridgeMessageTypes.ListWidgets, new { });
         Assert.Equal(BridgeMessageTypes.Widgets, concurrent.Type);
         releaseIcon.TrySetResult();
         var artwork = await client.ReadEventAsync(BridgeMessageTypes.Artwork);
+        Assert.Equal("demand-1", artwork.Payload.GetProperty("demandId").GetString());
         Assert.Equal("image/png", artwork.Payload.GetProperty("contentType").GetString());
         Assert.Equal(png, artwork.Payload.GetProperty("contentBase64").GetString());
         Assert.Equal(initialRuntimeGeneration,

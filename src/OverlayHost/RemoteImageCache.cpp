@@ -691,7 +691,21 @@ bool RemoteImageCache::SupplyTrustedArtwork(
     const std::wstring_view artworkHandle,
     const TrustedArtworkDemandAuthority& authority,
     std::wstring contentType,
-    std::wstring contentBase64) {
+    std::wstring contentBase64, const std::wstring_view demandId) {
+    const auto prefix = L"wrail-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
+    const auto suffix = L"\x1f" + std::wstring(artworkHandle);
+    if (!demandId.empty()) {
+        std::scoped_lock lock(mutex_);
+        const bool wanted = !shuttingDown_ && std::any_of(entries_.begin(), entries_.end(), [&](const auto& item) {
+            return item.first.starts_with(prefix) && item.first.ends_with(suffix) &&
+                item.second.state == RemoteImageState::Loading && item.second.demandAuthority &&
+                *item.second.demandAuthority == authority && MatchesDemandId(item.second, demandId);
+        });
+        if (!wanted) {
+            if (staleArtworkCompletions_ != UINT64_MAX) ++staleArtworkCompletions_;
+            return false; // Do not decode or allocate buffers for retired replies.
+        }
+    }
     if (contentBase64.empty() || contentBase64.size() / 4 > limits_.maximumEncodedArtworkBytes / 3 + 1) return false;
     auto temporary = resourceBudget_->Reserve(resources::Kind::EncodedArtwork,
         contentBase64.size() / 4 * 3, resources::Admission::Required);
@@ -704,15 +718,13 @@ bool RemoteImageCache::SupplyTrustedArtwork(
     if (!bytes || !MatchesArtworkSignature(contentType, *bytes)) return false;
     std::scoped_lock lock(mutex_);
     if (shuttingDown_) return false;
-    const auto prefix = L"wrail-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
-    const auto suffix = L"\x1f" + std::wstring(artworkHandle);
     std::size_t widgetEncodedBytes = 0;
     for (const auto& [key, entry] : entries_)
         if (key.starts_with(prefix)) widgetEncodedBytes += entry.pendingBytes.size();
     const auto copies = static_cast<std::size_t>(std::count_if(entries_.begin(), entries_.end(), [&](const auto& item) {
         return item.first.starts_with(prefix) && item.first.ends_with(suffix) &&
             item.second.state == RemoteImageState::Loading && item.second.demandAuthority &&
-            *item.second.demandAuthority == authority;
+            *item.second.demandAuthority == authority && MatchesDemandId(item.second, demandId);
     }));
     if (copies > (limits_.maximumEncodedArtworkBytesTotal -
                   std::min(encodedArtworkBytes_, limits_.maximumEncodedArtworkBytesTotal)) / bytes->size() ||
@@ -723,7 +735,7 @@ bool RemoteImageCache::SupplyTrustedArtwork(
     for (auto& [key, entry] : entries_) {
         if (!key.starts_with(prefix) || !key.ends_with(suffix) ||
             entry.state != RemoteImageState::Loading ||
-            !entry.demandAuthority || *entry.demandAuthority != authority) continue;
+            !entry.demandAuthority || *entry.demandAuthority != authority || !MatchesDemandId(entry, demandId)) continue;
         auto allocation = resourceBudget_->Reserve(resources::Kind::EncodedArtwork, bytes->size(), resources::Admission::Required);
         if (!allocation) return false;
         std::vector<std::uint8_t> copy = *bytes;
@@ -749,7 +761,7 @@ bool RemoteImageCache::SupplyTrustedArtwork(
 bool RemoteImageCache::FailTrustedArtwork(
     const std::wstring_view widgetId,
     const std::wstring_view artworkHandle,
-    const TrustedArtworkDemandAuthority& authority) {
+    const TrustedArtworkDemandAuthority& authority, const std::wstring_view demandId) {
     CompletionCallback completion;
     std::wstring transitionKey;
     {
@@ -760,7 +772,7 @@ bool RemoteImageCache::FailTrustedArtwork(
         bool failed = false;
         for (auto& [key, entry] : entries_) {
             if (!key.starts_with(prefix) || !key.ends_with(suffix) ||
-                entry.state != RemoteImageState::Loading ||
+                entry.state != RemoteImageState::Loading || !MatchesDemandId(entry, demandId) ||
                 (!authority.widgetId.empty() &&
                  (!entry.demandAuthority || *entry.demandAuthority != authority))) continue;
             entry.state = RemoteImageState::Failed;
@@ -784,7 +796,7 @@ bool RemoteImageCache::FailTrustedArtwork(
 bool RemoteImageCache::RetireTrustedArtworkDemand(
     const std::wstring_view widgetId,
     const std::wstring_view artworkHandle,
-    const TrustedArtworkDemandAuthority& authority) {
+    const TrustedArtworkDemandAuthority& authority, const std::wstring_view demandId) {
     std::wstring transitionKey;
     {
         std::scoped_lock lock(mutex_);
@@ -794,7 +806,7 @@ bool RemoteImageCache::RetireTrustedArtworkDemand(
         const auto found = std::find_if(entries_.begin(), entries_.end(), [&](const auto& item) {
             return item.first.starts_with(prefix) && item.first.ends_with(suffix) &&
                 item.second.state == RemoteImageState::Loading &&
-                item.second.demandAuthority && *item.second.demandAuthority == authority;
+                item.second.demandAuthority && *item.second.demandAuthority == authority && MatchesDemandId(item.second, demandId);
         });
         if (found == entries_.end()) return false;
         transitionKey = found->first;
@@ -1394,7 +1406,7 @@ void RemoteImageCache::ArtworkDemandLoop(std::stop_token stopToken) {
             // Once dispatched, drain the bridge acknowledgment. Its stop token
             // aborts shared pipe framing and is reserved for owner shutdown.
             // Per-view retirement is enforced by the request lifetime below.
-            disposition = artworkRequest_(demand.key, demand.authority, stopToken);
+            disposition = artworkRequest_(demand.key, demand.authority, demand.generation, stopToken);
         } catch (...) {
             disposition = TrustedArtworkRequestDisposition::TerminalFailure;
         }

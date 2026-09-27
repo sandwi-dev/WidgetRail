@@ -144,7 +144,7 @@ void VerifyFailedArtworkRecovery() {
             pixels.mimeType = L"image/png";
             return RemoteImageFetchResult{S_OK, std::move(pixels), {}};
         },
-        [&](std::wstring_view, const TrustedArtworkDemandAuthority&, std::stop_token) {
+        [&](std::wstring_view, const TrustedArtworkDemandAuthority&, std::uint64_t, std::stop_token) {
             { std::scoped_lock lock(mutex); ++demands; }
             changed.notify_all();
             return TrustedArtworkRequestDisposition::Accepted;
@@ -247,7 +247,7 @@ void VerifyRetiredArtworkDecodeCannotPublish() {
                 pixels.premultipliedBgra = {static_cast<std::uint8_t>(attempt), 0, 0, 0xff};
                 return RemoteImageFetchResult{S_OK, std::move(pixels), {}};
             },
-            [](std::wstring_view, const TrustedArtworkDemandAuthority&, std::stop_token) {
+            [](std::wstring_view, const TrustedArtworkDemandAuthority&, std::uint64_t, std::stop_token) {
                 return TrustedArtworkRequestDisposition::Accepted;
             });
         assert(cache.RequestTrustedArtwork(key, old) == RemoteImageRequestResult::Queued);
@@ -396,7 +396,7 @@ void RetiredArtworkDispatchDrainsSharedTransport() {
     bool started{}, release{}, returned{}, transportCancelled{};
     const TrustedArtworkDemandAuthority authority{L"widget", L"runtime", L"view"};
     const auto key = RemoteImageCache::TrustedArtworkKey(L"widget", L"poster", L"cover");
-    RemoteImageCache cache({}, {}, {}, [&](std::wstring_view, const TrustedArtworkDemandAuthority&, std::stop_token stop) {
+    RemoteImageCache cache({}, {}, {}, [&](std::wstring_view, const TrustedArtworkDemandAuthority&, std::uint64_t, std::stop_token stop) {
         std::stop_callback cancelled(stop, [&] { std::scoped_lock lock(mutex); transportCancelled = true; });
         std::unique_lock lock(mutex); started = true; changed.notify_all();
         assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return release; }));
@@ -413,6 +413,65 @@ void RetiredArtworkDispatchDrainsSharedTransport() {
     { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return returned; })); }
     cache.Shutdown();
     assert(cache.GetState(key) == RemoteImageState::Missing);
+}
+
+void CorrelatedArtworkRepliesCannotCompleteNewDemand() {
+    using namespace widgetrail;
+    std::mutex mutex; std::condition_variable changed;
+    std::vector<std::uint64_t> requests; unsigned completions{};
+    const TrustedArtworkDemandAuthority authority{L"widget", L"runtime", L"view"};
+    const auto key = RemoteImageCache::TrustedArtworkKey(L"widget", L"poster", L"cover");
+    const std::wstring png = L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
+    RemoteImageCache cache({}, [&](std::wstring_view, RemoteImageState state) {
+        assert(state == RemoteImageState::Ready);
+        { std::scoped_lock lock(mutex); ++completions; } changed.notify_all();
+    }, [](std::wstring_view, std::stop_token, const RemoteImageLimits& limits) {
+        RemoteDecodedImage image; image.width = image.height = 1; image.stride = 4;
+        assert(image.AllocatePixels(4, limits.resourceBudget));
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    }, [&](std::wstring_view, const TrustedArtworkDemandAuthority&, std::uint64_t generation, std::stop_token) {
+        { std::scoped_lock lock(mutex); requests.push_back(generation); } changed.notify_all();
+        return TrustedArtworkRequestDisposition::Accepted;
+    });
+    const auto waitRequests = [&](unsigned count) {
+        std::unique_lock lock(mutex);
+        assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return requests.size() == count; }));
+        return std::to_wstring(requests.back());
+    };
+    const auto waitCompletions = [&](unsigned count) {
+        std::unique_lock lock(mutex);
+        assert(changed.wait_for(lock, std::chrono::seconds(3), [&] { return completions == count; }));
+    };
+    int owner{};
+    cache.SetImageDemand(&owner, {key}, {key});
+    assert(cache.RequestTrustedArtwork(key, authority) == RemoteImageRequestResult::Queued);
+    const auto oldId = waitRequests(1);
+    cache.ReleaseImageProtection(&owner);
+    cache.SetImageDemand(&owner, {key}, {key});
+    assert(cache.RequestTrustedArtwork(key, authority) == RemoteImageRequestResult::Queued);
+    const auto newId = waitRequests(2); assert(newId != oldId);
+    assert(!cache.FailTrustedArtwork(L"widget", L"cover", authority, oldId));
+    assert(!cache.RetireTrustedArtworkDemand(L"widget", L"cover", authority, oldId));
+    const auto beforeLate = cache.ResourceBudget()->Read().peakAllocatedBytes;
+    assert(!cache.SupplyTrustedArtwork(L"widget", L"cover", authority, L"image/png", png, oldId));
+    assert(cache.ResourceBudget()->Read().peakAllocatedBytes == beforeLate);
+    assert(cache.GetState(key) == RemoteImageState::Loading);
+    assert(cache.SupplyTrustedArtwork(L"widget", L"cover", authority, L"image/png", png, newId));
+    waitCompletions(1); assert(cache.GetState(key) == RemoteImageState::Ready);
+    const ImageDecodeSize smallSize{64, 64}, largeSize{128, 128};
+    const auto smallKey = RemoteImageCache::TrustedArtworkKey(L"widget", L"poster", L"cover", smallSize);
+    const auto largeKey = RemoteImageCache::TrustedArtworkKey(L"widget", L"poster", L"cover", largeSize);
+    cache.SetImageDemand(&owner, {smallKey, largeKey}, {smallKey, largeKey});
+    assert(cache.RequestTrustedArtwork(smallKey, authority, smallSize) == RemoteImageRequestResult::Queued);
+    const auto smallId = waitRequests(3);
+    assert(cache.RequestTrustedArtwork(largeKey, authority, largeSize) == RemoteImageRequestResult::Queued);
+    const auto largeId = waitRequests(4);
+    assert(cache.SupplyTrustedArtwork(L"widget", L"cover", authority, L"image/png", png, smallId));
+    waitCompletions(2);
+    assert(cache.GetState(smallKey) == RemoteImageState::Ready && cache.GetState(largeKey) == RemoteImageState::Loading);
+    assert(cache.SupplyTrustedArtwork(L"widget", L"cover", authority, L"image/png", png, largeId));
+    waitCompletions(3); assert(cache.GetState(largeKey) == RemoteImageState::Ready);
+    cache.Shutdown();
 }
 
 void DecodeOutputIsAccountedBeforePublication() {
@@ -471,6 +530,7 @@ int main() {
     DecoderTransportAndOutputAccounting();
     RealizedDemandCancelsOnlyAfterLastOwnerAndRejectsStaleCompletion();
     RetiredArtworkDispatchDrainsSharedTransport();
+    CorrelatedArtworkRepliesCannotCompleteNewDemand();
     DecodeOutputIsAccountedBeforePublication();
     ResourceBudgetImageOwnership();
     VerifyFailedArtworkRecovery();
@@ -587,7 +647,7 @@ int main() {
             const auto backgroundKey = RemoteImageCache::TrustedArtworkKey(authority.widgetId,L"background",L"cover",{512,768});
             assert(posterKey != backgroundKey);
             assert(posterKey == RemoteImageCache::TrustedArtworkKey(authority.widgetId,L"another-poster",L"cover",{256,384}));
-            const auto accepted=[](std::wstring_view,const TrustedArtworkDemandAuthority&,std::stop_token) { return TrustedArtworkRequestDisposition::Accepted; };
+            const auto accepted=[](std::wstring_view,const TrustedArtworkDemandAuthority&,std::uint64_t, std::stop_token) { return TrustedArtworkRequestDisposition::Accepted; };
             RemoteImageCache variants(defaultLimits, {}, {}, accepted);
             assert(variants.RequestTrustedArtwork(posterKey,authority,{256,384}) == RemoteImageRequestResult::Queued);
             assert(variants.RequestTrustedArtwork(backgroundKey,authority,{512,768}) == RemoteImageRequestResult::Queued);
@@ -924,7 +984,7 @@ int main() {
             },
             {},
             [](std::wstring_view, const TrustedArtworkDemandAuthority&,
-               std::stop_token) {
+               std::uint64_t, std::stop_token) {
                 return TrustedArtworkRequestDisposition::Accepted;
             },
             [&](const TrustedArtworkDecodeDiagnostic& diagnostic) {
@@ -1361,7 +1421,7 @@ int main() {
             },
             [&](const std::wstring_view key,
                 const TrustedArtworkDemandAuthority&,
-                const std::stop_token token) {
+                std::uint64_t, const std::stop_token token) {
                 std::unique_lock lock(demandMutex);
                 ++demandCalls;
                 if (key.ends_with(L"artwork.async-b")) {
@@ -1468,7 +1528,7 @@ int main() {
             },
             {},
             [&](std::wstring_view, const TrustedArtworkDemandAuthority& origin,
-                std::stop_token) {
+                std::uint64_t, std::stop_token) {
                 if (++requests == 1)
                     return TrustedArtworkRequestDisposition::OriginRetired;
                 assert(owner->SupplyTrustedArtwork(
@@ -1526,7 +1586,7 @@ int main() {
             {},
             [&](std::wstring_view,
                 const TrustedArtworkDemandAuthority& authority,
-                std::stop_token) {
+                std::uint64_t, std::stop_token) {
                 std::unique_lock lock(replacementMutex);
                 const bool firstOriginA = observedOrigins.empty();
                 observedOrigins.push_back(authority);
@@ -1596,7 +1656,7 @@ int main() {
         RemoteImageCache shutdownCache(
             {}, {}, {},
             [&](std::wstring_view, const TrustedArtworkDemandAuthority&,
-                const std::stop_token token) {
+                std::uint64_t, const std::stop_token token) {
                 std::unique_lock lock(shutdownMutex);
                 shutdownDemandEntered = true;
                 shutdownChanged.notify_all();
@@ -1649,7 +1709,7 @@ int main() {
             return RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
         [&](std::wstring_view key, const TrustedArtworkDemandAuthority&,
-            std::stop_token) {
+            std::uint64_t, std::stop_token) {
             assert(key.starts_with(L"wrail-artwork\x1f"));
             constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
             const auto widgetEnd = key.find(L'\x1f', prefix.size());
@@ -1749,7 +1809,7 @@ int main() {
             return RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
         [](std::wstring_view, const TrustedArtworkDemandAuthority&,
-           std::stop_token) {
+           std::uint64_t, std::stop_token) {
             return TrustedArtworkRequestDisposition::Accepted;
         });
     const auto failedRevision =

@@ -1060,7 +1060,7 @@ public:
             [this](
                 std::wstring_view source,
                 const widgetrail::TrustedArtworkDemandAuthority& authority,
-                const std::stop_token stopToken) {
+                std::uint64_t demandGeneration, const std::stop_token stopToken) {
                 constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
                 const auto widgetSeparator = source.find(L'\x1f', prefix.size());
                 const auto handleSeparator = source.rfind(L'\x1f');
@@ -1074,7 +1074,7 @@ public:
                     return widgetrail::TrustedArtworkRequestDisposition::TerminalFailure;
                 const auto disposition = bridge_.RequestArtwork(
                     widgetId, handle, authority.runtimeGeneration,
-                    authority.presentationGeneration, stopToken);
+                    authority.presentationGeneration, stopToken, demandGeneration);
                 switch (disposition) {
                 case widgetrail::WidgetArtworkRequestDisposition::Accepted:
                     return widgetrail::TrustedArtworkRequestDisposition::Accepted;
@@ -1999,6 +1999,7 @@ private:
         if (controllerTick && state_.surface() != widgetrail::Surface::Hidden)
             PollController();
         for (auto& artwork : bridge_.TakeArtworkResults()) {
+            if (artwork.demandId.empty()) continue; // This host issues correlated requests only.
             const widgetrail::TrustedArtworkDemandAuthority authority{
                 artwork.widgetId,
                 artwork.runtimeGeneration,
@@ -2008,21 +2009,21 @@ private:
                 descriptor->runtimeGeneration != artwork.runtimeGeneration ||
                 descriptor->presentationGeneration != artwork.presentationGeneration) {
                 (void)imageCache_->RetireTrustedArtworkDemand(
-                    artwork.widgetId, artwork.artworkHandle, authority);
+                    artwork.widgetId, artwork.artworkHandle, authority, artwork.demandId);
                 continue;
             }
             if (artwork.contentBase64.empty())
                 (void)imageCache_->FailTrustedArtwork(
-                    artwork.widgetId, artwork.artworkHandle, authority);
+                    artwork.widgetId, artwork.artworkHandle, authority, artwork.demandId);
             else
             {
                 if (!imageCache_->SupplyTrustedArtwork(
                         artwork.widgetId, artwork.artworkHandle,
                         authority,
                         std::move(artwork.contentType),
-                        std::move(artwork.contentBase64)))
+                        std::move(artwork.contentBase64), artwork.demandId))
                     (void)imageCache_->FailTrustedArtwork(
-                        artwork.widgetId, artwork.artworkHandle, authority);
+                        artwork.widgetId, artwork.artworkHandle, authority, artwork.demandId);
             }
         }
         for (auto& result : bridge_.TakeLocalWidgetPackageInstallResults()) {

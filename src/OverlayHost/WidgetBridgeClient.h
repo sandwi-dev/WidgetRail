@@ -271,6 +271,7 @@ struct WidgetArtworkResult final {
     std::wstring presentationGeneration;
     std::wstring contentType;
     std::wstring contentBase64;
+    std::wstring demandId;
 };
 
 struct WidgetPackageIconResult final {
@@ -983,7 +984,7 @@ public:
         std::wstring_view artworkHandle,
         std::wstring_view runtimeGeneration,
         std::wstring_view presentationGeneration,
-        std::stop_token stopToken = {});
+        std::stop_token stopToken = {}, std::uint64_t demandGeneration = 0);
     [[nodiscard]] WidgetPackageIconResolution ResolvePackageIcon(
         std::wstring_view widgetId,
         std::wstring_view runtimeGeneration,

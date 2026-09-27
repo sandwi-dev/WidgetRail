@@ -44,7 +44,9 @@ protection, idle reclamation and decoder transport retirement are connected.
 Realization-driven cancellation, independent image content identity, hide/resume
 and shared-pressure reclamation pass focused tests. Production-layout probes
 retain about 20-32 MiB of known storage with shared substitute artwork. Bridge
-reply correlation for same-key re-admission and final host/pinned gates remain. See [resource accounting](native-resource-budgets.md).
+reply correlation protects same-key re-admission. Renderer (47,872), bridge,
+background/pinned gates and the normal Release build pass; WIDGE-296 is complete
+for integration. See [resource accounting](native-resource-budgets.md).
 WIDGE-297 and WIDGE-298 have not started.
 No live-overlay FPS improvement is claimed.
 Details and verification limits: [collection lifecycle](native-collection-lifecycle.md).

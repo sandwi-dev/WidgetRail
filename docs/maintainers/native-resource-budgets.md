@@ -1,7 +1,7 @@
 # Native UI resource accounting and pressure
 
-WIDGE-296 is in progress. This document describes the implemented foundation and
-the remaining production connections; it is not a completion claim.
+WIDGE-296 is complete for integration on the native evolution branch. This
+contract covers known application-owned image/surface storage and demand lifetime.
 
 ## Accounting contract
 
@@ -21,8 +21,8 @@ admission. Denied optional demand requests enough reclamation headroom. Required
 frame overlap remains accounted and may exceed the target; owners reclaim idle
 resources down to the larger of the requested threshold and protected working set.
 An optional object larger than the target is rejected without flushing useful data.
-The provisional default is 384 MiB; aggregate production measurements still need
-to validate it after all resource owners are connected.
+The default retention target is a provisional 384 MiB policy. The measurements
+below describe exercised working sets rather than a universal memory requirement.
 
 Accounting and protection are thread-safe. The budget never calls an owner or
 performs eviction while holding its mutex. GPU owners must reclaim on their render
@@ -84,8 +84,11 @@ cannot complete a same-key replacement. Normal decoder cancellation terminates i
 request without charging the decoder fault circuit. Dispatched bridge exchanges
 use shutdown cancellation only: they drain their acknowledgment instead of
 aborting shared pipe framing when one item leaves the viewport. Replies are
-ignored after retirement, but same-key re-admission still needs per-demand bridge
-correlation before this task is complete. Main-overlay hiding suspends
+matched by a bounded per-demand ID as well as widget authority. Old successes,
+failures and retirement replies cannot complete a same-key replacement or another
+decode-size demand. Stale correlated payloads are rejected before base64 allocation.
+Legacy private requests omit the optional ID and retain their old wire shape;
+the current host issues and accepts correlated requests only. Main-overlay hiding suspends
 demand without clearing logical widget state; pinned owners remain independent.
 
 Each ready image publication has a bounded shared content token. GPU copies and
@@ -95,7 +98,7 @@ cache epoch; renderers retire stale GPU and captured content on their next bind.
 Tokens live only with corresponding cache/frame owners; there is no permanent
 per-URL revision map.
 
-## Measurements and remaining validation
+## Measurements and verification
 
 Saved production-layout fixtures at 980x700 DIPs / 125% scale produced the following
 known-storage readings. Artwork is a deterministic shared 192x320 substitute, so
@@ -114,11 +117,15 @@ allocation to zero. This validates ownership/reclamation, not driver residency.
 The provisional 384 MiB target leaves working-set/transition overlap headroom;
 it remains a policy choice, not a measured universal minimum or a process cap.
 
-Per-demand correlation through asynchronous bridge artwork replies and final
-production host/pinned integration gates remain before WIDGE-296 closes.
+Final native bridge protocol, background host (12/12, including 240 retargets),
+pinned coordinator (409 checks) and normal Release host/runtime gates pass.
+Managed bridge tests pass: typed wire framing (1/1) and production artwork
+admission/authority (2/2), including demand-ID echo and invalid-ID rejection.
 
 Known-byte accounting does not claim to measure driver residency, Direct2D's
-internal layer pool, allocator overhead or other process memory.
+internal layer pool, allocator overhead, IPC framing/string storage, live-media
+owners, font/layout metadata or other process memory. Those keep their existing
+independent admission bounds and lifecycle owners.
 
 ## Verification so far
 

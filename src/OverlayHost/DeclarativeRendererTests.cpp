@@ -386,7 +386,7 @@ void BackgroundImageFitAndDiagnosticsUseOneBoundedOwner() {
     widgetrail::RemoteImageCache pendingArtwork(
         {}, {}, {}, [](std::wstring_view,
                        const widgetrail::TrustedArtworkDemandAuthority&,
-                       std::stop_token) {
+                       std::uint64_t, std::stop_token) {
             return widgetrail::TrustedArtworkRequestDisposition::Accepted;
         });
     DeclarativeRenderer diagnosticRenderer{
@@ -2321,7 +2321,7 @@ void BackgroundSurfacePreservesForegroundAuthority() {
         {}, {}, {},
         [&](const std::wstring_view key,
             const widgetrail::TrustedArtworkDemandAuthority&,
-            std::stop_token) {
+            std::uint64_t, std::stop_token) {
             {
                 std::scoped_lock lock(requestMutex);
                 requestedArtwork.emplace_back(key);
@@ -6373,7 +6373,7 @@ void TrustedArtworkDemandDoesNotBlockTileRender() {
         },
         [&](std::wstring_view,
             const widgetrail::TrustedArtworkDemandAuthority& authority,
-            const std::stop_token token) {
+            std::uint64_t, const std::stop_token token) {
             std::unique_lock lock(demandMutex);
             observedAuthority = authority;
             demandEntered = true;
@@ -6587,7 +6587,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
         },
         [&](const std::wstring_view key,
             const widgetrail::TrustedArtworkDemandAuthority&,
-            std::stop_token) {
+            std::uint64_t, std::stop_token) {
             {
                 std::scoped_lock lock(transitionMutex);
                 requested.emplace_back(key);

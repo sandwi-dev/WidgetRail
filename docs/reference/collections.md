@@ -148,7 +148,8 @@ adjacent artwork, and cancels unfinished requests when no realized view needs
 them. A visible pinned surface has its own demand even while the main overlay is
 hidden. Providers must honor their existing cancellation token where possible
 and tolerate another request for the same asset when an item becomes visible
-again. Cancellation does not mean that the image is unavailable.
+again. Already-dispatched broker work may finish; the host rejects replies for
+retired demand. Cancellation does not mean that the image is unavailable.
 
 CPU pixels, GPU copies and retained drawing layers have separate lifetimes under
 a shared host retention budget. Authors do not need to duplicate artwork caches,

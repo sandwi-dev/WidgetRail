@@ -187,6 +187,9 @@ internal static class BridgeRequestClassifier
         _ = BridgeRequestKey.Widget(BridgeRequestKind.GetSnapshot, request.WidgetId);
         if (!BridgeRequestKey.IsBoundedIdentifier(request.ArtworkHandle))
             throw new BridgeProtocolException("Artwork handle is invalid.");
+        if (request.DemandId is { } demandId &&
+            (demandId.Length > 64 || !BridgeRequestKey.IsBoundedIdentifier(demandId)))
+            throw new BridgeProtocolException("Artwork demand identifier is invalid.");
         if ((request.RuntimeGeneration is null) !=
                 (request.PresentationGeneration is null) ||
             (request.RuntimeGeneration is not null &&

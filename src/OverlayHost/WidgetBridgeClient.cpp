@@ -3105,9 +3105,11 @@ bool HandleAsyncEvent(
         return false;
     }
     if (type == L"artwork") {
-        if (!artworkResults || !HasOnlyProperties(
+        if (!artworkResults || (!HasOnlyProperties(
                 payload, {L"widgetId", L"artworkHandle", L"runtimeGeneration",
-                          L"presentationGeneration", L"contentType", L"contentBase64"})) {
+                          L"presentationGeneration", L"contentType", L"contentBase64"}) && !HasOnlyProperties(
+                payload, {L"widgetId", L"artworkHandle", L"runtimeGeneration",
+                          L"presentationGeneration", L"contentType", L"contentBase64", L"demandId"}))) {
             status = L"WidgetBridge artwork event has an invalid payload.";
             return false;
         }
@@ -3116,18 +3118,20 @@ bool HandleAsyncEvent(
         auto presentationGeneration = OptionalString(payload, L"presentationGeneration");
         auto contentType = OptionalString(payload, L"contentType");
         auto content = OptionalString(payload, L"contentBase64");
+        auto demandId = OptionalString(payload, L"demandId");
         constexpr std::size_t maximumEncodedCharacters =
             ((8U * 1024U * 1024U + 2U) / 3U) * 4U;
         const bool unavailable = contentType.empty() && content.empty();
         if (!IsIdentifier(handle) || !IsIdentifier(runtimeGeneration) ||
             !IsIdentifier(presentationGeneration) ||
+            (payload.HasKey(L"demandId") && (demandId.empty() || demandId.size() > 64 || !IsIdentifier(demandId))) ||
             (!unavailable && contentType != L"image/png" && contentType != L"image/jpeg" &&
              contentType != L"image/webp") ||
             content.size() > maximumEncodedCharacters ||
             !artworkResults->Push({std::move(widgetId), std::move(handle),
                                    std::move(runtimeGeneration),
                                    std::move(presentationGeneration),
-                                   std::move(contentType), std::move(content)})) {
+                                   std::move(contentType), std::move(content), std::move(demandId)})) {
             status = L"WidgetBridge artwork event could not be queued.";
             return false;
         }
@@ -4094,7 +4098,7 @@ bool WidgetArtworkResultQueue::Push(WidgetArtworkResult result) {
             return item.widgetId == result.widgetId &&
                    item.artworkHandle == result.artworkHandle &&
                    item.runtimeGeneration == result.runtimeGeneration &&
-                   item.presentationGeneration == result.presentationGeneration;
+                   item.presentationGeneration == result.presentationGeneration && item.demandId == result.demandId;
         });
     if (existing != queued_.end()) *existing = std::move(result);
     else {
@@ -5110,7 +5114,7 @@ WidgetArtworkRequestDisposition WidgetBridgeClient::RequestArtwork(
     const std::wstring_view artworkHandle,
     const std::wstring_view runtimeGeneration,
     const std::wstring_view presentationGeneration,
-    const std::stop_token stopToken) {
+    const std::stop_token stopToken, const std::uint64_t demandGeneration) {
     if (!requestMutex_.lock(stopToken)) return WidgetArtworkRequestDisposition::Cancelled;
     const std::lock_guard lock(requestMutex_, std::adopt_lock);
     if (pipe_ == INVALID_HANDLE_VALUE || transportTainted_ || widgetId.empty() ||
@@ -5135,6 +5139,8 @@ WidgetArtworkRequestDisposition WidgetBridgeClient::RequestArtwork(
                        JsonValue::CreateStringValue(winrt::hstring(runtimeGeneration)));
         payload.Insert(L"presentationGeneration",
                        JsonValue::CreateStringValue(winrt::hstring(presentationGeneration)));
+        if (demandGeneration != 0) payload.Insert(L"demandId",
+            JsonValue::CreateStringValue(std::to_wstring(demandGeneration)));
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
         envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));

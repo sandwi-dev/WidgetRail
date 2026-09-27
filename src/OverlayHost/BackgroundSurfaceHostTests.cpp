@@ -488,7 +488,7 @@ int wmain() {
             {}, {}, {},
             [&](const std::wstring_view key,
                 const widgetrail::TrustedArtworkDemandAuthority&,
-                std::stop_token) {
+                std::uint64_t, std::stop_token) {
                 requests.Push(key);
                 return widgetrail::TrustedArtworkRequestDisposition::Accepted;
             });
@@ -588,7 +588,7 @@ int wmain() {
             widgetrail::RemoteImageCache retargetCache(
                 {}, {}, {}, [](const std::wstring_view,
                                const widgetrail::TrustedArtworkDemandAuthority&,
-                               std::stop_token) {
+                               std::uint64_t, std::stop_token) {
                     return widgetrail::TrustedArtworkRequestDisposition::Accepted;
                 });
             const auto admitArtwork = [&](const std::wstring_view handle,
