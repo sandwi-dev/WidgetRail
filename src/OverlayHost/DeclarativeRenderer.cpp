@@ -526,6 +526,7 @@ struct DeclarativeRenderer::RenderPass final {
     std::optional<CollectionPreparationBudget> preparationBudget;
     std::chrono::steady_clock::time_point preparationStarted;
     std::size_t preparationMeasurements{};
+    std::uint64_t preparationFirstProgressMicroseconds{};
     DeclarativeRenderer* owner{};
     std::unordered_map<std::wstring, ScrollStateEntry>* scrollState{};
     std::uint64_t* scrollAccessClock{};
@@ -7318,6 +7319,7 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     } catch (const RenderPass::CollectionSlicePending&) {
         result.status = CollectionPreparationStatus::Pending;
     }
+    const auto preparationBodyEnd = std::chrono::steady_clock::now();
     if (result.status == CollectionPreparationStatus::Failed) retireSource();
     else {
         branch.collections = std::move(pass.collections);
@@ -7346,10 +7348,16 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     result.newMeasurements = pass.preparationMeasurements;
     result.elapsedMicroseconds = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - started).count());
+    const auto bodyMicroseconds = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        preparationBodyEnd - started).count());
+    result.minimumProgressMicroseconds = pass.preparationFirstProgressMicroseconds
+        ? pass.preparationFirstProgressMicroseconds + result.elapsedMicroseconds - bodyMicroseconds
+        : result.elapsedMicroseconds;
     if (scrollDiagnostics_) scrollDiagnostics_->Record("collection-preparation", [&](auto& out) {
         out << "seq=" << snapshot.sequence << " status=" << static_cast<int>(result.status)
             << " resumed=" << static_cast<bool>(resume) << " measurements=" << result.newMeasurements
-            << " cpu-us=" << result.elapsedMicroseconds << " budget-us=" << budget.maximumMicroseconds;
+            << " cpu-us=" << result.elapsedMicroseconds << " budget-us=" << budget.maximumMicroseconds
+            << " minimum-progress-us=" << result.minimumProgressMicroseconds;
     });
     return result;
 }

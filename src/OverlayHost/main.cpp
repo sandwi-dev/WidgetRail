@@ -7281,6 +7281,11 @@ private:
             preparationTimerArmed_ = SetTimer(window_, kCollectionPreparationTimer, delay, nullptr) != 0;
     }
 
+    void ObserveCollectionPreparation(const widgetrail::CollectionPreparationResult& result) {
+        if (result.elapsedMicroseconds && result.status != widgetrail::CollectionPreparationStatus::Failed)
+            preparationFrameBudget_.Observe(result.minimumProgressMicroseconds);
+    }
+
     void PumpCollectionPreparation() {
         const bool hasWork = interactionSession_.focusRealization().pending() ||
             (pendingAccessibilityRealization_ && !accessibilityRealizationReady_) ||
@@ -7324,6 +7329,7 @@ private:
                 const auto* media = mediaKey ? mediaSessions_.Find(*mediaKey) : nullptr;
                 preparation = pinnedSurfaceCoordinator_.PrepareSnapshot(descriptor.id, descriptor.runtimeGeneration,
                     snapshot, ResolvePinnedLayouts(snapshot), media && media->authority && media->coordinator, budget());
+                ObserveCollectionPreparation(preparation);
             } else if (state_.surface() == widgetrail::Surface::Widget && state_.activeWidget() == descriptor.id && declarativeRenderer_) {
                 const auto target = DesiredWidgetSurfaceTarget(&snapshot);
                 const auto extent = DesiredContentPanelExtentDip(&snapshot);
@@ -7350,6 +7356,7 @@ private:
                     preparation = declarativeRenderer_->PrepareCollections(snapshot, focus,
                         {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options,
                         budget(), groupEntry);
+                    ObserveCollectionPreparation(preparation);
                     if (preparation.focusGeometry) {
                         const auto entry = interactionSession_.PreviewCandidateFocusGroup(authority, *preparation.focusGeometry);
                         if (entry && *entry != focus) {
@@ -7376,6 +7383,7 @@ private:
             else if (budget().maximumMicroseconds) {
                 const auto result = declarativeRenderer_->PreparePendingScroll(*snapshot,
                     interactionSession_.focusedElementId(), budget());
+                ObserveCollectionPreparation(result);
                 if (result.status == widgetrail::CollectionPreparationStatus::Ready) {
                     // Adoption is a normal transactional paint; preparation did
                     // not change the committed viewport or interactive geometry.
@@ -7386,7 +7394,6 @@ private:
         }
         const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started).count());
-        preparationFrameBudget_.Observe(elapsed);
         if (gScrollDiagnostics) gScrollDiagnostics->Record("preparation-slice", [&](auto& out) {
             out << "budget-us=" << available << " cpu-us=" << elapsed << " pending=" << pendingWork;
         });
@@ -7416,6 +7423,7 @@ private:
         options.realizeElementId = request.nodeId;
         const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, interactionSession_.focusedElementId(),
             {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options, budget);
+        ObserveCollectionPreparation(preparation);
         if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) return true;
         if (preparation.status == widgetrail::CollectionPreparationStatus::Failed) { pendingAccessibilityRealization_.reset(); return false; }
         accessibilityRealizationReady_ = true;
@@ -7447,6 +7455,7 @@ private:
         const widgetrail::declarative::Rect viewport{
             geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight};
         const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, *target, viewport, options, budget, true);
+        ObserveCollectionPreparation(preparation);
         if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) return true;
         if (preparation.status == widgetrail::CollectionPreparationStatus::Failed) { intent.Clear(); return false; }
         const auto ready = preparation.focusGeometry
