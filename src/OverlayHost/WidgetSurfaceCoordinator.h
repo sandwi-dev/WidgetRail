@@ -205,6 +205,10 @@ public:
         std::wstring& error,
         std::optional<std::filesystem::path> placementPath = std::nullopt);
     [[nodiscard]] bool Pin(WidgetSurfaceAdmission admission, std::wstring& error);
+    [[nodiscard]] CollectionPreparationResult PrepareSnapshot(
+        std::wstring_view widgetId, std::wstring_view runtimeGeneration,
+        const WidgetSnapshot& snapshot, const std::vector<PinnedLayoutOption>& layouts,
+        bool compactMediaSessionAvailable, CollectionPreparationBudget budget = {});
     [[nodiscard]] bool UpdateSnapshot(
         std::wstring_view widgetId,
         std::wstring_view runtimeGeneration,
@@ -285,6 +289,8 @@ public:
     [[nodiscard]] bool CancelOpacity() noexcept;
     void ReconcileDisplayEnvironment() noexcept;
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    void FailNextEndDrawForTesting(HRESULT failure) noexcept { nextEndDrawFailureForTesting_ = failure; }
+    [[nodiscard]] bool AccessibilityRevealPendingForTesting() const noexcept { return pendingAccessibilityRealization_.has_value(); }
     void ReconcileDisplayEnvironmentForTesting(
         const std::vector<MonitorWorkArea>& monitors) noexcept;
     [[nodiscard]] std::optional<POINT> PointerPointForTesting(
@@ -374,6 +380,10 @@ public:
     }
 
 private:
+    void PumpFocusRealization();
+    void PumpAccessibilityRealization();
+    [[nodiscard]] DeclarativeRenderOptions RenderOptions(float widthDip, float heightDip, float dpiScale) const;
+    [[nodiscard]] static declarative::Rect ContentViewport(float widthDip, float heightDip, bool compactMedia, bool adjustmentActive);
     static LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
     [[nodiscard]] bool CreateWindowForAdmission(std::wstring& error);
@@ -453,10 +463,13 @@ private:
     unsigned int opacityPercent_{kMaximumOpacityPercent};
     std::optional<unsigned int> opacityPreviewOriginal_;
     RenderResult lastRenderResult_;
+    bool framePublicationFailed_{};
+    unsigned int frameRecoveryAttempts_{};
     std::optional<CommittedMediaViewportPresentation> committedMediaViewport_;
     std::uint64_t nextCommittedFrameGeneration_{1};
     bool mediaViewportGeometryDirty_{true};
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    HRESULT nextEndDrawFailureForTesting_{S_OK};
     bool lastHostCanvasTransparentForTesting_{};
     bool lastHostChromeVisibleForTesting_{};
     bool lastHostBorderVisibleForTesting_{};
@@ -479,6 +492,8 @@ private:
     input::WidgetFocusGroupMemory focusGroupMemory_;
     input::WidgetSurfaceFocusMemory collectionFocusMemory_;
     input::FreeScrollInteractionState freeScroll_;
+    std::optional<accessibility::ActionRequest> pendingAccessibilityRealization_;
+    bool accessibilityRealizationReady_{};
     input::WidgetInteractionSession sliderInteraction_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;
     std::vector<input::ScrollPaginationDiagnostic> paginationDiagnostics_;

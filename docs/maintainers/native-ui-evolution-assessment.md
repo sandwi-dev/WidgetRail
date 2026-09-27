@@ -2,8 +2,29 @@
 
 2026-09-26; production baseline `092ee64d`. Companion to the
 [end-to-end architecture assessment](ui-architecture-assessment.md).
-This is a design/effort assessment with source inspection and existing trace evidence.
-No replacement renderer, Skia integration or native redesign was implemented or tested here.
+The original design/effort assessment uses source inspection and saved trace
+evidence. Subsequent native implementation is tracked below; no replacement
+renderer or Skia integration benchmark has been performed.
+
+## Implementation progress
+
+WIDGE-293–298 integrate only into `codex/native-ui-integration`; `main` stays untouched.
+WIDGE-293 has protocol-v59 list/grid declarations, logical navigation, UIA realization,
+immutable item reuse, bounded preparation and host-acknowledged frame publication.
+Playnite, YouTube Music, Spotify and Games and Apps use the applicable contracts;
+public author guidance is updated. Same-snapshot placement now reuses covered
+collection geometry, with exact constraint and logical provider-boundary checks.
+
+The renderer suite passes 38,135 checks and pinned-owner tests pass 409. Seven
+production fixtures match a full-layout reference over stateful focus/scroll/UIA
+sequences at three widths and two scales. The [fixed-viewport profile](native-collection-profile.md)
+records reduced focus work, mixed total timing and no consistent memory reduction.
+The main-host offscreen fixture covers failed publication and source replacement;
+interleaved current/incoming preparation now preserves independent progress.
+WIDGE-293 is complete for integration: main-host 61 checks, host contracts 517,
+interaction 411, and the normal Release host/runtime build pass. WIDGE-294 through
+WIDGE-298 have not started. No live-overlay FPS improvement is claimed.
+Details and verification limits: [collection lifecycle](native-collection-lifecycle.md).
 
 ## Decision
 

@@ -80,6 +80,7 @@ ctor WidgetRail.WidgetSdk.WidgetCapabilityQuery()
 ctor WidgetRail.WidgetSdk.WidgetCapabilityUnavailableException(string message)
 ctor WidgetRail.WidgetSdk.WidgetCollectionCursor(string value)
 ctor WidgetRail.WidgetSdk.WidgetCollectionItemKey(string value)
+ctor WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>(System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> itemKey, System.Func<TItem,WidgetRail.WidgetSdk.WidgetElement> renderItem, System.Collections.Generic.IEqualityComparer<TItem>? comparer = null)
 ctor WidgetRail.WidgetSdk.WidgetCommandError(string code, string message)
 ctor WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>(TState State, TExecution Execution, bool ShouldExecute = true)
 ctor WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs(WidgetRail.WidgetSdk.WidgetActionEvent Action, System.Exception Exception)
@@ -1064,6 +1065,8 @@ method WidgetRail.WidgetSdk.WidgetCollectionCursor.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetCollectionItemKey.Equals(object obj) -> bool
 method WidgetRail.WidgetSdk.WidgetCollectionItemKey.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetCollectionItemKey.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>.Capture(System.Collections.Generic.IReadOnlyList<TItem> items) -> System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetElement>
+method WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>.Clear() -> void
 method WidgetRail.WidgetSdk.WidgetCommandError.<Clone>$() -> WidgetRail.WidgetSdk.WidgetCommandError
 method WidgetRail.WidgetSdk.WidgetCommandError.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetCommandError.GetHashCode() -> int
@@ -1694,6 +1697,8 @@ method static WidgetRail.WidgetSdk.UI.Card(string id, params WidgetRail.WidgetSd
 method static WidgetRail.WidgetSdk.UI.ChoiceRow(WidgetRail.WidgetSdk.WidgetIcon icon, string label, string action, string id, bool isSelected = false, bool isDisabled = false, bool isBusy = false, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.ChoiceRow(string label, string action, string id, bool isSelected = false, bool isDisabled = false, bool isBusy = false, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.CodeText(string text, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.TextElement
+method static WidgetRail.WidgetSdk.UI.CollectionGrid(string id, double minimumColumnWidth, double estimatedItemExtent, int? maximumColumns = null, params WidgetRail.WidgetSdk.WidgetElement[] items) -> WidgetRail.WidgetSdk.ScrollElement
+method static WidgetRail.WidgetSdk.UI.CollectionList(string id, double estimatedItemExtent, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical, params WidgetRail.WidgetSdk.WidgetElement[] items) -> WidgetRail.WidgetSdk.ScrollElement
 method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerButton button, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
 method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerPrompt prompt, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
 method static WidgetRail.WidgetSdk.UI.ControllerHint(WidgetRail.WidgetProtocol.ControllerButton button, string label, string id) -> WidgetRail.WidgetSdk.RowElement
@@ -2308,6 +2313,7 @@ property TState WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAu
 property TValue? WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Value { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfaceOrientation WidgetRail.WidgetSdk.ActionSurfaceElement.Orientation { get; set; }
 property WidgetRail.WidgetProtocol.ActionSurfacePresentation? WidgetRail.WidgetSdk.ActionSurfaceElement.Presentation { get; set; }
+property WidgetRail.WidgetProtocol.CollectionLayout? WidgetRail.WidgetSdk.ScrollElement.CollectionLayout { get; set; }
 property WidgetRail.WidgetProtocol.CollectionLoadingState WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.LoadingState { get; }
 property WidgetRail.WidgetProtocol.CollectionLoadingState? WidgetRail.WidgetSdk.ScrollElement.CollectionLoading { get; set; }
 property WidgetRail.WidgetProtocol.CollectionNavigationRequest? WidgetRail.WidgetSdk.ScrollElement.CollectionNavigation { get; set; }
@@ -3161,6 +3167,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetCapabilityException : System.Except
 type sealed class WidgetRail.WidgetSdk.WidgetCapabilityOperation<TRequest,TResponse> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCapabilityOperation<TRequest,TResponse>>
 type sealed class WidgetRail.WidgetSdk.WidgetCapabilityQuery : System.IEquatable<WidgetRail.WidgetSdk.WidgetCapabilityQuery>
 type sealed class WidgetRail.WidgetSdk.WidgetCapabilityUnavailableException : System.Exception, System.Runtime.Serialization.ISerializable
+type sealed class WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>
 type sealed class WidgetRail.WidgetSdk.WidgetCommandError : System.IEquatable<WidgetRail.WidgetSdk.WidgetCommandError>
 type sealed class WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs : System.IEquatable<WidgetRail.WidgetSdk.WidgetActionFailedEventArgs>, System.IEquatable<WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs>, WidgetRail.WidgetSdk.WidgetActionFailedEventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetCursorPage<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorPage<TItem>>

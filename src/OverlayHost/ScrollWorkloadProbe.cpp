@@ -1,6 +1,8 @@
 #include "DeclarativeRenderer.h"
 #include "WidgetBridgeClient.h"
 #include "ControllerNavigation.h"
+#include "FocusNavigation.h"
+#include <psapi.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <algorithm>
@@ -9,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <set>
 #include <thread>
 
 using Microsoft::WRL::ComPtr;
@@ -55,18 +58,39 @@ void Reidentify(WidgetNode& node, const std::wstring& suffix) {
     if (!node.collectionItemKey.empty()) node.collectionItemKey += suffix;
     for (auto& child : node.children) Reidentify(child, suffix);
 }
+void UseEagerCollections(WidgetNode& node) {
+    for (auto& child : node.children) UseEagerCollections(child);
+    if (!node.collectionLayout) return;
+    const auto policy = *node.collectionLayout;
+    node.collectionLayout.reset();
+    if (!policy.adaptiveGrid) return;
+    WidgetNode grid;
+    grid.id = node.id + L".eager-grid";
+    grid.kind = L"grid";
+    grid.gridMinimumColumnWidth = policy.minimumColumnWidth;
+    grid.gridMaximumColumns = policy.maximumColumns;
+    if (const auto gap = node.baseStyle.find(L"gap"); gap != node.baseStyle.end())
+        grid.baseStyle.emplace(*gap);
+    grid.children = std::move(node.children);
+    node.children = {std::move(grid)};
+}
+#include "CollectionWorkloadProfile.inl"
+#include "CollectionPlacementComparison.inl"
 }
 
 int wmain(int argc, wchar_t** argv) {
     try {
-        Require(argc == 2 || (argc == 3 && (std::wstring_view(argv[2]) == L"--cadence" || std::wstring_view(argv[2]) == L"--admission")),
-            "Usage: ScrollWorkloadProbe <renderer-fixture.json> [--cadence|--admission]");
+        const bool profile = argc == 5 && std::wstring_view(argv[2]) == L"--profile" &&
+            (std::wstring_view(argv[4]) == L"realized" || std::wstring_view(argv[4]) == L"eager");
+        Require(profile || argc == 2 || (argc == 3 && (std::wstring_view(argv[2]) == L"--cadence" || std::wstring_view(argv[2]) == L"--admission" || std::wstring_view(argv[2]) == L"--eager" || std::wstring_view(argv[2]) == L"--compare" || std::wstring_view(argv[2]) == L"--compare-retained")),
+            "Usage: ScrollWorkloadProbe <renderer-fixture.json> [--cadence|--admission|--eager|--compare|--compare-retained|--profile COUNT realized|eager]");
         std::ifstream file(std::filesystem::path(argv[1]), std::ios::binary);
         Require(static_cast<bool>(file), "Fixture missing");
         std::string payload{std::istreambuf_iterator<char>(file), {}};
         std::wstring error;
         auto snapshot = testing::ParseWidgetSnapshotResponse(payload, error);
         if (!snapshot) { std::wcerr << error << '\n'; return 1; }
+        if (argc == 3 && std::wstring_view(argv[2]) == L"--eager") UseEagerCollections(snapshot->root);
         ReplaceFixtureArtwork(snapshot->root);
         Check(CoInitializeEx(nullptr, COINIT_MULTITHREADED));
         struct Apartment final { ~Apartment() { CoUninitialize(); } } apartment;
@@ -91,6 +115,15 @@ int wmain(int argc, wchar_t** argv) {
         while (images.GetState(key) != RemoteImageState::Ready && std::chrono::steady_clock::now() < deadline)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         Require(images.GetState(key) == RemoteImageState::Ready, "Fixture artwork unavailable");
+        if (argc == 3 && std::wstring_view(argv[2]) == L"--compare-retained") {
+            CompareCollectionPlacement(*snapshot, d2d.Get(), write.Get(), images, target.Get(), canvas.Get());
+            return 0;
+        }
+        if (profile) {
+            ProfileCollection(*snapshot, std::stoul(argv[3]), std::wstring_view(argv[4]) == L"eager",
+                d2d.Get(), write.Get(), images, target.Get());
+            return 0;
+        }
         DeclarativeRenderer renderer(d2d.Get(), write.Get(), &images);
         DeclarativeRenderOptions options;
         options.pixelScale = 1.25F; options.compositorWidgetTransitions = true;
@@ -102,6 +135,107 @@ int wmain(int argc, wchar_t** argv) {
         const float viewportHeight = hints && hints->heightMode != L"fillAvailable" ? static_cast<float>(hints->preferredHeight.value_or(700)) : 862.2F;
         declarative::Rect viewport{1, 1, viewportWidth, viewportHeight};
         std::wstring focus = snapshot->initialFocusId;
+        if (argc == 3 && std::wstring_view(argv[2]) == L"--compare") {
+            auto eagerSnapshot = *snapshot;
+            UseEagerCollections(eagerSnapshot.root);
+            auto comparisonOptions = options;
+            comparisonOptions.compositorWidgetTransitions = false;
+            comparisonOptions.compositorBackgroundAvailable = false;
+            comparisonOptions.suppressFocusedDescendantFollow = false;
+            for (const auto scale : {1.0F, 1.25F}) for (const auto size : {
+                declarative::Size{620, 400}, declarative::Size{980, 700}, declarative::Size{1400, 862}}) {
+                comparisonOptions.pixelScale = scale;
+                comparisonOptions.responsiveViewport = size;
+                target->SetDpi(96 * scale, 96 * scale);
+                DeclarativeRenderer lazy(d2d.Get(), write.Get(), &images), eager(d2d.Get(), write.Get(), &images);
+                const auto drawComparison = [&](DeclarativeRenderer& painter, const WidgetSnapshot& document) {
+                    target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0));
+                    auto result = painter.Render(target.Get(), document, focus, {0, 0, size.width, size.height}, comparisonOptions);
+                    Check(target->EndDraw());
+                    Require(result.succeeded, "Comparison render failed");
+                    return result;
+                };
+                const WICRect pixelBounds{0, 0, static_cast<INT>(size.width * scale), static_cast<INT>(size.height * scale)};
+                const UINT stride = pixelBounds.Width * 4;
+                std::vector<BYTE> actual(stride * pixelBounds.Height), expected(actual.size());
+                // Both paths must observe completed synthetic artwork. First
+                // paint requests background variants in addition to item art.
+                (void)drawComparison(lazy, *snapshot);
+                (void)drawComparison(eager, eagerSnapshot);
+                const auto readyDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+                for (;;) {
+                    if (images.GetStats().queuedOrLoading != 0) {
+                        Require(std::chrono::steady_clock::now() < readyDeadline, "Comparison artwork did not settle");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        continue;
+                    }
+                    (void)drawComparison(lazy, *snapshot);
+                    (void)drawComparison(eager, eagerSnapshot);
+                    if (images.GetStats().queuedOrLoading == 0) break;
+                }
+                const auto actualResult = drawComparison(lazy, *snapshot);
+                Check(canvas->CopyPixels(&pixelBounds, stride, static_cast<UINT>(actual.size()), actual.data()));
+                const auto expectedResult = drawComparison(eager, eagerSnapshot);
+                Check(canvas->CopyPixels(&pixelBounds, stride, static_cast<UINT>(expected.size()), expected.data()));
+                // Unmeasured extent intentionally estimates the scrollbar thumb.
+                // Compare all content pixels while excluding only each actual
+                // scrollbar track; layout and gutter geometry remain unchanged.
+                for (const auto& [_, track] : actualResult.scrollbarTracks) {
+                    const int left = std::clamp(static_cast<int>(std::floor(track.x * scale)), 0, pixelBounds.Width);
+                    const int top = std::clamp(static_cast<int>(std::floor(track.y * scale)), 0, pixelBounds.Height);
+                    const int right = std::clamp(static_cast<int>(std::ceil((track.x + track.width) * scale)), 0, pixelBounds.Width);
+                    const int bottom = std::clamp(static_cast<int>(std::ceil((track.y + track.height) * scale)), 0, pixelBounds.Height);
+                    for (int y = top; y < bottom; ++y) for (int x = left; x < right; ++x) {
+                        const auto at = static_cast<std::size_t>(y) * stride + x * 4;
+                        std::copy_n(expected.begin() + at, 4, actual.begin() + at);
+                    }
+                }
+                for (const auto& [id, rect] : actualResult.elementRects) {
+                    const auto match = expectedResult.elementRects.find(id);
+                    Require(match != expectedResult.elementRects.end(), "Realized element absent from eager reference");
+                    const auto visible = [&](const RenderResult& result) {
+                        const auto box = result.elementVisibleRects.find(id);
+                        return box != result.elementVisibleRects.end() && box->second.width > 0 && box->second.height > 0;
+                    };
+                    // Completely clipped decoration (including a zero-height
+                    // poster scrim) does not define visible geometry. Compare
+                    // all visible content and all interactive geometry.
+                    if (!visible(actualResult) && !visible(expectedResult) &&
+                        !actualResult.navigationRects.contains(id)) continue;
+                    const auto& reference = match->second;
+                    if (std::abs(rect.x - reference.x) > .02F || std::abs(rect.y - reference.y) > .02F ||
+                        std::abs(rect.width - reference.width) > .02F || std::abs(rect.height - reference.height) > .02F) {
+                        std::wcerr << L"GEOMETRY " << id << L" actual=" << rect.x << L"," << rect.y << L"," << rect.width << L"," << rect.height
+                            << L" expected=" << reference.x << L"," << reference.y << L"," << reference.width << L"," << reference.height << L'\n';
+                        const auto& a = actualResult.elementUnroundedRects.at(id);
+                        const auto& e = expectedResult.elementUnroundedRects.at(id);
+                        std::wcerr.precision(12);
+                        std::wcerr << L"RAW actual=" << a.x << L"," << a.y << L"," << a.width << L"," << a.height
+                            << L" expected=" << e.x << L"," << e.y << L"," << e.width << L"," << e.height << L'\n';
+                        throw std::runtime_error("Collection geometry differs from eager reference");
+                    }
+                }
+                if (actual != expected) {
+                    std::size_t changed{};
+                    int left = pixelBounds.Width, top = pixelBounds.Height, right{}, bottom{};
+                    for (int y = 0; y < pixelBounds.Height; ++y) for (int x = 0; x < pixelBounds.Width; ++x) {
+                        const auto at = static_cast<std::size_t>(y) * stride + x * 4;
+                        if (std::equal(actual.begin() + at, actual.begin() + at + 4, expected.begin() + at)) continue;
+                        ++changed; left = std::min(left, x); top = std::min(top, y); right = std::max(right, x); bottom = std::max(bottom, y);
+                    }
+                    std::cerr << "PIXELS width=" << size.width << " scale=" << scale << " changed=" << changed
+                        << " bounds=" << left << ',' << top << ',' << right << ',' << bottom << '\n';
+                    for (const auto& [name, pixels] : {std::pair{"actual", &actual}, std::pair{"expected", &expected}}) {
+                        std::ofstream dump(std::filesystem::path(argv[1]).parent_path() / (std::string{name} + ".bgra"), std::ios::binary);
+                        dump.write(reinterpret_cast<const char*>(pixels->data()), pixels->size());
+                    }
+                    throw std::runtime_error("Collection pixels differ from eager reference");
+                }
+                std::cout << "COLLECTION-COMPARE width=" << size.width << " scale=" << scale << " exact-content-pixels=passed prepared="
+                    << actualResult.timing.preparedNodes << " eager-prepared=" << expectedResult.timing.preparedNodes << '\n';
+            }
+            return 0;
+        }
         const auto draw = [&] {
             target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0));
             auto result = renderer.Render(target.Get(), *snapshot, focus, viewport, options);
@@ -291,7 +425,7 @@ int wmain(int argc, wchar_t** argv) {
                 << " full-median-us=" << full[full.size()/2] << " intrinsic=" << retainedMeasures << " full-intrinsic=" << fullMeasures << '\n';
             return 0;
         }
-        if (argc == 3) {
+        if (argc == 3 && std::wstring_view(argv[2]) == L"--cadence") {
             using namespace widgetrail::input;
             ContinuousScrollFrames frames;
             const auto movementAxis = axis == declarative::ScrollAxis::Vertical ? FreeScrollAxis::Vertical : FreeScrollAxis::Horizontal;

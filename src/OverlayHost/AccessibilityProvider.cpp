@@ -36,6 +36,8 @@ struct ElementIdentity final {
     std::wstring runtimeGeneration;
     ElementDomain domain{ElementDomain::Widget};
     std::wstring nodeId;
+    std::wstring collectionItemKey;
+    std::wstring collectionScope;
 };
 
 bool SameAuthority(const ActionRequest& left, const ActionRequest& right) noexcept {
@@ -272,7 +274,9 @@ class Provider final : public RuntimeClass<
     IExpandCollapseProvider,
     IRangeValueProvider,
     ISelectionItemProvider,
-    ISelectionProvider> {
+    ISelectionProvider,
+    IVirtualizedItemProvider,
+    IScrollItemProvider> {
 public:
     Provider(std::shared_ptr<ProviderState> state,
              std::optional<ElementIdentity> identity,
@@ -307,6 +311,10 @@ public:
                     __uuidof(ISelectionProvider), reinterpret_cast<void**>(result));
             return S_OK;
         }
+        if (patternId == UIA_VirtualizedItemPatternId && node->supportsRealization && node->virtualized)
+            return QueryInterface(__uuidof(IVirtualizedItemProvider), reinterpret_cast<void**>(result));
+        if (patternId == UIA_ScrollItemPatternId && node->supportsRealization)
+            return QueryInterface(__uuidof(IScrollItemProvider), reinterpret_cast<void**>(result));
         if (patternId == UIA_InvokePatternId &&
             (node->role == Role::Button || node->role == Role::ListItem) &&
             (!node->actionId.empty() || node->hostAction != HostAction::None)) {
@@ -382,6 +390,10 @@ public:
         case UIA_IsKeyboardFocusablePropertyId:
             BoolVariant(KeyboardFocusable(*node), result); break;
         case UIA_IsOffscreenPropertyId: BoolVariant(node->offscreen, result); break;
+        case UIA_IsVirtualizedItemPatternAvailablePropertyId:
+            BoolVariant(node->supportsRealization && node->virtualized, result); break;
+        case UIA_IsScrollItemPatternAvailablePropertyId:
+            BoolVariant(node->supportsRealization, result); break;
         case UIA_SelectionItemIsSelectedPropertyId:
             BoolVariant(node->selected, result); break;
         case UIA_PositionInSetPropertyId:
@@ -472,13 +484,23 @@ public:
         *result = nullptr;
         if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
         if (!identity_) return S_OK;
+        const auto identityHash = [&](std::uint32_t seed) {
+            auto hash = Hash(identity_->nodeId, seed);
+            if (!identity_->collectionItemKey.empty()) {
+                hash = Hash(L"\x1f", hash);
+                hash = Hash(identity_->collectionItemKey, hash);
+                hash = Hash(L"\x1f", hash);
+                hash = Hash(identity_->collectionScope, hash);
+            }
+            return hash;
+        };
         const LONG values[] = {
             UiaAppendRuntimeId,
             static_cast<LONG>(Hash(identity_->widgetId, 2166136261U) & 0x7fffffffU),
             static_cast<LONG>(Hash(identity_->runtimeGeneration, 16777619U) & 0x7fffffffU),
             static_cast<LONG>(identity_->domain) + 1,
-            static_cast<LONG>(Hash(identity_->nodeId, 2246822519U) & 0x7fffffffU),
-            static_cast<LONG>(Hash(identity_->nodeId, 3266489917U) & 0x7fffffffU),
+            static_cast<LONG>(identityHash(2246822519U) & 0x7fffffffU),
+            static_cast<LONG>(identityHash(3266489917U) & 0x7fffffffU),
         };
         SAFEARRAY* array = SafeArrayCreateVector(VT_I4, 0, static_cast<ULONG>(std::size(values)));
         if (!array) return E_OUTOFMEMORY;
@@ -522,6 +544,27 @@ public:
         }
         *result = roots;
         return S_OK;
+    }
+
+    IFACEMETHODIMP Realize() noexcept override {
+        return QueueRealization(false);
+    }
+
+    IFACEMETHODIMP ScrollIntoView() noexcept override {
+        return QueueRealization(true);
+    }
+
+    HRESULT QueueRealization(const bool reveal) noexcept {
+        const auto published = state_->Snapshot(bindingGeneration_);
+        const auto* node = ResolveNode(published);
+        if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (!node->supportsRealization) return UIA_E_NOTSUPPORTED;
+        if (!node->virtualized && (!reveal || !node->offscreen)) return S_OK;
+        auto request = RequestFor(*published, *node, ActionKind::Realize);
+        request.actionId.clear();
+        request.hostAction = HostAction::None;
+        request.hostTargetId.clear();
+        return state_->Enqueue(std::move(request), bindingGeneration_);
     }
 
     IFACEMETHODIMP SetFocus() noexcept override {
@@ -828,7 +871,9 @@ private:
         const auto found = std::find_if(
             published->tree.nodes.begin(), published->tree.nodes.end(),
             [&](const Node& node) {
-                return node.domain == identity_->domain && node.id == identity_->nodeId;
+                return node.domain == identity_->domain && node.id == identity_->nodeId &&
+                    node.collectionItemKey == identity_->collectionItemKey &&
+                    (identity_->collectionScope.empty() || published->tree.activeInputScopeId == identity_->collectionScope);
             });
         return found == published->tree.nodes.end() ? nullptr : &*found;
     }
@@ -844,7 +889,9 @@ private:
         const auto found = std::find_if(
             published.tree.nodes.begin(), published.tree.nodes.end(),
             [&](const Node& node) {
-                return node.domain == identity_->domain && node.id == identity_->nodeId;
+                return node.domain == identity_->domain && node.id == identity_->nodeId &&
+                    node.collectionItemKey == identity_->collectionItemKey &&
+                    (identity_->collectionScope.empty() || published.tree.activeInputScopeId == identity_->collectionScope);
             });
         return found == published.tree.nodes.end()
             ? std::nullopt
@@ -852,6 +899,7 @@ private:
                 std::distance(published.tree.nodes.begin(), found))};
     }
 
+public:
     static ElementIdentity IdentityFor(
         const PublishedTree& published, const Node& node) {
         if (node.domain != ElementDomain::Widget &&
@@ -862,10 +910,12 @@ private:
         }
         return {
             published.tree.widgetId, published.tree.runtimeGeneration,
-            node.domain, node.id,
+            node.domain, node.id, node.collectionItemKey,
+            node.collectionItemKey.empty() ? std::wstring{} : published.tree.activeInputScopeId,
         };
     }
 
+private:
     ActionRequest RequestFor(
         const PublishedTree& published, const Node& node,
         const ActionKind kind) const {
@@ -1113,13 +1163,11 @@ std::size_t ProviderHost::RaisePendingEvents() noexcept {
     const auto providerFor = [&](const ElementKey& key) {
         ComPtr<IRawElementProviderSimple> result;
         if (!current) return result;
+        const auto node = std::find_if(current->tree.nodes.begin(), current->tree.nodes.end(),
+            [&](const Node& candidate) { return KeyFor(candidate) == key; });
+        if (node == current->tree.nodes.end()) return result;
         ComPtr<Provider> provider = Make<Provider>(
-            state_, ElementIdentity{
-                current->tree.widgetId,
-                current->tree.runtimeGeneration,
-                key.domain,
-                key.id,
-            }, binding);
+            state_, Provider::IdentityFor(*current, *node), binding);
         if (provider) (void)provider.As(&result);
         return result;
     };
@@ -1245,9 +1293,27 @@ std::optional<ResolvedAction> ResolveActionRequest(
     const auto* node = FindNode(
         currentSnapshot.root, request.nodeId, std::wstring_view{},
         currentSnapshot.activeInputScopeId);
-    if (!node || node->isDisabled || node->isBusy) return std::nullopt;
+    if (!node) return std::nullopt;
 
     ResolvedAction resolved{request.kind, request.nodeId};
+    if (request.kind == ActionKind::Realize) {
+        // Realization reveals data; it neither invokes an action nor transfers
+        // focus, so disabled items may still be inspected by assistive tools.
+        const auto collection = [&](const auto& self, const WidgetNode& current) -> const WidgetNode* {
+            if (current.collectionLayout && std::ranges::any_of(current.children,
+                    [&](const WidgetNode& child) { return &child == node && !child.collectionItemKey.empty(); }))
+                return &current;
+            for (const auto& child : current.children) if (const auto* found = self(self, child)) return found;
+            return nullptr;
+        };
+        const auto* owner = collection(collection, currentSnapshot.root);
+        if (!owner || !request.actionId.empty() || request.hostAction != HostAction::None ||
+            !request.hostTargetId.empty() || request.requestedValue) return std::nullopt;
+        resolved.scrollId = owner->id;
+        resolved.scrollAxis = owner->scrollAxis == L"horizontal" ? declarative::ScrollAxis::Horizontal : declarative::ScrollAxis::Vertical;
+        return resolved;
+    }
+    if (node->isDisabled || node->isBusy) return std::nullopt;
     if (request.kind == ActionKind::Focus) {
         if (node->kind != L"button" && node->kind != L"slider" &&
             node->kind != L"actionSurface" && node->kind != L"textEntry")

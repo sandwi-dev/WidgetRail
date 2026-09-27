@@ -214,6 +214,40 @@ optional 1–32 column cap. The Grid is not focusable; children keep their stabl
 IDs and normal focus graph. Put unbounded collections in a host-owned Scroll.
 Settings uses this same public helper for its root category surface.
 
+For large regular collections, use protocol-v59 `UI.CollectionList` or
+`UI.CollectionGrid`. These are scroll viewports with an explicit realization
+policy: direct children must be always-present keyed Buttons or ActionSurfaces.
+The host owns measurement, row/column placement, realization, navigation and
+scroll position. `estimatedItemExtent` is a starting DIP estimate, excluding gaps;
+it does not fix the item's actual size. Use ordinary Scroll for heterogeneous or
+nested interactive layouts. Existing cursor `Capture().Present(scroll)` still
+supplies loading, anchor and window metadata; reuse its item-key mapping.
+
+Keep a `WidgetCollectionItems<TItem>` instance on the widget to avoid rebuilding
+unchanged item declarations. Supply immutable per-item render inputs, including
+selection/playback flags, and a pure render factory. Equal inputs reuse the same
+frozen declaration; reorder follows keys, and removed items leave the cache.
+Factories run in the widget worker, never in the trusted UI host. A factory
+failure leaves the prior cache intact. Overall snapshot validation still happens
+when creating the WidgetView snapshot, including cross-item focus references.
+
+```csharp
+private sealed record SongRow(string Id, string Title, bool Playing);
+private readonly WidgetCollectionItems<SongRow> _songItems = new(
+    static row => new WidgetCollectionItemKey(row.Id),
+    static row => UI.Button(row.Title, "play." + row.Id, row.Id).Selected(row.Playing));
+
+// rows contains every input used by the factory; do not read mutable widget
+// state inside a cached factory. The capture remains valid after later updates.
+var items = _songItems.Capture(rows);
+var list = UI.CollectionList("songs", 64, items: items.ToArray());
+```
+
+The cache retains at most the protocol's current logical-window limit (256
+items), not every item ever loaded. Call `Clear()` when intentionally invalidating
+mutable render inputs; it does not invalidate previously returned captures.
+Keys identify items; equality of the complete render inputs controls reuse.
+
 Use `element.VisibleWhen(ResponsiveVisibility.CompactOnly)` and
 `ExpandedOnly` when the same semantic view needs substantially different
 composition below the host's compact breakpoint (less than 960 DIPs wide or

@@ -1421,6 +1421,40 @@ WidgetNode ParseNode(const JsonObject& source) {
             source.GetNamedBoolean(L"usesFocusedDescendantArtwork");
     }
     node.scrollAxis = OptionalString(source, L"scrollAxis");
+    if (source.HasKey(L"collectionLayout")) {
+        const auto encoded = source.GetNamedObject(L"collectionLayout");
+        if (node.kind != L"scroll" || !HasNoUnknownProperties(encoded,
+                {L"kind", L"estimatedItemExtent", L"minimumColumnWidth", L"maximumColumns"}))
+            throw winrt::hresult_invalid_argument(L"Invalid collection layout declaration.");
+        const auto kind = OptionalString(encoded, L"kind");
+        WidgetNode::CollectionLayout collection;
+        collection.adaptiveGrid = kind == L"adaptiveGrid";
+        collection.estimatedItemExtent = encoded.GetNamedNumber(L"estimatedItemExtent");
+        if ((kind != L"list" && kind != L"adaptiveGrid") ||
+            !std::isfinite(collection.estimatedItemExtent) ||
+            collection.estimatedItemExtent < protocol_contract::MinimumVirtualCollectionItemExtent ||
+            collection.estimatedItemExtent > protocol_contract::MaximumVirtualCollectionItemExtent)
+            throw winrt::hresult_invalid_argument(L"Invalid collection extent estimate.");
+        if (encoded.HasKey(L"minimumColumnWidth") &&
+            encoded.GetNamedValue(L"minimumColumnWidth").ValueType() != JsonValueType::Null) {
+            const auto width = encoded.GetNamedNumber(L"minimumColumnWidth");
+            if (!collection.adaptiveGrid || !std::isfinite(width) ||
+                width < protocol_contract::MinimumGridColumnWidth || width > protocol_contract::MaximumGridColumnWidth)
+                throw winrt::hresult_invalid_argument(L"Invalid collection column width.");
+            collection.minimumColumnWidth = width;
+        }
+        if (encoded.HasKey(L"maximumColumns") &&
+            encoded.GetNamedValue(L"maximumColumns").ValueType() != JsonValueType::Null) {
+            const auto count = encoded.GetNamedNumber(L"maximumColumns");
+            if (!collection.adaptiveGrid || !std::isfinite(count) || std::floor(count) != count ||
+                count < 1 || count > protocol_contract::MaximumGridColumns)
+                throw winrt::hresult_invalid_argument(L"Invalid collection column count.");
+            collection.maximumColumns = static_cast<std::size_t>(count);
+        }
+        if (collection.adaptiveGrid && (!collection.minimumColumnWidth || node.scrollAxis != L"vertical"))
+            throw winrt::hresult_invalid_argument(L"Adaptive collections require vertical scrolling and a column width.");
+        node.collectionLayout = collection;
+    }
     if (source.HasKey(L"showScrollbar")) {
         if (node.kind != L"scroll" || source.GetNamedValue(L"showScrollbar").ValueType() != JsonValueType::Boolean)
             throw winrt::hresult_invalid_argument(L"showScrollbar requires a scroll container and boolean value.");
@@ -1661,6 +1695,21 @@ WidgetNode ParseNode(const JsonObject& source) {
             throw winrt::hresult_invalid_argument();
         node.defaultFocusPresentation.push_back(
             ParseNode(source.GetNamedObject(L"defaultFocusPresentation")));
+    }
+    if (node.collectionLayout) {
+        std::set<std::wstring> keys;
+        if (node.children.size() > protocol_contract::MaximumCursorCollectionItems)
+            throw winrt::hresult_invalid_argument(L"Collection descriptor limit exceeded.");
+        for (const auto& child : node.children) {
+            if ((child.kind != L"button" && child.kind != L"actionSurface") ||
+                child.isSelect || child.isTextEntry ||
+                child.collectionItemKey.empty() || !keys.insert(child.collectionItemKey).second ||
+                (!child.visibleWhen.empty() && child.visibleWhen != L"always"))
+                throw winrt::hresult_invalid_argument(L"Collections require direct, always-present keyed buttons or action surfaces.");
+        }
+        if ((!keys.empty() && !keys.contains(node.collectionAnchorKey)) ||
+            (keys.empty() && !node.collectionAnchorKey.empty()))
+            throw winrt::hresult_invalid_argument(L"Collection anchor must name a retained item.");
     }
     if (node.virtualCollectionWindow) {
         const bool loading = node.collectionLoading == L"before" || node.collectionLoading == L"after";
@@ -2614,6 +2663,12 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     };
     if (snapshot.protocolVersion < protocol_contract::CollectionResetGenerationVersion && usesCollectionResetGeneration(usesCollectionResetGeneration, snapshot.root))
         throw winrt::hresult_invalid_argument();
+    const auto usesCollectionLayout = [&](const auto& self, const WidgetNode& node) -> bool {
+        if (node.collectionLayout) return true;
+        return std::ranges::any_of(node.children, [&](const WidgetNode& child) { return self(self, child); });
+    };
+    if (snapshot.protocolVersion < protocol_contract::CollectionLayoutVersion && usesCollectionLayout(usesCollectionLayout, snapshot.root))
+        throw winrt::hresult_invalid_argument();
     snapshot.documentJson = std::wstring(std::wstring_view(source.Stringify()));
     return snapshot;
 }
@@ -2681,7 +2736,8 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 60> properties{
+    static constexpr std::array<std::wstring_view, 61> properties{
+        L"collectionLayout",
         L"transition",
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"contextMenuButton", L"contextActions", L"selectOptions", L"textEntryValue", L"textEntryPlaceholder",
@@ -2740,7 +2796,7 @@ bool ValidateWidgetDocumentStructure(
                  L"focusPresentation", L"defaultFocusPresentation",
                  L"scrollAxis", L"showScrollbar", L"scrollNearStartActionId",
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
-                 L"virtualCollectionWindow",
+                 L"virtualCollectionWindow", L"collectionLayout",
                  L"collectionResetGeneration", L"collectionGeneration", L"collectionLoading", L"collectionNavigation", L"collectionStartIndex", L"collectionAnchorKey", L"collectionItemKey",
                  L"styleClasses", L"shortcuts",
                  L"children"})) {
@@ -3308,7 +3364,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"actionSurfacePresentation" ||
         property == L"scrollAxis" ||
         property == L"scrollPaginationThreshold" ||
-        property == L"virtualCollectionWindow" ||
+        property == L"virtualCollectionWindow" || property == L"collectionLayout" ||
         property == L"collectionNavigation" || property == L"collectionStartIndex" || property == L"collectionAnchorKey" ||
         property == L"collectionItemKey") {
         return Effect::MeasureLayout | Effect::Paint |

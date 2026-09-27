@@ -94,6 +94,9 @@ struct Node final {
     bool focused{};
     bool keyboardFocusable{true};
     bool offscreen{};
+    bool supportsRealization{};
+    bool virtualized{};
+    std::wstring collectionItemKey;
 };
 
 struct Tree final {

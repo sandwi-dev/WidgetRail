@@ -47,6 +47,55 @@ Use stable item IDs and preserve the provider's ordering through one traversal.
 Sorting just the currently loaded page can duplicate or reorder entries when
 another page arrives.
 
+## Native list and grid realization
+
+For regular collections, `UI.CollectionList` and `UI.CollectionGrid` let the host
+measure and prepare visible items plus a buffer. They require protocol 59. The
+provider still owns loading and the widget still submits its bounded retained
+item window; realization does not remove the protocol's item or tree limits.
+
+```csharp
+WidgetElement[] items = Enumerable.Range(0, 4)
+    .Select(i => UI.Button($"Song {i}", $"play-{i}", $"song-{i}")
+        .CollectionItem(new WidgetCollectionItemKey($"key-{i}"))).ToArray();
+var list = UI.CollectionList("songs", estimatedItemExtent: 72, items: items);
+var grid = UI.CollectionGrid("games", minimumColumnWidth: 180,
+    estimatedItemExtent: 270, maximumColumns: 6, items: items);
+```
+
+Use one of these containers in a view. Each direct child must be a keyed Button
+or ActionSurface representing one item, with a unique stable key and no nested
+focusable controls or per-item responsive visibility. Poster tiles and ordinary
+tiles qualify. Keep headers, filters, page buttons and empty-state copy outside
+the realized collection, or use an ordinary Scroll for that heterogeneous layout.
+`CollectionList` also accepts `ScrollAxis.Horizontal`; adaptive grids are vertical.
+
+The extent is an initial main-axis estimate in DIPs, not a fixed item size. Text
+wrapping, item styles and grid column constraints determine measured size. The
+host maintains estimated total extent, corrects measurements and preserves keyed
+anchors. Style item contents normally; collection-level flex justification does
+not redistribute rows. Grid estimates exclude the row gap.
+
+For a cursor resource, capture once, apply `capture.PresentItem(item, element)`
+to each row **before** constructing the collection, then pass that collection to
+`capture.Present`. This preserves window, reset, anchor and pagination authority.
+Do not replace those fields using a second resource capture or a guessed index.
+Offscreen logical items remain navigable and accessible; widgets need no manual
+realization or scrolling callbacks.
+
+For expensive item declarations, retain one `WidgetCollectionItems<TItem>` on the
+widget (or one per retained section). Its factory receives an immutable input
+containing every render dependency, including artwork, selection, availability
+and action/menu state. Input equality controls reuse; a key alone is insufficient.
+The factory must not read changing widget fields. Mutable inputs require `Clear`
+before capture. A capture retains only its current window, keeps earlier returned
+declarations immutable, and leaves the old cache intact if a factory fails. It
+does not fetch data or grant action authority.
+
+See the production [Playnite Browse presentation](../../samples/PlayniteLibraryWidget/PlayniteLibraryPresentation.cs)
+for immutable item reuse, and [Spotify cursor presentation](../../samples/SpotifyWidget/SpotifyPresentationState.cs)
+for applying collection layout without replacing captured cursor metadata.
+
 ## Rendering and controller scrolling contract
 
 The collection resource owns data and loading. The host owns layout, clipping,
@@ -60,11 +109,10 @@ timer or per-frame scroll callback to implement.
   arrive. Append/evict through the cursor resource so the host receives the
   matching window change and anchor. Use refresh/reset for a changed query or
   ordering, not as a notification that another page loaded.
-- Use regular rows or `ResponsiveGrid` with theme-defined sizing/aspect ratios
-  for large libraries. Clipped tiles permit the host to skip invisible visual
-  subtrees. Visible-overflow and unusual nested layouts retain the conservative
-  rendering path; clipping is not permission to discard focus or accessibility
-  semantics.
+- Use `CollectionList` or `CollectionGrid` for regular keyed rows/tiles, with
+  theme-defined sizing/aspect ratios. Ordinary Scroll/`ResponsiveGrid` remains
+  available for heterogeneous or nested layouts. Clipping is not permission to
+  discard logical focus or accessibility semantics.
 - Keep existing items interactive during adjacent loading. The host can hold
   movement at the loaded boundary and continue after the new window is admitted.
   It does not replay a queue of navigation commands against the arriving page.

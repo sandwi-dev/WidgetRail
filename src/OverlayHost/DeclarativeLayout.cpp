@@ -763,7 +763,15 @@ const LayoutBox* LayoutResult::Find(
 void ProjectLayoutBox(LayoutBox& box, const float translatedX, const float translatedY,
     const Rect ancestorClip, const float pixelScale) noexcept {
     const float scale = std::isfinite(pixelScale) && pixelScale > 0 ? pixelScale : 1.0F;
-    const auto pixel = [scale](float value) { return std::round(value * scale); };
+    const auto pixel = [scale](float value) {
+        // Equivalent independent and whole-tree layouts can differ by a few
+        // float ULPs. Canonicalize below 1/1000 of a physical pixel before the
+        // final snap so a mathematical half-pixel does not alternate by 1px.
+        // This never quantizes layout constraints or accumulated scroll distance.
+        constexpr double subpixels = 1024;
+        return static_cast<float>(std::round(std::round(
+            static_cast<double>(value) * scale * subpixels) / subpixels));
+    };
     const auto project = [&](Rect raw) {
         // Subtract on the physical-pixel grid before converting back to DIPs.
         // Subtracting two large, separately divided float coordinates loses

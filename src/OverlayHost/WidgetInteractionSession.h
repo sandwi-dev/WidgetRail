@@ -28,6 +28,36 @@ struct WidgetInteractionAuthority final {
     bool retainedRefresh{};
 };
 
+// Owned acknowledgement for a rendered group-entry target. It does not consume
+// the request: the host retains it only until that frame's submission succeeds.
+// No snapshot pointers survive across the drawing/submission boundary.
+struct FocusGroupEntryPublication final {
+    std::wstring widget, instance, runtime, presentation, scope, group, target;
+    long long sequence{}, requestId{};
+    [[nodiscard]] static std::optional<FocusGroupEntryPublication> Capture(
+        const WidgetInteractionAuthority&, std::wstring_view target);
+    [[nodiscard]] bool Matches(const WidgetInteractionAuthority&) const noexcept;
+};
+
+// One uncommitted logical focus target. Repeated navigation from the same
+// origin replaces this intent; it never builds a queue of future focus moves.
+class FocusRealizationIntent final {
+public:
+    [[nodiscard]] bool Stage(const WidgetInteractionAuthority&, std::wstring_view origin,
+        std::wstring_view target, const RenderResult&);
+    [[nodiscard]] std::optional<std::wstring> Target(const WidgetInteractionAuthority&, std::wstring_view origin);
+    [[nodiscard]] std::optional<std::wstring> TakeReady(const WidgetInteractionAuthority&,
+        std::wstring_view origin, const RenderResult& prepared);
+    void Clear() noexcept { pending_.reset(); }
+    [[nodiscard]] bool pending() const noexcept { return pending_.has_value(); }
+private:
+    struct Pending final {
+        std::wstring widget, instance, runtime, presentation, scope, origin, target, key;
+        long long sequence{};
+    };
+    std::optional<Pending> pending_;
+};
+
 struct SelectPopupBinding final {
     std::wstring widgetId;
     std::wstring widgetInstanceId;
@@ -46,6 +76,8 @@ enum class SelectActivationResult {
     Opened,
 };
 
+enum class FreeScrollFocusPolicy { SettleOnRelease, Preserve };
+
 struct FreeScrollBinding final {
     std::wstring widgetId;
     std::wstring widgetInstanceId;
@@ -56,6 +88,7 @@ struct FreeScrollBinding final {
     std::wstring scrollId;
     declarative::ScrollAxis axis{declarative::ScrollAxis::None};
     std::uint64_t collectionResetGeneration{};
+    FreeScrollFocusPolicy focusPolicy{FreeScrollFocusPolicy::SettleOnRelease};
 };
 
 enum class FreeScrollAuthorityDisposition {
@@ -104,7 +137,8 @@ public:
         const WidgetInteractionAuthority& authority,
         std::wstring_view focusedElementId,
         std::wstring_view scrollId,
-        declarative::ScrollAxis axis);
+        declarative::ScrollAxis axis,
+        FreeScrollFocusPolicy focusPolicy = FreeScrollFocusPolicy::SettleOnRelease);
     [[nodiscard]] std::optional<FreeScrollBinding> Clear() noexcept;
     [[nodiscard]] bool SetRefreshDeferred(bool deferred) noexcept;
     [[nodiscard]] bool ShouldSettle(std::uint64_t now) const noexcept;
@@ -227,7 +261,8 @@ public:
         FreeScrollInteractionState&, DeclarativeRenderer&,
         const WidgetInteractionAuthority&, std::wstring_view,
         const RenderResult&, declarative::ScrollAxis, float,
-        declarative::Rect, FocusedFreeScrollPlanDiagnostic* = nullptr);
+        declarative::Rect, FocusedFreeScrollPlanDiagnostic* = nullptr,
+        const DeclarativeRenderOptions* preparationOptions = nullptr);
     [[nodiscard]] static bool CommitFreeScroll(
         FreeScrollInteractionState&, const WidgetInteractionAuthority&,
         std::wstring_view, const FocusedFreeScrollPlan&);
@@ -420,6 +455,7 @@ struct ScrollPaginationDispatchOutcome final {
 /// actions, authorize text entry, or arbitrate final host/widget commands.
 class WidgetInteractionSession final {
 public:
+    [[nodiscard]] FocusRealizationIntent& focusRealization() noexcept { return focusRealization_; }
     [[nodiscard]] const std::wstring& focusedElementId() const noexcept {
         return focusedElementId_;
     }
@@ -464,6 +500,10 @@ public:
     [[nodiscard]] FocusGroupEntryPreview PreviewFocusGroupEntryRequest(
         const WidgetInteractionAuthority& authority,
         const RenderResult& renderResult) const;
+    // Read-only prediction for a validated candidate not yet session-admitted.
+    // Final request authority and geometry are still checked at consumption.
+    [[nodiscard]] std::optional<std::wstring> PreviewCandidateFocusGroup(
+        const WidgetInteractionAuthority&, const RenderResult&) const;
     [[nodiscard]] FocusGroupEntryApplication CommitPreparedFocusGroupEntryRequest(
         const WidgetInteractionAuthority& authority,
         const std::optional<std::wstring>& target);
@@ -482,7 +522,8 @@ public:
     [[nodiscard]] bool BindFreeScroll(
         const WidgetInteractionAuthority& authority,
         std::wstring_view scrollId,
-        declarative::ScrollAxis axis);
+        declarative::ScrollAxis axis,
+        FreeScrollFocusPolicy focusPolicy = FreeScrollFocusPolicy::SettleOnRelease);
     [[nodiscard]] std::optional<FreeScrollBinding> ClearFreeScroll() noexcept;
     [[nodiscard]] bool SetRefreshDeferred(bool deferred) noexcept;
     [[nodiscard]] const std::optional<FreeScrollBinding>& freeScrollBinding()
@@ -664,6 +705,7 @@ private:
         const SliderDispatch& dispatch);
     void RefreshSliderDeadline() noexcept;
 
+    FocusRealizationIntent focusRealization_;
     enum class ScrollPaginationPrefetchStatus {
         Queued,
         InFlight,

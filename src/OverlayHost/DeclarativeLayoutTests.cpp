@@ -1210,7 +1210,32 @@ void RetainedLayoutMatchesStatelessAdmission() {
 
 } // namespace
 
+void IndependentlyMeasuredGeometrySnapsConsistently() {
+    using widgetrail::declarative::LayoutBox;
+    using widgetrail::declarative::ProjectLayoutBox;
+    LayoutBox lazy, eager;
+    lazy.unscrolledBorderBox = {586.800048828F, 522.400024414F, 165.600006104F, 248.400009155F};
+    eager.unscrolledBorderBox = {586.800048828F, 522.399902344F, 165.599975586F, 248.399963379F};
+    lazy.unscrolledContentBox = lazy.unscrolledBorderBox;
+    eager.unscrolledContentBox = eager.unscrolledBorderBox;
+    for (const float scroll : {0.0F, 17.3F, 500.0F}) {
+        ProjectLayoutBox(lazy, 0, scroll, {0, 0, 1000, 1000}, 1.25F);
+        ProjectLayoutBox(eager, 0, scroll, {0, 0, 1000, 1000}, 1.25F);
+        Near(lazy.borderBox.y, eager.borderBox.y, "independent measurement preserves snapped origin");
+        Near(lazy.borderBox.height, eager.borderBox.height, "float noise cannot change snapped item height");
+    }
+    for (const auto scale : {1.0F, 1.25F, 1.5F, 2.0F}) {
+        for (const auto fraction : {.49F, .51F}) {
+            LayoutBox box;
+            box.unscrolledBorderBox = {(100 + fraction) / scale, 0, 20 / scale, 20 / scale};
+            ProjectLayoutBox(box, 0, 0, {0, 0, 1000, 1000}, scale);
+            Near(box.borderBox.x, (fraction < .5F ? 100 : 101) / scale, "canonical snap preserves either side of a real pixel boundary");
+        }
+    }
+}
+
 int main() {
+    IndependentlyMeasuredGeometrySnapsConsistently();
     ModalLayerPreservesBackgroundAndBounds();
     NestedPercentageWidthsUseContainingBlocks();
     RetainedGridKeepsLogicalColumns();

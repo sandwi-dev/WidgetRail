@@ -2461,6 +2461,84 @@ void ResponsiveGridFlowsThroughNativePlanning() {
           "Grid reflow preserves the complete child focus graph");
 }
 
+struct MotionRasterFixture final {
+    Microsoft::WRL::ComPtr<ID2D1Factory> d2d;
+    Microsoft::WRL::ComPtr<IDWriteFactory> write;
+    Microsoft::WRL::ComPtr<IWICImagingFactory> wic;
+    Microsoft::WRL::ComPtr<IWICBitmap> bitmap;
+    Microsoft::WRL::ComPtr<ID2D1RenderTarget> target;
+    std::unique_ptr<DeclarativeRenderer> renderer;
+    MotionRasterFixture() {
+        Check(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf())), "motion D2D factory");
+        Check(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+            reinterpret_cast<IUnknown**>(write.GetAddressOf()))), "motion text factory");
+        Check(SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf()))), "motion bitmap factory");
+        Check(SUCCEEDED(wic->CreateBitmap(1280, 800, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, bitmap.GetAddressOf())), "motion bitmap");
+        Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(bitmap.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf())), "motion render target");
+        renderer = std::make_unique<DeclarativeRenderer>(d2d.Get(), write.Get(), nullptr);
+    }
+    widgetrail::RenderResult Draw(const WidgetSnapshot& snapshot, std::wstring_view focus, Rect bounds,
+        const widgetrail::DeclarativeRenderOptions& options = {}) {
+        target->SetDpi(96 * options.pixelScale, 96 * options.pixelScale);
+        target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0));
+        auto result = renderer->Render(target.Get(), snapshot, focus, bounds, options);
+        const auto drawn = target->EndDraw();
+        if (FAILED(drawn) || !result.succeeded) {
+            std::wcerr << L"Motion draw failed: " << snapshot.instanceId << L" focus=" << focus
+                << L" EndDraw=" << drawn << L" render=" << result.succeeded << L'\n';
+            for (const auto& diagnostic : result.diagnostics)
+                std::wcerr << diagnostic.code << L": " << diagnostic.message << L'\n';
+        }
+        Check(SUCCEEDED(drawn) && result.succeeded, "motion publishes a successful offscreen frame");
+        return result;
+    }
+};
+
+void FramePublicationRequiresHostAcknowledgement() {
+    using namespace widgetrail;
+    MotionRasterFixture fixture;
+    auto& renderer = *fixture.renderer;
+    WidgetSnapshot snapshot;
+    snapshot.instanceId = L"publication.instance"; snapshot.sequence = 1;
+    snapshot.activeInputScopeId = L"items"; snapshot.initialFocusId = L"item.0";
+    snapshot.root = Node(L"items", L"scroll"); snapshot.root.scrollAxis = L"vertical";
+    snapshot.root.collectionLayout = WidgetNode::CollectionLayout{false, 44};
+    snapshot.root.collectionAnchorKey = L"key.0";
+    for (int i = 0; i < 80; ++i) {
+        auto item = Node((L"item." + std::to_wstring(i)).c_str(), L"button");
+        item.text = L"Item"; item.actionId = L"play"; item.collectionItemKey = L"key." + std::to_wstring(i);
+        item.baseStyle = {{L"height", Length(44)}, {L"flex-shrink", Number(0)}};
+        snapshot.root.children.push_back(std::move(item));
+    }
+    DeclarativeRenderOptions options; options.deferPublication = true; options.accessibility.reducedMotion = true;
+    const Rect viewport{0, 0, 400, 200};
+    const auto initial = fixture.Draw(snapshot, L"item.0", viewport, options);
+    Check(initial.publicationId != 0 && !renderer.PlanRetainedPaint(snapshot), "drawn candidate is not a committed layout checkpoint");
+    Check(!renderer.CommitFramePublication(initial.publicationId + 1), "incorrect frame token cannot publish");
+    Check(renderer.CommitFramePublication(initial.publicationId) && !renderer.CommitFramePublication(initial.publicationId),
+        "matching frame commits exactly once");
+    Check(renderer.PlanRetainedPaint(snapshot).has_value(), "acknowledged frame becomes reusable checkpoint");
+    const auto unseen = fixture.Draw(snapshot, L"item.70", viewport, options);
+    Check(unseen.scrollOffsets.at(L"items") > 1000, "candidate contains a distant requested viewport");
+    renderer.RejectFramePublication();
+    Check(!renderer.CommitFramePublication(unseen.publicationId), "failed EndDraw cannot later publish its rejected token");
+    options.suppressFocusedDescendantFollow = true;
+    const auto retained = fixture.Draw(snapshot, L"item.0", viewport, options);
+    Near(retained.scrollOffsets.at(L"items"), initial.scrollOffsets.at(L"items"), "rejected draw preserves committed collection scroll and anchor");
+    Check(renderer.CommitFramePublication(retained.publicationId), "old scene can repaint after rejection");
+    auto replacement = snapshot; replacement.sequence = 2;
+    replacement.root.children[0].text = L"Changed";
+    const auto newer = fixture.Draw(replacement, L"item.0", viewport, options);
+    Check(!renderer.PlanRetainedPaint(replacement) && renderer.PlanRetainedPaint(snapshot).has_value(),
+        "unpublished semantic sequence cannot become a layout plan base");
+    const auto superseding = fixture.Draw(snapshot, L"item.0", viewport, options);
+    Check(!renderer.CommitFramePublication(newer.publicationId) && renderer.CommitFramePublication(superseding.publicationId),
+        "a superseding frame retires the old publication token");
+    const auto lost = fixture.Draw(snapshot, L"item.70", viewport, options);
+    renderer.DiscardTargetResources();
+    Check(!renderer.CommitFramePublication(lost.publicationId), "target loss rejects pending scene publication");
+}
+
 void FocusMotionUsesStableSnapshotIdentity() {
     WidgetSnapshot snapshot;
     snapshot.sequence = 1;
@@ -2482,17 +2560,16 @@ void FocusMotionUsesStableSnapshotIdentity() {
     };
     snapshot.root.children = {button};
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    MotionRasterFixture fixture;
+    auto& renderer = *fixture.renderer;
     widgetrail::DeclarativeRenderOptions options;
     options.animationTimestampMilliseconds = 0;
-    const auto initial = renderer.Render(
-        nullptr, snapshot, {}, {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    const auto initial = fixture.Draw(snapshot, {}, {0.0F, 0.0F, 320.0F, 100.0F}, options);
     Check(!initial.animationActive,
           "first declarative observation snaps without an entrance animation");
 
     options.animationTimestampMilliseconds = 10;
-    const auto focused = renderer.Render(
-        nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    const auto focused = fixture.Draw(snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
     Check(focused.animationActive,
           "focused opacity and scale state starts its WRSS transition");
 
@@ -2500,34 +2577,29 @@ void FocusMotionUsesStableSnapshotIdentity() {
     // node ID are the stable identity across worker publication revisions.
     snapshot.sequence = 2;
     options.animationTimestampMilliseconds = 60;
-    const auto revised = renderer.Render(
-        nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    const auto revised = fixture.Draw(snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
     Check(revised.animationActive,
           "same node continues motion across snapshot sequence changes");
 
     options.animationTimestampMilliseconds = 110;
-    const auto settled = renderer.Render(
-        nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    const auto settled = fixture.Draw(snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
     Check(!settled.animationActive,
           "settled focus motion does not request another host frame");
 
     options.animationTimestampMilliseconds = 120;
-    const auto reversing = renderer.Render(
-        nullptr, snapshot, {}, {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    const auto reversing = fixture.Draw(snapshot, {}, {0.0F, 0.0F, 320.0F, 100.0F}, options);
     Check(reversing.animationActive,
           "focus departure retargets toward the base opacity and scale");
     options.animationTimestampMilliseconds = 130;
     options.accessibility.reducedMotion = true;
-    const auto reduced = renderer.Render(
-        nullptr, snapshot, {}, {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    const auto reduced = fixture.Draw(snapshot, {}, {0.0F, 0.0F, 320.0F, 100.0F}, options);
     Check(!reduced.animationActive,
           "reduced motion cancels an in-flight declarative transition");
 
     renderer.ForgetWidgetState(snapshot.instanceId);
     options.accessibility.reducedMotion = false;
     options.animationTimestampMilliseconds = 140;
-    const auto replaced = renderer.Render(
-        nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
+    const auto replaced = fixture.Draw(snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
     Check(!replaced.animationActive,
           "forgotten widget runtime starts from its current authored state");
 }
@@ -2609,11 +2681,10 @@ void TranslationRetargetsAndSnapsDeterministically() {
     };
     snapshot.root.children = {button};
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    MotionRasterFixture fixture;
     widgetrail::DeclarativeRenderOptions options;
     options.animationTimestampMilliseconds = 0;
-    auto result = renderer.Render(
-        nullptr, snapshot, L"moving.button",
+    auto result = fixture.Draw(snapshot, L"moving.button",
         {0.0F, 0.0F, 240.0F, 100.0F}, options);
     Near(result.elementRects.at(L"moving.button").x, 10.0F,
          "first stable-ID translation observation snaps to its target");
@@ -2624,8 +2695,7 @@ void TranslationRetargetsAndSnapsDeterministically() {
     snapshot.root.children.front().baseStyle[L"translate-x"] = Length(50.0);
     snapshot.root.children.front().baseStyle[L"translate-y"] = Length(12.0);
     options.animationTimestampMilliseconds = 10;
-    result = renderer.Render(
-        nullptr, snapshot, L"moving.button",
+    result = fixture.Draw(snapshot, L"moving.button",
         {0.0F, 0.0F, 240.0F, 100.0F}, options);
     Near(result.elementRects.at(L"moving.button").x, 10.0F,
          "stable-ID target change starts at the currently presented x");
@@ -2634,8 +2704,7 @@ void TranslationRetargetsAndSnapsDeterministically() {
 
     options.animationTimestampMilliseconds = 60;
     options.pixelScale = 2.0F;
-    result = renderer.Render(
-        nullptr, snapshot, L"moving.button",
+    result = fixture.Draw(snapshot, L"moving.button",
         {0.0F, 0.0F, 480.0F, 180.0F}, options);
     Near(result.elementRects.at(L"moving.button").x, 30.0F,
          "translation midpoint is deterministic across resize and DPI change");
@@ -2646,8 +2715,7 @@ void TranslationRetargetsAndSnapsDeterministically() {
     options.accessibility.reducedMotion = true;
     snapshot.root.children.front().baseStyle[L"translate-x"] = Length(-24.0);
     snapshot.root.children.front().baseStyle[L"translate-y"] = Length(6.0);
-    result = renderer.Render(
-        nullptr, snapshot, L"moving.button",
+    result = fixture.Draw(snapshot, L"moving.button",
         {0.0F, 0.0F, 480.0F, 180.0F}, options);
     Near(result.elementRects.at(L"moving.button").x, -24.0F,
          "reduced motion cancels and snaps x translation to the new target");
@@ -2660,8 +2728,7 @@ void TranslationRetargetsAndSnapsDeterministically() {
     options.animationTimestampMilliseconds = 80;
     snapshot.instanceId = L"translation.motion@2";
     snapshot.root.children.front().baseStyle[L"translate-x"] = Length(64.0);
-    result = renderer.Render(
-        nullptr, snapshot, L"moving.button",
+    result = fixture.Draw(snapshot, L"moving.button",
         {0.0F, 0.0F, 480.0F, 180.0F}, options);
     Near(result.elementRects.at(L"moving.button").x, 64.0F,
          "replacement widget identity snaps instead of inheriting stale motion");
@@ -2693,11 +2760,10 @@ void TranslatedFocusConvergesInsideScrollViewport() {
     scroll.children = {leading, focused, trailing};
     snapshot.root.children = {scroll};
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    MotionRasterFixture rendererFixture;
     widgetrail::DeclarativeRenderOptions options;
     options.animationTimestampMilliseconds = 0;
-    const auto result = renderer.Render(
-        nullptr, snapshot, L"translated.focus",
+    const auto result = rendererFixture.Draw(snapshot, L"translated.focus",
         {0.0F, 0.0F, 240.0F, 120.0F}, options);
     if (result.scrollOffsets.at(L"scroll") <= 40.0F) {
         std::cerr << "FAIL: focus follow accounts for presentation translation, not only static layout"
@@ -2754,12 +2820,12 @@ void ControllerScrollFollowsFocusAndRestoresState() {
         snapshot.root.children.push_back(std::move(button));
     }
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    MotionRasterFixture rendererFixture;
+    auto& renderer = *rendererFixture.renderer;
     float priorOffset = -1.0F;
     for (int index = 0; index < 8; ++index) {
         const auto focused = L"session-" + std::to_wstring(index);
-        const auto result = renderer.Render(
-            nullptr, snapshot, focused, {0.0F, 0.0F, 240.0F, 100.0F});
+        const auto result = rendererFixture.Draw(snapshot, focused, {0.0F, 0.0F, 240.0F, 100.0F});
         Check(result.navigationRects.size() == 8,
               "all scroll descendants remain controller navigation candidates");
         Check(result.revealableFocusIds.contains(focused),
@@ -2777,35 +2843,33 @@ void ControllerScrollFollowsFocusAndRestoresState() {
 
     // Closing/reopening does not destroy the renderer or widget runtime. The
     // stable instance/scope/container key therefore restores the same offset.
-    const auto reopened = renderer.Render(
-        nullptr, snapshot, L"session-7", {0.0F, 0.0F, 240.0F, 100.0F});
+    const auto reopened = rendererFixture.Draw(snapshot, L"session-7", {0.0F, 0.0F, 240.0F, 100.0F});
     Near(reopened.scrollOffsets.at(L"sessions"), priorOffset,
          "stable runtime and input scope restore scroll position");
 
     auto otherScope = snapshot;
     otherScope.activeInputScopeId = L"details";
     otherScope.root.inputScopeId = L"details";
-    const auto independent = renderer.Render(
-        nullptr, otherScope, L"session-0", {0.0F, 0.0F, 240.0F, 100.0F});
+    const auto independent = rendererFixture.Draw(otherScope, L"session-0", {0.0F, 0.0F, 240.0F, 100.0F});
     Near(independent.scrollOffsets.at(L"sessions"), 0.0F,
          "nested input scopes own independent offsets");
-    const auto returned = renderer.Render(
-        nullptr, snapshot, L"session-7", {0.0F, 0.0F, 240.0F, 100.0F});
+    const auto returned = rendererFixture.Draw(snapshot, L"session-7", {0.0F, 0.0F, 240.0F, 100.0F});
     Near(returned.scrollOffsets.at(L"sessions"), priorOffset,
          "returning from a nested scope restores root scroll position");
 
     auto replacement = snapshot;
     replacement.instanceId = L"audio.runtime.v2";
-    const auto fresh = renderer.Render(
-        nullptr, replacement, L"session-0", {0.0F, 0.0F, 240.0F, 100.0F});
+    const auto fresh = rendererFixture.Draw(replacement, L"session-0", {0.0F, 0.0F, 240.0F, 100.0F});
     Near(fresh.scrollOffsets.at(L"sessions"), 0.0F,
          "runtime replacement cannot inherit stale scroll state");
     renderer.ForgetWidgetState(snapshot.instanceId);
 
     auto invalid = snapshot;
     invalid.root.scrollAxis = L"diagonal";
-    const auto failed = renderer.Render(
-        nullptr, invalid, L"session-0", {0.0F, 0.0F, 240.0F, 100.0F});
+    rendererFixture.target->BeginDraw();
+    const auto failed = renderer.Render(rendererFixture.target.Get(), invalid, L"session-0", {0.0F, 0.0F, 240.0F, 100.0F});
+    Check(SUCCEEDED(rendererFixture.target->EndDraw()) && !failed.succeeded,
+        "invalid declaration fails independently of the drawing target");
     Check(std::any_of(failed.diagnostics.begin(), failed.diagnostics.end(), [](const auto& item) {
         return item.code == L"invalid_scroll_axis" &&
             item.severity == widgetrail::RenderDiagnosticSeverity::Error;
@@ -2835,11 +2899,11 @@ void FocusEntryPreparationIsGeometryOnlyAndStateIsolated() {
         snapshot.root.children.push_back(std::move(button));
     }
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    MotionRasterFixture rendererFixture;
+    auto& renderer = *rendererFixture.renderer;
     widgetrail::DeclarativeRenderOptions initialOptions;
     initialOptions.animationTimestampMilliseconds = 0;
-    const auto initial = renderer.Render(
-        nullptr, snapshot, L"focus-entry-preparation.item-0",
+    const auto initial = rendererFixture.Draw(snapshot, L"focus-entry-preparation.item-0",
         {0.0F, 0.0F, 240.0F, 100.0F}, initialOptions);
     Near(initial.scrollOffsets.at(L"focus-entry-preparation.scroll"), 0.0F,
          "initial focus owns the committed leading scroll position");
@@ -2863,8 +2927,7 @@ void FocusEntryPreparationIsGeometryOnlyAndStateIsolated() {
     widgetrail::DeclarativeRenderOptions verificationOptions;
     verificationOptions.animationTimestampMilliseconds = 50;
     verificationOptions.suppressFocusedDescendantFollow = true;
-    const auto afterPreparation = renderer.Render(
-        nullptr, snapshot, L"focus-entry-preparation.item-0",
+    const auto afterPreparation = rendererFixture.Draw(snapshot, L"focus-entry-preparation.item-0",
         {0.0F, 0.0F, 240.0F, 100.0F}, verificationOptions);
     Near(afterPreparation.scrollOffsets.at(L"focus-entry-preparation.scroll"), 0.0F,
          "preparation cannot mutate the live scroll owner");
@@ -2894,9 +2957,8 @@ void CursorCollectionPreservesKeyedViewportAnchor() {
     };
     for (int index = 0; index < 6; ++index) append(snapshot, index);
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    const auto initial = renderer.Render(
-        nullptr, snapshot, L"item.node.2", {0.0F, 0.0F, 240.0F, 100.0F});
+    MotionRasterFixture rendererFixture;
+    const auto initial = rendererFixture.Draw(snapshot, L"item.node.2", {0.0F, 0.0F, 240.0F, 100.0F});
     const auto initialY = initial.focusRects.at(L"item.node.2").y;
 
     auto prepended = snapshot;
@@ -2905,8 +2967,7 @@ void CursorCollectionPreservesKeyedViewportAnchor() {
     append(prepended, -1);
     prepended.root.children.insert(prepended.root.children.end(),
         snapshot.root.children.begin(), snapshot.root.children.end());
-    const auto afterPrepend = renderer.Render(
-        nullptr, prepended, L"item.node.2", {0.0F, 0.0F, 240.0F, 100.0F});
+    const auto afterPrepend = rendererFixture.Draw(prepended, L"item.node.2", {0.0F, 0.0F, 240.0F, 100.0F});
     Near(afterPrepend.focusRects.at(L"item.node.2").y, initialY,
          "prepending a cursor page preserves the keyed viewport anchor");
     Check(afterPrepend.scrollOffsets.at(L"collection") >
@@ -2918,8 +2979,7 @@ void CursorCollectionPreservesKeyedViewportAnchor() {
         return node.collectionItemKey == L"item.2";
     });
     deleted.root.collectionAnchorKey = L"item.3";
-    const auto fallback = renderer.Render(
-        nullptr, deleted, L"item.node.3", {0.0F, 0.0F, 240.0F, 100.0F});
+    const auto fallback = rendererFixture.Draw(deleted, L"item.node.3", {0.0F, 0.0F, 240.0F, 100.0F});
     Check(fallback.focusRects.contains(L"item.node.3"),
           "a deleted anchor admits the authored nearest keyed fallback");
     for (const auto* axis : {L"vertical", L"horizontal"}) {
@@ -2933,19 +2993,19 @@ void CursorCollectionPreservesKeyedViewportAnchor() {
                 child.baseStyle.emplace(L"min-width", Length(80));
             }
         }
-        DeclarativeRenderer resetRenderer{nullptr, nullptr, nullptr};
-        const auto scrolled = resetRenderer.Render(nullptr, reset, L"item.node.5", {0,0,240,100});
+        MotionRasterFixture resetRendererFixture;
+        const auto scrolled = resetRendererFixture.Draw(reset, L"item.node.5", {0,0,240,100});
         Check(scrolled.scrollOffsets.at(L"collection") > 0, "reset fixture starts away from collection beginning");
         reset.root.collectionResetGeneration = 4;
         reset.root.collectionGeneration = 5; // refresh plus prefetch, identical keys
         widgetrail::DeclarativeRenderOptions options;
         options.suppressFocusedDescendantFollow = true;
-        const auto first = resetRenderer.Render(nullptr, reset, L"item.node.5", {0,0,240,100}, options);
+        const auto first = resetRendererFixture.Draw(reset, L"item.node.5", {0,0,240,100}, options);
         Near(first.scrollOffsets.at(L"collection"), 0, "fresh collection resets offset even with identical items and old free-scroll focus");
-        const auto moved = resetRenderer.Render(nullptr, reset, L"item.node.5", {0,0,240,100});
+        const auto moved = resetRendererFixture.Draw(reset, L"item.node.5", {0,0,240,100});
         Check(moved.scrollOffsets.at(L"collection") > 0, "navigation can move after a reset");
         reset.root.collectionGeneration = 6;
-        const auto retained = resetRenderer.Render(nullptr, reset, L"item.node.5", {0,0,240,100}, options);
+        const auto retained = resetRendererFixture.Draw(reset, L"item.node.5", {0,0,240,100}, options);
         Near(retained.scrollOffsets.at(L"collection"), moved.scrollOffsets.at(L"collection"), "adjacent page generation does not reset again");
     }
 
@@ -3356,12 +3416,11 @@ void WholeWidgetScrollRevealsAudioMixerControls() {
     // monitor. In both cases the one root Scroll must reveal every control;
     // fixed, non-scroll content must never starve a nested application list.
     for (const auto height : {464.0F, 304.0F}) {
-        DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+        MotionRasterFixture rendererFixture;
         float priorOffset = -1.0F;
         for (std::size_t index = 0; index < focusOrder.size(); ++index) {
             const auto& focused = focusOrder[index];
-            const auto result = renderer.Render(
-                nullptr, snapshot, focused, {0.0F, 0.0F, 520.0F, height});
+            const auto result = rendererFixture.Draw(snapshot, focused, {0.0F, 0.0F, 520.0F, height});
             Check(result.focusRects.contains(focused),
                   "whole-widget audio scroll reveals every controller target");
             const auto rect = result.focusRects.at(focused);
@@ -3380,8 +3439,7 @@ void WholeWidgetScrollRevealsAudioMixerControls() {
               "final audio session requires whole-widget scrolling");
 
         for (auto item = focusOrder.rbegin(); item != focusOrder.rend(); ++item) {
-            const auto returned = renderer.Render(
-                nullptr, snapshot, *item, {0.0F, 0.0F, 520.0F, height});
+            const auto returned = rendererFixture.Draw(snapshot, *item, {0.0F, 0.0F, 520.0F, height});
             Check(returned.focusRects.contains(*item),
                   "reverse audio focus reveals every preceding controller target");
             const auto rect = returned.focusRects.at(*item);
@@ -3400,15 +3458,13 @@ void WholeWidgetScrollRevealsAudioMixerControls() {
     // reconciled to four sessions. Begin with a trailing retained offset,
     // replace the content extent, and render directly at Microphone: Master
     // must remain an admissible authored Up target before any cycle/reopen.
-    DeclarativeRenderer retained{nullptr, nullptr, nullptr};
-    const auto trailing = retained.Render(
-        nullptr, snapshot, focusOrder.back(), {0.0F, 0.0F, 520.0F, 464.0F});
+    MotionRasterFixture retainedFixture;
+    const auto trailing = retainedFixture.Draw(snapshot, focusOrder.back(), {0.0F, 0.0F, 520.0F, 464.0F});
     Check(trailing.scrollOffsets.at(L"audio.root") > 0.0F,
           "large audio surface seeds a retained trailing offset");
     auto liveFour = snapshot;
     liveFour.root.children[5].children.resize(4);
-    const auto microphone = retained.Render(
-        nullptr, liveFour, focusOrder[1], {0.0F, 0.0F, 520.0F, 464.0F});
+    const auto microphone = retainedFixture.Draw(liveFour, focusOrder[1], {0.0F, 0.0F, 520.0F, 464.0F});
     Check(microphone.revealableFocusIds.contains(focusOrder[0]),
           "four-session Microphone retains offscreen Master revealability");
     Check(microphone.focusRects.contains(focusOrder[1]) &&
@@ -3418,8 +3474,7 @@ void WholeWidgetScrollRevealsAudioMixerControls() {
               microphone.diagnostics.begin(), microphone.diagnostics.end(),
               [](const auto& item) { return item.code == L"value_clamped"; }),
           "four-session reconciliation publishes only canonical retained state");
-    const auto leading = retained.Render(
-        nullptr, liveFour, focusOrder[0], {0.0F, 0.0F, 520.0F, 464.0F});
+    const auto leading = retainedFixture.Draw(liveFour, focusOrder[0], {0.0F, 0.0F, 520.0F, 464.0F});
     Near(leading.scrollOffsets.at(L"audio.root"), 0.0F,
          "one authored Up target restores the true four-session leading boundary");
 }
@@ -3940,9 +3995,8 @@ void WrappedPermissionCopyContributesToScrollExtent() {
     snapshot.root.children = {
         std::move(heading), std::move(description), std::move(enforcement), std::move(revoke)};
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    const auto trailing = renderer.Render(
-        nullptr, snapshot, L"permission-revoke", {0.0F, 0.0F, 260.0F, 150.0F});
+    MotionRasterFixture rendererFixture;
+    const auto trailing = rendererFixture.Draw(snapshot, L"permission-revoke", {0.0F, 0.0F, 260.0F, 150.0F});
     Check(trailing.scrollOffsets.at(L"permission-scroll") > 80.0F,
           "wrapped permission paragraphs contribute their full height to scroll extent");
     Check(trailing.focusRects.contains(L"permission-revoke"),
@@ -3950,8 +4004,7 @@ void WrappedPermissionCopyContributesToScrollExtent() {
     Near(trailing.focusRects.at(L"permission-revoke").height, 44.0F,
          "permission action preserves its controller target at the trailing edge");
 
-    const auto leading = renderer.Render(
-        nullptr, snapshot, {}, {0.0F, 0.0F, 260.0F, 150.0F});
+    const auto leading = rendererFixture.Draw(snapshot, {}, {0.0F, 0.0F, 260.0F, 150.0F});
     Near(leading.scrollOffsets.at(L"permission-scroll"),
          trailing.scrollOffsets.at(L"permission-scroll"),
          "stable scroll scope preserves the user position without a focus teleport");
@@ -3971,23 +4024,20 @@ void ScrollFocusReachesTrueContentBoundaries() {
         FixedSpacer(L"trailing-content", 30),
     };
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    const auto trailing = renderer.Render(
-        nullptr, snapshot, L"last", {0.0F, 0.0F, 240.0F, 100.0F});
+    MotionRasterFixture rendererFixture;
+    const auto trailing = rendererFixture.Draw(snapshot, L"last", {0.0F, 0.0F, 240.0F, 100.0F});
     Near(trailing.scrollOffsets.at(L"scroll"), 92.0F,
          "last focus target exposes the true trailing content boundary");
     Check(trailing.focusRects.contains(L"last"),
           "last focus target remains visible at the true trailing boundary");
 
-    const auto leading = renderer.Render(
-        nullptr, snapshot, L"first", {0.0F, 0.0F, 240.0F, 100.0F});
+    const auto leading = rendererFixture.Draw(snapshot, L"first", {0.0F, 0.0F, 240.0F, 100.0F});
     Near(leading.scrollOffsets.at(L"scroll"), 0.0F,
          "first focus target restores the true leading content boundary");
     Check(leading.focusRects.contains(L"first"),
           "first focus target remains visible at the true leading boundary");
 
-    const auto middle = renderer.Render(
-        nullptr, snapshot, L"middle", {0.0F, 0.0F, 240.0F, 100.0F});
+    const auto middle = rendererFixture.Draw(snapshot, L"middle", {0.0F, 0.0F, 240.0F, 100.0F});
     Check(middle.scrollOffsets.at(L"scroll") > 0.0F &&
               middle.scrollOffsets.at(L"scroll") < 92.0F,
           "middle focus retains minimal reveal instead of snapping to an edge");
@@ -4106,17 +4156,15 @@ void OversizedFocusFollowUsesOneAxisSymmetricRevealOwner() {
     options.pixelScale = 1.5F;
     options.animationTimestampMilliseconds = 100;
 
-    DeclarativeRenderer verticalRenderer{nullptr, nullptr, nullptr};
+    MotionRasterFixture verticalRendererFixture;
     const auto verticalSnapshot = axisSnapshot(
         false, 100.0, 300.0, 100.0, L"oversized.vertical");
-    const auto vertical = verticalRenderer.Render(
-        nullptr, verticalSnapshot, L"oversized.target",
+    const auto vertical = verticalRendererFixture.Draw(verticalSnapshot, L"oversized.target",
         {0.0F, 0.0F, 240.0F, 120.0F}, options);
     verify(vertical, false);
     Near(vertical.scrollOffsets.at(L"oversized.scroll"), 100.0F,
         "vertical oversized entry deterministically aligns its leading edge");
-    const auto verticalRetained = verticalRenderer.Render(
-        nullptr, verticalSnapshot, L"oversized.target",
+    const auto verticalRetained = verticalRendererFixture.Draw(verticalSnapshot, L"oversized.target",
         {0.0F, 0.0F, 240.0F, 120.0F}, options);
     Near(verticalRetained.scrollOffsets.at(L"oversized.scroll"), 100.0F,
         "unchanged oversized focus retains its converged offset");
@@ -4125,40 +4173,36 @@ void OversizedFocusFollowUsesOneAxisSymmetricRevealOwner() {
           !verticalRetained.focusFollowBoundHit,
         "retained oversized focus does not relayout or rediscover a cycle");
 
-    DeclarativeRenderer horizontalRenderer{nullptr, nullptr, nullptr};
+    MotionRasterFixture horizontalRendererFixture;
     const auto horizontalSnapshot = axisSnapshot(
         true, 100.0, 300.0, 100.0, L"oversized.horizontal");
-    const auto horizontal = horizontalRenderer.Render(
-        nullptr, horizontalSnapshot, L"oversized.target",
+    const auto horizontal = horizontalRendererFixture.Draw(horizontalSnapshot, L"oversized.target",
         {0.0F, 0.0F, 180.0F, 120.0F}, options);
     verify(horizontal, true);
     Near(horizontal.scrollOffsets.at(L"oversized.scroll"), 100.0F,
         "horizontal oversized entry uses the same deterministic edge policy");
 
-    DeclarativeRenderer fitRenderer{nullptr, nullptr, nullptr};
+    MotionRasterFixture fitRendererFixture;
     auto fitSnapshot = axisSnapshot(
         false, 200.0, 44.0, 100.0, L"focus-fit.vertical");
     fitSnapshot.root.children[2] = FixedButton(L"fit.after", 100.0);
-    const auto fit = fitRenderer.Render(
-        nullptr, fitSnapshot, L"oversized.target",
+    const auto fit = fitRendererFixture.Draw(fitSnapshot, L"oversized.target",
         {0.0F, 0.0F, 240.0F, 180.0F}, options);
     Near(fit.scrollOffsets.at(L"oversized.scroll"), 64.0F,
         "fit-sized focus retains exact full-containment reveal math");
     Near(fit.focusRects.at(L"oversized.target").height, 44.0F,
         "fit-sized focus remains wholly visible");
 
-    DeclarativeRenderer boundaryRenderer{nullptr, nullptr, nullptr};
+    MotionRasterFixture boundaryRendererFixture;
     const auto leadingSnapshot = axisSnapshot(
         false, 0.0, 300.0, 100.0, L"oversized.leading");
-    const auto leading = boundaryRenderer.Render(
-        nullptr, leadingSnapshot, L"oversized.target",
+    const auto leading = boundaryRendererFixture.Draw(leadingSnapshot, L"oversized.target",
         {0.0F, 0.0F, 240.0F, 120.0F}, options);
     Near(leading.scrollOffsets.at(L"oversized.scroll"), 0.0F,
         "oversized leading boundary retains the true content start");
     const auto trailingSnapshot = axisSnapshot(
         false, 100.0, 300.0, 0.0, L"oversized.trailing");
-    const auto trailing = boundaryRenderer.Render(
-        nullptr, trailingSnapshot, L"oversized.target",
+    const auto trailing = boundaryRendererFixture.Draw(trailingSnapshot, L"oversized.target",
         {0.0F, 0.0F, 240.0F, 120.0F}, options);
     Near(trailing.scrollOffsets.at(L"oversized.scroll"), 280.0F,
         "oversized trailing boundary retains the true content end");
@@ -4184,9 +4228,8 @@ void OversizedFocusFollowUsesOneAxisSymmetricRevealOwner() {
         std::move(inner),
         FixedSpacer(L"nested.outer-suffix", 300),
     };
-    DeclarativeRenderer nestedRenderer{nullptr, nullptr, nullptr};
-    const auto nestedResult = nestedRenderer.Render(
-        nullptr, nested, L"nested.oversized",
+    MotionRasterFixture nestedRendererFixture;
+    const auto nestedResult = nestedRendererFixture.Draw(nested, L"nested.oversized",
         {0.0F, 0.0F, 240.0F, 120.0F}, options);
     Check(nestedResult.focusRects.contains(L"nested.oversized") &&
           nestedResult.scrollOffsets.at(L"nested.inner") > 0.0F &&
@@ -4200,9 +4243,8 @@ void OversizedFocusFollowUsesOneAxisSymmetricRevealOwner() {
     translated.instanceId = L"oversized.presentation";
     auto& translatedTarget = translated.root.children[1];
     translatedTarget.baseStyle.insert_or_assign(L"translate-y", Length(40));
-    DeclarativeRenderer translatedRenderer{nullptr, nullptr, nullptr};
-    const auto translatedResult = translatedRenderer.Render(
-        nullptr, translated, L"oversized.target",
+    MotionRasterFixture translatedRendererFixture;
+    const auto translatedResult = translatedRendererFixture.Draw(translated, L"oversized.target",
         {0.0F, 0.0F, 240.0F, 120.0F}, options);
     Check(translatedResult.focusRects.contains(L"oversized.target") &&
           translatedResult.focusFollowPassCount <= 3U &&
@@ -4233,9 +4275,8 @@ void OversizedFocusFollowUsesOneAxisSymmetricRevealOwner() {
         std::move(grid),
         FixedSpacer(L"mixed.tail", 60),
     };
-    DeclarativeRenderer mixedRenderer{nullptr, nullptr, nullptr};
-    const auto mixedResult = mixedRenderer.Render(
-        nullptr, mixed, L"mixed.poster",
+    MotionRasterFixture mixedRendererFixture;
+    const auto mixedResult = mixedRendererFixture.Draw(mixed, L"mixed.poster",
         {0.0F, 0.0F, 360.0F, 180.0F}, options);
     Check(mixedResult.focusRects.contains(L"mixed.poster") &&
           mixedResult.navigationRects.at(L"mixed.poster").height > 180.0F &&
@@ -4263,7 +4304,7 @@ void FocusFollowRevealsAuthoredScaleWithoutAnimationChasing() {
                     tile.focusedStyle.insert_or_assign(L"scale", Number(1.1));
                     snapshot.root.children.push_back(std::move(tile));
                 }
-                DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+                MotionRasterFixture rendererFixture;
                 widgetrail::DeclarativeRenderOptions options;
                 options.compositorWidgetTransitions = compositor;
                 options.pixelScale = pixelScale;
@@ -4274,7 +4315,7 @@ void FocusFollowRevealsAuthoredScaleWithoutAnimationChasing() {
                 for (const int index : {0, 3, 1, 5, 0}) {
                     const auto id = L"scaled-" + std::to_wstring(index);
                     *options.animationTimestampMilliseconds += 20;
-                    const auto result = renderer.Render(nullptr, snapshot, id, viewport, options);
+                    const auto result = rendererFixture.Draw(snapshot, id, viewport, options);
                     const auto rect = result.navigationRects.at(id);
                     const float start = horizontal ? rect.x : rect.y;
                     const float extent = horizontal ? rect.width : rect.height;
@@ -4297,17 +4338,17 @@ void FocusFollowRevealsAuthoredScaleWithoutAnimationChasing() {
                         "scaled reveal converges without repaint cycles");
                     const auto offset = result.scrollOffsets.at(L"scaled-scroll");
                     *options.animationTimestampMilliseconds += 160;
-                    const auto settled = renderer.Render(nullptr, snapshot, id, viewport, options);
+                    const auto settled = rendererFixture.Draw(snapshot, id, viewport, options);
                     Near(settled.scrollOffsets.at(L"scaled-scroll"), offset,
                         "animation completion does not chase the scaled target with another scroll");
                 }
                 options.suppressFocusedDescendantFollow = true;
-                const auto free = renderer.Render(nullptr, snapshot, L"scaled-3", viewport, options);
+                const auto free = rendererFixture.Draw(snapshot, L"scaled-3", viewport, options);
                 Near(free.scrollOffsets.at(L"scaled-scroll"), 0,
                     "right-stick free scrolling retains suppression of scaled focus-follow");
                 options.suppressFocusedDescendantFollow = false;
                 options.accessibility.reducedMotion = true;
-                const auto reduced = renderer.Render(nullptr, snapshot, L"scaled-3", viewport, options);
+                const auto reduced = rendererFixture.Draw(snapshot, L"scaled-3", viewport, options);
                 Check(reduced.focusFollowConverged && !reduced.focusFollowCycle,
                     "reduced motion still reveals the authored scale endpoint");
             }
@@ -4331,16 +4372,14 @@ void IrrevealableClipsDoNotBecomeFocusTraps() {
             boundary.root.children = {FixedSpacer(L"limit.prefix", 180), std::move(target)};
             widgetrail::DeclarativeRenderOptions options;
             options.pixelScale = pixelScale;
-            DeclarativeRenderer boundaryRenderer{nullptr, nullptr, nullptr};
-            const auto before = boundaryRenderer.Render(
-                nullptr, boundary, {}, {0, 0, 160, 100}, options);
+            MotionRasterFixture boundaryRendererFixture;
+            const auto before = boundaryRendererFixture.Draw(boundary, {}, {0, 0, 160, 100}, options);
             Check(!before.focusRects.contains(L"limit.target"),
                   "scroll-limit target begins offscreen");
             Check(before.revealableFocusIds.contains(L"limit.target") == (nativeOverlap < 1.0F),
                   "scroll-limit reachability tolerates one raster pixel but rejects larger clipping");
             if (nativeOverlap < 1.0F) {
-                const auto after = boundaryRenderer.Render(
-                    nullptr, boundary, L"limit.target", {0, 0, 160, 100}, options);
+                const auto after = boundaryRendererFixture.Draw(boundary, L"limit.target", {0, 0, 160, 100}, options);
                 Check(after.focusRects.contains(L"limit.target") &&
                       after.scrollOffsets.at(L"limit.scroll") > 0,
                       "accepted scroll-limit target is revealed by focus-follow");
@@ -4366,15 +4405,13 @@ void IrrevealableClipsDoNotBecomeFocusTraps() {
         FixedSpacer(L"raster-tail", 100),
     };
 
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    const auto rasterResult = renderer.Render(
-        nullptr, rasterEdge, {}, {0.0F, 0.0F, 160.0F, 100.0F});
+    MotionRasterFixture rendererFixture;
+    const auto rasterResult = rendererFixture.Draw(rasterEdge, {}, {0.0F, 0.0F, 160.0F, 100.0F});
     Check(!rasterResult.focusRects.contains(L"raster-target"),
           "raster-edge target begins outside the Scroll viewport");
     Check(rasterResult.revealableFocusIds.contains(L"raster-target"),
           "single-pixel fixed-clip overlap does not break Scroll reachability");
-    const auto rasterFocused = renderer.Render(
-        nullptr, rasterEdge, L"raster-target", {0.0F, 0.0F, 160.0F, 100.0F});
+    const auto rasterFocused = rendererFixture.Draw(rasterEdge, L"raster-target", {0.0F, 0.0F, 160.0F, 100.0F});
     Check(rasterFocused.focusRects.contains(L"raster-target"),
           "raster-edge target becomes visible after focus-follow scrolling");
     Check(rasterFocused.focusRects.at(L"raster-target").height >= 43.99F,
@@ -4408,9 +4445,8 @@ void IrrevealableClipsDoNotBecomeFocusTraps() {
             widgetrail::DeclarativeRenderOptions options;
             options.pixelScale = pixelScale;
             options.accessibility.reducedMotion = true;
-            DeclarativeRenderer boundaryRenderer{nullptr, nullptr, nullptr};
-            const auto result = boundaryRenderer.Render(
-                nullptr, boundary, {}, {0.0F, 0.0F, 160.0F, 100.0F}, options);
+            MotionRasterFixture boundaryRendererFixture;
+            const auto result = boundaryRendererFixture.Draw(boundary, {}, {0.0F, 0.0F, 160.0F, 100.0F}, options);
             return result.revealableFocusIds.contains(L"raster-boundary-target");
         };
         Check(revealableWithNativeOverlap(0.99F, L"inside"),
@@ -4432,8 +4468,7 @@ void IrrevealableClipsDoNotBecomeFocusTraps() {
             L"lengthList", L"0px 0px 0px 140px", std::nullopt, {}});
     crossAxis.root.children.push_back(std::move(displaced));
 
-    const auto crossResult = renderer.Render(
-        nullptr, crossAxis, {}, {0.0F, 0.0F, 100.0F, 80.0F});
+    const auto crossResult = rendererFixture.Draw(crossAxis, {}, {0.0F, 0.0F, 100.0F, 80.0F});
     Check(!crossResult.focusRects.contains(L"cross-axis"),
           "cross-axis target is fully clipped");
     Check(!crossResult.revealableFocusIds.contains(L"cross-axis"),
@@ -4454,8 +4489,7 @@ void IrrevealableClipsDoNotBecomeFocusTraps() {
     clip.children = {FixedSpacer(L"clip-prefix", 44), FixedButton(L"trapped")};
     nestedClip.root.children = {std::move(clip), FixedSpacer(L"outer-tail", 200)};
 
-    const auto clipResult = renderer.Render(
-        nullptr, nestedClip, {}, {0.0F, 0.0F, 160.0F, 100.0F});
+    const auto clipResult = rendererFixture.Draw(nestedClip, {}, {0.0F, 0.0F, 160.0F, 100.0F});
     Check(!clipResult.focusRects.contains(L"trapped"),
           "nested non-scroll clip hides its overflow child");
     Check(!clipResult.revealableFocusIds.contains(L"trapped"),
@@ -4463,7 +4497,7 @@ void IrrevealableClipsDoNotBecomeFocusTraps() {
 }
 
 void ScrollStateCapEvictsOnlyInactiveLruEntries() {
-    DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    MotionRasterFixture rendererFixture;
     WidgetSnapshot snapshot;
     snapshot.activeInputScopeId = L"root";
     snapshot.root = Node(L"sessions", L"scroll");
@@ -4476,21 +4510,18 @@ void ScrollStateCapEvictsOnlyInactiveLruEntries() {
     constexpr int entryCount = 4097;
     for (int index = 0; index < entryCount; ++index) {
         snapshot.instanceId = L"cache.runtime." + std::to_wstring(index);
-        const auto populated = renderer.Render(
-            nullptr, snapshot, L"trailing", {0.0F, 0.0F, 120.0F, 44.0F});
+        const auto populated = rendererFixture.Draw(snapshot, L"trailing", {0.0F, 0.0F, 120.0F, 44.0F});
         Near(populated.scrollOffsets.at(L"sessions"), 44.0F,
              "fixture stores a nonzero scroll offset");
     }
 
     snapshot.instanceId = L"cache.runtime.4096";
-    const auto active = renderer.Render(
-        nullptr, snapshot, {}, {0.0F, 0.0F, 120.0F, 44.0F});
+    const auto active = rendererFixture.Draw(snapshot, {}, {0.0F, 0.0F, 120.0F, 44.0F});
     Near(active.scrollOffsets.at(L"sessions"), 44.0F,
          "cap transition preserves the newest active scroll state");
 
     snapshot.instanceId = L"cache.runtime.0";
-    const auto evicted = renderer.Render(
-        nullptr, snapshot, {}, {0.0F, 0.0F, 120.0F, 44.0F});
+    const auto evicted = rendererFixture.Draw(snapshot, {}, {0.0F, 0.0F, 120.0F, 44.0F});
     Near(evicted.scrollOffsets.at(L"sessions"), 0.0F,
          "cap transition evicts the least-recent inactive state only");
 }
@@ -7741,6 +7772,452 @@ void CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate() {
         "external live surfaces preserve direct rendering and stationary placement");
 }
 
+void RetainedCollectionPlacementPreservesGeometryAndPixels() {
+    using namespace widgetrail;
+    for (const bool grid : {false, true}) for (const bool horizontal : {false, true})
+        for (const float scale : {1.0F, 1.25F}) for (const bool providerWindow : {false, true}) {
+        if (grid && horizontal) continue;
+        MotionRasterFixture actualFixture, referenceFixture;
+        auto& actual = *actualFixture.renderer;
+        auto& reference = *referenceFixture.renderer;
+        WidgetSnapshot snapshot;
+        snapshot.instanceId = L"retained.collection"; snapshot.sequence = 1;
+        snapshot.activeInputScopeId = L"page";
+        snapshot.root = Node(L"page", L"stack"); snapshot.root.inputScopeId = L"page";
+        snapshot.root.baseStyle = {{L"background", Color(L"#112233")}, {L"gap", Length(8)}};
+        auto heading = Node(L"heading", L"text"); heading.text = L"Collection";
+        auto scroll = Node(L"items", L"scroll"); scroll.scrollAxis = horizontal ? L"horizontal" : L"vertical";
+        scroll.showScrollbar = false; scroll.collectionAnchorKey = L"key.0";
+        if (providerWindow) {
+            scroll.collectionStartIndex = 13;
+            scroll.virtualCollectionWindow = VirtualCollectionWindow{1, VirtualCollectionWindowChange::Replace,
+                13, 1000, true, true, 72};
+        }
+        scroll.collectionLayout = WidgetNode::CollectionLayout{grid, 72,
+            grid ? std::optional<double>{130} : std::nullopt, 3};
+        if (!grid) scroll.collectionLayout->maximumColumns.reset();
+        scroll.baseStyle = {{L"flex-grow", Number(1)}, {L"min-height", Length(0)},
+            {L"gap", Length(6)}, {L"padding", LengthList(L"9.2px")}};
+        for (unsigned i = 0; i < 80; ++i) {
+            auto item = FixedButton((L"item." + std::to_wstring(i)).c_str(), 58);
+            item.collectionItemKey = L"key." + std::to_wstring(i);
+            item.baseStyle[L"margin"] = LengthList(L"3px");
+            item.baseStyle[L"background"] = Color(L"#223344");
+            item.baseStyle[L"width"] = horizontal ? Length(118) : Length(100, L"%");
+            item.focusedStyle = {{L"background", Color(L"#556677")}, {L"scale", Number(1.02)}};
+            item.pressedStyle = {{L"background", Color(L"#778899")}};
+            scroll.children.push_back(std::move(item));
+        }
+        snapshot.root.children = {heading, scroll};
+        DeclarativeRenderOptions options;
+        options.pixelScale = scale; options.accessibility.reducedMotion = true; options.collectAccessibility = true;
+        Rect bounds{.4F, .8F, 580, 240};
+        const auto pixels = [](const MotionRasterFixture& fixture) {
+            std::vector<BYTE> bytes(1280 * 800 * 4);
+            Check(SUCCEEDED(fixture.bitmap->CopyPixels(nullptr, 1280 * 4, static_cast<UINT>(bytes.size()), bytes.data())),
+                "retained collection pixel read");
+            return bytes;
+        };
+        const auto compare = [&](const RenderResult& result, const RenderResult& expected) {
+            Check(result.logicalCollections.at(L"items").itemIdentities == expected.logicalCollections.at(L"items").itemIdentities &&
+                result.realizableFocusIds == expected.realizableFocusIds, "retained placement preserves logical navigation authority");
+            for (const auto& [id, rect] : result.elementRects) {
+                const auto match = expected.elementRects.find(id);
+                if (match == expected.elementRects.end()) continue; // retained overscan may keep extra invisible items
+                if (std::abs(rect.x - match->second.x) > .01F || std::abs(rect.y - match->second.y) > .01F)
+                    std::wcerr << L"RETAINED-COLLECTION id=" << id << L" grid=" << grid << L" horizontal=" << horizontal
+                        << L" scale=" << scale << L" offset=" << result.scrollOffsets.at(L"items")
+                        << L" reference-offset=" << expected.scrollOffsets.at(L"items")
+                        << L" max=" << result.scrollViewports.at(L"items").maximumOffset
+                        << L" reference-max=" << expected.scrollViewports.at(L"items").maximumOffset << L'\n';
+                Near(rect.x, match->second.x, "retained collection x");
+                Near(rect.y, match->second.y, "retained collection y");
+                Near(rect.width, match->second.width, "retained collection width");
+                Near(rect.height, match->second.height, "retained collection height");
+            }
+            Check(pixels(actualFixture) == pixels(referenceFixture), "retained collection pixels match full layout exactly");
+        };
+        (void)actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        (void)referenceFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(actual.PlanFocusUpdate(snapshot, L"item.0", L"item.1", bounds).has_value(), "collection focus has a committed plan");
+        const auto focused = actualFixture.Draw(snapshot, L"item.1", bounds, options);
+        const auto fullFocus = referenceFixture.Draw(snapshot, L"item.1", bounds, options);
+        compare(focused, fullFocus);
+        // A cold outer correction can change the final containing block. Its
+        // next frame may settle that measurement context; warm geometry must
+        // then admit focus-only placement without any item/outer layout work.
+        Check(actual.PlanFocusUpdate(snapshot, L"item.1", L"item.0", bounds).has_value(), "warm collection focus plan");
+        const auto warmFocus = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(warmFocus.fullLayoutBuildCount == 0 && warmFocus.timing.intrinsicMeasures == 0,
+            "settled in-window focus requires placement and painting without outer or item layout");
+        compare(warmFocus, referenceFixture.Draw(snapshot, L"item.0", bounds, options));
+        Check(actual.PlanFocusUpdate(snapshot, L"item.0", L"item.1", bounds).has_value(), "return focus plan");
+        compare(actualFixture.Draw(snapshot, L"item.1", bounds, options),
+            referenceFixture.Draw(snapshot, L"item.1", bounds, options));
+        options.suppressFocusedDescendantFollow = true;
+        const auto axis = horizontal ? declarative::ScrollAxis::Horizontal : declarative::ScrollAxis::Vertical;
+        for (const float delta : {.4F, .4F, 900.0F, 1'000'000.0F, -800.0F}) {
+            Check(actual.PlanFocusedFreeScroll(snapshot, L"item.1", axis, delta, bounds, L"items").has_value() &&
+                reference.PlanFocusedFreeScroll(snapshot, L"item.1", axis, delta, bounds, L"items").has_value(), "collection scroll plan");
+            // Force the comparison through a complete layout at the same requested offset.
+            reference.CancelPresentationUpdatePlan();
+            const auto shifted = actualFixture.Draw(snapshot, L"item.1", bounds, options);
+            const auto full = referenceFixture.Draw(snapshot, L"item.1", bounds, options);
+            if (delta < 1 && delta > 0)
+                Check(shifted.fullLayoutBuildCount == 0 && shifted.timing.intrinsicMeasures == 0,
+                    "sub-row scrolling reuses covered item measurements");
+            else Check(shifted.fullLayoutBuildCount > 0, "crossing realization boundary rebuilds the item window");
+            compare(shifted, full);
+        }
+        options.suppressFocusedDescendantFollow = false;
+        (void)actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        (void)referenceFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(actual.PlanFocusUpdate(snapshot, L"item.0", L"item.1", bounds).has_value(), "failed retained candidate has focus plan");
+        options.deferPublication = true;
+        const auto unsubmitted = actualFixture.Draw(snapshot, L"item.1", bounds, options);
+        actual.RejectFramePublication();
+        Check(!actual.CommitFramePublication(unsubmitted.publicationId), "rejected placement cannot commit later");
+        options.deferPublication = false;
+        Check(actual.PlanRetainedPaint(snapshot).has_value(), "rejection retains the prior committed checkpoint");
+        compare(actualFixture.Draw(snapshot, L"item.0", bounds, options),
+            referenceFixture.Draw(snapshot, L"item.0", bounds, options));
+        options.pressedElementId = L"item.0";
+        Check(actual.PlanRetainedPaint(snapshot).has_value(), "pressed state keeps exact geometry authority");
+        compare(actualFixture.Draw(snapshot, L"item.0", bounds, options),
+            referenceFixture.Draw(snapshot, L"item.0", bounds, options));
+        ++snapshot.sequence;
+        snapshot.root.children[1].children[0].text = L"Updated title";
+        Check(!actual.PlanRetainedPaint(snapshot), "changed collection source cannot inherit a placement-only plan");
+        const auto changed = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(changed.fullLayoutBuildCount > 0, "changed source follows measurement path");
+        compare(changed, referenceFixture.Draw(snapshot, L"item.0", bounds, options));
+        Check(actual.PlanRetainedPaint(snapshot).has_value(), "scale test starts from retained plan");
+        options.pixelScale = scale == 1 ? 1.25F : 1.0F;
+        const auto scaled = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(scaled.fullLayoutBuildCount > 0, "display scale changes invalidate placement reuse");
+        compare(scaled, referenceFixture.Draw(snapshot, L"item.0", bounds, options));
+    }
+}
+
+void CollectionRealizationMatchesEagerGeometry() {
+    using namespace widgetrail;
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    ComPtr<IDWriteFactory> write;
+    ComPtr<IWICImagingFactory> wic;
+    const auto ok = [](HRESULT hr) { Check(SUCCEEDED(hr), "collection test graphics resource"); };
+    ok(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.GetAddressOf()));
+    ok(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.GetAddressOf())));
+    ok(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic.GetAddressOf())));
+    for (const int content : {0, 1, 2}) for (const bool grid : {false, true})
+        for (const bool horizontal : {false, true}) for (const float scale : {1.0F, 1.25F}) {
+        if (grid && horizontal) continue;
+        const UINT width = static_cast<UINT>(600 * scale), height = static_cast<UINT>(240 * scale);
+        ComPtr<IWICBitmap> bitmap;
+        ComPtr<ID2D1RenderTarget> target;
+        ok(wic->CreateBitmap(width, height, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, bitmap.GetAddressOf()));
+        ok(d2d->CreateWicBitmapRenderTarget(bitmap.Get(), D2D1::RenderTargetProperties(), target.GetAddressOf()));
+        target->SetDpi(96 * scale, 96 * scale);
+        WidgetSnapshot snapshot;
+        snapshot.instanceId = L"lazy.collection"; snapshot.sequence = 1; snapshot.protocolVersion = 59;
+        snapshot.root = Node(L"items", L"scroll"); snapshot.activeInputScopeId = L"items";
+        snapshot.root.scrollAxis = horizontal ? L"horizontal" : L"vertical"; snapshot.root.showScrollbar = false;
+        snapshot.root.collectionAnchorKey = L"key.0";
+        snapshot.root.collectionResetGeneration = 1;
+        snapshot.root.collectionLayout = WidgetNode::CollectionLayout{grid, 52,
+            grid ? std::optional<double>{160} : std::nullopt, std::nullopt};
+        snapshot.root.baseStyle = {{L"padding", LengthList(L"12px")}, {L"gap", LengthList(L"8px")},
+            {L"background", Color(L"#161616")}};
+        for (int index = 0; index < 128; ++index) {
+            auto item = Node((L"item." + std::to_wstring(index)).c_str(), L"button");
+            item.collectionItemKey = L"key." + std::to_wstring(index);
+            item.text = L"Item " + std::to_wstring(index); item.actionId = L"open";
+            item.baseStyle = {{L"height", Length(44 + index % 3 * 8)}, {L"flex-shrink", Number(0)},
+                {L"padding", LengthList(L"6px")}, {L"font-size", Length(17)},
+                {L"background", Color(L"#242424")}, {L"color", Color(L"#f0f0f0")}};
+            if (content != 0) {
+                item.kind = L"actionSurface"; item.actionSurfaceOrientation = L"vertical";
+                item.baseStyle.erase(L"height");
+                item.accessibilityLabel = item.text;
+                item.text.clear();
+                auto body = Node((item.id + L".body").c_str(), L"stack");
+                body.baseStyle = {{L"width", Length(100, L"%")}, {L"padding", LengthList(L"5.2px")}};
+                auto copy = Node((item.id + L".copy").c_str(), L"text");
+                copy.text = index % 2 ? L"Short item description." :
+                    L"A longer content-sized row with multiple words that wrap inside the available column width.";
+                copy.baseStyle = {{L"width", Length(100, L"%")}, {L"font-size", Length(17)}};
+                body.children.push_back(copy);
+                item.children.push_back(body);
+                if (content == 2) {
+                    item.actionSurfacePresentation = L"poster";
+                    item.baseStyle[L"height"] = Length(188);
+                    item.baseStyle[L"margin"] = LengthList(L"6px");
+                    item.baseStyle[L"padding"] = LengthList(L"0px");
+                    item.baseStyle[L"justify"] = Keyword(L"end");
+                }
+            }
+            snapshot.root.children.push_back(item);
+        }
+        DeclarativeRenderer lazy(d2d.Get(), write.Get(), nullptr), eager(d2d.Get(), write.Get(), nullptr);
+        DeclarativeRenderOptions options;
+        options.pixelScale = scale; options.accessibility.reducedMotion = true;
+        Rect bounds{0, 0, 600, 240};
+        const auto draw = [&](DeclarativeRenderer& renderer, const WidgetSnapshot& document, const wchar_t* focus) {
+            target->BeginDraw(); target->Clear(D2D1::ColorF(0, 0));
+            auto result = renderer.Render(target.Get(), document, focus, bounds, options);
+            ok(target->EndDraw());
+            if (!result.succeeded) for (const auto& diagnostic : result.diagnostics)
+                std::wcerr << diagnostic.code << L": " << diagnostic.message << L'\n';
+            Check(result.succeeded, "collection render succeeds");
+            return result;
+        };
+        auto full = snapshot; full.root.collectionLayout.reset();
+        if (grid) {
+            auto body = Node(L"grid", L"grid"); body.gridMinimumColumnWidth = 160;
+            body.baseStyle = {{L"gap", LengthList(L"8px")}};
+            body.children = std::move(full.root.children);
+            full.root.children = {std::move(body)};
+            full.root.baseStyle[L"gap"] = LengthList(L"0px");
+        }
+        bool preparationReady{};
+        std::size_t preparationSlices{};
+        for (; preparationSlices < 128; ++preparationSlices) {
+            const auto preparation = lazy.PrepareCollections(snapshot, L"item.0", bounds, options, {1, 1000000});
+            Check(preparation.status != CollectionPreparationStatus::Failed && preparation.newMeasurements <= 1,
+                "collection preflight bounds each measurement slice without treating pending work as failure");
+            if (preparation.status == CollectionPreparationStatus::Ready) { preparationReady = true; break; }
+        }
+        Check(preparationReady && preparationSlices > 0, "collection preflight makes progress across bounded slices");
+        const auto initial = draw(lazy, snapshot, L"item.0");
+        std::vector<BYTE> lazyPixels(width * height * 4);
+        ok(bitmap->CopyPixels(nullptr, width * 4, static_cast<UINT>(lazyPixels.size()), lazyPixels.data()));
+        const auto reference = draw(eager, full, L"item.0");
+        std::vector<BYTE> eagerPixels(lazyPixels.size());
+        ok(bitmap->CopyPixels(nullptr, width * 4, static_cast<UINT>(eagerPixels.size()), eagerPixels.data()));
+        for (const auto& [id, rect] : initial.elementRects) {
+            if (id == L"items") continue;
+            const auto found = reference.elementRects.find(id);
+            Check(found != reference.elementRects.end(), "realized item exists in eager reference");
+            if (std::abs(rect.x - found->second.x) > .01F || std::abs(rect.y - found->second.y) > .01F)
+                std::wcerr << L"COLLECTION-MISMATCH " << id << L" grid=" << grid << L" horizontal=" << horizontal
+                    << L" actual-offset=" << initial.scrollOffsets.at(L"items") << L" eager-offset=" << reference.scrollOffsets.at(L"items")
+                    << L" width=" << rect.width << L" eager-width=" << found->second.width << L'\n';
+            Near(rect.x, found->second.x, "realized item x matches eager");
+            Near(rect.y, found->second.y, "realized item y matches eager");
+            Near(rect.width, found->second.width, "realized item width matches eager");
+            Near(rect.height, found->second.height, "realized item height matches eager");
+        }
+        Check(lazyPixels == eagerPixels, "initial collection pixels match eager reference exactly");
+        Check(initial.timing.preparedNodes < reference.timing.preparedNodes / 2,
+            "offscreen descriptors do not become prepared UI subtrees");
+        Check(!initial.elementRects.contains(L"item.90"), "unneeded item has no realized geometry");
+        Check(initial.realizableFocusIds.contains(L"item.90") &&
+            initial.logicalCollections.at(L"items").itemIdentities.size() == 128 &&
+            !initial.navigationRects.contains(L"item.90"), "renderer publishes logical focus authority without offscreen rectangles");
+        if (content == 0 && !horizontal) {
+            DeclarativeRenderer synchronous(d2d.Get(), write.Get(), nullptr);
+            (void)draw(synchronous, snapshot, L"item.0");
+            Check(synchronous.PlanFocusedFreeScroll(snapshot, L"item.0", declarative::ScrollAxis::Vertical,
+                1000, bounds, L"items").has_value(), "synchronous reference accepts movement");
+            options.suppressFocusedDescendantFollow = true;
+            const auto synchronousMovement = draw(synchronous, snapshot, L"item.0");
+            options.suppressFocusedDescendantFollow = false;
+            FocusedFreeScrollPlanDiagnostic scrollDiagnostic;
+            auto movement = lazy.PlanPreparedFreeScroll(snapshot, L"item.0", declarative::ScrollAxis::Vertical,
+                1000, bounds, L"items", options, &scrollDiagnostic, {1, 1000000});
+            Check(!movement && scrollDiagnostic.disposition == FocusedFreeScrollPlanDisposition::PreparationPending,
+                "unprepared scroll demand yields without committing movement");
+            options.suppressFocusedDescendantFollow = true;
+            const auto pendingViewport = draw(lazy, snapshot, L"item.0");
+            Near(pendingViewport.scrollOffsets.at(L"items"), 0, "pending scroll cannot change the committed viewport");
+            for (int slice = 0; slice < 128 && !movement; ++slice) {
+                movement = lazy.PlanPreparedFreeScroll(snapshot, L"item.0", declarative::ScrollAxis::Vertical,
+                    1000, bounds, L"items", options, &scrollDiagnostic, {1, 1000000});
+                Check(movement || scrollDiagnostic.disposition == FocusedFreeScrollPlanDisposition::PreparationPending,
+                    "scroll slices retain valid authority");
+                if (!movement) (void)draw(lazy, snapshot, L"item.0");
+            }
+            Check(movement.has_value(), "scroll preparation makes progress despite retained paints");
+            Near(movement->offset, 1000, "repeated pending samples do not accumulate distance");
+            const auto scrolled = draw(lazy, snapshot, L"item.0");
+            Near(scrolled.scrollOffsets.at(L"items"), synchronousMovement.scrollOffsets.at(L"items"),
+                "sliced movement matches synchronous measurement and anchor correction");
+            options.suppressFocusedDescendantFollow = false;
+            (void)draw(lazy, snapshot, L"item.0");
+        }
+        const auto pendingDeep = lazy.PrepareCollections(snapshot, L"item.90", bounds, options, {1, 1000000});
+        Check(pendingDeep.status == CollectionPreparationStatus::Pending,
+            "a distant target has a distinct pending preparation state");
+        const auto retainedAfterPending = draw(lazy, snapshot, L"item.0");
+        Near(retainedAfterPending.scrollOffsets.at(L"items"), initial.scrollOffsets.at(L"items"),
+            "unfinished target preparation cannot publish its scroll position");
+        bool targetReady{};
+        for (int slice = 0; slice < 128; ++slice) {
+            const auto preparation = lazy.PrepareCollections(snapshot, L"item.90", bounds, options, {1, 1000000}, true);
+            Check(preparation.status != CollectionPreparationStatus::Failed, "target preparation survives repaint of its origin");
+            (void)draw(lazy, snapshot, L"item.0");
+            if (preparation.status == CollectionPreparationStatus::Ready) {
+                Check(preparation.focusGeometry && preparation.focusGeometry->succeeded && preparation.focusGeometry->focusRects.contains(L"item.90"),
+                    "ready focus preparation includes visible target geometry without painting");
+                targetReady = true; break;
+            }
+            Check(!preparation.focusGeometry, "pending slices cannot leak partial focus geometry");
+        }
+        Check(targetReady, "animation paints at the same sequence cannot starve pending offscreen focus");
+        lazy.CancelCollectionPreparation();
+        Check(lazy.PrepareCollections(snapshot, L"item.0", bounds, options, {0, 1000}).status == CollectionPreparationStatus::Failed,
+            "invalid preparation budget fails without replacing committed content");
+        if (content == 0 && !grid && !horizontal && scale == 1) {
+            auto incoming = snapshot;
+            ++incoming.sequence;
+            incoming.root.collectionResetGeneration = 8;
+            incoming.root.children.front().baseStyle[L"height"] = Length(112);
+            {
+                DeclarativeRenderer interleaved(d2d.Get(), write.Get(), nullptr);
+                (void)draw(interleaved, snapshot, L"item.0");
+                auto revealOptions = options;
+                revealOptions.realizeElementId = L"item.70";
+                revealOptions.suppressFocusedDescendantFollow = true;
+                bool revealReady{}, replacementReady{};
+                for (int slice = 0; slice < 128 && !(revealReady && replacementReady); ++slice) {
+                    const auto reveal = interleaved.PrepareCollections(snapshot, L"item.0", bounds, revealOptions, {1, 1000000}, true);
+                    const auto replacement = interleaved.PrepareCollections(incoming, L"item.0",
+                        {0, 0, 480, 240}, options, {1, 1000000});
+                    Check(reveal.status != CollectionPreparationStatus::Failed && replacement.status != CollectionPreparationStatus::Failed &&
+                        reveal.newMeasurements <= 1 && replacement.newMeasurements <= 1,
+                        "interleaved current UIA and incoming width preparation keep independent slice budgets");
+                    revealReady = reveal.status == CollectionPreparationStatus::Ready;
+                    replacementReady = replacement.status == CollectionPreparationStatus::Ready;
+                    const auto oldScene = draw(interleaved, snapshot, L"item.0");
+                    Near(oldScene.elementRects.at(L"item.0").height, initial.elementRects.at(L"item.0").height,
+                        "interleaved speculative branches preserve the published scene");
+                }
+                Check(revealReady && replacementReady,
+                    "current UIA reveal and incoming changed constraints both make bounded progress when interleaved");
+                Check(interleaved.PrepareCollections(incoming, L"item.0", bounds, options, {0, 1}).status == CollectionPreparationStatus::Failed,
+                    "invalid incoming request retires only its own preparation branch");
+                const auto retainedReveal = interleaved.PrepareCollections(snapshot, L"item.0", bounds, revealOptions, {1, 1000000}, true);
+                Check(retainedReveal.status == CollectionPreparationStatus::Ready && retainedReveal.newMeasurements == 0 &&
+                    retainedReveal.focusGeometry && retainedReveal.focusGeometry->focusRects.contains(L"item.70"),
+                    "failure of incoming preparation preserves the completed current-source UIA measurements");
+                target->BeginDraw();
+                const auto revealedFrame = interleaved.Render(target.Get(), snapshot, L"item.0", bounds, revealOptions);
+                ok(target->EndDraw());
+                Check(revealedFrame.succeeded && revealedFrame.focusRects.contains(L"item.70"),
+                    "a completed interleaved reveal publishes its requested target");
+                interleaved.ForgetWidgetState(snapshot.instanceId);
+                Check(interleaved.PrepareCollections(snapshot, L"item.0", bounds, revealOptions, {1, 1000000}).status == CollectionPreparationStatus::Pending,
+                    "widget retirement discards both committed and speculative realization measurements");
+            }
+            bool incomingReady{};
+            for (int slice = 0; slice < 128; ++slice) {
+                const auto preparing = lazy.PrepareCollections(incoming, L"item.0", bounds, options, {1, 1000000});
+                Check(preparing.status != CollectionPreparationStatus::Failed && preparing.newMeasurements <= 1,
+                    "replacement preparation stays bounded while old scene is still rendered");
+                const auto oldScene = draw(lazy, snapshot, L"item.0");
+                Near(oldScene.elementRects.at(L"item.0").height, initial.elementRects.at(L"item.0").height,
+                    "prepared incoming measurements cannot replace old scene geometry");
+                if (preparing.status == CollectionPreparationStatus::Ready) { incomingReady = true; break; }
+            }
+            Check(incomingReady, "old-scene rendering does not starve incoming preparation");
+            const auto admitted = draw(lazy, incoming, L"item.0");
+            Near(admitted.elementRects.at(L"item.0").height, 112, "ready replacement publishes matching measurements");
+            (void)lazy.PrepareCollections(snapshot, L"item.90", bounds, options, {1, 1});
+            lazy.CancelCollectionPreparation();
+            const auto afterCancel = draw(lazy, incoming, L"item.0");
+            Near(afterCancel.scrollOffsets.at(L"items"), admitted.scrollOffsets.at(L"items"),
+                "cancelled preparation preserves committed viewport");
+            (void)draw(lazy, snapshot, L"item.0");
+        }
+        options.realizeElementId = L"item.90";
+        options.suppressFocusedDescendantFollow = true;
+        const auto revealed = draw(lazy, snapshot, L"item.0");
+        Check(revealed.focusRects.contains(L"item.90") && revealed.realizableFocusIds.contains(L"item.0"),
+            "UIA realization reveals the requested logical item while retaining actual focus identity");
+        if (revealed.currentFocusRect) {
+            const auto& targetRect = revealed.elementRects.at(L"item.90");
+            Check(std::abs(revealed.currentFocusRect->x - targetRect.x) > 1 ||
+                std::abs(revealed.currentFocusRect->y - targetRect.y) > 1,
+                "UIA realization never paints focus on its reveal target");
+        }
+        const auto revealedOffset = revealed.scrollOffsets.at(L"items");
+        options.realizeElementId.clear();
+        const auto afterReveal = draw(lazy, snapshot, L"item.0");
+        Near(afterReveal.scrollOffsets.at(L"items"), revealedOffset, "UIA viewport remains after one-shot realization", 1.0F / scale);
+        options.suppressFocusedDescendantFollow = false;
+        const auto deep = draw(lazy, snapshot, L"item.90");
+        Check(deep.focusRects.contains(L"item.90"), "unrealized focus target is measured and revealed");
+        const auto stable = draw(lazy, snapshot, L"item.90");
+        Near(horizontal ? stable.elementRects.at(L"item.90").x : stable.elementRects.at(L"item.90").y,
+            horizontal ? deep.elementRects.at(L"item.90").x : deep.elementRects.at(L"item.90").y,
+            "second deep frame preserves the viewport anchor", 1.0F / scale);
+        auto extra = snapshot.root.children.front(); extra.id = L"inserted"; extra.collectionItemKey = L"inserted.key";
+        snapshot.root.children.insert(snapshot.root.children.begin(), extra);
+        snapshot.root.collectionStartIndex = -1; ++snapshot.sequence;
+        const auto prepended = draw(lazy, snapshot, L"item.90");
+        Near(horizontal ? prepended.elementRects.at(L"item.90").x : prepended.elementRects.at(L"item.90").y,
+            horizontal ? stable.elementRects.at(L"item.90").x : stable.elementRects.at(L"item.90").y,
+            "non-aligned prepend preserves visible item", 1.0F / scale);
+        snapshot.root.collectionResetGeneration = 2; ++snapshot.sequence;
+        const auto reset = draw(lazy, snapshot, L"item.0");
+        Check(reset.focusRects.contains(L"item.0") && !reset.elementRects.contains(L"item.90"),
+            "query reset does not inherit previous realized focus target");
+        bounds = {0, 0, 420, 300}; options.pixelScale = 1.5F;
+        ok(wic->CreateBitmap(630, 450, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, bitmap.ReleaseAndGetAddressOf()));
+        ok(d2d->CreateWicBitmapRenderTarget(bitmap.Get(), D2D1::RenderTargetProperties(), target.ReleaseAndGetAddressOf()));
+        target->SetDpi(144, 144);
+        const auto resized = draw(lazy, snapshot, L"item.90");
+        Check(resized.focusRects.contains(L"item.90") && !resized.focusFollowBoundHit,
+            "hot DPI and viewport change realizes focus without a reveal loop");
+        Check(resized.logicalCollections.at(L"items").columns == (grid ? 2U : 1U),
+            "adaptive column count follows actual resized container width");
+        options.failAfterNodeDrawForTesting = true;
+        target->BeginDraw();
+        const auto failed = lazy.Render(target.Get(), snapshot, L"item.0", bounds, options);
+        ok(target->EndDraw());
+        Check(!failed.succeeded, "injected collection frame failure is observable");
+        options.failAfterNodeDrawForTesting = false;
+        options.suppressFocusedDescendantFollow = true;
+        const auto recovered = draw(lazy, snapshot, L"item.90");
+        Near(recovered.scrollOffsets.at(L"items"), resized.scrollOffsets.at(L"items"),
+            "failed realization does not publish its temporary scroll position", 1.0F / options.pixelScale);
+        options.suppressFocusedDescendantFollow = false;
+        snapshot.root.collectionResetGeneration = 3;
+        snapshot.root.collectionStartIndex = 600;
+        snapshot.root.virtualCollectionWindow = VirtualCollectionWindow{1, VirtualCollectionWindowChange::Replace,
+            600, 5000, true, true, 52};
+        ++snapshot.sequence;
+        options.suppressFocusedDescendantFollow = true;
+        const auto positioned = draw(lazy, snapshot, L"inserted");
+        Near(positioned.scrollOffsets.at(L"items"), static_cast<float>(600 / (grid ? 2 : 1) * 60),
+            "known provider position starts at the admitted line, including gaps", 1.0F);
+        Check(positioned.focusRects.contains(L"inserted") && !positioned.focusFollowBoundHit,
+            "known provider prefix keeps first admitted item visible");
+        options.suppressFocusedDescendantFollow = false;
+        snapshot.root.virtualCollectionWindow.reset();
+        snapshot.root.collectionStartIndex = -1;
+        if (content == 0 && !grid) {
+            auto second = snapshot.root;
+            second.id = L"another.collection"; second.collectionAnchorKey = L"second.key.0";
+            for (auto& child : second.children) {
+                child.id = L"second." + child.id;
+                child.collectionItemKey = L"second." + child.collectionItemKey;
+            }
+            auto first = snapshot.root; first.children.erase(first.children.begin());
+            first.baseStyle[L"height"] = Length(90); second.baseStyle[L"height"] = Length(90);
+            second.children.erase(second.children.begin());
+            snapshot.root = Node(L"two.collections", L"stack"); snapshot.activeInputScopeId = snapshot.root.id;
+            snapshot.root.children = {first, second}; ++snapshot.sequence;
+            const auto two = draw(lazy, snapshot, L"item.0");
+            Check(two.logicalCollections.size() == 2 && two.elementRects.contains(L"second.item.0"),
+                "multiple collection layout boundaries keep unique host geometry IDs");
+        }
+        std::cout << "COLLECTION content=" << content << " grid=" << grid << " horizontal=" << horizontal
+                  << " scale=" << scale << " prepared=" << initial.timing.preparedNodes
+                  << " eager-prepared=" << reference.timing.preparedNodes << '\n';
+    }
+}
+
 void SurfaceDepthUsesBoundedSharedPainting() {
     using namespace widgetrail;
     using Microsoft::WRL::ComPtr;
@@ -7945,8 +8422,27 @@ void RetainedCompositionPixelsRespectInvalidation() {
     Check(draw().widgetComposition->paintCacheHits == 0, "cursor reset retires prior item capture authority");
     snapshot.root.baseStyle[L"padding"] = LengthList(L"24px"); ++snapshot.sequence;
     Check(draw().widgetComposition->paintCacheMisses > 0, "ancestor geometry invalidates descendants");
-    options.failAfterNodeDrawForTesting = true; draw(); options.failAfterNodeDrawForTesting = false;
-    Check(draw().widgetComposition->paintCacheHits == 0, "failed frames cannot publish retained pixels");
+    const auto committedSnapshot = snapshot;
+    snapshot.root.children[2].text = L"Unpublished label"; ++snapshot.sequence;
+    options.failAfterNodeDrawForTesting = true;
+    Check(!draw().succeeded, "candidate raster failure is observable");
+    options.failAfterNodeDrawForTesting = false;
+    snapshot = committedSnapshot;
+    Check(draw().widgetComposition->paintCacheHits > 0, "failed candidate preserves previously committed raster leases");
+    matchesFresh();
+    const auto submitted = draw();
+    const auto submittedPixels = replay(submitted, L"button.0");
+    options.deferPublication = true;
+    snapshot.root.children[2].text = L"Drawn but rejected by host"; ++snapshot.sequence;
+    const auto rejected = draw();
+    Check(rejected.publicationId != 0, "fully drawn candidate awaits host acknowledgement");
+    renderer.RejectFramePublication();
+    snapshot = committedSnapshot;
+    Check(submittedPixels == replay(submitted, L"button.0"),
+        "rejected candidate cannot overwrite the pixels of a submitted scene");
+    options.deferPublication = false;
+    Check(draw().widgetComposition->paintCacheHits > 0,
+        "host rejection retains committed captures without recycling their pixels");
     const auto priorDomain = renderer.GetImageBitmapCacheStats().resourceGeneration;
     makeTarget();
     const auto replaced = draw();
@@ -8803,6 +9299,8 @@ int main(int argc, char** argv) {
     TileDescendantsRespectResolvedShapeAndOverflow();
     RetainedPosterPaintPreservesArtwork();
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
+    CollectionRealizationMatchesEagerGeometry();
+    RetainedCollectionPlacementPreservesGeometryAndPixels();
     SurfaceDepthUsesBoundedSharedPainting();
     RetainedCompositionPixelsRespectInvalidation();
     CompositionScrollRetention(1.0F, false, false);
@@ -8817,6 +9315,7 @@ int main(int argc, char** argv) {
     PosterArtworkAdmissionUsesPresentedGeometry();
     BackgroundSurfacePreservesForegroundAuthority();
     ResponsiveGridFlowsThroughNativePlanning();
+    FramePublicationRequiresHostAcknowledgement();
     FocusMotionUsesStableSnapshotIdentity();
     SubtreeTranslationKeepsPresentationGeometryAligned();
     TranslationRetargetsAndSnapsDeterministically();

@@ -8,6 +8,28 @@
 
 namespace widgetrail::input {
 
+std::optional<FocusGroupEntryPublication> FocusGroupEntryPublication::Capture(
+    const WidgetInteractionAuthority& authority, const std::wstring_view target) {
+    if (!authority.semantics || authority.retainedRefresh || target.empty() ||
+        !authority.semantics->focusGroupEntryRequest) return std::nullopt;
+    const auto& snapshot = *authority.semantics;
+    return FocusGroupEntryPublication{
+        std::wstring{authority.widgetId}, snapshot.instanceId,
+        std::wstring{authority.runtimeGeneration}, std::wstring{authority.presentationGeneration},
+        snapshot.activeInputScopeId, snapshot.focusGroupEntryRequest->groupId,
+        std::wstring{target}, snapshot.sequence, snapshot.focusGroupEntryRequest->requestId};
+}
+
+bool FocusGroupEntryPublication::Matches(const WidgetInteractionAuthority& authority) const noexcept {
+    if (!authority.semantics || authority.retainedRefresh) return false;
+    const auto& snapshot = *authority.semantics;
+    return widget == authority.widgetId && instance == snapshot.instanceId &&
+        runtime == authority.runtimeGeneration && presentation == authority.presentationGeneration &&
+        scope == snapshot.activeInputScopeId && sequence == snapshot.sequence &&
+        snapshot.focusGroupEntryRequest && requestId == snapshot.focusGroupEntryRequest->requestId &&
+        group == snapshot.focusGroupEntryRequest->groupId;
+}
+
 SelectPopupLayout ComputeSelectPopupLayout(
     const declarative::Rect anchor,
     const declarative::Rect viewport,
@@ -176,6 +198,44 @@ bool IsVisibleFreeScrollFocus(
 
 } // namespace
 
+bool FocusRealizationIntent::Stage(const WidgetInteractionAuthority& authority,
+    const std::wstring_view origin, const std::wstring_view target, const RenderResult& render) {
+    Clear();
+    if (!authority.semantics || authority.retainedRefresh || origin.empty() || origin == target ||
+        render.navigationRects.contains(std::wstring{target}) || !render.realizableFocusIds.contains(std::wstring{target})) return false;
+    const auto& snapshot = *authority.semantics;
+    const auto* node = FindNodeInInputScope(snapshot, target, snapshot.activeInputScopeId);
+    if (!node || node->collectionItemKey.empty() || node->isDisabled || node->isBusy) return false;
+    pending_ = Pending{std::wstring{authority.widgetId}, snapshot.instanceId, std::wstring{authority.runtimeGeneration},
+        std::wstring{authority.presentationGeneration}, snapshot.activeInputScopeId, std::wstring{origin},
+        std::wstring{target}, node->collectionItemKey, snapshot.sequence};
+    return true;
+}
+
+std::optional<std::wstring> FocusRealizationIntent::Target(
+    const WidgetInteractionAuthority& authority, const std::wstring_view origin) {
+    if (!pending_) return std::nullopt;
+    const auto& p = *pending_;
+    const auto* snapshot = authority.semantics;
+    const auto* node = snapshot ? FindNodeInInputScope(*snapshot, p.target, snapshot->activeInputScopeId) : nullptr;
+    if (!snapshot || authority.retainedRefresh || p.widget != authority.widgetId || p.instance != snapshot->instanceId ||
+        p.runtime != authority.runtimeGeneration || p.presentation != authority.presentationGeneration ||
+        p.scope != snapshot->activeInputScopeId || p.sequence != snapshot->sequence || p.origin != origin ||
+        !node || node->collectionItemKey != p.key || node->isDisabled || node->isBusy) {
+        Clear(); return std::nullopt;
+    }
+    return p.target;
+}
+
+std::optional<std::wstring> FocusRealizationIntent::TakeReady(const WidgetInteractionAuthority& authority,
+    const std::wstring_view origin, const RenderResult& prepared) {
+    auto target = Target(authority, origin);
+    if (!target || !prepared.succeeded || !prepared.focusRects.contains(*target) || !IsEnabledFocusTarget(*target, prepared))
+        return std::nullopt;
+    Clear();
+    return target;
+}
+
 DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFocus(
     const WidgetSnapshot& snapshot, const std::wstring_view focusedElementId,
     const NavigationDirection direction, const RenderResult& renderResult,
@@ -252,6 +312,7 @@ DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFoc
     if (internal.staleAuthority) {
         return {DirectionalFocusDisposition::BlockedAuthority, {}};
     }
+    if (internal.loadingBoundary) return {DirectionalFocusDisposition::Boundary, {}};
     if (const auto geometric = FindGeometricFocusTarget(
             focusedElementId, direction, renderResult,
             focusGroupCandidates)) {
@@ -317,7 +378,7 @@ std::optional<FocusedFreeScrollPlan> SurfaceInteractionTransactions::PlanFreeScr
     const std::wstring_view focusedElementId,
     const RenderResult& renderResult, const declarative::ScrollAxis axis,
     const float deltaDip, const declarative::Rect viewport,
-    FocusedFreeScrollPlanDiagnostic* diagnostic) {
+    FocusedFreeScrollPlanDiagnostic* diagnostic, const DeclarativeRenderOptions* preparationOptions) {
     const auto decision = EvaluateFreeScroll(
         state, authority, focusedElementId, renderResult);
     if (!authority.semantics ||
@@ -336,6 +397,9 @@ std::optional<FocusedFreeScrollPlan> SurfaceInteractionTransactions::PlanFreeScr
             return std::nullopt;
         exactScrollId = owner.scrollId;
     }
+    if (preparationOptions) return renderer.PlanPreparedFreeScroll(
+        *authority.semantics, focusedElementId, axis, deltaDip, viewport,
+        exactScrollId, *preparationOptions, diagnostic);
     return renderer.PlanFocusedFreeScroll(
         *authority.semantics, focusedElementId, axis, deltaDip, viewport,
         exactScrollId, diagnostic);
@@ -440,6 +504,7 @@ FocusMutation WidgetInteractionSession::MoveFocus(
     const std::wstring_view target,
     const bool retireSliderPresentations,
     const bool retirePressedPresentation) {
+    focusRealization_.Clear();
     if (focusedElementId_ != target) pendingCollectionFocus_.reset();
     auto result = SurfaceInteractionTransactions::MoveFocus(
         focusedElementId_, target);
@@ -460,12 +525,14 @@ FocusMutation WidgetInteractionSession::MoveFocus(
 }
 
 void WidgetInteractionSession::ClearFocus() noexcept {
+    focusRealization_.Clear();
     focusedElementId_.clear();
     sliders_.RetainAdjustmentMode({}, {}, {});
     pendingFocusGroupEntry_.reset();
 }
 
 void WidgetInteractionSession::ClearLiveFocus() noexcept {
+    focusRealization_.Clear();
     focusedElementId_.clear();
     sliders_.RetainAdjustmentMode({}, {}, {});
 }
@@ -608,6 +675,17 @@ FocusGroupEntryApplication WidgetInteractionSession::ConsumeFocusGroupEntryReque
     return {true, preview.target};
 }
 
+std::optional<std::wstring> WidgetInteractionSession::PreviewCandidateFocusGroup(
+    const WidgetInteractionAuthority& authority, const RenderResult& geometry) const {
+    if (!authority.semantics || authority.retainedRefresh) return std::nullopt;
+    const auto& snapshot = *authority.semantics;
+    if (!snapshot.focusGroupEntryRequest || !geometry.succeeded) return std::nullopt;
+    if (!FocusGroupEntryRequestPending(authority) && std::ranges::any_of(focusGroupEntryHighWater_, [&](const auto& entry) {
+            return SameFocusGroupEntryRuntime(entry, authority) && entry.requestId >= snapshot.focusGroupEntryRequest->requestId;
+        })) return std::nullopt;
+    return focusGroupMemory_.Resolve(authority.widgetId, snapshot, snapshot.focusGroupEntryRequest->groupId, geometry);
+}
+
 FocusGroupEntryPreview WidgetInteractionSession::PreviewFocusGroupEntryRequest(
     const WidgetInteractionAuthority& authority,
     const RenderResult& renderResult) const {
@@ -696,6 +774,7 @@ RightStickScrollUpdate FreeScrollInteractionState::SampleRightStick(
     const std::uint64_t now) noexcept {
     const auto sample = kinetics_.Update(x, y, now);
     if (sample.moving) {
+        if (binding_) binding_->focusPolicy = FreeScrollFocusPolicy::SettleOnRelease;
         neutralSince_.reset();
         focusSettled_ = false;
     } else if (!neutralSince_) {
@@ -706,7 +785,7 @@ RightStickScrollUpdate FreeScrollInteractionState::SampleRightStick(
 
 bool FreeScrollInteractionState::ShouldSettle(const std::uint64_t now) const noexcept {
     constexpr std::uint64_t settleDelayMilliseconds = 120;
-    return binding_ && !focusSettled_ && neutralSince_ &&
+    return binding_ && binding_->focusPolicy == FreeScrollFocusPolicy::SettleOnRelease && !focusSettled_ && neutralSince_ &&
         now >= *neutralSince_ && now - *neutralSince_ >= settleDelayMilliseconds;
 }
 
@@ -718,6 +797,8 @@ std::optional<std::wstring> FreeScrollInteractionState::SettleFocus(
         !BindingMatches(*binding_, authority, focusedElementId) ||
         !IsExactScrollAuthorityCurrent(authority.semantics->root,
             binding_->scrollId, binding_->axis, renderResult)) return std::nullopt;
+    if (binding_->focusPolicy == FreeScrollFocusPolicy::Preserve)
+        return std::wstring{focusedElementId};
     auto target = !preferredCrossAxis && IsVisibleFreeScrollFocus(authority, *binding_, focusedElementId, renderResult)
         ? std::optional<std::wstring>{std::wstring{focusedElementId}}
         : FindFreeScrollReentryTarget(authority.semantics->root, binding_->scrollId,
@@ -769,14 +850,15 @@ bool FreeScrollInteractionState::Bind(
     const WidgetInteractionAuthority& authority,
     const std::wstring_view focusedElementId,
     const std::wstring_view scrollId,
-    const declarative::ScrollAxis axis) {
+    const declarative::ScrollAxis axis,
+    const FreeScrollFocusPolicy focusPolicy) {
     if (!authority.semantics || axis == declarative::ScrollAxis::None ||
         scrollId.empty()) {
         return false;
     }
     const bool changed = !binding_ ||
         binding_->scrollId != scrollId ||
-        binding_->axis != axis;
+        binding_->axis != axis || binding_->focusPolicy != focusPolicy;
     binding_ = FreeScrollBinding{
         std::wstring{authority.widgetId},
         authority.semantics->instanceId,
@@ -792,6 +874,7 @@ bool FreeScrollInteractionState::Bind(
         binding_->collectionResetGeneration = collection ? collection->collectionResetGeneration.value_or(0) : 0;
     }
     refreshDeferred_ = false;
+    binding_->focusPolicy = focusPolicy;
     return changed;
 }
 
@@ -827,7 +910,7 @@ FreeScrollReentryRequest FreeScrollInteractionState::ResolveReentry(
     neutralSince_.reset();
     focusSettled_ = false;
     kinetics_.Reset();
-    if (IsVisibleFreeScrollFocus(
+    if (request.retiredBinding->focusPolicy == FreeScrollFocusPolicy::Preserve || IsVisibleFreeScrollFocus(
             authority, *request.retiredBinding, focusedElementId,
             renderResult)) {
         request.disposition =
@@ -859,8 +942,9 @@ FreeScrollAuthorityDecision WidgetInteractionSession::EvaluateFreeScrollAuthorit
 bool WidgetInteractionSession::BindFreeScroll(
     const WidgetInteractionAuthority& authority,
     const std::wstring_view scrollId,
-    const declarative::ScrollAxis axis) {
-    return freeScroll_.Bind(authority, focusedElementId_, scrollId, axis);
+    const declarative::ScrollAxis axis,
+    const FreeScrollFocusPolicy focusPolicy) {
+    return freeScroll_.Bind(authority, focusedElementId_, scrollId, axis, focusPolicy);
 }
 
 std::optional<FreeScrollBinding> WidgetInteractionSession::ClearFreeScroll() noexcept {
@@ -944,6 +1028,7 @@ std::vector<std::wstring> WidgetInteractionSession::CurrentSliderNodeIds(
 }
 
 InteractionVisualRetirement WidgetInteractionSession::RetirePresentations() {
+    focusRealization_.Clear();
     InteractionVisualRetirement result{
         sliders_.DeactivateAll(),
         pressed_.Clear(),

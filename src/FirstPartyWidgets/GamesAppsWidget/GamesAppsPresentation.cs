@@ -205,15 +205,11 @@ internal static class GamesAppsPresentation
                 state.LibraryMutationBusy ||
                 state.LifecycleState != WidgetLifecycleState.Interactive);
 
-        var tiles = curated.Select(item => LibraryTile(state, item)).ToArray();
-        return UI.VerticalScroll(
-                "games.library.scroll",
-                UI.ResponsiveGrid(
-                    "games.library.grid",
-                    GridMinimumColumnWidth,
-                    GridMaximumColumns,
-                    tiles))
-            .Classes("games-page-scroll", "games-library-scroll");
+        var tiles = curated.Select(item => LibraryTile(state, item)
+            .CollectionItem(new WidgetCollectionItemKey(LibraryElementId(item.SavedId)))).ToArray();
+        return UI.CollectionGrid("games.library.scroll", GridMinimumColumnWidth, 90,
+                GridMaximumColumns, tiles)
+            .Classes("games-page-scroll", "games-library-scroll", "games-collection-scroll");
     }
 
     private static WidgetElement RenderCatalogContent(
@@ -236,8 +232,13 @@ internal static class GamesAppsPresentation
         var curated = state.LibrarySavedIds.ToHashSet(StringComparer.Ordinal);
         var tiles = state.Items.Select(item => CatalogTile(
             state, item, running, curated.Contains(item.SavedId))).ToArray();
+        if (running)
+            return UI.CollectionGrid("games.running.scroll", GridMinimumColumnWidth, 90,
+                    GridMaximumColumns, tiles.Select((tile, index) => tile.CollectionItem(
+                        new WidgetCollectionItemKey(CatalogElementId(state.Items[index].SavedId)))).ToArray())
+                .Classes("games-page-scroll", "games-running-scroll", "games-collection-scroll");
         var children = new List<WidgetElement>();
-        if (!running && state.CanLoadPrevious)
+        if (state.CanLoadPrevious)
             children.Add(PageButton(
                 "Previous page",
                 "games.previous-page",
@@ -245,11 +246,11 @@ internal static class GamesAppsPresentation
                 "Load the previous application page",
                 state));
         children.Add(UI.ResponsiveGrid(
-            running ? "games.running.grid" : "games.catalog.grid",
+            "games.catalog.grid",
             GridMinimumColumnWidth,
             GridMaximumColumns,
             tiles));
-        if (!running && state.HasNextPage)
+        if (state.HasNextPage)
             children.Add(PageButton(
                 "Next page",
                 "games.load-more",
@@ -257,11 +258,9 @@ internal static class GamesAppsPresentation
                 "Load the next application page",
                 state));
         return UI.VerticalScroll(
-                running ? "games.running.scroll" : "games.catalog.scroll",
+                "games.catalog.scroll",
                 children.ToArray())
-            .Classes("games-page-scroll", running
-                ? "games-running-scroll"
-                : "games-catalog-scroll");
+            .Classes("games-page-scroll", "games-catalog-scroll");
     }
 
     private static WidgetElement RenderRouteProgress(GamesAppsPresentationState state)

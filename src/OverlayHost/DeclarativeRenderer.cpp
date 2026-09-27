@@ -7,6 +7,7 @@
 #include "NativeTextLayout.h"
 #include "RemoteImageCache.h"
 #include "WidgetContextMenuAuthority.h"
+#include "WidgetProtocolPresentationContract.generated.h"
 
 #include <algorithm>
 #include <array>
@@ -497,6 +498,10 @@ struct DeclarativeRenderer::RenderPass final {
     std::uint64_t layoutNanoseconds{};
     std::uint64_t styleCacheHits{};
     std::uint64_t styleCacheMisses{};
+    struct CollectionSlicePending final {};
+    std::optional<CollectionPreparationBudget> preparationBudget;
+    std::chrono::steady_clock::time_point preparationStarted;
+    std::size_t preparationMeasurements{};
     DeclarativeRenderer* owner{};
     std::unordered_map<std::wstring, ScrollStateEntry>* scrollState{};
     std::uint64_t* scrollAccessClock{};
@@ -557,6 +562,10 @@ struct DeclarativeRenderer::RenderPass final {
     std::map<std::wstring, CollectionReconciliationTrace, std::less<>>
         collectionReconciliationOffsets;
     std::set<std::wstring, std::less<>> resetCollections;
+    std::unordered_map<std::wstring, CollectionRenderState> collections;
+    std::map<std::wstring, const WidgetNode*, std::less<>> collectionNodes;
+    std::map<std::wstring, std::size_t, std::less<>> collectionSlots;
+    std::set<std::wstring, std::less<>> newCollectionScrollStates, initializedCollectionScrolls;
     std::unordered_map<std::wstring, FocusBackgroundEntry> focusBackgrounds;
     std::uint64_t focusBackgroundAccessClock{};
     bool backgroundSurfaceAnimationActive{};
@@ -910,6 +919,8 @@ struct DeclarativeRenderer::RenderPass final {
         prepared[narrowId].effectiveBackground = effectiveBackground;
     }
 
+    #include "CollectionRealization.inl"
+
     [[nodiscard]] LayoutElement PrepareNode(
         const WidgetNode& node, const std::string_view parentId,
         const float fallbackParentWidth, const float fallbackParentHeight,
@@ -1068,6 +1079,7 @@ struct DeclarativeRenderer::RenderPass final {
                     L"Scroll requires the vertical or horizontal axis.",
                     RenderDiagnosticSeverity::Error);
             const auto key = ScrollStateKey(node.id);
+            if (node.collectionLayout && !ScrollState().contains(key)) newCollectionScrollStates.insert(node.id);
             if (!measurementOnly && node.collectionResetGeneration) {
                 auto& state = ScrollState()[key];
                 if (state.collectionResetGeneration != *node.collectionResetGeneration) {
@@ -1111,7 +1123,7 @@ struct DeclarativeRenderer::RenderPass final {
         // parent. Ordinary auto-sized nodes keep Taffy's inherited stretch;
         // definite dimensions, constraints, and aspect ratio still bound it.
         if (node.kind == L"loadingIndicator") element.stretchCrossAxis = false;
-        element.children.reserve(node.children.size() + 2U);
+        element.children.reserve(node.collectionLayout ? 1U : node.children.size() + 2U);
         const float textScale = std::isfinite(options.accessibility.textScale) &&
                 options.accessibility.textScale >= 0.85F &&
                 options.accessibility.textScale <= 1.5F
@@ -1127,6 +1139,8 @@ struct DeclarativeRenderer::RenderPass final {
                 element.children.push_back(std::move(*leading));
             }
         }
+        if (node.collectionLayout && node.kind == L"scroll")
+            return PrepareCollection(node, std::move(element), style, inputScope, effectiveBackground);
         if (node.kind == L"focusPresentationSurface") {
             const auto* fragment = PresentationFor(node);
             if (fragment && IsResponsiveVisible(*fragment)) {
@@ -1268,7 +1282,7 @@ struct DeclarativeRenderer::RenderPass final {
         std::size_t presentationFollowAttempts{};
         bool lastPresentationFollowChanged{};
         for (std::size_t followPass = 0;
-             !options.suppressFocusedDescendantFollow &&
+             (!options.suppressFocusedDescendantFollow || !options.realizeElementId.empty()) &&
                  followPass < kMaximumFocusFollowPasses;
              ++followPass) {
             ++presentationFollowAttempts;
@@ -1286,10 +1300,15 @@ struct DeclarativeRenderer::RenderPass final {
                 followAttempt.repeatedOffsetState;
             if (stableOrRepeated) break;
             presentationMatchesLayout = false;
-            BuildLayout(
-                false,
-                true,
-                CollectionAnchorPolicy::PreserveFocusFollowOffsets);
+            if (CollectionPlacementIsCovered()) {
+                ProjectScrollOffsets(true);
+                SynchronizeScrollState();
+            } else {
+                BuildLayout(
+                    false,
+                    true,
+                    CollectionAnchorPolicy::PreserveFocusFollowOffsets);
+            }
         }
         if (options.suppressFocusedDescendantFollow) {
             presentation.clear();
@@ -1986,10 +2005,15 @@ struct DeclarativeRenderer::RenderPass final {
         return summary;
     }
 
-    [[nodiscard]] std::vector<const WidgetNode*> FocusPath() const {
+    [[nodiscard]] std::wstring_view RevealTargetId() const noexcept {
+        return options.realizeElementId.empty() ? std::wstring_view{focusedId}
+            : std::wstring_view{options.realizeElementId};
+    }
+
+    [[nodiscard]] std::vector<const WidgetNode*> RevealPath() const {
         std::vector<const WidgetNode*> path;
-        if (!prepared.contains(NarrowStableId(focusedId))) return path;
-        if (!focusedId.empty()) (void)FindNodePath(snapshot->root, focusedId, path);
+        if (!prepared.contains(NarrowStableId(RevealTargetId()))) return path;
+        if (!RevealTargetId().empty()) (void)FindNodePath(snapshot->root, RevealTargetId(), path);
         return path;
     }
 
@@ -2062,9 +2086,9 @@ struct DeclarativeRenderer::RenderPass final {
             currentOffset - targetDelta, 0.0F, maximumOffset);
     }
 
-    [[nodiscard]] std::pair<bool, bool> FocusedBoundaryOf(
+    [[nodiscard]] std::pair<bool, bool> RevealBoundaryOf(
         const WidgetNode& scroll) const {
-        const auto focusPath = FocusPath();
+        const auto focusPath = RevealPath();
         if (focusPath.empty()) return {};
         const auto focusedScope = ScopeForPath(focusPath, focusPath.size());
         std::vector<const WidgetNode*> scrollPath;
@@ -2077,13 +2101,13 @@ struct DeclarativeRenderer::RenderPass final {
             scroll, inheritedScope, focusedScope, focusableIds);
         if (focusableIds.empty()) return {};
         return {
-            focusableIds.front() == focusedId,
-            focusableIds.back() == focusedId,
+            focusableIds.front() == RevealTargetId(),
+            focusableIds.back() == RevealTargetId(),
         };
     }
 
-    [[nodiscard]] Rect FocusRevealBounds(const Rect& layoutBounds) const {
-        const auto style = prepared.find(NarrowStableId(focusedId));
+    [[nodiscard]] Rect RevealBounds(const Rect& layoutBounds) const {
+        const auto style = prepared.find(NarrowStableId(RevealTargetId()));
         if (style == prepared.end()) return layoutBounds;
         // Reveal the authored endpoint, not the current animation sample. The
         // compositor can enlarge a control without another UI-thread paint.
@@ -2093,14 +2117,14 @@ struct DeclarativeRenderer::RenderPass final {
         return ScaleRect(layoutBounds, scale);
     }
 
-    [[nodiscard]] bool ApplyFocusedDescendantFollow(
+    [[nodiscard]] bool ApplyDescendantReveal(
         const bool usePresentationGeometry = false) {
-        if (focusedId.empty()) return false;
-        const auto* focusBox = layout.Find(NarrowStableId(focusedId));
+        if (RevealTargetId().empty()) return false;
+        const auto* focusBox = layout.Find(NarrowStableId(RevealTargetId()));
         if (!focusBox) return false;
-        const auto presentedFocus = presentation.find(NarrowStableId(focusedId));
+        const auto presentedFocus = presentation.find(NarrowStableId(RevealTargetId()));
         if (usePresentationGeometry && presentedFocus == presentation.end()) return false;
-        const auto path = FocusPath();
+        const auto path = RevealPath();
         if (path.empty()) return false;
         bool changed = false;
         // Inner offsets change the target geometry seen by outer viewports.
@@ -2117,11 +2141,11 @@ struct DeclarativeRenderer::RenderPass final {
             const auto viewportBox = usePresentationGeometry
                 ? presentedScroll->second.contentBox
                 : scrollBox->contentBox;
-            const auto targetRect = FocusRevealBounds(usePresentationGeometry
+            const auto targetRect = RevealBounds(usePresentationGeometry
                 ? presentedFocus->second.borderBox
                 : focusBox->borderBox);
             const auto [atLeadingBoundary, atTrailingBoundary] =
-                FocusedBoundaryOf(scroll);
+                RevealBoundaryOf(scroll);
             RecordFocusFollowNodeMetadata(
                 scroll.id,
                 scrollBox->scrollAxis,
@@ -2234,15 +2258,15 @@ struct DeclarativeRenderer::RenderPass final {
     [[nodiscard]] FocusFollowSample CaptureFocusFollowSample(
         const bool usePresentationGeometry) const {
         FocusFollowSample sample;
-        const auto* focusBox = layout.Find(NarrowStableId(focusedId));
-        const auto presentedFocus = presentation.find(NarrowStableId(focusedId));
-        if (focusedId.empty()) return sample;
+        const auto* focusBox = layout.Find(NarrowStableId(RevealTargetId()));
+        const auto presentedFocus = presentation.find(NarrowStableId(RevealTargetId()));
+        if (RevealTargetId().empty()) return sample;
         if (!focusBox ||
             (usePresentationGeometry && presentedFocus == presentation.end())) {
             sample.complete = false;
             return sample;
         }
-        const auto path = FocusPath();
+        const auto path = RevealPath();
         if (path.empty()) {
             sample.complete = false;
             return sample;
@@ -2270,7 +2294,7 @@ struct DeclarativeRenderer::RenderPass final {
             const auto viewportBox = usePresentationGeometry
                 ? presentedScroll->second.contentBox
                 : scrollBox->contentBox;
-            auto targetRect = FocusRevealBounds(usePresentationGeometry
+            auto targetRect = RevealBounds(usePresentationGeometry
                 ? presentedFocus->second.borderBox
                 : focusBox->borderBox);
             const float offsetDelta = scrollBox->scrollOffset - offset;
@@ -2320,7 +2344,7 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     [[nodiscard]] bool FocusedTargetVisibleInPresentation() const {
-        if (focusedId.empty()) return true;
+        if (RevealTargetId().empty()) return true;
         const auto sample = CaptureFocusFollowSample(true);
         return sample.complete && sample.allTargetsVisible;
     }
@@ -2431,7 +2455,7 @@ struct DeclarativeRenderer::RenderPass final {
     [[nodiscard]] FocusFollowAttemptResult FollowFocusedDescendant(
         const bool usePresentationGeometry) {
         const auto before = CaptureFocusFollowSample(usePresentationGeometry);
-        const bool changed = ApplyFocusedDescendantFollow(usePresentationGeometry);
+        const bool changed = ApplyDescendantReveal(usePresentationGeometry);
         const auto after = CaptureFocusFollowSample(usePresentationGeometry);
         auto attempt = RecordFocusFollowPass(
             before, after, changed, usePresentationGeometry);
@@ -2922,6 +2946,7 @@ struct DeclarativeRenderer::RenderPass final {
                 }
             }
         }
+        AttachCollectionLayouts(computed);
         return computed;
     }
 
@@ -3011,7 +3036,7 @@ struct DeclarativeRenderer::RenderPass final {
         // the target geometry observed by each outer viewport. The wire tree
         // depth is bounded to 32, so this loop has a matching hard ceiling and
         // performs no relayout once offsets are stable.
-        if (followStaticFocus) {
+        if (followStaticFocus || !options.realizeElementId.empty()) {
             const auto followStarted = std::chrono::steady_clock::now();
             std::size_t followAttempts{};
             bool lastFollowChanged{};
@@ -5036,6 +5061,7 @@ struct DeclarativeRenderer::RenderPass final {
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         if (!composingScene || compositionBand < 0) {
         result.elementRects[node.id] = presented.borderBox;
+        if (const auto* box = layout.Find(NarrowStableId(node.id))) result.elementUnroundedRects[node.id] = box->unroundedBorderBox;
         result.elementVisibleRects[node.id] = presented.visibleBox;
         if (node.kind == L"actionSurface" &&
             node.actionSurfacePresentation == L"poster" &&
@@ -5456,6 +5482,7 @@ DeclarativeRenderer::~DeclarativeRenderer() {
     if (imageCache_) imageCache_->ReleaseImageProtection(this);
 }
 void DeclarativeRenderer::CancelWidgetTransitions() noexcept {
+    RejectFramePublication();
     widgetTransitions_.Clear();
     transitionVisuals_.clear();
     compositionInstance_.clear();
@@ -5465,6 +5492,7 @@ void DeclarativeRenderer::CancelWidgetTransitions() noexcept {
 void DeclarativeRenderer::PublishImageProtection() {
     if (!imageCache_) return;
     auto keys = protectedImageKeys_;
+    if (pendingPublication_) keys.insert(pendingPublication_->imageKeys.begin(), pendingPublication_->imageKeys.end());
     keys.insert(chromeImageKeys_.begin(), chromeImageKeys_.end());
     imageCache_->ProtectImages(this, std::move(keys));
 }
@@ -6018,7 +6046,20 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
         float maximumOffset = box->maximumScrollOffset;
         // Sequential cursors cannot seek into spacer-only ranges. Keep a real
         // boundary item visible so the existing edge demand can load more.
-        if (candidate.virtualCollectionWindow && cache->collections.contains(candidate.id)) {
+        if (candidate.virtualCollectionWindow && candidate.collectionLayout) {
+            const auto collection = collections_.find(stateKey);
+            if (collection == collections_.end() || collection->second.geometry.Size() != candidate.children.size())
+                return reject(FocusedFreeScrollPlanDisposition::MissingCheckpoint);
+            // Loaded provider data and realized visuals have different lifetimes.
+            // Limit movement by the complete logical window, not whichever item
+            // rectangles happened to survive the previous viewport's overscan.
+            const auto& state = collection->second;
+            const float extent = axis == declarative::ScrollAxis::Vertical
+                ? box->unscrolledContentBox.height : box->unscrolledContentBox.width;
+            const auto range = state.AdmittedScrollRange(extent);
+            minimumOffset = std::clamp(range.first, 0.0F, maximumOffset);
+            maximumOffset = std::clamp(range.second, minimumOffset, maximumOffset);
+        } else if (candidate.virtualCollectionWindow && cache->collections.contains(candidate.id)) {
             const auto& collection = cache->collections.at(candidate.id);
             float first = std::numeric_limits<float>::max();
             float last = std::numeric_limits<float>::lowest();
@@ -6094,6 +6135,73 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
             FocusedFreeScrollPlanDisposition::MissingTarget;
     if (diagnostic) *diagnostic = localDiagnostic;
     return std::nullopt;
+}
+
+std::optional<FocusedFreeScrollPlan> DeclarativeRenderer::PlanPreparedFreeScroll(
+    const WidgetSnapshot& snapshot, const std::wstring_view focusedElementId, const declarative::ScrollAxis axis,
+    const float deltaDip, const Rect viewport, const std::wstring_view exactScrollId,
+    const DeclarativeRenderOptions& options, FocusedFreeScrollPlanDiagnostic* diagnostic,
+    const CollectionPreparationBudget budget) {
+    // The retained checkpoint proves whether this scroll owns a realized
+    // collection. Ordinary scrolls keep their existing inexpensive path.
+    std::vector<const WidgetNode*> scrollPath;
+    if (!incrementalLayoutCache_ || !FindNodePath(snapshot.root, exactScrollId, scrollPath) ||
+        scrollPath.empty() || !scrollPath.back()->collectionLayout)
+        return PlanFocusedFreeScroll(snapshot, focusedElementId, axis, deltaDip, viewport, exactScrollId, diagnostic);
+    auto previousOffsets = scrollOffsets_;
+    auto previousPlan = pendingIncrementalPlan_;
+    const auto previousClock = scrollStateAccessClock_;
+    const auto rollback = [&] {
+        scrollOffsets_ = std::move(previousOffsets);
+        pendingIncrementalPlan_ = std::move(previousPlan);
+        scrollStateAccessClock_ = previousClock;
+    };
+    try {
+        const auto plan = PlanFocusedFreeScroll(snapshot, focusedElementId, axis, deltaDip, viewport, exactScrollId, diagnostic);
+        if (!plan) { rollback(); return std::nullopt; }
+        const auto stateKey = ScrollScopePrefix(snapshot.instanceId, ScopeForPath(scrollPath, scrollPath.size())) +
+            std::wstring{exactScrollId};
+        const auto collection = collections_.find(stateKey);
+        const auto& previousOptions = incrementalLayoutCache_->options;
+        if (collection != collections_.end() && previousOptions.pixelScale == options.pixelScale &&
+            previousOptions.rootFontSizePx == options.rootFontSizePx && previousOptions.surfaceBackground == options.surfaceBackground &&
+            previousOptions.playStationControls == options.playStationControls &&
+            previousOptions.accessibility.textScale == options.accessibility.textScale &&
+            previousOptions.accessibility.minimumFontWeight == options.accessibility.minimumFontWeight &&
+            previousOptions.accessibility.reducedTransparency == options.accessibility.reducedTransparency &&
+            previousOptions.accessibility.reducedMotion == options.accessibility.reducedMotion &&
+            previousOptions.accessibility.minimumFocusRingPx == options.accessibility.minimumFocusRingPx &&
+            !previousOptions.accessibility.contrastHook &&
+            !options.accessibility.contrastHook) {
+            const auto& state = collection->second;
+            std::vector<std::wstring> protectedKeys;
+            if (!state.lastFocusedKey.empty()) protectedKeys.push_back(state.lastFocusedKey);
+            const auto demand = state.geometry.Plan(plan->offset - state.leadingExtent,
+                axis == declarative::ScrollAxis::Horizontal ? plan->viewport.width : plan->viewport.height,
+                1, protectedKeys, state.geometry.Size());
+            const auto& items = scrollPath.back()->children;
+            const auto ready = [&](const std::size_t index) {
+                if (index >= items.size()) return false;
+                const auto cached = state.items.find(items[index].collectionItemKey);
+                return cached != state.items.end() && cached->second.measuredContext == state.contextRevision &&
+                    !cached->second.layout.boxes.empty();
+            };
+            bool complete = std::ranges::all_of(demand.protectedItems, ready);
+            for (auto index = demand.bufferedBegin; complete && index < demand.bufferedEnd; ++index) complete = ready(index);
+            if (complete) return plan;
+        }
+        auto preparationOptions = options;
+        preparationOptions.suppressFocusedDescendantFollow = true;
+        const auto preparation = PrepareCollections(snapshot, focusedElementId, viewport, preparationOptions, budget);
+        if (preparation.status == CollectionPreparationStatus::Ready) return plan;
+        rollback();
+        if (diagnostic) diagnostic->disposition = preparation.status == CollectionPreparationStatus::Pending
+            ? FocusedFreeScrollPlanDisposition::PreparationPending : FocusedFreeScrollPlanDisposition::PreparationFailed;
+        return std::nullopt;
+    } catch (...) {
+        rollback();
+        throw;
+    }
 }
 
 std::optional<IncrementalPresentationPlan>
@@ -6174,12 +6282,59 @@ WidgetComputedStyle ResolveDeclarativeComputedStyle(
     return result;
 }
 
+void DeclarativeRenderer::RejectFramePublication() noexcept {
+    const bool pending = pendingPublication_ != nullptr;
+    pendingPublication_.reset();
+    if (pending) {
+        // Resource protection is conservative on allocation failure; scene
+        // authority is already rejected and the next publication refreshes it.
+        try { PublishImageProtection(); } catch (...) {}
+    }
+}
+
+bool DeclarativeRenderer::CommitFramePublication(const std::uint64_t id) {
+    if (!id || !pendingPublication_ || pendingPublication_->id != id ||
+        pendingPublication_->resourceGeneration != bitmapResourceGeneration_) return false;
+    auto publication = std::move(pendingPublication_);
+    incrementalLayoutCache_ = std::move(publication->layout);
+    collections_ = std::move(publication->collections);
+    scrollOffsets_ = std::move(publication->scrollOffsets);
+    scrollStateAccessClock_ = publication->scrollClock;
+    motionTimeline_ = std::move(publication->motion);
+    widgetTransitions_ = std::move(publication->transitions);
+    transitionVisuals_ = std::move(publication->visuals);
+    focusSelectionMemory_ = std::move(publication->selection);
+    selectedPresentationSources_ = std::move(publication->selectionSources);
+    focusBackgrounds_ = std::move(publication->backgrounds);
+    focusBackgroundAccessClock_ = publication->backgroundClock;
+    RecalculateFocusBackgroundCompositeBytes();
+    compositionPaintCache_ = std::move(publication->paintCache);
+    compositionInstance_ = std::move(publication->compositionInstance);
+    protectedImageKeys_ = std::move(publication->imageKeys);
+    visibleContentImageHashes_ = std::move(publication->visibleImageHashes);
+    std::erase_if(collectionPreparations_, [&](const auto& branch) {
+        return branch.ready && branch.instance == publication->instance && branch.scope == publication->scope &&
+            branch.sequence == publication->sequence && branch.focus == publication->focus &&
+            branch.realization == publication->realization;
+    });
+    PublishImageProtection();
+    return true;
+}
+
 RenderResult DeclarativeRenderer::Render(
     ID2D1RenderTarget* renderTarget,
     const WidgetSnapshot& snapshot,
     const std::wstring_view focusedElementId,
     const Rect viewport,
     const DeclarativeRenderOptions& options) {
+    RejectFramePublication();
+    auto publication = std::make_unique<FramePublication>();
+    publication->instance = snapshot.instanceId;
+    publication->scope = snapshot.activeInputScopeId;
+    publication->focus = focusedElementId;
+    publication->realization = options.realizeElementId;
+    publication->sequence = snapshot.sequence;
+    publication->motion = motionTimeline_;
     const auto renderStarted = std::chrono::steady_clock::now();
     const auto textHitsBefore = textLayoutCache_.hits;
     const auto textMissesBefore = textLayoutCache_.misses;
@@ -6194,6 +6349,7 @@ RenderResult DeclarativeRenderer::Render(
         Size{viewport.width, viewport.height});
     pass.compactMode = IsCompactResponsiveSurface(responsiveViewport);
     pass.options = options;
+    pass.motionTimeline = &publication->motion;
     pass.result.playStationControls = options.playStationControls;
     const auto* previousCollectionCache = incrementalLayoutCache_ &&
             incrementalLayoutCache_->instanceId == snapshot.instanceId
@@ -6220,7 +6376,7 @@ RenderResult DeclarativeRenderer::Render(
         scrollDiagnosticLastSequence_ = snapshot.sequence;
         scrollDiagnosticLastGeometryTime_ = animationTimestamp;
     }
-    motionTimeline_.BeginFrame(animationTimestamp);
+    publication->motion.BeginFrame(animationTimestamp);
 
     if (renderTarget && !BindBitmapResourceDomain(renderTarget)) {
         pass.Add({}, L"image_resource_domain",
@@ -6262,14 +6418,41 @@ RenderResult DeclarativeRenderer::Render(
             a.minimumFocusRingPx == b.minimumFocusRingPx && a.reducedMotion == b.reducedMotion &&
             a.reducedTransparency == b.reducedTransparency && !a.contrastHook && !b.contrastHook;
     };
-    const bool pendingMatches = preparationOptionsMatch() && pendingIncrementalPlan_ &&
+    const auto containsCollection = [&](const auto& self, const WidgetNode& node) -> bool {
+        if (node.collectionLayout) return true;
+        return std::ranges::any_of(node.children, [&](const WidgetNode& child) { return self(self, child); });
+    };
+    const bool hasCollections = containsCollection(containsCollection, snapshot.root);
+    std::optional<decltype(scrollOffsets_)> stagedScrollOffsets;
+    auto stagedScrollClock = scrollStateAccessClock_;
+    {
+        stagedScrollOffsets = scrollOffsets_;
+        pass.scrollState = &*stagedScrollOffsets;
+        pass.scrollAccessClock = &stagedScrollClock;
+    }
+    const bool pendingMatches =
+        preparationOptionsMatch() && pendingIncrementalPlan_ &&
         pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster &&
         incrementalLayoutCache_ &&
         pendingIncrementalPlan_->instanceId == snapshot.instanceId &&
         pendingIncrementalPlan_->baseSequence == incrementalLayoutCache_->sequence &&
         pendingIncrementalPlan_->sequence == snapshot.sequence &&
         SameRect(incrementalLayoutCache_->viewport, viewport);
-    if (pendingMatches) {
+    bool retainedCollections{};
+    if (hasCollections && pendingMatches && incrementalLayoutCache_->sequence == snapshot.sequence &&
+        (pendingIncrementalPlan_->work == IncrementalPresentationWork::PaintOnly ||
+         pendingIncrementalPlan_->work == IncrementalPresentationWork::ScrollOnly) &&
+        incrementalLayoutCache_->options.artworkAuthorityId == options.artworkAuthorityId &&
+        incrementalLayoutCache_->options.artworkRuntimeGeneration == options.artworkRuntimeGeneration &&
+        incrementalLayoutCache_->options.packageContentDigest == options.packageContentDigest) {
+        pass.layout = incrementalLayoutCache_->layout;
+        pass.textMeasurements = incrementalLayoutCache_->textMeasurements;
+        pass.textMeasurementQueries = incrementalLayoutCache_->textMeasurementQueries;
+        retainedCollections = pass.PrepareRetainedCollectionLayout();
+    }
+    if (retainedCollections) {
+        pass.SynchronizeScrollState();
+    } else if (pendingMatches && !hasCollections) {
         pass.layout = incrementalLayoutCache_->layout;
         pass.textMeasurements = incrementalLayoutCache_->textMeasurements;
         pass.textMeasurementQueries = incrementalLayoutCache_->textMeasurementQueries;
@@ -6356,7 +6539,7 @@ RenderResult DeclarativeRenderer::Render(
     const auto deferredFocusFinished = std::chrono::steady_clock::now();
     // Always retire unseen style-motion nodes, including frames already kept
     // alive by a section, modal or loading indicator.
-    const auto styleAnimationActive = motionTimeline_.EndFrame();
+    const auto styleAnimationActive = publication->motion.EndFrame();
     const bool otherAnimationActive = pass.result.animationActive || styleAnimationActive;
     pass.result.animationActive =
         otherAnimationActive || pass.backgroundSurfaceAnimationActive;
@@ -6373,24 +6556,24 @@ RenderResult DeclarativeRenderer::Render(
         });
     pass.result.succeeded = !hasErrors && pass.layout.valid() && renderTarget;
     if (pass.result.succeeded && pass.result.widgetComposition && !pass.result.widgetComposition->directContent)
-        compositionPaintCache_ = std::move(pass.nextCompositionPaintCache);
-    else compositionPaintCache_.clear();
+        publication->paintCache = std::move(pass.nextCompositionPaintCache);
+    publication->compositionInstance = pass.result.widgetComposition && !pass.result.widgetComposition->directContent
+        ? snapshot.instanceId : compositionInstance_;
     if (pass.result.succeeded) {
         pass.transitions.End();
-        widgetTransitions_ = std::move(pass.transitions);
+        publication->transitions = std::move(pass.transitions);
         std::erase_if(pass.transitionVisuals, [](const auto& entry) { return !entry.second.seen; });
-        transitionVisuals_ = std::move(pass.transitionVisuals);
+        publication->visuals = std::move(pass.transitionVisuals);
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
-        for (const auto& [_, visual] : transitionVisuals_)
+        for (const auto& [_, visual] : publication->visuals)
             pass.result.transitionRetainedBytes += visual.bytes + visual.outgoingBytes + visual.spareBytes;
 #endif
         pass.ResolveSelections();
-        selectedPresentationSources_ = SelectionSources(pass.selections);
-        focusSelectionMemory_ = std::move(pass.selectionMemory);
+        publication->selectionSources = SelectionSources(pass.selections);
+        publication->selection = std::move(pass.selectionMemory);
         pass.RetireInactiveFocusBackgroundTransitions();
-        focusBackgrounds_ = std::move(pass.focusBackgrounds);
-        RecalculateFocusBackgroundCompositeBytes();
-        focusBackgroundAccessClock_ = pass.focusBackgroundAccessClock;
+        publication->backgrounds = std::move(pass.focusBackgrounds);
+        publication->backgroundClock = pass.focusBackgroundAccessClock;
         if (pass.backgroundSurfaceSettleWake &&
             !pass.backgroundSurfaceAnimationActive && !otherAnimationActive)
             pass.result.backgroundSurfaceSettleWake =
@@ -6472,6 +6655,7 @@ RenderResult DeclarativeRenderer::Render(
                         // Geometry probes describe the retained logical layout,
                         // including decoration that was not prepared or painted.
                         pass.result.elementRects[node.id] = box->borderBox;
+                        pass.result.elementUnroundedRects[node.id] = box->unroundedBorderBox;
                         pass.result.elementVisibleRects[node.id] = box->visibleBox;
 #endif
                     }
@@ -6591,9 +6775,13 @@ RenderResult DeclarativeRenderer::Render(
                 }
             }
         }
-        incrementalLayoutCache_ = std::move(cache);
+        publication->layout = std::move(cache);
+        publication->collections = std::move(pass.collections);
+        if (stagedScrollOffsets) {
+            publication->scrollOffsets = std::move(*stagedScrollOffsets);
+            publication->scrollClock = stagedScrollClock;
+        }
     } else {
-        incrementalLayoutCache_.reset();
         retainedLayout_ = {};
     }
     if (styleCache_.size() > 4096) {
@@ -6656,11 +6844,18 @@ RenderResult DeclarativeRenderer::Render(
             if (!pass.result.compositorBackground || pass.result.compositorBackground->nodeId != surfaceId)
                 pass.visibleContentImageKeys.insert(keys.begin(), keys.end());
         }
-        visibleContentImageHashes_.clear();
         for (const auto& key : pass.visibleContentImageKeys)
-            visibleContentImageHashes_.insert(RemoteImageCache::OpaqueDiagnosticHash(key));
+            publication->visibleImageHashes.insert(RemoteImageCache::OpaqueDiagnosticHash(key));
     }
-    protectedImageKeys_ = pass.result.succeeded ? std::move(pass.visibleImageKeys) : priorImageProtection;
+    if (pass.result.succeeded) {
+        publication->imageKeys = std::move(pass.visibleImageKeys);
+        publication->id = ++nextPublicationId_;
+        publication->resourceGeneration = bitmapResourceGeneration_;
+        pass.result.publicationId = publication->id;
+        protectedImageKeys_ = priorImageProtection;
+        pendingPublication_ = std::move(publication);
+        if (!options.deferPublication) (void)CommitFramePublication(pass.result.publicationId);
+    } else protectedImageKeys_ = priorImageProtection;
     PublishImageProtection();
     if (scrollDiagnostics_) scrollDiagnostics_->Record("render", [&](auto& out) {
         const auto& timing = pass.result.timing;
@@ -6681,6 +6876,98 @@ RenderResult DeclarativeRenderer::Render(
             << " scale=" << options.pixelScale << " sequence-changed=" << !timing.collectionAdmissionSummary.empty();
     });
     return pass.result;
+}
+
+void DeclarativeRenderer::CancelCollectionPreparation() noexcept {
+    collectionPreparations_.clear();
+}
+
+CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
+    const WidgetSnapshot& snapshot, const std::wstring_view focusedElementId,
+    const Rect viewport, const DeclarativeRenderOptions& options,
+    const CollectionPreparationBudget budget, const bool collectFocusGeometry) {
+    const auto started = std::chrono::steady_clock::now();
+    CollectionPreparationResult result;
+    const auto retireSource = [&] {
+        std::erase_if(collectionPreparations_, [&](const auto& branch) { return branch.Matches(snapshot); });
+    };
+    if (!FiniteRect(viewport) || viewport.width < 0 || viewport.height < 0 ||
+        budget.maximumNewMeasurements == 0 || budget.maximumMicroseconds == 0) {
+        retireSource();
+        return result;
+    }
+    const auto hasCollection = [&](const auto& self, const WidgetNode& node) -> bool {
+        return node.collectionLayout.has_value() || std::ranges::any_of(node.children,
+            [&](const auto& child) { return self(self, child); });
+    };
+    if (!hasCollection(hasCollection, snapshot.root)) {
+        retireSource();
+        result.status = CollectionPreparationStatus::Ready;
+        return result;
+    }
+    const auto found = std::ranges::find_if(collectionPreparations_,
+        [&](const auto& branch) { return branch.Matches(snapshot); });
+    if (found != collectionPreparations_.end()) {
+        std::rotate(found, found + 1, collectionPreparations_.end());
+    } else {
+        if (collectionPreparations_.size() == 2) collectionPreparations_.erase(collectionPreparations_.begin());
+        CollectionPreparation branch;
+        branch.instance = snapshot.instanceId;
+        branch.scope = snapshot.activeInputScopeId;
+        branch.sequence = snapshot.sequence;
+        collectionPreparations_.push_back(std::move(branch));
+    }
+    auto& branch = collectionPreparations_.back();
+    branch.focus = focusedElementId;
+    branch.realization = options.realizeElementId;
+    branch.ready = false;
+    RenderPass pass;
+    pass.owner = this;
+    pass.snapshot = &snapshot;
+    pass.focusedId = focusedElementId;
+    pass.pressedId = options.pressedElementId;
+    pass.viewport = viewport;
+    pass.options = options;
+    pass.compactMode = IsCompactResponsiveSurface(options.responsiveViewport.value_or(Size{viewport.width, viewport.height}));
+    pass.preparationBudget = budget;
+    pass.preparationStarted = started;
+    auto stagedScroll = scrollOffsets_;
+    auto stagedClock = scrollStateAccessClock_;
+    auto stagedMotion = motionTimeline_;
+    pass.motionTimeline = &stagedMotion;
+    pass.options.animationTimestampMilliseconds = options.animationTimestampMilliseconds.value_or(GetTickCount64());
+    stagedMotion.BeginFrame(*pass.options.animationTimestampMilliseconds);
+    pass.scrollState = &stagedScroll;
+    pass.scrollAccessClock = &stagedClock;
+    try {
+        pass.BuildLayout(!options.suppressFocusedDescendantFollow, true,
+            options.suppressFocusedDescendantFollow
+                ? RenderPass::CollectionAnchorPolicy::ReconcileContentChanges
+                : RenderPass::CollectionAnchorPolicy::Reconcile);
+        if (collectFocusGeometry) {
+            pass.ResolvePresentationWithFocusFollow();
+            pass.CollectFocusGeometryTree(snapshot.root);
+        }
+        const bool errors = std::ranges::any_of(pass.result.diagnostics,
+            [](const auto& diagnostic) { return diagnostic.severity == RenderDiagnosticSeverity::Error; });
+        result.status = !errors && pass.layout.valid()
+            ? CollectionPreparationStatus::Ready : CollectionPreparationStatus::Failed;
+        if (collectFocusGeometry && result.status == CollectionPreparationStatus::Ready) {
+            pass.result.succeeded = true;
+            result.focusGeometry = std::make_shared<const RenderResult>(std::move(pass.result));
+        }
+    } catch (const RenderPass::CollectionSlicePending&) {
+        result.status = CollectionPreparationStatus::Pending;
+    }
+    if (result.status == CollectionPreparationStatus::Failed) retireSource();
+    else {
+        branch.collections = std::move(pass.collections);
+        branch.ready = result.status == CollectionPreparationStatus::Ready;
+    }
+    result.newMeasurements = pass.preparationMeasurements;
+    result.elapsedMicroseconds = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - started).count());
+    return result;
 }
 
 RenderResult DeclarativeRenderer::PrepareFocusEntry(
@@ -6789,6 +7076,7 @@ ContentMeasureResult DeclarativeRenderer::MeasureContent(
 }
 
 void DeclarativeRenderer::DiscardTargetResources() noexcept {
+    RejectFramePublication();
     // BeginDraw may return another transient device-context interface for the
     // same D2D device. Target-local clips/layout are discarded here, while the
     // bounded bitmap cache remains owned by its explicit resource domain and
@@ -6978,6 +7266,8 @@ bool DeclarativeRenderer::EnsureSurfaceClip(
 void DeclarativeRenderer::ForgetWidgetState(
     const std::wstring_view widgetInstanceId) noexcept {
     if (widgetInstanceId.empty()) return;
+    if (pendingPublication_ && pendingPublication_->instance == widgetInstanceId) RejectFramePublication();
+    std::erase_if(collectionPreparations_, [&](const auto& branch) { return branch.instance == widgetInstanceId; });
     if (widgetTransitions_.OwnsInstance(widgetInstanceId) || compositionInstance_ == widgetInstanceId) CancelWidgetTransitions();
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     ++gRendererWidgetStateRetirementCount;
@@ -6990,6 +7280,9 @@ void DeclarativeRenderer::ForgetWidgetState(
         retainedLayoutOwner_.clear();
     }
     std::erase_if(scrollOffsets_, [&](const auto& entry) {
+        return entry.first.starts_with(prefix);
+    });
+    std::erase_if(collections_, [&](const auto& entry) {
         return entry.first.starts_with(prefix);
     });
     motionTimeline_.ForgetPrefix(prefix);

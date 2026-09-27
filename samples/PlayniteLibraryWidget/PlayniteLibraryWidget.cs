@@ -29,6 +29,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         Sort: WidgetAppLibrarySortOrder.DisplayName);
     private static readonly WidgetAppLibraryQuery BrowseGames = InstalledGames with { InstalledOnly = false };
     private readonly object _gate = new();
+    private readonly WidgetCollectionItems<PlayniteLibraryPresentation.TileInput> _browseItems =
+        PlayniteLibraryPresentation.CreateBrowseItemCache();
     private readonly SemaphoreSlim _stateGate = new(1, 1);
     private readonly IPlayniteLibraryApplicationService _application;
     private readonly WidgetTimedMutation _actionFeedbackExpiry;
@@ -222,7 +224,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             };
         }
         CursorDiagnostic("render", "snapshot", navigation.Route);
-        var view = PlayniteLibraryPresentation.Render(state);
+        var view = PlayniteLibraryPresentation.Render(state, _browseItems);
         var root = _navigation.Scope(navigation, view.Root);
         var initialFocusId = view.FocusGroupEntryRequest is not null ||
             navigation.Route == PlayniteLibraryRoute.Categories ||

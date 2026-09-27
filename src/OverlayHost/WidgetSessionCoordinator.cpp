@@ -334,6 +334,7 @@ bool WidgetSessionCoordinator::RequestSnapshot(
     const auto id = std::wstring(widgetId);
     MarkRefreshRequested(id);
     if (explicitRetry) {
+        DiscardPresentationPreparation(id);
         ++generations_[id];
     }
     if (HasPending(RequestKind::Establish, id)) return true;
@@ -616,7 +617,10 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 continue;
             }
         }
-        if (!completionTraceEmitted) {
+        const bool deferredTrace = operations_.deferPresentationAdmission && completionCurrent && runtimeCurrent &&
+            snapshotIdentityCurrent && transactionAuthorityCurrent && completion.failure.stage == WidgetSessionFailureStage::None &&
+            IsPresentationChanging(request.kind);
+        if (!completionTraceEmitted && !deferredTrace) {
             EmitCompletionTrace(
                 request,
                 WidgetSessionTraceReason::None, disposition,
@@ -714,6 +718,8 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 : AdmitVirtualWindowTransition(
                     retainedCheckpoint, *completion.snapshot);
             if (!transactionAdmitted || !virtualWindowAdmitted) {
+                if (deferredTrace) EmitCompletionTrace(request, WidgetSessionTraceReason::None,
+                    WidgetSessionCompletionDisposition::Failed, completion.completedAt);
                 CompleteRefresh(request, false);
                 ReleasePresentationAdmission(request);
                 auto failure = FailureFrom(
@@ -733,6 +739,15 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 request.transactionKind != WidgetPresentationTransactionKind::RecoveryCheckpoint) {
                 completion.presentationImpact = operations_.compareSnapshots(*retainedCheckpoint, *completion.snapshot);
             }
+            if (operations_.deferPresentationAdmission && !completion.preparationAccepted) {
+                auto event = makeEvent(WidgetSessionEventKind::SnapshotAwaitingPreparation);
+                const auto widgetId = request.widgetId;
+                preparing_.insert_or_assign(widgetId, std::move(completion));
+                preparingCount_.store(preparing_.size());
+                events.push_back(std::move(event));
+                continue;
+            }
+            if (deferredTrace) EmitCompletionTrace(request, WidgetSessionTraceReason::None, disposition, completion.completedAt);
             const auto refreshRevision = refreshRevisions_.find(request.widgetId);
             const bool refreshRequestedDuringAdmission =
                 refreshRevision != refreshRevisions_.end() &&
@@ -898,7 +913,7 @@ std::optional<unsigned int> WidgetSessionCoordinator::NextCatalogRetryDelay(
 
 std::size_t WidgetSessionCoordinator::PendingRequestCount() const noexcept {
     std::scoped_lock lock(queueMutex_);
-    return pending_.size() + completed_.size() + (inFlight_ ? 1U : 0U);
+    return pending_.size() + completed_.size() + (inFlight_ ? 1U : 0U) + preparingCount_.load();
 }
 
 bool WidgetSessionCoordinator::DrainLifecycle(const std::chrono::milliseconds timeout) {
@@ -930,6 +945,8 @@ void WidgetSessionCoordinator::Shutdown() noexcept {
     }
     std::scoped_lock lock(queueMutex_);
     completed_.clear();
+    preparing_.clear();
+    preparingCount_.store(0);
     presentationAdmissions_.clear();
     deduplicatedCompletionObservers_.clear();
     deduplicatedCompletionObserverCount_ = 0;
@@ -991,7 +1008,7 @@ WidgetSessionCoordinator::QueueResult WidgetSessionCoordinator::Queue(
                 : QueueResult{
                     WidgetSessionTraceAction::Skipped,
                     WidgetSessionTraceReason::QueueFull};
-        } else if (pending_.size() + completed_.size() + (inFlight_ ? 1U : 0U) >=
+        } else if (pending_.size() + completed_.size() + (inFlight_ ? 1U : 0U) + preparingCount_.load() >=
             MaximumPendingRequests) {
             result = {
                 WidgetSessionTraceAction::Skipped,
@@ -1116,6 +1133,8 @@ void WidgetSessionCoordinator::QueueCoalescedRefreshAfterAdmission(
 void WidgetSessionCoordinator::SupersedeSnapshotRequests(
     const std::wstring_view widgetId,
     const WidgetLifecycleState lifecycle) noexcept {
+    if (const auto found = preparing_.find(widgetId); found != preparing_.end() &&
+        found->second.request.lifecycle != lifecycle) DiscardPresentationPreparation(widgetId);
     const auto id = std::wstring(widgetId);
     std::optional<std::uint64_t> cancelledInFlightId;
     std::vector<Request> cancelled;
@@ -1156,6 +1175,7 @@ void WidgetSessionCoordinator::SupersedeSnapshotRequests(
 
 void WidgetSessionCoordinator::RevokeRequests(
     const std::wstring_view widgetId) noexcept {
+    DiscardPresentationPreparation(widgetId);
     const auto id = std::wstring(widgetId);
     std::optional<std::uint64_t> cancelledInFlightId;
     std::vector<Request> cancelled;
@@ -1608,8 +1628,50 @@ void WidgetSessionCoordinator::CompleteRefresh(
     refreshRequestIds_.erase(found);
 }
 
+std::optional<WidgetSessionCoordinator::PresentationPreparation>
+WidgetSessionCoordinator::PendingPresentationPreparation(const std::wstring_view widgetId) const noexcept {
+    const auto found = preparing_.find(widgetId);
+    if (found == preparing_.end() || !found->second.snapshot ||
+        !CompletionIsCurrent(found->second.request) || !CompletionRuntimeIsCurrent(found->second.request)) return std::nullopt;
+    const auto& candidate = found->second;
+    return PresentationPreparation{&*candidate.snapshot, candidate.request.id,
+        candidate.request.generation, candidate.request.lifecycle};
+}
+
+bool WidgetSessionCoordinator::ApprovePresentationPreparation(
+    const std::wstring_view widgetId, const std::uint64_t requestId, const std::uint64_t generation) {
+    const auto found = preparing_.find(widgetId);
+    if (found == preparing_.end() || found->second.request.id != requestId ||
+        found->second.request.generation != generation) return false;
+    if (!CompletionIsCurrent(found->second.request) || !CompletionRuntimeIsCurrent(found->second.request)) {
+        DiscardPresentationPreparation(widgetId);
+        return false;
+    }
+    found->second.preparationAccepted = true;
+    {
+        std::scoped_lock lock(queueMutex_);
+        completed_.push_back(std::move(found->second));
+    }
+    preparing_.erase(found);
+    preparingCount_.store(preparing_.size());
+    if (completionAvailable_) completionAvailable_();
+    return true;
+}
+
+void WidgetSessionCoordinator::DiscardPresentationPreparation(const std::wstring_view widgetId) noexcept {
+    const auto found = preparing_.find(widgetId);
+    if (found == preparing_.end()) return;
+    EmitCompletionTrace(found->second.request, WidgetSessionTraceReason::NewerTarget,
+        WidgetSessionCompletionDisposition::Cancelled, found->second.completedAt);
+    CompleteRefresh(found->second.request, false);
+    ReleasePresentationAdmission(found->second.request);
+    preparing_.erase(found);
+    preparingCount_.store(preparing_.size());
+}
+
 void WidgetSessionCoordinator::HardRemoveCheckpoint(
     const std::wstring_view widgetId) noexcept {
+    DiscardPresentationPreparation(widgetId);
     const auto id = std::wstring(widgetId);
     snapshots_.erase(id);
     refreshStates_.erase(id);
@@ -1645,6 +1707,8 @@ WidgetSessionCatalogChange WidgetSessionCoordinator::ResetBridgeSessionAuthority
         deduplicatedCompletionObserverCount_ = 0;
     }
     descriptors_.clear();
+    preparing_.clear();
+    preparingCount_.store(0);
     snapshots_.clear();
     refreshStates_.clear();
     refreshRequestIds_.clear();

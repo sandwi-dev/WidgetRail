@@ -408,6 +408,14 @@ struct VirtualCollectionWindow final {
 };
 
 struct WidgetNode final {
+    struct CollectionLayout final {
+        bool adaptiveGrid{};
+        double estimatedItemExtent{};
+        std::optional<double> minimumColumnWidth;
+        std::optional<std::size_t> maximumColumns;
+        bool operator==(const CollectionLayout&) const = default;
+    };
+    std::optional<CollectionLayout> collectionLayout;
     struct Transition final {
         std::wstring groupId, key;
         int order{};

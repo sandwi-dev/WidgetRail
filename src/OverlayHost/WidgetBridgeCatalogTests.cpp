@@ -1354,6 +1354,37 @@ void VerifyEmbeddedMediaBundleBoundary() {
     std::cout << "WidgetBridge embedded media native boundary cases passed=13\n";
 }
 
+void VerifyCollectionLayoutProtocol() {
+    const std::string json = R"json({"snapshot":{"protocolVersion":59,"sequence":1,
+        "widgetInstanceId":"collection.instance","activeInputScopeId":"items",
+        "root":{"id":"items","kind":"scroll","scrollAxis":"vertical","collectionAnchorKey":"key.1",
+            "collectionLayout":{"kind":"adaptiveGrid","estimatedItemExtent":240,"minimumColumnWidth":180,"maximumColumns":6},
+            "children":[{"id":"item.1","kind":"button","text":"One","actionId":"open","collectionItemKey":"key.1","children":[]}]}}})json";
+    std::wstring error;
+    const auto parsed = widgetrail::testing::ParseWidgetSnapshotResponse(json, error);
+    Require(parsed && parsed->root.collectionLayout && parsed->root.collectionLayout->adaptiveGrid &&
+        parsed->root.collectionLayout->minimumColumnWidth == 180 &&
+        parsed->root.collectionLayout->maximumColumns == 6, "explicit collection layout crosses native boundary");
+    const auto reject = [&](const std::string& from, const std::string& to, const char* message) {
+        auto invalid = json;
+        invalid.replace(invalid.find(from), from.size(), to);
+        error.clear();
+        Require(!widgetrail::testing::ParseWidgetSnapshotResponse(invalid, error), message);
+    };
+    reject("\"protocolVersion\":59", "\"protocolVersion\":58", "old protocol rejects collection realization");
+    reject("\"maximumColumns\":6", "\"maximumColumns\":0", "collection column count remains bounded");
+    reject("\"minimumColumnWidth\":180", "\"minimumColumnWidth\":null", "grid requires actual column width");
+    reject("\"estimatedItemExtent\":240", "\"estimatedItemExtent\":0", "collection requires positive estimated extent");
+    reject("\"adaptiveGrid\"", "\"arbitrary\"", "collection kind is closed");
+    reject("\"adaptiveGrid\"", "\"list\"", "list cannot inherit grid fields");
+    reject("\"scrollAxis\":\"vertical\"", "\"scrollAxis\":\"horizontal\"", "adaptive collection scrolls vertically");
+    reject("\"collectionItemKey\":\"key.1\",", "", "collection item requires stable key");
+    reject("\"kind\":\"button\"", "\"kind\":\"textEntry\",\"textEntryValue\":\"\",\"textEntryMaximumLength\":100",
+        "text-entry button normalization cannot bypass collection item contract");
+    reject("\"collectionItemKey\":\"key.1\",", "\"collectionItemKey\":\"key.1\",\"visibleWhen\":\"compactOnly\",",
+        "conditional items cannot leave holes in logical collection");
+}
+
 void VerifyPositionedCollectionProtocol() {
     const std::string scrollbar = R"json({"snapshot":{"protocolVersion":53,"sequence":1,
         "widgetInstanceId":"scrollbar","activeInputScopeId":"root",
@@ -1644,6 +1675,7 @@ int main(int argc, char** argv) {
     VerifyControllerShortcutLabelContract();
     VerifyEmbeddedMediaSnapshotContract();
     VerifyEmbeddedMediaBundleBoundary();
+    VerifyCollectionLayoutProtocol();
     VerifyPositionedCollectionProtocol();
     VerifyVirtualCollectionProtocol();
     std::vector<wchar_t> secret(14);

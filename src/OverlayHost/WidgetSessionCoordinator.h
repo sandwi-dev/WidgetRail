@@ -37,6 +37,7 @@ enum class WidgetSessionEventKind {
     BridgeSessionReplaced,
     CatalogChanged,
     SnapshotAdmitted,
+    SnapshotAwaitingPreparation,
     LifecycleChanged,
     Restarted,
     Failed,
@@ -240,6 +241,9 @@ struct WidgetSessionOperations final {
         std::stop_token, std::wstring_view)> restart;
     std::function<long long()> bridgeSessionGeneration;
     std::function<std::optional<WidgetPresentationImpact>(const WidgetSnapshot&, const WidgetSnapshot&)> compareSnapshots;
+    // Opt-in host staging. A validated candidate remains outside Snapshot()/
+    // Presentation() until its exact preparation request is approved.
+    bool deferPresentationAdmission{};
 };
 
 /// Owns bridge-facing widget session state and serial request policy. The host
@@ -284,6 +288,18 @@ public:
     /// Applies completed operations on the caller/UI thread. No callback runs
     /// while coordinator state is mutating.
     [[nodiscard]] std::vector<WidgetSessionEvent> TakeEvents();
+
+    struct PresentationPreparation final {
+        const WidgetSnapshot* snapshot{};
+        std::uint64_t requestId{}, generation{};
+        WidgetLifecycleState lifecycle{WidgetLifecycleState::Background};
+    };
+    [[nodiscard]] std::optional<PresentationPreparation> PendingPresentationPreparation(
+        std::wstring_view widgetId) const noexcept;
+    // Queues admission back through ordinary authority validation. No callback
+    // runs under the queue lock and no scene becomes current inside this call.
+    [[nodiscard]] bool ApprovePresentationPreparation(
+        std::wstring_view widgetId, std::uint64_t requestId, std::uint64_t generation);
 
     [[nodiscard]] const std::vector<WidgetDescriptor>& descriptors() const noexcept {
         return descriptors_;
@@ -382,6 +398,7 @@ private:
         std::optional<bool> acknowledged;
         std::uint64_t completedAt{};
         bool cancelled{};
+        bool preparationAccepted{};
         long long bridgeSessionGeneration{};
     };
 
@@ -443,6 +460,7 @@ private:
     void MarkRefreshInFlight(std::wstring_view widgetId, std::uint64_t requestId);
     void CompleteRefresh(const Request& request, bool admitted) noexcept;
     void HardRemoveCheckpoint(std::wstring_view widgetId) noexcept;
+    void DiscardPresentationPreparation(std::wstring_view widgetId) noexcept;
     [[nodiscard]] WidgetSessionCatalogChange ResetBridgeSessionAuthority(
         long long bridgeSessionGeneration);
     [[nodiscard]] long long CurrentBridgeSessionGeneration() const noexcept;
@@ -456,6 +474,10 @@ private:
     std::condition_variable queueChanged_;
     std::deque<Request> pending_;
     std::deque<Completion> completed_;
+    // UI-thread-owned candidates; presentationAdmissions_ continues to hold
+    // their transport transaction until ordinary admission or cancellation.
+    std::map<std::wstring, Completion, std::less<>> preparing_;
+    std::atomic<std::size_t> preparingCount_{};
     std::unordered_map<std::wstring, Request> presentationAdmissions_;
     std::unordered_map<std::uint64_t, std::vector<Request>>
         deduplicatedCompletionObservers_;

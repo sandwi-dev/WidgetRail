@@ -159,7 +159,8 @@ Tree BuildWidgetTree(
         const auto role = ResolveRole(source);
         const auto region = regions.find(source.id);
         const bool inActiveScope = scope == snapshot.activeInputScopeId;
-        const bool exposed = inActiveScope && role && region != regions.end() &&
+        const bool logicalItem = render.realizableFocusIds.contains(source.id) && !source.collectionItemKey.empty();
+        const bool exposed = inActiveScope && role && (region != regions.end() || logicalItem) &&
             !AccessibleName(source, render.playStationControls).empty();
 
         auto parent = accessibleParent;
@@ -184,7 +185,11 @@ Tree BuildWidgetTree(
             }
             node.actionId = source.actionId;
             node.valueChangedActionId = source.valueChangedActionId;
-            node.bounds = region->second;
+            node.bounds = region != regions.end() ? region->second : declarative::Rect{};
+            node.supportsRealization = logicalItem;
+            if (logicalItem) node.collectionItemKey = source.collectionItemKey;
+            node.virtualized = logicalItem && !render.navigationRects.contains(source.id);
+            node.offscreen = region == regions.end();
             node.role = *role;
             node.parent = accessibleParent;
             const auto presentedValue = presentedSliderValues.find(source.id);

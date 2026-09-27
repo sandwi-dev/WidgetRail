@@ -392,6 +392,28 @@ int main() {
         const auto custom = widgetrail::accessibility::BuildWidgetTree(L"prompts", L"generation", prompts, glyphRender, L"");
         Check(custom.nodes[0].name == L"Previous section", "authored accessible context is retained");
     }
+    {
+        widgetrail::WidgetSnapshot logical;
+        logical.activeInputScopeId = L"list"; logical.root.id = L"list"; logical.root.kind = L"scroll";
+        widgetrail::WidgetNode item; item.id = L"next"; item.kind = L"button"; item.text = L"Offscreen track";
+        logical.root.children.push_back(item);
+        logical.root.children[0].collectionItemKey = L"logical.next";
+        widgetrail::RenderResult logicalRender;
+        logicalRender.realizableFocusIds.insert(L"next");
+        const auto logicalTree = widgetrail::accessibility::BuildWidgetTree(L"music", L"runtime", logical, logicalRender, L"");
+        Check(logicalTree.nodes.size() == 1 && logicalTree.nodes[0].virtualized && logicalTree.nodes[0].offscreen &&
+            logicalTree.nodes[0].bounds.width == 0 && logicalTree.nodes[0].supportsRealization,
+            "unrealized collection item has lightweight offscreen semantics without invented bounds");
+        logicalRender.accessibilityRegions = {Region(L"next", 10)};
+        logicalRender.navigationRects[L"next"] = {10, 10, 120, 32};
+        const auto realized = widgetrail::accessibility::BuildWidgetTree(L"music", L"runtime", logical, logicalRender, L"");
+        Check(realized.nodes.size() == 1 && !realized.nodes[0].virtualized && !realized.nodes[0].offscreen &&
+            realized.nodes[0].collectionItemKey == logicalTree.nodes[0].collectionItemKey,
+            "realized item retains logical identity and publishes actual geometry");
+        logical.activeInputScopeId = L"dialog";
+        Check(widgetrail::accessibility::BuildWidgetTree(L"music", L"runtime", logical, logicalRender, L"").nodes.empty(),
+            "modal scope hides parent collection semantics");
+    }
     std::cout << "AccessibilityTreeTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

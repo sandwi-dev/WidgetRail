@@ -23,6 +23,9 @@ constexpr wchar_t kWindowClass[] = L"WidgetRail.PinnedSurface";
 constexpr wchar_t kWindowTitle[] = L"WidgetRail pinned surface";
 constexpr UINT kAccessibilityActionMessage = WM_APP + 0x316;
 constexpr UINT_PTR kBackgroundSurfaceAnimationTimer = 1;
+constexpr UINT_PTR kFocusRealizationTimer = 2;
+constexpr UINT_PTR kAccessibilityRealizationTimer = 3;
+constexpr UINT_PTR kFrameRecoveryTimer = 4;
 constexpr UINT kBackgroundSurfaceAnimationTimerMilliseconds = 15;
 constexpr float kChromeHeightDip = surface_geometry::kPinnedChromeHeightDip;
 constexpr float kSideInsetDip = surface_geometry::kPinnedSideInsetDip;
@@ -312,6 +315,35 @@ bool WidgetSurfaceCoordinator::Pin(
     return true;
 }
 
+CollectionPreparationResult WidgetSurfaceCoordinator::PrepareSnapshot(
+    const std::wstring_view widgetIdValue, const std::wstring_view runtimeGenerationValue,
+    const WidgetSnapshot& snapshot, const std::vector<PinnedLayoutOption>& layouts,
+    const bool compactMediaSessionAvailable, const CollectionPreparationBudget budget) {
+    if (!pinned() || widgetIdValue != admission_->widgetId || runtimeGenerationValue != admission_->runtimeGeneration ||
+        snapshot.instanceId != admission_->instanceId || !EnsureGraphicsResources()) return {};
+    const auto nextLayouts = BuildLayoutOptions(admission_->initialContentWidthDip, admission_->initialContentHeightDip,
+        layouts, snapshot, compactMediaSessionAvailable, admission_->fullWidgetPinningSupported);
+    if (!nextLayouts) return {};
+    if (nextLayouts->empty()) return {CollectionPreparationStatus::Ready}; // Ordinary admission retires this pin.
+    const auto selected = std::ranges::find_if(*nextLayouts, [&](const auto& layout) { return layout.id == SelectedLayoutId(); });
+    if (compactMediaPresentation() && selected == nextLayouts->end()) return {CollectionPreparationStatus::Ready};
+    const auto& nextLayout = selected == nextLayouts->end() ? nextLayouts->front() : *selected;
+    const auto& nextSnapshot = nextLayout.projection ? *nextLayout.projection : snapshot;
+    RECT client{};
+    if (!GetClientRect(window_, &client)) return {};
+    const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+    const float width = static_cast<float>(client.right - client.left) / scale;
+    const float height = static_cast<float>(client.bottom - client.top) / scale;
+    auto options = RenderOptions(width, height, scale);
+    const auto focus = input::FindNodeInInputScope(nextSnapshot, focusedElementId_, nextSnapshot.activeInputScopeId)
+        ? focusedElementId_ : nextSnapshot.initialFocusId;
+    options.suppressFocusedDescendantFollow = freeScroll_.Evaluate(
+        {admission_->widgetId, &nextSnapshot, admission_->runtimeGeneration, admission_->presentationGeneration, false}, focus).followSuppressed;
+    return renderer_->PrepareCollections(nextSnapshot, controllerFocused_ ? std::wstring_view{focus} : std::wstring_view{},
+        ContentViewport(width, height, nextLayout.kind == PinnedLayoutOption::Kind::CompactMedia,
+            placementSession_.has_value() || opacityPreviewOriginal_.has_value()), options, budget);
+}
+
 bool WidgetSurfaceCoordinator::UpdateSnapshot(
     const std::wstring_view widgetIdValue,
     const std::wstring_view runtimeGenerationValue,
@@ -564,7 +596,7 @@ bool WidgetSurfaceCoordinator::ExitControllerFocus() noexcept {
 bool WidgetSurfaceCoordinator::MoveControllerFocus(
     const input::NavigationDirection direction,
     const bool sliderAdjustmentEligible) {
-    if (!controllerFocused_ || direction == input::NavigationDirection::None ||
+    if (framePublicationFailed_ || !controllerFocused_ || direction == input::NavigationDirection::None ||
         !pinned()) return false;
     if (compactMediaPresentation()) return true;
     const auto& snapshot = SelectedSnapshot();
@@ -674,6 +706,7 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
             break;
         }
     }
+    sliderInteraction_.focusRealization().Clear();
     auto resolution = input::SurfaceInteractionTransactions::ResolveDirectionalFocus(
         snapshot, focusedElementId_, direction, lastRenderResult_,
         &focusGroupMemory_, admission_->widgetId);
@@ -685,6 +718,11 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     if (RecordPaginationOutcome(std::move(focusAdmission.pagination)))
         NotifyOwner();
     if (focusAdmission.retainFocus) return true;
+    if (focusAdmission.resolution.target && sliderInteraction_.focusRealization().Stage(authority,
+            focusedElementId_, *focusAdmission.resolution.target, lastRenderResult_)) {
+        SetTimer(window_, kFocusRealizationTimer, 1, nullptr);
+        return true;
+    }
     return focusAdmission.resolution.target
         ? applyFocus(*focusAdmission.resolution.target)
         : false;
@@ -865,6 +903,10 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
     const std::uint64_t now) {
     const auto sample = freeScroll_.SampleRightStick(
         rightThumbX, rightThumbY, now);
+    if (sample.moving) {
+        pendingAccessibilityRealization_.reset();
+        sliderInteraction_.focusRealization().Clear();
+    }
     if (!pinned() || !controllerFocused_ ||
         policy_.interactionMode() != InteractionMode::Focusable ||
         !renderer_ || !window_ || focusedElementId_.empty()) {
@@ -906,9 +948,10 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
     const auto axis = sample.axis == input::FreeScrollAxis::Horizontal
         ? declarative::ScrollAxis::Horizontal
         : declarative::ScrollAxis::Vertical;
+    const auto preparationOptions = RenderOptions(widthDip, heightDip, scale);
     const auto plan = input::SurfaceInteractionTransactions::PlanFreeScroll(
         freeScroll_, *renderer_, authority, focusedElementId_,
-        lastRenderResult_, axis, sample.deltaDip, viewport);
+        lastRenderResult_, axis, sample.deltaDip, viewport, nullptr, &preparationOptions);
     if (!plan) return false;
 
     const auto& damage = plan->render.damage;
@@ -933,6 +976,7 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
 }
 
 void WidgetSurfaceCoordinator::ClearFreeScroll() noexcept {
+    pendingAccessibilityRealization_.reset();
     (void)freeScroll_.Clear();
 }
 
@@ -942,6 +986,7 @@ void WidgetSurfaceCoordinator::RetireSliderInteraction() noexcept {
 
 void WidgetSurfaceCoordinator::TransitionPinnedFocus(
     const std::wstring_view target) {
+    sliderInteraction_.focusRealization().Clear();
     ClearFreeScroll();
     if (focusedElementId_ != target) RetireSliderInteraction();
     focusedElementId_ = target;
@@ -985,7 +1030,8 @@ bool WidgetSurfaceCoordinator::QueueResolvedInput(
     const std::optional<double> requestedValue,
     std::optional<input::WidgetInteractionActionRequest> sliderActionRequest,
     std::optional<input::WidgetInteractionActionRequest> selectActionRequest) {
-    if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
+    sliderInteraction_.focusRealization().Clear();
+    if (framePublicationFailed_ || !pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
         nodeId.empty() || protocolButton.empty()) return false;
     if (inputRequests_.size() >= kMaximumPendingInputRequests) {
         if (sliderActionRequest) {
@@ -1709,6 +1755,8 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     // reentrant reconciliation must observe pinned() == false before that work
     // begins rather than rediscovering the retiring HWND as a valid endpoint.
     tearingDown_ = true;
+    framePublicationFailed_ = false;
+    frameRecoveryAttempts_ = 0;
     lastStopReason_ = reason;
     if (beforeWindowRetirement_) beforeWindowRetirement_(reason);
     if (selectedLayoutIndex_ < layoutOptions_.size())
@@ -1777,6 +1825,7 @@ void WidgetSurfaceCoordinator::SetBeforeWindowRetirement(
 }
 
 void WidgetSurfaceCoordinator::OnOverlayHidden() noexcept {
+    sliderInteraction_.focusRealization().Clear();
     overlayVisible_ = false;
     if (setupNewPin_) {
         (void)CancelSetup();
@@ -2285,6 +2334,21 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
     case WM_ERASEBKGND:
         return 1;
     case WM_TIMER:
+        if (wParam == kFrameRecoveryTimer) {
+            KillTimer(window_, kFrameRecoveryTimer);
+            if (pinned()) RequestPaint();
+            return 0;
+        }
+        if (wParam == kAccessibilityRealizationTimer) {
+            KillTimer(window_, kAccessibilityRealizationTimer);
+            PumpAccessibilityRealization();
+            return 0;
+        }
+        if (wParam == kFocusRealizationTimer) {
+            KillTimer(window_, kFocusRealizationTimer);
+            PumpFocusRealization();
+            return 0;
+        }
         if (wParam == kBackgroundSurfaceAnimationTimer) {
             if (!renderer_ || !lastRenderResult_.succeeded) {
                 KillTimer(window_, kBackgroundSurfaceAnimationTimer);
@@ -2376,6 +2440,7 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
             continue;
         if (request.domain == accessibility::ElementDomain::Widget ||
             request.domain == accessibility::ElementDomain::WidgetOption) {
+            if (framePublicationFailed_) continue;
             if (request.hostAction == accessibility::HostAction::ExpandSelect) {
                 if (request.kind != accessibility::ActionKind::Invoke ||
                     request.hostTargetId != request.nodeId ||
@@ -2437,7 +2502,16 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
                 snapshot);
             if (!resolved || policy_.interactionMode() != InteractionMode::Focusable)
                 continue;
-            if (resolved->kind == accessibility::ActionKind::Focus) {
+            if (resolved->kind == accessibility::ActionKind::Realize) {
+                ClearFreeScroll();
+                const input::WidgetInteractionAuthority authority{
+                    admission_->widgetId, &snapshot, admission_->runtimeGeneration, admission_->presentationGeneration, false};
+                (void)freeScroll_.Bind(authority, focusedElementId_, resolved->scrollId, resolved->scrollAxis,
+                    input::FreeScrollFocusPolicy::Preserve);
+                pendingAccessibilityRealization_ = request;
+                accessibilityRealizationReady_ = false;
+                SetTimer(window_, kAccessibilityRealizationTimer, 1, nullptr);
+            } else if (resolved->kind == accessibility::ActionKind::Focus) {
                 if (!EnterControllerFocus() || GetFocus() != window_) continue;
                 TransitionPinnedFocus(resolved->nodeId);
                 PublishAccessibility();
@@ -2621,6 +2695,88 @@ bool WidgetSurfaceCoordinator::EnsureGraphicsResources() {
     return true;
 }
 
+void WidgetSurfaceCoordinator::PumpAccessibilityRealization() {
+    if (!pendingAccessibilityRealization_ || accessibilityRealizationReady_) return;
+    if (!pinned() || !renderer_ || !window_) { pendingAccessibilityRealization_.reset(); return; }
+    const auto& snapshot = SelectedSnapshot();
+    const auto request = *pendingAccessibilityRealization_;
+    if (!accessibility::ResolveActionRequest(request, admission_->widgetId, admission_->runtimeGeneration, snapshot)) {
+        pendingAccessibilityRealization_.reset(); return;
+    }
+    RECT client{};
+    if (!GetClientRect(window_, &client)) { pendingAccessibilityRealization_.reset(); return; }
+    const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+    const float width = static_cast<float>(client.right - client.left) / scale;
+    const float height = static_cast<float>(client.bottom - client.top) / scale;
+    auto options = RenderOptions(width, height, scale);
+    options.realizeElementId = request.nodeId;
+    options.suppressFocusedDescendantFollow = true;
+    const auto prepared = renderer_->PrepareCollections(snapshot, controllerFocused_ ? std::wstring_view{focusedElementId_} : std::wstring_view{},
+        ContentViewport(width, height, compactMediaPresentation(), placementSession_.has_value() || opacityPreviewOriginal_.has_value()), options);
+    if (prepared.status == CollectionPreparationStatus::Pending) {
+        SetTimer(window_, kAccessibilityRealizationTimer, 16, nullptr); return;
+    }
+    if (prepared.status == CollectionPreparationStatus::Failed) { pendingAccessibilityRealization_.reset(); return; }
+    accessibilityRealizationReady_ = true;
+    RequestPaint();
+}
+
+void WidgetSurfaceCoordinator::PumpFocusRealization() {
+    auto& intent = sliderInteraction_.focusRealization();
+    if (!pinned() || !controllerFocused_ || !renderer_ || !window_) { intent.Clear(); return; }
+    const auto& snapshot = SelectedSnapshot();
+    const input::WidgetInteractionAuthority authority{admission_->widgetId, &snapshot,
+        admission_->runtimeGeneration, admission_->presentationGeneration, false};
+    const auto target = intent.Target(authority, focusedElementId_);
+    if (!target) return;
+    RECT client{};
+    if (!GetClientRect(window_, &client)) { intent.Clear(); return; }
+    const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+    const float width = static_cast<float>(client.right - client.left) / scale;
+    const float height = static_cast<float>(client.bottom - client.top) / scale;
+    auto options = RenderOptions(width, height, scale);
+    const auto viewport = ContentViewport(width, height, compactMediaPresentation(),
+        placementSession_.has_value() || opacityPreviewOriginal_.has_value());
+    const auto preparation = renderer_->PrepareCollections(snapshot, *target, viewport, options, {}, true);
+    if (preparation.status == CollectionPreparationStatus::Pending) {
+        SetTimer(window_, kFocusRealizationTimer, 16, nullptr); return;
+    }
+    if (preparation.status == CollectionPreparationStatus::Failed) { intent.Clear(); return; }
+    if (const auto ready = preparation.focusGeometry ? intent.TakeReady(authority, focusedElementId_, *preparation.focusGeometry) : std::nullopt) {
+        TransitionPinnedFocus(*ready);
+        RequestPaint();
+    } else intent.Clear();
+}
+
+DeclarativeRenderOptions WidgetSurfaceCoordinator::RenderOptions(
+    const float widthDip, const float heightDip, const float dpiScale) const {
+    DeclarativeRenderOptions options;
+    options.deferPublication = true;
+    options.pixelScale = dpiScale;
+    options.collectAccessibility = ResolveSurfacePresentationPolicy(policy_.interactionMode()).exposeInteractiveSemantics;
+    options.responsiveViewport = {widthDip, heightDip};
+    options.surfaceBackground = NativeColor{22.0F / 255.0F, 33.0F / 255.0F, 46.0F / 255.0F, 1.0F};
+    options.accessibility.reducedMotion = true;
+    options.animationTimestampMilliseconds = GetTickCount64();
+    options.artworkWidgetId = admission_->widgetId;
+    options.sizeArtworkToDisplay = true;
+    options.artworkRuntimeGeneration = admission_->runtimeGeneration;
+    options.artworkPresentationGeneration = admission_->presentationGeneration;
+    options.packageContentDigest = admission_->packageContentDigest;
+    options.packageIconAssets = admission_->packageIconAssets;
+    options.artworkAuthorityId = admission_->widgetId + L"\x1f" + admission_->runtimeGeneration + L"\x1f" + admission_->presentationGeneration;
+    return options;
+}
+
+declarative::Rect WidgetSurfaceCoordinator::ContentViewport(
+    const float widthDip, const float heightDip, const bool compactMedia, const bool adjustmentActive) {
+    return compactMedia && !adjustmentActive
+        ? declarative::Rect{kPinnedBorderDip, kPinnedBorderDip,
+              std::max(1.0F, widthDip - kPinnedBorderDip * 2.0F), std::max(1.0F, heightDip - kPinnedBorderDip * 2.0F)}
+        : declarative::Rect{kSideInsetDip, kChromeHeightDip,
+              std::max(1.0F, widthDip - kSideInsetDip * 2.0F), std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip)};
+}
+
 void WidgetSurfaceCoordinator::Paint() {
     ++workCounters_.paintMessages;
     PAINTSTRUCT paint{};
@@ -2698,14 +2854,7 @@ void WidgetSurfaceCoordinator::Paint() {
                         widthDip - kSideInsetDip, 31.0F),
             secondaryBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
     }
-    DeclarativeRenderOptions options;
-    options.pixelScale = dpiScale;
-    options.collectAccessibility = ResolveSurfacePresentationPolicy(
-        policy_.interactionMode()).exposeInteractiveSemantics;
-    options.responsiveViewport = {widthDip, heightDip};
-    options.surfaceBackground = NativeColor{22.0F / 255.0F, 33.0F / 255.0F, 46.0F / 255.0F, 1.0F};
-    options.accessibility.reducedMotion = true;
-    options.animationTimestampMilliseconds = GetTickCount64();
+    auto options = RenderOptions(widthDip, heightDip, dpiScale);
     const auto& selectedSnapshot = SelectedSnapshot();
     auto sliderPresentation = sliderInteraction_.PrepareRenderPresentation(
         selectedSnapshot,
@@ -2718,15 +2867,6 @@ void WidgetSurfaceCoordinator::Paint() {
         sliderPresentation.pressedElementId;
     options.activeSliderElementId =
         sliderPresentation.activeSliderElementId;
-    options.artworkWidgetId = admission_->widgetId;
-    options.sizeArtworkToDisplay = true;
-    options.artworkRuntimeGeneration = admission_->runtimeGeneration;
-    options.artworkPresentationGeneration = admission_->presentationGeneration;
-    options.packageContentDigest = admission_->packageContentDigest;
-    options.packageIconAssets = admission_->packageIconAssets;
-    options.artworkAuthorityId = admission_->widgetId + L"\x1f" +
-        admission_->runtimeGeneration + L"\x1f" +
-        admission_->presentationGeneration;
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     lastArtworkRuntimeGenerationForTesting_ = options.artworkRuntimeGeneration;
     lastArtworkPresentationGenerationForTesting_ =
@@ -2742,22 +2882,21 @@ void WidgetSurfaceCoordinator::Paint() {
     const auto freeScrollDecision =
         input::SurfaceInteractionTransactions::EvaluateFreeScroll(
             freeScroll_, authority, focusedElementId_, lastRenderResult_);
-    if (freeScroll_.binding() &&
+    if (!framePublicationFailed_ && freeScroll_.binding() &&
         freeScrollDecision.disposition !=
             input::FreeScrollAuthorityDisposition::Current) {
         ClearFreeScroll();
     }
     options.suppressFocusedDescendantFollow =
         freeScrollDecision.followSuppressed;
-    const declarative::Rect viewport = compactMedia && !showHostSetupChrome
-        ? declarative::Rect{
-              kPinnedBorderDip, kPinnedBorderDip,
-              std::max(1.0F, widthDip - kPinnedBorderDip * 2.0F),
-              std::max(1.0F, heightDip - kPinnedBorderDip * 2.0F)}
-        : declarative::Rect{
-              kSideInsetDip, kChromeHeightDip,
-              std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
-              std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip)};
+    if (pendingAccessibilityRealization_) {
+        if (accessibility::ResolveActionRequest(*pendingAccessibilityRealization_, admission_->widgetId,
+                admission_->runtimeGeneration, selectedSnapshot)) {
+            if (accessibilityRealizationReady_) options.realizeElementId = pendingAccessibilityRealization_->nodeId;
+            options.suppressFocusedDescendantFollow = true;
+        } else pendingAccessibilityRealization_.reset();
+    }
+    const auto viewport = ContentViewport(widthDip, heightDip, compactMedia, adjustmentActive);
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     lastContentViewportForTesting_ = viewport;
 #endif
@@ -2894,13 +3033,36 @@ void WidgetSurfaceCoordinator::Paint() {
             adjustmentActive ? chromeBrush_.Get() : textBrush_.Get(),
             adjustmentActive ? kAdjustBorderDip : kPinnedBorderDip);
     }
-    const HRESULT result = renderTarget_->EndDraw();
+    HRESULT result = renderTarget_->EndDraw();
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
+    if (FAILED(nextEndDrawFailureForTesting_)) result = std::exchange(nextEndDrawFailureForTesting_, S_OK);
+#endif
+    if (SUCCEEDED(result) && renderResult.succeeded && renderResult.publicationId &&
+        !renderer_->CommitFramePublication(renderResult.publicationId)) result = E_FAIL;
     bool mediaViewportReconciled{};
     bool backgroundSurfaceDiagnosticsQueued{};
     bool pinnedResizeDiagnosticsQueued{};
     input::ScrollPaginationSessionOutcome paginationOutcome;
-    if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
-    else if (SUCCEEDED(result)) {
+    if (FAILED(result) || !renderResult.succeeded) {
+        framePublicationFailed_ = true;
+        lastRenderResult_ = {};
+        lastRenderResult_.diagnostics = renderResult.diagnostics;
+        if (FAILED(result)) lastRenderResult_.diagnostics.push_back({RenderDiagnosticSeverity::Error,
+            L"", L"end_draw_failed", std::to_wstring(static_cast<unsigned long>(result))});
+        inputRequests_.clear();
+        accessibilityProvider_.Clear();
+        committedMediaViewport_.reset();
+        mediaViewportGeometryDirty_ = true;
+        ReleaseGraphicsResources();
+        // Do not consume a reveal on failed pixels. A bounded retry rebuilds
+        // the same request; later input/image updates can retry after exhaustion.
+        if (frameRecoveryAttempts_ < 3)
+            SetTimer(window_, kFrameRecoveryTimer, 16U << frameRecoveryAttempts_++, nullptr);
+    } else {
+        framePublicationFailed_ = false;
+        frameRecoveryAttempts_ = 0;
+        KillTimer(window_, kFrameRecoveryTimer);
+        if (!options.realizeElementId.empty()) pendingAccessibilityRealization_.reset();
         constexpr std::size_t maximumPendingDiagnostics = 16;
         for (const auto& diagnostic : renderResult.diagnostics) {
             if (!diagnostic.code.starts_with(L"background_crossfade_")) continue;
@@ -2987,8 +3149,6 @@ void WidgetSurfaceCoordinator::Paint() {
             }
         }
         PublishAccessibility();
-    } else {
-        KillTimer(window_, kBackgroundSurfaceAnimationTimer);
     }
     EndPaint(window_, &paint);
     const bool paginationNotification =
@@ -3002,7 +3162,7 @@ void WidgetSurfaceCoordinator::Paint() {
 }
 
 void WidgetSurfaceCoordinator::PublishAccessibility() {
-    if (!pinned()) return;
+    if (!pinned() || framePublicationFailed_) return;
     const auto& snapshot = SelectedSnapshot();
     RECT client{};
     GetClientRect(window_, &client);

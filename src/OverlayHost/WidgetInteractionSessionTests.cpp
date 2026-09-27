@@ -734,6 +734,9 @@ void OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority() {
     session.SetFocus(L"entry.widget", snapshot, L"entry.remembered");
     auto authority = Authority(
         snapshot, L"entry.widget", L"runtime-a", L"presentation-a");
+    Check(session.PreviewCandidateFocusGroup(authority, render) == L"entry.remembered" &&
+        !session.FocusGroupEntryRequestPending(authority),
+        "candidate group preparation reads remembered target without admitting or consuming the request");
     Check(session.ObserveFocusGroupEntryRequest(
               authority, FocusGroupEntryAdmission::Active) ==
               FocusGroupEntryObservation::Pending,
@@ -757,12 +760,34 @@ void OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority() {
     const auto confirmed = session.PreviewFocusGroupEntryRequest(authority, render);
     Check(confirmed.current && confirmed.target == preview.target,
           "final preparation validates the same exact remembered target");
+    auto publication = FocusGroupEntryPublication::Capture(authority, *confirmed.target);
+    Check(publication && publication->Matches(authority) &&
+        session.FocusGroupEntryRequestPending(authority),
+        "staging a submitted target retains the unconsumed one-shot intent");
+    publication.reset(); // EndDraw/submission failure: discard only the acknowledgement.
+    Check(session.FocusGroupEntryRequestPending(authority), "failed frame leaves group request retryable");
+    publication = FocusGroupEntryPublication::Capture(authority, *confirmed.target);
+    auto changed = successor;
+    ++changed.sequence;
+    Check(!publication->Matches(Authority(changed, L"entry.widget", L"runtime-a", L"presentation-a")),
+        "another sequence requires a new drawn acknowledgement even for the same request");
+    changed = successor; changed.activeInputScopeId = L"other";
+    Check(!publication->Matches(Authority(changed, L"entry.widget", L"runtime-a", L"presentation-a")),
+        "scope changes retire a drawn group acknowledgement");
+    changed = successor; ++changed.focusGroupEntryRequest->requestId;
+    Check(!publication->Matches(Authority(changed, L"entry.widget", L"runtime-a", L"presentation-a")),
+        "new requests cannot inherit an earlier frame's target");
+    Check(!publication->Matches(Authority(successor, L"entry.widget", L"runtime-b", L"presentation-a")) &&
+        !publication->Matches(Authority(successor, L"entry.widget", L"runtime-a", L"presentation-b")),
+        "runtime and presentation replacement reject drawn group acknowledgements");
     const auto applied = session.CommitPreparedFocusGroupEntryRequest(
         authority, confirmed.target);
     Check(applied.consumed && applied.target == L"entry.remembered",
           "successful exact-current frame commits its already-rendered target once");
     Check(!session.CommitPreparedFocusGroupEntryRequest(authority, confirmed.target).consumed,
           "consumed request cannot apply twice");
+    Check(!session.PreviewCandidateFocusGroup(authority, render),
+        "a consumed request cannot drive speculative group preparation again");
     Check(session.ObserveFocusGroupEntryRequest(
               authority, FocusGroupEntryAdmission::Active) ==
               FocusGroupEntryObservation::Retired,
@@ -2451,7 +2476,101 @@ void AnchoredSelectPopupIsExactAndBounded() {
 
 } // namespace
 
+void LogicalCollectionNavigationDoesNotRequireOffscreenGeometry() {
+    using namespace widgetrail;
+    using namespace widgetrail::input;
+    WidgetNode root; root.id = L"collection"; root.kind = L"scroll"; root.scrollAxis = L"vertical";
+    root.collectionLayout = WidgetNode::CollectionLayout{true, 100, 100, 3};
+    root.collectionResetGeneration = 1;
+    RenderResult result;
+    RenderLogicalCollection logical;
+    logical.policy = *root.collectionLayout; logical.columns = 3;
+    logical.inputScope = L"collection"; logical.resetGeneration = 1;
+    for (int index = 0; index < 10; ++index) {
+        auto item = Button((L"item." + std::to_wstring(index)).c_str());
+        item.collectionItemKey = L"key." + std::to_wstring(index);
+        logical.itemIdentities.emplace_back(item.id, item.collectionItemKey);
+        result.realizableFocusIds.insert(item.id);
+        result.navigationEnabled[item.id] = true;
+        result.focusScopes[item.id] = L"collection";
+        root.children.push_back(item);
+    }
+    result.logicalCollections.emplace(root.id, logical);
+    result.scrollViewports.emplace(root.id, RenderScrollViewport{declarative::ScrollAxis::Vertical, {0, 0, 300, 100}, 0, 300});
+    result.focusRects[L"item.0"] = {0, 0, 100, 100};
+    result.navigationRects[L"item.0"] = result.focusRects[L"item.0"];
+    const auto move = [&](std::wstring_view id, NavigationDirection direction) {
+        return FindDirectionalFocusTargetInOwningSubtrees(root, id, direction, result, {});
+    };
+    Check(move(L"item.0", NavigationDirection::Down).target == L"item.3", "logical grid moves to unmeasured same-column item");
+    Check(move(L"item.0", NavigationDirection::Right).target == L"item.1", "logical grid horizontal movement stays in row");
+    Check(!move(L"item.2", NavigationDirection::Right).target, "logical grid does not wrap to next row horizontally");
+    Check(IsEnabledFocusTarget(L"item.3", result) && !result.navigationRects.contains(L"item.3"),
+        "realizable authority is distinct from fabricated geometry");
+    WidgetSnapshot snapshot; snapshot.instanceId = L"logical.instance"; snapshot.sequence = 1;
+    snapshot.activeInputScopeId = L"collection"; snapshot.root = root;
+    WidgetInteractionSession session;
+    session.SetFocus(L"logical.widget", snapshot, L"item.0");
+    Check(session.ResolveDirectionalFocus(L"logical.widget", snapshot, NavigationDirection::Down, result).target == L"item.3",
+        "shared interaction pipeline accepts realization target without geometry");
+    const WidgetInteractionAuthority authority{L"logical.widget", &snapshot, L"runtime", L"presentation", false};
+    FocusRealizationIntent intent;
+    Check(intent.Stage(authority, L"item.0", L"item.3", result) && intent.Target(authority, L"item.0") == L"item.3",
+        "logical focus stages one exact unmeasured target without moving the origin");
+    Check(!intent.TakeReady(authority, L"item.0", result), "logical identity alone cannot commit focus");
+    auto measured = result;
+    measured.succeeded = true;
+    measured.focusRects[L"item.3"] = {0, 0, 100, 100};
+    measured.navigationRects[L"item.3"] = measured.focusRects[L"item.3"];
+    Check(intent.TakeReady(authority, L"item.0", measured) == L"item.3" && !intent.pending(),
+        "successful measured geometry admits focus exactly once");
+    Check(intent.Stage(authority, L"item.0", L"item.3", result), "focus can be prepared again");
+    ++snapshot.sequence;
+    Check(!intent.Target(authority, L"item.0") && !intent.pending(), "snapshot admission cancels old pending navigation");
+    Check(intent.Stage(authority, L"item.0", L"item.3", result), "new sequence gets new focus authority");
+    Check(!intent.Target(authority, L"item.1"), "changed origin cannot inherit navigation intent");
+    Check(intent.Stage(authority, L"item.0", L"item.3", result), "recycled target fixture stages");
+    snapshot.root.children[3].collectionItemKey = L"recycled";
+    Check(!intent.Target(authority, L"item.0"), "recycled item ID cannot receive old focus intent");
+    snapshot.root.children[3].collectionItemKey = L"key.3";
+    Check(intent.Stage(authority, L"item.0", L"item.3", result), "replacement fixture stages");
+    Check(!intent.Stage(authority, L"item.0", L"item.0", result) && !intent.pending(),
+        "new navigation to a measured target cancels pending realization");
+    (void)session.BindFreeScroll(authority, L"collection", declarative::ScrollAxis::Vertical, FreeScrollFocusPolicy::Preserve);
+    (void)session.SampleRightStick(0, 0, 1000);
+    Check(!session.freeScrollState().ShouldSettle(2000), "UIA realization does not settle controller focus after a timer");
+    Check(session.freeScrollState().SettleFocus(authority, L"item.0", result) == L"item.0",
+        "ordinary action after UIA reveal retains its original focus target");
+    const auto resume = session.ResolveFreeScrollReentry(authority, result);
+    Check(resume.disposition == FreeScrollReentryDisposition::ResumeDirectionalInput && !resume.target,
+        "directional input after UIA reveal resumes from actual focus without a recovery jump");
+    (void)session.BindFreeScroll(authority, L"collection", declarative::ScrollAxis::Vertical, FreeScrollFocusPolicy::Preserve);
+    (void)session.SampleRightStick(0, -32767, 2100);
+    (void)session.SampleRightStick(0, 0, 2300);
+    Check(session.freeScrollState().ShouldSettle(2500), "new physical scrolling takes ownership from UIA-preserved focus policy");
+    (void)session.ClearFreeScroll();
+    root.children[3].isDisabled = true;
+    Check(move(L"item.0", NavigationDirection::Down).target == L"item.6", "logical navigation skips disabled same-column target");
+    root.scrollNearEndActionId = L"load.more";
+    Check(move(L"item.8", NavigationDirection::Down).loadingBoundary,
+        "incomplete final line requests provider instead of jumping columns");
+    root.scrollNearEndActionId.clear();
+    Check(move(L"item.8", NavigationDirection::Down).target == L"item.9", "terminal partial row uses nearest column");
+    root.collectionResetGeneration = 2;
+    Check(move(L"item.0", NavigationDirection::Down).staleAuthority, "logical navigation rejects query reset before geometry admission");
+    root.collectionResetGeneration = 1;
+    root.inputScopeId = L"new.scope";
+    Check(move(L"item.0", NavigationDirection::Down).staleAuthority, "changed semantic scope invalidates logical authority");
+    root.inputScopeId.clear();
+    std::swap(root.children[1], root.children[2]);
+    Check(move(L"item.0", NavigationDirection::Down).staleAuthority, "logical navigation rejects unadmitted reorder");
+    std::swap(root.children[1], root.children[2]);
+    result.focusScopes[L"item.0"] = L"dialog";
+    Check(move(L"item.0", NavigationDirection::Down).staleAuthority, "logical navigation cannot cross modal input scope");
+}
+
 int main() {
+    LogicalCollectionNavigationDoesNotRequireOffscreenGeometry();
     FocusAndSurfaceLifecycle();
     FocusRestorationPrecedesInteractiveAdmission();
     HostFocusRestorationUsesPresentationAuthority();

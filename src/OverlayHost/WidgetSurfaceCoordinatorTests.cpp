@@ -381,6 +381,7 @@ widgetrail::WidgetSnapshot SliderSnapshot(
     slider.kind = L"slider";
     slider.accessibilityLabel = L"Provider-neutral pinned slider";
     slider.valueChangedActionId = L"fixture-slider.changed";
+    slider.hasProgress = true;
     slider.hasSliderRange = true;
     slider.minimum = 0.0;
     slider.maximum = 100.0;
@@ -577,6 +578,7 @@ widgetrail::WidgetSnapshot MediaTimelineSnapshot(
         slider.accessibilityLabel = L"Playback position";
         slider.valueChangedActionId = L"media.seek";
         slider.focusPersistenceId = L"media.transport.seek";
+        slider.hasProgress = true;
         slider.hasSliderRange = true;
         slider.minimum = 0.0;
         slider.maximum = 213000.0;
@@ -1174,6 +1176,7 @@ int main() {
                       SliderSnapshot(3, 45.0)),
                   "authoritative successor acknowledges the pinned slider value");
             UpdateWindow(slider.window());
+            CheckRenderSucceeded(slider.PaintTraceForTesting(), "updated slider frame paints before accepting navigation");
             Check(slider.HandleFocusedSliderModeButton(L"a", 1'100),
                   "A exits active pinned slider adjustment");
             Check(slider.MoveControllerFocus(
@@ -2048,6 +2051,115 @@ int main() {
             scrolling.Dispose();
             std::error_code scrollCleanup;
             std::filesystem::remove_all(scrollRoot, scrollCleanup);
+        }
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator realization;
+            const auto realizationRoot = placementRoot / L"collection-realization";
+            Check(realization.Initialize(GetModuleHandleW(nullptr), nullptr, WM_APP + 0x416,
+                d2d.Get(), write.Get(), nullptr, error, realizationRoot / L"placement.ini"),
+                "UIA collection fixture uses production surface coordinator");
+            realization.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = ScrollSnapshot(1, false, 80);
+            admission.snapshot.protocolVersion = 59;
+            auto& list = admission.snapshot.root.children[0];
+            list.collectionLayout = widgetrail::WidgetNode::CollectionLayout{false, 44};
+            list.collectionAnchorKey = L"key.0"; list.collectionResetGeneration = 1;
+            for (std::size_t index = 0; index < list.children.size(); ++index)
+                list.children[index].collectionItemKey = L"key." + std::to_wstring(index);
+            Check(realization.Pin(admission, error) && realization.CommitSetup(error) && realization.ToggleInteractionMode(),
+                "UIA collection surface enters interactive mode");
+            UpdateWindow(realization.window());
+            Check(realization.EnterControllerFocus(), "UIA collection fixture has initial controller focus");
+            UpdateWindow(realization.window());
+            const auto priorFocus = realization.focusedElementId();
+            auto targetItem = FindAutomationId(realization.window(), L"widget:pin.scroll.item.70");
+            Check(targetItem != nullptr, "real UIA client discovers unrealized item in pinned surface");
+            ComPtr<IUIAutomationVirtualizedItemPattern> realizePattern;
+            Check(SUCCEEDED(targetItem->GetCurrentPatternAs(UIA_VirtualizedItemPatternId,
+                IID_PPV_ARGS(realizePattern.GetAddressOf()))) && realizePattern,
+                "real UIA client obtains VirtualizedItem pattern");
+            Check(SUCCEEDED(realizePattern->Realize()), "real UIA client requests realization");
+            MSG message{};
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&message); DispatchMessageW(&message);
+            }
+            BOOL offscreen = TRUE;
+            const auto realizationDeadline = GetTickCount64() + 2000;
+            while (SUCCEEDED(targetItem->get_CurrentIsOffscreen(&offscreen)) && offscreen && GetTickCount64() < realizationDeadline) {
+                PumpPendingMessages();
+                Sleep(1);
+            }
+            UpdateWindow(realization.window());
+            const auto offset = realization.ScrollOffsetForTesting(L"pin.scroll");
+            Check(offset && *offset > 1000 && SUCCEEDED(targetItem->get_CurrentIsOffscreen(&offscreen)) && !offscreen,
+                "UIA realization passes through host queue and renderer to visible geometry");
+            Check(realization.focusedElementId() == priorFocus && realization.TakeInputRequests().empty(),
+                "UIA realization neither changes controller focus nor dispatches widget actions");
+            auto replacement = admission.snapshot;
+            replacement.sequence = 2;
+            replacement.root.children[0].children[0].focusDown = L"pin.scroll.item.40";
+            for (auto& item : replacement.root.children[0].children) item.text += L" changed";
+            bool replacementReady{};
+            std::size_t slices{};
+            for (; slices < 128; ++slices) {
+                const auto prepared = realization.PrepareSnapshot(admission.widgetId, admission.runtimeGeneration,
+                    replacement, {}, false, {1, 1000000});
+                Check(prepared.status != widgetrail::CollectionPreparationStatus::Failed && prepared.newMeasurements <= 1,
+                    "pinned candidate preparation obeys item budget");
+                Check(realization.PaintTraceForTesting().snapshotSequence == 1 && realization.focusedElementId() == priorFocus &&
+                    realization.ScrollOffsetForTesting(L"pin.scroll") == offset,
+                    "pinned preparation preserves admitted scene, focus and viewport");
+                if (prepared.status == widgetrail::CollectionPreparationStatus::Ready) { replacementReady = true; break; }
+            }
+            Check(replacementReady && slices > 0, "pinned preparation completes across multiple slices");
+            Check(realization.UpdateSnapshot(admission.widgetId, admission.runtimeGeneration, replacement),
+                "prepared pinned replacement admits through the existing owner");
+            UpdateWindow(realization.window());
+            Check(realization.PaintTraceForTesting().snapshotSequence == 2 && realization.focusedElementId() == priorFocus,
+                "pinned replacement publishes only after preparation and admission");
+            Check(realization.MoveControllerFocus(widgetrail::input::NavigationDirection::Down, true) &&
+                realization.focusedElementId() == priorFocus,
+                "pinned navigation retains origin while its distant target is unmeasured");
+            const auto focusDeadline = GetTickCount64() + 2000;
+            while (realization.focusedElementId() == priorFocus && GetTickCount64() < focusDeadline) {
+                PumpPendingMessages();
+                Sleep(1);
+            }
+            UpdateWindow(realization.window());
+            Check(realization.focusedElementId() == L"pin.scroll.item.40" && realization.TakeInputRequests().empty(),
+                "pinned timer admits prepared directional focus without dispatching an action");
+            for (const auto failure : {E_FAIL, D2DERR_RECREATE_TARGET}) {
+                const auto revealId = failure == E_FAIL ? L"widget:pin.scroll.item.60" : L"widget:pin.scroll.item.20";
+                auto offscreenItem = FindAutomationId(realization.window(), revealId);
+                ComPtr<IUIAutomationScrollItemPattern> reveal;
+                Check(offscreenItem && SUCCEEDED(offscreenItem->GetCurrentPatternAs(UIA_ScrollItemPatternId,
+                    IID_PPV_ARGS(reveal.GetAddressOf()))) && reveal, "draw-failure fixture finds a revealable item");
+                realization.FailNextEndDrawForTesting(failure);
+                Check(SUCCEEDED(reveal->ScrollIntoView()), "draw-failure fixture requests reveal");
+                const auto failDeadline = GetTickCount64() + 2000;
+                while (realization.PaintTraceForTesting().declarativeRenderSucceeded && GetTickCount64() < failDeadline) {
+                    PumpPendingMessages(); Sleep(1);
+                }
+                Check(!realization.PaintTraceForTesting().declarativeRenderSucceeded &&
+                    realization.AccessibilityRevealPendingForTesting() && realization.focusedElementId() == L"pin.scroll.item.40",
+                    "failed EndDraw retires published geometry without consuming the unseen reveal or moving focus");
+                Check(!realization.MoveControllerFocus(widgetrail::input::NavigationDirection::Down, true) &&
+                    realization.TakeInputRequests().empty(), "failed frame cannot route interaction through stale geometry");
+                InvalidateRect(realization.window(), nullptr, FALSE);
+                UpdateWindow(realization.window());
+                auto recoveredItem = FindAutomationId(realization.window(), revealId);
+                BOOL recoveredOffscreen = TRUE;
+                Check(realization.PaintTraceForTesting().declarativeRenderSucceeded &&
+                    !realization.AccessibilityRevealPendingForTesting() && recoveredItem &&
+                    SUCCEEDED(recoveredItem->get_CurrentIsOffscreen(&recoveredOffscreen)) && !recoveredOffscreen,
+                    "successful replacement frame completes the original accessibility reveal");
+            }
+            Check(realization.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin), "UIA realization surface tears down");
+            realization.Dispose();
+            std::error_code realizationCleanup;
+            std::filesystem::remove_all(realizationRoot, realizationCleanup);
         }
 
         {

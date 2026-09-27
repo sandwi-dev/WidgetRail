@@ -78,7 +78,6 @@ bool DrawWidgetComposition() {
         result.widgetComposition = std::move(scene);
         return false;
     }
-    owner->compositionInstance_ = snapshot->instanceId;
     std::optional<std::size_t> band;
     std::map<std::wstring, std::wstring> focusParents;
     const WidgetNode *sceneFocus{};
@@ -453,8 +452,8 @@ bool DrawWidgetComposition() {
             ~RestoreProjection() { for (auto& [location, value] : saved) *location = value; }
         } projection;
         std::set<std::wstring> captureMembers;
-        const auto capture = captureBands.find(index);
-        const WidgetNode* captureRoot = capture == captureBands.end() ? nullptr : capture->second;
+        const auto captureBand = captureBands.find(index);
+        const WidgetNode* captureRoot = captureBand == captureBands.end() ? nullptr : captureBand->second;
         if (captureRoot) {
             const auto project = [&](const auto& self, const WidgetNode& part, Rect clip) -> void {
                 if (!compositionBandNodes[index].contains(part.id)) return;
@@ -480,15 +479,15 @@ bool DrawWidgetComposition() {
             node.rasterLease = prior->second.lease;
             if (identityBytes + identity.Bytes() <= CompositionPaintIdentity::MaximumRetainedBytes) {
                 identityBytes += identity.Bytes();
-                nextPaintCache.emplace(node.id, std::move(prior->second));
+                nextPaintCache.emplace(node.id, prior->second);
             }
             ++scene->paintCacheHits;
             continue;
         }
         ++scene->paintCacheMisses;
         scene->paintedBytes += static_cast<std::size_t>(pixels.width) * pixels.height * 4;
-        // A dirty entry cannot keep an unused pool target leased indefinitely.
-        if (prior != owner->compositionPaintCache_.end()) owner->compositionPaintCache_.erase(prior);
+        // Keep the old raster lease alive until the new frame is submitted.
+        // A failed draw must not recycle a bitmap still used by committed pixels.
         ComPtr<ID2D1BitmapRenderTarget> surface;
         node.rasterLease = std::make_shared<char>();
         auto &captures = owner->compositionCaptures_;

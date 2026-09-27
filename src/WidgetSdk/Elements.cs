@@ -356,6 +356,8 @@ public sealed record ScrollElement : ContainerElement
     public CollectionNavigationRequest? CollectionNavigation { get; init; }
     public CollectionLoadingState? CollectionLoading { get; init; }
     internal VirtualCollectionWindow? VirtualCollectionWindow { get; init; }
+    /// <summary>Explicit collection layout; use UI.CollectionList or UI.CollectionGrid.</summary>
+    public CollectionLayout? CollectionLayout { get; init; }
     public new ScrollElement InputScope(string scopeId) => this with { InputScopeId = RequireId(scopeId) };
     public new ScrollElement RememberChildFocus(string initialChildFocusId) => this with
         { InitialChildFocusId = RequireInitialChildFocusId(initialChildFocusId) };
@@ -409,6 +411,7 @@ public sealed record ScrollElement : ContainerElement
         ScrollNearEndActionId = NearEndActionId,
         ScrollPaginationThreshold = PaginationThreshold,
         VirtualCollectionWindow = VirtualCollectionWindow,
+        CollectionLayout = CollectionLayout,
         CollectionAnchorKey = CollectionAnchorKey,
         CollectionStartIndex = CollectionStartIndex,
         CollectionGeneration = CollectionGeneration,

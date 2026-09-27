@@ -106,6 +106,7 @@ constexpr UINT_PTR kDeveloperInspectorTimer = 21;
 constexpr UINT_PTR kCompositionRecoveryTimer = 22;
 constexpr UINT_PTR kWindowPreviewTimer = 20;
 constexpr UINT_PTR kControllerOpenShortcutTimer = 10;
+constexpr UINT_PTR kCollectionPreparationTimer = 23;
 constexpr UINT kVisibleControllerTimerMilliseconds = 15;
 constexpr UINT kPlatformEventMessage = WM_APP + 1;
 constexpr UINT kImageReadyMessage = WM_APP + 2;
@@ -618,7 +619,12 @@ public:
     // The dashboard is catalog-owned. Persisted IDs are reconciled only after
     // the bridge supplies runnable worker descriptors, so an unavailable
     // bridge cannot expose inert native placeholder tiles.
+#if defined(WRAIL_WIDGET_PUBLICATION_TESTING)
+    static int RunPublicationTests();
+    explicit OverlayApp(widgetrail::WidgetSessionOperations testOperations = {})
+#else
     OverlayApp()
+#endif
         : state_(widgetrail::OverlayState::AwaitingCatalog(LoadPersistentState())),
           actionFailureFeedback_({
               [] { return GetTickCount64(); },
@@ -639,6 +645,9 @@ public:
               AppendDiagnostic(message);
           }),
           sessions_(
+#if defined(WRAIL_WIDGET_PUBLICATION_TESTING)
+              std::move(testOperations),
+#else
               widgetrail::WidgetSessionOperations{
                   [this](std::stop_token) {
                       return bridge_.EnsureStarted(
@@ -743,7 +752,9 @@ public:
                   },
                   [this] { return bridge_.bridgeSessionGeneration(); },
                   widgetrail::CompareWidgetSnapshots,
+                  true,
               },
+#endif
               [this] {
                   if (window_)
                       PostMessageW(window_, kWidgetSessionCompletionMessage, 0, 0);
@@ -2620,6 +2631,9 @@ private:
             } else if (wParam == kZOrderSettleTimer) {
                 KillTimer(window_, kZOrderSettleTimer);
                 ReassertOverlayZOrder();
+            } else if (wParam == kCollectionPreparationTimer) {
+                KillTimer(window_, kCollectionPreparationTimer);
+                PumpCollectionPreparation();
             } else if (wParam == kCatalogRetryTimer) {
                 KillTimer(window_, kCatalogRetryTimer);
                 bridge_.RetryWidgetCatalogChangedRevision();
@@ -6953,6 +6967,10 @@ private:
 
     void ProcessWidgetSessionEvents() {
         for (auto& event : sessions_.TakeEvents()) {
+            if (event.kind == widgetrail::WidgetSessionEventKind::SnapshotAwaitingPreparation) {
+                SetTimer(window_, kCollectionPreparationTimer, 1, nullptr);
+                continue;
+            }
             if (event.kind ==
                     widgetrail::WidgetSessionEventKind::BridgeSessionReplaced &&
                 event.catalog) {
@@ -7248,6 +7266,133 @@ private:
                     event.correlationId, event.widgetId, true, GetTickCount64());
             }
         }
+    }
+
+    void PumpCollectionPreparation() {
+        const auto started = std::chrono::steady_clock::now();
+        bool pendingWork = PumpFocusRealization();
+        if (PumpAccessibilityRealization()) pendingWork = true;
+        for (const auto& descriptor : sessions_.descriptors()) {
+            const auto pending = sessions_.PendingPresentationPreparation(descriptor.id);
+            if (!pending) continue;
+            if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(3)) {
+                pendingWork = true;
+                continue;
+            }
+            widgetrail::CollectionPreparationResult preparation{widgetrail::CollectionPreparationStatus::Ready};
+            const auto& snapshot = *pending->snapshot;
+            if (pinnedSurfaceCoordinator_.pinned() && pinnedSurfaceCoordinator_.widgetId() == descriptor.id) {
+                const auto mediaKey = CurrentEmbeddedMediaSessionKey(descriptor.id);
+                const auto* media = mediaKey ? mediaSessions_.Find(*mediaKey) : nullptr;
+                preparation = pinnedSurfaceCoordinator_.PrepareSnapshot(descriptor.id, descriptor.runtimeGeneration,
+                    snapshot, ResolvePinnedLayouts(snapshot), media && media->authority && media->coordinator);
+            } else if (state_.surface() == widgetrail::Surface::Widget && state_.activeWidget() == descriptor.id && declarativeRenderer_) {
+                const auto target = DesiredWidgetSurfaceTarget(&snapshot);
+                const auto extent = DesiredContentPanelExtentDip(&snapshot);
+                const auto geometry = compositionSurface_.available()
+                    ? widgetrail::ComputePanelLocalSurfaceGeometry(static_cast<float>(extent.widthDip), static_cast<float>(extent.heightDip))
+                    : widgetrail::ComputeOverlaySurfaceGeometry(target.windowWidthDip, target.windowHeightDip,
+                        target.panelWidthDip, target.panelHeightDip);
+                if (geometry) {
+                    const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
+                        (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
+                    auto options = WidgetRenderOptions(descriptor.id, &descriptor, *geometry, scale);
+                    auto focus = interactionSession_.FocusRestoreCandidate(descriptor.id, snapshot);
+                    if (preparedCandidateGroupFocus_ && preparedCandidateGroupFocus_->first == pending->requestId)
+                        focus = preparedCandidateGroupFocus_->second;
+                    const widgetrail::input::WidgetInteractionAuthority authority{
+                        descriptor.id, &snapshot, descriptor.runtimeGeneration, descriptor.presentationGeneration, false};
+                    options.suppressFocusedDescendantFollow = interactionSession_.EvaluateFreeScrollAuthority(authority).followSuppressed;
+                    preparation = declarativeRenderer_->PrepareCollections(snapshot, focus,
+                        {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options,
+                        {}, snapshot.focusGroupEntryRequest.has_value() && WidgetOwnsInputFocus(descriptor.id));
+                    if (preparation.focusGeometry) {
+                        const auto entry = interactionSession_.PreviewCandidateFocusGroup(authority, *preparation.focusGeometry);
+                        if (entry && *entry != focus) {
+                            preparedCandidateGroupFocus_ = std::pair{pending->requestId, *entry};
+                            pendingWork = true;
+                            continue;
+                        }
+                    }
+                }
+            }
+            if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) {
+                pendingWork = true;
+                continue;
+            }
+            // A genuine preparation error takes the existing synchronous render
+            // diagnostic path. Pending work never becomes a worker/runtime error.
+            (void)sessions_.ApprovePresentationPreparation(descriptor.id, pending->requestId, pending->generation);
+            if (preparedCandidateGroupFocus_ && preparedCandidateGroupFocus_->first == pending->requestId)
+                preparedCandidateGroupFocus_.reset();
+        }
+        if (pendingWork) SetTimer(window_, kCollectionPreparationTimer, 16, nullptr);
+    }
+
+    bool PumpAccessibilityRealization() {
+        if (!pendingAccessibilityRealization_ || accessibilityRealizationReady_) return false;
+        const auto request = *pendingAccessibilityRealization_;
+        const auto widget = state_.activeWidget();
+        const auto* snapshot = InteractionSnapshotFor(widget);
+        const auto* descriptor = sessions_.FindDescriptor(widget);
+        if (!snapshot || !descriptor || !declarativeRenderer_ || state_.surface() != widgetrail::Surface::Widget ||
+            request.widgetId != widget || !widgetrail::accessibility::ResolveActionRequest(request, widget, descriptor->runtimeGeneration, *snapshot)) {
+            pendingAccessibilityRealization_.reset(); return false;
+        }
+        const auto surface = DesiredWidgetSurfaceTarget();
+        const auto extent = DesiredContentPanelExtentDip();
+        const auto geometry = compositionSurface_.available()
+            ? widgetrail::ComputePanelLocalSurfaceGeometry(static_cast<float>(extent.widthDip), static_cast<float>(extent.heightDip))
+            : widgetrail::ComputeOverlaySurfaceGeometry(surface.windowWidthDip, surface.windowHeightDip, surface.panelWidthDip, surface.panelHeightDip);
+        if (!geometry) { pendingAccessibilityRealization_.reset(); return false; }
+        const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
+            (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
+        auto options = WidgetRenderOptions(widget, descriptor, *geometry, scale);
+        options.suppressFocusedDescendantFollow = true;
+        options.realizeElementId = request.nodeId;
+        const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, interactionSession_.focusedElementId(),
+            {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options);
+        if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) return true;
+        if (preparation.status == widgetrail::CollectionPreparationStatus::Failed) { pendingAccessibilityRealization_.reset(); return false; }
+        accessibilityRealizationReady_ = true;
+        InvalidateRect(window_, nullptr, FALSE);
+        return false;
+    }
+
+    bool PumpFocusRealization() {
+        auto& intent = interactionSession_.focusRealization();
+        if (!intent.pending()) return false;
+        const auto widget = state_.activeWidget();
+        const auto* snapshot = InteractionSnapshotFor(widget);
+        const auto authority = snapshot ? InteractionAuthority(widget, *snapshot) : std::nullopt;
+        if (!WidgetOwnsInputFocus(widget) || !snapshot || !authority || !declarativeRenderer_) {
+            intent.Clear(); return false;
+        }
+        const auto target = intent.Target(*authority, interactionSession_.focusedElementId());
+        if (!target) return false;
+        const auto surface = DesiredWidgetSurfaceTarget();
+        const auto extent = DesiredContentPanelExtentDip();
+        const auto geometry = compositionSurface_.available()
+            ? widgetrail::ComputePanelLocalSurfaceGeometry(static_cast<float>(extent.widthDip), static_cast<float>(extent.heightDip))
+            : widgetrail::ComputeOverlaySurfaceGeometry(surface.windowWidthDip, surface.windowHeightDip,
+                surface.panelWidthDip, surface.panelHeightDip);
+        if (!geometry) { intent.Clear(); return false; }
+        const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
+            (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
+        auto options = WidgetRenderOptions(widget, sessions_.FindDescriptor(widget), *geometry, scale);
+        const widgetrail::declarative::Rect viewport{
+            geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight};
+        const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, *target, viewport, options, {}, true);
+        if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) return true;
+        if (preparation.status == widgetrail::CollectionPreparationStatus::Failed) { intent.Clear(); return false; }
+        const auto ready = preparation.focusGeometry
+            ? intent.TakeReady(*authority, interactionSession_.focusedElementId(), *preparation.focusGeometry) : std::nullopt;
+        if (!ready) { intent.Clear(); return false; }
+        ObserveScrollPaginationFocusIntent(widget, *snapshot, interactionSession_.focusedElementId(), *ready,
+            widgetrail::input::ScrollPaginationIntentSource::DirectionalNavigation);
+        const auto focus = interactionSession_.MoveFocus(widget, *snapshot, *ready);
+        InvalidateWidgetFocusChange(focus.priorFocus, focus.sliderDamageNodeIds);
+        return false;
     }
 
     std::wstring_view DisplayWidgetName(const std::wstring_view id) const noexcept {
@@ -7673,12 +7818,14 @@ private:
             std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - geometryStarted).count());
         if (!placed) {
+            BlockWidgetFramePublication();
             presentationTransaction_.RejectCompositionAdmission();
             AppendDiagnostic(
                 L"Committed composition surface could not be placed error=" +
                 std::to_wstring(GetLastError()));
             return false;
         }
+        if (!CompleteWidgetFramePublication()) return false;
         if (frames.contentRendererWork &&
             *frames.contentRendererWork != widgetrail::IncrementalPresentationWork::NoRaster)
             widgetContextMenuPixelsPending_ = frames.widgetContextMenuPainted;
@@ -8194,6 +8341,8 @@ private:
     }
 
     void HideOverlay() {
+        interactionSession_.focusRealization().Clear();
+        if (declarativeRenderer_) declarativeRenderer_->CancelCollectionPreparation();
         ResetWindowPreviews();
         visibleSessionStartedAt_ = 0;
         foregroundAcquisitionFeedback_.Hide();
@@ -8790,8 +8939,9 @@ private:
         return widgetrail::WidgetSurfaceRequest{widgetrail::WidgetSurfaceMode::Compact};
     }
 
-    [[nodiscard]] widgetrail::ResolvedWidgetSurface DesiredWidgetSurfaceTarget() const {
-        const auto request = CurrentWidgetSurfaceRequest();
+    [[nodiscard]] widgetrail::ResolvedWidgetSurface DesiredWidgetSurfaceTarget(
+        const widgetrail::WidgetSnapshot* candidate = nullptr) const {
+        const auto request = candidate ? WidgetSurfaceRequestForSnapshot(*candidate) : CurrentWidgetSurfaceRequest();
         if (!request ||
             (request->widthMode == widgetrail::WidgetSurfaceAxisMode::Preferred &&
              request->heightMode == widgetrail::WidgetSurfaceAxisMode::Preferred)) {
@@ -8840,8 +8990,8 @@ private:
                 : CurrentTextScale(),
         };
 
-        const widgetrail::WidgetSnapshot* measurementSnapshot{};
-        if (state_.surface() == widgetrail::Surface::Widget) {
+        const widgetrail::WidgetSnapshot* measurementSnapshot{candidate};
+        if (!candidate && state_.surface() == widgetrail::Surface::Widget) {
             const auto* admitted = SnapshotFor(state_.activeWidget());
             const auto presentation = sessions_.Presentation(state_.activeWidget());
             measurementSnapshot = admitted
@@ -8934,8 +9084,8 @@ private:
     }
 
     [[nodiscard]] widgetrail::OverlayPresentationExtent
-    DesiredContentPanelExtentDip() const {
-        const auto target = DesiredWidgetSurfaceTarget();
+    DesiredContentPanelExtentDip(const widgetrail::WidgetSnapshot* candidate = nullptr) const {
+        const auto target = DesiredWidgetSurfaceTarget(candidate);
         const auto shellGeometry = widgetrail::ComputeOverlaySurfaceGeometry(
             target.windowWidthDip, target.windowHeightDip,
             target.panelWidthDip, target.panelHeightDip);
@@ -11203,6 +11353,8 @@ private:
         case Disposition::EmptyScrollViewport: return L"empty-scroll-viewport";
         case Disposition::OffsetBoundary: return L"offset-boundary";
         case Disposition::EmptyDamage: return L"empty-damage";
+        case Disposition::PreparationPending: return L"preparation-pending";
+        case Disposition::PreparationFailed: return L"preparation-failed";
         default: return L"unknown";
         }
     }
@@ -11242,6 +11394,7 @@ private:
     }
 
     void ClearFreeScrollReentry(const std::wstring_view reason) {
+        pendingAccessibilityRealization_.reset();
         continuousScrollFrames_.Clear();
         heldDpadBoundaryStop_ = false;
         heldDpadScroll_.Reset();
@@ -11391,6 +11544,10 @@ private:
         const auto sample = interactionSession_.SampleRightStick(
             heldDirection ? 0 : frame.state.rightThumbX,
             heldDirection ? static_cast<short>(*heldDirection > 0 ? -32767 : 32767) : frame.state.rightThumbY, now);
+        if (sample.moving) {
+            pendingAccessibilityRealization_.reset();
+            interactionSession_.focusRealization().Clear();
+        }
         if (!sample.moving) {
             continuousScrollFrames_.Neutral();
             if (!continuousScrollFrames_.pending()) return ApplyContinuousFreeScroll(sample, now, false);
@@ -11560,12 +11717,17 @@ private:
                 *interactionSession_.freeScrollBinding()}
             : std::nullopt;
         widgetrail::FocusedFreeScrollPlanDiagnostic planDiagnostic;
+        const auto preparationOptions = WidgetRenderOptions(widget, descriptor, *geometry, metrics->physicalPixelsPerDip);
         const auto plan = widgetrail::input::SurfaceInteractionTransactions::PlanFreeScroll(
             interactionSession_.freeScrollState(), *declarativeRenderer_,
             authority, interactionSession_.focusedElementId(),
             lastWidgetRenderResult_, axis, sample.deltaDip, viewport,
-            &planDiagnostic);
+            &planDiagnostic, &preparationOptions);
         if (!plan) {
+            // Preparation consumed this sample, not its distance. A later
+            // cadence sample retries from the committed viewport; no backlog
+            // or provider-loading boundary is created while items are measured.
+            if (planDiagnostic.disposition == widgetrail::FocusedFreeScrollPlanDisposition::PreparationPending) return true;
             if (planDiagnostic.disposition == widgetrail::FocusedFreeScrollPlanDisposition::OffsetBoundary) {
                 continuousScrollFrames_.BlockLastFrame();
                 heldDpadBoundaryStop_ = heldDpad;
@@ -12665,6 +12827,7 @@ private:
 
     const widgetrail::WidgetSnapshot* InteractionSnapshotFor(
         const std::wstring_view widgetId) const noexcept {
+        if (widgetFramePublicationFailed_ && widgetId == state_.activeWidget()) return nullptr;
         const auto presentation = sessions_.Presentation(widgetId);
         if (!presentation.HasCommittedViewAuthority(
                 widgetrail::WidgetCommittedViewUse::Interaction))
@@ -13070,6 +13233,19 @@ private:
                                  request.widgetId);
                 continue;
             }
+            if (resolved->kind == widgetrail::accessibility::ActionKind::Realize) {
+                ClearFreeScrollReentry(L"accessibility-realize");
+                const widgetrail::input::WidgetInteractionAuthority authority{
+                    request.widgetId, snapshot, descriptor->runtimeGeneration, descriptor->presentationGeneration, false};
+                (void)interactionSession_.BindFreeScroll(authority, resolved->scrollId, resolved->scrollAxis,
+                    widgetrail::input::FreeScrollFocusPolicy::Preserve);
+                pendingAccessibilityRealization_ = request;
+                accessibilityRealizationReady_ = false;
+                pendingContentRenderPlan_.reset();
+                if (declarativeRenderer_) declarativeRenderer_->CancelPresentationUpdatePlan();
+                SetTimer(window_, kCollectionPreparationTimer, 1, nullptr);
+                continue;
+            }
             RetirePendingFocusGroupEntryForUserIntent(
                 request.widgetId, *snapshot, L"accessibility-action");
 
@@ -13217,7 +13393,8 @@ private:
         }
     }
 
-    void ClearAccessibilityTree() noexcept {
+    void ClearAccessibilityTree(const bool preservePendingRealization = false) noexcept {
+        if (!preservePendingRealization) pendingAccessibilityRealization_.reset();
         accessibilityTree_ = {};
         widgetAccessibilityTree_ = {};
         accessibilityProvider_.Clear();
@@ -14389,6 +14566,7 @@ private:
             phase != widgetrail::input::NavigationEventPhase::Pressed) {
             return;
         }
+        interactionSession_.focusRealization().Clear();
         auto resolution = interactionSession_.ResolveDirectionalFocus(
             widgetId, *snapshot, navigationDirection, lastWidgetRenderResult_);
         if (developerInspector_) {
@@ -14452,6 +14630,11 @@ private:
             if (pendingFocusGroupEntry) {
                 RetirePendingFocusGroupEntryForUserIntent(
                     widgetId, *snapshot, L"directional-input");
+            }
+            if (interactionSession_.focusRealization().Stage(*postFlushAuthority,
+                    interactionSession_.focusedElementId(), *resolution.target, lastWidgetRenderResult_)) {
+                SetTimer(window_, kCollectionPreparationTimer, 1, nullptr);
+                return;
             }
             ObserveScrollPaginationFocusIntent(
                 widgetId, *snapshot, interactionSession_.focusedElementId(),
@@ -15208,6 +15391,7 @@ private:
             exactActionRequest = std::nullopt,
         const bool physicalPress = false,
         const HeldActionAuthority* exactHeldAction = nullptr) {
+        interactionSession_.focusRealization().Clear();
         if (state_.surface() == widgetrail::Surface::Hidden) {
             if (exactActionRequest) {
                 RejectWidgetActionRequest(
@@ -17510,7 +17694,99 @@ private:
         return true;
     }
 
+    void BlockWidgetFramePublication() {
+        widgetFramePublicationFailed_ = true;
+        pendingRendererPublicationId_ = 0;
+        pendingGroupFocusPublication_.reset();
+        pendingResponsiveFocusReconciliation_ = false;
+        if (declarativeRenderer_) declarativeRenderer_->RejectFramePublication();
+        paintedAccessibilityRealization_.reset();
+        // Provider publication is retired, but an unseen reveal remains a
+        // pending intent until a successful replacement paint acknowledges it.
+        ClearAccessibilityTree(true);
+    }
+
+    bool CompleteWidgetFramePublication() {
+        const bool publishedWidgetFrame = pendingRendererPublicationId_ != 0;
+        const bool reconcileResponsiveFocus = std::exchange(pendingResponsiveFocusReconciliation_, false);
+        if (pendingRendererPublicationId_) {
+            if (committedWidgetVisualState_) {
+                const auto& visual = *committedWidgetVisualState_;
+                const auto* source = PresentationSnapshotFor(visual.widgetId);
+                const auto* descriptor = sessions_.FindDescriptor(visual.widgetId);
+                if (state_.activeWidget() != visual.widgetId || !source || !descriptor ||
+                    source->instanceId != visual.instanceId || source->sequence != visual.snapshotSequence ||
+                    descriptor->runtimeGeneration != visual.runtimeGeneration ||
+                    descriptor->presentationGeneration != visual.presentationGeneration) {
+                    BlockWidgetFramePublication();
+                    InvalidateRect(window_, nullptr, FALSE);
+                    return false;
+                }
+            }
+            const auto publication = std::exchange(pendingRendererPublicationId_, 0);
+            if (!declarativeRenderer_ || !declarativeRenderer_->CommitFramePublication(publication)) {
+                BlockWidgetFramePublication();
+                InvalidateRect(window_, nullptr, FALSE);
+                return false;
+            }
+        }
+        if (publishedWidgetFrame && lastWidgetRenderResult_.succeeded && committedWidgetVisualState_)
+            widgetFramePublicationFailed_ = false;
+        if (auto pending = std::exchange(pendingGroupFocusPublication_, std::nullopt)) {
+            const auto* snapshot = InteractionSnapshotFor(pending->widget);
+            const auto authority = snapshot ? InteractionAuthority(pending->widget, *snapshot) : std::nullopt;
+            if (authority && pending->Matches(*authority) && WidgetOwnsInputFocus(pending->widget) &&
+                !textEntryModal_.active()) {
+                const auto entry = interactionSession_.CommitPreparedFocusGroupEntryRequest(*authority, pending->target);
+                if (entry.consumed) {
+                    ClearFreeScrollReentry(L"focus-group-entry-request");
+                    (void)interactionSession_.MoveFocus(pending->widget, *snapshot, pending->target, false, false);
+                    (void)scrollEvidenceProbe_.RecordTarget(pending->target, L"focus-group-entry-request");
+                    AppendDiagnostic(L"Focus-group entry request widget=" + pending->widget +
+                        L" state=settled-consumed target=" + pending->target);
+                }
+            }
+        }
+        if (publishedWidgetFrame && !widgetFramePublicationFailed_ && committedWidgetVisualState_) {
+            const auto& visual = *committedWidgetVisualState_;
+            const auto* snapshot = InteractionSnapshotFor(visual.widgetId);
+            const auto authority = snapshot ? InteractionAuthority(visual.widgetId, *snapshot) : std::nullopt;
+            if (authority && snapshot->instanceId == visual.instanceId && snapshot->sequence == visual.snapshotSequence &&
+                authority->runtimeGeneration == visual.runtimeGeneration &&
+                authority->presentationGeneration == visual.presentationGeneration) {
+                ReconcileScrollPaginationPrefetch(visual.widgetId, *snapshot, lastWidgetRenderResult_);
+                if (WidgetOwnsInputFocus(visual.widgetId) && !textEntryModal_.active()) {
+                    if (reconcileResponsiveFocus && interactionSession_.focusedElementId() == visual.focusId) {
+                        (void)ReconcileResponsiveFocusPersistence(visual.widgetId, *snapshot, lastWidgetRenderResult_);
+                        if (const auto visible = widgetrail::input::ResolveVisibleFocusTarget(
+                                interactionSession_.focusedElementId(), snapshot->activeInputScopeId, lastWidgetRenderResult_);
+                            visible && *visible != interactionSession_.focusedElementId()) {
+                            const auto moved = interactionSession_.MoveFocus(visual.widgetId, *snapshot, *visible, false, true);
+                            (void)scrollEvidenceProbe_.RecordTarget(*visible, L"reconcile");
+                            // The published frame used the old focus; repaint the recovered target.
+                            InvalidateWidgetFocusChange(moved.priorFocus, moved.sliderDamageNodeIds);
+                        }
+                    }
+                    if (auto next = interactionSession_.ResolvePendingCollectionFocus(
+                            *authority, interactionSession_.focusedElementId(), lastWidgetRenderResult_)) {
+                        const auto moved = interactionSession_.MoveFocus(visual.widgetId, *snapshot, *next);
+                        InvalidateWidgetFocusChange(moved.priorFocus, moved.sliderDamageNodeIds);
+                    }
+                }
+            }
+        }
+        if (paintedAccessibilityRealization_ && pendingAccessibilityRealization_ &&
+            paintedAccessibilityRealization_->widgetId == pendingAccessibilityRealization_->widgetId &&
+            paintedAccessibilityRealization_->runtimeGeneration == pendingAccessibilityRealization_->runtimeGeneration &&
+            paintedAccessibilityRealization_->snapshotSequence == pendingAccessibilityRealization_->snapshotSequence &&
+            paintedAccessibilityRealization_->nodeId == pendingAccessibilityRealization_->nodeId)
+            pendingAccessibilityRealization_.reset();
+        paintedAccessibilityRealization_.reset();
+        return true;
+    }
+
     void DisableCompositionFallback(const std::wstring_view reason) {
+        BlockWidgetFramePublication();
         const auto fallbackAnchor = fixedChromeAnchor_;
         const auto removedReason = compositionSurface_.graphicsDevice()
             ? compositionSurface_.graphicsDevice()->GetDeviceRemovedReason() : S_OK;
@@ -17748,6 +18024,7 @@ private:
             state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
                 : state_.selectedWidget());
+        if (!CompleteWidgetFramePublication()) return false;
         if (frames.overlayFullscreenGeometry) {
             const auto& fullscreen = *frames.overlayFullscreenGeometry;
             const HRESULT mediaResult = ReconcileEmbeddedMediaPresentation(
@@ -17901,9 +18178,14 @@ private:
 
         const HRESULT result = renderTarget_->EndDraw();
         if (result == D2DERR_RECREATE_TARGET) {
+            BlockWidgetFramePublication();
             DiscardGraphicsResources();
             ReprimeOpenAfterRenderTargetLoss();
         } else if (SUCCEEDED(result)) {
+            if (!CompleteWidgetFramePublication()) {
+                EndPaint(window_, &paint);
+                return;
+            }
             if (performanceCountersActive_) ++performanceSuccessfulFrames_;
             AppendFallbackPresentationCheckpoint();
             pendingWidgetPresentationImpact_.reset();
@@ -17911,6 +18193,8 @@ private:
             activeContentRenderPlan_.reset();
             BeginOpenAfterSuccessfulPaint();
             ReconcileCommittedEmbeddedMediaSurface();
+        } else {
+            DisableCompositionFallback(L"fallback EndDraw failed");
         }
         EndPaint(window_, &paint);
     }
@@ -18467,6 +18751,30 @@ private:
                     : widgetrail::shell::OuterChromeBoundary::ColorKeyAliased);
     }
 
+    [[nodiscard]] widgetrail::DeclarativeRenderOptions WidgetRenderOptions(
+        const std::wstring_view widgetId, const widgetrail::WidgetDescriptor* descriptor,
+        const widgetrail::OverlaySurfaceGeometry& geometry, const float physicalPixelsPerDip) const {
+        widgetrail::DeclarativeRenderOptions options;
+        options.deferPublication = true;
+        options.pixelScale = physicalPixelsPerDip;
+        options.responsiveViewport = {geometry.panelWidth, geometry.panelHeight};
+        options.surfaceBackground = effectivePanelBackground_;
+        const float inset = std::max(0.0F, geometry.widgetViewportX - geometry.panelX);
+        options.surfaceCornerRadiusPx = std::max(0.0F, panelCornerRadius_ - inset);
+        if (appearanceState_.current()) options.accessibility = CurrentAccessibilityPolicy();
+        options.artworkWidgetId = widgetId;
+        options.sizeArtworkToDisplay = true;
+        if (descriptor) {
+            options.artworkRuntimeGeneration = descriptor->runtimeGeneration;
+            options.artworkPresentationGeneration = descriptor->presentationGeneration;
+            options.packageContentDigest = descriptor->packageContentDigest;
+            options.packageIconAssets = descriptor->iconAssets;
+            options.artworkAuthorityId = std::wstring{widgetId} + L"\x1f" +
+                descriptor->runtimeGeneration + L"\x1f" + descriptor->presentationGeneration;
+        }
+        return options;
+    }
+
     void DrawWidget(
         const float width,
         const float height,
@@ -18631,8 +18939,7 @@ private:
                     ? CurrentAccessibilityPolicy()
                     : widgetrail::NativeAccessibilityPolicy{};
                 const auto presentationTime = GetTickCount64();
-                widgetrail::DeclarativeRenderOptions options;
-                options.pixelScale = physicalPixelsPerDip;
+                auto options = WidgetRenderOptions(renderedWidget, descriptor, *geometry, physicalPixelsPerDip);
                 if (windowPreviewInstance_ != snapshot->instanceId) {
                     ResetWindowPreviews();
                     windowPreviewInstance_ = snapshot->instanceId;
@@ -18646,27 +18953,7 @@ private:
                         return Microsoft::WRL::ComPtr<ID2D1Bitmap1>{};
                     return windowPreviews_.Bitmap(target, id);
                 };
-                options.responsiveViewport = widgetrail::declarative::Size{
-                    geometry->panelWidth,
-                    geometry->panelHeight,
-                };
-                options.surfaceBackground = effectivePanelBackground_;
-                const float panelContentInset = std::max(
-                    0.0F, geometry->widgetViewportX - panelLeft);
-                options.surfaceCornerRadiusPx = std::max(
-                    0.0F, panelCornerRadius_ - panelContentInset);
-                if (appearanceState_.current())
-                    options.accessibility = accessibilityPolicy;
                 options.animationTimestampMilliseconds = presentationTime;
-                options.artworkWidgetId = std::wstring{renderedWidget};
-                options.sizeArtworkToDisplay = true;
-                if (descriptor) {
-                    options.artworkRuntimeGeneration = descriptor->runtimeGeneration;
-                    options.artworkPresentationGeneration =
-                        descriptor->presentationGeneration;
-                    options.packageContentDigest = descriptor->packageContentDigest;
-                    options.packageIconAssets = descriptor->iconAssets;
-                }
                 options.compositorBackgroundAvailable =
                     compositionSurface_.available() && !inertRetainedSnapshot;
                 options.compositorWidgetTransitions = layer == CompositionPaintLayer::Content &&
@@ -18683,19 +18970,13 @@ private:
                         : widgetrail::animation::ModalStyle::None;
                 }
                 options.retainedCompositorBackground = lastWidgetRenderResult_.compositorBackground;
-                if (descriptor) {
-                    options.artworkAuthorityId =
-                        std::wstring{renderedWidget} + L"\x1f" +
-                        descriptor->runtimeGeneration + L"\x1f" +
-                        descriptor->presentationGeneration;
-                }
                 const bool matchingFreeScrollBinding =
                     interactionSession_.freeScrollBinding() &&
                     (freeScrollDecision.disposition ==
                          widgetrail::input::FreeScrollAuthorityDisposition::Current ||
                      freeScrollDecision.disposition ==
                          widgetrail::input::FreeScrollAuthorityDisposition::Retained);
-                if (interactionSession_.freeScrollBinding() &&
+                if (!widgetFramePublicationFailed_ && interactionSession_.freeScrollBinding() &&
                     renderedWidget == state_.activeWidget() &&
                     freeScrollDecision.disposition ==
                         widgetrail::input::FreeScrollAuthorityDisposition::Replaced) {
@@ -18708,6 +18989,15 @@ private:
                 options.suppressFocusedDescendantFollow =
                     freeScrollDecision.followSuppressed &&
                     (!inertRetainedSnapshot || retainedRefreshFreeScroll);
+                if (pendingAccessibilityRealization_) {
+                    const auto& request = *pendingAccessibilityRealization_;
+                    if (!inertRetainedSnapshot && descriptor && request.widgetId == renderedWidget &&
+                        widgetrail::accessibility::ResolveActionRequest(request, renderedWidget,
+                            descriptor->runtimeGeneration, *snapshot)) {
+                        if (accessibilityRealizationReady_) options.realizeElementId = request.nodeId;
+                        options.suppressFocusedDescendantFollow = true;
+                    } else pendingAccessibilityRealization_.reset();
+                }
 
                 const std::wstring provisionalRenderedFocusId = renderedFocusId;
                 std::optional<widgetrail::input::WidgetInteractionAuthority>
@@ -18838,6 +19128,8 @@ private:
                     }
                 }
                 currentCompositionRenderTiming_ = result.timing;
+                pendingRendererPublicationId_ = result.succeeded ? result.publicationId : 0;
+                if (!result.succeeded) widgetFramePublicationFailed_ = true;
                 if (options.suppressFocusedDescendantFollow &&
                     interactionSession_.freeScrollBinding()) {
                     const auto& binding = *interactionSession_.freeScrollBinding();
@@ -18850,31 +19142,12 @@ private:
                     }
                 }
                 const auto& semanticSnapshot = *snapshot;
-                bool focusGroupEntryMoved{};
+                pendingGroupFocusPublication_.reset();
                 if (result.succeeded && focusGroupEntryPrepared &&
-                    focusGroupEntryAuthority) {
-                    const auto entry =
-                        interactionSession_.CommitPreparedFocusGroupEntryRequest(
-                            *focusGroupEntryAuthority,
-                            preparedFocusGroupEntryTarget);
-                    if (entry.consumed) {
-                        const auto priorFocus =
-                            interactionSession_.focusedElementId();
-                        if (entry.target && *entry.target != priorFocus) {
-                            ClearFreeScrollReentry(L"focus-group-entry-request");
-                            const auto focus = interactionSession_.MoveFocus(
-                                renderedWidget, semanticSnapshot, *entry.target,
-                                false, false);
-                            focusGroupEntryMoved = focus.changed;
-                            (void)scrollEvidenceProbe_.RecordTarget(
-                                *entry.target, L"focus-group-entry-request");
-                        }
-                        AppendDiagnostic(
-                            L"Focus-group entry request widget=" +
-                            std::wstring{renderedWidget} +
-                            L" state=settled-consumed target=" +
-                            (entry.target ? *entry.target : L"none"));
-                    }
+                    focusGroupEntryAuthority && preparedFocusGroupEntryTarget) {
+                    pendingGroupFocusPublication_ =
+                        widgetrail::input::FocusGroupEntryPublication::Capture(
+                            *focusGroupEntryAuthority, *preparedFocusGroupEntryTarget);
                 }
                 if (result.succeeded) {
                     const std::wstring inputOwner =
@@ -19144,28 +19417,10 @@ private:
                 }
                 declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;
                 if (result.succeeded) pendingWidgetCompositionScene_ = result.widgetComposition;
-                if (WidgetOwnsInputFocus(renderedWidget) &&
-                    !textEntryModal_.active() && !inertRetainedSnapshot &&
-                    !focusGroupEntryWaiting) {
-                    if (!options.suppressFocusedDescendantFollow ||
-                        focusGroupEntryMoved) {
-                        (void)ReconcileResponsiveFocusPersistence(
-                            renderedWidget, semanticSnapshot, result);
-                        if (const auto visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
-                            interactionSession_.focusedElementId(), semanticSnapshot.activeInputScopeId, result);
-                            visibleFocus && *visibleFocus != interactionSession_.focusedElementId()) {
-                            const auto focus = interactionSession_.MoveFocus(
-                                widget, semanticSnapshot, *visibleFocus,
-                                false, true);
-                            (void)scrollEvidenceProbe_.RecordTarget(
-                                *visibleFocus, L"reconcile");
-                            // The completed pass used the old focus state. Schedule one
-                            // more paint so the recovered target receives its ring.
-                            InvalidateWidgetFocusChange(
-                                focus.priorFocus, focus.sliderDamageNodeIds);
-                        }
-                    }
-                }
+                pendingResponsiveFocusReconciliation_ = result.succeeded &&
+                    WidgetOwnsInputFocus(renderedWidget) && !textEntryModal_.active() &&
+                    !inertRetainedSnapshot && !focusGroupEntryWaiting && !pendingGroupFocusPublication_ &&
+                    !options.suppressFocusedDescendantFollow;
                 if (inertRetainedSnapshot) {
                     // A conservative retained-authority raster is deliberately
                     // not the committed Current visual checkpoint. Prevent a
@@ -19174,20 +19429,13 @@ private:
                     ClearAccessibilityTree();
                 } else if (accessibilityActive_ && !result.succeeded) {
                     lastWidgetRenderResult_ = result;
-                    ClearAccessibilityTree();
+                    ClearAccessibilityTree(true);
                 } else {
                     lastWidgetRenderResult_ = result;
                 }
                 if (!inertRetainedSnapshot && result.succeeded) {
+                    if (!options.realizeElementId.empty()) paintedAccessibilityRealization_ = pendingAccessibilityRealization_;
                     ReconcileWindowPreviews(*snapshot, result);
-                    ReconcileScrollPaginationPrefetch(
-                        widget, semanticSnapshot, result);
-                    if (auto next = interactionSession_.ResolvePendingCollectionFocus(
-                            {widget, &semanticSnapshot, descriptor->runtimeGeneration, descriptor->presentationGeneration, false},
-                            interactionSession_.focusedElementId(), result)) {
-                        const auto moved = interactionSession_.MoveFocus(widget, semanticSnapshot, *next);
-                        InvalidateWidgetFocusChange(moved.priorFocus, moved.sliderDamageNodeIds);
-                    }
                 }
                 if (!inertRetainedSnapshot && result.succeeded) {
                     committedWidgetVisualState_ = CommittedWidgetVisualState{
@@ -19220,7 +19468,7 @@ private:
                         std::wstring{widget}, descriptor->runtimeGeneration,
                         semanticSnapshot, result,
                         state_.focusRegion() == widgetrail::FocusRegion::Widget
-                            ? std::wstring_view{interactionSession_.focusedElementId()}
+                            ? std::wstring_view{renderedFocusId}
                             : std::wstring_view{},
                         options.sliderValueOverrides,
                         selectPopup ? &*selectPopup : nullptr,
@@ -19478,6 +19726,14 @@ private:
     std::uint64_t fixedChromePlacementCount_{};
     std::optional<widgetrail::accessibility::ProjectionKey>
         pendingActionFailureAccessibilityProjection_;
+    std::optional<widgetrail::accessibility::ActionRequest> pendingAccessibilityRealization_;
+    bool accessibilityRealizationReady_{};
+    std::optional<widgetrail::accessibility::ActionRequest> paintedAccessibilityRealization_;
+    bool widgetFramePublicationFailed_{};
+    std::uint64_t pendingRendererPublicationId_{};
+    bool pendingResponsiveFocusReconciliation_{};
+    std::optional<widgetrail::input::FocusGroupEntryPublication> pendingGroupFocusPublication_;
+    std::optional<std::pair<std::uint64_t, std::wstring>> preparedCandidateGroupFocus_;
     bool awaitingSuccessfulOpenPaint_{};
     ULONGLONG nextOpenPaintRetryAt_{};
     std::wstring pendingContentRevealWidget_;
@@ -19550,6 +19806,11 @@ private:
 };
 
 } // namespace
+
+#if defined(WRAIL_WIDGET_PUBLICATION_TESTING)
+#include "WidgetFramePublicationTests.inl"
+int wmain() { return OverlayApp::RunPublicationTests(); }
+#endif
 
 static int RunWidgetRail(HINSTANCE instance, int showCommand, bool& restart) {
     for (int index = 1; index < __argc; ++index) {

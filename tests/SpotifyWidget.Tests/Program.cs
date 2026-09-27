@@ -818,6 +818,8 @@ static async Task QueueTraversesContinuously()
     await WaitUntil(() => harness.QueueCalls == 1);
 
     var snapshot = widget.RenderSnapshot("spotify.queue.continuous", 1);
+    Assert.Equal(CollectionLayoutKind.List, Find(snapshot.Root, "spotify.queue.scroll").CollectionLayout!.Kind);
+    WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Queue", snapshot);
     var rows = Find(snapshot.Root, "spotify.queue.scroll").Children.ToArray();
     Assert.Equal(50, rows.Length);
     Assert.Equal(50, rows.Select(row => row.Id).Distinct(StringComparer.Ordinal).Count());
@@ -1325,7 +1327,11 @@ static async Task MaximumPlaylistPageContract()
     var firstPage = widget.RenderSnapshot("spotify.maximum-playlists", 1);
     Assert.True(firstPage.ProtocolVersion >= ProtocolConstants.VirtualCollectionWindowVersion,
         "Playlist paging did not negotiate virtual-collection support.");
+    WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Playlists", firstPage);
     var playlistScroll = Find(firstPage.Root, "spotify.playlists.scroll");
+    Assert.Equal(CollectionLayoutKind.AdaptiveGrid, playlistScroll.CollectionLayout!.Kind);
+    Assert.True(playlistScroll.Children.All(item => item.CollectionItemKey is not null),
+        "Every realized playlist item must retain its cursor identity.");
     Assert.NotNull(playlistScroll.VirtualCollectionWindow);
     Assert.True(CollectionRows(playlistScroll).Length is >= 1 and <= 12,
         "Playlist presentation exceeded its current bounded window.");
@@ -1608,7 +1614,9 @@ static async Task ContinuousPlaylistDetailAnchorAndHeader()
     await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 5);
     var refreshed = widget.RenderSnapshot("spotify.anchor-refresh", 2);
+    WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Tracks", refreshed);
     var scroll = Find(refreshed.Root, "spotify.playlist.detail.scroll");
+    Assert.Equal(CollectionLayoutKind.List, scroll.CollectionLayout!.Kind);
     Assert.Equal("media." + CollectionToken("spotify:track:track-1"), scroll.CollectionAnchorKey);
     Assert.NotNull(Find(refreshed.Root, TrackFocus("wide", retainedUri)));
     await StopAsync(widget);
@@ -3224,6 +3232,9 @@ static async Task SearchSectionRoundTrips()
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     await widget.OnActionAsync(new("spotify.search.query", "spotify.search.query") { CommittedText = "night" });
     await WaitUntil(() => CollectionRows(widget.RenderSnapshot("search.sections", 1).Root).Length == 10);
+    var searchFixture = widget.RenderSnapshot("search.sections", 2);
+    Assert.Equal(CollectionLayoutKind.List, Find(searchFixture.Root, "spotify.search.scroll").CollectionLayout!.Kind);
+    WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Search", searchFixture);
     long sequence = 2;
     foreach (var direction in new[] { "next", "previous" })
     {

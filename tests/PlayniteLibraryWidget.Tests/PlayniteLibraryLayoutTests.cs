@@ -548,7 +548,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         var styles = File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
             "styles", "default.wrss"));
         StringAssert.Contains(styles,
-            ".playnite-library-browse-grid { width: 100%; min-width: 0px; flex-shrink: 0; gap: 4px 2px; padding: 4px; justify: center; }");
+            ".playnite-library-browse-scroll { gap: 4px 2px; padding: 4px; }");
         StringAssert.Contains(styles,
             ".playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px;");
         var theme = CompileStyles();
@@ -573,7 +573,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                 "playnite-library-page-scroll", StringComparer.Ordinal)),
             "Browse must not emit the retired shared page-scroll class.");
         var browseGrid = Nodes(browse.Root).Single(node =>
-            node.Id == "playnite-library.browse.grid");
+            node.Id == PlayniteLibraryPresentation.ScrollId);
         Assert.IsNull(browseGrid.InitialChildFocusId,
             "Mutable Browse results must not retain native remembered-child authority.");
         var browseQuery = Nodes(browse.Root).Single(node =>
@@ -586,8 +586,8 @@ public sealed partial class PlayniteLibraryLayoutTests
             node.Id == "playnite-library.collection.hints");
         Assert.IsNull(browseActions.InitialChildFocusId);
         Assert.IsFalse(Nodes(browseActions).Any(node => node.IsFocusable));
-        Assert.AreEqual(150D, browseGrid.GridMinimumColumnWidth);
-        Assert.AreEqual(7, browseGrid.GridMaximumColumns);
+        Assert.AreEqual(150D, browseGrid.CollectionLayout!.MinimumColumnWidth);
+        Assert.AreEqual(7, browseGrid.CollectionLayout!.MaximumColumns);
         var browseRootStyle = theme.Resolve(new WrssElement("stack", null,
             Nodes(browse.Root).Single(node => node.Id == "playnite-library.root").StyleClasses.ToHashSet(StringComparer.Ordinal)));
         Assert.AreEqual("100%", browseRootStyle.Get("width")?.Text);
@@ -799,7 +799,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                     "playnite-library-catalog-scroll", phase);
                 Assert.AreEqual(item.Key.Value, catalogScroll.CollectionAnchorKey);
                 var grid = nodes.Single(node =>
-                    node.Id == "playnite-library.browse.grid");
+                    node.Id == PlayniteLibraryPresentation.ScrollId);
                 Assert.IsNull(grid.InitialChildFocusId,
                     phase + " mutable Browse results must not retain remembered focus.");
                 var actions = nodes.Single(node =>
@@ -868,7 +868,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual("playnite-library.search",
             fixedRowsOnlySnapshot.InitialFocusId);
         Assert.IsFalse(fixedRowsOnlyNodes.Any(node =>
-            node.Id == "playnite-library.browse.grid"));
+            node.Id == PlayniteLibraryPresentation.ScrollId));
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(fixedRowsOnlySnapshot).Count,
             "Browse fixed rows must not create an empty catalog or invalid focus target.");
 

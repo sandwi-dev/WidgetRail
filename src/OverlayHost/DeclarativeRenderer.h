@@ -4,6 +4,7 @@
 #include "ControllerPrompt.h"
 
 #include "DeclarativeLayout.h"
+#include "CollectionLayoutState.h"
 #include "DeclarativeMotion.h"
 #include "WidgetTransitions.h"
 #include "WidgetCompositionScene.h"
@@ -61,6 +62,18 @@ struct RenderScrollViewport final {
     declarative::Rect rect;
     float offset{};
     float maximumOffset{};
+};
+
+// Committed logical navigation authority; no fabricated offscreen rectangles.
+struct RenderLogicalCollection final {
+    WidgetNode::CollectionLayout policy;
+    WidgetComputedStyle containerStyle;
+    std::wstring inputScope;
+    std::size_t columns{1}, firstColumn{};
+    std::int64_t startIndex{};
+    std::uint64_t resetGeneration{};
+    std::optional<std::uint64_t> firstItemIndex;
+    std::vector<std::pair<std::wstring, std::wstring>> itemIdentities; // focus ID, key
 };
 
 /// Exact shared geometry for a Button's optional leading visual, label, and
@@ -182,6 +195,7 @@ struct RenderResult final {
     std::shared_ptr<const WidgetCompositionScene> widgetComposition;
     bool playStationControls{};
     bool succeeded{};
+    std::uint64_t publicationId{};
     std::shared_ptr<const RenderInspection> inspection;
     /// True only while at least one paint-only node transition requires a
     /// future frame. The renderer never owns a timer or animation thread.
@@ -214,6 +228,7 @@ struct RenderResult final {
     // only interactive geometry so ordinary paints do not allocate two maps
     // for every decorative and structural node.
     std::map<std::wstring, declarative::Rect, std::less<>> elementRects;
+    std::map<std::wstring, declarative::Rect, std::less<>> elementUnroundedRects;
     std::map<std::wstring, declarative::Rect, std::less<>> posterArtworkRects;
     std::map<std::wstring, declarative::Rect, std::less<>> elementVisibleRects;
     std::map<std::wstring, float, std::less<>> sliderThumbXs;
@@ -244,6 +259,8 @@ struct RenderResult final {
     std::map<std::wstring, declarative::Rect, std::less<>> navigationRects;
     std::map<std::wstring, bool, std::less<>> navigationEnabled;
     std::set<std::wstring, std::less<>> revealableFocusIds;
+    std::set<std::wstring, std::less<>> realizableFocusIds;
+    std::map<std::wstring, RenderLogicalCollection, std::less<>> logicalCollections;
     std::map<std::wstring, std::wstring, std::less<>> focusScopes;
     std::map<std::wstring, float, std::less<>> scrollOffsets;
     std::map<std::wstring, RenderScrollViewport, std::less<>> scrollViewports;
@@ -296,6 +313,18 @@ enum class IncrementalPresentationWork {
     ScrollOnly,
 };
 
+enum class CollectionPreparationStatus { Ready, Pending, Failed };
+struct CollectionPreparationBudget final {
+    std::size_t maximumNewMeasurements{8};
+    std::uint64_t maximumMicroseconds{2000};
+};
+struct CollectionPreparationResult final {
+    CollectionPreparationStatus status{CollectionPreparationStatus::Failed};
+    std::size_t newMeasurements{};
+    std::uint64_t elapsedMicroseconds{};
+    std::shared_ptr<const RenderResult> focusGeometry;
+};
+
 struct IncrementalPresentationPlan final {
     IncrementalPresentationWork work{IncrementalPresentationWork::PaintOnly};
     declarative::Rect damage;
@@ -327,6 +356,8 @@ enum class FocusedFreeScrollPlanDisposition {
     EmptyScrollViewport,
     OffsetBoundary,
     EmptyDamage,
+    PreparationPending,
+    PreparationFailed,
 };
 
 /// Bounded reason data for a rejected free-scroll plan. The host records this
@@ -356,6 +387,9 @@ struct DeclarativeRenderOptions final {
 #endif
     bool playStationControls{controller::UsePlayStationControls()};
     bool collectInspection{};
+    // Host acknowledges only after EndDraw/composition submission succeeds.
+    // Default synchronous callers retain immediate publication behavior.
+    bool deferPublication{};
     std::function<Microsoft::WRL::ComPtr<ID2D1Bitmap1>(ID2D1RenderTarget*, std::wstring_view)> windowPreviewBitmap;
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};
@@ -404,6 +438,8 @@ struct DeclarativeRenderOptions final {
     /// Right-stick free scroll deliberately retains semantic focus without
     /// allowing that descendant to pull the viewport back until re-entry.
     bool suppressFocusedDescendantFollow{};
+    // Host-authorized reveal independent of controller focus (for UIA).
+    std::wstring realizeElementId;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     /// Compare whole-item retention with the conservative clipped painter.
     bool disableIndependentCapturesForTesting{};
@@ -464,6 +500,18 @@ public:
         std::wstring_view focusedElementId,
         declarative::Rect viewport,
         const DeclarativeRenderOptions& options = {});
+    [[nodiscard]] bool CommitFramePublication(std::uint64_t publicationId);
+    void RejectFramePublication() noexcept;
+    /// Host-thread preparation only: no paint, focus admission or published
+    /// scroll mutation. Call before beginning a frame; Pending retains reusable
+    /// measurements for a later slice. One indivisible item may exceed the time
+    /// budget. Hosts must retain the previous scene until Ready, then Render
+    /// the same admitted request. Render still supports synchronous fallback.
+    [[nodiscard]] CollectionPreparationResult PrepareCollections(
+        const WidgetSnapshot& snapshot, std::wstring_view focusedElementId,
+        declarative::Rect viewport, const DeclarativeRenderOptions& options = {},
+        CollectionPreparationBudget budget = {}, bool collectFocusGeometry = false);
+    void CancelCollectionPreparation() noexcept;
     [[nodiscard]] bool PaintPackageIcon(
         ID2D1RenderTarget* renderTarget,
         const WidgetPackageIcon& icon,
@@ -537,6 +585,13 @@ public:
         declarative::Rect viewport,
         std::wstring_view exactScrollId = {},
         FocusedFreeScrollPlanDiagnostic* diagnostic = nullptr);
+    /// Tentatively plans movement and prepares its demand. Pending/Failed
+    /// restores the exact previous offset and paint plan, without movement debt.
+    [[nodiscard]] std::optional<FocusedFreeScrollPlan> PlanPreparedFreeScroll(
+        const WidgetSnapshot&, std::wstring_view focusedElementId, declarative::ScrollAxis,
+        float deltaDip, declarative::Rect viewport, std::wstring_view exactScrollId,
+        const DeclarativeRenderOptions&, FocusedFreeScrollPlanDiagnostic* = nullptr,
+        CollectionPreparationBudget = {});
 
     /// Reuses current committed geometry for artwork or animation paints.
     /// Omitted damage covers the widget; pending scroll layout is preserved.
@@ -657,6 +712,52 @@ private:
     // constraints/measurements. Local measurement and modal trees stay stateless.
     std::array<RetainedLayoutPass, 2> retainedLayout_;
     std::wstring retainedLayoutOwner_;
+    struct CollectionItemLayout final {
+        // Measurement dependencies are immutable between revisions. Staging a
+        // frame must not deep-copy every offscreen semantic subtree.
+        std::shared_ptr<const WidgetNode> source;
+        std::uint64_t revision{};
+        std::uint64_t measuredContext{};
+        declarative::LayoutResult layout;
+        std::map<std::wstring, TextMeasurementProof, std::less<>> text;
+        std::map<std::wstring, std::vector<TextMeasurementProof>, std::less<>> queries;
+    };
+    struct CollectionMeasureContext final {
+        NativeRenderStyle style;
+        float width{}, height{}, viewportWidth{}, viewportHeight{}, rootFont{}, pixelScale{}, textScale{};
+        int minimumFontWeight{};
+        bool compact{}, horizontal{}, playStationControls{}, adaptiveGrid{};
+        bool operator==(const CollectionMeasureContext&) const = default;
+    };
+    struct CollectionRenderState final {
+        collection::CollectionLayoutState geometry;
+        std::map<std::wstring, CollectionItemLayout, std::less<>> items;
+        CollectionMeasureContext context;
+        std::uint64_t contextRevision{}, itemRevision{};
+        std::wstring lastFocusedKey;
+        std::vector<std::size_t> realized;
+        float columnWidth{}, columnGap{};
+        double leadingExtent{}, trailingExtent{};
+        std::uint64_t resetGeneration{};
+        [[nodiscard]] std::pair<float, float> AdmittedScrollRange(const float viewportExtent) const noexcept {
+            const auto distance = geometry.Extent() - viewportExtent;
+            return {static_cast<float>(leadingExtent),
+                static_cast<float>(leadingExtent + (distance > 0 ? distance : 0))};
+        }
+    };
+    std::unordered_map<std::wstring, CollectionRenderState> collections_;
+    struct CollectionPreparation final {
+        std::unordered_map<std::wstring, CollectionRenderState> collections;
+        std::wstring instance, scope, focus, realization;
+        long long sequence{};
+        bool ready{};
+        [[nodiscard]] bool Matches(const WidgetSnapshot& snapshot) const noexcept {
+            return instance == snapshot.instanceId && scope == snapshot.activeInputScopeId && sequence == snapshot.sequence;
+        }
+    };
+    // One published source and one incoming source may prepare concurrently.
+    // LRU-bounded speculative measurements never own scroll or scene authority.
+    std::vector<CollectionPreparation> collectionPreparations_;
     struct IncrementalNodeState final {
         NativeRenderStyle baseStyle;
         NativeStyleContext styleContext;
@@ -867,6 +968,28 @@ private:
     std::map<std::wstring, CompositionPaintEntry> compositionPaintCache_;
     std::optional<IncrementalLayoutCache> incrementalLayoutCache_;
     std::optional<PendingIncrementalPlan> pendingIncrementalPlan_;
+    struct FramePublication final {
+        std::uint64_t id{}, resourceGeneration{};
+        std::wstring instance, scope, focus, realization;
+        long long sequence{};
+        decltype(incrementalLayoutCache_) layout;
+        decltype(collections_) collections;
+        decltype(scrollOffsets_) scrollOffsets;
+        std::uint64_t scrollClock{};
+        decltype(motionTimeline_) motion;
+        decltype(widgetTransitions_) transitions;
+        decltype(transitionVisuals_) visuals;
+        decltype(focusSelectionMemory_) selection;
+        decltype(selectedPresentationSources_) selectionSources;
+        decltype(focusBackgrounds_) backgrounds;
+        std::uint64_t backgroundClock{};
+        decltype(compositionPaintCache_) paintCache;
+        std::wstring compositionInstance;
+        decltype(protectedImageKeys_) imageKeys;
+        decltype(visibleContentImageHashes_) visibleImageHashes;
+    };
+    std::unique_ptr<FramePublication> pendingPublication_;
+    std::uint64_t nextPublicationId_{};
 };
 
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING

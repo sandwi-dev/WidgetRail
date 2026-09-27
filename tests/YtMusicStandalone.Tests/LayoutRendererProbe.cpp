@@ -37,7 +37,8 @@ int Run(int argc, wchar_t** argv) {
                 const auto style = widgetrail::NativeStyleAdapter::Adapt(widgetrail::ResolveDeclarativeComputedStyle(*field, true, false), {}).style;
                 const auto& rect = *result.currentFocusRect;
                 const auto clip = result.currentFocusOutlineClip.value_or(widgetrail::declarative::Rect{0, 0, size.width, size.height});
-                const auto outward = style.outlineOffsetPx() + std::max(2.0F, style.outlineWidthPx());
+                const auto outward = style.outlineOffsetPx() +
+                    (style.outlineWidthPx() > 0 ? style.outlineWidthPx() : 2.0F);
                 std::cout << "search ring rect=" << rect.x << "," << rect.y << "," << rect.width << "," << rect.height
                     << " outward=" << outward << " clip=" << clip.x << "," << clip.y << "," << clip.width << "," << clip.height << '\n';
                 Require(rect.x - outward >= clip.x - .1F && rect.y - outward >= clip.y - .1F &&
@@ -92,7 +93,10 @@ int Run(int argc, wchar_t** argv) {
                 Require(refresh.x >= filters.x + filters.width + 17, "Refresh lost its separation from library filters");
                 const auto moved = renderer.Render(nullptr, *snapshot, L"item.20", {0, 0, size.width, size.height}, options);
                 Require(moved.focusRects.contains(L"item.20"), "Later playlist was not revealed by scrolling");
-                Require(moved.elementRects.at(L"item.20").y < result.elementRects.at(L"item.20").y - 10, "List did not move during toolbar check");
+                Require(moved.scrollOffsets.at(L"music.scroll.library.playlists") >
+                    result.scrollOffsets.at(L"music.scroll.library.playlists") + 10, "List did not move during toolbar check");
+                Require(!result.elementRects.contains(L"item.20") && result.realizableFocusIds.contains(L"item.20"),
+                    "Offscreen playlist must retain logical identity without realized geometry");
                 Require(std::abs(moved.elementRects.at(L"library.toolbar").y - result.elementRects.at(L"library.toolbar").y) < .1f &&
                     std::abs(moved.elementRects.at(L"page.heading").y - result.elementRects.at(L"page.heading").y) < .1f,
                     "Library toolbar or heading moves with the list");

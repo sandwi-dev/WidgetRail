@@ -864,6 +864,32 @@ public static class ViewSnapshotValidator
                 Add($"{path}.indicatorSize", "loading_indicator_size_not_allowed",
                     "Indicator size applies only to loading indicators.");
             }
+            if (node.CollectionLayout is { } collectionLayout)
+            {
+                if (node.Kind is not ViewNodeKind.Scroll || !Enum.IsDefined(collectionLayout.Kind))
+                    Add(path, "invalid_collection_layout", "Collection layout requires a Scroll and a supported layout kind.");
+                if (!double.IsFinite(collectionLayout.EstimatedItemExtent) ||
+                    collectionLayout.EstimatedItemExtent < ProtocolConstants.MinimumVirtualCollectionItemExtent ||
+                    collectionLayout.EstimatedItemExtent > ProtocolConstants.MaximumVirtualCollectionItemExtent)
+                    Add(path, "invalid_collection_estimate", "Collection estimates must be finite and within the supported DIP range.");
+                if (collectionLayout.Kind is CollectionLayoutKind.AdaptiveGrid)
+                {
+                    if (node.ScrollAxis is not ScrollAxis.Vertical ||
+                        collectionLayout.MinimumColumnWidth is not { } width || !double.IsFinite(width) ||
+                        width < ProtocolConstants.MinimumGridColumnWidth || width > ProtocolConstants.MaximumGridColumnWidth ||
+                        collectionLayout.MaximumColumns is < 1 or > ProtocolConstants.MaximumGridColumns)
+                        Add(path, "invalid_collection_grid", "Adaptive collections require vertical scrolling and bounded column widths/counts.");
+                }
+                else if (collectionLayout.MinimumColumnWidth is not null || collectionLayout.MaximumColumns is not null)
+                    Add(path, "invalid_collection_grid", "Column properties apply only to adaptive collections.");
+                var collectionItems = node.Children;
+                foreach (var item in collectionItems ?? [])
+                {
+                    if (item is null || item.Kind is not (ViewNodeKind.Button or ViewNodeKind.ActionSurface) ||
+                        item.CollectionItemKey is null || item.VisibleWhen is not (null or ResponsiveVisibility.Always))
+                        Add(path, "invalid_collection_item", "Collections require direct, always-present keyed buttons or action surfaces.");
+                }
+            }
             if (node.Kind is ViewNodeKind.Scroll)
             {
                 if (node.ScrollAxis is null)

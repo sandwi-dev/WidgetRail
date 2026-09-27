@@ -517,6 +517,8 @@ public sealed record ViewNode
     /// extent, scrolling, clipping, focus, layout, and accessibility.
     /// </summary>
     public VirtualCollectionWindow? VirtualCollectionWindow { get; init; }
+    /// <summary>Protocol-v59 explicit list/grid realization policy for direct keyed items.</summary>
+    public CollectionLayout? CollectionLayout { get; init; }
     /// <summary>
     /// Protocol-v14 keyed collection anchor retained at the same viewport
     /// position when children are appended, prepended, or evicted; a new
