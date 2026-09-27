@@ -478,10 +478,16 @@ bool RemoteImageCache::ReleaseBudgetRejection(std::wstring_view key) {
 bool RemoteImageCache::CanPrefetch(std::wstring_view key) const {
     std::scoped_lock lock(mutex_);
     const auto resources = resourceBudget_->Read();
+    const auto pending = PendingCountLocked();
+    const auto readyLimit = std::min(limits_.maximumReadyEntries, limits_.maximumEntries);
     return ProtectedLocked(key) ||
         (!resources.needsReclamation() && resources.liveBytes < resources.retentionTarget - resources.retentionTarget / 4 &&
          decodedBytes_ < limits_.maximumDecodedBytes * 3 / 4 &&
-         PendingCountLocked() < std::max(std::size_t{1}, limits_.maximumPendingEntries / 2));
+         // Tiny thumbnails reach the entry limit long before the byte limit.
+         // Reserve slots for visible work, including pending completions, so
+         // optional demand cannot continuously evict and reload adjacent items.
+         ReadyCountLocked() + pending < readyLimit - readyLimit / 4 &&
+         pending < std::max(std::size_t{1}, limits_.maximumPendingEntries / 2));
 }
 RemoteImageRequestResult RemoteImageCache::Request(std::wstring url, ImageDecodeSize size) {
     if (!IsAllowedImageSource(url) || !size.valid()) return RemoteImageRequestResult::InvalidUrl;
@@ -1144,6 +1150,7 @@ bool RemoteImageCache::EvictOneLocked(
     if (scrollDiagnostics_) scrollDiagnostics_->Record("decoded-eviction", [&](auto& out) {
         out << "variant=" << OpaqueDiagnosticHash(candidate->first)
             << " reason=" << (reason == EvictionReason::BytePressure ? "bytes" : "count")
+            << " shared-pressure=" << resourceBudget_->Read().needsReclamation()
             << " protected=" << ProtectedLocked(candidate->first)
             << " bytes=" << (candidate->second.image ? candidate->second.image->premultipliedBgra.size() : 0)
             << " state=" << static_cast<int>(candidate->second.state);
