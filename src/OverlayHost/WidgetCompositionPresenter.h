@@ -10,6 +10,7 @@ class WidgetCompositionPresenter final {
     struct Counters {
         std::uint64_t sceneCommits{}, rasterUploads{}, animationStarts{}, interruptionCaptures{};
         std::uint64_t rasterReuses{}, focusAtlasReuses{}, uploadedBytes{};
+        std::uint64_t visualAdds{}, visualRemoves{}, visualResets{};
     };
     WidgetCompositionPresenter(IDCompositionDevice2 *composition, ID2D1Device *graphics,
         std::shared_ptr<resources::UiResourceBudget> budget);
@@ -70,6 +71,12 @@ class WidgetCompositionPresenter final {
     ID2D1Device *graphics_{};
     Ptr<IDCompositionVisual3> root_;
     Ptr<IDCompositionVisual2> parent_;
+    Ptr<IDCompositionVisual2> above_;
+    struct VisualChildren {
+        Ptr<IDCompositionVisual> parent;
+        std::vector<Ptr<IDCompositionVisual>> children;
+    };
+    std::map<IDCompositionVisual*, VisualChildren> visualChildren_;
     std::shared_ptr<const WidgetCompositionScene> scene_;
     std::map<std::wstring, Group> groups_;
     std::map<std::wstring, Raster> rasters_;
@@ -85,6 +92,7 @@ class WidgetCompositionPresenter final {
     void DrawGroup(ID2D1RenderTarget *target, const std::wstring &group, D2D1_MATRIX_3X2_F transform,
                    float opacity, std::int64_t now) const;
     HRESULT Rebuild(IDCompositionVisual2 *above);
+    HRESULT ReconcileChildren(std::map<IDCompositionVisual*, VisualChildren> desired);
     HRESULT ConfigureFocusSurface(Group &group);
     HRESULT ConfigureIndeterminateRotation(Group &group, bool restart, std::int64_t now);
     float RotationAngle(const Group &group, std::int64_t now) const noexcept;

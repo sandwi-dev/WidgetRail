@@ -33,6 +33,7 @@
 #include "RichMediaSurfaceCoordinator.h"
 #include "ScrollEvidenceProbe.h"
 #include "ScrollDiagnostics.h"
+#include "PreparationFrameBudget.h"
 #include <source_location>
 #include "LocalWidgetPackageImport.h"
 #include "MediaSessionManager.h"
@@ -2635,6 +2636,7 @@ private:
                 ReassertOverlayZOrder();
             } else if (wParam == kCollectionPreparationTimer) {
                 KillTimer(window_, kCollectionPreparationTimer);
+                preparationTimerArmed_ = false;
                 PumpCollectionPreparation();
             } else if (wParam == kCatalogRetryTimer) {
                 KillTimer(window_, kCatalogRetryTimer);
@@ -2692,6 +2694,9 @@ private:
             Paint();
             if (heldDpadBoundaryStop_ && (ContinuousScrollFrameAuthority().empty() || SettleRightStickFocus()))
                 heldDpadBoundaryStop_ = false;
+            // WM_TIMER is lower priority than WM_PAINT. A continuous stream of
+            // scroll paints must not starve speculative preparation entirely.
+            PumpCollectionPreparation();
             return 0;
         case WM_SIZE:
         {
@@ -6970,7 +6975,7 @@ private:
     void ProcessWidgetSessionEvents() {
         for (auto& event : sessions_.TakeEvents()) {
             if (event.kind == widgetrail::WidgetSessionEventKind::SnapshotAwaitingPreparation) {
-                SetTimer(window_, kCollectionPreparationTimer, 1, nullptr);
+                ArmCollectionPreparationTimer(1);
                 continue;
             }
             if (event.kind ==
@@ -7270,14 +7275,44 @@ private:
         }
     }
 
+    void ArmCollectionPreparationTimer(const UINT delay) {
+        if (!preparationTimerArmed_)
+            preparationTimerArmed_ = SetTimer(window_, kCollectionPreparationTimer, delay, nullptr) != 0;
+    }
+
     void PumpCollectionPreparation() {
+        const bool hasWork = interactionSession_.focusRealization().pending() ||
+            (pendingAccessibilityRealization_ && !accessibilityRealizationReady_) ||
+            (declarativeRenderer_ && declarativeRenderer_->HasPendingScrollPreparation()) ||
+            std::ranges::any_of(sessions_.descriptors(), [&](const auto& descriptor) {
+                return sessions_.PendingPresentationPreparation(descriptor.id).has_value();
+            });
+        if (!hasWork) return;
         const auto started = std::chrono::steady_clock::now();
-        bool pendingWork = PumpFocusRealization();
-        if (PumpAccessibilityRealization()) pendingWork = true;
+        LARGE_INTEGER now{}, frequency{};
+        QueryPerformanceCounter(&now); QueryPerformanceFrequency(&frequency);
+        DWM_TIMING_INFO timing{}; timing.cbSize = sizeof(timing);
+        const bool timed = SUCCEEDED(DwmGetCompositionTimingInfo(nullptr, &timing));
+        const auto micros = [&](const auto ticks) { return static_cast<std::uint64_t>(ticks * 1000000.0 / frequency.QuadPart); };
+        RECT pendingPaint{};
+        const auto available = preparationFrameBudget_.Available(micros(now.QuadPart),
+            timed ? micros(timing.qpcVBlank) : 0, timed ? micros(timing.qpcRefreshPeriod) : 0,
+            IsWindowVisible(window_) && GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE);
+        if (!available) { ArmCollectionPreparationTimer(1); return; }
+        const auto budget = [&] {
+            const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started).count());
+            return widgetrail::CollectionPreparationBudget{8, elapsed < available ? available - elapsed : 0};
+        };
+        bool pendingWork{};
+        if (budget().maximumMicroseconds) pendingWork = PumpFocusRealization(budget());
+        else pendingWork = true;
+        if (budget().maximumMicroseconds) { if (PumpAccessibilityRealization(budget())) pendingWork = true; }
+        else pendingWork = true;
         for (const auto& descriptor : sessions_.descriptors()) {
             const auto pending = sessions_.PendingPresentationPreparation(descriptor.id);
             if (!pending) continue;
-            if (std::chrono::steady_clock::now() - started >= std::chrono::milliseconds(3)) {
+            if (!budget().maximumMicroseconds) {
                 pendingWork = true;
                 continue;
             }
@@ -7287,7 +7322,7 @@ private:
                 const auto mediaKey = CurrentEmbeddedMediaSessionKey(descriptor.id);
                 const auto* media = mediaKey ? mediaSessions_.Find(*mediaKey) : nullptr;
                 preparation = pinnedSurfaceCoordinator_.PrepareSnapshot(descriptor.id, descriptor.runtimeGeneration,
-                    snapshot, ResolvePinnedLayouts(snapshot), media && media->authority && media->coordinator);
+                    snapshot, ResolvePinnedLayouts(snapshot), media && media->authority && media->coordinator, budget());
             } else if (state_.surface() == widgetrail::Surface::Widget && state_.activeWidget() == descriptor.id && declarativeRenderer_) {
                 const auto target = DesiredWidgetSurfaceTarget(&snapshot);
                 const auto extent = DesiredContentPanelExtentDip(&snapshot);
@@ -7299,15 +7334,21 @@ private:
                     const float scale = static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F *
                         (appearanceState_.current() ? static_cast<float>(appearanceState_.current()->interfaceScale) : 1.0F);
                     auto options = WidgetRenderOptions(descriptor.id, &descriptor, *geometry, scale);
-                    auto focus = interactionSession_.FocusRestoreCandidate(descriptor.id, snapshot);
-                    if (preparedCandidateGroupFocus_ && preparedCandidateGroupFocus_->first == pending->requestId)
-                        focus = preparedCandidateGroupFocus_->second;
                     const widgetrail::input::WidgetInteractionAuthority authority{
                         descriptor.id, &snapshot, descriptor.runtimeGeneration, descriptor.presentationGeneration, false};
+                    const bool groupEntry = WidgetOwnsInputFocus(descriptor.id) &&
+                        interactionSession_.CandidateFocusGroupEntryRequested(authority);
+                    auto focus = interactionSession_.FocusRestoreCandidate(descriptor.id, snapshot);
+                    // Discover the incoming group's logical children before
+                    // following a recycled ID from the outgoing section. Then
+                    // prepare exactly the remembered/default child it requests.
+                    if (groupEntry) focus.clear();
+                    if (groupEntry && preparedCandidateGroupFocus_ && preparedCandidateGroupFocus_->first == pending->requestId)
+                        focus = preparedCandidateGroupFocus_->second;
                     options.suppressFocusedDescendantFollow = interactionSession_.EvaluateFreeScrollAuthority(authority).followSuppressed;
                     preparation = declarativeRenderer_->PrepareCollections(snapshot, focus,
                         {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options,
-                        {}, snapshot.focusGroupEntryRequest.has_value() && WidgetOwnsInputFocus(descriptor.id));
+                        budget(), groupEntry);
                     if (preparation.focusGeometry) {
                         const auto entry = interactionSession_.PreviewCandidateFocusGroup(authority, *preparation.focusGeometry);
                         if (entry && *entry != focus) {
@@ -7328,10 +7369,30 @@ private:
             if (preparedCandidateGroupFocus_ && preparedCandidateGroupFocus_->first == pending->requestId)
                 preparedCandidateGroupFocus_.reset();
         }
-        if (pendingWork) SetTimer(window_, kCollectionPreparationTimer, 16, nullptr);
+        if (declarativeRenderer_ && declarativeRenderer_->HasPendingScrollPreparation()) {
+            const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+            if (!snapshot || state_.surface() != widgetrail::Surface::Widget) declarativeRenderer_->CancelScrollPreparation();
+            else if (budget().maximumMicroseconds) {
+                const auto result = declarativeRenderer_->PreparePendingScroll(*snapshot,
+                    interactionSession_.focusedElementId(), budget());
+                if (result.status == widgetrail::CollectionPreparationStatus::Ready) {
+                    // Adoption is a normal transactional paint; preparation did
+                    // not change the committed viewport or interactive geometry.
+                    (void)SubmitRetainedWidgetPaint();
+                }
+            }
+            pendingWork = pendingWork || declarativeRenderer_->HasPendingScrollPreparation();
+        }
+        const auto elapsed = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+        preparationFrameBudget_.Observe(elapsed);
+        if (gScrollDiagnostics) gScrollDiagnostics->Record("preparation-slice", [&](auto& out) {
+            out << "budget-us=" << available << " cpu-us=" << elapsed << " pending=" << pendingWork;
+        });
+        if (pendingWork) ArmCollectionPreparationTimer(1);
     }
 
-    bool PumpAccessibilityRealization() {
+    bool PumpAccessibilityRealization(const widgetrail::CollectionPreparationBudget budget) {
         if (!pendingAccessibilityRealization_ || accessibilityRealizationReady_) return false;
         const auto request = *pendingAccessibilityRealization_;
         const auto widget = state_.activeWidget();
@@ -7353,7 +7414,7 @@ private:
         options.suppressFocusedDescendantFollow = true;
         options.realizeElementId = request.nodeId;
         const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, interactionSession_.focusedElementId(),
-            {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options);
+            {geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight}, options, budget);
         if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) return true;
         if (preparation.status == widgetrail::CollectionPreparationStatus::Failed) { pendingAccessibilityRealization_.reset(); return false; }
         accessibilityRealizationReady_ = true;
@@ -7361,7 +7422,7 @@ private:
         return false;
     }
 
-    bool PumpFocusRealization() {
+    bool PumpFocusRealization(const widgetrail::CollectionPreparationBudget budget) {
         auto& intent = interactionSession_.focusRealization();
         if (!intent.pending()) return false;
         const auto widget = state_.activeWidget();
@@ -7384,7 +7445,7 @@ private:
         auto options = WidgetRenderOptions(widget, sessions_.FindDescriptor(widget), *geometry, scale);
         const widgetrail::declarative::Rect viewport{
             geometry->widgetViewportX, geometry->widgetViewportY, geometry->widgetViewportWidth, geometry->widgetViewportHeight};
-        const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, *target, viewport, options, {}, true);
+        const auto preparation = declarativeRenderer_->PrepareCollections(*snapshot, *target, viewport, options, budget, true);
         if (preparation.status == widgetrail::CollectionPreparationStatus::Pending) return true;
         if (preparation.status == widgetrail::CollectionPreparationStatus::Failed) { intent.Clear(); return false; }
         const auto ready = preparation.focusGeometry
@@ -11397,6 +11458,7 @@ private:
     }
 
     void ClearFreeScrollReentry(const std::wstring_view reason) {
+        if (declarativeRenderer_) declarativeRenderer_->CancelScrollPreparation();
         pendingAccessibilityRealization_.reset();
         continuousScrollFrames_.Clear();
         heldDpadBoundaryStop_ = false;
@@ -11720,12 +11782,14 @@ private:
                 *interactionSession_.freeScrollBinding()}
             : std::nullopt;
         widgetrail::FocusedFreeScrollPlanDiagnostic planDiagnostic;
-        const auto preparationOptions = WidgetRenderOptions(widget, descriptor, *geometry, metrics->physicalPixelsPerDip);
+        auto preparationOptions = WidgetRenderOptions(widget, descriptor, *geometry, metrics->physicalPixelsPerDip);
+        preparationOptions.deferScrollPreparation = true;
         const auto plan = widgetrail::input::SurfaceInteractionTransactions::PlanFreeScroll(
             interactionSession_.freeScrollState(), *declarativeRenderer_,
             authority, interactionSession_.focusedElementId(),
             lastWidgetRenderResult_, axis, sample.deltaDip, viewport,
             &planDiagnostic, &preparationOptions);
+        if (declarativeRenderer_->HasPendingScrollPreparation()) ArmCollectionPreparationTimer(1);
         if (!plan) {
             // Preparation consumed this sample, not its distance. A later
             // cadence sample retries from the committed viewport; no backlog
@@ -13246,7 +13310,7 @@ private:
                 accessibilityRealizationReady_ = false;
                 pendingContentRenderPlan_.reset();
                 if (declarativeRenderer_) declarativeRenderer_->CancelPresentationUpdatePlan();
-                SetTimer(window_, kCollectionPreparationTimer, 1, nullptr);
+                ArmCollectionPreparationTimer(1);
                 continue;
             }
             RetirePendingFocusGroupEntryForUserIntent(
@@ -14636,7 +14700,7 @@ private:
             }
             if (interactionSession_.focusRealization().Stage(*postFlushAuthority,
                     interactionSession_.focusedElementId(), *resolution.target, lastWidgetRenderResult_)) {
-                SetTimer(window_, kCollectionPreparationTimer, 1, nullptr);
+                ArmCollectionPreparationTimer(1);
                 return;
             }
             ObserveScrollPaginationFocusIntent(
@@ -18055,6 +18119,9 @@ private:
                 << " gpu-uploads=" << gpu.rasterUploads - diagnosticGpuBefore.rasterUploads
                 << " gpu-reuses=" << gpu.rasterReuses - diagnosticGpuBefore.rasterReuses
                 << " gpu-uploaded-bytes=" << gpu.uploadedBytes - diagnosticGpuBefore.uploadedBytes
+                << " visual-adds=" << gpu.visualAdds - diagnosticGpuBefore.visualAdds
+                << " visual-removes=" << gpu.visualRemoves - diagnosticGpuBefore.visualRemoves
+                << " visual-resets=" << gpu.visualResets - diagnosticGpuBefore.visualResets
                 << " focus-atlas-reuses=" << gpu.focusAtlasReuses - diagnosticGpuBefore.focusAtlasReuses
                 << " focus-full-total=" << focusPaintFallbackCount_
                 << " focus-retained-total=" << focusPaintRetainedCount_
@@ -19586,6 +19653,8 @@ private:
     bool holdDpadToScroll_{};
     widgetrail::input::HeldDpadScroll heldDpadScroll_;
     widgetrail::input::ContinuousScrollFrames continuousScrollFrames_;
+    widgetrail::PreparationFrameBudget preparationFrameBudget_;
+    bool preparationTimerArmed_{};
     bool queuedScrollIsHeldDpad_{};
     bool heldDpadBoundaryStop_{};
     std::optional<float> heldDpadLandingX_;

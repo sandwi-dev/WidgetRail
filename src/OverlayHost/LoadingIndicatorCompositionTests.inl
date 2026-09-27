@@ -85,9 +85,14 @@ void CheckLoadingIndicatorComposition(bool pixels, float scale) {
     if (pixels) { ShowWindow(window, SW_SHOWNOACTIVATE); DwmFlush(); }
     auto scene = makeScene(); commit(scene);
     const auto starts = surface.widgetCompositionCounters().animationStarts;
+    const auto initialEdges = surface.widgetCompositionCounters();
     Check(starts == 1, "one compositor loop is started");
     commit(scene);
     Check(surface.widgetCompositionCounters().animationStarts == starts, "same-scene refresh preserves the rotation clock");
+    Check(surface.widgetCompositionCounters().visualAdds == initialEdges.visualAdds &&
+        surface.widgetCompositionCounters().visualRemoves == initialEdges.visualRemoves &&
+        surface.widgetCompositionCounters().visualResets == initialEdges.visualResets,
+        "unchanged scene preserves all compositor edges");
     const auto counters = surface.widgetCompositionCounters(); const auto paints = surface.paintCounters().content;
     if (pixels) {
         ShowWindow(window, SW_SHOWNOACTIVATE); DwmFlush(); Sleep(60); DwmFlush();
@@ -119,6 +124,23 @@ void CheckLoadingIndicatorComposition(bool pixels, float scale) {
     scene = std::make_shared<WidgetCompositionScene>(*scene); scene->nodes[1].bounds.x += 2; scene->nodes[2].bounds.x += 2;
     commit(scene);
     Check(surface.widgetCompositionCounters().animationStarts == starts, "placement changes preserve rotation continuity");
+    Check(surface.widgetCompositionCounters().visualAdds == initialEdges.visualAdds &&
+        surface.widgetCompositionCounters().visualRemoves == initialEdges.visualRemoves,
+        "placement changes update properties without rebuilding visual edges");
+    if (!pixels) {
+        auto extra = scene->nodes.back(); extra.id = L"extra"; extra.parent.clear();
+        scene = std::make_shared<WidgetCompositionScene>(*scene); scene->nodes.push_back(extra);
+        const auto beforeInsert = surface.widgetCompositionCounters(); commit(scene);
+        Check(surface.widgetCompositionCounters().visualAdds == beforeInsert.visualAdds + 1 &&
+            surface.widgetCompositionCounters().visualRemoves == beforeInsert.visualRemoves,
+            "inserting a raster changes only its parent edge");
+        scene = std::make_shared<WidgetCompositionScene>(*scene); scene->nodes.back().parent = L"spinner";
+        const auto beforeReparent = surface.widgetCompositionCounters(); commit(scene);
+        Check(surface.widgetCompositionCounters().visualAdds == beforeReparent.visualAdds + 1 &&
+            surface.widgetCompositionCounters().visualRemoves == beforeReparent.visualRemoves + 1,
+            "reparenting detaches the old edge before adding the new edge");
+        scene = std::make_shared<WidgetCompositionScene>(*scene); scene->nodes.pop_back(); commit(scene);
+    }
     scene = std::make_shared<WidgetCompositionScene>(*scene); scene->reducedMotion = true;
     scene->nodes[1].bounds.x -= 2; scene->nodes[2].bounds.x -= 2; commit(scene);
     if (pixels) {

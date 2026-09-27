@@ -8108,8 +8108,45 @@ void LoadingChromeUsesBoundedReusableComposition() {
     }
 }
 
+void NestedCollectionPreparationMakesProgress() {
+    using namespace widgetrail;
+    for (const float scale : {1.0F, 1.25F}) {
+        MotionRasterFixture fixture;
+        WidgetSnapshot snapshot; snapshot.instanceId = L"nested.prepare"; snapshot.sequence = 1;
+        snapshot.root = Node(L"root", L"stack");
+        snapshot.root.baseStyle = {{L"padding", LengthList(L"14px 16px")}, {L"gap", LengthList(L"8px")}};
+        snapshot.root.children.push_back(FixedButton(L"header", 44));
+        auto panes = Node(L"panes", L"row");
+        panes.baseStyle = {{L"width", Length(100, L"%")}, {L"min-height", Length(0)},
+            {L"flex-basis", Length(0)}, {L"flex-grow", Number(1)}, {L"gap", LengthList(L"12px")}};
+        auto player = Node(L"player", L"stack"); player.baseStyle = {{L"width", Length(34, L"%")}, {L"flex-shrink", Number(0)}};
+        auto body = Node(L"body", L"stack"); body.baseStyle = {{L"flex-grow", Number(1)}, {L"flex-basis", Length(0)},
+            {L"min-width", Length(0)}, {L"min-height", Length(0)}};
+        body.children.push_back(FixedButton(L"filters", 48));
+        auto scroll = Node(L"items", L"scroll"); scroll.scrollAxis = L"vertical";
+        scroll.baseStyle = {{L"width", Length(100, L"%")}, {L"flex-grow", Number(1)}, {L"min-height", Length(0)}};
+        scroll.collectionLayout = WidgetNode::CollectionLayout{false, 64, std::nullopt, std::nullopt};
+        for (unsigned i = 0; i < 50; ++i) {
+            auto item = FixedButton((L"item." + std::to_wstring(i)).c_str(), 64);
+            item.collectionItemKey = item.id; scroll.children.push_back(std::move(item));
+        }
+        body.children.push_back(std::move(scroll)); panes.children = {std::move(player), std::move(body)};
+        snapshot.root.children.push_back(std::move(panes));
+        DeclarativeRenderOptions options; options.pixelScale = scale;
+        const Rect viewport{1,1,978,644};
+        bool ready{};
+        for (unsigned slice = 0; slice < 128; ++slice) {
+            const auto result = fixture.renderer->PrepareCollections(snapshot, L"item.40", viewport, options, {1,1000000}, true);
+            Check(result.status != CollectionPreparationStatus::Failed, "nested collection preparation remains valid");
+            if (result.status == CollectionPreparationStatus::Ready) { ready = true; break; }
+        }
+        Check(ready, "nested percent layout and remembered focus finish without another input");
+    }
+}
+
 void BufferedPreparationDoesNotGateVisibleScrolling() {
     using namespace widgetrail;
+    for (const bool deferred : {false, true})
     for (const bool grid : {false, true}) for (const bool horizontal : {false, true})
         for (const float scale : {1.0F, 1.25F}) {
         if (grid && horizontal) continue;
@@ -8130,7 +8167,7 @@ void BufferedPreparationDoesNotGateVisibleScrolling() {
             snapshot.root.children.push_back(std::move(item));
         }
         const Rect bounds{.4F, .8F, 580, 240};
-        DeclarativeRenderOptions options; options.pixelScale = scale;
+        DeclarativeRenderOptions options; options.pixelScale = scale; options.deferScrollPreparation = deferred;
         options.suppressFocusedDescendantFollow = true; options.accessibility.reducedMotion = true;
         (void)actualFixture.Draw(snapshot, L"item.0", bounds, options);
         (void)referenceFixture.Draw(snapshot, L"item.0", bounds, options);
@@ -8142,7 +8179,11 @@ void BufferedPreparationDoesNotGateVisibleScrolling() {
             FocusedFreeScrollPlanDiagnostic diagnostic;
             const auto movement = actual.PlanPreparedFreeScroll(snapshot, L"item.0", axis,
                 delta, bounds, L"items", options, &diagnostic, {1, 1000000});
-            if (!movement) { ++blocked; continue; }
+            if (!movement) {
+                ++blocked;
+                if (deferred) (void)actual.PreparePendingScroll(snapshot, L"item.0", {1, 1000000});
+                continue;
+            }
             ++moved;
             Check(reference.PlanFocusedFreeScroll(snapshot, L"item.0", axis, delta, bounds, L"items").has_value(),
                 "cadence reference accepts the same requested distance");
@@ -8155,9 +8196,14 @@ void BufferedPreparationDoesNotGateVisibleScrolling() {
                   SUCCEEDED(referenceFixture.bitmap->CopyPixels(nullptr, 1280 * 4, static_cast<UINT>(referencePixels.size()), referencePixels.data())),
                 "cadence fixture captures both frames");
             Check(actualPixels == referencePixels, "every moving frame matches fully prepared visible pixels");
+            if (deferred && actual.HasPendingScrollPreparation()) {
+                const auto preparation = actual.PreparePendingScroll(snapshot, L"item.0", {1, 1000000});
+                Check(preparation.status != CollectionPreparationStatus::Failed,
+                    "post-submit preparation remains speculative and bounded");
+            }
         }
         std::cout << "SCROLL-CADENCE grid=" << grid << " horizontal=" << horizontal << " scale=" << scale
-            << " moved=" << moved << " blocked=" << blocked << '\n';
+            << " deferred=" << deferred << " moved=" << moved << " blocked=" << blocked << '\n';
         Check(blocked == 0 && moved == 120,
             "optional adjacent measurement never stalls a covered visible viewport");
         // A ready batch for an abandoned focus target may share measurements,
@@ -8168,6 +8214,28 @@ void BufferedPreparationDoesNotGateVisibleScrolling() {
         const auto unchanged = actualFixture.Draw(snapshot, L"item.0", bounds, options);
         Check(unchanged.fullLayoutBuildCount == 0,
             "completed preparation for another focus cannot repeatedly force layout");
+        if (deferred) {
+            bool readyMove{};
+            for (unsigned slice = 0; slice < 128; ++slice) {
+                const auto move = actual.PlanPreparedFreeScroll(snapshot, L"item.0", axis, 1000, bounds, L"items", options);
+                if (move) { readyMove = true; break; }
+                (void)actual.PreparePendingScroll(snapshot, L"item.0", {1,1000000});
+            }
+            Check(readyMove, "a large deferred sample adopts its prepared viewport without a new input target");
+            const auto advanced = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+            Check(advanced.scrollOffsets.at(L"items") > unchanged.scrollOffsets.at(L"items"),
+                "completed deferred movement publishes its intended viewport");
+            const auto prior = advanced.scrollOffsets.at(L"items");
+            FocusedFreeScrollPlanDiagnostic pending;
+            (void)actual.PlanPreparedFreeScroll(snapshot, L"item.0", axis,
+                1000, bounds, L"items", options, &pending);
+            Check(actual.HasPendingScrollPreparation(), "distant scroll queues preparation without publishing its distance");
+            ++snapshot.sequence;
+            (void)actual.PreparePendingScroll(snapshot, L"item.0", {1, 1000000});
+            Check(!actual.HasPendingScrollPreparation(), "page replacement cancels obsolete scroll preparation");
+            const auto after = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+            Near(after.scrollOffsets.at(L"items"), prior, "canceled preparation never jumps the committed viewport");
+        }
     }
 }
 
@@ -8357,7 +8425,8 @@ void CollectionRealizationMatchesEagerGeometry() {
             }
             snapshot.root.children.push_back(item);
         }
-        DeclarativeRenderer lazy(d2d.Get(), write.Get(), nullptr), eager(d2d.Get(), write.Get(), nullptr);
+        DeclarativeRenderer lazy(d2d.Get(), write.Get(), nullptr), eager(d2d.Get(), write.Get(), nullptr),
+            rebuilt(d2d.Get(), write.Get(), nullptr);
         DeclarativeRenderOptions options;
         options.pixelScale = scale; options.accessibility.reducedMotion = true;
         Rect bounds{0, 0, 600, 240};
@@ -8388,8 +8457,25 @@ void CollectionRealizationMatchesEagerGeometry() {
         }
         Check(preparationReady && preparationSlices > 0, "collection preflight makes progress across bounded slices");
         const auto initial = draw(lazy, snapshot, L"item.0");
+        std::cout << "PREPARED-ADOPTION reused=" << initial.timing.reusedCollectionPreparation
+            << " layouts=" << initial.fullLayoutBuildCount << " content=" << content << " grid=" << grid
+            << " horizontal=" << horizontal << " scale=" << scale << '\n';
+        Check(initial.timing.reusedCollectionPreparation && initial.fullLayoutBuildCount == 0,
+            "ready collection preparation is adopted without another full layout");
         std::vector<BYTE> lazyPixels(width * height * 4);
         ok(bitmap->CopyPixels(nullptr, width * 4, static_cast<UINT>(lazyPixels.size()), lazyPixels.data()));
+        Check(rebuilt.PrepareCollections(snapshot, L"item.0", bounds, options, {1024, 1000000}).status ==
+            CollectionPreparationStatus::Ready, "comparison has the same warmed item measurements");
+        options.disablePreparedCollectionFrameForTesting = true;
+        const auto rebuiltResult = draw(rebuilt, snapshot, L"item.0");
+        options.disablePreparedCollectionFrameForTesting = false;
+        std::vector<BYTE> rebuiltPixels(lazyPixels.size());
+        ok(bitmap->CopyPixels(nullptr, width * 4, static_cast<UINT>(rebuiltPixels.size()), rebuiltPixels.data()));
+        Check(rebuiltPixels == lazyPixels && rebuiltResult.fullLayoutBuildCount > 0,
+            "ready-frame reuse matches rebuilding from the same warmed measurements pixel for pixel");
+        std::cout << "PREPARED-COST reused-us=" << initial.timing.preparationMicroseconds
+            << " rebuilt-us=" << rebuiltResult.timing.preparationMicroseconds
+            << " reused-nodes=" << initial.timing.reusedPreparedNodes << '\n';
         const auto reference = draw(eager, full, L"item.0");
         std::vector<BYTE> eagerPixels(lazyPixels.size());
         ok(bitmap->CopyPixels(nullptr, width * 4, static_cast<UINT>(eagerPixels.size()), eagerPixels.data()));
@@ -9801,6 +9887,7 @@ int main(int argc, char** argv) {
     RetainedPosterPaintPreservesArtwork();
     CoordinatedWidgetTransitionsKeepPixelsAndInputSeparate();
     CollectionRealizationMatchesEagerGeometry();
+    NestedCollectionPreparationMakesProgress();
     RetainedCollectionPlacementPreservesGeometryAndPixels();
     BufferedPreparationDoesNotGateVisibleScrolling();
     LoadingChromeUsesBoundedReusableComposition();

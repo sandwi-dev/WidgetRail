@@ -6,6 +6,7 @@
 #include "PopupCompositionScene.h"
 #include "SurfaceDepth.h"
 #include "NativeIcons.h"
+#include "PreparationFrameBudget.h"
 #pragma comment(lib, "dwrite.lib")
 
 #include <Windows.h>
@@ -1402,6 +1403,16 @@ void CheckWidgetCompositorPixels(const bool popupOnly = false) {
     ShowWindow(window,SW_SHOWNOACTIVATE);
     Check(SetWindowPos(window, HWND_TOPMOST, 40, 40, 128, 128, SWP_NOACTIVATE | SWP_SHOWWINDOW)!=0,
         "pixel test window is shown");
+    // Initialize the shown HWND/composition connection before starting the
+    // measured animation. The timed interval below still pumps no messages.
+    const auto startupUntil = GetTickCount64() + 225;
+    while (GetTickCount64() < startupUntil) {
+        MSG message{};
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message); DispatchMessageW(&message);
+        }
+        Sleep(1);
+    }
     DwmFlush();
     Sleep(50);
     DwmFlush();
@@ -2134,6 +2145,16 @@ int main(int argc, char** argv) {
 
     CheckFocusFadeCompositor(false);
     CheckLoadingIndicatorComposition(false, 1);
+    widgetrail::PreparationFrameBudget budget;
+    Check(budget.Available(10000, 0, 16667, true) == 0, "preparation never precedes an outstanding paint");
+    Check(budget.Available(16000, 0, 16667, false) == 0, "preparation leaves a frame deadline margin");
+    Check(budget.Available(1000, 0, 8333, false) > 0, "high refresh frame has bounded preparation headroom");
+    budget.Observe(8000);
+    Check(budget.Available(13000, 0, 16667, false) == 0, "observed work cost prevents starting a slice that cannot fit");
+    Check(budget.Available(18000, 0, 16667, false) > 0, "deferred preparation resumes on the next frame");
+    budget.Observe(8000); budget.Observe(8000);
+    Check(budget.Available(20000, 0, 2778, false) == 0, "expensive work initially yields on a high-refresh display");
+    Check(budget.Available(120000, 0, 2778, false) > 0, "aged indivisible work cannot starve on a high-refresh display");
     CheckFocusFadeCompositor(false, 1, true, widgetrail::animation::FocusStyle::Settle);
     CheckFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckControllerGlyphs(d2d.Get(), wic.Get());

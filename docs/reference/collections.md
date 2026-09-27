@@ -171,6 +171,10 @@ The shared loading indicator appears at the edge being fetched. Keep existing
 items usable while waiting. Do not add a focusable loading button just to reveal
 that an automatic request is in flight.
 
+Keep declaring the loading edge while its pagination action is temporarily
+unavailable. The host uses that state to retain directional focus in the list
+until the page arrives, rather than treating it as a terminal exit to a header.
+
 ## Refresh, reset, and position
 
 The two resources have different refresh behavior:

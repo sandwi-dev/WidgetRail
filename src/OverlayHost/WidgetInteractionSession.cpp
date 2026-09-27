@@ -677,13 +677,17 @@ FocusGroupEntryApplication WidgetInteractionSession::ConsumeFocusGroupEntryReque
 
 std::optional<std::wstring> WidgetInteractionSession::PreviewCandidateFocusGroup(
     const WidgetInteractionAuthority& authority, const RenderResult& geometry) const {
-    if (!authority.semantics || authority.retainedRefresh) return std::nullopt;
+    if (!CandidateFocusGroupEntryRequested(authority) || !geometry.succeeded) return std::nullopt;
     const auto& snapshot = *authority.semantics;
-    if (!snapshot.focusGroupEntryRequest || !geometry.succeeded) return std::nullopt;
-    if (!FocusGroupEntryRequestPending(authority) && std::ranges::any_of(focusGroupEntryHighWater_, [&](const auto& entry) {
-            return SameFocusGroupEntryRuntime(entry, authority) && entry.requestId >= snapshot.focusGroupEntryRequest->requestId;
-        })) return std::nullopt;
     return focusGroupMemory_.Resolve(authority.widgetId, snapshot, snapshot.focusGroupEntryRequest->groupId, geometry);
+}
+
+bool WidgetInteractionSession::CandidateFocusGroupEntryRequested(const WidgetInteractionAuthority& authority) const {
+    if (!authority.semantics || authority.retainedRefresh || !authority.semantics->focusGroupEntryRequest) return false;
+    return FocusGroupEntryRequestPending(authority) || !std::ranges::any_of(focusGroupEntryHighWater_, [&](const auto& entry) {
+        return SameFocusGroupEntryRuntime(entry, authority) &&
+            entry.requestId >= authority.semantics->focusGroupEntryRequest->requestId;
+    });
 }
 
 FocusGroupEntryPreview WidgetInteractionSession::PreviewFocusGroupEntryRequest(
@@ -1714,7 +1718,18 @@ WidgetInteractionSession::ObserveScrollPaginationBoundaryIntent(
                     ScrollPaginationPrefetchStatus::TerminalFailure;
         });
     if (action == actions.end()) {
-        result.retainFocus = matchingFlight;
+        // Widgets temporarily withdraw pagination actions while a page loads.
+        // That does not turn the provider edge into a navigable exit to headers.
+        const auto* scroll = FindNodeInInputScope(*authority.semantics, owner.scrollId,
+            authority.semantics->activeInputScopeId);
+        const bool loadingEdge = scroll && scroll->collectionLoading ==
+            (edge == ScrollPaginationEdge::Before ? L"before" : L"after");
+        result.retainFocus = matchingFlight || loadingEdge;
+        if (result.retainFocus)
+            pendingCollectionFocus_ = PendingCollectionFocus{std::wstring{authority.widgetId},
+                authority.semantics->instanceId, std::wstring{authority.runtimeGeneration},
+                std::wstring{authority.presentationGeneration}, authority.semantics->activeInputScopeId,
+                owner.scrollId, std::wstring{focusedElementId}, direction, authority.semantics->sequence};
         return result;
     }
 
@@ -1917,7 +1932,10 @@ ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPaginati
             const auto exact = std::ranges::find_if(actions, [&](const auto& action) {
                 return SameScrollPaginationAuthority(latch, authority, action);
             });
-            if (exact == actions.end()) {
+            const bool loadingRequestedEdge = scrollNode &&
+                latch.prefetch->status == ScrollPaginationPrefetchStatus::InFlight &&
+                scrollNode->collectionLoading == (latch.prefetch->request.action.edge == ScrollPaginationEdge::Before ? L"before" : L"after");
+            if (exact == actions.end() && !loadingRequestedEdge) {
                 const auto replacement = std::ranges::find_if(
                     actions, [&](const auto& action) {
                         return SameScrollPaginationRouteEdge(

@@ -122,6 +122,31 @@ std::wstring gLastRetiredRendererWidgetInstance;
         std::abs(left.height - right.height) <= 0.01F;
 }
 
+bool SameMeasurementContext(const DeclarativeRenderOptions& previous,
+    const DeclarativeRenderOptions& options, const Rect& viewport) {
+    const auto oldResponsive = previous.responsiveViewport.value_or(Size{viewport.width, viewport.height});
+    const auto newResponsive = options.responsiveViewport.value_or(Size{viewport.width, viewport.height});
+    const auto& a = previous.accessibility; const auto& b = options.accessibility;
+    return previous.pixelScale == options.pixelScale && previous.rootFontSizePx == options.rootFontSizePx &&
+        previous.surfaceBackground == options.surfaceBackground && previous.playStationControls == options.playStationControls &&
+        oldResponsive.width == newResponsive.width && oldResponsive.height == newResponsive.height &&
+        a.textScale == b.textScale && a.minimumFontWeight == b.minimumFontWeight &&
+        a.minimumFocusRingPx == b.minimumFocusRingPx && a.reducedMotion == b.reducedMotion &&
+        a.reducedTransparency == b.reducedTransparency && !a.contrastHook && !b.contrastHook;
+}
+
+bool SamePreparationContext(const Rect& previousViewport, const DeclarativeRenderOptions& previous,
+    const Rect& viewport, const DeclarativeRenderOptions& options) {
+    return previousViewport.x == viewport.x && previousViewport.y == viewport.y &&
+        previousViewport.width == viewport.width && previousViewport.height == viewport.height &&
+        SameMeasurementContext(previous, options, viewport) &&
+        previous.suppressFocusedDescendantFollow == options.suppressFocusedDescendantFollow &&
+        previous.pressedElementId == options.pressedElementId && previous.activeSliderElementId == options.activeSliderElementId &&
+        previous.sliderValueOverrides == options.sliderValueOverrides && previous.artworkAuthorityId == options.artworkAuthorityId &&
+        previous.packageContentDigest == options.packageContentDigest &&
+        previous.compositorWidgetTransitions == options.compositorWidgetTransitions && previous.widgetAnimations == options.widgetAnimations;
+}
+
 
 
 [[nodiscard]] D2D1_RECT_F D2DRect(const Rect& value) noexcept {
@@ -425,6 +450,7 @@ struct DeclarativeRenderer::RenderPass final {
     };
     bool windowDecorations{};
     bool reuseCommittedStyles{};
+    const IncrementalLayoutCache* preparedStyleCache{};
     int retainedLayoutPhase{-1};
 
     enum class FocusFollowPhase {
@@ -3124,10 +3150,11 @@ struct DeclarativeRenderer::RenderPass final {
                     }
                 }
             }
-            const auto* cached = ((unchangedIds && unchangedIds->contains(node.id)) || reuseCommittedStyles) && owner->incrementalLayoutCache_ &&
-                    owner->incrementalLayoutCache_->nodes.contains(node.id) &&
+            const auto* styleCache = preparedStyleCache ? preparedStyleCache : owner->incrementalLayoutCache_ ? &*owner->incrementalLayoutCache_ : nullptr;
+            const auto* cached = ((unchangedIds && unchangedIds->contains(node.id)) || reuseCommittedStyles || preparedStyleCache) && styleCache &&
+                    styleCache->nodes.contains(node.id) &&
                     !options.collectInspection && node.id != focusedId && node.id != pressedId
-                ? &owner->incrementalLayoutCache_->nodes.at(node.id) : nullptr;
+                ? &styleCache->nodes.at(node.id) : nullptr;
             if (cached) {
                 const auto* parentBox = layout.Find(parent);
                 const NativeStyleContext context{viewport.width, viewport.height,
@@ -6398,10 +6425,26 @@ std::optional<FocusedFreeScrollPlan> DeclarativeRenderer::PlanPreparedFreeScroll
             for (auto index = demand.visibleBegin; complete && index < demand.visibleEnd; ++index) complete = ready(index);
             requiredReady = complete;
             for (auto index = demand.bufferedBegin; complete && index < demand.bufferedEnd; ++index) complete = ready(index);
-            if (complete) return plan;
+            if (complete) { pendingScrollPreparation_.reset(); return plan; }
         }
         auto preparationOptions = options;
         preparationOptions.suppressFocusedDescendantFollow = true;
+        if (options.deferScrollPreparation) {
+            const bool prepared = std::ranges::any_of(collectionPreparations_, [&](const auto& branch) {
+                return branch.ready && branch.frame && branch.Matches(snapshot) && branch.focus == focusedElementId &&
+                    branch.realization == preparationOptions.realizeElementId && branch.frame->SameInputScroll(scrollOffsets_) &&
+                    SamePreparationContext(branch.frame->cache.viewport, branch.frame->cache.options, viewport, preparationOptions);
+            });
+            if (prepared) { pendingScrollPreparation_.reset(); return plan; }
+            // Coalesce to the latest demanded viewport. The timer only warms
+            // measurements; it cannot publish an offset or replay input debt.
+            pendingScrollPreparation_ = ScrollPreparation{snapshot.instanceId, snapshot.activeInputScopeId,
+                std::wstring{focusedElementId}, stateKey, snapshot.sequence, plan->offset, viewport, preparationOptions};
+            if (requiredReady) return plan;
+            rollback();
+            if (diagnostic) diagnostic->disposition = FocusedFreeScrollPlanDisposition::PreparationPending;
+            return std::nullopt;
+        }
         const auto preparation = PrepareCollections(snapshot, focusedElementId, viewport, preparationOptions, budget);
         if (scrollDiagnostics_) scrollDiagnostics_->Record("scroll-preparation", [&](auto& out) {
             out << "seq=" << snapshot.sequence << " required-ready=" << requiredReady
@@ -6419,6 +6462,32 @@ std::optional<FocusedFreeScrollPlan> DeclarativeRenderer::PlanPreparedFreeScroll
         return std::nullopt;
     } catch (...) {
         rollback();
+        throw;
+    }
+}
+
+CollectionPreparationResult DeclarativeRenderer::PreparePendingScroll(const WidgetSnapshot& snapshot,
+    const std::wstring_view focus, const CollectionPreparationBudget budget) {
+    if (!pendingScrollPreparation_) return {CollectionPreparationStatus::Ready};
+    const auto request = *pendingScrollPreparation_;
+    if (request.instance != snapshot.instanceId || request.scope != snapshot.activeInputScopeId ||
+        request.sequence != snapshot.sequence || request.focus != focus || !incrementalLayoutCache_ ||
+        !SameRect(incrementalLayoutCache_->viewport, request.viewport) ||
+        incrementalLayoutCache_->options.pixelScale != request.options.pixelScale) {
+        pendingScrollPreparation_.reset();
+        return {CollectionPreparationStatus::Ready};
+    }
+    auto offsets = scrollOffsets_;
+    const auto clock = scrollStateAccessClock_;
+    try {
+        scrollOffsets_[request.stateKey].offset = request.offset;
+        auto result = PrepareCollections(snapshot, focus, request.viewport, request.options, budget);
+        scrollOffsets_ = std::move(offsets); scrollStateAccessClock_ = clock;
+        if (result.status != CollectionPreparationStatus::Pending) pendingScrollPreparation_.reset();
+        return result;
+    } catch (...) {
+        scrollOffsets_ = std::move(offsets); scrollStateAccessClock_ = clock;
+        pendingScrollPreparation_.reset();
         throw;
     }
 }
@@ -6629,20 +6698,8 @@ RenderResult DeclarativeRenderer::Render(
         retainedLayout_ = {};
         retainedLayoutOwner_ = layoutOwner;
     }
-    const auto preparationOptionsMatch = [&]() {
-        if (!incrementalLayoutCache_) return false;
-        const auto& previous = incrementalLayoutCache_->options;
-        const auto& a = previous.accessibility;
-        const auto& b = options.accessibility;
-        const auto oldResponsive = previous.responsiveViewport.value_or(Size{viewport.width, viewport.height});
-        const auto newResponsive = options.responsiveViewport.value_or(Size{viewport.width, viewport.height});
-        return previous.playStationControls == options.playStationControls &&
-            previous.pixelScale == options.pixelScale && previous.rootFontSizePx == options.rootFontSizePx &&
-            previous.surfaceBackground == options.surfaceBackground &&
-            oldResponsive.width == newResponsive.width && oldResponsive.height == newResponsive.height &&
-            a.textScale == b.textScale && a.minimumFontWeight == b.minimumFontWeight &&
-            a.minimumFocusRingPx == b.minimumFocusRingPx && a.reducedMotion == b.reducedMotion &&
-            a.reducedTransparency == b.reducedTransparency && !a.contrastHook && !b.contrastHook;
+    const auto preparationOptionsMatch = [&](const DeclarativeRenderOptions& previous) {
+        return SameMeasurementContext(previous, options, viewport);
     };
     const auto containsCollection = [&](const auto& self, const WidgetNode& node) -> bool {
         if (node.collectionLayout) return true;
@@ -6657,7 +6714,7 @@ RenderResult DeclarativeRenderer::Render(
         pass.scrollAccessClock = &stagedScrollClock;
     }
     const bool pendingMatches =
-        preparationOptionsMatch() && pendingIncrementalPlan_ &&
+        incrementalLayoutCache_ && preparationOptionsMatch(incrementalLayoutCache_->options) && pendingIncrementalPlan_ &&
         pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster &&
         incrementalLayoutCache_ &&
         pendingIncrementalPlan_->instanceId == snapshot.instanceId &&
@@ -6681,7 +6738,36 @@ RenderResult DeclarativeRenderer::Render(
     pass.reuseCommittedStyles = pass.reuseCommittedStyles && !options.disablePreparedStyleReuseForTesting;
 #endif
     bool retainedCollections{};
-    if (hasCollections && pendingMatches && incrementalLayoutCache_->sequence == snapshot.sequence &&
+    const auto ready = std::ranges::find_if(collectionPreparations_, [&](const auto& branch) {
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
+        if (options.disablePreparedCollectionFrameForTesting) return false;
+#endif
+        if (!branch.ready || !branch.frame || !branch.Matches(snapshot) || branch.focus != focusedElementId ||
+            branch.realization != options.realizeElementId) return false;
+        const auto& frame = *branch.frame;
+        return SamePreparationContext(frame.cache.viewport, frame.cache.options, viewport, options) &&
+            frame.SameInputScroll(scrollOffsets_) && frame.selections == layoutSelections;
+    });
+    if (ready != collectionPreparations_.end()) {
+        const auto& frame = *ready->frame;
+        pass.layout = frame.cache.layout;
+        pass.textMeasurements = frame.cache.textMeasurements;
+        pass.textMeasurementQueries = frame.cache.textMeasurementQueries;
+        pass.collections = ready->collections;
+        pass.VisitScrollNodes(snapshot.root, [&](const WidgetNode& node) {
+            if (node.collectionLayout && pass.layout.Find(NarrowStableId(node.id))) pass.collectionNodes.emplace(node.id, &node);
+        });
+        *stagedScrollOffsets = frame.outputScroll;
+        stagedScrollClock = std::max(stagedScrollClock, frame.outputScrollClock);
+        pass.preparedStyleCache = &frame.cache;
+        pass.PrepareAgainstCurrentLayout();
+        pass.retainedLayoutPhase = 1;
+        pass.AttachCollectionLayouts(pass.layout);
+        pass.retainedLayoutPhase = -1;
+        pass.result.timing.reusedCollectionPreparation = true;
+        retainedCollections = true;
+    }
+    if (!retainedCollections && hasCollections && pendingMatches && incrementalLayoutCache_->sequence == snapshot.sequence &&
         (pendingIncrementalPlan_->work == IncrementalPresentationWork::PaintOnly ||
          pendingIncrementalPlan_->work == IncrementalPresentationWork::ScrollOnly) &&
         incrementalLayoutCache_->options.artworkAuthorityId == options.artworkAuthorityId &&
@@ -7048,6 +7134,7 @@ RenderResult DeclarativeRenderer::Render(
     const auto reusedPreparedNodes = pass.result.timing.reusedPreparedNodes;
     const auto deferredViewportItems = pass.result.timing.deferredViewportItems;
     const auto intrinsicMeasures = pass.result.timing.intrinsicMeasures;
+    const auto reusedCollectionPreparation = pass.result.timing.reusedCollectionPreparation;
     pass.result.timing = DeclarativeRenderTiming{
         elapsed(renderStarted, finalizationFinished),
         elapsed(renderStarted, preparationFinished),
@@ -7072,6 +7159,7 @@ RenderResult DeclarativeRenderer::Render(
     pass.result.timing.paintResourceHits = paintResourcesAfter.hits - paintResourcesBefore.hits;
     pass.result.timing.deferredViewportItems = deferredViewportItems;
     pass.result.timing.intrinsicMeasures = intrinsicMeasures;
+    pass.result.timing.reusedCollectionPreparation = reusedCollectionPreparation;
     pass.result.timing.updatePlanningMicroseconds = updatePlanningMicroseconds;
     pass.result.timing.styleResolutionMicroseconds = pass.styleNanoseconds / 1000;
     pass.result.timing.textMeasurementMicroseconds = pass.textNanoseconds / 1000;
@@ -7129,13 +7217,15 @@ RenderResult DeclarativeRenderer::Render(
             << " adjacent-gpu-hits=" << pass.adjacentGpuHits << " adjacent-requests=" << pass.adjacentRequests
             << " resource-bytes=" << resources.liveBytes << " protected-resource-bytes=" << resources.protectedBytes
             << " free-scroll=" << options.suppressFocusedDescendantFollow
-            << " scale=" << options.pixelScale << " sequence-changed=" << !timing.collectionAdmissionSummary.empty();
+            << " scale=" << options.pixelScale << " sequence-changed=" << !timing.collectionAdmissionSummary.empty()
+            << " prepared-frame-reused=" << timing.reusedCollectionPreparation;
     });
     return pass.result;
 }
 
 void DeclarativeRenderer::CancelCollectionPreparation() noexcept {
     collectionPreparations_.clear();
+    pendingScrollPreparation_.reset();
 }
 
 CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
@@ -7174,9 +7264,14 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
         collectionPreparations_.push_back(std::move(branch));
     }
     auto& branch = collectionPreparations_.back();
+    const auto resume = !branch.ready && branch.frame && branch.focus == focusedElementId &&
+        branch.realization == options.realizeElementId && branch.frame->SameInputScroll(scrollOffsets_) &&
+        SamePreparationContext(branch.frame->cache.viewport, branch.frame->cache.options, viewport, options)
+        ? branch.frame : nullptr;
     branch.focus = focusedElementId;
     branch.realization = options.realizeElementId;
     branch.ready = false;
+    branch.frame.reset();
     RenderPass pass;
     pass.owner = this;
     pass.snapshot = &snapshot;
@@ -7189,6 +7284,14 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     pass.preparationStarted = started;
     auto stagedScroll = scrollOffsets_;
     auto stagedClock = scrollStateAccessClock_;
+    if (resume) {
+        // Offsets and their extent/anchor model are one speculative checkpoint.
+        // Restoring only offsets against the committed (pre-page) geometry can
+        // apply a prepend/eviction anchor correction twice.
+        pass.collections = branch.collections;
+        stagedScroll = resume->outputScroll;
+        stagedClock = std::max(stagedClock, resume->outputScrollClock);
+    }
     auto stagedMotion = motionTimeline_;
     pass.motionTimeline = &stagedMotion;
     pass.options.animationTimestampMilliseconds = options.animationTimestampMilliseconds.value_or(GetTickCount64());
@@ -7219,10 +7322,35 @@ CollectionPreparationResult DeclarativeRenderer::PrepareCollections(
     else {
         branch.collections = std::move(pass.collections);
         branch.ready = result.status == CollectionPreparationStatus::Ready;
+        {
+            auto frame = std::make_shared<PreparedCollectionFrame>();
+            frame->cache.viewport = viewport;
+            frame->cache.options = options;
+            if (branch.ready) {
+                frame->cache.layout = std::move(pass.layout);
+                frame->cache.textMeasurements = std::move(pass.textMeasurements);
+                frame->cache.textMeasurementQueries = std::move(pass.textMeasurementQueries);
+            }
+            frame->inputScroll = scrollOffsets_;
+            frame->outputScroll = std::move(stagedScroll);
+            frame->outputScrollClock = stagedClock;
+            frame->selections = SelectionSources(pass.selections, true);
+            if (branch.ready) for (const auto& [_, item] : pass.prepared) {
+                auto& state = frame->cache.nodes[item.node->id];
+                state.baseStyle = item.baseStyle; state.styleContext = item.context;
+                state.effectiveBackground = item.effectiveBackground;
+            }
+            branch.frame = std::move(frame);
+        }
     }
     result.newMeasurements = pass.preparationMeasurements;
     result.elapsedMicroseconds = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - started).count());
+    if (scrollDiagnostics_) scrollDiagnostics_->Record("collection-preparation", [&](auto& out) {
+        out << "seq=" << snapshot.sequence << " status=" << static_cast<int>(result.status)
+            << " resumed=" << static_cast<bool>(resume) << " measurements=" << result.newMeasurements
+            << " cpu-us=" << result.elapsedMicroseconds << " budget-us=" << budget.maximumMicroseconds;
+    });
     return result;
 }
 
@@ -7556,6 +7684,7 @@ void DeclarativeRenderer::ForgetWidgetState(
     try { PublishImageProtection(); } catch (...) {}
     if (pendingPublication_ && pendingPublication_->instance == widgetInstanceId) RejectFramePublication();
     std::erase_if(collectionPreparations_, [&](const auto& branch) { return branch.instance == widgetInstanceId; });
+    if (pendingScrollPreparation_ && pendingScrollPreparation_->instance == widgetInstanceId) pendingScrollPreparation_.reset();
     if (widgetTransitions_.OwnsInstance(widgetInstanceId) || compositionInstance_ == widgetInstanceId) CancelWidgetTransitions();
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     ++gRendererWidgetStateRetirementCount;

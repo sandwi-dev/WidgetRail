@@ -737,6 +737,8 @@ void OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority() {
     Check(session.PreviewCandidateFocusGroup(authority, render) == L"entry.remembered" &&
         !session.FocusGroupEntryRequestPending(authority),
         "candidate group preparation reads remembered target without admitting or consuming the request");
+    Check(session.CandidateFocusGroupEntryRequested(authority),
+        "incoming group discovery takes precedence over outgoing remembered focus");
     Check(session.ObserveFocusGroupEntryRequest(
               authority, FocusGroupEntryAdmission::Active) ==
               FocusGroupEntryObservation::Pending,
@@ -788,6 +790,8 @@ void OneShotFocusGroupEntryUsesRuntimeHighWaterAuthority() {
           "consumed request cannot apply twice");
     Check(!session.PreviewCandidateFocusGroup(authority, render),
         "a consumed request cannot drive speculative group preparation again");
+    Check(!session.CandidateFocusGroupEntryRequested(authority),
+        "consumed group requests do not suppress ordinary focus preparation");
     Check(session.ObserveFocusGroupEntryRequest(
               authority, FocusGroupEntryAdmission::Active) ==
               FocusGroupEntryObservation::Retired,
@@ -2058,6 +2062,23 @@ void TerminalReverseIntentCannotBlockViewportRefill() {
 
 void CursorBoundaryAndViewportDemand() {
     using namespace widgetrail::input;
+    for (const bool before : {false, true}) {
+        auto loading = PagedSnapshot();
+        auto& scroll = loading.root.children[0];
+        scroll.collectionLoading = before ? L"before" : L"after";
+        scroll.scrollNearStartActionId.clear(); scroll.scrollNearEndActionId.clear();
+        WidgetInteractionSession session;
+        const auto boundary = session.ObserveScrollPaginationBoundaryIntent(Authority(loading, L"paged.widget"),
+            PagedRender(0, 136), L"page.row.4", before ? NavigationDirection::Up : NavigationDirection::Down,
+            ScrollPaginationIntentSource::DirectionalNavigation, 1);
+        Check(boundary.retainFocus && !boundary.pagination.dispatchReady,
+            "loading edge retains list focus even without a host request or advertised action");
+        scroll.collectionLoading = L"idle";
+        const auto settled = session.ObserveScrollPaginationBoundaryIntent(Authority(loading, L"paged.widget"),
+            PagedRender(0, 136), L"page.row.4", before ? NavigationDirection::Up : NavigationDirection::Down,
+            ScrollPaginationIntentSource::DirectionalNavigation, 2);
+        Check(!settled.retainFocus, "settled terminal edge restores ordinary exit navigation");
+    }
     auto snapshot = PagedSnapshot(); snapshot.root.children[0].collectionStartIndex = 0;
     auto authority = Authority(snapshot, L"paged.widget");
     auto trailing = PagedRender(0, 136);
@@ -2244,6 +2265,20 @@ void PaginationPrefetchLifecycle() {
             ScrollPaginationIntentSource::DirectionalNavigation, 324);
     Check(!unrelatedBoundary.retainFocus,
           "a direction without logical page authority retains ordinary boundary behavior");
+    auto loadingBoundary = snapshot;
+    loadingBoundary.root.children[0].collectionLoading = L"after";
+    loadingBoundary.root.children[0].scrollNearEndActionId.clear();
+    const auto whileLoading = boundarySession.ReconcileScrollPagination(
+        Authority(loadingBoundary, L"paged.widget"), trailing, 325);
+    Check(std::ranges::none_of(whileLoading.diagnostics, [](const auto& diagnostic) {
+        return diagnostic.kind == ScrollPaginationDiagnosticKind::Completed;
+    }), "withdrawing an action during loading is not a visible page completion");
+    loadingBoundary.root.children[0].collectionLoading = L"idle";
+    const auto afterLoading = boundarySession.ReconcileScrollPagination(
+        Authority(loadingBoundary, L"paged.widget"), trailing, 326);
+    Check(std::ranges::any_of(afterLoading.diagnostics, [](const auto& diagnostic) {
+        return diagnostic.kind == ScrollPaginationDiagnosticKind::Completed;
+    }), "settled terminal page completes the retained request");
 
     WidgetInteractionSession failureSession;
     Check(!failureSession.ReconcileScrollPagination(
