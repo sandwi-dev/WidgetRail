@@ -121,6 +121,17 @@ comparison. These deterministic admission checks do not claim a live frame rate.
 Quiet diagnostics record preparation status, required readiness, new measurement
 count and preparation CPU time, including work performed before painting.
 
+Follow-up validation passes 52,345 renderer checks, 517 pinned-host checks and
+409 surface-coordinator checks. Seven exported Playnite/Spotify/Games and Apps
+fixtures match full-layout pixels and visible geometry at four widths and two
+scales, including 3976x863 DIPs / 125%. Each variant exercises 64 bounded cadence
+attempts plus focus, large-scroll and accessibility transitions; legitimate
+content-boundary stops are counted separately from preparation stalls (zero).
+The Release host/runtime candidate builds successfully. Evidence is under
+`artifacts/native-scroll-cadence`; these checks remain separate from physical
+acceptance. One pinned-host source assertion was updated for the already-added
+artwork demand-ID field; no artwork transport behavior changed in this follow-up.
+
 The model is host-thread confined and owns no actions, visual nodes, images or COM
 objects. Prepare a staged copy when necessary, and publish it together with the
 matching geometry, focus and paint state. It does not itself implement atomic

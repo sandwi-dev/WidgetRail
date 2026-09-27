@@ -11,7 +11,8 @@ void CompareCollectionPlacement(const WidgetSnapshot& snapshot, ID2D1Factory* d2
     Require(collection && !collection->children.empty(), "Placement fixture needs collection items");
     const auto axis = collection->scrollAxis == L"horizontal" ? declarative::ScrollAxis::Horizontal : declarative::ScrollAxis::Vertical;
     for (const float scale : {1.0F, 1.25F}) for (const auto size : {
-        declarative::Size{620, 400}, declarative::Size{980, 700}, declarative::Size{1400, 862}}) {
+        declarative::Size{620, 400}, declarative::Size{980, 700}, declarative::Size{1400, 862},
+        declarative::Size{3976, 863}}) {
         DeclarativeRenderer retained(d2d, write, &images), full(d2d, write, &images);
         DeclarativeRenderOptions options;
         options.accessibility.reducedMotion = true;
@@ -87,10 +88,12 @@ void CompareCollectionPlacement(const WidgetSnapshot& snapshot, ID2D1Factory* d2
         // leave enough lead time for a one-item slice in these fixtures.
         std::size_t cadenceMoves{}, cadenceBoundaries{};
         for (unsigned step = 0; step < 64; ++step) {
-            const float delta = step >= 32 && step < 48 ? -4.0F : 4.0F;
+            const bool wide = size.width > 1400;
+            const float distance = wide ? 33.0F : 4.0F;
+            const float delta = step >= 32 && step < 48 ? -distance : distance;
             FocusedFreeScrollPlanDiagnostic diagnostic;
             const auto a = retained.PlanPreparedFreeScroll(snapshot, focus, axis, delta, viewport,
-                collection->id, options, &diagnostic, {1, 1000000});
+                collection->id, options, &diagnostic, {wide ? 8U : 1U, 1000000});
             Require(a || diagnostic.disposition == FocusedFreeScrollPlanDisposition::OffsetBoundary,
                 "Production layout gates ordinary movement on optional preparation");
             const auto b = full.PlanFocusedFreeScroll(snapshot, focus, axis, delta, viewport, collection->id);

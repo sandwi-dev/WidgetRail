@@ -151,7 +151,7 @@ void TestAcceptedCompactMediaHostContract() {
     Check(bridgeClient.find(
               "!artworkResults->Push({std::move(widgetId), std::move(handle),") !=
               std::string::npos &&
-              bridgeClient.find("std::move(contentType), std::move(content)}") !=
+              bridgeClient.find("std::move(contentType), std::move(content), std::move(demandId)}") !=
               std::string::npos,
           "validated artwork event strings move into the bounded host queue without another encoded payload copy");
     const auto retirementCallback = section(
