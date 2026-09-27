@@ -2494,6 +2494,109 @@ struct MotionRasterFixture final {
     }
 };
 
+void StructuralLocalLayoutMatchesFullRebuild() {
+    using namespace widgetrail;
+    for (const float scale : {1.0F, 1.25F}) for (const int siblingCount : {12, 120}) {
+        MotionRasterFixture actual, reference;
+        WidgetSnapshot snapshot;
+        snapshot.instanceId = L"local.structure"; snapshot.sequence = 1;
+        snapshot.activeInputScopeId = L"root";
+        snapshot.root = Node(L"root", L"row");
+        snapshot.root.baseStyle = {{L"gap", LengthList(L"12px")}, {L"font-size", Length(19)}};
+        auto panel = Node(L"panel", L"stack");
+        panel.baseStyle = {{L"width", Length(230)}, {L"height", Length(300)}, {L"padding", LengthList(L"9px")},
+            {L"overflow", Keyword(L"clip")}, {L"gap", LengthList(L"7px")}, {L"background", Color(L"#203040")}};
+        const auto item = [](const wchar_t* id, const wchar_t* text) {
+            auto value = Node(id, L"button"); value.text = text; value.actionId = id;
+            value.baseStyle = {{L"height", Length(57)}, {L"width", {L"length", L"85%", 85, L"%"}},
+                {L"font-size", {L"length", L"1.1em", 1.1, L"em"}}};
+            return value;
+        };
+        panel.children = {item(L"a", L"First"), item(L"b", L"Second")};
+        auto sibling = Node(L"unrelated", L"stack");
+        sibling.baseStyle = {{L"width", Length(240)}, {L"height", Length(300)}};
+        for (int i = 0; i < siblingCount; ++i) sibling.children.push_back(item((L"sibling." + std::to_wstring(i)).c_str(), L"Unchanged"));
+        snapshot.root.children = {panel, sibling};
+        const Rect viewport{0, 0, 600, 360};
+        DeclarativeRenderOptions options; options.pixelScale = scale; options.accessibility.reducedMotion = true;
+        (void)actual.Draw(snapshot, L"", viewport, options);
+        const auto pixels = [](MotionRasterFixture& fixture) {
+            std::vector<BYTE> value(1280 * 800 * 4);
+            Check(SUCCEEDED(fixture.bitmap->CopyPixels(nullptr, 1280 * 4, static_cast<UINT>(value.size()), value.data())), "read local layout pixels");
+            return value;
+        };
+        for (int mutation = 0; mutation < 6; ++mutation) {
+            const auto prior = snapshot.sequence++;
+            auto& children = snapshot.root.children[0].children;
+            if (mutation == 0) children.push_back(item(L"c", L"Inserted wrapping title with more words"));
+            if (mutation == 1) children.erase(children.begin());
+            if (mutation == 2) std::reverse(children.begin(), children.end());
+            if (mutation == 3) children[0] = item(L"replacement", L"Replacement");
+            if (mutation == 4) children[0].text = L"Changed title with wrapping and inherited font size";
+            if (mutation == 5) snapshot.root.children[0].baseStyle[L"font-size"] = Length(23);
+            const auto effects = (mutation < 4 ? WidgetPresentationEffect::Structure : WidgetPresentationEffect::None) | WidgetPresentationEffect::MeasureLayout |
+                WidgetPresentationEffect::Paint | WidgetPresentationEffect::Interaction | WidgetPresentationEffect::Accessibility;
+            const auto changedId = mutation == 4 ? children[0].id : L"panel";
+            WidgetPresentationImpact impact{prior, snapshot.sequence, effects, {changedId}};
+            impact.hasNonTextMeasureLayout = true;
+            impact.nodeEffects[changedId] = effects;
+            const auto plan = actual.renderer->PlanPresentationUpdate(snapshot, impact, viewport);
+            if (mutation < 5)
+                Check(plan && plan->work == IncrementalPresentationWork::LocalLayout, "structural parent admits contained local layout");
+            else
+                Check(!plan, "changed container inheritance retains the general full-layout fallback");
+            if (mutation < 4)
+                Check(plan->damage.width == viewport.width && plan->damage.height == viewport.height,
+                    "structural fallback always has sufficient host transport damage");
+            const auto local = actual.Draw(snapshot, L"", viewport, options);
+            const auto full = reference.Draw(snapshot, L"", viewport, options);
+            Check((local.fullLayoutBuildCount == 0) == (mutation < 5), "only proven contained changes avoid full layout");
+            Check(local.elementRects.size() == full.elementRects.size(), "removed structural nodes leave no geometry");
+            for (const auto& [id, bounds] : full.elementRects) {
+                Check(local.elementRects.contains(id), "structural local frame includes every full-frame node");
+                const auto& localBounds = local.elementRects.at(id);
+                Near(localBounds.x, bounds.x, "structural x parity"); Near(localBounds.y, bounds.y, "structural y parity");
+                Near(localBounds.width, bounds.width, "structural width parity"); Near(localBounds.height, bounds.height, "structural height parity");
+            }
+            Check(pixels(actual) == pixels(reference), "structural local layout preserves exact full-rebuild pixels");
+            Check(local.hitRegions.size() == full.hitRegions.size(), "structural changes preserve current interaction regions");
+            for (std::size_t hit = 0; hit < full.hitRegions.size(); ++hit)
+                Check(local.hitRegions[hit].nodeId == full.hitRegions[hit].nodeId && local.hitRegions[hit].enabled == full.hitRegions[hit].enabled,
+                    "removed or reordered actions cannot survive through old geometry");
+            if (mutation < 5) {
+                Check(local.timing.preparedNodes < full.timing.preparedNodes && local.timing.reusedPreparedNodes >= siblingCount + 1,
+                    "local mutation reuses unrelated subtree preparation");
+                if (mutation == 0) {
+                    Check(local.timing.preparedNodes == 13, "contained insertion preparation is independent of unrelated subtree size");
+                    std::cout << "LOCAL-STRUCTURE scale=" << scale << " siblings=" << siblingCount << " prepared=" << local.timing.preparedNodes
+                        << " reused=" << local.timing.reusedPreparedNodes << " full=" << full.timing.preparedNodes << '\n';
+                }
+            }
+        }
+        const auto committed = snapshot;
+        ++snapshot.sequence;
+        snapshot.root.children[0].children.push_back(item(L"unsubmitted", L"Unsubmitted action"));
+        const auto effects = WidgetPresentationEffect::Structure | WidgetPresentationEffect::MeasureLayout | WidgetPresentationEffect::Paint;
+        WidgetPresentationImpact impact{committed.sequence, snapshot.sequence, effects, {L"panel"}};
+        impact.hasNonTextMeasureLayout = true; impact.nodeEffects[L"panel"] = effects;
+        Check(actual.renderer->PlanPresentationUpdate(snapshot, impact, viewport).has_value(), "failed-frame case starts with local structural plan");
+        options.deferPublication = true;
+        const auto rejected = actual.Draw(snapshot, L"", viewport, options);
+        actual.renderer->RejectFramePublication();
+        Check(!actual.renderer->CommitFramePublication(rejected.publicationId) && actual.renderer->PlanRetainedPaint(committed).has_value(),
+            "rejecting local structure retains the previous committed geometry authority");
+        Check(!actual.renderer->PlanRetainedPaint(snapshot), "unsubmitted structural source cannot own retained interaction geometry");
+        options.deferPublication = false;
+        (void)actual.Draw(committed, L"", viewport, options);
+        Check(actual.renderer->PlanPresentationUpdate(snapshot, impact, viewport).has_value(), "DPI case starts with proven old constraints");
+        options.pixelScale = 1.5F;
+        const auto resized = actual.Draw(snapshot, L"", viewport, options);
+        (void)reference.Draw(snapshot, L"", viewport, options);
+        Check(resized.fullLayoutBuildCount > 0 && pixels(actual) == pixels(reference),
+            "a DPI change invalidates a pending local plan and matches a complete rebuild");
+    }
+}
+
 void FramePublicationRequiresHostAcknowledgement() {
     using namespace widgetrail;
     MotionRasterFixture fixture;
@@ -9316,6 +9419,7 @@ int main(int argc, char** argv) {
     BackgroundSurfacePreservesForegroundAuthority();
     ResponsiveGridFlowsThroughNativePlanning();
     FramePublicationRequiresHostAcknowledgement();
+    StructuralLocalLayoutMatchesFullRebuild();
     FocusMotionUsesStableSnapshotIdentity();
     SubtreeTranslationKeepsPresentationGeometryAligned();
     TranslationRetargetsAndSnapsDeterministically();

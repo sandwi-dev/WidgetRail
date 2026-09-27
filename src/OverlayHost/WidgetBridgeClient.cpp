@@ -3387,9 +3387,10 @@ WidgetPresentationImpact ClassifyPresentationImpact(
     using Effect = WidgetPresentationEffect;
     WidgetPresentationImpact impact{
         update.baseSequence, update.sequence, Effect::None, {}, {}, false, false};
-    const auto addTarget = [&](const std::wstring_view id) {
-        if (id.empty() ||
-            std::find(impact.affectedNodeIds.begin(),
+    const auto addTarget = [&](const std::wstring_view id, const Effect effects) {
+        if (id.empty()) return;
+        impact.nodeEffects[std::wstring{id}] |= effects;
+        if (std::find(impact.affectedNodeIds.begin(),
                       impact.affectedNodeIds.end(), id) !=
                 impact.affectedNodeIds.end()) {
             return;
@@ -3426,7 +3427,7 @@ WidgetPresentationImpact ClassifyPresentationImpact(
                 }
             }
             impact.effects |= operationEffects;
-            addTarget(operation.targetId);
+            addTarget(operation.targetId, operationEffects);
             if (operation.targetId.empty() &&
                 HasWidgetPresentationEffect(
                     operationEffects, Effect::MeasureLayout)) {
@@ -3434,17 +3435,18 @@ WidgetPresentationImpact ClassifyPresentationImpact(
             }
             continue;
         }
-        impact.effects |= Effect::Structure | Effect::MeasureLayout |
+        const auto structuralEffects = Effect::Structure | Effect::MeasureLayout |
             Effect::Paint | Effect::Interaction | Effect::Accessibility;
+        impact.effects |= structuralEffects;
         impact.hasNonTextMeasureLayout = true;
         switch (operation.kind) {
         case WidgetPresentationUpdateOperationKind::InsertChild:
         case WidgetPresentationUpdateOperationKind::RemoveChild:
         case WidgetPresentationUpdateOperationKind::MoveChild:
-            addTarget(operation.parentId);
+            addTarget(operation.parentId, structuralEffects);
             break;
         case WidgetPresentationUpdateOperationKind::ReplaceSubtree:
-            addTarget(operation.targetId);
+            addTarget(operation.targetId, structuralEffects);
             break;
         case WidgetPresentationUpdateOperationKind::SetProperties:
             break;
@@ -3765,7 +3767,12 @@ std::optional<WidgetPresentationImpact> CompareWidgetSnapshots(
         WidgetPresentationUpdate changes;
         changes.baseSequence = previous.sequence;
         changes.sequence = current.sequence;
-        bool structureChanged{};
+        const auto replaceStructure = [&](const std::wstring& id) {
+            WidgetPresentationUpdateOperation replacement;
+            replacement.kind = WidgetPresentationUpdateOperationKind::ReplaceSubtree;
+            replacement.targetId = id;
+            changes.operations.push_back(std::move(replacement));
+        };
         const auto diff = [&](const auto& self, const JsonObject& left,
                               const JsonObject& right, const bool document) -> void {
             WidgetPresentationUpdateOperation operation;
@@ -3773,7 +3780,7 @@ std::optional<WidgetPresentationImpact> CompareWidgetSnapshots(
                 operation.targetId = OptionalString(right, L"id");
                 if (OptionalString(left, L"id") != operation.targetId ||
                     OptionalString(left, L"kind") != OptionalString(right, L"kind")) {
-                    structureChanged = true;
+                    replaceStructure(operation.targetId);
                     return;
                 }
             }
@@ -3813,7 +3820,11 @@ std::optional<WidgetPresentationImpact> CompareWidgetSnapshots(
             } else {
                 const auto oldChildren = left.GetNamedArray(L"children", JsonArray{});
                 const auto newChildren = right.GetNamedArray(L"children", JsonArray{});
-                if (oldChildren.Size() != newChildren.Size()) { structureChanged = true; return; }
+                bool sameChildren = oldChildren.Size() == newChildren.Size();
+                for (std::uint32_t i = 0; sameChildren && i < oldChildren.Size(); ++i)
+                    sameChildren = OptionalString(oldChildren.GetObjectAt(i), L"id") ==
+                        OptionalString(newChildren.GetObjectAt(i), L"id");
+                if (!sameChildren) { replaceStructure(OptionalString(right, L"id")); return; }
                 for (std::uint32_t i = 0; i < oldChildren.Size(); ++i)
                     self(self, oldChildren.GetObjectAt(i), newChildren.GetObjectAt(i), false);
             }
@@ -3821,7 +3832,6 @@ std::optional<WidgetPresentationImpact> CompareWidgetSnapshots(
         diff(diff, before, after, true);
         auto impact = ClassifyPresentationImpact(changes);
         if (changes.operations.empty()) impact.effects = WidgetPresentationEffect::None;
-        if (structureChanged) impact.effects |= WidgetPresentationEffect::Structure;
         // Computed styles are response data outside documentJson. Never reuse
         // geometry merely because the semantic document stayed the same.
         const auto styles = [&](const auto& self, const WidgetNode& left, const WidgetNode& right) -> void {
@@ -3829,14 +3839,21 @@ std::optional<WidgetPresentationImpact> CompareWidgetSnapshots(
             if (left.baseStyle != right.baseStyle || left.focusedStyle != right.focusedStyle ||
                 left.pressedStyle != right.pressedStyle) {
                 impact.effects |= WidgetPresentationEffect::MeasureLayout | WidgetPresentationEffect::Paint;
+                impact.nodeEffects[right.id] |= WidgetPresentationEffect::MeasureLayout | WidgetPresentationEffect::Paint;
                 impact.hasNonTextMeasureLayout = true;
                 if (std::find(impact.affectedNodeIds.begin(), impact.affectedNodeIds.end(), right.id) == impact.affectedNodeIds.end())
                     impact.affectedNodeIds.push_back(right.id);
             }
             if (left.focusPresentation.size() != right.focusPresentation.size() ||
-                left.defaultFocusPresentation.size() != right.defaultFocusPresentation.size())
-                impact.effects |= WidgetPresentationEffect::Structure;
-            else {
+                left.defaultFocusPresentation.size() != right.defaultFocusPresentation.size()) {
+                const auto effects = WidgetPresentationEffect::Structure | WidgetPresentationEffect::MeasureLayout |
+                    WidgetPresentationEffect::Paint | WidgetPresentationEffect::Interaction | WidgetPresentationEffect::Accessibility;
+                impact.effects |= effects;
+                impact.nodeEffects[right.id] |= effects;
+                impact.hasNonTextMeasureLayout = true;
+                if (std::find(impact.affectedNodeIds.begin(), impact.affectedNodeIds.end(), right.id) == impact.affectedNodeIds.end())
+                    impact.affectedNodeIds.push_back(right.id);
+            } else {
                 for (std::size_t i = 0; i < left.focusPresentation.size(); ++i)
                     self(self, left.focusPresentation[i], right.focusPresentation[i]);
                 for (std::size_t i = 0; i < left.defaultFocusPresentation.size(); ++i)
@@ -3848,6 +3865,7 @@ std::optional<WidgetPresentationImpact> CompareWidgetSnapshots(
         if (previous.windowPreviews != current.windowPreviews) {
             impact.effects |= WidgetPresentationEffect::Paint | WidgetPresentationEffect::Resource;
             impact.affectedNodeIds.push_back(current.root.id);
+            impact.nodeEffects[current.root.id] |= WidgetPresentationEffect::Paint | WidgetPresentationEffect::Resource;
         }
         impact.comparisonMicroseconds = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - started).count());

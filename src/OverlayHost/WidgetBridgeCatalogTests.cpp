@@ -152,6 +152,39 @@ void VerifySnapshotComparison() {
     CHECK(!widgetrail::CompareWidgetSnapshots(before, after));
 }
 
+void VerifyStructuralDependencyOwners() {
+    using namespace widgetrail;
+    const std::string a = R"({"id":"a","kind":"text","text":"A"})";
+    const std::string b = R"({"id":"b","kind":"text","text":"B"})";
+    const std::string c = R"({"id":"c","kind":"text","text":"C"})";
+    const auto snapshot = [&](const std::string& children, int sequence) {
+        const auto wire = std::string{R"({"snapshot":{"protocolVersion":59,"widgetInstanceId":"dependencies","activeInputScopeId":"root","sequence":)"} +
+            std::to_string(sequence) + R"(,"root":{"id":"root","kind":"row","children":[{"id":"left","kind":"stack","children":[)" +
+            children + R"(]},{"id":"right","kind":"text","text":"Unchanged"}]}},"renderStyles":{}})";
+        std::wstring error;
+        auto value = testing::ParseWidgetSnapshotResponse(wire, error);
+        CHECK(value); return *value;
+    };
+    const auto before = snapshot(a + "," + b, 1);
+    for (const auto& children : {a + "," + b + "," + c, b, b + "," + a, a + "," + c}) {
+        auto after = snapshot(children, 2);
+        auto impact = CompareWidgetSnapshots(before, after);
+        CHECK(impact && impact->affectedNodeIds == std::vector<std::wstring>{L"left"});
+        CHECK(HasWidgetPresentationEffect(impact->nodeEffects.at(L"left"), WidgetPresentationEffect::Structure));
+        CHECK(HasWidgetPresentationEffect(impact->nodeEffects.at(L"left"), WidgetPresentationEffect::MeasureLayout));
+        CHECK(impact->hasNonTextMeasureLayout && !impact->nodeEffects.contains(L"right"));
+        // A sibling's resolved WRSS can change even when its semantic JSON does not.
+        after.root.children[1].baseStyle[L"font-size"] = {L"length", L"25px", 25, L"px"};
+        impact = CompareWidgetSnapshots(before, after);
+        CHECK(impact && HasWidgetPresentationEffect(impact->nodeEffects.at(L"right"), WidgetPresentationEffect::MeasureLayout));
+        CHECK(!HasWidgetPresentationEffect(impact->nodeEffects.at(L"right"), WidgetPresentationEffect::Structure));
+    }
+    auto kind = snapshot(R"({"id":"a","kind":"button","text":"A","actionId":"open"},)" + b, 2);
+    const auto impact = CompareWidgetSnapshots(before, kind);
+    CHECK(impact && impact->affectedNodeIds == std::vector<std::wstring>{L"a"});
+    CHECK(HasWidgetPresentationEffect(impact->nodeEffects.at(L"a"), WidgetPresentationEffect::Interaction));
+}
+
 void MeasureFullSnapshotComparison() {
     widgetrail::WidgetSnapshot before;
     before.instanceId = L"comparison.workload"; before.sequence = 1;
@@ -1651,6 +1684,7 @@ int main(int argc, char** argv) {
     VerifyWidgetTransitionContract();
     VerifyWindowPreviewAuthority();
     VerifySnapshotComparison();
+    VerifyStructuralDependencyOwners();
     MeasureFullSnapshotComparison();
     VerifyWidgetBridgePipeReadinessContract();
     const auto nowPlayingManifest = std::filesystem::path{__FILE__}.parent_path()

@@ -725,6 +725,10 @@ struct WidgetPresentationImpact final {
     /// old host-owned popup pixels cannot survive outside opener damage.
     bool selectOptionsChanged{};
     std::uint64_t comparisonMicroseconds{};
+    /// Typed dependencies at the exact changed node or structural parent.
+    /// The aggregate effects remain authoritative for conservative consumers.
+    /// An absent entry is not proof of cleanliness for externally supplied impacts.
+    std::map<std::wstring, WidgetPresentationEffect, std::less<>> nodeEffects;
 };
 
 [[nodiscard]] constexpr bool RequiresCompleteSelectPopupRaster(

@@ -22,8 +22,15 @@ records reduced focus work, mixed total timing and no consistent memory reductio
 The main-host offscreen fixture covers failed publication and source replacement;
 interleaved current/incoming preparation now preserves independent progress.
 WIDGE-293 is complete for integration: main-host 61 checks, host contracts 517,
-interaction 411, and the normal Release host/runtime build pass. WIDGE-294 through
-WIDGE-298 have not started. No live-overlay FPS improvement is claimed.
+interaction 411, and the normal Release host/runtime build pass. It is merged into
+`codex/native-ui-integration` at `04f7e046`. WIDGE-294 has typed per-node
+dependencies and contained structural layout, with unchanged preparation reused.
+Its renderer suite passes 47,239 checks; insert/remove/reorder/replacement cases
+match full-rebuild pixels and geometry. An insertion prepares 13 nodes with either
+12 or 120 unrelated siblings (full rebuild: 36/252). WIDGE-294 is complete for
+integration: bridge/session/pinned gates and the normal Release host/runtime build pass.
+See [local preparation](native-local-preparation.md) for boundaries and transport limits.
+WIDGE-295 through WIDGE-298 have not started. No live-overlay FPS improvement is claimed.
 Details and verification limits: [collection lifecycle](native-collection-lifecycle.md).
 
 ## Decision

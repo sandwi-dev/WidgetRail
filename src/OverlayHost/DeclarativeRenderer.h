@@ -112,6 +112,7 @@ struct DeclarativeRenderTiming final {
     /// existing host post-commit diagnostic remains the sole log owner.
     std::wstring collectionAdmissionSummary;
     std::size_t preparedNodes{};
+    std::size_t reusedPreparedNodes{};
     std::size_t deferredViewportItems{};
     std::size_t intrinsicMeasures{};
 };
@@ -769,6 +770,7 @@ private:
         std::wstring safeBoundaryId;
         std::wstring parentId;
         bool scrollBoundary{};
+        bool containsLayout{};
     };
     struct CollectionDiagnosticItemGeometry final {
         float position{};

@@ -2728,10 +2728,14 @@ void PresentationCoalescingPreservesAuthority() {
     first.widgetId = second.widgetId = L"music";
     first.presentationImpact = WidgetPresentationImpact{1, 2, WidgetPresentationEffect::Paint, {L"progress"}};
     second.presentationImpact = WidgetPresentationImpact{2, 3, WidgetPresentationEffect::Accessibility, {L"label"}};
+    first.presentationImpact->nodeEffects[L"progress"] = WidgetPresentationEffect::Paint;
+    second.presentationImpact->nodeEffects[L"label"] = WidgetPresentationEffect::Accessibility;
     const auto original = second;
     assert(TryCoalescePresentationEvents(first, second));
     assert(second.presentationImpact->baseSequence == 1 && second.presentationImpact->sequence == 3);
     assert(second.presentationImpact->affectedNodeIds.size() == 2);
+    assert(second.presentationImpact->nodeEffects.at(L"progress") == WidgetPresentationEffect::Paint);
+    assert(second.presentationImpact->nodeEffects.at(L"label") == WidgetPresentationEffect::Accessibility);
     second = original; second.correlationId = 99;
     assert(!TryCoalescePresentationEvents(first, second));
     second = original; second.presentationImpact->baseSequence = 7;
