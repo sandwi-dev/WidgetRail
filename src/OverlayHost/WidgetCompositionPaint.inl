@@ -68,7 +68,8 @@ bool DrawWidgetComposition() {
         return false;
     }
     const auto needsLayers = [&](const auto &self, const WidgetNode &node) -> bool {
-        if (node.transition || node.kind == L"modalLayer" || UsesCompositorControlScale(node))
+        if (node.transition || node.kind == L"modalLayer" || node.kind == L"loadingIndicator" ||
+            (!node.collectionLoading.empty() && node.collectionLoading != L"idle") || UsesCompositorControlScale(node))
             return true;
         return std::any_of(node.children.begin(), node.children.end(),
                            [&](const auto &child) { return self(self, child); });
@@ -280,7 +281,19 @@ bool DrawWidgetComposition() {
         const bool semantic = node.kind != L"stack" && node.kind != L"row" && node.kind != L"scroll" &&
                               node.kind != L"grid" && node.kind != L"spacer" &&
                               node.kind != L"focusPresentationSurface" && node.kind != L"modalLayer";
-        if ((semantic && !compositorBackground) ||
+        const auto indicatorRect = Intersection(shown.contentBox, shown.visibleBox);
+        const auto indicatorDiameter = std::min(indicatorRect.width, indicatorRect.height);
+        const Rect indicatorBounds{indicatorRect.x + (indicatorRect.width - indicatorDiameter) * .5F,
+            indicatorRect.y + (indicatorRect.height - indicatorDiameter) * .5F, indicatorDiameter, indicatorDiameter};
+        const bool promoteIndicator = node.kind == L"loadingIndicator" && !roundedAncestor && !translatedAncestor && indicatorDiameter > .5F;
+        if (promoteIndicator) {
+            const auto rotation = addGroup(L"loading/" + node.id, parent, WidgetCompositionKind::IndeterminateRotation,
+                scope, targetKey, 0, indicatorBounds, shown.visibleBox);
+            captureRoots.erase(rotation);
+            compositionLoadingIndicators.insert(node.id);
+            op(node, 1, rotation, indicatorBounds);
+            split();
+        } else if ((semantic && !compositorBackground) ||
             (compositorBackground && (style.imageTint() || style.scrimColor())))
             op(node, 1, parent, shown.visibleBox);
         for (const auto &child : node.children) {
@@ -332,14 +345,25 @@ bool DrawWidgetComposition() {
                 self(self, child, parent, child.transition && child.transition->selection, scope, itemIdentity);
         }
         if (node.kind == L"scroll") {
-            const bool loading = !node.collectionLoading.empty() && node.collectionLoading != L"idle";
             const auto indicator = PrepareScrollIndicator(node, style, shown);
-            if (loading || indicator) {
-                // Container chrome is stationary. Keep its tiny changing thumb
-                // separate from content, and never capture an empty viewport-sized
-                // raster when the widget has opted out of scrollbars.
+            if (const auto loading = CollectionLoadingBounds(node, style, Intersection(shown.contentBox, shown.visibleBox))) {
                 split();
-                op(node, 2, parent, loading ? shown.visibleBox : Intersection(indicator->track, indicator->clip));
+                op(node, 7, parent, Intersection(Inset(loading->badge, -1), loading->clip));
+                split();
+                if (!roundedAncestor && !translatedAncestor) {
+                    const auto rotation = addGroup(L"loading/" + node.id, parent, WidgetCompositionKind::IndeterminateRotation,
+                        scope, targetKey, 0, loading->indicator, loading->clip);
+                    captureRoots.erase(rotation);
+                    compositionLoadingIndicators.insert(node.id);
+                    op(node, 6, rotation, loading->indicator);
+                    split();
+                }
+            }
+            if (indicator) {
+                // Preserve direct-paint order: loading badge, then scrollbar.
+                // Both captures stay bounded to their stationary chrome.
+                split();
+                op(node, 2, parent, Intersection(indicator->track, indicator->clip));
                 split();
             }
         } else if (node.kind == L"actionSurface" && (node.isSelected || node.isDisabled || node.isBusy))

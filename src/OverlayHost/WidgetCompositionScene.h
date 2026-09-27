@@ -22,7 +22,7 @@ inline declarative::Rect CompositionRasterBounds(declarative::Rect bounds, float
     return {left / scale, top / scale, (right - left) / scale, (bottom - top) / scale};
 }
 
-enum class WidgetCompositionKind { Raster, Content, Layout, Selection, Modal, Scrim, Focus, FocusSurface, Control, Popup };
+enum class WidgetCompositionKind { Raster, Content, Layout, Selection, Modal, Scrim, Focus, FocusSurface, Control, Popup, IndeterminateRotation };
 
 // A paint-ordered scene, in widget DIPs. Only raster nodes own pixels; group
 // nodes own compositor transforms. Input remains in the current widget tree.

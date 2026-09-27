@@ -449,7 +449,7 @@ LoadingIndicatorArc ComputeLoadingIndicatorArc(
     const bool reducedMotion) noexcept {
     constexpr float sweep = 270.0F;
     if (reducedMotion) return {-90.0F, sweep};
-    constexpr std::uint64_t periodMilliseconds = 900;
+    constexpr auto periodMilliseconds = LoadingIndicatorPeriodMilliseconds;
     const auto phase = static_cast<float>(
         monotonicMilliseconds % periodMilliseconds) /
         static_cast<float>(periodMilliseconds);

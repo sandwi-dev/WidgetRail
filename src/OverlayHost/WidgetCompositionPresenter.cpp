@@ -1,4 +1,5 @@
 #include "WidgetCompositionPresenter.h"
+#include "NativeIcons.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -209,7 +210,12 @@ void WidgetCompositionPresenter::DrawGroup(ID2D1RenderTarget *target, const std:
     if (!group.closing) {
         const auto pose = Sample(group.motion, now);
         target->PushAxisAlignedClip(Box(pose.clip), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-        const auto matrix = Transform(group.node.bounds, pose.bounds) * Matrix(inherited);
+        auto matrix = Transform(group.node.bounds, pose.bounds) * Matrix(inherited);
+        if (group.node.kind == WidgetCompositionKind::IndeterminateRotation) {
+            const auto& bounds = group.node.bounds;
+            matrix = D2D1::Matrix3x2F::Rotation(RotationAngle(group, now),
+                D2D1::Point2F(bounds.x + bounds.width * .5F, bounds.y + bounds.height * .5F)) * matrix;
+        }
         for (const auto &node : scene_->nodes) {
             if (node.parent != id)
                 continue;
@@ -493,7 +499,7 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         auto &group = groups_[node.id];
         const bool changed = !existed || group.node.key != node.key || group.closing;
         const bool contextChanged = existed && (node.kind == WidgetCompositionKind::Focus || node.kind == WidgetCompositionKind::Control ||
-            node.kind == WidgetCompositionKind::FocusSurface) &&
+            node.kind == WidgetCompositionKind::FocusSurface || node.kind == WidgetCompositionKind::IndeterminateRotation) &&
             (group.node.clock != node.clock || group.node.parent != node.parent);
         const bool surfaceFocused = node.kind == WidgetCompositionKind::FocusSurface &&
             std::any_of(scene_->nodes.begin(), scene_->nodes.end(), [&](const auto &focus) {
@@ -535,6 +541,12 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         const auto clipped = group.root->SetClip(Box(node.clip, scene_->scale));
         if (FAILED(clipped))
             return clipped;
+        if (node.kind == WidgetCompositionKind::IndeterminateRotation) {
+            group.motion = animation::Stationary(node.bounds, node.clip).Start(now, Frequency());
+            const auto hr = ConfigureIndeterminateRotation(group, changed || contextChanged, now);
+            if (FAILED(hr)) return hr;
+            continue;
+        }
         if (auto captured = outgoing.find(node.id); captured != outgoing.end())
             group.previous = std::move(captured->second);
         if (changed || boundsChanged || contextChanged || surfaceChanged || scaleChanged || scene_->reducedMotion) {
@@ -625,6 +637,45 @@ HRESULT WidgetCompositionPresenter::Apply(std::shared_ptr<const WidgetCompositio
         ++counters_.sceneCommits;
     }
     return attached;
+}
+
+float WidgetCompositionPresenter::RotationAngle(const Group &group, std::int64_t now) const noexcept {
+    if (!group.rotationRunning || !scene_) return 0;
+    const double milliseconds = 1000.0 * std::max<std::int64_t>(0, now - group.rotationStart) / Frequency();
+    return static_cast<float>(std::fmod(milliseconds / icons::LoadingIndicatorPeriodMilliseconds, 1.0) * 360);
+}
+
+HRESULT WidgetCompositionPresenter::ConfigureIndeterminateRotation(Group &group, bool restart, std::int64_t now) {
+    auto hr = S_OK;
+    if (!group.rotation) hr = device_->CreateRotateTransform(group.rotation.GetAddressOf());
+    const auto& bounds = group.node.bounds;
+    if (SUCCEEDED(hr)) hr = group.rotation->SetCenterX((bounds.x + bounds.width * .5F) * scene_->scale);
+    if (SUCCEEDED(hr)) hr = group.rotation->SetCenterY((bounds.y + bounds.height * .5F) * scene_->scale);
+    if (SUCCEEDED(hr) && scene_->reducedMotion) {
+        hr = group.rotation->SetAngle(0.0F);
+        group.rotationRunning = false;
+        group.rotationCurve.Reset();
+    } else if (SUCCEEDED(hr) && (restart || !group.rotationRunning)) {
+        Ptr<IDCompositionAnimation> angle;
+        // Indeterminate activity has the same cadence as the raster fallback;
+        // the user transition-speed setting does not alter loading feedback.
+        const double seconds = icons::LoadingIndicatorPeriodMilliseconds / 1000.0;
+        hr = device_->CreateAnimation(angle.GetAddressOf());
+        LARGE_INTEGER begin{}; begin.QuadPart = now;
+        if (SUCCEEDED(hr)) hr = angle->SetAbsoluteBeginTime(begin);
+        if (SUCCEEDED(hr)) hr = angle->AddCubic(0, 0, static_cast<float>(360 / seconds), 0, 0);
+        if (SUCCEEDED(hr)) hr = angle->AddRepeat(seconds, seconds);
+        if (SUCCEEDED(hr)) hr = group.rotation->SetAngle(angle.Get());
+        if (SUCCEEDED(hr)) {
+            group.rotationCurve = std::move(angle);
+            group.rotationStart = now; group.rotationRunning = true;
+            ++counters_.animationStarts;
+        }
+    }
+    if (SUCCEEDED(hr)) hr = static_cast<IDCompositionVisual2*>(group.incoming.Get())->SetTransform(group.rotation.Get());
+    if (SUCCEEDED(hr)) hr = group.incoming->SetOpacity(1.0F);
+    if (SUCCEEDED(hr)) hr = group.incomingClip->SetClip(Box(group.node.clip, scene_->scale));
+    return hr;
 }
 
 HRESULT WidgetCompositionPresenter::ConfigureFocusSurface(Group &group) {
@@ -920,7 +971,8 @@ D2D1_POINT_2F WidgetCompositionPresenter::MapInput(D2D1_POINT_2F point) const no
         for (auto it = scene_->nodes.rbegin(); it != scene_->nodes.rend(); ++it) {
             if (it->parent != parent || it->kind == WidgetCompositionKind::Raster ||
                 it->kind == WidgetCompositionKind::Selection || it->kind == WidgetCompositionKind::Scrim ||
-                it->kind == WidgetCompositionKind::Focus || it->kind == WidgetCompositionKind::FocusSurface)
+                it->kind == WidgetCompositionKind::Focus || it->kind == WidgetCompositionKind::FocusSurface ||
+                it->kind == WidgetCompositionKind::IndeterminateRotation)
                 continue;
             const auto group = groups_.find(it->id);
             if (group == groups_.end() || group->second.closing)

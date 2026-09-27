@@ -92,7 +92,9 @@ CompositionPaintIdentity CompositionIdentity(const WidgetCompositionNode& raster
         key.Style(phase == 5 ? item.baseStyle : phase == 0 && focus != compositionFocusStyles.end() ? focus->second : item.paintStyle);
         // These surfaces have independent time/selection/resource owners.
         // Repaint them until those owners expose immutable capture identities.
-        if (node.kind == L"backgroundSurface" || node.kind == L"loadingIndicator") key.cacheable = false;
+        if (node.kind == L"backgroundSurface" ||
+            (node.kind == L"loadingIndicator" && !compositionLoadingIndicators.contains(node.id) && !options.accessibility.reducedMotion))
+            key.cacheable = false;
         if (phase == 0 || phase == 5) continue;
         key.Text(node.text); key.Text(node.textEntryValue); key.Text(node.textEntryPlaceholder); key.Text(node.textEntryInputKind);
         key.Text(node.glyph); key.Text(node.controllerPrompt); key.Text(node.indicatorSize);
@@ -128,7 +130,8 @@ CompositionPaintIdentity CompositionIdentity(const WidgetCompositionNode& raster
             image(art);
         }
         image(node);
-        if (!node.collectionLoading.empty()) key.cacheable = false;
+        if (phase == 7 && !node.collectionLoading.empty() && node.collectionLoading != L"idle" &&
+            !compositionLoadingIndicators.contains(node.id) && !options.accessibility.reducedMotion) key.cacheable = false;
     }
     return key;
 }
