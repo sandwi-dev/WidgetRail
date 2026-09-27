@@ -101,6 +101,37 @@ position fallback. It must not silently carry an unrelated item's anchor forward
 
 ## Preparation and publication
 
+Ordinary scrolling separates visible/protected readiness from optional buffered
+readiness. A covered committed window may move while a bounded preparation slice
+measures adjacent rows. Pending optional work is retained for the next cadence
+sample; a completed batch enters the normal atomic layout/frame publication path.
+Retained placement must not silently discard a completed batch without adopting
+its newly measured rows. The current buffer is one logical line on each side.
+
+When required on-screen geometry is missing, the existing pending/rollback path
+still holds position. Provider boundaries and new-page admission remain unchanged,
+and skipped input distance is never accumulated for a later jump. Measurement
+context, scale, source and protected-target checks continue to govern reuse.
+This is native scheduling behavior; widget authors need no new flag or contract.
+
+The regression test previously blocked 12 of 120 small grid scroll steps. It now
+moves all 120 at both 100% and 125% scale, including reversal, with exact pixels and
+offsets against full preparation. Vertical and horizontal lists pass the same
+comparison. These deterministic admission checks do not claim a live frame rate.
+Quiet diagnostics record preparation status, required readiness, new measurement
+count and preparation CPU time, including work performed before painting.
+
+Follow-up validation passes 52,345 renderer checks, 517 pinned-host checks and
+409 surface-coordinator checks. Seven exported Playnite/Spotify/Games and Apps
+fixtures match full-layout pixels and visible geometry at four widths and two
+scales, including 3976x863 DIPs / 125%. Each variant exercises 64 bounded cadence
+attempts plus focus, large-scroll and accessibility transitions; legitimate
+content-boundary stops are counted separately from preparation stalls (zero).
+The Release host/runtime candidate builds successfully. Evidence is under
+`artifacts/native-scroll-cadence`; these checks remain separate from physical
+acceptance. One pinned-host source assertion was updated for the already-added
+artwork demand-ID field; no artwork transport behavior changed in this follow-up.
+
 The model is host-thread confined and owns no actions, visual nodes, images or COM
 objects. Prepare a staged copy when necessary, and publish it together with the
 matching geometry, focus and paint state. It does not itself implement atomic

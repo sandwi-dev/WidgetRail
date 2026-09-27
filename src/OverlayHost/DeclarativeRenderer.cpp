@@ -6350,6 +6350,7 @@ std::optional<FocusedFreeScrollPlan> DeclarativeRenderer::PlanPreparedFreeScroll
             std::wstring{exactScrollId};
         const auto collection = collections_.find(stateKey);
         const auto& previousOptions = incrementalLayoutCache_->options;
+        bool requiredReady = false;
         if (collection != collections_.end() && previousOptions.pixelScale == options.pixelScale &&
             previousOptions.rootFontSizePx == options.rootFontSizePx && previousOptions.surfaceBackground == options.surfaceBackground &&
             previousOptions.playStationControls == options.playStationControls &&
@@ -6368,19 +6369,33 @@ std::optional<FocusedFreeScrollPlan> DeclarativeRenderer::PlanPreparedFreeScroll
                 1, protectedKeys, state.geometry.Size());
             const auto& items = scrollPath.back()->children;
             const auto ready = [&](const std::size_t index) {
-                if (index >= items.size()) return false;
+                if (index >= items.size() || std::ranges::find(state.realized, index) == state.realized.end()) return false;
                 const auto cached = state.items.find(items[index].collectionItemKey);
                 return cached != state.items.end() && cached->second.measuredContext == state.contextRevision &&
                     !cached->second.layout.boxes.empty();
             };
-            bool complete = std::ranges::all_of(demand.protectedItems, ready);
+            bool complete = std::ranges::all_of(protectedKeys, [&](const auto& key) {
+                const auto index = state.geometry.Find(key);
+                return !index || ready(*index);
+            });
+            for (auto index = demand.visibleBegin; complete && index < demand.visibleEnd; ++index) complete = ready(index);
+            requiredReady = complete;
             for (auto index = demand.bufferedBegin; complete && index < demand.bufferedEnd; ++index) complete = ready(index);
             if (complete) return plan;
         }
         auto preparationOptions = options;
         preparationOptions.suppressFocusedDescendantFollow = true;
         const auto preparation = PrepareCollections(snapshot, focusedElementId, viewport, preparationOptions, budget);
+        if (scrollDiagnostics_) scrollDiagnostics_->Record("scroll-preparation", [&](auto& out) {
+            out << "seq=" << snapshot.sequence << " required-ready=" << requiredReady
+                << " status=" << static_cast<int>(preparation.status)
+                << " measurements=" << preparation.newMeasurements << " cpu-us=" << preparation.elapsedMicroseconds;
+        });
         if (preparation.status == CollectionPreparationStatus::Ready) return plan;
+        // Buffered rows are optional while the committed layout still covers
+        // every visible/protected item. Keep the slice for the next cadence
+        // sample and move now; do not replay or accumulate suppressed distance.
+        if (requiredReady && preparation.status == CollectionPreparationStatus::Pending) return plan;
         rollback();
         if (diagnostic) diagnostic->disposition = preparation.status == CollectionPreparationStatus::Pending
             ? FocusedFreeScrollPlanDisposition::PreparationPending : FocusedFreeScrollPlanDisposition::PreparationFailed;

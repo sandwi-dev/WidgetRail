@@ -11,7 +11,8 @@ void CompareCollectionPlacement(const WidgetSnapshot& snapshot, ID2D1Factory* d2
     Require(collection && !collection->children.empty(), "Placement fixture needs collection items");
     const auto axis = collection->scrollAxis == L"horizontal" ? declarative::ScrollAxis::Horizontal : declarative::ScrollAxis::Vertical;
     for (const float scale : {1.0F, 1.25F}) for (const auto size : {
-        declarative::Size{620, 400}, declarative::Size{980, 700}, declarative::Size{1400, 862}}) {
+        declarative::Size{620, 400}, declarative::Size{980, 700}, declarative::Size{1400, 862},
+        declarative::Size{3976, 863}}) {
         DeclarativeRenderer retained(d2d, write, &images), full(d2d, write, &images);
         DeclarativeRenderOptions options;
         options.accessibility.reducedMotion = true;
@@ -82,6 +83,27 @@ void CompareCollectionPlacement(const WidgetSnapshot& snapshot, ID2D1Factory* d2
             compare();
         }
         options.suppressFocusedDescendantFollow = true;
+        // Exercise the actual bounded scroll admission path while comparing
+        // each published frame with synchronous preparation. Small movements
+        // leave enough lead time for a one-item slice in these fixtures.
+        std::size_t cadenceMoves{}, cadenceBoundaries{};
+        for (unsigned step = 0; step < 64; ++step) {
+            const bool wide = size.width > 1400;
+            const float distance = wide ? 33.0F : 4.0F;
+            const float delta = step >= 32 && step < 48 ? -distance : distance;
+            FocusedFreeScrollPlanDiagnostic diagnostic;
+            const auto a = retained.PlanPreparedFreeScroll(snapshot, focus, axis, delta, viewport,
+                collection->id, options, &diagnostic, {wide ? 8U : 1U, 1000000});
+            Require(a || diagnostic.disposition == FocusedFreeScrollPlanDisposition::OffsetBoundary,
+                "Production layout gates ordinary movement on optional preparation");
+            const auto b = full.PlanFocusedFreeScroll(snapshot, focus, axis, delta, viewport, collection->id);
+            Require(a.has_value() == b.has_value(), "Prepared scrolling changed a provider/content boundary");
+            if (a) ++cadenceMoves; else ++cadenceBoundaries;
+            full.CancelPresentationUpdatePlan();
+            compare();
+        }
+        std::cout << "PRODUCTION-CADENCE width=" << size.width << " scale=" << scale
+            << " moved=" << cadenceMoves << " boundary=" << cadenceBoundaries << " preparation-stalls=0\n";
         for (const float delta : {.4F, .4F, 30.0F, 300.0F, 900.0F, -700.0F, -50.0F, -.4F}) {
             const auto a = retained.PlanFocusedFreeScroll(snapshot, focus, axis, delta, viewport, collection->id);
             const auto b = full.PlanFocusedFreeScroll(snapshot, focus, axis, delta, viewport, collection->id);
