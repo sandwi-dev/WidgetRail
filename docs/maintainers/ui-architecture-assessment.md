@@ -3,6 +3,10 @@
 Assessment date: 2026-09-26. WidgetRail baseline: `092ee64d`.
 This is a source-based architecture assessment, not a runtime comparison or a migration decision.
 
+2026-09-27: the [Compose migration plan](compose-migration-plan.md) now defines
+the proposed replacement direction and qualification gates. The recommendations
+below document the earlier decision; their native-evolution priority is historical.
+
 ## Recommendation
 
 There are two first-class routes: evolve WidgetRail into a coherent native
