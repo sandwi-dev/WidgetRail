@@ -8095,6 +8095,14 @@ void BufferedPreparationDoesNotGateVisibleScrolling() {
             << " moved=" << moved << " blocked=" << blocked << '\n';
         Check(blocked == 0 && moved == 120,
             "optional adjacent measurement never stalls a covered visible viewport");
+        // A ready batch for an abandoned focus target may share measurements,
+        // but must not force every subsequent frame onto full layout forever.
+        const auto abandoned = actual.PrepareCollections(snapshot, L"item.30", bounds, options, {128, 1000000});
+        Check(abandoned.status == CollectionPreparationStatus::Ready, "alternate focus preparation completes");
+        Check(actual.PlanRetainedPaint(snapshot).has_value(), "original focus still owns a retained frame");
+        const auto unchanged = actualFixture.Draw(snapshot, L"item.0", bounds, options);
+        Check(unchanged.fullLayoutBuildCount == 0,
+            "completed preparation for another focus cannot repeatedly force layout");
     }
 }
 

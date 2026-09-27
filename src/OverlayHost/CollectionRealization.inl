@@ -106,7 +106,8 @@ bool PrepareRetainedCollectionLayout() {
     // transactional layout path. Otherwise retaining the old placement would
     // discard the newly prepared rows when this frame is acknowledged.
     if (std::ranges::any_of(owner->collectionPreparations_, [&](const auto& branch) {
-            return branch.ready && branch.Matches(*snapshot);
+            return branch.ready && branch.Matches(*snapshot) && branch.focus == focusedId &&
+                branch.realization == options.realizeElementId;
         })) return false;
     // The caller has already proved an unchanged admitted snapshot, viewport
     // and measurement options. Copy only committed collection state, never a
