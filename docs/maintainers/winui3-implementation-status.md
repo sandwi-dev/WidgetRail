@@ -69,3 +69,46 @@ Do not claim migration readiness based on shell build or source-selection tests.
 
 Evidence: ignored `artifacts/winui-shell/` (build binlogs, UIA/launch output, screenshots,
 source-reference excerpt) and `artifacts/winui-state/` (focused tests/binlog).
+
+## Controller and external-content foundation follow-up
+
+- `scripts/Build-OverlayPlatform.ps1` builds only the existing ABI v4 DLL. Release
+  build and 24-export inspection passed. It neither initializes hardware nor
+  installs the copied GameInput redistributable. Third-party ViGEm source emits
+  existing encoding warnings.
+- `OverlayPlatformClient` now provides exact ABI structs, initialized outputs,
+  stdcall imports/callbacks, SafeHandle lifetime and serialized access. Its 15
+  focused fake-native tests pass; they cover callback/disposal and failure paths,
+  not physical delivery.
+- The WinUI input pump and opt-in controller validation page build with zero
+  warnings/errors. User authorized stopping native candidate PID 30152; its logs
+  were preserved under `artifacts/winui-controller/`. It had no controller-isolation
+  command-line flag. WinUI PID 26144 receives connected GameInputVisibleLease frames.
+  Physical navigation/single-A/Guide acceptance is pending. Do not run the old
+  native candidate concurrently with this controller owner.
+- External-surface validation uses WinUI WebView2 with trusted literal animated
+  content. Actual screenshots show a XAML button and ContentDialog above the
+  external surface. Four scripted checks pass: ready, pointer-open, Escape focus
+  restoration, and reopen. The widget-local modal component is NOT implemented by
+  this fixture; neither actual playback nor pinning/rounded clipping is proven.
+- Packaged desktop launch arguments are consumed from both activation data and the
+  process command line. Project-mode winapp launches now explicitly pass
+  `-p Platform=x64` after adding a managed project reference.
+- Removed the unrelated template systemAIModels capability. The shell exposes only
+  x64 until the native boundary gains supported additional architectures.
+
+### Physical controller feedback and activation correction
+
+User reported: Guide hide/show works, but native navigation/A required clicking a
+button first. This is a failed controller-native startup gate, not acceptance.
+No further physical checks are requested while the user is away.
+
+The validation page previously called Focus during Loaded and ignored failure.
+It now queues focus entry after loading/activation/show, verifies the framework
+result, and preserves an already focused descendant. Cold-launch automated check
+(PID 23444) observed First focused without any click, Right moved to Second,
+Enter changed the shared command count to Second: 1. Native status reported
+connected GameInputVisibleLease and entry retained. Keyboard automation does not
+prove physical controller delivery; keep the original failure open until an
+end-to-end native-frame/activation test and later physical acceptance establish it.
+The validation process was closed via Shell.Close after checks.

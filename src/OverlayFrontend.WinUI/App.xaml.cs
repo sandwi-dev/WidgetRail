@@ -50,8 +50,12 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
-        Window = new MainWindow();
+        var arguments = args.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Concat(Environment.GetCommandLineArgs().Skip(1)).ToHashSet(StringComparer.Ordinal);
+        var main = new MainWindow(arguments.Contains("--validate-external-surface"), arguments.Contains("--validate-controller"));
+        Window = main;
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         Window.Activate();
+        main.StartInput();
     }
 }
