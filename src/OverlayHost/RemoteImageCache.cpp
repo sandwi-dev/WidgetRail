@@ -174,9 +174,9 @@ struct ParsedUrl {
         image.width = width;
         image.height = height;
         image.stride = width * 4;
-        image.premultipliedBgra.resize(static_cast<std::size_t>(image.stride) * height);
+        if (!image.AllocatePixels(static_cast<std::size_t>(image.stride) * height, limits.resourceBudget)) result = E_OUTOFMEMORY;
         image.mimeType = std::move(mime);
-        result = converter->CopyPixels(nullptr, image.stride,
+        if (SUCCEEDED(result)) result = converter->CopyPixels(nullptr, image.stride,
             static_cast<UINT>(image.premultipliedBgra.size()), image.premultipliedBgra.data());
     }
     if (uninitialize) CoUninitialize();
@@ -321,7 +321,8 @@ RemoteImageCache::RemoteImageCache(
     PackageIconRequestFunction packageIconRequest,
     std::shared_ptr<ScrollDiagnostics> scrollDiagnostics,
     std::shared_ptr<resources::UiResourceBudget> resourceBudget)
-    : resourceBudget_(resourceBudget ? std::move(resourceBudget) : std::make_shared<resources::UiResourceBudget>()),
+    : resourceBudget_(resourceBudget ? std::move(resourceBudget) :
+          limits.resourceBudget ? limits.resourceBudget : std::make_shared<resources::UiResourceBudget>()),
       limits_(limits),
       completion_(std::move(completion)),
       usesCustomFetch_(static_cast<bool>(fetch)),
@@ -363,6 +364,7 @@ RemoteImageCache::RemoteImageCache(
         limits_.receiveTimeoutMilliseconds == 0 || limits_.receiveTimeoutMilliseconds > 60'000) {
         throw std::invalid_argument("Invalid remote image cache limits.");
     }
+    limits_.resourceBudget = resourceBudget_;
     if (!usesCustomFetch_)
         artworkDecoder_ = std::make_unique<ArtworkDecoderProcessOwner>(limits_);
     worker_ = std::jthread([this](std::stop_token token) { WorkerLoop(token); });

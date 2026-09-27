@@ -336,7 +336,55 @@ void ResourceBudgetImageOwnership() {
     }
 }
 
+void DecodeOutputIsAccountedBeforePublication() {
+    using namespace widgetrail;
+    auto budget = std::make_shared<resources::UiResourceBudget>(1024);
+    RemoteImageLimits limits; limits.resourceBudget = budget;
+    std::mutex mutex; std::condition_variable changed;
+    bool allocated{}, release{}, completed{};
+    RemoteImageCache cache(limits, [&](std::wstring_view, RemoteImageState state) {
+        assert(state == RemoteImageState::Ready);
+        { std::scoped_lock lock(mutex); completed = true; } changed.notify_all();
+    }, [&](std::wstring_view, std::stop_token, const RemoteImageLimits& requestLimits) {
+        RemoteDecodedImage image; image.width = 2; image.height = 1; image.stride = 8;
+        assert(image.AllocatePixels(8, requestLimits.resourceBudget));
+        { std::unique_lock lock(mutex); allocated = true; changed.notify_all();
+          assert(changed.wait_for(lock, std::chrono::seconds(2), [&] { return release; })); }
+        return RemoteImageFetchResult{S_OK, std::move(image), {}};
+    });
+    assert(cache.Request(L"https://example.com/in-flight.png") == RemoteImageRequestResult::Queued);
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(2), [&] { return allocated; })); }
+    assert(budget->Read().allocatedBytes == 8 && cache.GetStats().decodedBytes == 0);
+    { std::scoped_lock lock(mutex); release = true; } changed.notify_all();
+    { std::unique_lock lock(mutex); assert(changed.wait_for(lock, std::chrono::seconds(2), [&] { return completed; })); }
+    assert(budget->Read().allocatedBytes == 8 && budget->Read().peakAllocatedBytes == 8 && cache.GetStats().decodedBytes == 8);
+    cache.Clear(); assert(budget->Read().allocatedBytes == 0);
+    cache.Shutdown();
+}
+
+void DecoderTransportAndOutputAccounting() {
+    using namespace widgetrail;
+    assert(SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)));
+    const auto png = EncodeWicImage(GUID_ContainerFormatPng, 2, 1);
+    auto budget = std::make_shared<resources::UiResourceBudget>();
+    RemoteImageLimits limits; limits.resourceBudget = budget;
+    ArtworkDecoderProcessOwner decoder(limits, ExecutableSibling(L"ArtworkDecoderTestHost.exe"));
+    auto result = decoder.Decode(png, L"image/png", {}, artworkdecoder::TestBehavior::Succeed);
+    assert(result.succeeded() && result.image.resourceAllocation);
+    const auto decoded = result.image.premultipliedBgra.capacity();
+    const auto live = budget->Read();
+    assert(live.allocatedByKind[static_cast<std::size_t>(resources::Kind::DecoderTransport)] == artworkdecoder::mappingBytes);
+    assert(live.allocatedBytes == artworkdecoder::mappingBytes + decoded && live.protectedBytes == 0);
+    decoder.Shutdown();
+    assert(budget->Read().allocatedBytes == decoded);
+    result = {};
+    assert(budget->Read().allocatedBytes == 0);
+    CoUninitialize();
+}
+
 int main() {
+    DecoderTransportAndOutputAccounting();
+    DecodeOutputIsAccountedBeforePublication();
     ResourceBudgetImageOwnership();
     VerifyFailedArtworkRecovery();
     VerifyRetiredArtworkDecodeCannotPublish();

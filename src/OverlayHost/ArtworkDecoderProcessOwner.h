@@ -57,6 +57,7 @@ private:
 
     RemoteImageLimits limits_;
     std::wstring executablePath_;
+    resources::UiResourceBudget::Lease mappingAllocation_;
     HANDLE mapping_{};
     std::byte* view_{};
     HANDLE requestEvent_{};

@@ -125,6 +125,8 @@ struct RemoteImageLimits {
     DWORD sendTimeoutMilliseconds{3'000};
     DWORD receiveTimeoutMilliseconds{5'000};
     DWORD maximumRedirects{3};
+    // Host-side allocation context; not part of the decoder wire protocol.
+    std::shared_ptr<resources::UiResourceBudget> resourceBudget;
 };
 
 struct RemoteDecodedImage {
@@ -150,6 +152,22 @@ struct RemoteDecodedImage {
         resourceAllocation.swap(other.resourceAllocation);
         std::swap(width, other.width); std::swap(height, other.height); std::swap(stride, other.stride);
         premultipliedBgra.swap(other.premultipliedBgra); mimeType.swap(other.mimeType);
+    }
+    [[nodiscard]] bool AllocatePixels(std::size_t bytes, const std::shared_ptr<resources::UiResourceBudget>& budget) {
+        try {
+            auto allocation = budget ? budget->Reserve(resources::Kind::DecodedImage, bytes, resources::Admission::Required)
+                : resources::UiResourceBudget::Lease{};
+            if (budget && !allocation) return false;
+            std::vector<std::uint8_t> pixels(bytes);
+            if (allocation) {
+                if (!allocation->ResizeRequiredReservation(pixels.capacity())) return false;
+                allocation->Commit();
+            }
+            resourceAllocation.swap(allocation);
+            premultipliedBgra.swap(pixels);
+            // Pixels is destroyed before the prior allocation lease.
+            return true;
+        } catch (const std::bad_alloc&) { return false; }
     }
     [[nodiscard]] bool TrackAllocation(const std::shared_ptr<resources::UiResourceBudget>& budget) {
         if (!budget) return false;

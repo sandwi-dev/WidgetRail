@@ -38,8 +38,9 @@ Renderer (47,819), chrome/composition and pinned gates plus the normal Release
 host/runtime build pass. WIDGE-295 is complete for integration.
 See [painting measurements](native-painting-reuse.md).
 WIDGE-295 merged at `28436e2e`. WIDGE-296 has a shared allocation/protection core
-and CPU-cache lifetime/pressure integration. GPU/surface ownership, in-flight
-allocation and demand cancellation remain; see [resource accounting](native-resource-budgets.md).
+and CPU-cache lifetime/pressure integration, including host decode buffers and
+shared decoder transport. GPU/surface ownership and coordinated demand cancellation
+remain; see [resource accounting](native-resource-budgets.md).
 WIDGE-297 and WIDGE-298 have not started.
 No live-overlay FPS improvement is claimed.
 Details and verification limits: [collection lifecycle](native-collection-lifecycle.md).

@@ -43,8 +43,16 @@ retention when no reclaimable headroom remains. A newly visible rejected request
 can retry, and required visible work can overlap another live owner. Existing
 per-image, per-cache, queue and encoded-input bounds still apply.
 
-CPU accounting currently starts at validated completion adoption. Reserving decode
-and transport working buffers before their allocation remains part of integration.
+Host WIC outputs and isolated-decoder response buffers now reserve before vector
+allocation, then commit the actual capacity before filling pixels. Adoption into
+the ready cache keeps that same lease. The decoder's shared transport mapping has
+one separate allocation lease and is protected while a request uses it; shutdown
+releases the mapping while any copied output remains accounted independently.
+Validation, reservation and copy use one owned response-header snapshot.
+
+The mapping's logical capacity is counted once, not once per mapped process. It
+does not measure physical residency or the decoder process's private codec memory.
+Reclaiming an idle transport on its worker thread remains part of owner integration.
 
 ## Remaining work
 
@@ -70,5 +78,7 @@ overflow, commit/creation distinction and deep copies. CPU-cache tests exercise
 reader lifetime beyond eviction, copy lifetime, shared pressure with a protected
 surface reservation, visible retry and reclamation after protection is removed.
 Run the native `-UiResourceBudgetTestsOnly` and `-TrustedArtworkTestsOnly` gates.
-The first checkpoint passes 28 core checks, the full remote-image suite and
-47,819 renderer checks. GPU/surface accounting and cancellation are not yet verified.
+The latest checkpoint passes 32 core checks, the full remote-image suite and
+47,819 renderer checks. A blocked decode test observes allocated bytes before
+cache publication; transport tests verify that mapping and copied output retire
+independently. GPU/surface accounting and cancellation are not yet verified.

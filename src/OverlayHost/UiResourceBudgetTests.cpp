@@ -88,7 +88,12 @@ void AllocationCommitAndCopy() {
     pending.reset();
     Check(budget.Read().peakAllocatedBytes == 0 && budget.Read().liveBytes == 0, "failed creation releases its reservation without inflating allocation peak");
     auto source = budget.Reserve(Kind::DecodedImage, 20, Admission::Required);
+    Check(static_cast<bool>(source), "decoded allocation reservation is admitted");
+    Check(source->ResizeRequiredReservation(24) && budget.Read().liveBytes == 24 && budget.Read().allocatedBytes == 0,
+        "actual capacity adjusts an in-flight reservation without inventing allocated bytes");
+    Check(source->ResizeRequiredReservation(20), "required reservation can shrink before allocation commit");
     source->Commit(); source->Commit();
+    Check(!source->ResizeRequiredReservation(21), "published storage cannot change its allocation footprint");
     Check(budget.Read().allocatedBytes == 20, "allocation commit is idempotent");
     auto copied = source->Duplicate(24); copied->Commit();
     Check(budget.Read().allocatedBytes == 44 && budget.Read().allocations == 2, "deep copies have distinct storage accounting");

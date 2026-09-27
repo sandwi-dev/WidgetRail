@@ -10,7 +10,7 @@
 
 namespace widgetrail::resources {
 
-enum class Kind { DecodedImage, GpuImage, RetainedRaster, CompositorSurface, AnimationSurface, ShadowMask, EncodedArtwork, Count };
+enum class Kind { DecodedImage, GpuImage, RetainedRaster, CompositorSurface, AnimationSurface, ShadowMask, EncodedArtwork, DecoderTransport, Count };
 enum class Admission { Required, Optional };
 
 // Accounts known application-owned storage, not driver residency. One allocation
@@ -73,7 +73,8 @@ private:
 class UiResourceBudget::Allocation final : public std::enable_shared_from_this<Allocation> {
     friend class UiResourceBudget;
     friend class Protection;
-    Allocation(std::shared_ptr<State> state, Kind kind, std::size_t bytes) : state_(std::move(state)), kind_(kind), bytes_(bytes) {}
+    Allocation(std::shared_ptr<State> state, Kind kind, std::size_t bytes, Admission admission)
+        : state_(std::move(state)), kind_(kind), bytes_(bytes), admission_(admission) {}
 public:
     ~Allocation() {
         if (!registered_) return;
@@ -90,8 +91,27 @@ public:
     }
     Allocation(const Allocation&) = delete;
     Allocation& operator=(const Allocation&) = delete;
-    [[nodiscard]] std::size_t bytes() const noexcept { return bytes_; }
+    [[nodiscard]] std::size_t bytes() const {
+        std::scoped_lock lock(state_->mutex);
+        return bytes_;
+    }
     [[nodiscard]] Kind kind() const noexcept { return kind_; }
+    // Adjust required in-flight storage to actual capacity before publication.
+    [[nodiscard]] bool ResizeRequiredReservation(std::size_t bytes) {
+        std::scoped_lock lock(state_->mutex);
+        if (allocated_ || protections_ != 0 || admission_ != Admission::Required || bytes == 0) return false;
+        auto& snapshot = state_->snapshot;
+        const auto otherBytes = snapshot.liveBytes - bytes_;
+        if (bytes > std::numeric_limits<std::size_t>::max() - otherBytes) return false;
+        snapshot.liveBytes = otherBytes + bytes;
+        snapshot.bytesByKind[static_cast<std::size_t>(kind_)] -= bytes_;
+        snapshot.bytesByKind[static_cast<std::size_t>(kind_)] += bytes;
+        bytes_ = bytes;
+        snapshot.peakBytes = std::max(snapshot.peakBytes, snapshot.liveBytes);
+        if (snapshot.liveBytes <= snapshot.reclaimToBytes) snapshot.reclaimToBytes = snapshot.retentionTarget;
+        if (snapshot.liveBytes > snapshot.retentionTarget) ++snapshot.pressureRequests;
+        return true;
+    }
     void Commit() {
         std::scoped_lock lock(state_->mutex);
         if (allocated_) return;
@@ -115,6 +135,7 @@ private:
     std::shared_ptr<State> state_;
     Kind kind_;
     std::size_t bytes_, protections_{};
+    Admission admission_;
     bool registered_{};
     bool allocated_{};
 };
@@ -161,8 +182,9 @@ inline bool UiResourceBudget::Owns(const Lease& allocation) const noexcept {
 
 inline UiResourceBudget::Lease UiResourceBudget::ReserveInState(
     const std::shared_ptr<State>& state, Kind kind, std::size_t bytes, Admission admission) {
-    if (static_cast<std::size_t>(kind) >= KindCount || bytes == 0) return {};
-    auto allocation = Lease(new Allocation(state, kind, bytes));
+    if (static_cast<std::size_t>(kind) >= KindCount || bytes == 0 ||
+        (admission != Admission::Required && admission != Admission::Optional)) return {};
+    auto allocation = Lease(new Allocation(state, kind, bytes, admission));
     std::scoped_lock lock(state->mutex);
     auto& snapshot = state->snapshot;
     if (bytes > std::numeric_limits<std::size_t>::max() - snapshot.liveBytes) return {};
