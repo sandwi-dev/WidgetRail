@@ -219,3 +219,33 @@ release do not replay the exit. Scope replacement, focus departure and host
 hide reset adjustment. Widgets still own the authoritative value; the frontend
 owns native interaction only. Native `--validate-slider` covers these lifetimes,
 endpoint quantization and disjoint range changes with a synthetic action sink.
+
+## Package SVG icons
+
+Manifest `OriginalColor` icons now use `SvgImageSource`/`ImageIcon`, including
+standalone Icon, Button adornments and Select options. All bytes come from the
+session's hash-checked bridge package resolver. Indexed fragments share their
+existing parent session. Native glyph fallback appears immediately; removal,
+rebind, popup dismissal and catalog replacement revoke pending publication.
+Native controller-family fonts and accessible labels retain their prior meaning.
+
+**ThemeTint is not yet implemented.** It requires preserving the fully composed
+SVG alpha mask and applying the current theme brush. `SvgImageSource` does not
+expose a tint operation and `LoadedImageSurface` supports WIC raster formats,
+not SVG. ThemeTint keeps the required semantic fallback and emits the bounded
+`package_icon_theme_tint_unavailable` diagnostic. It never displays original
+colors as if that fulfilled the tint contract. A future tint path must preserve
+opacity/overlap, brush updates and High Contrast without rewriting SVG colors.
+
+`--validate-package-icons` exercises actual native SVG sources, Select adornments,
+semantic fallback, replacement/cancellation and explicit unsupported-tint reporting.
+The fixture has no filesystem/network icon authority; real admission is covered
+by presentation-session transport tests and the existing bridge package validator.
+
+The optional `--validate-package-icons --probe-svg-mask` probe compares a simple
+SVG alpha mask, a PNG alpha mask and a direct solid compositor visual in one
+window. On the installed WinUI runtime, the SVG source painted but its mask target
+was blank; the PNG mask and solid control painted green. A non-null mask brush
+alone is not a passing rendering assertion. The comparison screenshot is retained
+in local `artifacts/winui-shell/native-svg-mask-baselines.png`. This records the
+observed capability boundary, not a claim about every future WinUI version.

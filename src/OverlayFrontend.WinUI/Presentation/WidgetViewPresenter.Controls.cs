@@ -14,7 +14,7 @@ internal sealed partial class WidgetViewPresenter
     // A popup holds declaration authority, never a worker callback or a second
     // command queue. WinUI owns popup placement, scrolling and pointer/keyboard UI.
     private sealed record SelectPopup(Binding Owner, WidgetPresentationAuthority Authority,
-        IReadOnlyList<WidgetSelectOption> Options, MenuFlyout Flyout, IReadOnlyList<ToggleMenuFlyoutItem> Items);
+        IReadOnlyList<WidgetSelectOption> Options, MenuFlyout Flyout, IReadOnlyList<ToggleMenuFlyoutItem> Items, IReadOnlyList<WidgetNativePackageIcon> Icons);
     private SelectPopup? selectPopup;
     private int selectFocusIndex;
 
@@ -27,6 +27,7 @@ internal sealed partial class WidgetViewPresenter
         if (selectPopup is not { } popup) return false;
         selectPopup = null; // revoke immediately; an exiting popup has no action authority
         popup.Flyout.Hide();
+        foreach (var icon in popup.Icons) icon.Dispose();
         return true;
     }
 
@@ -58,7 +59,8 @@ internal sealed partial class WidgetViewPresenter
             flyout.Items.Add(item);
             return item;
         }).ToArray();
-        var popup = new SelectPopup(binding, frame.Authority, options, flyout, items);
+        var icons = options.Select((option, index) => CreateSelectIcon(items[index], option)).OfType<WidgetNativePackageIcon>().ToArray();
+        var popup = new SelectPopup(binding, frame.Authority, options, flyout, items, icons);
         selectPopup = popup;
         for (var index = 0; index < items.Length; ++index)
         {
@@ -77,11 +79,13 @@ internal sealed partial class WidgetViewPresenter
         flyout.Closed += (_, _) =>
         {
             if (ReferenceEquals(selectPopup, popup)) selectPopup = null;
+            foreach (var icon in popup.Icons) icon.Dispose();
         };
         try { flyout.ShowAt(binding.Element); }
         catch (Exception error)
         {
             if (ReferenceEquals(selectPopup, popup)) selectPopup = null;
+            foreach (var icon in popup.Icons) icon.Dispose();
             ReportFailure(error);
         }
     }

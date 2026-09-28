@@ -20,6 +20,7 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
     private readonly SemaphoreSlim admission;
     private Presentation presentation;
     internal IndexedItemsSource<WidgetIndexedRow> Items { get; }
+    internal PresentationSession Session => session;
     internal WidgetPresentationFrame Frame => Volatile.Read(ref presentation).Frame;
     internal ViewNode Declaration => Volatile.Read(ref presentation).Collection;
     internal Action<Exception>? Failed { get; set; }

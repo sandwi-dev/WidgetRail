@@ -282,8 +282,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.Grid:
                 element = children = new WidgetResponsiveGrid();
                 break;
-            case ViewNodeKind.ControllerGlyph:
             case ViewNodeKind.Icon:
+                element = new WidgetPackageIconView();
+                break;
+            case ViewNodeKind.ControllerGlyph:
                 element = new FontIcon();
                 break;
             case ViewNodeKind.IndexedCollection:
@@ -342,14 +344,15 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         ApplySizeAndTypography(element, node);
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
         if (element is FontIcon icon) WidgetGlyphs.Apply(icon, node, playStationPrompts);
+        if (element is WidgetPackageIconView packageIcon) UpdateNativeIcon(packageIcon, node);
         if (element is TextBlock text) text.Text = node.Kind == ViewNodeKind.TextEntry ? TextEntryLabel(node) : node.Text ?? string.Empty;
         if (element is Control control)
         {
             control.IsEnabled = node.IsDisabled != true && node.IsBusy != true;
             control.IsTabStop = node.IsFocusable && binding.Identity.Scope == frame!.Authority.ActiveInputScopeId;
-            control.IsHitTestVisible = !node.IsFocusable || binding.Identity.Scope == frame!.Authority.ActiveInputScopeId;
+            control.IsHitTestVisible = element is not WidgetPackageIconView && (!node.IsFocusable || binding.Identity.Scope == frame!.Authority.ActiveInputScopeId);
         }
-        if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) button.Content = node.Text;
+        if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);
         if (element is Button entry && node.Kind == ViewNodeKind.TextEntry) entry.Content = TextEntryLabel(node);
         if (binding.Children is StackPanel panel && node.Kind == ViewNodeKind.ActionSurface)
             panel.Orientation = node.ActionSurfaceOrientation == ActionSurfaceOrientation.Horizontal ? Orientation.Horizontal : Orientation.Vertical;

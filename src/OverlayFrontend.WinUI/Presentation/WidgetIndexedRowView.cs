@@ -35,6 +35,7 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
         if (disposed) return;
         if (Row is not WidgetIndexedRow row) { Retire(); return; }
         presenter ??= new(presentationOnly: true);
+        presenter.Session = row.Owner.Session;
         presenter.UseIndexedContainerStyles();
         presenter.Failed = row.Owner.Failed;
         presenter.ArtworkGeneration = row.Lease.LeaseId;

@@ -25,6 +25,8 @@ internal sealed partial class WidgetViewPresenter
     private void Retire(Binding binding)
     {
         RetireComputedStyles(binding);
+        if (buttonIcons.Remove(binding, out var buttonIcon)) buttonIcon.Dispose();
+        if (binding.Element is WidgetPackageIconView packageIcon) packageIcon.Dispose();
         if (imageDemands.Remove(binding, out var demand)) { demand.Lifetime.Cancel(); demand.Lifetime.Dispose(); }
         if (binding.Element is WidgetIndexedCollectionView collection) TrackRetirement(collection.DisposeAsync().AsTask());
         if (binding.Element is WidgetPresentationSurface surface) TrackRetirement(surface.DisposeAsync().AsTask());

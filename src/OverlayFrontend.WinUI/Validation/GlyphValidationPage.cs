@@ -49,8 +49,8 @@ internal sealed class GlyphValidationPage : Page, IAsyncDisposable
             Check(a.Glyph == "\uE04C", "unknown frame retains last physical family");
             Check(icons.Single(icon => AutomationProperties.GetAutomationId(icon) == "Widget.prompt.Guide").FontFamily.Source.Contains("PromptFont", StringComparison.Ordinal), "PS Guide uses licensed fallback font");
             Check(icons.All(icon => !icon.IsHitTestVisible), "glyphs are presentation only");
-            Check(icons.Where(icon => AutomationProperties.GetAutomationId(icon).StartsWith("Widget.symbol.", StringComparison.Ordinal))
-                .All(icon => icon.FontFamily.Source == "Segoe Fluent Icons"), "controller changes do not alter semantic widget icons");
+            var semantic = Descendants(presenter).OfType<WidgetPackageIconView>().Select(view => view.Content).OfType<FontIcon>().ToArray();
+            Check(semantic.Length == Enum.GetValues<WidgetGlyph>().Length && semantic.All(icon => icon.FontFamily.Source == "Segoe Fluent Icons"), "controller changes do not alter semantic widget icons");
             status.Text = $"Passed 7 glyph checks; {icons.Length} symbols; PlayStation prompts";
         }
         catch (Exception error) { status.Text = "Failed: " + error; }
