@@ -30,6 +30,7 @@
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
     <ProjectReference Include="..\OverlayPlatformClient\OverlayPlatformClient.csproj" />
+    <ProjectReference Include="..\WidgetUi.State\WidgetUi.State.csproj" />
     <Content Include="..\..\artifacts\winui-platform\Release\OverlayPlatformInterop.dll"
              Condition="Exists('..\..\artifacts\winui-platform\Release\OverlayPlatformInterop.dll')"
              Link="OverlayPlatformInterop.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

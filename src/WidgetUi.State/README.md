@@ -41,3 +41,53 @@ identity every time its title/artwork changes.
 The focused tests establish semantic policy only. Host-level proof still needs
 actual WinUI focus, image completion, nested slots, widget-local dialogs and
 visible-frame verification; see `docs/maintainers/winui-feature-contracts.md`.
+
+## Observable keyed collections
+
+`Collections.KeyedObservableCollection<TPayload>` is a WinUI-compatible
+`ItemsSource` model, not a paging provider or a layout engine. Bind its `Items`
+(`ReadOnlyObservableCollection<ObservableCollectionEntry<TPayload>>`) and bind
+item templates to each entry's `Value` properties. `Key` is stable. Payloads must
+be immutable values whose equality includes all content dependencies.
+
+```csharp
+var authority = new CollectionAuthority("runtime-1", "playnite", "library");
+var collection = new KeyedObservableCollection<PosterItem>(authority);
+collection.Apply(new KeyedCollectionRevision<PosterItem>(authority, 0, 1,
+    games.Select(game => new KeyedCollectionItem<PosterItem>(game.Id,
+        new PosterItem(game.Title)))));
+```
+
+Create/mutate this model on its owning UI dispatcher thread. Build immutable
+revisions elsewhere if useful, then marshal `Apply` to that thread. Do not use
+this as a cross-thread observable collection. `TryGetEntry` also checks thread
+ownership; direct `Items` reads remain the caller's thread responsibility.
+
+- Authority is fixed for the model lifetime. Worker/instance replacement creates
+  a new model; a foreign update is rejected, never allowed to switch authority
+  back to a retired runtime.
+- Generation is monotonic and identifies query/traversal lifetime. Revision is
+  monotonic within a generation. Equal/older revisions or older generations are
+  rejected without notifications. Revision can restart when generation advances.
+- Surviving keys retain the same observable entry within a generation. Changed
+  payload emits `PropertyChanged("Value")`, not collection replacement. Equal
+  values cause no event. A new generation retires wrappers even for equal keys.
+- Insert/remove/move events use standard `INotifyCollectionChanged` semantics.
+  No operation emits `Reset`; even generation replacement removes then inserts.
+  This avoids hiding changes from selection/realization, but is not an atomic
+  rendered update or a promise that large update batches are cheap.
+- Keys/authority/nonnegative counters/null values are validated and source lists
+  copied before mutation. Duplicate keys never partly modify the collection.
+- Reentrant updates are rejected. Notification subscribers must not throw. If one
+  does, the model faults and rejects further updates rather than silently
+  proceeding from a partly observed revision; the frontend must replace it.
+- The model prechecks surviving key order using dictionaries and a linear scan.
+  Append/prepend/eviction/content updates do not repeatedly search for keys.
+  `ObservableCollection` still uses array shifts for insertion/removal; arbitrary
+  reorder also uses `IndexOf` and `Move` and can be quadratic. This implementation
+  does not claim an optimal reorder algorithm or eliminate WinUI update costs.
+
+Cursor fetch ordering, generation allocation, anchor selection, focus restoration
+and input authority remain with their respective frontend/resource policies.
+Actual WinUI viewport and focus preservation need integration tests in addition
+to these model tests.

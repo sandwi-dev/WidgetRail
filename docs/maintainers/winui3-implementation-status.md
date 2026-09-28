@@ -112,3 +112,46 @@ connected GameInputVisibleLease and entry retained. Keyboard automation does not
 prove physical controller delivery; keep the original failure open until an
 end-to-end native-frame/activation test and later physical acceptance establish it.
 The validation process was closed via Shell.Close after checks.
+
+## Controller replay and virtualized collection follow-up
+
+`--replay-controller` now supplies deterministic native-shaped frames through the
+same PlatformInputPump/OverlayPlatformSession, actual WinUI focus traversal,
+command path and Guide hide/show handler as the live fixture. It does not load the
+native DLL or read hardware. Cold focus, Right, one A, hide/show, retained Second
+focus and a second A passed with no injected mouse or keyboard. This narrows the
+startup-focus check but does not supersede the user's physical delivery failure.
+
+A `KeyedObservableCollection<T>` preserves per-key binding wrappers within a data
+generation and emits granular standard notifications. Twelve new state tests pass
+(27 combined). Current code does not claim atomic notifications or constant-time
+arbitrary reorders. See its README for limits.
+
+`--validate-collection` connects this model to WinUI's higher-level ItemsView with
+UniformGridLayout and ItemContainer. No custom virtualizing layout/focus engine.
+With 1,000 items, direct visual-tree inspection counted 13 realized containers at
+the top and 14 at the bottom. Scrolling reached Item 999, appending reached Item
+1029, and payload update changed the existing container's title. These are
+functional observations, not frame-time or full-product acceptance.
+
+**Failing regression:** focus Item 0, then send fixture F7 to prepend 30 records
+without transferring focus to a toolbar button. UIA retained the same focused
+item/container identity but reported it offscreen with zero bounds afterward.
+The focused item must remain visible under our cursor contract. Evidence is in
+`artifacts/winui-collection/prepend-before.json`, `prepend-after.json`, and
+`prepend-search.json`. Investigate documented ScrollView anchoring and keyed
+logical index mapping before implementing the admission policy. Do not mark the
+collection complete or mask this by invoking ScrollIntoView from a test.
+
+Transport correction: current Playnite is a full-trust application widget, not a
+sandboxed worker. Use its real application path for UI parity and a real dotnet
+worker (e.g. Clock) for the separate AppContainer proof. Existing managed bridge
+facade is reusable but needs typed host effects/media/artwork correlation extensions;
+see `winui-widget-transport.md`. Prior plan references to sandboxed Playnite are
+not accurate descriptions of its manifest.
+A bounded follow-up set ScrollView.VerticalAnchorRatio to 0.5 (documented item
+anchoring instead of the extent-edge special case). The same prepend still left
+Item 0 offscreen. That experimental setting was removed; it is not a fix.
+`anchor-before.json` / `anchor-after.json` retain the result. Next inspect logical
+key/index mapping and native ItemsView bring/anchor lifecycle with a repeatable
+regression, rather than accumulating unproven scroll settings.

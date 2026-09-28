@@ -12,6 +12,7 @@ internal sealed class ControllerValidationPage : Page
 {
     private readonly TextBlock status = new() { Text = "Waiting for native input" };
     private readonly TextBlock action = new() { Text = "No action" };
+    private readonly TextBlock replay = new() { Text = "Physical input mode" };
     private readonly StackPanel scope = new() { Spacing = 16 };
     private long lastStatus;
     private long frames;
@@ -23,8 +24,10 @@ internal sealed class ControllerValidationPage : Page
     {
         AutomationProperties.SetAutomationId(status, "Controller.Status");
         AutomationProperties.SetAutomationId(action, "Controller.Action");
+        AutomationProperties.SetAutomationId(replay, "Controller.Replay");
         scope.Children.Add(status);
         scope.Children.Add(action);
+        scope.Children.Add(replay);
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
         foreach (var name in new[] { "First", "Second", "Third" })
         {
@@ -38,6 +41,11 @@ internal sealed class ControllerValidationPage : Page
         Content = scope;
         Loaded += (_, _) => QueueEntryFocus();
     }
+
+    public int ActionCount => actions;
+    public string FocusedId => XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused
+        ? AutomationProperties.GetAutomationId(focused) : string.Empty;
+    public void SetReplayStatus(string value) => replay.Text = value;
 
     public void QueueEntryFocus() => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
     {

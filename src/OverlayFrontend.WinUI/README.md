@@ -38,3 +38,18 @@ reader or widget IPC is introduced in the frame handler.
 The development page logs connection/read-path status at most four times a second
 in a UI label, rather than mutating UI on every read. Shutdown disposes the platform
 session and closes WebView2. Keep physical acceptance separate from these fixtures.
+
+Controller replay: launch with `--replay-controller`. It uses a deterministic
+IOverlayPlatformNative test backend rather than hardware, but passes frames through
+the real pump, session, scope traversal, command and hide/show paths. Read UIA
+Controller.Replay for PASS/FAIL. It never clicks/focuses controls from the replay
+scenario; entry focus is owned by the window/page lifecycle. It does not prove
+GameInput delivery or duplicate native/framework gamepad handling.
+
+Collection fixture: `--validate-collection` uses WinUI ItemsView/UniformGridLayout
+with stable keyed binding entries. F7 prepends and F8 appends without transferring
+focus to toolbar controls; use these to test page arrival while an item owns focus.
+The current prepend case retains focus identity but loses viewport visibility: this
+is an open regression, not accepted cursor behavior. The generic trusted template
+uses bounded Binding paths (Value.Title) because its data is a generic entry; no
+widget-supplied XAML, reflection path or custom layout code is loaded.

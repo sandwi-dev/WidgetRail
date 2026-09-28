@@ -52,10 +52,12 @@ public partial class App : Application
     {
         var arguments = args.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Concat(Environment.GetCommandLineArgs().Skip(1)).ToHashSet(StringComparer.Ordinal);
-        var main = new MainWindow(arguments.Contains("--validate-external-surface"), arguments.Contains("--validate-controller"));
+        var main = new MainWindow(arguments.Contains("--validate-external-surface"), arguments.Contains("--validate-controller"),
+            arguments.Contains("--replay-controller"), arguments.Contains("--validate-collection"));
         Window = main;
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         Window.Activate();
         main.StartInput();
+        main.StartReplay();
     }
 }

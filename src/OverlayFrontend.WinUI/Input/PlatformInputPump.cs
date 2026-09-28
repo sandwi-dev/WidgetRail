@@ -17,7 +17,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     public event Action? ToggleRequested;
     public event Action<Exception>? Failed;
 
-    public PlatformInputPump(DispatcherQueue dispatcher, nint hwnd)
+    public PlatformInputPump(DispatcherQueue dispatcher, nint hwnd, IOverlayPlatformNative? backend = null)
     {
         this.dispatcher = dispatcher;
         navigationTimer = dispatcher.CreateTimer();
@@ -31,7 +31,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
         });
         try
         {
-            session = new(new OverlayPlatformNative(), this, () => Guard(Drain));
+            session = new(backend ?? new OverlayPlatformNative(), this, () => Guard(Drain));
             session.SetOwnedWindows((nuint)hwnd);
             UpdateGuidePolling();
         }

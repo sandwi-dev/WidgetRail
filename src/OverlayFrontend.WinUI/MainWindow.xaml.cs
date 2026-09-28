@@ -7,8 +7,10 @@ namespace WidgetRail.OverlayFrontend.WinUI;
 public sealed partial class MainWindow : Window
 {
     private readonly Input.PlatformInputPump? input;
+    private readonly Validation.ControllerReplayScenario? replay;
 
-    public MainWindow(bool validateExternalSurface = false, bool validateController = false)
+    public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
+        bool validateCollection = false)
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
@@ -23,13 +25,15 @@ public sealed partial class MainWindow : Window
         // Initial validation window uses physical pixels. Production placement
         // will come from the existing platform adapter's monitor/DPI policy.
         AppWindow.ResizeClient(new SizeInt32(960, 640));
-        if (validateController)
+        if (validateController || replayController)
         {
             var page = new Validation.ControllerValidationPage();
             RootFrame.Content = page;
             try
             {
-                input = new(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this));
+                var backend = replayController ? new Validation.ReplayNativePlatform() : null;
+                input = new(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this), backend);
+                if (backend is not null) replay = new(this, page, backend);
                 input.FrameReceived += page.Receive;
                 input.Failed += page.ReportFailure;
                 input.ToggleRequested += () =>
@@ -41,7 +45,8 @@ public sealed partial class MainWindow : Window
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
-        else RootFrame.Navigate(validateExternalSurface ? typeof(Validation.ExternalSurfacePage) : typeof(MainPage));
+        else RootFrame.Navigate(validateExternalSurface ? typeof(Validation.ExternalSurfacePage) :
+            validateCollection ? typeof(Validation.CollectionValidationPage) : typeof(MainPage));
         Activated += (_, args) =>
         {
             if (args.WindowActivationState != WindowActivationState.Deactivated)
@@ -50,6 +55,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             input?.Dispose();
+            replay?.Dispose();
             (RootFrame.Content as Validation.ExternalSurfacePage)?.Retire();
         };
     }
@@ -59,6 +65,8 @@ public sealed partial class MainWindow : Window
         input?.SetVisible(true);
         (RootFrame.Content as Validation.ControllerValidationPage)?.QueueEntryFocus();
     }
+
+    public void StartReplay() => replay?.Start();
 
     private void CloseClicked(object sender, RoutedEventArgs e) => Close();
 }
