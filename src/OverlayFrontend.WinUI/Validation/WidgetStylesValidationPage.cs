@@ -113,6 +113,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         Check(Find<Button>("Widget.button") is null && NativeComputedStyleAdapter.For(retired) is null,
             "removed controls retire their shared style owner");
         await ResponsiveAndPostersAsync();
+        await NativeGridMeasureAsync();
         if (App.ValidationFixturePath is { } fixture) await PlayniteProductionLayoutAsync(fixture);
     }
 

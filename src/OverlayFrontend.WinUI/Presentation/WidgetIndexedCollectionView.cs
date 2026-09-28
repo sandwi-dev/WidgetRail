@@ -162,21 +162,29 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private void UpdateContainer(SelectorItem container, IndexedItem<WidgetIndexedRow> slot)
     {
         container.IsTabStop = inputActive;
-        container.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-        // The estimate belongs to a loading placeholder on the scrolling axis,
-        // not a permanent minimum height. A horizontal poster rail must let the
-        // native item fit its portrait rather than stretching its focus box to
-        // the entire list viewport.
-        var placeholderExtent = slot.Value is null ? source?.Declaration.CollectionLayout?.EstimatedItemExtent ?? 0 : 0;
-        container.MinHeight = axis == ScrollAxis.Horizontal ? 0 : placeholderExtent;
-        container.MinWidth = axis == ScrollAxis.Horizontal ? placeholderExtent : 0;
-        container.VerticalAlignment = axis == ScrollAxis.Horizontal ? VerticalAlignment.Top : VerticalAlignment.Stretch;
+        ConfigureContainerLayout(container, axis ?? ScrollAxis.Vertical,
+            slot.Value is null ? source?.Declaration.CollectionLayout?.EstimatedItemExtent ?? 0 : 0);
         container.IsEnabled = slot.Value?.Item.Root is not { IsDisabled: true } and not { IsBusy: true };
         AutomationProperties.SetAutomationId(container, "Widget." + (source?.Declaration.Id ?? "collection") + ".Item." + slot.Index);
         AutomationProperties.SetName(container, slot.Value?.Item.Root.AccessibilityLabel ?? slot.Value?.Item.Root.Text ?? $"Loading item {slot.Index + 1}");
         if (pendingIndex == slot.Index) FinishNavigation(null, null!);
         if (FocusedIndex() == slot.Index) { RememberItemFocus(); PresentationChanged?.Invoke(); }
         ContextChanged?.Invoke();
+    }
+    internal static void ConfigureContainerLayout(SelectorItem container, ScrollAxis axis, double placeholderExtent)
+    {
+        container.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        // GridViewItem's native default adds two DIPs on every side *outside*
+        // ItemWidth. Authored item margins already live in the fragment, so
+        // retaining the native margin both doubles spacing and changes wrapping.
+        container.Margin = new Thickness(0);
+        // The estimate belongs to a loading placeholder on the scrolling axis,
+        // not a permanent minimum height. A horizontal poster rail must let the
+        // native item fit its portrait rather than stretching its focus box to
+        // the entire list viewport.
+        container.MinHeight = axis == ScrollAxis.Horizontal ? 0 : placeholderExtent;
+        container.MinWidth = axis == ScrollAxis.Horizontal ? placeholderExtent : 0;
+        container.VerticalAlignment = axis == ScrollAxis.Horizontal ? VerticalAlignment.Top : VerticalAlignment.Stretch;
     }
     private void DetachContainers()
     {
