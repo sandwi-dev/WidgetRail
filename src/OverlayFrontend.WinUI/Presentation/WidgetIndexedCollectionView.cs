@@ -25,7 +25,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private bool disposed;
     private bool inputActive;
     private bool presentationActive = true;
-    private bool CanReceiveInput => presentationActive && inputActive && view?.IsEnabled == true;
+    private bool CanReceiveInput => presentationActive && inputActive && source?.Presentation.IsCurrent == true && view?.IsEnabled == true;
     internal async Task SetPresentationActiveAsync(bool active)
     {
         presentationActive = active;
@@ -78,7 +78,8 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         }), true);
     }
 
-    internal void Apply(WidgetPresentationFrame frame, ViewNode declaration, string scope)
+    internal void Apply(WidgetPresentationFrame frame, ViewNode declaration, string scope) => Apply(WidgetPresentationBinding.ForMain(frame), declaration, scope);
+    internal void Apply(WidgetPresentationBinding binding, ViewNode declaration, string scope)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         var entry = CaptureEntry();
@@ -112,24 +113,24 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             view.Loaded += (_, _) => UpdateGridWidth();
             Content = view;
         }
-        if (source is null || !source.CanUpdate(frame, declaration))
+        if (source is null || !source.CanUpdate(binding, declaration))
         {
             CancelNavigation();
             DetachItems();
             DetachContainers();
             if (source is not null) RetireSource(source);
-            source = new(session, frame, declaration, DispatcherQueue) { Failed = failed };
+            source = new(session, binding, declaration, DispatcherQueue) { Failed = failed };
             if (!presentationActive) _ = source.SetPresentationActiveAsync(false);
             source.DiscoveryChanged += UpdateDiscoveryFooter;
         }
         else
         {
-            source.Update(frame, declaration);
+            source.Update(binding, declaration);
         }
         ApplyGroups(declaration.IndexedGroups);
         AutomationProperties.SetAutomationId(view, "Widget." + declaration.Id + ".Items");
         AutomationProperties.SetName(view, declaration.AccessibilityLabel ?? declaration.Id);
-        inputActive = scope == frame.Authority.ActiveInputScopeId;
+        inputActive = binding.IsCurrent && scope == binding.Scope;
         var active = presentationActive && inputActive;
         UpdateDiscoveryFooter();
         view.IsEnabled = declaration.IsDisabled != true && declaration.IsBusy != true;
@@ -286,12 +287,13 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         try
         {
             var capturedSource = source;
-            var displayed = capturedSource.Frame;
+            var capturedBinding = capturedSource.Presentation;
+            var displayed = capturedBinding.Frame;
             if (!row.Lease.ClaimsInput(displayed, row.Item.Key, button, phase)) return false;
             var inputSequence = ++sequence;
             var timestamp = Environment.TickCount64 * 1000;
             if (EnsureInteractionAsync is { } admit && !await admit(displayed.Authority, CancellationToken.None)) return true;
-            if (disposed || !CanReceiveInput || !ReferenceEquals(source, capturedSource) ||
+            if (disposed || !CanReceiveInput || !ReferenceEquals(source, capturedSource) || !capturedBinding.SameInput(capturedSource.Presentation) ||
                 !row.Lease.IsCurrent || !row.Lease.ClaimsInput(displayed, row.Item.Key, button, phase)) return true;
             await row.Lease.AdmitInputAsync(displayed, row.Item.Key, button, phase,
                 sequence: inputSequence, monotonicTimestampMicroseconds: timestamp);
@@ -299,7 +301,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             // remain consumed for an input that the displayed declaration owns.
             return true;
         }
-        catch (WidgetPresentationSessionException error) when (!row.Lease.IsCurrent || error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale" or "indexed_input_stale") { return true; }
+        catch (WidgetPresentationSessionException error) when (!row.Lease.IsCurrent || error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale" or "indexed_input_stale" or "pinned_input_stale" or "stale_pinned_input_authority") { return true; }
         catch (Exception error) { failed(error); return true; }
     }
     public async ValueTask DisposeAsync()

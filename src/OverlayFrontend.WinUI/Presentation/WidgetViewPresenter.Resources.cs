@@ -13,7 +13,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
-    private sealed record ImageDemand(string Identity, WidgetPresentationAuthority? Authority, CancellationTokenSource Lifetime)
+    private sealed record ImageDemand(string Identity, WidgetPresentationBinding? Origin, CancellationTokenSource Lifetime)
     { internal bool Completed { get; set; } }
     private readonly Dictionary<Binding, ImageDemand> imageDemands = [];
     private readonly HashSet<Task> retirements = [];
@@ -73,12 +73,12 @@ internal sealed partial class WidgetViewPresenter
         // Ordinary opaque artwork is admitted against one snapshot. Indexed
         // artwork belongs to its retained lease generation. Keep decoded pixels,
         // but restart unfinished ordinary demand when its snapshot is replaced.
-        var authority = node.ArtworkHandle is not null && generation.Length == 0 ? frame?.Authority : null;
+        var origin = node.ArtworkHandle is not null && generation.Length == 0 ? presentation : null;
         if (imageDemands.TryGetValue(binding, out var prior) && prior.Identity == identity &&
-            (prior.Completed || prior.Authority == authority)) return;
+            (prior.Completed || (origin?.Selection is not null ? origin.SameInput(prior.Origin) : prior.Origin?.Frame.Authority == origin?.Frame.Authority))) return;
         if (imageDemands.Remove(binding, out prior)) { prior.Lifetime.Cancel(); prior.Lifetime.Dispose(); }
         var lifetime = new CancellationTokenSource();
-        var demand = new ImageDemand(identity, authority, lifetime);
+        var demand = new ImageDemand(identity, origin, lifetime);
         imageDemands.Add(binding, demand);
         // Retained logical rows keep their previous pixels while replacement
         // artwork decodes. A different item creates a different Image binding.
@@ -95,8 +95,10 @@ internal sealed partial class WidgetViewPresenter
                 if (node.ArtworkHandle is { } opaque)
                 {
                     if (resolver is not null) bytes = (await resolver(opaque, token))?.Bytes.ToArray();
-                    else if (Session is { } session && demand.Authority is { } captured)
-                        bytes = (await session.ResolveArtworkAsync(captured, opaque, token)).EncodedBytes.ToArray();
+                    else if (Session is { } session && demand.Origin is { } captured)
+                        bytes = (captured.Selection is { } selection && captured.Projection is { } projection
+                            ? await session.ResolvePinnedArtworkAsync(selection, projection, opaque, token)
+                            : await session.ResolveArtworkAsync(captured.Frame.Authority, opaque, token)).EncodedBytes.ToArray();
                 }
                 else if (node.ImageSource?.StartsWith("data:image/png;base64,", StringComparison.Ordinal) == true)
                     bytes = Convert.FromBase64String(node.ImageSource[22..]);
@@ -115,8 +117,8 @@ internal sealed partial class WidgetViewPresenter
                 { demand.Completed = true; publish(bitmap); }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-            catch (WidgetPresentationSessionException error) when (demand.Authority is not null &&
-                error.Code is "presentation_stale" or "snapshot_stale")
+            catch (WidgetPresentationSessionException error) when (demand.Origin is not null &&
+                (IsRetiredInput(error) || error.Code is "unknown_artwork" or "stale_artwork_authority"))
             {
                 // The next snapshot may reach the session before UI dispatch.
                 // Its Apply starts a fresh request; this is not a widget failure.

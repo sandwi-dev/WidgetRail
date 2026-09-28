@@ -7,6 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\WidgetPresentationBinding.cs" Link="WidgetPresentationBinding.cs" />
     <ProjectReference Include="..\..\src\WidgetBridge.Contracts\WidgetBridge.Contracts.csproj" />
     <ProjectReference Include="..\..\src\WidgetPresentationSession\WidgetPresentationSession.csproj" />
   </ItemGroup>

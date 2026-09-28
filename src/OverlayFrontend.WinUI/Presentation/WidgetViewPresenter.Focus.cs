@@ -126,7 +126,7 @@ internal sealed partial class WidgetViewPresenter
 
     private Binding? GroupTarget(Binding group)
     {
-        if (frame is null || group.Identity.Scope != frame.Authority.ActiveInputScopeId ||
+        if (frame is null || group.Identity.Scope != activeScope ||
             declarations[group.Identity.Id].Node.InitialChildFocusId is not { } initial) return null;
         if (groupMemory.TryGetValue(group.Identity.Id, out var memory) && memory.Group == group.Identity &&
             bindings.TryGetValue(memory.Child.Id, out var rememberedChild) && rememberedChild.Identity == memory.Child &&

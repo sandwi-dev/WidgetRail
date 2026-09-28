@@ -13,7 +13,7 @@ internal sealed partial class WidgetViewPresenter
 {
     // A popup holds declaration authority, never a worker callback or a second
     // command queue. WinUI owns popup placement, scrolling and pointer/keyboard UI.
-    private sealed record SelectPopup(Binding Owner, WidgetPresentationAuthority Authority,
+    private sealed record SelectPopup(Binding Owner, WidgetPresentationBinding Presentation,
         IReadOnlyList<WidgetSelectOption> Options, MenuFlyout Flyout, IReadOnlyList<ToggleMenuFlyoutItem> Items, IReadOnlyList<WidgetNativePackageIcon> Icons);
     private SelectPopup? selectPopup;
     private int selectFocusIndex;
@@ -60,7 +60,7 @@ internal sealed partial class WidgetViewPresenter
             return item;
         }).ToArray();
         var icons = options.Select((option, index) => CreateSelectIcon(items[index], option)).OfType<WidgetNativePackageIcon>().ToArray();
-        var popup = new SelectPopup(binding, frame.Authority, options, flyout, items, icons);
+        var popup = new SelectPopup(binding, presentation!, options, flyout, items, icons);
         selectPopup = popup;
         for (var index = 0; index < items.Length; ++index)
         {
@@ -113,7 +113,7 @@ internal sealed partial class WidgetViewPresenter
     }
 
     private bool SelectIsCurrent(SelectPopup popup) => !disposed && frame is not null &&
-        SameOwner(popup.Authority, frame.Authority) && popup.Authority.ActiveInputScopeId == frame.Authority.ActiveInputScopeId &&
+        popup.Presentation.SameInput(presentation) &&
         bindings.TryGetValue(popup.Owner.Identity.Id, out var binding) && ReferenceEquals(binding, popup.Owner) &&
         Eligible(binding) && declarations[binding.Identity.Id].Node.SelectOptions.SequenceEqual(popup.Options);
 
@@ -151,16 +151,15 @@ internal sealed partial class WidgetViewPresenter
     private async Task InvokeSelectAsync(SelectPopup popup, WidgetSelectOption option)
     {
         if (applying || !ReferenceEquals(selectPopup, popup) || !SelectIsCurrent(popup) ||
-            option.IsDisabled || option.IsBusy || DispatchActionAsync is null) return;
+            option.IsDisabled || option.IsBusy || !CanDispatchAction) return;
         // Read current authority after validating the opening's semantic binding.
         // Harmless snapshots may advance the sequence while this menu stays open.
-        var displayed = frame!;
-        var authority = displayed.Authority;
+        var displayed = presentation!;
         var action = new WidgetActionEvent(option.ActionId, popup.Owner.Identity.Id, ControllerButton.A,
             ControllerEventPhase.Pressed, ++actionSequence, Environment.TickCount64 * 1000,
-            InputScopeId: authority.ActiveInputScopeId) { FocusedElementId = popup.Owner.Identity.Id };
+            InputScopeId: displayed.Scope) { FocusedElementId = popup.Owner.Identity.Id };
         DismissTransientControl();
-        try { await DispatchActionAsync(new(displayed, action)); }
+        try { await DispatchCapturedActionAsync(displayed, action); }
         catch (OperationCanceledException) when (disposed) { }
         catch (Exception error) { ReportFailure(error); }
     }

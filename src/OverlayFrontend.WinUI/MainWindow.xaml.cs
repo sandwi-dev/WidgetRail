@@ -120,7 +120,9 @@ public sealed partial class MainWindow : Window
             RootFrame.Content = new Validation.GroupedCollectionValidationPage(flatBaseline: validateGroupedFlat, useRangeAdapter: validateGroupedAdapted);
         else if (indexedValidationPipe is not null)
         {
-            if (indexedValidationPipe.StartsWith("discovered-validation-", StringComparison.Ordinal))
+            if (indexedValidationPipe.StartsWith("pinned-validation-", StringComparison.Ordinal))
+                RootFrame.Content = new Validation.PinnedWidgetValidationPage(indexedValidationPipe);
+            else if (indexedValidationPipe.StartsWith("discovered-validation-", StringComparison.Ordinal))
             {
                 var discovery = new Validation.DiscoveredCollectionValidationPage(indexedValidationPipe);
                 discovery.Initialize(); RootFrame.Content = discovery;

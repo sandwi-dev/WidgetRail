@@ -1,5 +1,6 @@
 using PresentationSession = WidgetRail.WidgetPresentationSession.WidgetPresentationSession;
 using Microsoft.UI.Dispatching;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using System.Runtime.CompilerServices;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
@@ -14,14 +15,17 @@ internal sealed record WidgetIndexedRow(IndexedCollectionItem Item, WidgetPresen
 /// <summary>Maps native range demand to explicitly owned sandboxed widget data.</summary>
 internal sealed class WidgetIndexedRows : IAsyncDisposable
 {
-    private sealed record Presentation(WidgetPresentationFrame Frame, ViewNode Collection);
+    private sealed record SourcePresentation(WidgetPresentationBinding Binding, ViewNode Collection)
+    { internal WidgetPresentationFrame Frame => Binding.Frame; }
     private readonly PresentationSession session;
     private static readonly ConditionalWeakTable<PresentationSession, SemaphoreSlim> Admissions = new();
     private readonly SemaphoreSlim admission;
-    private Presentation presentation;
+    private SourcePresentation presentation;
     internal IndexedItemsSource<WidgetIndexedRow> Items { get; }
     internal PresentationSession Session => session;
-    internal WidgetPresentationFrame Frame => Volatile.Read(ref presentation).Frame;
+    internal WidgetPresentationBinding Presentation => Volatile.Read(ref presentation).Binding;
+    internal WidgetPresentationFrame Frame => Presentation.Frame;
+    internal string ActiveScope => Presentation.Scope;
     internal ViewNode Declaration => Volatile.Read(ref presentation).Collection;
     internal Action<Exception>? Failed { get; set; }
     private readonly CancellationTokenSource lifetime = new();
@@ -52,14 +56,20 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
     internal bool ContinuationPaused { get; private set; }
     internal event Action? DiscoveryChanged;
 
-    internal WidgetIndexedRows(PresentationSession session, WidgetPresentationFrame frame, ViewNode collection,
+    internal WidgetIndexedRows(PresentationSession session, WidgetPresentationFrame frame, ViewNode collection, DispatcherQueue dispatcher)
+        : this(session, WidgetPresentationBinding.ForMain(frame), collection, dispatcher) { }
+    internal bool CanUpdate(WidgetPresentationFrame frame, ViewNode collection) => CanUpdate(WidgetPresentationBinding.ForMain(frame), collection);
+    internal void Update(WidgetPresentationFrame frame, ViewNode collection) => Update(WidgetPresentationBinding.ForMain(frame), collection);
+
+    internal WidgetIndexedRows(PresentationSession session, WidgetPresentationBinding binding, ViewNode collection,
         DispatcherQueue dispatcher)
     {
         this.session = session;
         if (session.MaximumConcurrentIndexedRequests < 1) throw new InvalidOperationException("The session has no indexed provider capacity.");
         admission = Admissions.GetValue(session, owner => new(owner.MaximumConcurrentIndexedRequests, owner.MaximumConcurrentIndexedRequests));
         var source = collection.IndexedCollection ?? throw new ArgumentException("Missing indexed source.", nameof(collection));
-        presentation = new(frame, collection);
+        var frame = binding.Frame;
+        presentation = new(binding, collection);
         Items = new(new(new(frame.Authority.RuntimeGeneration, frame.Authority.WidgetInstanceId, collection.Id), source.QueryGeneration),
             source.Count, dispatcher, ReadAsync, contentRevision: source.ContentRevision);
         if (source.Discovery is not null)
@@ -70,11 +80,11 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         }
     }
 
-    internal bool CanUpdate(WidgetPresentationFrame frame, ViewNode collection)
+    internal bool CanUpdate(WidgetPresentationBinding binding, ViewNode collection)
     {
         var previous = presentation;
         var source = previous.Collection.IndexedCollection!;
-        return SameOwner(previous.Frame.Authority, frame.Authority) && previous.Collection.Id == collection.Id &&
+        return previous.Binding.SameSurface(binding) && previous.Collection.Id == collection.Id &&
             collection.IndexedCollection is { } next && next.SourceId == source.SourceId &&
             (next.Discovery is null) == (source.Discovery is null) &&
             next.QueryGeneration == source.QueryGeneration &&
@@ -82,10 +92,10 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
                 next.Count == source.Count && next.ContentRevision >= source.ContentRevision);
     }
 
-    internal void Update(WidgetPresentationFrame frame, ViewNode collection)
+    internal void Update(WidgetPresentationBinding binding, ViewNode collection)
     {
-        if (!CanUpdate(frame, collection)) throw new InvalidOperationException("The indexed query requires a new native source.");
-        Volatile.Write(ref presentation, new(frame, collection));
+        if (!CanUpdate(binding, collection)) throw new InvalidOperationException("The indexed query requires a new native source.");
+        Volatile.Write(ref presentation, new(binding, collection));
         Items.RefreshContent(collection.IndexedCollection!.ContentRevision);
         Items.Append(collection.IndexedCollection.Count);
         Items.RetryFailedPages();
@@ -121,7 +131,12 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
             {
                 frame = session.GetState(current.Frame.Authority.WidgetId)?.LastGood ?? frame;
                 if (!SameOwner(current.Frame.Authority, frame.Authority)) throw new OperationCanceledException("Indexed widget owner changed.");
-                await session.ContinueDiscoveredCollectionAsync(frame.Authority, current.Collection.Id, source, retry, cancellation.Token);
+                if (current.Binding.Selection is { } selected)
+                {
+                    var projected = session.ResolvePinnedProjection(frame, current.Binding.PinnedLayoutId!);
+                    await session.ContinuePinnedDiscoveredCollectionAsync(selected, projected, current.Collection.Id, source, retry, cancellation.Token);
+                }
+                else await session.ContinueDiscoveredCollectionAsync(frame.Authority, current.Collection.Id, source, retry, cancellation.Token);
             }
             finally { admission.Release(); }
             if (Declaration.IndexedCollection?.Discovery is { } next && next.Revision > source.Discovery.Revision && next.Status != DiscoveredCollectionStatus.Loading)
@@ -163,14 +178,15 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
             // query after that wait, without changing input's displayed frame.
             frame = session.GetState(current.Frame.Authority.WidgetId)?.LastGood ?? frame;
             if (!SameOwner(current.Frame.Authority, frame.Authority)) throw new OperationCanceledException("Indexed widget owner changed.");
+            if (!current.Binding.IsCurrent) throw new OperationCanceledException("Pinned selection retired before range admission.");
             lease = await session.AcquireIndexedRangeAsync(frame.Authority, current.Collection.Id, source,
-                request.StartIndex, request.Count, cancellationToken: cancellation).ConfigureAwait(false);
+                request.StartIndex, request.Count, current.Binding.PinnedLayoutId, cancellationToken: cancellation).ConfigureAwait(false);
         }
         finally { admission.Release(); }
         try
         {
             cancellation.ThrowIfCancellationRequested();
-            if (!lease.IsCurrent) throw new OperationCanceledException("Indexed rows retired before native admission.");
+            if (!lease.IsCurrent || !current.Binding.IsCurrent) throw new OperationCanceledException("Indexed rows retired before native admission.");
             return new(request.Query, request.RequestId, request.StartIndex,
                 lease.Range.Items.Select(item => new KeyedCollectionItem<WidgetIndexedRow>(item.Key, new(item, lease, this))).ToArray(),
                 request.ContentRevision, lease);

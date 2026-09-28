@@ -27,7 +27,7 @@ internal sealed partial class WidgetIndexedCollectionView
         expiry.Interval = TimeSpan.FromSeconds(2);
         expiry.IsRepeating = false;
         expiry.Tick += (_, _) => { if (ReferenceEquals(pendingActivation?.Expiry, expiry)) CancelPendingActivation(); };
-        pendingActivation = new(source, slot, row.Item.Key, source.Frame.Authority.ActiveInputScopeId,
+        pendingActivation = new(source, slot, row.Item.Key, source.ActiveScope,
             root.Id, root.Kind, action, changed, expiry);
         slot.PropertyChanged += changed;
         expiry.Start();
@@ -44,7 +44,7 @@ internal sealed partial class WidgetIndexedCollectionView
 
     private bool ActivationOwnerCurrent(PendingActivation pending) => !disposed && IsLoaded && CanReceiveInput &&
         ReferenceEquals(source, pending.Source) && FocusedIndex() == pending.Slot.Index &&
-        source.Frame.Authority.ActiveInputScopeId == pending.Scope && pending.Slot.Key == pending.Key;
+        source.ActiveScope == pending.Scope && pending.Slot.Key == pending.Key;
 
     private void ValidatePendingActivation()
     {

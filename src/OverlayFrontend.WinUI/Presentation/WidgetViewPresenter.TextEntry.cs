@@ -8,7 +8,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
-    private sealed record TextEntryPopup(Binding Owner, WidgetPresentationAuthority Authority, ViewNode Declaration, WidgetTextEntryDialog Dialog);
+    private sealed record TextEntryPopup(Binding Owner, WidgetPresentationBinding Presentation, ViewNode Declaration, WidgetTextEntryDialog Dialog);
     private TextEntryPopup? textEntryPopup;
     private Task? textEntryLifetime;
 
@@ -33,7 +33,7 @@ internal sealed partial class WidgetViewPresenter
         var dialog = new WidgetTextEntryDialog(node, commit => _ = CompleteTextEntryAsync(commit));
         dialog.SetBinding(RequestedThemeProperty, new Microsoft.UI.Xaml.Data.Binding { Source = this, Path = new PropertyPath(nameof(ActualTheme)), Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay });
         dialog.BindRoot(XamlRoot);
-        var popup = new TextEntryPopup(binding, frame.Authority, node, dialog);
+        var popup = new TextEntryPopup(binding, presentation!, node, dialog);
         textEntryPopup = popup;
         textEntryLifetime = ShowTextEntryAsync(popup, textEntryLifetime);
     }
@@ -56,7 +56,7 @@ internal sealed partial class WidgetViewPresenter
     }
 
     private bool TextEntryIsCurrent(TextEntryPopup popup) => !disposed && frame is not null &&
-        SameOwner(popup.Authority, frame.Authority) && popup.Authority.ActiveInputScopeId == frame.Authority.ActiveInputScopeId &&
+        popup.Presentation.SameInput(presentation) &&
         bindings.TryGetValue(popup.Owner.Identity.Id, out var binding) && ReferenceEquals(binding, popup.Owner) && Eligible(binding) &&
         declarations[binding.Identity.Id].Node is { } node && node.ActionId == popup.Declaration.ActionId &&
         node.TextEntryValue == popup.Declaration.TextEntryValue && node.TextEntryMaximumLength == popup.Declaration.TextEntryMaximumLength &&
@@ -74,15 +74,14 @@ internal sealed partial class WidgetViewPresenter
     private async Task CompleteTextEntryAsync(bool commit)
     {
         if (textEntryPopup is not { } popup) return;
-        if (!commit || !TextEntryIsCurrent(popup) || DispatchActionAsync is null) { DismissTextEntry(); return; }
-        var displayed = frame!;
-        var authority = displayed.Authority;
+        if (!commit || !TextEntryIsCurrent(popup) || !CanDispatchAction) { DismissTextEntry(); return; }
+        var displayed = presentation!;
         var action = new WidgetActionEvent(popup.Declaration.ActionId!, popup.Owner.Identity.Id, ControllerButton.A,
             Sequence: ++actionSequence, MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000,
-            InputScopeId: authority.ActiveInputScopeId)
+            InputScopeId: displayed.Scope)
         { CommittedText = popup.Dialog.TakeValue(), FocusedElementId = popup.Owner.Identity.Id };
         DismissTextEntry();
-        try { await DispatchActionAsync(new(displayed, action)); }
+        try { await DispatchCapturedActionAsync(displayed, action); }
         catch (OperationCanceledException) when (disposed) { }
         catch (Exception)
         {

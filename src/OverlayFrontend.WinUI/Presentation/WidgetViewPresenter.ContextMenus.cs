@@ -13,7 +13,7 @@ internal sealed partial class WidgetViewPresenter
 {
     private sealed record ContextSource(string Id, string? ActionId, string? CollectionItemKey,
         ControllerButton? ContextMenuButton, IReadOnlyList<WidgetContextAction> ContextActions);
-    private sealed record ContextPopup(Binding Owner, ContextSource Declaration, WidgetPresentationAuthority Authority,
+    private sealed record ContextPopup(Binding Owner, ContextSource Declaration, WidgetPresentationBinding Presentation,
         ControllerButton Trigger, string? FocusedId, Control? ReturnFocus, FrameworkElement Anchor, MenuFlyout Flyout,
         IReadOnlyList<MenuFlyoutItem> Items, WidgetIndexedRow? Row, IDisposable? Retention)
     {
@@ -51,7 +51,7 @@ internal sealed partial class WidgetViewPresenter
 
     private bool ContextOwnerAvailable(Binding binding)
     {
-        if (frame is null || binding.Identity.Scope != frame.Authority.ActiveInputScopeId || !binding.Element.IsLoaded ||
+        if (frame is null || binding.Identity.Scope != activeScope || !binding.Element.IsLoaded ||
             binding.Element.ActualWidth <= 0 || binding.Element.ActualHeight <= 0) return false;
         for (var declaration = declarations.GetValueOrDefault(binding.Identity.Id); declaration is not null;
             declaration = declaration.ParentId is { } parent ? declarations.GetValueOrDefault(parent) : null)
@@ -76,7 +76,7 @@ internal sealed partial class WidgetViewPresenter
             return item;
         }).ToArray();
         var source = new ContextSource(node.Id, node.ActionId, node.CollectionItemKey, node.ContextMenuButton, node.ContextActions.ToArray());
-        var popup = new ContextPopup(owner, source, frame!.Authority, trigger, FocusedBinding()?.Identity.Id,
+        var popup = new ContextPopup(owner, source, presentation!, trigger, FocusedBinding()?.Identity.Id,
             FocusManager.GetFocusedElement(XamlRoot) as Control, anchor, flyout, items, row, retention);
         contextPopup = popup;
         contextFocusIndex = Array.FindIndex(items, item => item.IsEnabled);
@@ -106,8 +106,7 @@ internal sealed partial class WidgetViewPresenter
 
     private bool ContextIsCurrent(ContextPopup popup)
     {
-        if (disposed || frame is null || !SameOwner(popup.Authority, frame.Authority) ||
-            popup.Authority.ActiveInputScopeId != frame.Authority.ActiveInputScopeId ||
+        if (disposed || frame is null || !popup.Presentation.SameInput(presentation) ||
             !bindings.TryGetValue(popup.Owner.Identity.Id, out var owner) || !ReferenceEquals(owner, popup.Owner) ||
             !ContextOwnerAvailable(owner) || !popup.Anchor.IsLoaded) return false;
         ViewNode current;
@@ -166,23 +165,22 @@ internal sealed partial class WidgetViewPresenter
         if (applying || !ReferenceEquals(contextPopup, popup) || !ContextIsCurrent(popup) ||
             index < 0 || index >= popup.Items.Count || !popup.Items[index].IsEnabled) return;
         var action = popup.Declaration.ContextActions[index];
-        var displayed = frame!;
-        var authority = displayed.Authority;
+        var displayed = presentation!;
         var inputSequence = ++actionSequence;
         var timestamp = Environment.TickCount64 * 1000;
         popup.Invoking = true;
         DismissContextMenu();
         try
         {
-            if (!await AdmitInteractionAsync(authority) || !ContextIsCurrent(popup)) return;
+            if (!await AdmitBindingAsync(displayed) || !ContextIsCurrent(popup)) return;
             if (popup.Row is { } row)
-                await row.Lease.AdmitInputAsync(authority, row.Item.Key, popup.Trigger,
+                await row.Lease.AdmitInputAsync(displayed.Frame, row.Item.Key, popup.Trigger,
                     contextActionOwnerId: popup.Declaration.Id, contextActionId: action.ActionId,
                     sequence: inputSequence, monotonicTimestampMicroseconds: timestamp);
-            else if (DispatchActionAsync is not null)
-                await DispatchActionAsync(new(displayed, new WidgetActionEvent(action.ActionId, popup.Declaration.Id,
+            else if (CanDispatchAction)
+                await DispatchCapturedActionAsync(displayed, new WidgetActionEvent(action.ActionId, popup.Declaration.Id,
                     popup.Trigger, Sequence: inputSequence, MonotonicTimestampMicroseconds: timestamp,
-                    InputScopeId: authority.ActiveInputScopeId) { FocusedElementId = popup.FocusedId }));
+                    InputScopeId: displayed.Scope) { FocusedElementId = popup.FocusedId });
         }
         catch (WidgetPresentationSessionException error) when (error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale" || popup.Row?.Lease.IsCurrent == false) { }
         catch (OperationCanceledException) when (disposed) { }

@@ -45,23 +45,25 @@ internal sealed partial class WidgetViewPresenter
             return await collection.InvokeFocusedInputAsync(button, phase);
         }
         if (Session is not { } session) return false;
-        var displayed = frame;
-        var authority = displayed.Authority;
-        var input = new ControllerInputEvent(button, phase, ControllerInputContext.OpenWidget,
+        var displayed = presentation!;
+        var authority = displayed.Frame.Authority;
+        var input = new ControllerInputEvent(button, phase, displayed.Selection is null ? ControllerInputContext.OpenWidget : ControllerInputContext.PinnedSurface,
             FocusedBinding() is { } binding && Eligible(binding) ? binding.Identity.Id : null,
-            ++actionSequence, Environment.TickCount64 * 1000, authority.ActiveInputScopeId,
-            authority.SnapshotSequence, Origin: origin);
+            ++actionSequence, Environment.TickCount64 * 1000, displayed.Scope,
+            authority.SnapshotSequence, Origin: origin) { PinnedLayoutId = displayed.PinnedLayoutId };
         try
         {
-            if (!await AdmitInteractionAsync(authority, cancellationToken) || !IsInteractionCurrent(authority)) return true;
-            if (DispatchActionAsync is not null && session.ResolveEmbeddedMediaFullscreenInput(displayed, input) is { } hostAction)
-            { await DispatchActionAsync(new(displayed, hostAction)); return true; }
-            return await session.SendControllerInputAsync(displayed, input, cancellationToken);
+            if (!await AdmitBindingAsync(displayed, cancellationToken)) return true;
+            if (displayed.Selection is { } selection && displayed.Projection is { } projection)
+                return await session.SendPinnedControllerInputAsync(selection, projection, input, cancellationToken);
+            if (DispatchActionAsync is not null && session.ResolveEmbeddedMediaFullscreenInput(displayed.Frame, input) is { } hostAction)
+            { await DispatchActionAsync(new(displayed.Frame, hostAction)); return true; }
+            return await session.SendControllerInputAsync(displayed.Frame, input, cancellationToken);
         }
         // A newer publication can retire the displayed input while it crosses IPC.
         // Drop it rather than replaying it against a different scope or game.
         catch (WidgetPresentationSessionException error) when
-            (error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale" or "ordinary_input_stale") { return true; }
+            (IsRetiredInput(error)) { return true; }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || disposed) { return true; }
         catch (Exception error) { ReportFailure(error); return false; }
     }

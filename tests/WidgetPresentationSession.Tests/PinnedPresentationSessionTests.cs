@@ -36,6 +36,33 @@ public sealed class PinnedPresentationSessionTests
             projection.Snapshot.ActiveInputScopeId, projection.Frame.Authority.SnapshotSequence) { PinnedLayoutId = projection.LayoutId };
 
     [TestMethod]
+    public async Task FrontendBindingRetainsGenuineFrameAndSeparatesSurfaceScopeAndStyles()
+    {
+        await Run(async channel =>
+        {
+            await Selection(channel, "compact", true); await Selection(channel, "other", true);
+        }, async (session, frame) =>
+        {
+            var projection = session.ResolvePinnedProjection(frame, "compact");
+            var selection = await session.SelectPinnedLayoutAsync(projection);
+            var binding = WidgetRail.OverlayFrontend.WinUI.Presentation.WidgetPresentationBinding.ForPinned(session, selection, projection);
+            Assert.AreSame(frame, binding.Frame); Assert.AreSame(projection.Snapshot, binding.View);
+            Assert.AreEqual("compact.scope", binding.Scope); Assert.AreEqual("dialog", binding.Frame.Authority.ActiveInputScopeId);
+            Assert.AreSame(projection.RenderStyles, binding.RenderStyles);
+            var fragment = binding.WithStyles(new Dictionary<string, BridgeNodeRenderStyles>());
+            Assert.AreSame(frame, fragment.Frame); Assert.IsTrue(binding.SameInput(fragment));
+            var main = WidgetRail.OverlayFrontend.WinUI.Presentation.WidgetPresentationBinding.ForMain(frame);
+            Assert.IsFalse(binding.SameSurface(main));
+            var otherProjection = session.ResolvePinnedProjection(frame, "other");
+            var otherSelection = await session.SelectPinnedLayoutAsync(otherProjection);
+            var other = WidgetRail.OverlayFrontend.WinUI.Presentation.WidgetPresentationBinding.ForPinned(session, otherSelection, otherProjection);
+            Assert.IsFalse(binding.IsCurrent); Assert.IsFalse(binding.SameSurface(other));
+            Assert.ThrowsExactly<WidgetPresentationSessionException>(() =>
+                WidgetRail.OverlayFrontend.WinUI.Presentation.WidgetPresentationBinding.ForPinned(session, selection, projection));
+        }, initial: Snapshot(1, modal: true), styles: true);
+    }
+
+    [TestMethod]
     public async Task ProjectionUsesIndependentScopeAndNamespacedStylesAndRejectsCopiedFrames()
     {
         await Run(_ => Task.CompletedTask, (session, frame) =>

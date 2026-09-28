@@ -8,7 +8,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     private BridgeComputedStyleValue? ComputedStyle(ViewNode node, string property) =>
-        frame?.RenderStyles.GetValueOrDefault(node.Id)?.Base.GetValueOrDefault(property);
+        presentation?.RenderStyles.GetValueOrDefault(node.Id)?.Base.GetValueOrDefault(property);
 
     private double? Length(ViewNode node, string property)
     {
@@ -34,7 +34,7 @@ internal sealed partial class WidgetViewPresenter
         element.MaxWidth = containerOwnsBox ? double.PositiveInfinity : Length(node, "max-width") ?? double.PositiveInfinity;
         element.MaxHeight = containerOwnsBox ? double.PositiveInfinity : Length(node, "max-height") ?? double.PositiveInfinity;
         element.Margin = containerOwnsBox ? new Thickness(0) :
-            NativeComputedStyleAdapter.Spacing(frame?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "margin") ?? new Thickness(0);
+            NativeComputedStyleAdapter.Spacing(presentation?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "margin") ?? new Thickness(0);
         if (element is TextBlock text)
         {
             text.MaxLines = (int)(ComputedStyle(node, "max-lines")?.Number ?? 0);
@@ -56,14 +56,14 @@ internal sealed partial class WidgetViewPresenter
         var children = node.Children.Where(child => bindings[child.Id].Element.Visibility == Visibility.Visible).ToArray();
         if (grid is WidgetResponsiveGrid responsive)
         {
-            var spacing = NativeComputedStyleAdapter.Spacing(frame?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "gap");
+            var spacing = NativeComputedStyleAdapter.Spacing(presentation?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "gap");
             responsive.RowSpacing = spacing?.Top ?? 12;
             responsive.ColumnSpacing = spacing?.Right ?? 12;
             responsive.Configure(children.Select(child => bindings[child.Id].LayoutElement).ToArray(),
                 node.GridMinimumColumnWidth ?? 160, node.GridMaximumColumns ?? 12);
             return;
         }
-        var gap = NativeComputedStyleAdapter.Spacing(frame?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "gap");
+        var gap = NativeComputedStyleAdapter.Spacing(presentation?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "gap");
         var spacingSize = (horizontal ? gap?.Right : gap?.Top) ?? 12;
         var grows = children.Select(child => ComputedStyle(child, "flex-grow")?.Number ??
             (NeedsConstrainedViewport(child) && Length(child, horizontal ? "width" : "height") is null ? 1 : 0)).ToArray();

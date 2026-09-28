@@ -22,7 +22,7 @@ internal sealed partial class WidgetViewPresenter
         for (var current = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject; current is not null && !ReferenceEquals(current, this);
              current = VisualTreeHelper.GetParent(current))
             if (current is ScrollViewer viewer && CanScroll(viewer)) { target = viewer; break; }
-        target ??= bindings.Values.Where(binding => binding.Identity.Scope == frame.Authority.ActiveInputScopeId &&
+        target ??= bindings.Values.Where(binding => binding.Identity.Scope == activeScope &&
                 binding.Element.Visibility == Visibility.Visible)
             .Select(binding => binding.Element is ScrollViewer viewer ? viewer :
                 binding.Element is WidgetIndexedCollectionView collection ? FindScroll(collection.NativeView) : null)

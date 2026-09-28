@@ -20,6 +20,10 @@ using WidgetRail.Samples.SdkGalleryWidget;
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
 
+if (args is ["--serve-pinned-validation", var pinnedPipe])
+{
+    await PinnedPresenterBridgeWidget.Serve(pinnedPipe); return 0;
+}
 if (args is ["--serve-indexed-validation", var validationPipe])
 {
     await BridgeIndexedEndToEndScenarios.ServeValidationAsync(validationPipe);
@@ -324,7 +328,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
     var instance = RequiredValue(arguments, "--widget-instance");
     return await WidgetWorkerBootstrap.RunAsync(
         arguments,
-        _ => string.Equals(instance, "pinned-actions.instance", StringComparison.Ordinal)
+        _ => string.Equals(instance, "pinned-presenter.instance", StringComparison.Ordinal)
+            ? new PinnedPresenterBridgeWidget()
+            : string.Equals(instance, "pinned-actions.instance", StringComparison.Ordinal)
             ? new PinnedActionBridgeWidget()
             : string.Equals(instance, "discovered.instance", StringComparison.Ordinal)
             ? new DiscoveredBridgeWidget()

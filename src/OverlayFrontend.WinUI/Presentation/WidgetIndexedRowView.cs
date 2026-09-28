@@ -48,7 +48,7 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
             try { return await row.Owner.ResolveArtworkAsync(row, handle, token); }
             catch (WidgetPresentationSessionException) when (!row.Lease.IsCurrent) { return null; }
         };
-        presenter.ApplyFragment(row.Owner.Frame with { RenderStyles = row.Lease.RenderStyles }, row.Item.Root, row.Lease.Range.ScopeId);
+        presenter.ApplyFragment(row.Owner.Presentation.WithStyles(row.Lease.RenderStyles), row.Item.Root, row.Lease.Range.ScopeId);
         Content = presenter;
         SelectorItem? container = null;
         for (var current = VisualTreeHelper.GetParent(this); current is not null; current = VisualTreeHelper.GetParent(current))

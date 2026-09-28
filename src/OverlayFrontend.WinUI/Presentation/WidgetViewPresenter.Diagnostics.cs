@@ -47,7 +47,7 @@ internal sealed partial class WidgetViewPresenter
                     realized = Enumerable.Range(0, Math.Min(indexed.Items.Count, 10)).Select(index =>
                         indexed.ContainerFromIndex(index) is FrameworkElement item ? new { index,
                             item.ActualWidth, item.Margin, slot = LayoutInformation.GetLayoutSlot(item) } : null).ToArray() },
-                style = frame?.RenderStyles.GetValueOrDefault(binding.Identity.Id)?.Base.Where(pair => properties.Contains(pair.Key))
+                style = presentation?.RenderStyles.GetValueOrDefault(binding.Identity.Id)?.Base.Where(pair => properties.Contains(pair.Key))
                     .ToDictionary(pair => pair.Key, pair => pair.Value.Text),
             };
         }).ToArray();

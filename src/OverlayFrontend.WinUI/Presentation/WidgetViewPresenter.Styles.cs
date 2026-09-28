@@ -65,10 +65,10 @@ internal sealed partial class WidgetViewPresenter
         adapter.SelectionSurface = binding.MotionHost?.SelectionSurface;
         adapter.DepthSlotsFactory = (binding.Element is Panel or Border or WidgetPresentationSurface || binding.MotionHost?.SelectionSurface is not null) && binding.MotionHost is { } depthHost
             ? depthHost.EnsureDepthSlots : null;
-        adapter.Update(frame?.RenderStyles.GetValueOrDefault(node.Id),
+        adapter.Update(presentation?.RenderStyles.GetValueOrDefault(node.Id),
             typographyOnly: indexedRootStyleOnContainer && node.Id == fragmentRootId,
             interaction: indexedRootStyleOnContainer && node.Id == fragmentRootId ? indexedRootInteraction : null);
-        if (binding.Identity.Scope != frame?.Authority.ActiveInputScopeId) adapter.SetControllerPressed(false);
+        if (binding.Identity.Scope != activeScope) adapter.SetControllerPressed(false);
     }
 
     private void RetireComputedStyles(Binding binding)

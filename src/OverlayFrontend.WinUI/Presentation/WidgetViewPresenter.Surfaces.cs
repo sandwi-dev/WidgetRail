@@ -122,7 +122,7 @@ internal sealed partial class WidgetViewPresenter
                 fragment.ArtworkGeneration = generation;
                 fragment.Failed = ReportFailure;
                 _ = fragment.SetPresentationActiveAsync(true);
-                fragment.ApplyFragment(selectedRow is null ? frame : frame with { RenderStyles = selectedRow.Lease.RenderStyles }, value.Node, value.Scope);
+                fragment.ApplyFragment(selectedRow is null ? presentation! : presentation!.WithStyles(selectedRow.Lease.RenderStyles), value.Node, value.Scope);
             }
             if (selectedRow is null && surfaceRetentions.Remove(selection.Surface, out var unused)) unused.Dispose();
         }

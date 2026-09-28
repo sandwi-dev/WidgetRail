@@ -33,6 +33,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private Dictionary<string, Binding> bindings = new(StringComparer.Ordinal);
     private readonly Dictionary<string, WidgetElementIdentity> remembered = new(StringComparer.Ordinal);
     private WidgetPresentationFrame? frame;
+    private WidgetPresentationBinding? presentation;
+    private ViewSnapshot? effectiveView => presentation?.View;
+    private string activeScope => presentation?.Scope ?? string.Empty;
+    private bool CanDispatchAction => presentation?.Selection is not null ? Session is not null : DispatchActionAsync is not null;
     private bool applying;
     internal bool IsApplyingPresentation => applying;
     private bool needsEntry;
@@ -49,7 +53,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     public Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
     internal bool IsInteractionCurrent(WidgetPresentationAuthority authority) => presentationActive && !disposed && !applying &&
         !presentationOnly && frame is not null && SameOwner(authority, frame.Authority) &&
-        authority.ActiveInputScopeId == frame.Authority.ActiveInputScopeId;
+        presentation?.IsCurrent == true && (presentation.Selection is not null || authority.ActiveInputScopeId == activeScope);
     private Task<bool> AdmitInteractionAsync(WidgetPresentationAuthority authority, CancellationToken cancellationToken = default) =>
         !presentationActive ? Task.FromResult(false) :
         EnsureInteractionAsync?.Invoke(authority, cancellationToken) ?? Task.FromResult(IsInteractionCurrent(authority));
@@ -104,18 +108,26 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         }), true);
     }
 
-    public void Apply(WidgetPresentationFrame next) => ApplyCore(next, next.Snapshot.Root,
-        next.Snapshot.Root.InputScopeId ?? next.Snapshot.Root.Id);
+    public void Apply(WidgetPresentationFrame next) => ApplyBinding(WidgetPresentationBinding.ForMain(next));
 
-    internal void ApplyFragment(WidgetPresentationFrame parent, ViewNode root, string scope)
+    internal void ApplyPinned(WidgetPinnedSelection selection, WidgetPinnedProjection projection) =>
+        ApplyBinding(WidgetPresentationBinding.ForPinned(Session ?? throw new InvalidOperationException("Pinned presentation requires its session."), selection, projection));
+
+    private void ApplyBinding(WidgetPresentationBinding next) => ApplyCore(next, next.View.Root,
+        next.View.Root.InputScopeId ?? next.View.Root.Id);
+
+    internal void ApplyFragment(WidgetPresentationFrame parent, ViewNode root, string scope) =>
+        ApplyFragment(WidgetPresentationBinding.ForMain(parent), root, scope);
+    internal void ApplyFragment(WidgetPresentationBinding parent, ViewNode root, string scope)
     { fragmentRootId = root.Id; ApplyCore(parent, root, scope); }
 
-    private void ApplyCore(WidgetPresentationFrame next, ViewNode root, string rootScope)
+    private void ApplyCore(WidgetPresentationBinding nextPresentation, ViewNode root, string rootScope)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Widget presentation must use its WinUI dispatcher.");
-        ArgumentNullException.ThrowIfNull(next);
-        var sameOwner = frame is { } prior && SameOwner(prior.Authority, next.Authority);
+        ArgumentNullException.ThrowIfNull(nextPresentation);
+        var next = nextPresentation.Frame;
+        var sameOwner = nextPresentation.SameSurface(presentation);
         if (!presentationOnly && sameOwner && frame!.Authority.SnapshotSequence >= next.Authority.SnapshotSequence) return;
         var plan = Plan(root, rootScope);
         var transition = PrepareTransitions(plan, sameOwner);
@@ -130,7 +142,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 ? retained : Create(declaration, IsModalDialog(declaration, plan)));
 
         var focused = FocusedBinding();
-        var oldScope = frame?.Authority.ActiveInputScopeId;
+        var oldScope = activeScope;
         var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
         var currentModal = root.Kind == ViewNodeKind.ModalLayer ? nextBindings[root.Id].LayoutElement : null;
         applying = true;
@@ -169,6 +181,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             declarations = plan;
             bindings = nextBindings;
             frame = next;
+            presentation = nextPresentation;
             if (presentationActive && !presentationOnly) WindowPreviews?.Apply(next);
             UpdateResponsiveVisibility();
             foreach (var scope in remembered.Keys.ToArray())
@@ -194,10 +207,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             UpdateModalGeometry();
             if (motionStage is not null) { motionStage.SetCurrent(currentRoot); motionStage.SetModal(currentModal); Content = motionStage; }
             else Content = bindings[root.Id].LayoutElement;
-            needsEntry = needsEntry || !sameOwner || oldScope != next.Authority.ActiveInputScopeId
+            needsEntry = needsEntry || !sameOwner || oldScope != nextPresentation.Scope
                 || (focused is not null && (!bindings.TryGetValue(focused.Identity.Id, out var current)
                     || !ReferenceEquals(current, focused) || !Eligible(current)));
-            if (!presentationOnly) UpdateFocusPolicy(next.Snapshot);
+            if (!presentationOnly) UpdateFocusPolicy(nextPresentation.View);
             else needsEntry = false;
             pendingRestore = !needsEntry && focused is not null && Eligible(focused)
                 && !ReferenceEquals(FocusedBinding(), focused) ? focused : null;
@@ -238,11 +251,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 && !ReferenceEquals(FocusedBinding(), restore)) FocusBinding(restore);
         }
         if (!needsEntry) return;
-        var scope = frame.Authority.ActiveInputScopeId;
+        var scope = activeScope;
         Binding? target = null;
         if (remembered.TryGetValue(scope, out var identity) && bindings.TryGetValue(identity.Id, out var rememberedBinding)
             && rememberedBinding.Identity == identity && Eligible(rememberedBinding)) target = rememberedBinding;
-        if (target is null && frame.Snapshot.InitialFocusId is { } initial && bindings.TryGetValue(initial, out var initialBinding)
+        if (target is null && effectiveView!.InitialFocusId is { } initial && bindings.TryGetValue(initial, out var initialBinding)
             && Eligible(initialBinding)) target = initialBinding;
         target ??= bindings.Values.FirstOrDefault(Eligible);
         if (target is not null)
@@ -259,9 +272,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (textEntryPopup is { } edit) { edit.Dialog.MoveFocus(direction); return true; }
         if (MoveContextFocus(direction) || MoveSelectFocus(direction) || MoveSlider(direction)) return true;
         if (FindIndexedCollection()?.MoveFocus(direction) == true) return true;
-        var scope = bindings.Values.FirstOrDefault(binding => declarations[binding.Identity.Id].Node.InputScopeId == frame.Authority.ActiveInputScopeId)
-            ?? (bindings.GetValueOrDefault(frame.Snapshot.Root.Id)?.Identity.Scope == frame.Authority.ActiveInputScopeId
-                ? bindings.GetValueOrDefault(frame.Snapshot.Root.Id) : null);
+        var scope = bindings.Values.FirstOrDefault(binding => declarations[binding.Identity.Id].Node.InputScopeId == activeScope)
+            ?? (bindings.GetValueOrDefault(effectiveView!.Root.Id)?.Identity.Scope == activeScope
+                ? bindings.GetValueOrDefault(effectiveView!.Root.Id) : null);
         return scope is not null && FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = scope.Element });
     }
 
@@ -277,7 +290,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
     }
 
-    private bool Eligible(Binding binding) => presentationActive && frame is not null && binding.Identity.Scope == frame.Authority.ActiveInputScopeId
+    private bool Eligible(Binding binding) => presentationActive && presentation?.IsCurrent == true && frame is not null && binding.Identity.Scope == activeScope
         && (declarations[binding.Identity.Id].Node.IsFocusable || binding.Element is WidgetIndexedCollectionView)
         && declarations[binding.Identity.Id].Node is { IsDisabled: not true, IsBusy: not true }
         && binding.Element.Visibility == Visibility.Visible;
@@ -310,17 +323,16 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
     private async Task InvokeAsync(WidgetElementIdentity identity, object token)
     {
-        if (applying || frame is null || DispatchActionAsync is null || !bindings.TryGetValue(identity.Id, out var binding)
+        if (applying || presentationOnly || frame is null || !CanDispatchAction || !bindings.TryGetValue(identity.Id, out var binding)
             || binding.Identity != identity || !ReferenceEquals(binding.Token, token) || !Eligible(binding)
             || declarations[identity.Id].Node.ActionId is not { } action) return;
         CancelGroupEntry();
-        var displayed = frame;
-        var authority = displayed.Authority;
+        var displayed = presentation!;
         try
         {
-            await DispatchActionAsync(new(displayed, new(action, identity.Id, Sequence: ++actionSequence,
-                MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000, InputScopeId: authority.ActiveInputScopeId)
-                { FocusedElementId = FocusedBinding()?.Identity.Id }));
+            await DispatchCapturedActionAsync(displayed, new(action, identity.Id, Sequence: ++actionSequence,
+                MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000, InputScopeId: displayed.Scope)
+                { FocusedElementId = identity.Id });
         }
         catch (OperationCanceledException) when (disposed) { }
         catch (Exception error) { ReportFailure(error); }
@@ -411,7 +423,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (element is WidgetIndexedCollectionView indexed)
         {
             if (!presentationActive) _ = indexed.SetPresentationActiveAsync(false);
-            indexed.Apply(frame!, node, binding.Identity.Scope);
+            indexed.Apply(presentation!, node, binding.Identity.Scope);
         }
         if (element is Image image) UpdateImage(binding, image, node);
         UpdateContainerLayout(binding, node);
@@ -426,8 +438,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (element is Control control)
         {
             control.IsEnabled = node.IsDisabled != true && node.IsBusy != true;
-            control.IsTabStop = node.IsFocusable && binding.Identity.Scope == frame!.Authority.ActiveInputScopeId;
-            control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview) && (!node.IsFocusable || binding.Identity.Scope == frame!.Authority.ActiveInputScopeId);
+            control.IsTabStop = node.IsFocusable && binding.Identity.Scope == activeScope;
+            control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview) && (!node.IsFocusable || binding.Identity.Scope == activeScope);
         }
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);
         if (element is Button entry && node.Kind == ViewNodeKind.TextEntry) entry.Content = TextEntryLabel(node);

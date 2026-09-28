@@ -94,7 +94,7 @@ internal sealed partial class WidgetViewPresenter
     }
     private async Task CommitSliderAsync(WidgetElementIdentity identity, object token, double value)
     {
-        if (disposed || presentationOnly || frame is null || DispatchActionAsync is null ||
+        if (disposed || presentationOnly || frame is null || !CanDispatchAction ||
             !bindings.TryGetValue(identity.Id, out var binding) || binding.Identity != identity ||
             !ReferenceEquals(binding.Token, token) || !Eligible(binding)) return;
         var node = declarations[identity.Id].Node;
@@ -106,13 +106,12 @@ internal sealed partial class WidgetViewPresenter
         if (!SliderMath.IsValidRequestedValue(target, node.Minimum.Value, node.Maximum.Value, node.Step.Value)) return;
         if (binding.Element is Slider slider && slider.Value != target)
         { updatingSlider = true; try { slider.Value = target; } finally { updatingSlider = false; } }
-        var displayed = frame;
-        var authority = displayed.Authority;
+        var displayed = presentation!;
         try
         {
-            await DispatchActionAsync(new(displayed, new WidgetActionEvent(action, identity.Id, Sequence: ++actionSequence,
+            await DispatchCapturedActionAsync(displayed, new WidgetActionEvent(action, identity.Id, Sequence: ++actionSequence,
                 MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000, RequestedValue: target,
-                InputScopeId: authority.ActiveInputScopeId) { FocusedElementId = identity.Id }));
+                InputScopeId: displayed.Scope) { FocusedElementId = identity.Id });
         }
         catch (WidgetPresentationSessionException error) when (error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale") { }
         catch (OperationCanceledException) when (disposed) { }

@@ -19,9 +19,9 @@ internal sealed partial class WidgetViewPresenter
 
     private void UpdateMediaViewport(WidgetMediaViewport viewport, ViewNode node, string scope)
     {
-        var declaration = frame?.Snapshot.EmbeddedMediaSession;
+        var declaration = effectiveView?.EmbeddedMediaSession;
         if (declaration?.Id != node.MediaSessionId) declaration = null;
-        viewport.Configure(declaration, !presentationOnly && scope == frame?.Authority.ActiveInputScopeId);
+        viewport.Configure(declaration, !presentationOnly && scope == activeScope);
         // Apply is synchronous on this dispatcher. Its temporary preparation flag
         // is not a revocation of the durable browser's already-admitted command.
         viewport.CanAcceptInput = () => presentationActive && !disposed && !presentationOnly && !HasTransientControl;
