@@ -57,3 +57,11 @@ uses at most four control slots, and its acknowledgement deadline begins after
 write admission. Range and indexed-artwork admission share the same effective
 provider bound, so an unsent extra artwork request cannot occupy cancellation
 capacity. Session disposal bounds aggregate drain before reaching transport stop.
+
+Before letting an unhandled indexed button return to host navigation, call
+`lease.ClaimsInput` with the exact displayed authority and key. This shares the
+worker's shortcut resolver and treats unavailable authored shortcuts as owned.
+A stale frame/scope/lease throws and must be consumed. Once a declaration claims
+input, a null `AdmitInputAsync` result must also be consumed: null can indicate a
+worker publication racing IPC, not just an absent binding. Never infer host Back
+from a null admission result or retry it against a newer frame.

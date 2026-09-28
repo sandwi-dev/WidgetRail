@@ -64,6 +64,12 @@ public static class IndexedCollectionInputContract
         }
     }
 
+    // Ownership is separate from admission. A disabled owner still claims its
+    // declared shortcut; a stale worker reply must never become host navigation.
+    internal static bool ClaimsInput(IReadOnlyList<ViewNode> owners, ViewNode item,
+        ControllerButton button, ControllerEventPhase phase) => button == ControllerButton.A ||
+        ControllerShortcutResolver.ResolvePath(owners.Append(item).ToArray(), button, phase).Status != ControllerShortcutResolutionStatus.NoMatch;
+
     internal static IndexedInputBinding? Resolve(IReadOnlyList<ViewNode> owners, ViewNode item,
         IndexedCollectionInputRequest request)
     {

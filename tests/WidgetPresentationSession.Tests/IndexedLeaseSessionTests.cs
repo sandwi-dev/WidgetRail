@@ -8,6 +8,32 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 public sealed partial class IndexedRangeSessionTests
 {
     [TestMethod]
+    public async Task DisplayedInputClaimsDoNotTreatStaleNullAdmissionAsUnbound()
+    {
+        await RunAsync(async channel =>
+        {
+            await LeaseReplyAsync(channel, await ReadAsync(channel));
+            var input = await ReadAsync(channel);
+            Assert.AreEqual(BridgeMessageTypes.IndexedInput, input.Type);
+            await ReplyAsync(channel, input.RequestId, BridgeMessageTypes.Acknowledged, new Dictionary<string, object?> { ["admission"] = null });
+            var refresh = await ReadAsync(channel);
+            await SnapshotReplyAsync(channel, refresh.RequestId, 2, Source);
+            await ReleaseReplyAsync(channel, await ReadAsync(channel));
+        }, async (session, frame) =>
+        {
+            await using var lease = await session.AcquireIndexedRangeAsync(frame.Authority, "list", Source, 0, 1);
+            Assert.IsTrue(lease.ClaimsInput(frame.Authority, "key-0", ControllerButton.A));
+            Assert.IsFalse(lease.ClaimsInput(frame.Authority, "key-0", ControllerButton.B));
+            Assert.IsNull(await lease.AdmitInputAsync(frame.Authority, "key-0", ControllerButton.A));
+            Assert.IsTrue(lease.ClaimsInput(frame.Authority, "key-0", ControllerButton.A), "A rejected by a racing worker snapshot remains claimed by the displayed action.");
+            var current = await session.RefreshAsync(frame.Authority);
+            Assert.ThrowsExactly<WidgetPresentationSessionException>(() => lease.ClaimsInput(frame.Authority, "key-0", ControllerButton.B));
+            Assert.IsFalse(lease.ClaimsInput(current.Authority, "key-0", ControllerButton.B));
+            Assert.ThrowsExactly<WidgetPresentationSessionException>(() => lease.ClaimsInput(current.Authority, "missing", ControllerButton.B));
+        });
+    }
+
+    [TestMethod]
     [DataRow("joined", WidgetOperationAdmission.Joined)]
     [DataRow("rejectedInactive", WidgetOperationAdmission.RejectedInactive)]
     [DataRow("rejectedCapacity", WidgetOperationAdmission.RejectedCapacity)]

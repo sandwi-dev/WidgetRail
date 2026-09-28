@@ -176,8 +176,8 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         for (var focused = FocusManager.GetFocusedElement(view.XamlRoot) as DependencyObject;
              focused is not null && !ReferenceEquals(focused, view); focused = VisualTreeHelper.GetParent(focused))
             if (focused is SelectorItem container && containers.TryGetValue(container, out var item))
-                // Loading/retired targets consume the event. Only a current worker
-                // admission returning null means this button is actually unbound.
+                // Loading/retired targets consume the event. Only a proven absence in
+                // the exact displayed declaration can fall through to the host.
                 return item.Slot.Value is not { } row || await InvokeAsync(row, button, phase);
         return false;
     }
@@ -190,8 +190,16 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             if (!row.Lease.IsCurrent) { if (allowDeferredActivation) DeferActivation(row); return true; }
         }
         if (!row.Lease.IsCurrent) return true;
-        try { return await row.Lease.AdmitInputAsync(source.Frame.Authority, row.Item.Key, button, phase,
-            sequence: ++sequence, monotonicTimestampMicroseconds: Environment.TickCount64 * 1000) is not null; }
+        try
+        {
+            var authority = source.Frame.Authority;
+            if (!row.Lease.ClaimsInput(authority, row.Item.Key, button, phase)) return false;
+            await row.Lease.AdmitInputAsync(authority, row.Item.Key, button, phase,
+                sequence: ++sequence, monotonicTimestampMicroseconds: Environment.TickCount64 * 1000);
+            // A null reply also denotes a worker publication racing IPC. It must
+            // remain consumed for an input that the displayed declaration owns.
+            return true;
+        }
         catch (WidgetPresentationSessionException error) when (!row.Lease.IsCurrent || error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale") { return true; }
         catch (Exception error) { failed(error); return true; }
     }

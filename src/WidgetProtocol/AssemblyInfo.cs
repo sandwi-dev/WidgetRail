@@ -5,3 +5,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WidgetBridge")]
 [assembly: InternalsVisibleTo("WidgetBridge.Contracts")]
 [assembly: InternalsVisibleTo("WidgetProtocol.ContractParity.Tests")]
+
+[assembly: InternalsVisibleTo("WidgetPresentationSession")]

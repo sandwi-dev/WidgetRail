@@ -26,7 +26,7 @@ internal static class IndexedContextMenuValidation
             var container = view.ContainerFromIndex(75);
             var scroll = Descendants(view).OfType<ScrollViewer>().First();
             var offset = scroll.VerticalOffset;
-            Check(!await presenter.HandleControllerButtonAsync(ControllerButton.View), "unbound indexed input returns false after exact worker admission");
+            Check(!await presenter.HandleControllerButtonAsync(ControllerButton.View), "unbound indexed input returns false from exact displayed declaration");
             var before = Calls();
             await Open();
             Check(FocusId().EndsWith(".Context.context-play", StringComparison.Ordinal), "deep row menu opens using authored X instead of collection shortcut");

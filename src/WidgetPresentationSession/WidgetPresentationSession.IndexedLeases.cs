@@ -109,6 +109,29 @@ public sealed partial class WidgetPresentationSession
         });
     }
 
+    internal bool IndexedInputIsClaimed(WidgetPresentationIndexedLease lease, WidgetPresentationAuthority origin,
+        string itemKey, ControllerButton button, ControllerEventPhase phase)
+    {
+        ArgumentNullException.ThrowIfNull(origin);
+        var input = new IndexedCollectionInputRequest(new(lease.LeaseId, itemKey), button, phase);
+        IndexedCollectionInputContract.ValidateInput(input);
+        lock (_gate)
+        {
+            DemandIndexedLeaseLocked(lease);
+            _ = ValidateAuthority(origin);
+            if (!SameIndexedOwner(origin, lease.Authority))
+                throw new WidgetPresentationSessionException("indexed_input_stale", "Indexed input does not belong to this owner.");
+            var item = lease.Range.Items.SingleOrDefault(candidate => candidate.Key == itemKey)
+                ?? throw new WidgetPresentationSessionException("indexed_input_stale", "Indexed input item is no longer available.");
+            var snapshot = _states[origin.WidgetId].LastGood!.Snapshot;
+            IReadOnlyList<ViewNode> owners;
+            try { owners = IndexedCollectionInputContract.ResolveOwnerPath(snapshot, lease.Request.Range); }
+            catch (InvalidOperationException)
+            { throw new WidgetPresentationSessionException("input_scope_stale", "The indexed row is outside the active projection scope."); }
+            return IndexedCollectionInputContract.ClaimsInput(owners, item.Root, button, phase);
+        }
+    }
+
     internal async Task<WidgetOperationAdmission?> AdmitIndexedInputAsync(WidgetPresentationIndexedLease lease,
         WidgetPresentationAuthority origin, IndexedCollectionInputRequest input, IndexedCollectionInputContext context,
         CancellationToken cancellationToken)

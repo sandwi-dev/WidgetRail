@@ -27,6 +27,15 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
     { this.owner = owner; Authority = authority; Request = request; ScopeId = scopeId; LeaseId = leaseId; Range = range; RenderStyles = renderStyles; }
 
     /// <summary>
+    /// Tests ownership using the exact displayed frame and the same shortcut
+    /// resolver as worker admission. Unavailable declarations still claim input.
+    /// A null admission reply is not an ownership test: it also means stale input.
+    /// Throws for stale frame/scope/lease rather than returning false.
+    /// </summary>
+    public bool ClaimsInput(WidgetPresentationAuthority origin, string itemKey, ControllerButton button,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed) => owner.IndexedInputIsClaimed(this, origin, itemKey, button, phase);
+
+    /// <summary>
     /// Pass the exact frame displayed when input originated. Stale frames are never
     /// silently rebased. Cancellation stops waiting; a sent action may be admitted.
     /// </summary>
