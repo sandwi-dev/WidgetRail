@@ -234,3 +234,20 @@ reversing into previously admitted results reads the retained prefix without
 another provider request. The shared four-empty-page pause and explicit retry
 policies also apply. See the [Spotify development notes](../../samples/SpotifyWidget/DEVELOPMENT.md)
 and `SpotifyDiscoveredTests` for provider, action-authority and keyed-return examples.
+
+## Complete private-model sample
+
+[FullApplicationReferenceWidget](../../samples/FullApplicationWidget/FullApplicationReferenceWidget.cs)
+is the minimal sandboxed example for an application-scale private model. Its
+immutable 10,000-record model supports exact random-access ranges, so it uses
+`CreateIndexedCollection`, not discovered continuation. Parent snapshots contain
+no eager rows. The provider reads only the requested bounded range, and item-local
+IDs come from `context.Id`. Actions use captured records plus current query/route
+authority. Details Back retains the admitted `FocusedCollectionItem` and emits one
+entry request keyed by navigation revision. Refresh changes content revision while
+preserving known membership; the sample explains when to use `PublishQuery` instead.
+
+Its tests use real SDK range/action leases, safe retry, refresh retirement,
+background cancellation and deep reverse reads. They do not emulate WinUI layout
+or claim physical scrolling acceptance. Rebuild the sample package and the exported
+SDK feed before trying it on the migration frontend.

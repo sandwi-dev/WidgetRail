@@ -8,138 +8,163 @@ namespace WidgetRail.Tests.FullApplicationWidget;
 [TestClass]
 public sealed class FullApplicationWidgetTests
 {
-    [TestMethod, Timeout(30_000)]
-    public async Task ApplicationScaleModelProjectsBoundedCursorWindowAndDetails()
-    {
-        var widget = new FullApplicationReferenceWidget();
-        await Interactive(widget);
-        await widget.WhenDocumentsIdleAsync();
-        Assert.AreEqual(ReferenceLibrary.DocumentCount, widget.PrivateDocumentCount);
-        Assert.IsTrue(widget.Documents.Items.Count <= FullApplicationReferenceWidget.MaximumRetainedItems);
-        var view = Snapshot(widget, 1);
-        Assert.AreEqual(ProtocolConstants.CollectionResetGenerationVersion, view.ProtocolVersion);
-        var scroll = Nodes(view.Root).Single(node => node.Id == "full-app.document-list");
-        Assert.AreEqual(ReferenceLibrary.DocumentCount,
-            scroll.VirtualCollectionWindow?.TotalItemCount);
-        Assert.AreEqual(0L, scroll.VirtualCollectionWindow?.FirstItemIndex);
-        Assert.IsTrue(Nodes(view.Root).Count() <=
-            FullApplicationReferenceWidget.MaximumRetainedItems + 8);
-        var first = Nodes(view.Root).First(node => node.ActionId == "full-app.open");
-        await widget.OnActionAsync(new(first.ActionId!, first.Id));
-        var details = Snapshot(widget, 2);
-        StringAssert.Contains(Nodes(details.Root).Single(node =>
-            node.Id == "full-app.details.summary").Text!, "Deterministic private record");
-        await widget.OnActionAsync(new(
-            Nodes(details.Root).Single(node => node.Id == "full-app.details.back").ActionId!,
-            "full-app.details.back", ControllerButton.B,
-            InputScopeId: details.ActiveInputScopeId));
-        Assert.AreEqual(first.Id, Snapshot(widget, 3).InitialFocusId);
-        await Background(widget);
-    }
+    private const string Collection = FullApplicationReferenceWidget.CollectionId;
 
     [TestMethod, Timeout(30_000)]
-    public async Task AdjacentPagingRetainsOnlyBoundedHostProjection()
+    public async Task CompletePrivateModelPublishesEmptyLazyShellAndDeepCapturedDetails()
     {
-        var widget = new FullApplicationReferenceWidget();
+        var library = new ReferenceLibrary();
+        var widget = new FullApplicationReferenceWidget(library);
         await Interactive(widget);
-        await widget.WhenDocumentsIdleAsync();
-        for (var page = 0; page < 8; page++)
+        try
         {
-            await widget.OnActionAsync(new(
-                "full-app.documents.cursor.after", "full-app.document-list"));
-            await widget.WhenDocumentsIdleAsync();
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "full-app.test");
+            var collection = Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == Collection);
+            Assert.AreEqual(10_000, widget.PrivateDocumentCount);
+            Assert.AreEqual(10_000, collection.IndexedCollection!.Count);
+            Assert.IsNull(collection.IndexedCollection.Discovery);
+            Assert.AreEqual(0, collection.Children.Count); Assert.AreEqual(0, library.LoadCount);
+            Assert.AreEqual(Collection, host.CurrentSnapshot.InitialFocusId);
+            AssertSupported(host.CurrentSnapshot);
+            using var lease = await host.AcquireAsync(Collection, 9_999, 1);
+            Assert.AreEqual(1, library.LoadCount);
+            var row = lease.Range.Items.Single();
+            Assert.AreEqual("document-09999", row.Key);
+            Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(row.Key, ControllerButton.A));
+            await Until(() => widget.Render().ActiveInputScopeId != host.CurrentSnapshot.ActiveInputScopeId);
+            host.PublishSnapshot();
+            Assert.AreEqual("Deterministic private record 09999.", Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == "full-app.details.summary").Text);
+            await Back(widget, host);
+            var target = host.CurrentSnapshot.FocusGroupEntryRequest?.IndexedItem;
+            Assert.IsNotNull(target); Assert.AreEqual(9_999, target.Index); Assert.AreEqual(row.Key, target.ItemKey);
+            Assert.AreEqual(collection.IndexedCollection.QueryGeneration, target.QueryGeneration);
+            var request = host.CurrentSnapshot.FocusGroupEntryRequest!.RequestId;
+            Assert.AreEqual(request, host.PublishSnapshot().FocusGroupEntryRequest!.RequestId);
         }
-        Assert.AreEqual(ReferenceLibrary.DocumentCount, widget.PrivateDocumentCount);
-        Assert.AreEqual(FullApplicationReferenceWidget.MaximumRetainedItems,
-            widget.Documents.Items.Count);
-        Assert.IsTrue(widget.Documents.After is not null);
-        var forward = Snapshot(widget, 4);
-        var forwardWindow = Nodes(forward.Root).Single(node =>
-            node.Id == "full-app.document-list").VirtualCollectionWindow;
-        Assert.IsNotNull(forwardWindow);
-        Assert.AreEqual(VirtualCollectionWindowChange.Append, forwardWindow.Change);
-        Assert.IsTrue(forwardWindow.FirstItemIndex > 0);
-        Assert.AreEqual(ReferenceLibrary.DocumentCount, forwardWindow.TotalItemCount);
-        Assert.AreEqual(0, ViewSnapshotValidator.Validate(forward).Count);
-        var beforeFirst = forwardWindow.FirstItemIndex;
-        await widget.OnActionAsync(new(
-            "full-app.documents.cursor.before", "full-app.document-list"));
-        await widget.WhenDocumentsIdleAsync();
-        var backward = Snapshot(widget, 5);
-        var backwardWindow = Nodes(backward.Root).Single(node =>
-            node.Id == "full-app.document-list").VirtualCollectionWindow;
-        Assert.AreEqual(VirtualCollectionWindowChange.Prepend, backwardWindow?.Change);
-        Assert.IsTrue(backwardWindow?.FirstItemIndex < beforeFirst);
-        Assert.IsTrue(Nodes(backward.Root).Count() <=
-            FullApplicationReferenceWidget.MaximumRetainedItems + 8);
-        await Background(widget);
+        finally { await WidgetTestHost.DestroyAsync(widget); }
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task FailureRetainsSafeErrorAndRetryRecovers()
+    public async Task BoundedArbitraryRangesAndReverseReadsDoNotInventCursorWindows()
     {
-        var source = new ReferenceLibrary();
-        var widget = new FullApplicationReferenceWidget(source);
-        source.FailNext();
+        var library = new ReferenceLibrary(); var widget = new FullApplicationReferenceWidget(library);
         await Interactive(widget);
-        await widget.WhenDocumentsIdleAsync();
-        var failed = Snapshot(widget, 5);
-        Assert.IsTrue(Nodes(failed.Root).Any(node => node.Id == "full-app.retry"));
-        Assert.AreEqual("full-app.retry", failed.InitialFocusId);
-        Assert.AreEqual(0, ViewSnapshotValidator.Validate(failed).Count);
-        await widget.OnActionAsync(new("full-app.retry", "full-app.retry"));
-        await widget.WhenDocumentsIdleAsync();
-        var ready = Snapshot(widget, 6);
-        Assert.IsTrue(Nodes(ready.Root).Any(node => node.ActionId == "full-app.open"));
-        Assert.IsNotNull(ready.InitialFocusId);
-        Assert.IsTrue(Nodes(ready.Root).Any(node => node.Id == ready.InitialFocusId));
-        Assert.AreEqual(0, ViewSnapshotValidator.Validate(ready).Count);
-        await Background(widget);
-    }
-
-    [TestMethod, Timeout(30_000)]
-    public async Task ActiveLifetimeCancelsAndDrainsBlockedLoad()
-    {
-        var source = new ReferenceLibrary();
-        var loadStarted = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var cancellationObserved = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        source.BeforeNextLoad(async token =>
+        try
         {
-            loadStarted.TrySetResult();
-            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
-            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "full-app.test");
+            var parentNodes = Nodes(host.CurrentSnapshot.Root).Count();
+            foreach (var start in new[] { 0, 512, 9_936, 8_000, 32, 0 })
             {
-                cancellationObserved.TrySetResult();
-                throw;
+                using var range = await host.AcquireAsync(Collection, start, 64);
+                Assert.AreEqual(64, range.Range.Items.Count);
+                Assert.AreEqual($"document-{start:D5}", range.Range.Items[0].Key);
+                Assert.AreEqual($"document-{start + 63:D5}", range.Range.Items[^1].Key);
+                Assert.AreEqual(parentNodes, Nodes(host.PublishSnapshot().Root).Count());
+                AssertSupported(host.CurrentSnapshot);
             }
-        });
-        var widget = new FullApplicationReferenceWidget(source);
-        await Interactive(widget);
-        await loadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var loading = Snapshot(widget, 7);
-        Assert.IsNull(loading.InitialFocusId);
-        Assert.AreEqual(0, ViewSnapshotValidator.Validate(loading).Count);
-        await Background(widget);
-        await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await widget.WhenDocumentsIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.AreEqual(0, widget.Documents.Items.Count);
-        var reset = Snapshot(widget, 8);
-        Assert.IsNull(reset.InitialFocusId);
-        Assert.AreEqual(0, ViewSnapshotValidator.Validate(reset).Count);
+            Assert.AreEqual(6, library.LoadCount);
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => { using var _ = await host.AcquireAsync(Collection, 0, 65); });
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
     }
 
-    private static ValueTask Interactive(Widget widget) =>
-        WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
-    private static ValueTask Background(Widget widget) =>
-        WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
-    private static ViewSnapshot Snapshot(Widget widget, long sequence) =>
-        widget.Render().CreateSnapshot("full-app.test", sequence);
-    private static IEnumerable<ViewNode> Nodes(ViewNode node)
+    [TestMethod, Timeout(30_000)]
+    public async Task FailedRangeKeepsCollectionAndSafeRetryRecovers()
     {
-        yield return node;
-        foreach (var child in node.Children)
-            foreach (var nested in Nodes(child)) yield return nested;
+        var library = new ReferenceLibrary(); var widget = new FullApplicationReferenceWidget(library);
+        await Interactive(widget);
+        try
+        {
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "full-app.test");
+            library.FailNext();
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(async () => { using var _ = await host.AcquireAsync(Collection, 500, 32); });
+            Assert.AreEqual("The private library could not be loaded. Try again.", error.Message);
+            host.PublishSnapshot();
+            var retry = Nodes(host.CurrentSnapshot.Root).Single(node => node.ActionId == "full-app.retry");
+            Assert.IsFalse(Nodes(host.CurrentSnapshot.Root).Any(node => node.Text?.Contains("Deterministic reference failure") == true));
+            Assert.AreEqual(10_000, Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == Collection).IndexedCollection!.Count);
+            await widget.OnActionAsync(new(retry.ActionId!, retry.Id, InputScopeId: host.CurrentSnapshot.ActiveInputScopeId));
+            host.PublishSnapshot();
+            using var ready = await host.AcquireAsync(Collection, 500, 32);
+            Assert.AreEqual("document-00500", ready.Range.Items[0].Key);
+            Assert.IsFalse(Nodes(host.CurrentSnapshot.Root).Any(node => node.ActionId == "full-app.retry"));
+            AssertSupported(host.CurrentSnapshot);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
     }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task RefreshRetiresOldActionsButPreservesMembershipAndKeys()
+    {
+        var widget = new FullApplicationReferenceWidget(); await Interactive(widget);
+        try
+        {
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "full-app.test");
+            using var old = await host.AcquireAsync(Collection, 75, 1);
+            var before = Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == Collection).IndexedCollection!;
+            await widget.OnActionAsync(new("full-app.open", old.Range.Items[0].Root.Id));
+            Assert.AreEqual(host.CurrentSnapshot.ActiveInputScopeId, widget.Render().ActiveInputScopeId);
+            await widget.OnActionAsync(new("full-app.refresh", "full-app.refresh")); host.PublishSnapshot();
+            var after = Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == Collection).IndexedCollection!;
+            Assert.AreEqual(before.QueryGeneration, after.QueryGeneration); Assert.AreEqual(before.Count, after.Count);
+            Assert.IsTrue(after.ContentRevision > before.ContentRevision);
+            Assert.IsNull(old.RouteAction(old.Range.Items[0].Key, ControllerButton.A));
+            using var fresh = await host.AcquireAsync(Collection, 75, 1);
+            Assert.AreEqual(old.Range.Items[0].Key, fresh.Range.Items[0].Key);
+            Assert.AreEqual(old.Range.Items[0].Root.Id, fresh.Range.Items[0].Root.Id);
+            Assert.AreEqual(WidgetOperationAdmission.Enqueued, fresh.RouteAction(fresh.Range.Items[0].Key, ControllerButton.A));
+            await Until(() => widget.Render().ActiveInputScopeId != host.CurrentSnapshot.ActiveInputScopeId);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task BackgroundCancelsRangeAndReopenKeepsLogicalQuery()
+    {
+        var library = new ReferenceLibrary(); var widget = new FullApplicationReferenceWidget(library);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        library.BeforeNextLoad(async token =>
+        {
+            started.SetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, token); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { cancelled.SetResult(); throw; }
+        });
+        await Interactive(widget);
+        try
+        {
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "full-app.test");
+            var generation = Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == Collection).IndexedCollection!.QueryGeneration;
+            var read = host.AcquireAsync(Collection, 300, 32).AsTask();
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+            await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Assert.ThrowsAsync<InvalidOperationException>(async () => { using var _ = await read; });
+            await Interactive(widget); host.PublishSnapshot();
+            Assert.AreEqual(generation, Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == Collection).IndexedCollection!.QueryGeneration);
+            using var fresh = await host.AcquireAsync(Collection, 300, 32);
+            Assert.AreEqual("document-00300", fresh.Range.Items[0].Key);
+            AssertSupported(host.CurrentSnapshot);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    private static async Task Back(FullApplicationReferenceWidget widget, WidgetIndexedCollectionTestHost host)
+    {
+        var back = Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == "full-app.details.back");
+        await widget.OnActionAsync(new(back.ActionId!, back.Id, ControllerButton.B, InputScopeId: host.CurrentSnapshot.ActiveInputScopeId));
+        host.PublishSnapshot();
+    }
+    private static void AssertSupported(ViewSnapshot snapshot)
+    {
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        Assert.IsTrue(Nodes(snapshot.Root).All(node => node.VirtualCollectionWindow is null && node.CollectionAnchorKey is null &&
+            node.CollectionGeneration is null && node.CollectionResetGeneration is null && node.ScrollNearStartActionId is null &&
+            node.ScrollNearEndActionId is null && (node.CollectionLayout is null || node.Kind == ViewNodeKind.IndexedCollection)));
+    }
+    private static ValueTask Interactive(Widget widget) => WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    private static async Task Until(Func<bool> ready)
+    { for (var i = 0; i < 100; ++i) { if (ready()) return; await Task.Delay(10); } Assert.Fail("Captured action did not complete."); }
+    private static IEnumerable<ViewNode> Nodes(ViewNode node)
+    { yield return node; foreach (var child in node.Children) foreach (var nested in Nodes(child)) yield return nested; }
 }
