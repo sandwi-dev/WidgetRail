@@ -353,9 +353,48 @@ void QueuedNavigationCannotRepeatAfterRenderingStall() {
           "reopening with a held stick still requires its primed repeat delay");
 }
 
+void BackgroundWindowPublicationPreservesControllerEdges() {
+    using namespace widgetrail::platform;
+    ControllerFrameTracker tracker;
+    tracker.Prime(true, {}, 0);
+    WidgetRailOverlayPlatformRawControllerState pressed;
+    pressed.buttons = XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_DPAD_RIGHT;
+    pressed.leftThumbX = 20000;
+    tracker.ApplyWindowStateTransition(true, false, true, false);
+    auto frame = tracker.Update(true, pressed, 15);
+    Check(frame.pressedButtons == pressed.buttons && !frame.primed &&
+        frame.dpadNavigation.phase == WidgetRailOverlayPlatformNavigationPhase::Pressed &&
+        frame.stickNavigation.phase == WidgetRailOverlayPlatformNavigationPhase::Pressed,
+        "unchanged background visibility preserves A, D-pad and stick press edges");
+    tracker.ApplyWindowStateTransition(true, false, true, false);
+    frame = tracker.Update(true, pressed, 400);
+    Check(frame.pressedButtons == 0 &&
+        frame.dpadNavigation.phase == WidgetRailOverlayPlatformNavigationPhase::Repeated &&
+        frame.stickNavigation.phase == WidgetRailOverlayPlatformNavigationPhase::Repeated,
+        "unchanged background visibility preserves held navigation cadence without another A");
+    tracker.ApplyWindowStateTransition(true, false, true, false);
+    frame = tracker.Update(true, {}, 420);
+    Check(frame.releasedButtons == pressed.buttons && frame.dpadNavigation.phase == WidgetRailOverlayPlatformNavigationPhase::None,
+        "unchanged background visibility preserves release and stops repeating");
+    tracker.ApplyWindowStateTransition(true, true, true, false);
+    frame = tracker.Update(true, pressed, 430);
+    Check(frame.primed && frame.pressedButtons == 0 && frame.dpadNavigation.phase == WidgetRailOverlayPlatformNavigationPhase::None,
+        "real focus loss still primes held controls instead of creating a phantom activation");
+    tracker.ApplyWindowStateTransition(true, false, true, false);
+    frame = tracker.Update(true, {}, 450);
+    Check(!frame.primed && frame.releasedButtons == pressed.buttons,
+        "background polling resumes after one focus-loss priming sample");
+    tracker.ApplyWindowStateTransition(true, false, false, false);
+    Check(!tracker.primed(), "hide retires input history even when already unfocused");
+    tracker.ApplyWindowStateTransition(false, false, true, false);
+    frame = tracker.Update(true, pressed, 500);
+    Check(frame.primed && !frame.pressedButtons, "reopen primes a held opening button");
+}
+
 } // namespace
 
 int main() {
+    BackgroundWindowPublicationPreservesControllerEdges();
     ControllerActivitySelectionKeepsHoldsAndReleases();
     CachedBackendCannotReplayAReleasedPress();
     ControllerActivityThresholdsAndRepeats();
@@ -553,6 +592,21 @@ int main() {
               &visibleFrame) == WidgetRailOverlayPlatformStatus::Ok &&
               visibleFrame.readPath != WidgetRailOverlayPlatformReadPath::None,
           "a visible platform lease owns a controller read path");
+
+    // Exercise the actual exported setter and its private tracker without
+    // requiring any device state. primed is observable even with no controller.
+    Check(WidgetRailOverlayPlatformSetWindowState(handle, 1, 0) == WidgetRailOverlayPlatformStatus::Ok,
+        "enter visible background state through the DLL ABI");
+    WidgetRailOverlayPlatformControllerFrame backgroundPrime;
+    Check(WidgetRailOverlayPlatformReadController(handle, 0, 1001, &backgroundPrime) == WidgetRailOverlayPlatformStatus::Ok && backgroundPrime.primed,
+        "actual focus-loss setter primes exactly the first background read");
+    for (std::uint64_t tick = 1002; tick < 1006; ++tick) {
+        Check(WidgetRailOverlayPlatformSetWindowState(handle, 1, 0) == WidgetRailOverlayPlatformStatus::Ok,
+            "repeat unchanged background state through production setter");
+        WidgetRailOverlayPlatformControllerFrame backgroundFrame;
+        Check(WidgetRailOverlayPlatformReadController(handle, 0, tick, &backgroundFrame) == WidgetRailOverlayPlatformStatus::Ok && !backgroundFrame.primed,
+            "repeated background state must not re-prime the production input tracker");
+    }
 
     Check(WidgetRailOverlayPlatformSetWindowState(
               handle,

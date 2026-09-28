@@ -790,6 +790,8 @@ WidgetRailOverlayPlatformSetWindowState(
     if (status != WidgetRailOverlayPlatformStatus::Ok) return status;
     const bool visible = visibleValue != WRAIL_OVERLAY_PLATFORM_FALSE;
     const bool focused = focusedValue != WRAIL_OVERLAY_PLATFORM_FALSE;
+    handle->controllerTracker.ApplyWindowStateTransition(
+        handle->visible, handle->focused, visible, focused);
     if (handle->visible != visible) {
         handle->visible = visible;
         RawEvent event;
@@ -808,7 +810,6 @@ WidgetRailOverlayPlatformSetWindowState(
         handle->controllerSelection.Reset();
         handle->sampledGameInputDevice.Reset();
     }
-    if (!visible || !focused) handle->controllerTracker.Reset();
     if (!visible && handle->controllerIsolation.active())
         handle->controllerIsolation.CloseOverlay();
     return WidgetRailOverlayPlatformStatus::Ok;
