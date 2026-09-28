@@ -43,11 +43,7 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(displayed);
         ArgumentNullException.ThrowIfNull(input);
         cancellationToken.ThrowIfCancellationRequested();
-        if (input.Context != ControllerInputContext.OpenWidget || input.SnapshotSequence != displayed.Authority.SnapshotSequence ||
-            !Enum.IsDefined(input.Button) || !Enum.IsDefined(input.Phase) || !Enum.IsDefined(input.Origin) ||
-            input.Sequence < 0 || input.MonotonicTimestampMicroseconds < 0 || input.PinnedLayoutId is not null ||
-            input.IsPinnedLayoutSelected is not null || input.RequestedValue is { } value && !double.IsFinite(value))
-            throw OrdinaryInputStale("The displayed controller input has invalid origin authority.");
+        ValidateDisplayedControllerOrigin(displayed, input);
         lock (_gate)
         {
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, input.ActiveInputScopeId);
@@ -59,6 +55,15 @@ public sealed partial class WidgetPresentationSession
             BridgeMessageTypes.ControllerInputResult, cancellationToken).ConfigureAwait(false);
         RequireObjectProperties(response.Payload, "handled");
         return response.Payload.GetProperty("handled").GetBoolean();
+    }
+
+    private static void ValidateDisplayedControllerOrigin(WidgetPresentationFrame displayed, ControllerInputEvent input)
+    {
+        if (input.Context != ControllerInputContext.OpenWidget || input.SnapshotSequence != displayed.Authority.SnapshotSequence ||
+            !Enum.IsDefined(input.Button) || !Enum.IsDefined(input.Phase) || !Enum.IsDefined(input.Origin) ||
+            input.Sequence < 0 || input.MonotonicTimestampMicroseconds < 0 || input.PinnedLayoutId is not null ||
+            input.IsPinnedLayoutSelected is not null || input.RequestedValue is { } value && !double.IsFinite(value))
+            throw OrdinaryInputStale("The displayed controller input has invalid origin authority.");
     }
 
     private WidgetPresentationFrame ValidateDisplayedOrdinaryFrameLocked(WidgetPresentationFrame origin, string? scope)

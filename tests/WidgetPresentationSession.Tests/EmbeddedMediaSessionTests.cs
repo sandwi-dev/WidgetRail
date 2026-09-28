@@ -10,7 +10,7 @@ using WidgetRail.WidgetSdk;
 namespace WidgetRail.WidgetPresentationSession.Tests;
 
 [TestClass]
-public sealed class EmbeddedMediaSessionTests
+public sealed partial class EmbeddedMediaSessionTests
 {
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(8);
     private static BridgeWidgetDescriptor Descriptor => new() { Id = "media", Name = "Media", InstanceId = "media.instance",
@@ -385,14 +385,14 @@ public sealed class EmbeddedMediaSessionTests
     }
     private static async Task Run(Func<BridgeFrameChannel, Task> serverAction,
         Func<WidgetPresentationSession, WidgetPresentationFrame, Task> clientAction, EmbeddedMediaSession? media = null,
-        WidgetPresentationSessionOptions? options = null)
+        WidgetPresentationSessionOptions? options = null, ViewNode? root = null)
     {
         await using var server = new MediaBridgeServer();
         var serving = server.RunAuthenticatedAsync(async channel =>
         {
             var catalog = await Read(channel);
             await Reply(channel, catalog.RequestId, BridgeMessageTypes.Widgets, new { revision = 1, isComplete = true, widgets = new[] { Descriptor } });
-            var establish = await Read(channel); await Snapshot(channel, establish.RequestId, media ?? Media, 1);
+            var establish = await Read(channel); await Snapshot(channel, establish.RequestId, media ?? Media, 1, root: root);
             await serverAction(channel);
             var stop = await Read(channel); Assert.AreEqual(BridgeMessageTypes.Stop, stop.Type);
             await Reply(channel, stop.RequestId, BridgeMessageTypes.Acknowledged, new { });
@@ -407,10 +407,10 @@ public sealed class EmbeddedMediaSessionTests
         }
         await serving.WaitAsync(Limit);
     }
-    private static async Task Snapshot(BridgeFrameChannel channel, long id, EmbeddedMediaSession? media, long sequence, string scope = "root")
+    private static async Task Snapshot(BridgeFrameChannel channel, long id, EmbeddedMediaSession? media, long sequence, string scope = "root", ViewNode? root = null)
     {
         var snapshot = new ViewSnapshot { Sequence = sequence, WidgetInstanceId = Descriptor.InstanceId, ActiveInputScopeId = scope,
-            Root = new() { Id = scope, Kind = ViewNodeKind.Stack }, EmbeddedMediaSession = media };
+            Root = root ?? new() { Id = scope, Kind = ViewNodeKind.Stack }, EmbeddedMediaSession = media };
         var errors = ViewSnapshotValidator.Validate(snapshot);
         Assert.AreEqual(0, errors.Count, string.Join("; ", errors.Select(error => error.Path + ": " + error.Message)));
         using var json = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));

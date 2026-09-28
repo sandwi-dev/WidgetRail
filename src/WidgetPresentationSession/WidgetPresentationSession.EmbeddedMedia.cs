@@ -15,6 +15,7 @@ public sealed partial class WidgetPresentationSession
         internal SemaphoreSlim Events { get; } = new(1, 1);
         internal long LastEventSequence;
         internal int PendingEvents;
+        internal Dictionary<MediaPresentationKind, MediaPresentationEpoch> Presentations { get; } = [];
     }
     private readonly Dictionary<string, MediaDocumentEpoch> _mediaDocuments = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _mediaResolveSlots = new(4, 4);
@@ -158,9 +159,15 @@ public sealed partial class WidgetPresentationSession
         if (state.Failure is not null || frame?.Snapshot.EmbeddedMediaSession is not { } media)
         { RetireMediaDocumentLocked(state.WidgetId); return; }
         if (_mediaDocuments.TryGetValue(state.WidgetId, out var prior) &&
-            SameMediaOwner(prior.Owner, frame.Authority) && SameMediaIdentity(prior.Identity, media)) return;
-        RetireMediaDocumentLocked(state.WidgetId);
-        _mediaDocuments[state.WidgetId] = new(frame.Authority, media);
+            SameMediaOwner(prior.Owner, frame.Authority) && SameMediaIdentity(prior.Identity, media))
+            ReconcileMediaPresentationsLocked(prior, frame);
+        else
+        {
+            RetireMediaDocumentLocked(state.WidgetId);
+            var next = new MediaDocumentEpoch(frame.Authority, media);
+            ReconcileMediaPresentationsLocked(next, frame);
+            _mediaDocuments[state.WidgetId] = next;
+        }
     }
     private void RetireMediaDocumentLocked(string? widgetId = null)
     {
