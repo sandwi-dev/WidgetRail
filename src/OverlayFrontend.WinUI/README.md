@@ -47,6 +47,11 @@ presenter scroll seam is integrated with the concurrent presentation checkpoint.
 Do not treat this shell or Clock UI checks as production Playnite performance
 evidence or full controller acceptance.
 
+The later [shell sizing checkpoint](../../docs/maintainers/winui-shell-sizing.md)
+connects authored surface dimensions, native content measurement, actual interface
+zoom, physical-display saved scale and monitor placement. Its remaining gaps and
+validation evidence supersede the corresponding sizing limitations above.
+
 `scripts/Test-WinUiShell.ps1 -AppPid <pid>` checks actual catalog selection, native
 tray focus and reopening, and captures a desktop screenshot. Launch packaged
 through winapp with a dedicated profile/catalog and serialize deployment with

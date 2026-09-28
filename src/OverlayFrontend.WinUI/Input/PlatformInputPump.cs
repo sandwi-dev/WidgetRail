@@ -19,6 +19,14 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     public event Action? ToggleRequested;
     public event Action<Exception>? Failed;
     internal bool IsForeground => IsForegroundProcess();
+    internal nint PlacementWindow
+    {
+        get
+        {
+            var remembered = session?.RememberedForegroundTarget ?? 0;
+            return (nint)(session?.ResolveForegroundTarget((nuint)ownedWindow, remembered != 0 && IsWindow((nint)remembered) != 0) ?? (nuint)ownedWindow);
+        }
+    }
 
     public PlatformInputPump(DispatcherQueue dispatcher, nint hwnd, IOverlayPlatformNative? backend = null)
     {
@@ -65,6 +73,8 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
 
     public void PrepareShow()
     {
+        var target = GetForegroundWindow();
+        if (!IsForegroundProcess()) session?.ObserveForegroundTarget((nuint)target, target != 0 && IsWindow(target) != 0);
         RecordWindowState("PrepareShow");
         session?.PrepareVisible();
     }
@@ -158,6 +168,9 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     [LibraryImport("user32.dll")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial int IsWindowVisible(nint hwnd);
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial int IsWindow(nint hwnd);
 
     public void Dispose()
     {

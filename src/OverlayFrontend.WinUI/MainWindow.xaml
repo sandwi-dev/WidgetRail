@@ -2,6 +2,7 @@
     x:Class="WidgetRail.OverlayFrontend.WinUI.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shell="using:WidgetRail.OverlayFrontend.WinUI.Shell"
     Title="WidgetRail — WinUI frontend">
     <Grid x:Name="ShellRoot" Background="Transparent">
         <Grid.Resources>
@@ -13,6 +14,7 @@
                 <Setter Property="Background" Value="{ThemeResource SolidBackgroundFillColorBaseBrush}" />
             </Style>
         </Grid.Resources>
+        <shell:OverlayScaleRoot x:Name="ScaleRoot">
         <Border x:Name="ShellCard" Margin="32" Padding="24" CornerRadius="16"
                 Style="{StaticResource ValidationShellCardStyle}" BorderThickness="1">
             <Grid x:Name="ShellLayout" RowSpacing="24">
@@ -33,5 +35,6 @@
                 <Frame x:Name="RootFrame" Grid.Row="1" />
             </Grid>
         </Border>
+        </shell:OverlayScaleRoot>
     </Grid>
 </Window>

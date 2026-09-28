@@ -60,7 +60,7 @@ public partial class App : Application
             arguments.Contains("--validate-gridview"), arguments.Contains("--validate-controls"), arguments.Contains("--validate-indexed"), arguments.Contains("--validate-focus-policy"),
             arguments.FirstOrDefault(value => value.StartsWith("--indexed-validation-pipe=", StringComparison.Ordinal))?["--indexed-validation-pipe=".Length..],
             arguments.Contains("--validate-grouped"), arguments.Contains("--validate-grouped-flat"), arguments.Contains("--validate-grouped-adapted"), arguments.Contains("--validate-surfaces"), arguments.Contains("--validate-select"), arguments.Contains("--validate-motion"), arguments.Contains("--validate-modals"), arguments.Contains("--validate-glyphs"), arguments.Contains("--validate-styles"), arguments.Contains("--validate-text-entry"), arguments.Contains("--validate-context-menu"),
-            Shell.FrontendArguments.Value(arguments, "--shell-config"), arguments.Contains("--shell-no-controller"), arguments.Contains("--validate-slider"), arguments.Contains("--validate-package-icons"));
+            Shell.FrontendArguments.Value(arguments, "--shell-config"), arguments.Contains("--shell-no-controller"), arguments.Contains("--validate-slider"), arguments.Contains("--validate-package-icons"), arguments.Contains("--validate-shell-sizing"));
         Window = main;
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         Window.Activate();

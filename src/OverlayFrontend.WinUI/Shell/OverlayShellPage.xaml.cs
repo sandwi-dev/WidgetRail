@@ -41,6 +41,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private readonly System.Collections.ObjectModel.ObservableCollection<BridgeWidgetDescriptor> catalogItems = [];
     internal event Action? HideRequested;
     internal event Action<AppearanceSettings>? AppearanceLoaded;
+    internal event Action? BridgeReady;
     internal AppearanceSettings Appearance { get; private set; } = AppearanceSettings.Default;
 
     internal OverlayShellPage(OverlayShellOptions options)
@@ -73,6 +74,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             owner.Session.CatalogChanged += CatalogChanged;
             owner.Session.AppearanceChanged += AppearanceChanged;
             owner.Session.HostEffectReceived += HostEffectReceived;
+            BridgeReady?.Invoke();
             WidgetPresentationCatalog catalog;
             await transitions.WaitAsync(lifetime.Token);
             try
@@ -154,6 +156,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     DesiredLifecycle, lifetime.Token);
                 if (retired || version != selectionVersion) return;
                 if (visible) surface!.Apply(next);
+                UpdateSurfaceHints(next.Snapshot.Surface);
                 Retry.Visibility = Visibility.Collapsed;
                 Status.Text = next.Descriptor.Name;
                 Tray.SelectedItem = Tray.Items.Cast<BridgeWidgetDescriptor>().FirstOrDefault(widget => widget.Id == id);
@@ -193,7 +196,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         publication = state.PublicationRevision;
         if (state.Failure is { } failure) { Status.Text = $"{failure.Message} ({failure.Code})"; Retry.Visibility = Visibility.Visible; return; }
         if (state.LastGood is not { } next || surface is null) return;
-        try { surface.Apply(next); Status.Text = next.Descriptor.Name; Retry.Visibility = Visibility.Collapsed; }
+        try { surface.Apply(next); UpdateSurfaceHints(next.Snapshot.Surface); Status.Text = next.Descriptor.Name; Retry.Visibility = Visibility.Collapsed; }
         catch (Exception error) { ReportFailure(error); }
         if (!layoutCaptureQueued && options.LayoutDiagnosticsPath is { } diagnosticPath)
         {
@@ -260,12 +263,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         try
         {
-            Appearance = (await new PlatformSettingsStore(new(options.SettingsRoot)).LoadAsync(lifetime.Token)).Appearance;
-            if (!retired)
-            {
-                surface?.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
-                AppearanceLoaded?.Invoke(Appearance);
-            }
+            savedAppearance = (await new PlatformSettingsStore(new(options.SettingsRoot)).LoadAsync(lifetime.Token)).Appearance;
+            if (!retired) ApplyEffectiveAppearance();
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { ReportFailure(error); }
@@ -323,7 +322,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 if (restore && visible)
                 {
                     var next = await owner.Session.EstablishPresentationAsync(target, DesiredLifecycle, lifetime.Token);
-                    if (visible && !retired) { surface?.Apply(next); QueueEntryFocus(); }
+                    if (visible && !retired) { surface?.Apply(next); UpdateSurfaceHints(next.Snapshot.Surface); QueueEntryFocus(); }
                 }
                 else await owner.Session.SetLifecycleAsync(target, DesiredLifecycle, lifetime.Token);
             }
@@ -392,7 +391,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private void UpdateDiagnostics() => AutomationProperties.SetHelpText(Status,
         System.Text.Json.JsonSerializer.Serialize(new { activeWidget, publication, visible, interactive,
-            foreground, catalogCount = catalogItems.Count, bridgePid = owner?.ProcessId }));
+            foreground, sizing = SizingDiagnostics, catalogCount = catalogItems.Count, bridgePid = owner?.ProcessId }));
 
     public ValueTask DisposeAsync() => new(disposal ??= StopAsync());
     private async Task StopAsync()
