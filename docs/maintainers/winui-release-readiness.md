@@ -95,3 +95,12 @@ SHA-256 matched the published assembly exactly. Evidence:
 `trimmed-runtime-01/identity.json`. This is a tested development layout, not a
 completed installer or a distributable release. Installer bootstrap and runtime
 provisioning still need a deliberate production path.
+
+The stable media pixel gate now passes using `Capture-WinUiTestWindow.ps1`, which
+reads screen pixels without asking UIA to focus the main HWND. It verifies the
+owned window/process before and after capture, preserves physical DPI coordinates,
+and checks the sealed media fixture's characteristic button color. Both native
+fullscreen and popup captures were inspected: media is visible and the dropdown
+draws above it. All 101 behavior checks also pass. Evidence:
+`artifacts/winui-shell/media-readonly-capture-01/`. This resolves this capture gate;
+it does not replace motion, device-loss or wider media qualification.

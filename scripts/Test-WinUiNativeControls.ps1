@@ -49,8 +49,8 @@ try {
                 if ($file -and $file.LastWriteTimeUtc -ge $started) {
                     try { $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json } catch { }
                     if ($case.Media -and $result.phase -in @('owner-popup','owner-fullscreen') -and $capturedPhases.Add($result.phase)) {
-                        & winapp ui screenshot -w $mainHwnd --capture-screen -o (Join-Path $OutputDirectory "$($result.phase).png") --json | Out-Null
-                        if ($LASTEXITCODE -ne 0) { throw 'Could not capture native media presentation.' }
+                        & (Join-Path $PSScriptRoot 'Capture-WinUiTestWindow.ps1') -AppPid $ownedPid -WindowHandle $mainHwnd `
+                            -OutputPath (Join-Path $OutputDirectory "$($result.phase).png") -RequireMediaPixels | Out-Null
                     }
                     if ($result.result -in @('passed', 'failed') -or
                         ($case.Media -and ($result.passed -eq $false -or $result.phase -eq 'complete'))) { break }
