@@ -14,7 +14,14 @@ function Ui([string[]]$Arguments) {
 }
 function Check([string]$Name, [scriptblock]$Action) {
     try { & $Action; $results.Add(@{name=$Name; status='PASS'}) }
-    catch { $results.Add(@{name=$Name; status='FAIL'; detail=$_.Exception.Message}) }
+    catch {
+        $results.Add(@{name=$Name; status='FAIL'; detail=$_.Exception.Message})
+        try {
+            $null = Ui @('screenshot', '--capture-screen', '-o', (Join-Path $OutputDirectory 'failure.png'))
+            Ui @('get-focused') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'failure-focus.json')
+            Ui @('get-property', 'Overlay.Status') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'failure-status.json')
+        } catch { } # Keep the original assertion failure when the process exited.
+    }
 }
 # Only navigate or open details. Never invoke Play/Install or any metadata action.
 # Run against a newly started production shell, not a fixture or retry-recovered view.
@@ -42,6 +49,8 @@ try {
         $null = Ui @('screenshot', '--capture-screen', '-o', (Join-Path $OutputDirectory "$Page.png"))
     }
     Check 'Poster activation opens details and focuses Play or Install without activating it' {
+        Ui @('get-focused') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'before-activation-focus.json')
+        Ui @('get-property', 'Overlay.Status', '-p', 'HelpText') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'before-activation-state.json')
         $null = Ui @('invoke', "$collection.Item.0")
         $null = Ui @('wait-for', 'Widget.playnite-library.details.play', '-t', '10000')
         $null = Ui @('wait-for', 'Widget.playnite-library.details.play', '-p', 'HasKeyboardFocus', '--value', 'True', '-t', '5000')
