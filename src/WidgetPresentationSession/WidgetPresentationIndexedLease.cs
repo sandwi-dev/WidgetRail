@@ -19,11 +19,12 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
     internal bool Retired;
     public string LeaseId { get; }
     public IndexedCollectionRange Range { get; }
+    public IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles { get; }
     public bool IsCurrent => owner.IsIndexedLeaseCurrent(this);
 
     internal WidgetPresentationIndexedLease(WidgetPresentationSession owner, WidgetPresentationAuthority authority,
-        BridgeIndexedRangeRequest request, string scopeId, string leaseId, IndexedCollectionRange range)
-    { this.owner = owner; Authority = authority; Request = request; ScopeId = scopeId; LeaseId = leaseId; Range = range; }
+        BridgeIndexedRangeRequest request, string scopeId, string leaseId, IndexedCollectionRange range, IReadOnlyDictionary<string, BridgeNodeRenderStyles> renderStyles)
+    { this.owner = owner; Authority = authority; Request = request; ScopeId = scopeId; LeaseId = leaseId; Range = range; RenderStyles = renderStyles; }
 
     /// <summary>
     /// Pass the exact frame displayed when input originated. Stale frames are never

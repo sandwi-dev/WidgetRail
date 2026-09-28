@@ -12,7 +12,8 @@ public sealed partial class MainWindow : Window
     private bool cleanupStarted;
 
     public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
-        bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false, bool validateIndexed = false, bool validateFocusPolicy = false)
+        bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false, bool validateIndexed = false, bool validateFocusPolicy = false,
+        string? indexedValidationPipe = null)
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
@@ -47,6 +48,8 @@ public sealed partial class MainWindow : Window
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
+        else if (indexedValidationPipe is not null)
+            RootFrame.Content = new Validation.IndexedWidgetValidationPage(indexedValidationPipe);
         else if (widgetConfiguration is not null)
             RootFrame.Content = new Validation.BridgeWidgetValidationPage(widgetConfiguration);
         else if (validateControls)
@@ -58,15 +61,11 @@ public sealed partial class MainWindow : Window
         else RootFrame.Navigate(validateExternalSurface ? typeof(Validation.ExternalSurfacePage) :
             validateCollection ? typeof(Validation.CollectionValidationPage) :
             validateGridView ? typeof(Validation.GridViewValidationPage) : typeof(MainPage));
-        AppWindow.Closing += async (_, args) =>
+        AppWindow.Closing += (sender, args) =>
         {
             if (closingAfterCleanup || RootFrame.Content is not IAsyncDisposable resource) return;
             args.Cancel = true;
-            if (cleanupStarted) return;
-            cleanupStarted = true;
-            try { await resource.DisposeAsync(); }
-            catch (Exception error) { System.Diagnostics.Trace.TraceError("WinUI page shutdown failed: {0}", error); }
-            finally { closingAfterCleanup = true; Close(); }
+            _ = CloseWithCleanupAsync();
         };
         Activated += (_, args) =>
         {
@@ -89,5 +88,14 @@ public sealed partial class MainWindow : Window
 
     public void StartReplay() => replay?.Start();
 
-    private void CloseClicked(object sender, RoutedEventArgs e) => Close();
+    private async void CloseClicked(object sender, RoutedEventArgs e) => await CloseWithCleanupAsync();
+
+    private async Task CloseWithCleanupAsync()
+    {
+        if (cleanupStarted) return;
+        cleanupStarted = true;
+        try { if (RootFrame.Content is IAsyncDisposable resource) await resource.DisposeAsync(); }
+        catch (Exception error) { System.Diagnostics.Trace.TraceError("WinUI page shutdown failed: {0}", error); }
+        finally { closingAfterCleanup = true; Close(); }
+    }
 }

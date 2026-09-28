@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text.Json;
 using WidgetRail.WidgetBridge;
@@ -1028,8 +1027,8 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         var renderStyles = payload.GetProperty("renderStyles")
             .Deserialize<Dictionary<string, BridgeNodeRenderStyles>>(BridgeJson.Options)
             ?? throw new BridgeProtocolException("WidgetBridge returned null render styles.");
-        if (renderStyles.Count > BridgeRenderStyleLimits.MaximumNodes)
-            throw new BridgeProtocolException("WidgetBridge returned oversized render styles.");
+        var frozenStyles = BridgeRenderStyleContract.ValidateAndFreeze(renderStyles,
+            BridgeRenderStyleContract.SnapshotNodeIds(snapshot), requireComplete: false);
         var authority = new WidgetPresentationAuthority(
             descriptor.Id,
             descriptor.RuntimeGeneration,
@@ -1042,7 +1041,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             authority,
             descriptor,
             snapshot,
-            new ReadOnlyDictionary<string, BridgeNodeRenderStyles>(renderStyles));
+            frozenStyles);
         WidgetPresentationState committed;
         var startPublications = false;
         lock (_gate)

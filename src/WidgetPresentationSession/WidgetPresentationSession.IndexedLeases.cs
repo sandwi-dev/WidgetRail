@@ -7,6 +7,8 @@ namespace WidgetRail.WidgetPresentationSession;
 
 public sealed partial class WidgetPresentationSession
 {
+    /// <summary>Shared range/artwork provider capacity available to a host demand scheduler.</summary>
+    public int MaximumConcurrentIndexedRequests => IndexedProviderCapacity;
     private readonly SemaphoreSlim _indexedReleaseCapacity = new(4, 4);
     private readonly Dictionary<string, WidgetPresentationIndexedLease> _indexedLeases = new(StringComparer.Ordinal);
     private readonly HashSet<Task> _indexedLeaseRetirements = [];

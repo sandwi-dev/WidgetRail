@@ -93,6 +93,14 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         QueuePump();
     }
 
+    public void RetryFailedPages()
+    {
+        CheckAccess();
+        if (failedPages.Count == 0) return;
+        failedPages.Clear();
+        QueuePump();
+    }
+
     [System.Diagnostics.CodeAnalysis.AllowNull]
     public object this[int index]
     {

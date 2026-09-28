@@ -3,7 +3,7 @@ using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
 
-internal static class BridgeIndexedLeaseRegistryScenarios
+internal static partial class BridgeIndexedLeaseRegistryScenarios
 {
     internal static async Task DataLifetimeAndInputAuthorityAreSeparate()
     {

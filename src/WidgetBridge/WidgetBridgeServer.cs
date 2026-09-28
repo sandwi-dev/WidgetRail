@@ -411,7 +411,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.AcquireIndexedRange:
         {
             var rangeRequest = BridgeJson.FromElement<BridgeIndexedRangeRequest>(request.Payload);
-            using var publication = await _registry.AcquireIndexedRangeAsync(rangeRequest, cancellationToken).ConfigureAwait(false);
+            using var publication = await _registry.AcquireIndexedRangeAsync(rangeRequest, cancellationToken,
+                (configured, range) => BridgeRenderStyleResolver.ResolveRange(range, ResolvePresentationTheme(configured))).ConfigureAwait(false);
             var lease = publication.Value;
             try
             {
@@ -1111,6 +1112,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             },
             cancellationToken);
 
+    private WidgetRail.WidgetStyling.WrssTheme? ResolvePresentationTheme(ConfiguredWidget configured) =>
+        _appearance is null ? configured.CompiledTheme : _appearance.ResolveWidgetTheme(configured.Id, configured.StylePackage);
+
     private async Task ReplySnapshotAsync(
         long requestId,
         string widgetId,
@@ -1122,10 +1126,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         var snapshot = snapshotResult.Snapshot;
         var configuredForStyle = snapshotResult.Configured;
-        var theme = _appearance is null
-            ? configuredForStyle.CompiledTheme
-            : _appearance.ResolveWidgetTheme(
-                configuredForStyle.Id, configuredForStyle.StylePackage);
+        var theme = ResolvePresentationTheme(configuredForStyle);
         var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, theme);
         var windowPreviews = _supportsWindowPreviews
             ? await WindowPreviewResolver.ResolveAsync(_consentStore, configuredForStyle, snapshot, cancellationToken).ConfigureAwait(false)
@@ -1168,11 +1169,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             return;
         }
 
-        var theme = _appearance is null
-            ? presentation.Configured.CompiledTheme
-            : _appearance.ResolveWidgetTheme(
-                presentation.Configured.Id,
-                presentation.Configured.StylePackage);
+        var theme = ResolvePresentationTheme(presentation.Configured);
         var renderStyles = BridgeRenderStyleResolver.Resolve(presentation.Snapshot, theme);
         var windowPreviews = _supportsWindowPreviews
             ? await WindowPreviewResolver.ResolveAsync(_consentStore, presentation.Configured, presentation.Snapshot, cancellationToken).ConfigureAwait(false)

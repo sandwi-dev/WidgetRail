@@ -95,6 +95,7 @@ public sealed partial class WidgetPresentationSession
                 throw new BridgeProtocolException("WidgetBridge returned an unexpected indexed range response.");
             IndexedCollectionRange received;
             string? leaseId = null;
+            IReadOnlyDictionary<string, BridgeNodeRenderStyles>? renderStyles = null;
             if (acquire)
             {
                 var response = BridgeJson.FromElement<BridgeIndexedLeaseResponse>(envelope.Payload);
@@ -103,6 +104,7 @@ public sealed partial class WidgetPresentationSession
                     throw new BridgeProtocolException("WidgetBridge returned foreign or malformed indexed lease authority.");
                 received = response.Lease.Range;
                 leaseId = response.Lease.LeaseId;
+                renderStyles = response.RenderStyles;
             }
             else
             {
@@ -124,12 +126,18 @@ public sealed partial class WidgetPresentationSession
                 if (acquire)
                 {
                     if (_indexedLeases.ContainsKey(leaseId!)) throw new BridgeProtocolException("WidgetBridge reused an owned lease identity.");
-                    lease = new(this, authority, operation.Request, operation.ScopeId, leaseId!, frozen);
+                    var frozenStyles = BridgeRenderStyleContract.ValidateAndFreeze(renderStyles,
+                        BridgeRenderStyleContract.RangeNodeIds(frozen), requireComplete: true);
+                    lease = new(this, authority, operation.Request, operation.ScopeId, leaseId!, frozen, frozenStyles);
                     _indexedLeases.Add(leaseId!, lease);
                 }
                 succeeded = true;
                 return new(frozen, lease);
             }
+        }
+        catch (System.Text.Json.JsonException error)
+        {
+            throw new BridgeProtocolException("WidgetBridge returned malformed indexed range data.", error);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
         {

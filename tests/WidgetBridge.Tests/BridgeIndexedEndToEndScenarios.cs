@@ -2,9 +2,24 @@ using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 internal static class BridgeIndexedEndToEndScenarios
 {
+    internal static async Task ServeValidationAsync(string pipe)
+    {
+        var theme = WrssThemeCompiler.Compile([WrssParser.Parse("image { width: 48px; height: 48px; } text { font-size: 16px; }", "native-validation.wrss").Document]);
+        if (!theme.IsValid) throw new InvalidOperationException("Native validation styles are invalid.");
+        var configured = new ConfiguredWidget
+        {
+            Id = "indexed-owned", Name = "Indexed ownership", InstanceId = "indexed-owned.instance",
+            PackageId = "dev.indexed", PublisherId = "dev", WorkerExecutable = Environment.ProcessPath!,
+            WorkerFingerprint = new('a', 64), CatalogFingerprint = new('a', 64),
+            CompiledTheme = theme.Theme,
+        };
+        await using var server = new WidgetBridgeServer(pipe, new([configured]));
+        await server.RunAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+    }
     internal static async Task SessionToRealWorker()
     {
         var configured = new ConfiguredWidget
@@ -66,17 +81,24 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
 {
     private readonly WidgetIndexedCollection<int, int> source;
     private string status = "initial";
+    private bool grid;
+    private long calls;
     internal IndexedOwnedBridgeProbeWidget()
     {
         source = CreateIndexedCollection<int, int>("owned", 0, 100, new()
         {
-            ReadRange = (_, start, count, _) => ValueTask.FromResult<IReadOnlyList<int>>(Enumerable.Range(start, count).ToArray()),
+            ReadRange = async (_, start, count, token) =>
+            {
+                await Task.Delay(80, token);
+                return Enumerable.Range(start, count).ToArray();
+            },
             ItemKey = item => new("item." + item),
             RenderItem = (_, item, context) => UI.ActionSurface("open", context.Id("row"), $"Item {item}",
                 ActionSurfaceOrientation.Horizontal, UI.Artwork(new("cover"), context.Id("cover"), "Cover"),
                 UI.Text($"Item {item}", context.Id("title"))).Shortcut(ControllerButton.Y, actionId: "replace"),
             OnAction = (query, item, action, _) =>
             {
+                Interlocked.Increment(ref calls);
                 Volatile.Write(ref status, $"row:{query}:{item}:{action.ActionId}");
                 if (action.ActionId == "replace") source!.PublishQuery(query + 1, 100);
                 Invalidate();
@@ -87,7 +109,16 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         });
     }
     public override WidgetView Render() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
-        UI.Button("Parent", "parent", "parent"), UI.CollectionList("items", source, 64, "Items").Shortcut(ControllerButton.X, "parent")), "parent");
+        UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"),
+        UI.Row("toolbar", UI.Button("Parent", "parent", "parent"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid")),
+        (grid ? UI.CollectionGrid("items", source, 180, 100, "Items", 5) : UI.CollectionList("items", source, 64, "Items"))
+            .Shortcut(ControllerButton.X, "parent")), "parent");
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
-    { Volatile.Write(ref status, action.ActionId); Invalidate(); return ValueTask.CompletedTask; }
+    {
+        Interlocked.Increment(ref calls);
+        Volatile.Write(ref status, action.ActionId);
+        if (action.ActionId == "content") source.UpdateContent(1);
+        if (action.ActionId == "grid") grid = !grid;
+        Invalidate(); return ValueTask.CompletedTask;
+    }
 }

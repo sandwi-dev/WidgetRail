@@ -517,3 +517,39 @@ Next: connect these leases to native item templates, constrain collection layout
 validate navigation to unrealized items, and adopt real YouTube/Playnite sources.
 The remaining styles, modals, media, pinned surfaces, animations and shell work
 are still required for the full migration. Nothing was merged to main.
+
+## Native interactive collection templates
+
+Owned row ranges are now connected to the shared WinUI presenter through native
+ListView/GridView controls and compiled item templates. Rich row contents reuse
+the ordinary declaration renderer; native containers own interaction and focus.
+Rows receive the bridge's computed styles, and opaque artwork shares bounded
+provider admission with range loading. Basic native Grid auto/star layout keeps
+fill collections constrained. Content replacement retains old image pixels until
+new artwork is decoded, and realized row resource work drains during disposal.
+
+An actual semantic-controller probe established that pure spatial focus search
+could lose moves at realization boundaries (60 Down inputs reached item 49).
+The collection adapter now resolves the logical target, coalesces frame bursts,
+and asks WinUI to realize/scroll/focus its native container. Current probes reach
+item 60 after 60 moves, item 50 after reversing 20 moves from 70, and preserve the
+grid column. Window close now enters the same asynchronous cleanup path from
+both the close button and system close; test bridge processes terminate cleanly.
+
+Validation uses `--indexed-validation-pipe` with the test assembly's
+`--serve-indexed-validation` mode, never a physical controller owner or installed
+community widget. The full session suite passes 71 tests; indexed bridge checks
+pass 15 tests. Existing native controls/focus/source checks pass 16/15/13 tests.
+The native widget script covers eleven checks, including actual invocation count,
+styled artwork, deep refresh, forward/reverse/burst navigation, cancellation of
+superseded focus and GridView.
+Evidence is under `artifacts/winui-indexed/widget-ui-checkpoint/`,
+`templates-checkpoint-build.log`, `worker-checkpoint-tests.log`, and
+`artifacts/winui-session-leases/styles-final-tests.log`.
+
+The presenter remains incomplete: full styles/pseudo-state presentation, live
+theme changes for retained leases, grouped collections, logical collection focus
+requests, modals, popups, media, pinned surfaces and production-shell integration
+are not proven. Production YouTube/Playnite sources still need conversion and
+physical/performance validation. The collection document records concrete YouTube
+playback and SDK contract requirements discovered in this pass.

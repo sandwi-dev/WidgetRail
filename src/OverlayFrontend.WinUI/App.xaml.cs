@@ -56,7 +56,8 @@ public partial class App : Application
             .FirstOrDefault(value => value.StartsWith("--widget-config=", StringComparison.Ordinal))?["--widget-config=".Length..];
         var main = new MainWindow(arguments.Contains("--validate-external-surface"), arguments.Contains("--validate-controller"),
             arguments.Contains("--replay-controller"), arguments.Contains("--validate-collection"), widgetConfiguration,
-            arguments.Contains("--validate-gridview"), arguments.Contains("--validate-controls"), arguments.Contains("--validate-indexed"), arguments.Contains("--validate-focus-policy"));
+            arguments.Contains("--validate-gridview"), arguments.Contains("--validate-controls"), arguments.Contains("--validate-indexed"), arguments.Contains("--validate-focus-policy"),
+            arguments.FirstOrDefault(value => value.StartsWith("--indexed-validation-pipe=", StringComparison.Ordinal))?["--indexed-validation-pipe=".Length..]);
         Window = main;
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         Window.Activate();

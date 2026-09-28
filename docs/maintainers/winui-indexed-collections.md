@@ -308,6 +308,55 @@ shortcuts, artwork, query replacement and shutdown. All four existing dispatcher
 and eighteen registry regressions also pass. These are correctness checks;
 production-widget performance still requires native templates and real sources.
 
+### Native interactive templates
+
+The shared WinUI presenter now hosts indexed declarations with `ListView` or
+`GridView` and a compiled `x:Bind` item template. `WidgetIndexedRows` maps native
+range callbacks to owned presentation-session leases. Ranges and opaque artwork
+share the session's advertised provider capacity, so realizing a page of image
+rows cannot overwhelm the service's artwork slots. Item contents use the same
+declaration renderer as ordinary widget content, with native item containers
+owning focus and activation. Range replies carry validated immutable computed
+styles, resolved with the same theme cascade as parent snapshots.
+
+Stacks/rows use native Grid auto/star tracks for their basic layout, including
+declared growth, so a fill collection receives a finite viewport. This is an
+initial layout/style mapping, not the complete WRSS implementation. Ordinary
+scroll regions still own their native ScrollViewer. Lists/grids are never wrapped
+in another scroll control by the collection adapter.
+
+Spatial `FocusManager.TryMoveFocus` alone missed moves at realization boundaries
+in a real-worker probe. The indexed adapter therefore chooses a logical index,
+coalesces pending directional input, and uses native `ScrollIntoView` followed by
+focus on the realized native container. Native WinUI still performs realization,
+layout and scrolling; the adapter has no scrolling timer or layout engine.
+Pointer/keyboard navigation and disabled scopes cancel pending intent. Grid
+column count follows the same bounded native wrap-panel configuration.
+
+`Test-WinUiIndexedWidget.ps1` exercises both service pipes, a real worker, range
+delay, declared artwork sizes, content revision, forward/reverse navigation,
+batched input, and native grid columns. The current 100-row fixture is a correctness
+check at 125% Windows scaling. It does not establish YouTube/Playnite frame times,
+physical controller routing, live theme restyling, or complete widget feature parity.
+
+### First-party adoption requirements
+
+YouTube Music already downloads a complete bounded browse page (usually capped
+at 500 entries); its current 24-item cursor layer is artificial paging over that
+array. Freeze membership/order and slice it in `ReadRange`. Capture the full
+ordered song-only playback context and selected occurrence in each query: playing
+a row must not substitute the current section or just the realized window.
+Queue selection needs explicit queue identity/revision and occurrence IDs,
+validated atomically in `MusicService`; duplicate tracks are distinct occurrences.
+
+Before converting all sections, add typed logical collection entry/return focus
+targets, grouped header/grid declarations for Home's single scrolling surface,
+and public `WidgetTestHost` indexed helpers. Current static focus IDs cannot refer
+to undeclared lazy children. Keep author tests exercising real captured handlers
+and the existing action queue. The relevant first-party suite is
+`tests/YtMusicStandalone.Tests`, and it needs to retain playback, mixed result,
+queue mutation, section return, account reset and stale search assertions.
+
 ### Native page ownership and content refresh
 
 `IndexedItemsSource` accepts an asynchronous lifetime with each range result.

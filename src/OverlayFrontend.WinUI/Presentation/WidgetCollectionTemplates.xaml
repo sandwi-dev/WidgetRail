@@ -1,0 +1,13 @@
+<ResourceDictionary
+    x:Class="WidgetRail.OverlayFrontend.WinUI.Presentation.WidgetCollectionTemplates"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:collections="using:WidgetRail.OverlayFrontend.WinUI.Collections"
+    xmlns:local="using:WidgetRail.OverlayFrontend.WinUI.Presentation">
+    <DataTemplate x:Key="WidgetIndexedRowTemplate" x:DataType="collections:IndexedItem">
+        <local:WidgetIndexedRowView Row="{x:Bind Content, Mode=OneWay}" />
+    </DataTemplate>
+    <ItemsPanelTemplate x:Key="WidgetIndexedVerticalPanel"><ItemsStackPanel Orientation="Vertical" /></ItemsPanelTemplate>
+    <ItemsPanelTemplate x:Key="WidgetIndexedHorizontalPanel"><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+    <ItemsPanelTemplate x:Key="WidgetIndexedGridPanel"><ItemsWrapGrid Orientation="Horizontal" /></ItemsPanelTemplate>
+</ResourceDictionary>

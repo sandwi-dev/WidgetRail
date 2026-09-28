@@ -376,7 +376,8 @@ internal sealed record BridgeIndexedRangeResponse(
     IndexedCollectionRange Range);
 internal sealed record BridgeIndexedLeaseResponse(
     string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
-    IndexedCollectionLease Lease);
+    IndexedCollectionLease Lease,
+    [property: JsonRequired] IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles);
 internal sealed record BridgeIndexedLeaseRequest(
     string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration, string LeaseId);
 internal sealed record BridgeIndexedInputRequest(

@@ -63,7 +63,8 @@ internal sealed partial class BridgeClientRegistry
     }
 
     internal async Task<BridgeClientPublication<BridgeIndexedLeaseResponse>> AcquireIndexedRangeAsync(
-        BridgeIndexedRangeRequest request, CancellationToken cancellationToken)
+        BridgeIndexedRangeRequest request, CancellationToken cancellationToken,
+        Func<ConfiguredWidget, IndexedCollectionRange, IReadOnlyDictionary<string, BridgeNodeRenderStyles>>? resolveStyles = null)
     {
         BridgeIndexedRangeValidation.Validate(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -115,13 +116,30 @@ internal sealed partial class BridgeClientRegistry
             await registration.OperationGate.WaitAsync(token).ConfigureAwait(false);
             try
             {
+                ConfiguredWidget configured;
+                ViewSnapshot parent;
                 lock (_gate)
                 {
                     token.ThrowIfCancellationRequested();
-                    var parent = DemandIndexedAuthorityLocked(registration, request);
+                    parent = DemandIndexedAuthorityLocked(registration, request);
+                    configured = registration.Configured;
+                }
+                IndexedCollectionContract.ValidateRange(parent, request.Range, acquired.Lease.Range);
+                // Resolve only bounded range roots. Compilation never holds the global
+                // registry lock; the final identity check rejects concurrent catalog changes.
+                var styles = resolveStyles is null
+                    ? BridgeRenderStyleResolver.ResolveRange(acquired.Lease.Range, configured.CompiledTheme)
+                    : resolveStyles(configured, acquired.Lease.Range);
+                styles = BridgeRenderStyleContract.ValidateAndFreeze(styles,
+                    BridgeRenderStyleContract.RangeNodeIds(acquired.Lease.Range), requireComplete: true);
+                lock (_gate)
+                {
+                    token.ThrowIfCancellationRequested();
+                    _ = DemandIndexedAuthorityLocked(registration, request);
+                    if (!ReferenceEquals(registration.Configured, configured))
+                        throw new BridgeProtocolException("Indexed style configuration changed before publication.");
                     if (registration.Client.Starts != workerStart || !Guid.TryParseExact(acquired.Lease.LeaseId, "N", out _))
                         throw new BridgeProtocolException("Indexed acquisition worker authority changed.");
-                    IndexedCollectionContract.ValidateRange(parent, request.Range, acquired.Lease.Range);
                     var key = (request.WidgetId, acquired.Lease.LeaseId);
                     if (indexedOwners.ContainsKey(key))
                         throw new BridgeProtocolException("Worker reused indexed lease identity.");
@@ -131,7 +149,7 @@ internal sealed partial class BridgeClientRegistry
                     lifetime = null;
                     acquired = null;
                     var response = new BridgeIndexedLeaseResponse(request.WidgetId, request.InstanceId, request.RuntimeGeneration,
-                        request.PresentationGeneration, admitted.Runtime.Lease);
+                        request.PresentationGeneration, admitted.Runtime.Lease, styles);
                     var publication = AdmitPublicationLocked(registration, response);
                     delivered = true;
                     return publication;

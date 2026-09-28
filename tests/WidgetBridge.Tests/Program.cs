@@ -20,6 +20,12 @@ using WidgetRail.Samples.SdkGalleryWidget;
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
 
+if (args is ["--serve-indexed-validation", var validationPipe])
+{
+    await BridgeIndexedEndToEndScenarios.ServeValidationAsync(validationPipe);
+    return 0;
+}
+
 if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var outputPath])
 {
     var snapshot = SnapshotJson.Deserialize(await File.ReadAllBytesAsync(snapshotPath));
@@ -41,6 +47,8 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Indexed styles failure releases acquired runtime semantics", BridgeIndexedLeaseRegistryScenarios.StylePreparationFailureReleasesExactRuntimeLease),
+    ("Indexed styles match parent cascade and focus fragments", BridgeIndexedStyleScenarios.RangeStylesMatchSnapshotCascadeAndFragments),
     ("Indexed lease wire contracts and strict classification", BridgeIndexedLeaseWireScenarios.ContractsAndClassification),
     ("Indexed lease session through bridge to real worker", BridgeIndexedEndToEndScenarios.SessionToRealWorker),
     ("Indexed lease registry real worker semantic round trip", BridgeIndexedLeaseRegistryScenarios.RealWorkerLeaseRoundTrip),

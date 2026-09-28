@@ -3,11 +3,13 @@
     x:Class="WidgetRail.OverlayFrontend.WinUI.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:WidgetRail.OverlayFrontend.WinUI">
+    xmlns:local="using:WidgetRail.OverlayFrontend.WinUI"
+    xmlns:presentation="using:WidgetRail.OverlayFrontend.WinUI.Presentation">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <presentation:WidgetCollectionTemplates />
                 <!-- Other merged dictionaries here -->
             </ResourceDictionary.MergedDictionaries>
             <!-- Other app resources here -->

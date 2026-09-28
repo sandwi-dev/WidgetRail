@@ -113,7 +113,7 @@ public sealed partial class IndexedRangeSessionTests
             var acquire = await ReadAsync(channel); var request = AcquireRequest(acquire);
             await ReplyAsync(channel, acquire.RequestId, BridgeMessageTypes.IndexedLease,
                 new BridgeIndexedLeaseResponse("foreign", request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration,
-                    new(Guid.NewGuid().ToString("N"), Range(request.Range))));
+                    new(Guid.NewGuid().ToString("N"), Range(request.Range)), EmptyRangeStyles(Range(request.Range))));
             var cancel = await ReadAsync(channel);
             Assert.AreEqual(BridgeMessageTypes.CancelIndexedRange, cancel.Type);
             Assert.AreEqual(request, BridgeJson.FromElement<BridgeIndexedRangeRequest>(cancel.Payload));
@@ -370,7 +370,7 @@ public sealed partial class IndexedRangeSessionTests
         if (artwork) range = range with { Items = range.Items.Select(item => item with { Root = item.Root with { FocusBackgroundArtworkHandle = "cover" } }).ToArray() };
         return ReplyAsync(channel, envelope.RequestId, BridgeMessageTypes.IndexedLease,
             new BridgeIndexedLeaseResponse(request.WidgetId, request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration,
-                new(Guid.NewGuid().ToString("N"), range)));
+                new(Guid.NewGuid().ToString("N"), range), EmptyRangeStyles(range)));
     }
     private static Task ReleaseReplyAsync(BridgeFrameChannel channel, BridgeEnvelope envelope)
     {

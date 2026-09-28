@@ -11,11 +11,29 @@ internal static class BridgeRenderStyleResolver
         WrssTheme? theme)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        return ResolveRoots(EnumerateRoots(), theme);
+
+        IEnumerable<(ViewNode Root, string Prefix)> EnumerateRoots()
+        {
+            yield return (snapshot.Root, string.Empty);
+            foreach (var layout in snapshot.PinnedLayouts)
+                if (layout.Root is { } root) yield return (root, layout.Id + "/");
+        }
+    }
+
+    internal static IReadOnlyDictionary<string, BridgeNodeRenderStyles> ResolveRange(
+        IndexedCollectionRange range, WrssTheme? theme)
+    {
+        ArgumentNullException.ThrowIfNull(range);
+        return ResolveRoots(range.Items.Select(item => (item.Root, string.Empty)), theme);
+    }
+
+    private static IReadOnlyDictionary<string, BridgeNodeRenderStyles> ResolveRoots(
+        IEnumerable<(ViewNode Root, string Prefix)> roots, WrssTheme? theme)
+    {
         var nodes = new SortedDictionary<string, BridgeNodeRenderStyles>(StringComparer.Ordinal);
         var totalProperties = 0;
-        Visit(snapshot.Root, string.Empty);
-        foreach (var layout in snapshot.PinnedLayouts)
-            if (layout.Root is { } root) Visit(root, layout.Id + "/");
+        foreach (var (root, prefix) in roots) Visit(root, prefix);
         return new ReadOnlyDictionary<string, BridgeNodeRenderStyles>(nodes);
 
         void Visit(ViewNode node, string prefix)
