@@ -9,7 +9,7 @@ internal sealed partial class WidgetViewPresenter
     internal void ApplyAppearance(AppearanceSettings value, bool animationsEnabled)
     {
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Apply appearance on the widget dispatcher.");
-        if (appearance != value || systemAnimationsEnabled != animationsEnabled) SettleTransitions();
+        if (appearance != value || systemAnimationsEnabled != animationsEnabled) { SettleTransitions(); SettleModalExit(); }
         appearance = value ?? throw new ArgumentNullException(nameof(value));
         systemAnimationsEnabled = animationsEnabled;
         WidgetPresentationSurface.SetMotionAppearance(value, animationsEnabled);

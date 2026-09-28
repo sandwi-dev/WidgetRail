@@ -160,7 +160,7 @@ state; stale queued Unloaded after reparenting does not retire an already-loaded
 This checkpoint animates the outline; focused background/border changes still use the
 shared native style state immediately. The section/navigation integration below
 adds outgoing lifetime and navigation motion. Coordinated focus-surface crossfades
-and dialog exits remain unfinished.
+remain unfinished; modal exits are covered below.
 
 ## Section and navigation integration
 
@@ -193,7 +193,7 @@ Reduced motion and None update directly without outgoing retention.
 Content containing a separately owned MediaViewport or WindowPreview currently
 updates directly, while eligible header/selection channels still animate. This
 preserves live-source ownership pending a composed live-surface implementation.
-Dialog exits, focus-surface crossfades and depth shadows remain separate work.
+Focus-surface crossfades and depth shadows remain separate work; modal exits are covered below.
 
 Validation: 90 native style checks, including genuine declaration reconciliation,
 stale outgoing action rejection, automation exclusion, synchronized channels,
@@ -207,6 +207,44 @@ Surface-shading is now a cached native vertical LinearGradientBrush behind conte
 Its top/bottom colors use the original renderer's bounded Shade formula and preserve
 the base color alpha. High Contrast removes this decorative gradient. Shadow and
 per-edge depth strokes remain separate unfinished mappings.
+
+## Widget-local modal exit
+
+The SDK still removes the modal immediately from the authoritative declaration.
+The WinUI presenter retains only its dialog subtree and scrim in the existing
+noninteractive outgoing layer. The original parent controls remain mounted in a
+stable native stage while dialog chrome occupies its separate overlay slot. They
+recover their scope, remembered focus and scroll position at
+publication; they do not wait for animation completion. No second parent tree or
+input scope is created. Old dialog command tokens cannot dispatch against the new
+bindings. The outgoing layer rejects focus and exposes no automation children.
+
+`WidgetDialogMotion.CloseAsync` uses the same native targets and global dialog
+recipe as entrance. Closing during entrance retargets from current compositor
+values. Dialog and scrim remain widget-local, with existing bounds clipping, and
+finish as one batch. Ordinary parent updates do not replay the exit. A newly
+opened modal cancels/removes the outgoing dialog before its own entry, so rapid
+close/reopen cannot queue obsolete dialogs or restore their focus.
+
+Resize, host unload, preference changes, runtime replacement and presenter
+disposal retire the outgoing visual. Reduced motion and disabled dialog animation
+close directly without retention. An unmeasured/empty dialog completes without
+waiting for later geometry. Direct replacement by another dialog or replacement
+of its parent page uses immediate retirement instead of a crossfade; this avoids
+retaining obsolete parent/input authority. SDK modal semantics remain unchanged.
+
+The stable parent slot also corrects native virtualization reset during repeated
+modal reparenting. A native trace reproduced offset 3810.4 resetting to 0 and then
+3970.4 during modal cycles; avoiding redundant ScrollIntoView calls did not fix it.
+Keeping the parent mounted preserves its native scroll owner instead of repairing
+the offset afterward. The real-worker indexed-modal suite passes all 25 checks,
+including refreshed row content, repeated cycles and scaled dismissal.
+
+Native exit validation passes 36 modal checks and the broader 98-check native
+style suite. The complete indexed scenario sequence still has a separate open
+regression: after earlier navigation/surface probes, a later reopen reaches the
+worker but focus remains on the parent row. The isolated 25-check modal scenario
+passes, so the full sequence is not yet accepted as green.
 
 ## Focus-selected background artwork
 

@@ -47,7 +47,16 @@ internal sealed class WidgetMotionStage : Panel
 {
     internal WidgetOutgoingLayer Outgoing { get; } = new();
     internal FrameworkElement? Current { get; private set; }
+    internal FrameworkElement? Modal { get; private set; }
     internal WidgetMotionStage() => Children.Add(Outgoing);
+    internal void SetModal(FrameworkElement? value)
+    {
+        if (ReferenceEquals(Modal, value)) return;
+        if (Modal is not null) Children.Remove(Modal);
+        Modal = value;
+        if (value is not null) Children.Insert(Children.Count - 1, value);
+        InvalidateMeasure();
+    }
     internal void SetCurrent(FrameworkElement? value)
     {
         if (ReferenceEquals(Current, value)) return;
@@ -59,12 +68,14 @@ internal sealed class WidgetMotionStage : Panel
     protected override Size MeasureOverride(Size availableSize)
     {
         Current?.Measure(availableSize);
+        Modal?.Measure(availableSize);
         Outgoing.Measure(availableSize);
         return Current?.DesiredSize ?? new();
     }
     protected override Size ArrangeOverride(Size finalSize)
     {
         Current?.Arrange(new(new(), finalSize));
+        Modal?.Arrange(new(new(), finalSize));
         Outgoing.Arrange(new(new(), finalSize));
         return finalSize;
     }

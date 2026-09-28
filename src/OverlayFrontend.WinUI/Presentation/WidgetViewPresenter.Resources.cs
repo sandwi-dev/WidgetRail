@@ -128,10 +128,13 @@ internal sealed partial class WidgetViewPresenter
         if (disposed) return;
         disposed = true;
         SettleTransitions();
+        SettleModalExit();
         WidgetControllerPrompts.Changed -= ControllerPromptsChanged;
         DismissTransientControl();
         ClearSurfaceState();
         foreach (var binding in bindings.Values) Retire(binding);
+        motionStage?.SetModal(null);
+        motionStage?.SetCurrent(null);
         Content = null;
         bindings.Clear(); declarations.Clear();
         await Task.WhenAll(retirements.ToArray());

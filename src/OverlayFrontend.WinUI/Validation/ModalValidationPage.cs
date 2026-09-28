@@ -57,6 +57,8 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             var parentWidth = parentScroll.ActualWidth;
             Check(offset > 0 && FocusedId == "Widget.game.12", "fixture begins at a scrolled parent item");
             var parentCommand = parentButton.Command!;
+            var parentUnloads = 0;
+            parentScroll.Unloaded += (_, _) => ++parentUnloads;
 
             modal = "details.game12"; Apply();
             await Until(() => FocusedId == "Widget.play" && Find(modal) is { ActualWidth: > 0 });
@@ -117,12 +119,27 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             await Until(() => FocusedId == "Widget.play");
             Check(!ReferenceEquals(panel, Find(modal)), "new modal scope gets fresh controls and initial focus");
             var retiredPlay = ((Button)Find("play")!).Command!;
+            var retiredButton = (Button)Find("play")!;
             modal = null; Apply();
+            Check(presenter.HasClosingModal, "closing retains only a noninteractive dialog visual while publishing the parent");
             await Until(() => FocusedId == "Widget.game.12");
             Check(ReferenceEquals(parentScroll, Find("parent.scroll")) && Near(parentScroll.VerticalOffset, offset),
                 "closing returns exact parent focus and viewport");
+            Check(parentUnloads == 0, "modal opening and closing keep the parent mounted in one native stage");
             retiredPlay.Execute(null);
             Check(actions.Count == 0, "retired dialog command cannot dispatch after close");
+            retiredButton.Focus(FocusState.Keyboard);
+            Check(FocusedId == "Widget.game.12", "closing dialog visual cannot regain native focus");
+            parentCommand.Execute(null);
+            await Until(() => actions.Count == 1);
+            Check(actions[0].Displayed.Authority.SnapshotSequence == sequence && actions[0].Action.InputScopeId == "parent",
+                "parent action during exit uses the new exact displayed frame and parent scope");
+            actions.Clear();
+            await Until(() => presenter.ModalExitPlayback is not null);
+            Check(await presenter.ModalExitPlayback! == WidgetMotionOutcome.Completed,
+                "native modal exit completes independently of restored parent focus");
+            await Until(() => !presenter.HasClosingModal);
+            Check(Find("details.game13") is null, "completed exit releases the old dialog tree");
 
             modal = "details.game13"; Apply();
             await Until(() => FocusedId == "Widget.play");
@@ -130,6 +147,22 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             presenter.ActivateFocused();
             await Until(() => actions.Count == 1);
             Check(actions[0].Action.ActionId == "play" && actions[0].Action.InputScopeId == modal + ".scope", "dialog action dispatches once with its own scope");
+            var firstReopened = Find(modal);
+            modal = null; Apply();
+            modal = "details.game13"; Apply();
+            await Until(() => FocusedId == "Widget.play");
+            Check(!presenter.HasClosingModal && !ReferenceEquals(firstReopened, Find(modal)),
+                "rapid close and reopen discards the old exit and enters only the latest dialog");
+            modal = null; Apply();
+            await Until(() => presenter.HasClosingModal);
+            presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
+            Check(!presenter.HasClosingModal, "changing to reduced motion releases an in-flight dialog exit immediately");
+            modal = "details.game13"; Apply();
+            await Until(() => FocusedId == "Widget.play");
+            modal = null; Apply();
+            Check(!presenter.HasClosingModal, "reduced-motion close does not retain an outgoing dialog");
+            modal = "details.game13"; Apply();
+            await Until(() => FocusedId == "Widget.play");
             var priorPanel = Find(modal);
             presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
             ++owner; Apply();
@@ -139,6 +172,11 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             await Until(() => reducedLayer.OpeningMotion is not null);
             Check(reducedLayer.OpeningMotion!.IsCompletedSuccessfully && await reducedLayer.OpeningMotion == WidgetMotionOutcome.Completed,
                 "global reduced-motion settings settle a fresh dialog without an animation timer");
+            presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Full }, true);
+            modal = null; Apply();
+            Check(presenter.HasClosingModal, "fixture creates an exit for teardown validation");
+            await presenter.DisposeAsync();
+            Check(!presenter.HasClosingModal, "presenter teardown revokes and releases pending dialog exits");
             if (failure is not null) throw failure;
             status.Text = $"Passed {checks.Count} modal checks";
             WriteResult(new { result = "passed", checks });

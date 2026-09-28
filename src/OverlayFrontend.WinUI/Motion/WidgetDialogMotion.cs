@@ -15,9 +15,11 @@ internal sealed class WidgetDialogMotion : IDisposable
     private WidgetCompositionTarget? scrimTarget;
     private WidgetCompositionMotion? motion;
     private bool entered;
+    private bool exiting;
     private bool disposed;
     private Vector2 size;
     internal Task<WidgetMotionOutcome>? Opening { get; private set; }
+    internal Task<WidgetMotionOutcome>? Closing { get; private set; }
 
     internal WidgetDialogMotion(FrameworkElement dialog, FrameworkElement scrim, AppearanceSettings appearance, bool systemAnimationsEnabled)
     {
@@ -48,16 +50,37 @@ internal sealed class WidgetDialogMotion : IDisposable
 
     private void Start()
     {
-        if (disposed || entered || !dialog.IsLoaded || dialog.ActualWidth <= 0 || dialog.ActualHeight <= 0 ||
+        if (disposed || entered || exiting || !dialog.IsLoaded || dialog.ActualWidth <= 0 || dialog.ActualHeight <= 0 ||
             !scrim.IsLoaded || scrim.ActualWidth <= 0 || scrim.ActualHeight <= 0) return;
         entered = true;
         dialog.LayoutUpdated -= LayoutReady;
+        CreateTargets();
+        Opening = motion!.PlayAsync([new(dialogTarget!, WidgetMotionPolicy.Dialog(options, true)),
+            new(scrimTarget!, WidgetMotionPolicy.Dialog(options, true, scrim: true))]);
+    }
+
+    internal Task<WidgetMotionOutcome> CloseAsync()
+    {
+        if (disposed) return Task.FromResult(WidgetMotionOutcome.Disposed);
+        if (Closing is not null) return Closing;
+        exiting = true;
+        dialog.LayoutUpdated -= LayoutReady;
+        if (!dialog.IsLoaded || dialog.ActualWidth <= 0 || dialog.ActualHeight <= 0 ||
+            !scrim.IsLoaded || scrim.ActualWidth <= 0 || scrim.ActualHeight <= 0)
+            return Closing = Task.FromResult(WidgetMotionOutcome.Completed);
+        if (motion is null) CreateTargets();
+        // Reuse the same targets so an opening interrupted by B starts from the
+        // compositor's current values rather than flashing fully open first.
+        return Closing = motion!.PlayAsync([new(dialogTarget!, WidgetMotionPolicy.Dialog(options, false)),
+            new(scrimTarget!, WidgetMotionPolicy.Dialog(options, false, scrim: true))]);
+    }
+
+    private void CreateTargets()
+    {
         size = new((float)dialog.ActualWidth, (float)dialog.ActualHeight);
         dialogTarget = WidgetCompositionTarget.ForClippedDialog(dialog, size);
         scrimTarget = WidgetCompositionTarget.ForClippedDialog(scrim, new((float)scrim.ActualWidth, (float)scrim.ActualHeight));
         motion = new(ElementCompositionPreview.GetElementVisual(dialog).Compositor, dialog.DispatcherQueue);
-        Opening = motion.PlayAsync([new(dialogTarget, WidgetMotionPolicy.Dialog(options, true)),
-            new(scrimTarget, WidgetMotionPolicy.Dialog(options, true, scrim: true))]);
     }
 
     private void RetireTargets()

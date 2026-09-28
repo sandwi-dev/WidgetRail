@@ -7,8 +7,8 @@ using WidgetRail.PlatformSettings;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>
-/// A bounded widget-local overlay. Native Grid measures both layers in the same
-/// viewport; the parent is retained in its original size and scroll coordinates.
+/// A bounded widget-local overlay. The stable native stage keeps its parent in
+/// the same viewport; this Grid owns only the scrim and dialog chrome.
 /// The input-blocking scrim is below the dialog and above the unchanged parent.
 /// </summary>
 internal sealed partial class WidgetModalLayer : Grid, IDisposable
@@ -24,6 +24,7 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
     internal UIElement Chrome => Scrim;
     private WidgetDialogMotion? motion;
     internal Task<WidgetMotionOutcome>? OpeningMotion => motion?.Opening;
+    internal Task<WidgetMotionOutcome> CloseAsync() => motion?.CloseAsync() ?? Task.FromResult(WidgetMotionOutcome.Completed);
     private AppearanceSettings appearance = AppearanceSettings.Default;
     private bool systemAnimationsEnabled = true;
     internal void ApplyAppearance(AppearanceSettings value, bool animationsEnabled)

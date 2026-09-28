@@ -62,6 +62,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     public WidgetViewPresenter(bool presentationOnly = false)
     {
         this.presentationOnly = presentationOnly;
+        if (!presentationOnly) Content = motionStage = new();
         nativeBaseFontSize = FontSize;
         WidgetControllerPrompts.Changed += ControllerPromptsChanged;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
@@ -69,8 +70,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         IsTabStop = false;
         XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled;
         Loaded += (_, _) => QueueEntryFocus();
-        SizeChanged += (_, _) => { SettleTransitions(); RefreshResponsiveLayout(); };
-        Unloaded += (_, _) => { DismissTransientControl(); if (!IsLoaded) SettleTransitions(); };
+        SizeChanged += (_, _) => { SettleTransitions(); SettleModalExit(); RefreshResponsiveLayout(); };
+        Unloaded += (_, _) => { DismissTransientControl(); if (!IsLoaded) { SettleTransitions(); SettleModalExit(); } };
         GotFocus += (_, _) => RememberFocus();
         GettingFocus += OnGettingFocus;
         AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelGroupEntry()), true);
@@ -98,6 +99,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (!presentationOnly && sameOwner && frame!.Authority.SnapshotSequence >= next.Authority.SnapshotSequence) return;
         var plan = Plan(root, rootScope);
         var transition = PrepareTransitions(plan, sameOwner);
+        var modalExit = PrepareModalExit(plan, sameOwner);
         var nextBindings = new Dictionary<string, Binding>(StringComparer.Ordinal);
         foreach (var declaration in plan.Values)
             nextBindings.Add(declaration.Node.Id, sameOwner && !transition.ReplacedIds.Contains(declaration.Node.Id)
@@ -109,6 +111,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
         var focused = FocusedBinding();
         var oldScope = frame?.Authority.ActiveInputScopeId;
+        var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
+        var currentModal = root.Kind == ViewNodeKind.ModalLayer ? nextBindings[root.Id].LayoutElement : null;
         applying = true;
         try
         {
@@ -116,12 +120,13 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             // updates and adjacent insertions never clear surviving child controls.
             if (motionStage is not null)
             {
-                if (!ReferenceEquals(motionStage.Current, nextBindings[root.Id].LayoutElement)) motionStage.SetCurrent(null);
+                if (!ReferenceEquals(motionStage.Current, currentRoot)) motionStage.SetCurrent(null);
+                if (!ReferenceEquals(motionStage.Modal, currentModal)) motionStage.SetModal(null);
             }
             else if (Content is FrameworkElement previousRoot && !ReferenceEquals(previousRoot, nextBindings[root.Id].LayoutElement)) Content = null;
             foreach (var (id, binding) in bindings)
             {
-                if (transition.Retained.Contains(binding)) continue;
+                if (transition.Retained.Contains(binding) || modalExit?.Retained.Contains(binding) == true) continue;
                 if (!nextBindings.TryGetValue(id, out var replacement) || !ReferenceEquals(binding, replacement)) Retire(binding);
                 if (binding.Children is null) continue;
                 for (var index = binding.Children.Children.Count - 1; index >= 0; --index)
@@ -155,6 +160,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 if (binding.Children is { } panel)
                     for (var index = 0; index < declaration.Node.Children.Count; ++index)
                     {
+                        // The authoritative parent remains in the stable stage;
+                        // modal chrome overlays it without native unload/reload.
+                        if (binding.Element is WidgetModalLayer && index == 0) continue;
                         var child = bindings[declaration.Node.Children[index].Id].LayoutElement;
                         if (index < panel.Children.Count && ReferenceEquals(panel.Children[index], child)) continue;
                         var oldIndex = panel.Children.IndexOf(child);
@@ -163,7 +171,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     }
             }
             UpdateModalGeometry();
-            if (motionStage is not null) { motionStage.SetCurrent(bindings[root.Id].LayoutElement); Content = motionStage; }
+            if (motionStage is not null) { motionStage.SetCurrent(currentRoot); motionStage.SetModal(currentModal); Content = motionStage; }
             else Content = bindings[root.Id].LayoutElement;
             needsEntry = needsEntry || !sameOwner || oldScope != next.Authority.ActiveInputScopeId
                 || (focused is not null && (!bindings.TryGetValue(focused.Identity.Id, out var current)
@@ -180,6 +188,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
         QueueSurfaceUpdate();
         StartTransitions(transition);
+        StartModalExit(modalExit);
     }
 
     private void QueueEntryFocus()
