@@ -60,7 +60,7 @@ internal sealed partial class WidgetStylesValidationPage
         var before = Find<Button>("Widget.poster");
         presenter.Apply(CreateFrame(new() { Id = "poster.root", Kind = ViewNodeKind.Stack,
             Children = [poster with { ActionSurfacePresentation = ActionSurfacePresentation.Standard }] }, styles));
-        Check(!ReferenceEquals(before, Find<Button>("Widget.poster")) && Find<Button>("Widget.poster")!.Content is StackPanel,
+        Check(!ReferenceEquals(before, Find<Button>("Widget.poster")) && Find<Button>("Widget.poster")!.Content is Panel and not WidgetPosterPanel,
             "changing presentation retires the incompatible poster layout without changing action identity");
         presenter.Width = 620;
         var cells = Enumerable.Range(0, 5).Select(index => new ViewNode { Id = "cell" + index,

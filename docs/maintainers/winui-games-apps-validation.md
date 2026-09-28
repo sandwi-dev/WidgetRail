@@ -37,3 +37,16 @@ The original and intermediate failed evidence is preserved under `production/`,
 `native-entry-fixed/` and `native-focus-followup/`. Optional layout diagnostics
 include a bounded last-eight focus-transfer trace; this is not continuous per-frame
 logging. Physical controller and sustained performance acceptance remain separate.
+
+## Tile layout
+
+Ordinary horizontal action surfaces now use native Grid tracks, including the
+declared growing text column. The former horizontal StackPanel measured that
+column without a finite width, clipping long titles at the tile edge. Static
+responsive grid cells also stretch to their allocated column instead of retaining
+native Button's content-sized default. Poster surfaces retain their poster panel.
+
+The native style fixture checks ordinary and indexed action-surface wrapping,
+ellipsis and physical-pixel column allocation. The six real Games & Apps checks
+also pass with inspected Library, Running and Catalog screenshots in
+`artifacts/winui-games-apps/native-layout-final/`. No app/game was launched.

@@ -23,6 +23,11 @@ internal sealed class WidgetResponsiveGrid : Grid
         while (RowDefinitions.Count > rows) RowDefinitions.RemoveAt(RowDefinitions.Count - 1);
         while (RowDefinitions.Count < rows) RowDefinitions.Add(new() { Height = GridLength.Auto });
         for (var index = 0; index < items.Length; ++index)
-        { SetRow(items[index], index / columns); SetColumn(items[index], index % columns); }
+        {
+            SetRow(items[index], index / columns); SetColumn(items[index], index % columns);
+            // Native Button styles otherwise default to a content-sized left
+            // alignment. An SDK grid cell supplies the finite item width.
+            items[index].HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
     }
 }

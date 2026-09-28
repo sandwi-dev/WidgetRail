@@ -48,7 +48,7 @@ internal sealed partial class WidgetViewPresenter
             ApplySizeAndTypography(element, declaration.Node);
             ApplyMotionGeometry(bindings[declaration.Node.Id]);
             if (element is WidgetIndexedCollectionView collection) collection.RefreshContainerLayout();
-            if (element is Grid grid && element is not (WidgetModalLayer or WidgetPosterPanel)) UpdateLayout(grid, declaration.Node);
+            UpdateContainerLayout(bindings[declaration.Node.Id], declaration.Node);
         }
         UpdateModalGeometry();
         UpdateNativeNeighbors();

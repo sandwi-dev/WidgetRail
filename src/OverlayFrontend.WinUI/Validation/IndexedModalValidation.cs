@@ -36,6 +36,9 @@ internal static class IndexedModalValidation
             var view = collection.NativeView;
             var scroll = Descendants(view).OfType<ScrollViewer>().First();
             await Until(() => ((IndexedItem<WidgetIndexedRow>)view.Items[75]).Value is not null && Artwork() is not null);
+            // Focus and artwork readiness precede completion of native deep
+            // ScrollIntoView. Capture the baseline after that setup has settled.
+            await SettleViewport(scroll);
             var originalRow = ((IndexedItem<WidgetIndexedRow>)view.Items[75]).Value!;
             var container = (Control)view.ContainerFromIndex(75);
             var retainedArtwork = Artwork();
@@ -88,7 +91,7 @@ internal static class IndexedModalValidation
             await Until(() => !InModal() && FocusId() == "Widget.items.Item.75");
             Check(Calls() == initialCalls + 4 && Node("status")?.Text == "modal-dismiss", "modal B closes once without invoking parent B shortcut");
             Check(ReferenceEquals(container, view.ContainerFromIndex(75)) && Near(scroll.VerticalOffset, offset) &&
-                Near(Bounds(container, scroll).Y, originalBounds.Y), "modal close restores exact indexed row and viewport");
+                Near(Bounds(container, scroll).Y, originalBounds.Y), $"modal close restores exact indexed row and viewport [sameContainer={ReferenceEquals(container, view.ContainerFromIndex(75))}; beforeOffset={offset:R}; afterOffset={scroll.VerticalOffset:R}; beforeBounds={originalBounds}; afterBounds={Bounds(container, scroll)}; beforeViewport={viewport:R}; afterViewport={scroll.ViewportHeight:R}]");
             Check(view.IsHitTestVisible && container.IsTabStop && view.IsItemClickEnabled, "parent native input reactivates on close");
 
             // Exercise repeated unload/reload without hiding stale failures behind a fresh query.
@@ -121,6 +124,9 @@ internal static class IndexedModalValidation
             var smallOffset = scroll.VerticalOffset;
             await Button(ControllerButton.A);
             await Until(() => InModal() && FocusId() == "Widget.modal-play");
+            var layer = Descendants(presenter).OfType<WidgetModalLayer>().Single();
+            await Until(() => layer.OpeningMotion is not null);
+            await layer.OpeningMotion!.WaitAsync(cancellationToken);
             var panel = Descendants(presenter).OfType<WidgetModalPanel>().Single();
             var panelBounds = Bounds(panel, presenter);
             Check(panelBounds.X >= 15 && panelBounds.Y >= 15 && panelBounds.Right <= presenter.ActualWidth - 15 &&
@@ -128,7 +134,7 @@ internal static class IndexedModalValidation
                 $"scaled smaller viewport keeps modal inside widget and parent offset unchanged [panel={panelBounds}; widget={presenter.ActualWidth}x{presenter.ActualHeight}; oldOffset={smallOffset}; offset={scroll.VerticalOffset}]");
             await Button(ControllerButton.B);
             await Until(() => !InModal() && FocusId() == "Widget.items.Item.75");
-            Check(Near(scroll.VerticalOffset, smallOffset), "scaled modal dismissal preserves indexed viewport");
+            Check(Near(scroll.VerticalOffset, smallOffset), $"scaled modal dismissal preserves indexed viewport [beforeOffset={smallOffset:R}; afterOffset={scroll.VerticalOffset:R}; viewport={scroll.ViewportHeight:R}; bounds={Bounds((FrameworkElement)view.ContainerFromIndex(75), scroll)}]");
 
             await Button(ControllerButton.A);
             await Until(() => InModal() && FocusId() == "Widget.modal-play");

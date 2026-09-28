@@ -42,9 +42,17 @@ internal sealed partial class WidgetViewPresenter
         }
     }
 
+    private void UpdateContainerLayout(Binding binding, ViewNode node)
+    {
+        if (binding.Element is Grid layout && layout is not (WidgetModalLayer or WidgetPosterPanel)) UpdateLayout(layout, node);
+        if (node.Kind == ViewNodeKind.ActionSurface && binding.Children is Grid content &&
+            content is not WidgetPosterPanel && !ReferenceEquals(content, binding.Element)) UpdateLayout(content, node);
+    }
+
     private void UpdateLayout(Grid grid, ViewNode node)
     {
-        var horizontal = node.Kind == ViewNodeKind.Row;
+        var horizontal = node.Kind == ViewNodeKind.Row ||
+            node.Kind == ViewNodeKind.ActionSurface && node.ActionSurfaceOrientation == ActionSurfaceOrientation.Horizontal;
         var children = node.Children.Where(child => bindings[child.Id].Element.Visibility == Visibility.Visible).ToArray();
         if (grid is WidgetResponsiveGrid responsive)
         {

@@ -332,7 +332,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 break;
             case ViewNodeKind.ActionSurface:
                 children = node.ActionSurfacePresentation == ActionSurfacePresentation.Poster
-                    ? new WidgetPosterPanel() : new StackPanel { Spacing = 8 };
+                    ? new WidgetPosterPanel() : new Grid();
                 // Worker admission owns action sequencing. A pending IPC response
                 // must not suppress another deliberate press on an enabled control.
                 element = presentationOnly ? children : new Button { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch,
@@ -369,7 +369,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         var element = binding.Element;
         if (element is WidgetIndexedCollectionView indexed) indexed.Apply(frame!, node, binding.Identity.Scope);
         if (element is Image image) UpdateImage(binding, image, node);
-        if (element is Grid layout && element is not (WidgetModalLayer or WidgetPosterPanel)) UpdateLayout(layout, node);
+        UpdateContainerLayout(binding, node);
         if (binding.Children is WidgetPosterPanel poster) UpdatePoster(poster, node);
         ApplySizeAndTypography(element, node);
         if (element is Media.WidgetMediaViewport viewport) UpdateMediaViewport(viewport, node, binding.Identity.Scope);
@@ -385,8 +385,6 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         }
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);
         if (element is Button entry && node.Kind == ViewNodeKind.TextEntry) entry.Content = TextEntryLabel(node);
-        if (binding.Children is StackPanel panel && node.Kind == ViewNodeKind.ActionSurface)
-            panel.Orientation = node.ActionSurfaceOrientation == ActionSurfaceOrientation.Horizontal ? Orientation.Horizontal : Orientation.Vertical;
         if (element is ScrollViewer scroll)
         {
             var horizontal = node.ScrollAxis == ScrollAxis.Horizontal;

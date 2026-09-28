@@ -11,7 +11,9 @@ $results = [System.Collections.Generic.List[object]]::new()
 function Ui([string[]]$Arguments) {
     $output = & winapp ui @Arguments -a $AppPid --json 2>&1
     if ($LASTEXITCODE -ne 0) { throw ($output -join "`n") }
-    return ($output -join "`n" | ConvertFrom-Json)
+    $result = $output -join "`n" | ConvertFrom-Json
+    if ($Arguments[0] -eq 'wait-for' -and -not $result.found) { throw "UI wait timed out: $($Arguments[1])" }
+    return $result
 }
 function Check([string]$Name, [scriptblock]$Action) {
     try { & $Action; $results.Add(@{name=$Name; status='PASS'}) }
