@@ -12,7 +12,7 @@ using Windows.UI;
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Autonomous native style checks; no controller owner, launch or OS-theme changes.</summary>
-internal sealed class WidgetStylesValidationPage : Page, IAsyncDisposable
+internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposable
 {
     private readonly TextBlock status = new() { Text = "Style checks pending", TextWrapping = TextWrapping.Wrap,
         MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -112,6 +112,7 @@ internal sealed class WidgetStylesValidationPage : Page, IAsyncDisposable
         Apply(styles, includeButton: false);
         Check(Find<Button>("Widget.button") is null && NativeComputedStyleAdapter.For(retired) is null,
             "removed controls retire their shared style owner");
+        await ResponsiveAndPostersAsync();
     }
 
     private async Task ModalDefaultsAsync()
@@ -173,6 +174,8 @@ internal sealed class WidgetStylesValidationPage : Page, IAsyncDisposable
     private WidgetPresentationFrame CreateFrame(ViewNode root, IReadOnlyDictionary<string, BridgeNodeRenderStyles> styles)
     {
         var snapshot = new ViewSnapshot { WidgetInstanceId = "styles.instance", Sequence = ++sequence, ActiveInputScopeId = root.Id, Root = root };
+        var errors = ViewSnapshotValidator.Validate(snapshot);
+        if (errors.Count > 0) throw new InvalidOperationException(string.Join("; ", errors));
         var descriptor = new BridgeWidgetDescriptor { Id = "styles", Name = "Styles", InstanceId = snapshot.WidgetInstanceId,
             RuntimeGeneration = "runtime", PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };
         return new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, 1, descriptor.InstanceId,

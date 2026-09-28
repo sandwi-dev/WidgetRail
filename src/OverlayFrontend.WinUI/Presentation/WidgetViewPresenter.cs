@@ -54,6 +54,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         IsTabStop = false;
         XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled;
         Loaded += (_, _) => QueueEntryFocus();
+        SizeChanged += (_, _) => RefreshResponsiveLayout();
         Unloaded += (_, _) => DismissTransientControl();
         GotFocus += (_, _) => RememberFocus();
         GettingFocus += OnGettingFocus;
@@ -84,7 +85,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         var nextBindings = new Dictionary<string, Binding>(StringComparer.Ordinal);
         foreach (var declaration in plan.Values)
             nextBindings.Add(declaration.Node.Id, sameOwner && bindings.TryGetValue(declaration.Node.Id, out var retained)
-                && retained.Identity == declaration.Identity ? retained : Create(declaration, IsModalDialog(declaration, plan)));
+                && retained.Identity == declaration.Identity
+                && declarations[declaration.Node.Id].Node.ActionSurfacePresentation == declaration.Node.ActionSurfacePresentation
+                ? retained : Create(declaration, IsModalDialog(declaration, plan)));
 
         var focused = FocusedBinding();
         var oldScope = frame?.Authority.ActiveInputScopeId;
@@ -119,6 +122,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             declarations = plan;
             bindings = nextBindings;
             frame = next;
+            UpdateResponsiveVisibility();
             foreach (var scope in remembered.Keys.ToArray())
                 if (!bindings.TryGetValue(remembered[scope].Id, out var member) || member.Identity != remembered[scope])
                     remembered.Remove(scope);
@@ -272,6 +276,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.ModalLayer:
                 element = children = new WidgetModalLayer();
                 break;
+            case ViewNodeKind.Grid:
+                element = children = new WidgetResponsiveGrid();
+                break;
             case ViewNodeKind.ControllerGlyph:
             case ViewNodeKind.Icon:
                 element = new FontIcon();
@@ -292,7 +299,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 element = new ScrollViewer { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch };
                 break;
             case ViewNodeKind.ActionSurface:
-                children = new StackPanel { Spacing = 8 };
+                children = node.ActionSurfacePresentation == ActionSurfacePresentation.Poster
+                    ? new WidgetPosterPanel() : new StackPanel { Spacing = 8 };
                 // Worker admission owns action sequencing. A pending IPC response
                 // must not suppress another deliberate press on an enabled control.
                 element = presentationOnly ? children : new Button { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch,
@@ -325,7 +333,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         var element = binding.Element;
         if (element is WidgetIndexedCollectionView indexed) indexed.Apply(frame!, node, binding.Identity.Scope);
         if (element is Image image) UpdateImage(binding, image, node);
-        if (element is Grid layout && element is not WidgetModalLayer) UpdateLayout(layout, node);
+        if (element is Grid layout && element is not (WidgetModalLayer or WidgetPosterPanel)) UpdateLayout(layout, node);
+        if (binding.Children is WidgetPosterPanel poster) UpdatePoster(poster, node);
         ApplySizeAndTypography(element, node);
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
         if (element is FontIcon icon) WidgetGlyphs.Apply(icon, node, playStationPrompts);
@@ -368,10 +377,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
         void Visit(ViewNode node, string inheritedScope, string? parent, string itemPath)
         {
-            if (node.VisibleWhen is not (null or ResponsiveVisibility.Always) || node.CollectionLayout is not null && node.Kind != ViewNodeKind.IndexedCollection || node.VirtualCollectionWindow is not null
+            if (node.CollectionLayout is not null && node.Kind != ViewNodeKind.IndexedCollection || node.VirtualCollectionWindow is not null
                 || node.CollectionAnchorKey is not null || node.CollectionGeneration is not null || node.CollectionResetGeneration is not null
                 || node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null
-                || node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Button or ViewNodeKind.ActionSurface
+                || node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll or ViewNodeKind.Button or ViewNodeKind.ActionSurface
                     or ViewNodeKind.ModalLayer or ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
                     or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ControllerGlyph or ViewNodeKind.Icon))
                 throw new NotSupportedException($"WinUI presentation for {node.Kind} with these declarations is not implemented.");

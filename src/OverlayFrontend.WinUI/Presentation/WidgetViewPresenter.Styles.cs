@@ -356,7 +356,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         return all is null && left is null && top is null && right is null && bottom is null ? null :
             new(left ?? all ?? 0, top ?? all ?? 0, right ?? all ?? 0, bottom ?? all ?? 0);
     }
-    private static Thickness? Spacing(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, string property)
+    internal static Thickness? Spacing(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, string property)
     {
         if (style?.GetValueOrDefault(property) is not { } value) return null;
         var parts = value.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
