@@ -83,15 +83,20 @@ internal static class PlayniteLibraryPresentation
     internal static WidgetCollectionItems<TileInput> CreateBrowseItemCache() =>
         new(item => item.Key, RenderTile);
 
-    private static WidgetElement RenderTile(TileInput item) => Tile(
+    internal static WidgetElement RenderTile(TileInput item) => Tile(
         item.Title, item.Source, item.SavedId, item.ArtworkHandle,
         item.Launching ? item.SavedId : null, item.LaunchState, item.Current,
         item.Favorite, item.Interactive, item.Key, item.CollectionItem,
         item.Categories, item.CompletionStatus, item.FocusSummaryContext, item.BrowseLayout);
 
     internal static WidgetView Render(PlayniteLibraryPresentationState state,
-        WidgetCollectionItems<TileInput>? browseItems = null)
+        WidgetCollectionItems<TileInput>? browseItems = null,
+        WidgetIndexedCollection<PlayniteLibraryBrowseContent, PlayniteLibraryBrowseItem>? indexedBrowse = null)
     {
+        if (indexedBrowse is not null && state.Route != PlayniteLibraryRoute.Browse)
+            throw new ArgumentException("An indexed Browse source belongs only to the Browse page.", nameof(indexedBrowse));
+        if (indexedBrowse is not null)
+            state = state with { MatchingGameCount = indexedBrowse.Descriptor.Count };
         var snapshot = state.Collection;
         // Home and Browse retain their last admitted action surface while the
         // host owns inactive input. Actual dispatch remains guarded by the
@@ -384,13 +389,31 @@ internal static class PlayniteLibraryPresentation
                     "hidden", PlayniteLibraryIdentity.Key(rows[0].Display.SavedId));
             }
         }
-        else if (snapshot.Items.Any(item =>
+        else if (indexedBrowse is { Descriptor.Count: > 0 })
+        {
+            // Native collection owns its viewport. There is no nested ScrollViewer,
+            // retained cursor anchor or eager first-page declaration on this path.
+            catalogPage = true;
+            var children = new List<WidgetElement> { PlayniteLibraryIndexedBrowse.Grid(indexedBrowse) };
+            if (snapshot.Error is { } retained)
+            {
+                var retainedError = PlayniteLibraryAvailabilityPresentation.Error(retained);
+                children.Add(UI.Alert(retainedError.Title, retainedError.Message,
+                        AlertTone.Warning, "playnite-library.retained-error",
+                        new ComponentAction("Try again", "playnite-library.retry", WidgetGlyph.Refresh))
+                    .Classes("playnite-library-warning"));
+            }
+            content = UI.Stack("playnite-library.content", children.ToArray())
+                .Classes("playnite-library-content");
+            initialFocus = state.BrowseInitialFocusId ?? ScrollId;
+        }
+        else if (indexedBrowse is null && (snapshot.Items.Any(item =>
                      !state.Organization.ExcludedSavedIds.Contains(
                          item.Value.SavedId, StringComparer.Ordinal)) ||
                  (state.Route != PlayniteLibraryRoute.Browse &&
                   state.FixedRows.All.Any(item =>
                       !state.Organization.ExcludedSavedIds.Contains(
-                          item.Value.SavedId, StringComparer.Ordinal))))
+                          item.Value.SavedId, StringComparer.Ordinal)))))
         {
             var rail = state.Route == PlayniteLibraryRoute.Browse
                 ? PlayniteLibraryHeroRailPolicy.ProjectBrowse(
@@ -597,7 +620,7 @@ internal static class PlayniteLibraryPresentation
                 UI.ControllerHint(ControllerButton.Y, "Refresh", "playnite-library.browse.hint.refresh"),
                 UI.ControllerHint(ControllerButton.RightStick, "Search", "playnite-library.browse.hint.search"),
             };
-            if (snapshot.Items.Count != 0)
+            if ((indexedBrowse?.Descriptor.Count ?? snapshot.Items.Count) != 0)
                 hints.Add(StableControllerHint(ControllerButton.X, "Game options",
                     "playnite-library.hint.options", !state.OrganizationBusy && !state.BrowseRetained,
                     "Game options"));
@@ -614,7 +637,16 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-content");
         }
         FocusGroupEntryRequest? contentEntry = null;
-        if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse &&
+        if (indexedBrowse is { Descriptor.Count: > 0 } && catalogPage)
+        {
+            if (state.ContentEntryRequestId > 0 && !state.BrowseRetained &&
+                snapshot.Status is WidgetPagedResourceStatus.Ready or WidgetPagedResourceStatus.Error)
+            {
+                initialFocus = ScrollId;
+                contentEntry = indexedBrowse.Enter(ScrollId, state.ContentEntryRequestId);
+            }
+        }
+        else if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse &&
             content is ContainerElement contentGroup)
         {
             // Only results belong to this group. Header and filter controls must

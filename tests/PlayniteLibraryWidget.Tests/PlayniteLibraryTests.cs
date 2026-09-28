@@ -431,7 +431,7 @@ public sealed partial class PlayniteLibraryTests
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         void Queue(string action, string source)
         {
-            var admission = (WidgetOperationAdmission)admit.Invoke(widget, [new WidgetActionEvent(action, source), null])!;
+            var admission = (WidgetOperationAdmission)admit.Invoke(widget, [new WidgetActionEvent(action, source), null, null])!;
             Assert.IsTrue(admission is WidgetOperationAdmission.Enqueued or WidgetOperationAdmission.Joined);
         }
         async Task WaitFor(Func<bool> condition, string phase)

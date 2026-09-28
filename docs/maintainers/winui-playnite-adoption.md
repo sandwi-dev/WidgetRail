@@ -28,6 +28,52 @@ All 28 PackageRuntimeTests pass, including nine capture/lifetime tests. Evidence
 specific about exception subtype and was corrected to test OperationCanceledException.
 The existing widget still uses its cursor UI; production indexed adoption is next.
 
+## Implemented Browse projection and presentation checkpoint
+
+`PlayniteLibraryBrowseQuery` computes exact final Browse membership from one
+captured service query and the same authoritative organization used for display.
+It preserves provider order after title overrides, exclusions, favorites, source
+and saved-ID filtering, and freezes category/variant presentation. It does not
+inject Home's manual/unavailable/title-match fixed rows. Membership construction
+keeps lightweight identities; `ReadRange` projects only 1–64 demanded rows. Sparse
+display membership maps back to exact provider positions for both actions and art.
+
+`PlayniteLibraryBrowseContent` captures action enablement and launch presentation
+alongside the query. `PlayniteLibraryIndexedBrowse.Options` provides the SDK source
+callbacks, using the existing poster renderer and shared game-option definitions.
+Its callback receives the captured Browse item directly. The owner must handle that
+exact game, rather than finding its generated control ID in a cursor window.
+
+`PlayniteLibraryPresentation.Render(..., indexedBrowse: source)` now renders the
+actual Browse page around a native indexed grid: existing navigation, filters,
+count, hints, background surface and error/empty states remain in place. The grid
+owns its viewport; there is no outer scroll region, cursor anchor or eager first
+page on this path. Entry uses the source's typed logical focus request. Empty
+indexed membership never falls back to stale cursor items supplied in status state.
+
+This is a presentation/SDK integration checkpoint, **not the production route
+cutover**. The main widget still calls the cursor presentation overload. Its query
+loading, live authority publication, refresh/mutation behavior and modal/launch
+handlers must be converted together: they currently test retained cursor membership
+and sometimes re-resolve actions by `SourceElementId`. No runtime feature gate or
+silent cursor fallback was added. A physically testable Playnite candidate is not
+claimed from this checkpoint.
+
+Validation: all 139 `PlayniteLibraryWidget.Tests` pass, including four final-membership
+and five indexed presentation/author-host tests. A 10,000-game query produces no
+poster declarations before range demand. Tests exercise deep actual poster/options
+trees, captured A/context actions after queued query replacement, parent RS search,
+artwork ownership/release, logical return across content refresh, invalidation after
+query replacement, and empty-result behavior. They are correctness evidence, not
+WinUI frame-time or physical-controller acceptance. The suite's legacy renderer
+fixture source links and reflection queue call were updated for the existing Bridge
+contract split and SDK binding argument.
+
+Command: `dotnet test --project tests/PlayniteLibraryWidget.Tests/PlayniteLibraryWidget.Tests.csproj`
+with a unique binary log under `artifacts/winui-playnite/` (139 passed, 0 failed,
+0 skipped). New author tests use the public indexed test host and actual serial
+input/artwork paths; they do not call the captured row handler directly.
+
 ## Reuse existing service behavior
 
 `Application/PlayniteLibraryApplicationService.cs` already fetches the entire
