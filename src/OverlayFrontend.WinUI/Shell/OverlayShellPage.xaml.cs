@@ -20,6 +20,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private readonly OverlayShellOptions options;
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim transitions = new(1, 1);
+    private readonly Windows.UI.ViewManagement.UISettings systemUi = new();
     private OwnedBridgeProcess? owner;
     private WidgetViewPresenter? surface;
     private Task? startup;
@@ -45,6 +46,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         this.options = options;
         InitializeComponent();
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged += SystemAnimationsChanged;
         Tray.ItemsSource = catalogItems;
         Loaded += (_, _) => startup ??= StartAsync();
         Tray.GotFocus += (_, _) => SetInteractive(false);
@@ -143,6 +145,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     activeWidget = id;
                     publication = 0;
                     surface = new() { Session = owner.Session, DispatchActionAsync = InvokeAsync, Failed = ReportFailure };
+                    surface.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
                     WidgetHost.Content = surface;
                 }
                 interactive = true;
@@ -240,11 +243,20 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         try
         {
             Appearance = (await new PlatformSettingsStore(new(options.SettingsRoot)).LoadAsync(lifetime.Token)).Appearance;
-            if (!retired) AppearanceLoaded?.Invoke(Appearance);
+            if (!retired)
+            {
+                surface?.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
+                AppearanceLoaded?.Invoke(Appearance);
+            }
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { ReportFailure(error); }
     }
+
+    private void SystemAnimationsChanged(Windows.UI.ViewManagement.UISettings sender, object args) => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (!retired) surface?.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
+    });
 
     private void HostEffectReceived(object? sender, WidgetHostEffectEventArgs args) => DispatcherQueue.TryEnqueue(() =>
     {
@@ -323,6 +335,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     internal void ResetInputPresentation()
     {
+        rightStick.Reset();
         surface?.ResetPressedStyles();
         surface?.DismissTransientControl();
     }
@@ -367,6 +380,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private async Task StopAsync()
     {
         retired = true;
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged -= SystemAnimationsChanged;
         lifetime.Cancel();
         if (startup is not null) await startup;
         await transitions.WaitAsync();

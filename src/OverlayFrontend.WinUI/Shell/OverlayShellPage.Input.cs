@@ -9,6 +9,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
+    private readonly RightStickScroll rightStick = new();
     private static readonly (ushort Mask, ControllerButton Button)[] Buttons =
     [
         (0x1000, ControllerButton.A), (0x2000, ControllerButton.B),
@@ -20,7 +21,7 @@ internal sealed partial class OverlayShellPage
 
     internal void Receive(ControllerFrame frame)
     {
-        if (retired || !visible || switching || frame.Connected == 0) return;
+        if (retired || !visible || switching || frame.Connected == 0) { rightStick.Reset(); return; }
         surface?.SetControllerFamily(frame.LastInputFamily);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
@@ -36,6 +37,12 @@ internal sealed partial class OverlayShellPage
             if (interactive) surface?.MoveFocus(next);
             else FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
         }
+        if (interactive && surface is { } current)
+        {
+            var delta = rightStick.Sample(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
+            if (delta.X != 0 || delta.Y != 0) current.ScrollBy(delta.X, delta.Y);
+        }
+        else rightStick.Reset();
         foreach (var (mask, button) in Buttons)
         {
             if ((frame.PressedButtons & mask) != 0) _ = RouteButtonAsync(button, ControllerEventPhase.Pressed);

@@ -65,6 +65,7 @@ public sealed partial class MainWindow : Window
         {
             var page = new Shell.OverlayShellPage(Shell.OverlayShellOptions.Load(shellConfiguration));
             RootFrame.Content = page;
+            ShellCard.Style = (Style)ShellRoot.Resources["ProductionShellCardStyle"];
             ShellCard.Margin = new Thickness(16);
             ShellCard.Padding = new Thickness(16);
             ShellLayout.RowSpacing = 12;
