@@ -41,7 +41,7 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
     }
 
     internal void Configure(FrameworkElement parent, FrameworkElement panel,
-        double width, double height, double maximumWidth, double maximumHeight)
+        double width, double height, double maximumWidth, double maximumHeight, FrameworkElement? semanticDialog = null)
     {
         if (!ReferenceEquals(dialog, panel))
         {
@@ -60,7 +60,7 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
         panel.HorizontalAlignment = HorizontalAlignment.Center;
         panel.VerticalAlignment = VerticalAlignment.Center;
         panel.TabFocusNavigation = Microsoft.UI.Xaml.Input.KeyboardNavigationMode.Cycle;
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetIsDialog(panel, true);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetIsDialog(semanticDialog ?? panel, true);
         ConstrainDialog();
     }
 

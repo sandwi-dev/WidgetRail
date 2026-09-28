@@ -63,6 +63,8 @@ internal sealed partial class WidgetViewPresenter
         if (!nativeStyles.TryGetValue(binding, out var adapter))
             nativeStyles.Add(binding, adapter = new(target, node.IsFocusable));
         adapter.SelectionSurface = binding.MotionHost?.SelectionSurface;
+        adapter.DepthSlotsFactory = (binding.Element is Panel or Border or WidgetPresentationSurface || binding.MotionHost?.SelectionSurface is not null) && binding.MotionHost is { } depthHost
+            ? depthHost.EnsureDepthSlots : null;
         adapter.Update(frame?.RenderStyles.GetValueOrDefault(node.Id),
             typographyOnly: indexedRootStyleOnContainer && node.Id == fragmentRootId,
             interaction: indexedRootStyleOnContainer && node.Id == fragmentRootId ? indexedRootInteraction : null);
@@ -146,6 +148,10 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private WidgetControlScaleMotion? scaleMotion;
     private WidgetFocusDecoration? focusDecoration;
     internal Border? SelectionSurface { get; set; }
+    internal Func<(Grid Shadow, Grid Edges)>? DepthSlotsFactory { get; set; }
+    private WidgetNativeDepth? depth;
+    private WidgetNativeButtonStates? buttonStates;
+    internal WidgetNativeDepth? Depth => depth;
     private static readonly SolidColorBrush transparentSurface = new(Microsoft.UI.Colors.Transparent);
     internal WidgetFocusDecoration? FocusDecoration => focusDecoration;
     internal WidgetControlScaleMotion? ScaleMotion => scaleMotion;
@@ -256,6 +262,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         }
         if (typographyOnly)
         {
+            depth?.Dispose(); depth = null;
             focusDecoration?.Dispose(); focusDecoration = null;
             scaleMotion?.Dispose(); scaleMotion = null;
             RestoreSurfaces();
@@ -289,6 +296,24 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         var padding = Spacing(style, "padding");
         var radius = Number(style, "corner-radius", true) is { } value ? new CornerRadius(value) : (CornerRadius?)null;
         var thickness = BorderWidth(style);
+        var edgeColors = new[] { "border-top-color", "border-right-color", "border-bottom-color", "border-left-color" };
+        var hasEdges = !contrast && edgeColors.Any(property => style?.ContainsKey(property) == true);
+        var shadowColor = !contrast && style?.GetValueOrDefault("shadow-color") is { } shadowValue && TryColor(shadowValue.Text, out var shadowRgba)
+            ? shadowRgba : Microsoft.UI.Colors.Transparent;
+        if ((DepthSlotsFactory is not null || element is Button) && (hasEdges || shadowColor.A > 0))
+        {
+            Color Edge(string property) => style?.GetValueOrDefault(property) is { } authored && TryColor(authored.Text, out var color)
+                ? color : border is SolidColorBrush fallback ? fallback.Color : Microsoft.UI.Colors.Transparent;
+            depth ??= new(element, DepthSlotsFactory?.Invoke());
+            depth.Apply(new(shadowColor, (float)Math.Clamp(Number(style, "shadow-blur", true) ?? 0, 0, 64),
+                new((float)Math.Clamp(Number(style, "shadow-offset-x") ?? 0, -256, 256),
+                    (float)Math.Clamp(Number(style, "shadow-offset-y") ?? 0, -256, 256)),
+                (float)(radius?.TopLeft ?? 0), hasEdges ? thickness ?? new() : new(),
+                Edge(edgeColors[0]), Edge(edgeColors[1]), Edge(edgeColors[2]), Edge(edgeColors[3]),
+                DepthSlotsFactory is null ? 1 : (float)element.Opacity));
+            if (hasEdges) border = transparentSurface;
+        }
+        else { depth?.Dispose(); depth = null; }
         if (SelectionSurface is { } selection)
         {
             selection.Background = background;
@@ -367,6 +392,16 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
 
     private void UpdateButtonResources(Brush? background, Brush? foreground, Brush? border)
     {
+        if (element is Button button)
+        {
+            buttonStates ??= WidgetNativeButtonStates.Create(button);
+            if (buttonStates is not null)
+            {
+                buttonStates.Update(background is not null, foreground is not null, border is not null);
+                RestoreResources();
+                return;
+            }
+        }
         if (background is null && foreground is null && border is null) { RestoreResources(); return; }
         if (resources is null)
         {
@@ -515,6 +550,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     {
         if (disposed) return;
         scaleMotion?.Dispose(); scaleMotion = null;
+        depth?.Dispose(); depth = null;
+        buttonStates?.Restore(); buttonStates = null;
         focusDecoration?.Dispose(); focusDecoration = null;
         foreach (var property in originals.Keys.ToArray()) Put(property, null);
         RestoreResources();

@@ -8,11 +8,22 @@ namespace WidgetRail.OverlayFrontend.WinUI.Motion;
 /// <summary>Dedicated clip and transform layers; authored controls own their own style/scale.</summary>
 internal sealed class WidgetMotionHost : Grid
 {
-    internal Grid Layer { get; } = new();
+    internal Grid Layer { get; }
     internal Grid SurfaceLayer { get; } = new();
-    internal Border? SelectionSurface { get; }
-    internal WidgetMotionHost(FrameworkElement content, bool selection = false)
+    private (Grid Shadow, Grid Edges)? depthSlots;
+    internal (Grid Shadow, Grid Edges) EnsureDepthSlots()
     {
+        if (depthSlots is { } current) return current;
+        var shadow = new Grid { IsHitTestVisible = false };
+        var edges = new Grid { IsHitTestVisible = false };
+        var owner = SelectionSurface is null ? Layer : SurfaceLayer;
+        owner.Children.Insert(0, shadow); owner.Children.Add(edges);
+        return (depthSlots = (shadow, edges)).Value;
+    }
+    internal Border? SelectionSurface { get; }
+    internal WidgetMotionHost(FrameworkElement content, bool selection = false, bool animated = true)
+    {
+        Layer = animated ? new Grid() : this;
         content.HorizontalAlignment = HorizontalAlignment.Stretch;
         content.VerticalAlignment = VerticalAlignment.Stretch;
         if (selection)
@@ -21,7 +32,7 @@ internal sealed class WidgetMotionHost : Grid
             SurfaceLayer.Children.Add(SelectionSurface); Children.Add(SurfaceLayer);
         }
         Layer.Children.Add(content);
-        Children.Add(Layer);
+        if (animated) Children.Add(Layer);
     }
 }
 

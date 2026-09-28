@@ -9,9 +9,9 @@ The current mapping covers native foreground/background, uniform border brush,
 per-edge border widths, corner radius, padding, opacity, font size/family/weight,
 text alignment and character spacing. Character spacing additionally supports em.
 Box geometry, viewport units and full cross-axis percentage sizes are handled by
-the layout adapter described in `winui-layout.md`. Separate edge colors, outline
-styling, depth, other transforms, text transforms and rich typography remain outside
-this bounded mapping. No shadow animator is introduced.
+the layout adapter described in `winui-layout.md`. Separate edge colors, focus
+outlines and native depth paint are covered below. Other transforms, text transforms
+and rich typography remain outside this bounded mapping. No shadow animator is introduced.
 FontIcon receives foreground and font size while retaining its glyph-specific font.
 
 The newer control-scale adapter maps existing WRSS scale states to native composition;
@@ -45,9 +45,48 @@ system ring with a native compositor outline using global focus motion settings.
 High Contrast and controls without an authored outline retain system focus. The
 outline does not replace the ordinary focused background/border style selection.
 `surface-shading` now produces a cached native gradient behind content; shadow and
-edge-stroke depth mapping remain incomplete. See `winui-motion.md` for ownership.
+edge-stroke depth mapping are described below. See `winui-motion.md` for ownership.
 
-Button/SelectorItem template state brushes are overridden in a resource wrapper,
+## Native depth paint
+
+`WidgetNativeDepth` consumes existing resolved shadow-color, shadow-blur,
+shadow-offset-x/y and border-top/right/bottom/left-color declarations. No SDK or
+WRSS properties are added. The native DropShadow uses the authored color alpha,
+bounded blur and signed offsets. Its mask is a rounded CompositionShape exposed
+as a CompositionVisualSurface, without CPU rasterization/readback or an animation
+frame loop. Geometry and brushes are updated in place while the owner is alive.
+
+Four native edge rectangles share the outer rounded clip and use the existing
+per-edge widths/fallback colors. Top/bottom cover their complete strips; side
+strips occupy the middle, matching the original renderer's ownership of corners.
+The native border keeps its thickness for measurement and uses transparent paint
+when the separate edge layers own its pixels.
+
+Semantic Buttons retain their commands, focus and
+automation peers. Their content template provides dedicated shadow/content/edge
+slots; the depth layers inherit the control's authored scale and opacity. Panels
+use a stable layout wrapper with lazily materialized paint slots. The shadow is
+behind the authored background, preserving translucent fills and content colors;
+the edge layer is above content. Ancestor clipping remains native.
+
+High Contrast removes decorative shadows/edge colors and restores the ordinary
+native border palette. Style removal, unload and disposal retire composition
+resources; reloading creates fresh native owners. This does not emulate the old
+CPU blur kernel pixel for pixel: the authored blur radius is delegated to the
+Windows compositor's blur implementation.
+
+The Button depth template retains the installed SDK native body and visual states.
+Authored Button brush channels temporarily remove only their native state timelines;
+unowned channels retain native ThemeResource expressions, including disabled feedback.
+Removing author ownership restores the original timelines. This avoids stale authored
+brushes in native keyframe theme-resource caches.
+
+Indexed ListView/GridView containers keep their optimized native templates. WinUI
+requires ListViewItemPresenter as the template root, so collection-container shadows
+and separate edge colors remain unmapped; uniform borders remain visible. Descendant
+panels/buttons can use depth normally. Do not wrap the optimized presenter in a Grid.
+
+Other Button/SelectorItem template state brushes are overridden in a resource wrapper,
 so native hover/pressed visual states do not replace authored colors. The original
 ResourceDictionary remains intact and is restored by identity when overrides leave.
 Brushes and font-family objects are reused while values remain equal.

@@ -393,9 +393,14 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             default: throw new NotSupportedException($"WinUI presentation for {node.Kind} is not implemented.");
         }
         element.Tag = declaration.Identity;
+        if (element is Button depthButton)
+        {
+            depthButton.Template = (ControlTemplate)Application.Current.Resources["WidgetDepthButtonTemplate"];
+            depthButton.UseSystemFocusVisuals = true;
+        }
         AutomationProperties.SetAutomationId(element, $"Widget.{node.Id}");
-        var host = node.Transition is { } transition
-            ? new WidgetMotionHost(element, transition.Kind == WidgetTransitionKind.Selection) { Tag = declaration.Identity } : null;
+        var host = node.Transition is not null || element is Panel and not WidgetModalLayer || element is Border or WidgetPresentationSurface
+            ? new WidgetMotionHost(element, node.Transition?.Kind == WidgetTransitionKind.Selection, node.Transition is not null) { Tag = declaration.Identity } : null;
         return new(declaration.Identity, element, children, token, host);
     }
 

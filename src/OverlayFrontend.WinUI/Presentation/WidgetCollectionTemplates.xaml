@@ -3,14 +3,175 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:collections="using:WidgetRail.OverlayFrontend.WinUI.Collections"
-    xmlns:local="using:WidgetRail.OverlayFrontend.WinUI.Presentation">
-    <DataTemplate x:Key="WidgetIndexedRowTemplate" x:DataType="collections:IndexedItem">
-        <local:WidgetIndexedRowView Row="{x:Bind Content, Mode=OneWay}" />
+    xmlns:local="using:WidgetRail.OverlayFrontend.WinUI.Presentation"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
+    <!-- Native semantic controls retain input/automation ownership. Dedicated
+         paint slots inherit the same control scale without tinting its content. -->
+    <!-- Button body and CommonStates follow Windows App SDK WinUI 2.3.9 DefaultButtonStyle. Keep native ThemeResource channels and AnimatedIcon states when updating this template. -->
+    <ControlTemplate
+        x:Key="WidgetDepthButtonTemplate"
+        TargetType="Button">
+        <Grid
+            x:Name="WidgetDepthRoot">
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup
+                    x:Name="CommonStates">
+                    <VisualState
+                        x:Name="Normal" />
+                    <VisualState
+                        x:Name="PointerOver">
+                        <Storyboard>
+                            <ObjectAnimationUsingKeyFrames
+                                Storyboard.TargetName="ContentPresenter"
+                                Storyboard.TargetProperty="Background">
+                                <DiscreteObjectKeyFrame
+                                    KeyTime="0"
+                                    Value="{ThemeResource ButtonBackgroundPointerOver}" />
+                            </ObjectAnimationUsingKeyFrames>
+                            <ObjectAnimationUsingKeyFrames
+                                Storyboard.TargetName="ContentPresenter"
+                                Storyboard.TargetProperty="BorderBrush">
+                                <DiscreteObjectKeyFrame
+                                    KeyTime="0"
+                                    Value="{ThemeResource ButtonBorderBrushPointerOver}" />
+                            </ObjectAnimationUsingKeyFrames>
+                            <ObjectAnimationUsingKeyFrames
+                                Storyboard.TargetName="ContentPresenter"
+                                Storyboard.TargetProperty="Foreground">
+                                <DiscreteObjectKeyFrame
+                                    KeyTime="0"
+                                    Value="{ThemeResource ButtonForegroundPointerOver}" />
+                            </ObjectAnimationUsingKeyFrames>
+                        </Storyboard>
+                        <VisualState.Setters>
+                            <Setter
+                                Target="ContentPresenter.(controls:AnimatedIcon.State)"
+                                Value="PointerOver" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState
+                        x:Name="Pressed">
+                        <Storyboard>
+                            <ObjectAnimationUsingKeyFrames
+                                Storyboard.TargetName="ContentPresenter"
+                                Storyboard.TargetProperty="Background">
+                                <DiscreteObjectKeyFrame
+                                    KeyTime="0"
+                                    Value="{ThemeResource ButtonBackgroundPressed}" />
+                            </ObjectAnimationUsingKeyFrames>
+                            <ObjectAnimationUsingKeyFrames
+                                Storyboard.TargetName="ContentPresenter"
+                                Storyboard.TargetProperty="BorderBrush">
+                                <DiscreteObjectKeyFrame
+                                    KeyTime="0"
+                                    Value="{ThemeResource ButtonBorderBrushPressed}" />
+                            </ObjectAnimationUsingKeyFrames>
+                            <ObjectAnimationUsingKeyFrames
+                                Storyboard.TargetName="ContentPresenter"
+                                Storyboard.TargetProperty="Foreground">
+                                <DiscreteObjectKeyFrame
+                                    KeyTime="0"
+                                    Value="{ThemeResource ButtonForegroundPressed}" />
+                            </ObjectAnimationUsingKeyFrames>
+                        </Storyboard>
+                        <VisualState.Setters>
+                            <Setter
+                                Target="ContentPresenter.(controls:AnimatedIcon.State)"
+                                Value="Pressed" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState
+                        x:Name="Disabled">
+                        <Storyboard>
+                            <ObjectAnimationUsingKeyFrames
+                                Storyboard.TargetName="ContentPresenter"
+                                Storyboard.TargetProperty="Background">
+                                <DiscreteObjectKeyFrame
+                                    KeyTime="0"
+                                    Value="{ThemeResource ButtonBackgroundDisabled}" />
+                            </ObjectAnimationUsingKeyFrames>
+                            <ObjectAnimationUsingKeyFrames
+                                Storyboard.TargetName="ContentPresenter"
+                                Storyboard.TargetProperty="BorderBrush">
+                                <DiscreteObjectKeyFrame
+                                    KeyTime="0"
+                                    Value="{ThemeResource ButtonBorderBrushDisabled}" />
+                            </ObjectAnimationUsingKeyFrames>
+                            <ObjectAnimationUsingKeyFrames
+                                Storyboard.TargetName="ContentPresenter"
+                                Storyboard.TargetProperty="Foreground">
+                                <DiscreteObjectKeyFrame
+                                    KeyTime="0"
+                                    Value="{ThemeResource ButtonForegroundDisabled}" />
+                            </ObjectAnimationUsingKeyFrames>
+                        </Storyboard>
+                        <VisualState.Setters>
+                            <!-- DisabledVisual Should be handled by the control, not the animated icon. -->
+                            <Setter
+                                Target="ContentPresenter.(controls:AnimatedIcon.State)"
+                                Value="Normal" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+            <Grid
+                x:Name="WidgetDepthShadow"
+                IsHitTestVisible="False" />
+            <ContentPresenter
+                x:Name="ContentPresenter"
+                Background="{TemplateBinding Background}"
+                Foreground="{TemplateBinding Foreground}"
+                BackgroundSizing="{TemplateBinding BackgroundSizing}"
+                BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}"
+                Content="{TemplateBinding Content}"
+                ContentTemplate="{TemplateBinding ContentTemplate}"
+                ContentTransitions="{TemplateBinding ContentTransitions}"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}"
+                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                AutomationProperties.AccessibilityView="Raw"
+                local:AnimatedIcon.State="Normal"
+                xmlns:local="using:Microsoft.UI.Xaml.Controls">
+                <ContentPresenter.BackgroundTransition>
+                    <BrushTransition
+                        Duration="0:0:0.083" />
+                </ContentPresenter.BackgroundTransition>
+            </ContentPresenter>
+            <Grid
+                x:Name="WidgetDepthEdges"
+                IsHitTestVisible="False" />
+        </Grid>
+    </ControlTemplate>
+    <DataTemplate
+        x:Key="WidgetIndexedRowTemplate"
+        x:DataType="collections:IndexedItem">
+        <local:WidgetIndexedRowView
+            Row="{x:Bind Content, Mode=OneWay}" />
     </DataTemplate>
-    <DataTemplate x:Key="WidgetIndexedGroupHeaderTemplate" x:DataType="collections:WidgetIndexedGroup">
-        <TextBlock Text="{x:Bind Header, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}" Margin="8,12,8,8" />
+    <DataTemplate
+        x:Key="WidgetIndexedGroupHeaderTemplate"
+        x:DataType="collections:WidgetIndexedGroup">
+        <TextBlock
+            Text="{x:Bind Header, Mode=OneWay}"
+            Style="{StaticResource SubtitleTextBlockStyle}"
+            Margin="8,12,8,8" />
     </DataTemplate>
-    <ItemsPanelTemplate x:Key="WidgetIndexedVerticalPanel"><ItemsStackPanel Orientation="Vertical" /></ItemsPanelTemplate>
-    <ItemsPanelTemplate x:Key="WidgetIndexedHorizontalPanel"><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-    <ItemsPanelTemplate x:Key="WidgetIndexedGridPanel"><ItemsWrapGrid Orientation="Horizontal" GroupHeaderPlacement="Top" /></ItemsPanelTemplate>
+    <ItemsPanelTemplate
+        x:Key="WidgetIndexedVerticalPanel">
+        <ItemsStackPanel
+            Orientation="Vertical" />
+    </ItemsPanelTemplate>
+    <ItemsPanelTemplate
+        x:Key="WidgetIndexedHorizontalPanel">
+        <ItemsStackPanel
+            Orientation="Horizontal" />
+    </ItemsPanelTemplate>
+    <ItemsPanelTemplate
+        x:Key="WidgetIndexedGridPanel">
+        <ItemsWrapGrid
+            Orientation="Horizontal"
+            GroupHeaderPlacement="Top" />
+    </ItemsPanelTemplate>
 </ResourceDictionary>

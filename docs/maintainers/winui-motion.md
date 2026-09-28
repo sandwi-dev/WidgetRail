@@ -193,7 +193,7 @@ Reduced motion and None update directly without outgoing retention.
 Content containing a separately owned MediaViewport or WindowPreview currently
 updates directly, while eligible header/selection channels still animate. This
 preserves live-source ownership pending a composed live-surface implementation.
-Focus-surface crossfades and depth shadows remain separate work; modal exits are covered below.
+Focus-surface crossfades remain separate work; modal exits are covered below and native depth paint is documented in `winui-styles.md`.
 
 Validation: 90 native style checks, including genuine declaration reconciliation,
 stale outgoing action rejection, automation exclusion, synchronized channels,
@@ -206,7 +206,7 @@ lifetime behavior; subjective animation quality still requires physical review.
 Surface-shading is now a cached native vertical LinearGradientBrush behind content.
 Its top/bottom colors use the original renderer's bounded Shade formula and preserve
 the base color alpha. High Contrast removes this decorative gradient. Shadow and
-per-edge depth strokes remain separate unfinished mappings.
+per-edge depth strokes now use dedicated native paint slots; see `winui-styles.md`.
 
 ## Widget-local modal exit
 
