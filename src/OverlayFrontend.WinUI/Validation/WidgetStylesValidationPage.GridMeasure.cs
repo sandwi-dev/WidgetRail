@@ -24,7 +24,9 @@ internal sealed partial class WidgetStylesValidationPage
         await Wait(() => Find<Button>("Widget.fill")?.ActualWidth > 1000);
         Check(Find<Button>("Widget.fill")!.HorizontalAlignment == HorizontalAlignment.Stretch,
             "explicit full-width composition fills native cross-axis space despite a centered parent");
-        var grid = new GridView { Width = 1050.4, Height = 300, Padding = new Thickness(4),
+        // At 125% DPI this leaves 1305 physical pixels for six cells. Rounding
+        // each 174-DIP cell up independently wraps into five columns.
+        var grid = new GridView { Width = 1052, Height = 300, Padding = new Thickness(4),
             ItemsSource = Enumerable.Range(0, 178).Select(index => "Item " + index).ToArray(),
             ItemsPanel = (ItemsPanelTemplate)Application.Current.Resources["WidgetIndexedGridPanel"] };
         ScrollViewer.SetHorizontalScrollMode(grid, ScrollMode.Disabled);
@@ -43,7 +45,7 @@ internal sealed partial class WidgetStylesValidationPage
             var panel = (ItemsWrapGrid)grid.ItemsPanelRoot;
             var scroll = FindGridScroll(grid)!;
             await Task.Delay(120);
-            Check(Math.Abs(grid.ActualWidth - 1050.4) < 1 && panel.MaximumRowsOrColumns == 6 &&
+            Check(Math.Abs(grid.ActualWidth - 1052) < 1 && panel.MaximumRowsOrColumns == 6 &&
                 panel.ItemWidth * 6 <= scroll.ViewportWidth - grid.Padding.Left - grid.Padding.Right + 1,
                 "native grid sizing uses viewport minus authored padding and respects its six-column bound");
             await Wait(() => grid.ContainerFromIndex(6) is FrameworkElement);

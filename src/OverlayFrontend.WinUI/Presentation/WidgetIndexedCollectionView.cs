@@ -137,7 +137,11 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         var available = Math.Max(0, scroller.ViewportWidth - inset);
         if (available <= 0) return;
         var columns = Math.Clamp((int)(available / minimum), 1, maximum);
-        var width = Math.Floor(available / columns);
+        // Native layout rounds item sizes to physical pixels. Whole DIP rounding
+        // can round six 174-DIP cells up to 174.4 at 125%, forcing a fifth column.
+        // Allocate an integral pixel count per cell before converting back to DIPs.
+        var scale = view.XamlRoot?.RasterizationScale ?? 1;
+        var width = Math.Floor(available * scale / columns) / scale;
         if (grid.MaximumRowsOrColumns != columns) grid.MaximumRowsOrColumns = columns;
         if (!grid.ItemWidth.Equals(width)) grid.ItemWidth = width;
     }
