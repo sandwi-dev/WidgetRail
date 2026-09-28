@@ -30,7 +30,9 @@ are untouched. Migration is active and incomplete.
   including viewport-unit refresh on resize. All 79 integrated native style checks
   pass; actual Playnite and music geometry checks pass in the presentation lane.
   Saved Bold Text, Contrast and Reduced Transparency preferences are now applied
-  after styles. Section transitions, shadows and complete styling remain incomplete.
+  after styles. Section/content/header/selection declarations now run on native
+  composition layers; their lane passes 90 style/motion checks and actual Playnite
+  and music section switches. Shadows and complete styling remain incomplete.
 - Authored surface sizing and per-display interface zoom are integrated, reusing
   existing display identity/settings and platform placement. Sixteen shell tests,
   13 native sizing checks and real Playnite at Windows 125% DPI/interface 75% pass.
@@ -95,18 +97,30 @@ are untouched. Migration is active and incomplete.
 - Ordinary actions now retain their exact displayed frame across Interactive
   acknowledgment. The session compares original/current semantic bindings; no input
   is replayed or retargeted. Buttons, Select, text, slider and context-action call
-  sites use this contract. All 159 session and 24 shell tests pass; native integration
-  checks are queued behind the section-motion lane's exclusive UI deployment.
+  sites use this contract. All 159 session and 24 shell tests pass. The integrated
+  native pass completes 19 Select, 26 TextEntry, 21 slider and 38 context-menu checks,
+  including exact-frame retention across a pending popup action acknowledgment.
 - Indexed rows now support broker-owned app-library icons without widget callbacks.
   Exact row lease, widget identity and broker registration guard resolution. Widget-owned
   images still require a captured resolver. All 138 SDK and 17 indexed bridge tests
   pass. Games & Apps adoption is underway separately.
 
+- Combined section/input/media-adapter build passes the analyzer with zero warnings
+  and errors. Its real Playnite Library/tray/details pass completes all six checks;
+  real YouTube Music Home/Library/return completes all five. Screenshots confirm
+  actual artwork and scoped details. The media adapter also passes all 60 checks
+  on this integrated build. Owned windows were closed; no games/music were launched
+  in real widget tests. Evidence: artifacts/winui-input/native-confirmed/,
+  playnite-integrated/ and music-integrated/. The initial batch runner misread the
+  media fixture's result schema; its preserved failure was a harness error, and the
+  corrected runner completed all five fixtures. This is functional validation,
+  not sustained-scroll performance or physical controller acceptance.
+
 ## Active implementation lanes
 
-- Section content/header/navigation-selection transitions: native compositor wiring
-  and production-widget validation. Dedicated outgoing presentation lifetime must
-  never retain action authority.
+- Background artwork transitions: native crossfades with exact image-demand ownership,
+  bounded retention and no stale source reappearance. Section motion is integrated;
+  live media/window-preview content deliberately skips section motion pending proof.
 - Embedded media: bounded shell ownership, native viewport placement and parking,
   visibility/foreground/modal policy and connected validation.
 - Games & Apps: captured indexed Library/Running queries while retaining Catalog's
