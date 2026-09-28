@@ -19,11 +19,13 @@
             <Button x:Name="Retry" Grid.Column="1" Content="Retry" Visibility="Collapsed"
                     AutomationProperties.AutomationId="Overlay.Retry" Click="RetryClicked" />
         </Grid>
-        <ContentControl x:Name="WidgetHost" Grid.Row="1" IsTabStop="False"
+        <Border x:Name="WidgetSurface" Grid.Row="1" CornerRadius="{ThemeResource ControlCornerRadius}">
+        <ContentControl x:Name="WidgetHost" IsTabStop="False"
                         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
                         AutomationProperties.AutomationId="Overlay.Widget">
             <Grid x:Name="WidgetSurfaces" />
         </ContentControl>
+        </Border>
         <Grid x:Name="MediaParking" Grid.Row="1" Visibility="Collapsed" IsHitTestVisible="False"
               AutomationProperties.AccessibilityView="Raw" />
         <ListView x:Name="Tray" Grid.Row="2" SelectionMode="Single" IsItemClickEnabled="True"

@@ -55,6 +55,7 @@ internal sealed partial class OverlayShellPage
     {
         var changed = authoredSurfaceHints != hints;
         authoredSurfaceHints = hints;
+        NotifySurfaceAppearanceChanged();
         if (changed || hints?.WidthMode == WidgetSurfaceAxisMode.Content || hints?.HeightMode == WidgetSurfaceAxisMode.Content)
             SizingChanged?.Invoke();
     }

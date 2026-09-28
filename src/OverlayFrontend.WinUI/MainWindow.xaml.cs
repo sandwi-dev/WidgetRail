@@ -69,6 +69,7 @@ public sealed partial class MainWindow : Window
         else if (validateEmbeddedMedia) RootFrame.Content = new Validation.EmbeddedMediaValidationPage();
         else if (validatePackageIcons) RootFrame.Content = new Validation.PackageIconValidationPage();
         else if (validateShellSizing) RootFrame.Content = new Validation.ShellSizingValidationPage();
+        else if (Environment.GetCommandLineArgs().Contains("--validate-shell-appearance")) RootFrame.Content = new Validation.ShellAppearanceValidationPage(this);
         else if (validateSlider) RootFrame.Content = new Validation.SliderControlValidationPage();
         else if (validateContextMenu) RootFrame.Content = new Validation.ContextMenuControlValidationPage();
         else if (shellConfiguration is not null)
@@ -80,6 +81,7 @@ public sealed partial class MainWindow : Window
             ShellCard.Margin = new Thickness(16);
             ShellCard.Padding = new Thickness(16);
             ShellLayout.RowSpacing = 12;
+            InitializeShellAppearance(page);
             page.HideRequested += HideOverlay;
             var taskActivation = new WidgetRail.OverlayPlatformClient.TaskWindowActivation(
                 new WidgetRail.OverlayPlatformClient.WindowsTaskWindowActivation());
@@ -175,8 +177,11 @@ public sealed partial class MainWindow : Window
 
     public void StartReplay() => replay?.Start();
 
-    private void SystemThemeChanged(Microsoft.UI.System.ThemeSettings sender, object args) =>
+    private void SystemThemeChanged(Microsoft.UI.System.ThemeSettings sender, object args)
+    {
         Presentation.WidgetViewPresenter.SetSystemHighContrast(sender.HighContrast);
+        DispatcherQueue.TryEnqueue(RefreshShellAppearance);
+    }
 
     private async void CloseClicked(object sender, RoutedEventArgs e) => await CloseWithCleanupAsync();
 
@@ -184,6 +189,7 @@ public sealed partial class MainWindow : Window
     {
         if (cleanupStarted) return;
         cleanupStarted = true;
+        desktopBackdrop?.Dispose();
         try { if (RootFrame.Content is IAsyncDisposable resource) await resource.DisposeAsync(); }
         catch (Exception error) { System.Diagnostics.Trace.TraceError("WinUI page shutdown failed: {0}", error); }
         finally { closingAfterCleanup = true; Close(); }
