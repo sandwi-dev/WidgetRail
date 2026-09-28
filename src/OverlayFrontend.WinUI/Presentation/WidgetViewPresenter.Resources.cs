@@ -112,6 +112,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed) return;
         disposed = true;
+        DismissTransientControl();
         ClearSurfaceState();
         foreach (var binding in bindings.Values) Retire(binding);
         Content = null;

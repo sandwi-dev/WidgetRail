@@ -141,17 +141,19 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
             new("third", "Third", thirdAction),
         };
         var snapshot = new ViewSnapshot { WidgetInstanceId = "select.instance", Sequence = ++sequence,
-            ActiveInputScopeId = alternateScope ? "other" : "page", InitialFocusId = alternateScope ? "other.button" : "picker",
+            ActiveInputScopeId = alternateScope ? "other" : "page", InitialFocusId = alternateScope ? "other.button" : removed ? "after" : "picker",
             Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = [
                 removed ? new() { Id = "replacement", Kind = ViewNodeKind.Text, Text = "Removed" } :
                     new() { Id = "picker", Kind = ViewNodeKind.Select, Text = "Choice: First", AccessibilityLabel = "Choice",
-                        SelectOptions = options, IsDisabled = disabled },
+                        AccessibilityValue = "First", SelectOptions = options, IsDisabled = disabled },
                 new() { Id = "after", Kind = ViewNodeKind.Button, Text = "After", ActionId = "after" },
                 new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = [
                     new() { Id = "other.button", Kind = ViewNodeKind.Button, Text = "Other scope", ActionId = "other" }] },
             ] } };
         var descriptor = new BridgeWidgetDescriptor { Id = "select", Name = "Select validation", InstanceId = snapshot.WidgetInstanceId,
             RuntimeGeneration = $"runtime-{owner}", PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };
+        var errors = ViewSnapshotValidator.Validate(snapshot);
+        if (errors.Count != 0) throw new InvalidOperationException(string.Join("; ", errors.Select(error => error.Path + ": " + error.Message)));
         presenter.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, owner,
             snapshot.WidgetInstanceId, sequence, snapshot.ActiveInputScopeId), descriptor,
             SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot)), new Dictionary<string, BridgeNodeRenderStyles>()));
