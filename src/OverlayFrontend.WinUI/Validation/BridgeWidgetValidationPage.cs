@@ -92,7 +92,7 @@ internal sealed class BridgeWidgetValidationPage : Page, IAsyncDisposable
         if (retired || owner is null) return;
         try
         {
-            await owner.Session.SendActionAsync(request.Authority, request.Action, lifetime.Token);
+            await owner.Session.SendActionAsync(request.Displayed, request.Action, lifetime.Token);
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { if (!retired) status.Text = $"Action failed: {error.Message}"; }

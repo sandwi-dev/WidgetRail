@@ -25,9 +25,13 @@ Open-widget controller input preserves the origin snapshot sequence, focused ele
 
 Typed action transport remains the existing `BridgeActionRequest` with the original action object. Its protocol has no snapshot-origin field. This change validates action provenance and the original/current binding at session admission; it does not add a different bridge action protocol or replace existing runtime action admission. Controller input still receives the bridge's independent origin/current validation.
 
-## Required frontend wiring (root-owned)
+## Frontend wiring
 
-No frontend files were edited in this checkpoint.
+The integration frontend now carries the displayed frame through ordinary actions,
+Select, text commit, slider commit and context actions. Controller dispatch keeps
+its origin sequence through the Interactive barrier. The production shell consumes
+stale-input rejections without showing a widget failure or replaying the input.
+The following rules also apply to new control adapters:
 
 1. Carry the captured `WidgetPresentationFrame` in `WidgetActionRequest` instead of only its authority. An `Authority` convenience property can return `Displayed.Authority`.
 2. Capture the frame before any lifecycle await, popup dismissal or focus restoration in ordinary activation, Select, text commit, slider commit and ordinary context-action paths. Keep the captured action values and focused ID.

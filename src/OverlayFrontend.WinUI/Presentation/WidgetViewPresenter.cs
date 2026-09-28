@@ -12,7 +12,10 @@ using WidgetRail.WidgetSdk;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed record WidgetElementIdentity(string Scope, string Id, ViewNodeKind Kind, string ItemPath);
-internal sealed record WidgetActionRequest(WidgetPresentationAuthority Authority, WidgetActionEvent Action);
+internal sealed record WidgetActionRequest(WidgetPresentationFrame Displayed, WidgetActionEvent Action)
+{
+    internal WidgetPresentationAuthority Authority => Displayed.Authority;
+}
 
 /// <summary>
 /// Trusted declaration-to-control adapter. WinUI owns all layout, focus traversal,
@@ -261,10 +264,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             || binding.Identity != identity || !ReferenceEquals(binding.Token, token) || !Eligible(binding)
             || declarations[identity.Id].Node.ActionId is not { } action) return;
         CancelGroupEntry();
-        var authority = frame.Authority;
+        var displayed = frame;
+        var authority = displayed.Authority;
         try
         {
-            await DispatchActionAsync(new(authority, new(action, identity.Id, Sequence: ++actionSequence,
+            await DispatchActionAsync(new(displayed, new(action, identity.Id, Sequence: ++actionSequence,
                 MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000, InputScopeId: authority.ActiveInputScopeId)
                 { FocusedElementId = FocusedBinding()?.Identity.Id }));
         }

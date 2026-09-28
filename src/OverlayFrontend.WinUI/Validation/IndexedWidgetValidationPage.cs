@@ -72,7 +72,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         presenter.Failed = error => { failure = error.Message; Observe(); };
         presenter.DispatchActionAsync = async request =>
         {
-            try { if (session is not null) await session.SendActionAsync(request.Authority, request.Action, lifetime.Token); }
+            try { if (session is not null) await session.SendActionAsync(request.Displayed, request.Action, lifetime.Token); }
             catch (Exception error) { failure = error.Message; Observe(); }
         };
         Loaded += (_, _) => startup ??= StartAsync();

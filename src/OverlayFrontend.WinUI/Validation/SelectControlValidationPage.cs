@@ -18,6 +18,7 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
     private readonly TextBlock status = new() { Text = "Select validation waiting for layout" };
     private readonly List<string> checks = [];
     private readonly List<WidgetActionRequest> actions = [];
+    private WidgetPresentationFrame? displayed;
     private long sequence;
     private long owner = 1;
     private bool alternateScope;
@@ -89,6 +90,23 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
             Check(!presenter.HasTransientControl, "removed opener revokes popup");
             removed = false; Apply();
             await OpenAsync();
+            var origin = displayed;
+            var dispatched = new TaskCompletionSource<WidgetActionRequest>();
+            var acknowledged = new TaskCompletionSource();
+            presenter.DispatchActionAsync = async request =>
+            {
+                dispatched.SetResult(request);
+                await acknowledged.Task;
+            };
+            presenter.ActivateFocused();
+            var captured = await dispatched.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Apply(); // Simulate a publication arriving before lifecycle acknowledgment.
+            Check(ReferenceEquals(captured.Displayed, origin) && !ReferenceEquals(captured.Displayed, displayed),
+                "popup commit retains exact displayed frame across pending acknowledgment");
+            Check(captured.Action.ActionId == "choose.first" && captured.Action.SourceElementId == "picker",
+                "pending popup action keeps captured target and payload");
+            acknowledged.SetResult();
+            await OpenAsync();
             await presenter.DisposeAsync();
             await Task.Delay(150);
             Check(!presenter.HasTransientControl, "presenter disposal dismisses popup");
@@ -158,9 +176,10 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
             RuntimeGeneration = $"runtime-{owner}", PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };
         var errors = ViewSnapshotValidator.Validate(snapshot);
         if (errors.Count != 0) throw new InvalidOperationException(string.Join("; ", errors.Select(error => error.Path + ": " + error.Message)));
-        presenter.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, owner,
+        displayed = new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, owner,
             snapshot.WidgetInstanceId, sequence, snapshot.ActiveInputScopeId), descriptor,
-            SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot)), new Dictionary<string, BridgeNodeRenderStyles>()));
+            SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot)), new Dictionary<string, BridgeNodeRenderStyles>());
+        presenter.Apply(displayed);
     }
 
     private static void WriteResult<T>(T result)

@@ -106,10 +106,11 @@ internal sealed partial class WidgetViewPresenter
         if (!SliderMath.IsValidRequestedValue(target, node.Minimum.Value, node.Maximum.Value, node.Step.Value)) return;
         if (binding.Element is Slider slider && slider.Value != target)
         { updatingSlider = true; try { slider.Value = target; } finally { updatingSlider = false; } }
-        var authority = frame.Authority;
+        var displayed = frame;
+        var authority = displayed.Authority;
         try
         {
-            await DispatchActionAsync(new(authority, new WidgetActionEvent(action, identity.Id, Sequence: ++actionSequence,
+            await DispatchActionAsync(new(displayed, new WidgetActionEvent(action, identity.Id, Sequence: ++actionSequence,
                 MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000, RequestedValue: target,
                 InputScopeId: authority.ActiveInputScopeId) { FocusedElementId = identity.Id }));
         }

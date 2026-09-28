@@ -166,7 +166,8 @@ internal sealed partial class WidgetViewPresenter
         if (applying || !ReferenceEquals(contextPopup, popup) || !ContextIsCurrent(popup) ||
             index < 0 || index >= popup.Items.Count || !popup.Items[index].IsEnabled) return;
         var action = popup.Declaration.ContextActions[index];
-        var authority = frame!.Authority;
+        var displayed = frame!;
+        var authority = displayed.Authority;
         var inputSequence = ++actionSequence;
         var timestamp = Environment.TickCount64 * 1000;
         popup.Invoking = true;
@@ -179,7 +180,7 @@ internal sealed partial class WidgetViewPresenter
                     contextActionOwnerId: popup.Declaration.Id, contextActionId: action.ActionId,
                     sequence: inputSequence, monotonicTimestampMicroseconds: timestamp);
             else if (DispatchActionAsync is not null)
-                await DispatchActionAsync(new(authority, new WidgetActionEvent(action.ActionId, popup.Declaration.Id,
+                await DispatchActionAsync(new(displayed, new WidgetActionEvent(action.ActionId, popup.Declaration.Id,
                     popup.Trigger, Sequence: inputSequence, MonotonicTimestampMicroseconds: timestamp,
                     InputScopeId: authority.ActiveInputScopeId) { FocusedElementId = popup.FocusedId }));
         }

@@ -407,8 +407,9 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         try
         {
             if (await EnsureInteractionAsync(request.Authority, lifetime.Token))
-                await owner.Session.SendActionAsync(request.Authority, request.Action, lifetime.Token);
+                await owner.Session.SendActionAsync(request.Displayed, request.Action, lifetime.Token);
         }
+        catch (WidgetPresentationSessionException error) when (error.Code is "ordinary_input_stale" or "snapshot_stale" or "input_scope_stale" or "presentation_stale") { }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { ReportFailure(error); }
     }

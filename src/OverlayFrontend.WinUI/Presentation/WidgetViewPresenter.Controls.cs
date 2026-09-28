@@ -154,12 +154,13 @@ internal sealed partial class WidgetViewPresenter
             option.IsDisabled || option.IsBusy || DispatchActionAsync is null) return;
         // Read current authority after validating the opening's semantic binding.
         // Harmless snapshots may advance the sequence while this menu stays open.
-        var authority = frame!.Authority;
+        var displayed = frame!;
+        var authority = displayed.Authority;
         var action = new WidgetActionEvent(option.ActionId, popup.Owner.Identity.Id, ControllerButton.A,
             ControllerEventPhase.Pressed, ++actionSequence, Environment.TickCount64 * 1000,
             InputScopeId: authority.ActiveInputScopeId) { FocusedElementId = popup.Owner.Identity.Id };
         DismissTransientControl();
-        try { await DispatchActionAsync(new(authority, action)); }
+        try { await DispatchActionAsync(new(displayed, action)); }
         catch (OperationCanceledException) when (disposed) { }
         catch (Exception error) { ReportFailure(error); }
     }

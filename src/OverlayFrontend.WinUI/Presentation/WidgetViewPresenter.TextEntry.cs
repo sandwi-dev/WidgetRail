@@ -75,13 +75,14 @@ internal sealed partial class WidgetViewPresenter
     {
         if (textEntryPopup is not { } popup) return;
         if (!commit || !TextEntryIsCurrent(popup) || DispatchActionAsync is null) { DismissTextEntry(); return; }
-        var authority = frame!.Authority;
+        var displayed = frame!;
+        var authority = displayed.Authority;
         var action = new WidgetActionEvent(popup.Declaration.ActionId!, popup.Owner.Identity.Id, ControllerButton.A,
             Sequence: ++actionSequence, MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000,
             InputScopeId: authority.ActiveInputScopeId)
         { CommittedText = popup.Dialog.TakeValue(), FocusedElementId = popup.Owner.Identity.Id };
         DismissTextEntry();
-        try { await DispatchActionAsync(new(authority, action)); }
+        try { await DispatchActionAsync(new(displayed, action)); }
         catch (OperationCanceledException) when (disposed) { }
         catch (Exception)
         {
