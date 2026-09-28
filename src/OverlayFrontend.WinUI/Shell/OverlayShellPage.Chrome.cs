@@ -28,7 +28,11 @@ internal sealed partial class OverlayShellPage
         RefreshShellChrome();
     }
 
-    internal void RefreshShellChrome() => chromeStyles?.Update(ShellPalette, Appearance, systemUi.AnimationsEnabled);
+    internal void RefreshShellChrome()
+    {
+        chromeStyles?.Update(ShellPalette, Appearance, systemUi.AnimationsEnabled);
+        RefreshSystemStatusAppearance();
+    }
 
     internal void DisposeShellChrome() { chromeStyles?.Dispose(); chromeStyles = null; trayGuide.Dispose(); }
 }

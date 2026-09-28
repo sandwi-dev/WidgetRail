@@ -42,7 +42,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition x:Name="TrailingStatusColumn" Width="0" />
                 </Grid.ColumnDefinitions>
-                <ContentControl x:Name="RailStatusHost" IsTabStop="False" IsHitTestVisible="False"
+                <ContentControl x:Name="RailStatusHost" IsTabStop="False" IsHitTestVisible="False" Visibility="Collapsed"
                                 HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
                                 AutomationProperties.AutomationId="Overlay.RailStatus" />
                 <Grid x:Name="RailControls" Grid.Column="1" ColumnSpacing="6">

@@ -59,7 +59,7 @@ internal sealed class ShellStatusView : ContentControl, IAsyncDisposable
         text.Children.Add(clockFit); text.Children.Add(date);
         layout.Children.Add(indicators); layout.Children.Add(text); Grid.SetColumn(text, 1);
         surface.Child = layout; Content = surface;
-        styles.Register(surface, "tray"); styles.Register(clock, "tray-clock"); styles.Register(date, "tray-date");
+        styles.Register(clock, "tray-clock"); styles.Register(date, "tray-date");
         styles.Register(internet, "tray-status-icon"); styles.Register(bluetooth, "tray-status-icon");
         styles.Register(internetMark, "tray-date"); styles.Register(bluetoothMark, "tray-date");
         AutomationProperties.SetAutomationId(this, "Overlay.SystemStatus");

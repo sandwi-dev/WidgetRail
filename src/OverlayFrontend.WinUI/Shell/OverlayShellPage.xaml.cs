@@ -55,6 +55,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         preferencesStore = new(options.SettingsRoot);
         interactionAdmission = new(transitions);
         InitializeComponent();
+        InitializeSystemStatus(startService);
         InitializeTrayCommands();
         UpdateTrayHelp();
         InitializeFullscreenView();
@@ -376,6 +377,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (!value) ExitPinnedInteraction(restoreMain: true);
         interactionAdmission.Invalidate();
         visible = value;
+        ReconcileSystemStatus();
         surface?.SetAutomaticFocusEnabled(false);
         if (!value) _ = SavePreferencesAsync();
         ReconcilePreviewVisibility();
@@ -579,6 +581,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         interactionAdmission.Invalidate();
         retired = true;
+        await DisposeSystemStatusAsync();
         ResetTrayInteraction();
         ClearTrayFocus();
         ReconcilePreviewVisibility();

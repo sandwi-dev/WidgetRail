@@ -29,6 +29,19 @@ checks do not establish real-system radio availability or production rail placem
 Production integration attaches the view to `RailStatusHost`, applies the shared
 palette and active visibility, and awaits `DisposeAsync` with the shell lifetime.
 
+The combined production shell now owns that integration. Hidden overlays,
+fullscreen playback and a collapsed narrow-layout status slot suspend observation.
+Shutdown retires status before awaiting bridge startup or disposal. Geometry-only
+fixtures use a deterministic unknown reader rather than accessing system radios.
+The wrapper stays transparent; only clock/date/icon roles receive theme styles.
+
+At the combined checkpoint, the analyzer build, 63 managed shell checks, 82 native
+production geometry checks and 12 native status checks pass. The normal and compact
+status screenshot was inspected. Evidence is in `artifacts/winui-shell/`:
+`combined-production-01`, `status-combined-result.json`, `status-combined.png` and
+`combined-managed.log`. These checks do not establish physical or mixed-monitor
+acceptance.
+
 Evidence: `artifacts/shell-status/` in the status worktree. The first non-screen
 screenshot returned an empty composition surface and is not visual parity evidence;
 use a foreground `--capture-screen` image for the combined shell review.
