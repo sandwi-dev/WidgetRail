@@ -129,7 +129,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         ArgumentNullException.ThrowIfNull(nextPresentation);
         var next = nextPresentation.Frame;
         var sameOwner = nextPresentation.SameSurface(presentation);
-        if (!presentationOnly && sameOwner && frame!.Authority.SnapshotSequence >= next.Authority.SnapshotSequence) return;
+        if (!presentationOnly && sameOwner && (frame!.Authority.SnapshotSequence > next.Authority.SnapshotSequence ||
+            frame.Authority.SnapshotSequence == next.Authority.SnapshotSequence && frame.AppearanceRevision >= next.AppearanceRevision)) return;
         var plan = Plan(root, rootScope);
         // Transition preparation already revokes and detaches native controls.
         // Capture logical focus and enter the publication transaction before any

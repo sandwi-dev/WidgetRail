@@ -33,6 +33,10 @@ internal static class BridgeMessageTypes
     public const string AcquireIndexedRange = "acquire-indexed-range";
     public const string IndexedLease = "indexed-lease";
     public const string ReleaseIndexedLease = "release-indexed-lease";
+    public const string RefreshIndexedStyles = "refresh-indexed-styles";
+    public const string IndexedStyles = "indexed-styles";
+    public const string RefreshPresentationStyles = "refresh-presentation-styles";
+    public const string PresentationStyles = "presentation-styles";
     public const string IndexedInput = "indexed-input";
     public const string ResolveIndexedArtwork = "resolve-indexed-artwork";
     public const string CancelIndexedArtwork = "cancel-indexed-artwork";
@@ -383,7 +387,17 @@ internal sealed record BridgeIndexedRangeResponse(
 internal sealed record BridgeIndexedLeaseResponse(
     string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
     IndexedCollectionLease Lease,
-    [property: JsonRequired] IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles);
+    [property: JsonRequired] IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles,
+    long AppearanceRevision = 0);
+internal sealed record BridgeResolvedStyleSnapshot(long Revision, IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles);
+internal sealed record BridgePresentationStylesRequest(
+    string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration, long SnapshotSequence);
+internal sealed record BridgePresentationStylesResponse(
+    string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration, long SnapshotSequence,
+    long AppearanceRevision, [property: JsonRequired] IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles);
+internal sealed record BridgeIndexedStylesResponse(
+    string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration, string LeaseId,
+    long AppearanceRevision, [property: JsonRequired] IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles);
 internal sealed record BridgeIndexedLeaseRequest(
     string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration, string LeaseId);
 internal sealed record BridgeIndexedInputRequest(

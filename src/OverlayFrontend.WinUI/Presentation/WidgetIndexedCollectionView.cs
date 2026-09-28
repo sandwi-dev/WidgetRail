@@ -123,6 +123,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             source = new(session, binding, declaration, DispatcherQueue) { Failed = failed };
             if (!presentationActive) _ = source.SetPresentationActiveAsync(false);
             source.DiscoveryChanged += UpdateDiscoveryFooter;
+            source.StylesChanged += IndexedStylesChanged;
         }
         else
         {
@@ -327,7 +328,13 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private void RetireSource(WidgetIndexedRows previous)
     {
         previous.DiscoveryChanged -= UpdateDiscoveryFooter;
+        previous.StylesChanged -= IndexedStylesChanged;
         TrackRetirement(previous.DisposeAsync().AsTask());
+    }
+
+    private void IndexedStylesChanged()
+    {
+        if (!disposed) PresentationChanged?.Invoke();
     }
     private void RetireViewRows()
     {

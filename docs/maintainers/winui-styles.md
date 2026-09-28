@@ -164,8 +164,10 @@ An indexed row's native SelectorItem owns root box styles, including padding and
 opacity, authored margin and size constraints. Its noninteractive fragment applies root typography only, with focus/press
 state explicitly forwarded from that container. Descendants retain their own Base
 styles. Row styles always come from its semantic lease, not the parent page map.
-This does not solve the separate transport requirement to re-resolve retained leases
-when a global WRSS theme changes.
+Global WRSS changes refresh retained maps through the session's trusted styles-only
+revision lane (see `winui-style-refresh.md`). A row keeps its data/action lease,
+logical slot and realized container. Style notifications reapply the fragment and
+container adapters on the dispatcher; retained focus fragments are updated too.
 
 The fragment root relinquishes its duplicate margin and size constraints. Scale and focus decoration
 therefore operate on the painted card inside the authored gap, rather than scaling

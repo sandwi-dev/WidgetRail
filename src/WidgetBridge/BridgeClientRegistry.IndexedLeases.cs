@@ -64,7 +64,7 @@ internal sealed partial class BridgeClientRegistry
 
     internal async Task<BridgeClientPublication<BridgeIndexedLeaseResponse>> AcquireIndexedRangeAsync(
         BridgeIndexedRangeRequest request, CancellationToken cancellationToken,
-        Func<ConfiguredWidget, IndexedCollectionRange, IReadOnlyDictionary<string, BridgeNodeRenderStyles>>? resolveStyles = null)
+        Func<ConfiguredWidget, IndexedCollectionRange, BridgeResolvedStyleSnapshot>? resolveStyles = null)
     {
         BridgeIndexedRangeValidation.Validate(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -127,10 +127,11 @@ internal sealed partial class BridgeClientRegistry
                 IndexedCollectionContract.ValidateRange(parent, request.Range, acquired.Lease.Range);
                 // Resolve only bounded range roots. Compilation never holds the global
                 // registry lock; the final identity check rejects concurrent catalog changes.
-                var styles = resolveStyles is null
-                    ? BridgeRenderStyleResolver.ResolveRange(acquired.Lease.Range, configured.CompiledTheme)
+                var styleSnapshot = resolveStyles is null
+                    ? new(0, BridgeRenderStyleResolver.ResolveRange(acquired.Lease.Range, configured.CompiledTheme))
                     : resolveStyles(configured, acquired.Lease.Range);
-                styles = BridgeRenderStyleContract.ValidateAndFreeze(styles,
+                if (styleSnapshot.Revision < 0) throw new BridgeProtocolException("Invalid appearance revision.");
+                var styles = BridgeRenderStyleContract.ValidateAndFreeze(styleSnapshot.RenderStyles,
                     BridgeRenderStyleContract.RangeNodeIds(acquired.Lease.Range), requireComplete: true);
                 lock (_gate)
                 {
@@ -149,7 +150,7 @@ internal sealed partial class BridgeClientRegistry
                     lifetime = null;
                     acquired = null;
                     var response = new BridgeIndexedLeaseResponse(request.WidgetId, request.InstanceId, request.RuntimeGeneration,
-                        request.PresentationGeneration, admitted.Runtime.Lease, styles);
+                        request.PresentationGeneration, admitted.Runtime.Lease, styles, styleSnapshot.Revision);
                     var publication = AdmitPublicationLocked(registration, response);
                     delivered = true;
                     return publication;
@@ -197,6 +198,43 @@ internal sealed partial class BridgeClientRegistry
                 lifetime?.Dispose();
             }
         }
+    }
+
+    internal BridgeClientPublication<BridgeIndexedStylesResponse> RefreshIndexedStyles(BridgeIndexedLeaseRequest request,
+        Func<ConfiguredWidget, IndexedCollectionRange, BridgeResolvedStyleSnapshot> resolveStyles, CancellationToken cancellationToken)
+    {
+        IndexedOwner owner;
+        ConfiguredWidget configured;
+        lock (_gate)
+        {
+            DemandNotDisposed();
+            cancellationToken.ThrowIfCancellationRequested();
+            owner = FindIndexedOwnerLocked(request.WidgetId, request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration, request.LeaseId)
+                ?? throw new BridgeProtocolException("Indexed style lease is unavailable.");
+            _ = DemandIndexedOwnerLocked(owner);
+            if (owner.Active >= Widget.ActionQueueCapacity) throw new BridgeProtocolException("Indexed lease admission is full.");
+            ++owner.Active;
+            configured = owner.Registration.Configured;
+        }
+        try
+        {
+            // Compile bounded retained declarations, never ask the worker/provider
+            // for new semantics or change the lease's input/artwork authority.
+            var snapshot = resolveStyles(configured, owner.Runtime.Lease.Range);
+            if (snapshot.Revision < 0) throw new BridgeProtocolException("Invalid appearance revision.");
+            var styles = BridgeRenderStyleContract.ValidateAndFreeze(snapshot.RenderStyles,
+                BridgeRenderStyleContract.RangeNodeIds(owner.Runtime.Lease.Range), requireComplete: true);
+            lock (_gate)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _ = DemandIndexedOwnerLocked(owner);
+                if (!ReferenceEquals(configured, owner.Registration.Configured))
+                    throw new BridgeProtocolException("Indexed style configuration changed before publication.");
+                return AdmitPublicationLocked(owner.Registration, new BridgeIndexedStylesResponse(request.WidgetId,
+                    request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration, request.LeaseId, snapshot.Revision, styles));
+            }
+        }
+        finally { lock (_gate) EndIndexedOperationLocked(owner); }
     }
 
     internal async Task<bool> ReleaseIndexedLeaseAsync(BridgeIndexedLeaseRequest request)

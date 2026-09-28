@@ -115,6 +115,7 @@ public sealed partial class WidgetPresentationSession
             IndexedCollectionRange received;
             string? leaseId = null;
             IReadOnlyDictionary<string, BridgeNodeRenderStyles>? renderStyles = null;
+            long appearanceRevision = 0;
             if (acquire)
             {
                 var response = BridgeJson.FromElement<BridgeIndexedLeaseResponse>(envelope.Payload);
@@ -124,6 +125,8 @@ public sealed partial class WidgetPresentationSession
                 received = response.Lease.Range;
                 leaseId = response.Lease.LeaseId;
                 renderStyles = response.RenderStyles;
+                appearanceRevision = response.AppearanceRevision;
+                if (appearanceRevision < 0) throw new BridgeProtocolException("Invalid indexed appearance revision.");
             }
             else
             {
@@ -147,8 +150,9 @@ public sealed partial class WidgetPresentationSession
                     if (_indexedLeases.ContainsKey(leaseId!)) throw new BridgeProtocolException("WidgetBridge reused an owned lease identity.");
                     var frozenStyles = BridgeRenderStyleContract.ValidateAndFreeze(renderStyles,
                         BridgeRenderStyleContract.RangeNodeIds(frozen), requireComplete: true);
-                    lease = new(this, authority, operation.Request, operation.ScopeId, leaseId!, frozen, frozenStyles);
+                    lease = new(this, authority, operation.Request, operation.ScopeId, leaseId!, frozen, frozenStyles, appearanceRevision);
                     _indexedLeases.Add(leaseId!, lease);
+                    QueueStyleRefreshLocked();
                 }
                 succeeded = true;
                 return new(frozen, lease);

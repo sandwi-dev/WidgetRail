@@ -493,7 +493,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         }
         await _transport.DisposeAsync().ConfigureAwait(false);
         Task[] refreshes;
-        lock (_gate) refreshes = _refreshes.Values.ToArray();
+        lock (_gate) refreshes = _refreshes.Values.Concat(_styleRefresh is { } styles ? [styles] : Array.Empty<Task>()).ToArray();
         try { await Task.WhenAll(refreshes).ConfigureAwait(false); }
         catch (Exception exception) when (exception is not OutOfMemoryException) { }
         PendingArtwork[] artwork;
@@ -588,6 +588,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             {
                 if (revision <= _notifiedAppearanceRevision) return;
                 _notifiedAppearanceRevision = revision;
+                QueueStyleRefreshLocked();
             }
         }
         (catalog ? CatalogChanged : AppearanceChanged)?.Invoke(this, new(revision));
@@ -1056,7 +1057,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         JsonElement payload)
     {
         RequireAllowedProperties(payload, new HashSet<string>(["widgetId", "transactionKind", "baseSequence",
-            "recoveryOriginSequence", "snapshot", "renderStyles", "windowPreviews"], StringComparer.Ordinal),
+            "recoveryOriginSequence", "snapshot", "renderStyles", "windowPreviews", "appearanceRevision"], StringComparer.Ordinal),
             "widgetId", "transactionKind", "baseSequence", "recoveryOriginSequence", "snapshot", "renderStyles");
         if (!string.Equals(ReadString(payload, "widgetId"), descriptor.Id, StringComparison.Ordinal))
             throw new BridgeProtocolException("WidgetBridge returned a snapshot for another widget.");
@@ -1088,7 +1089,8 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             authority,
             descriptor,
             snapshot,
-            frozenStyles) { WindowPreviews = ReadWindowPreviewInventory(payload, snapshot) };
+            frozenStyles) { WindowPreviews = ReadWindowPreviewInventory(payload, snapshot),
+                AppearanceRevision = payload.TryGetProperty("appearanceRevision", out _) ? ReadInt64(payload, "appearanceRevision", 0) : 0 };
         WidgetPresentationState committed;
         var startPublications = false;
         lock (_gate)
@@ -1125,6 +1127,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         var committed = state with { PublicationRevision = NextPublicationRevisionLocked() };
         if (state.LastGood is { } inputFrame) _publishedInputFrames.GetValue(inputFrame, _ => PublishedInputFrameMarker);
         _states[state.WidgetId] = committed;
+        QueueStyleRefreshLocked();
         ReconcileMediaDocumentLocked(committed);
         ReconcileWindowPreviewsLocked(committed);
         ReconcilePinnedProjectionsLocked(committed);

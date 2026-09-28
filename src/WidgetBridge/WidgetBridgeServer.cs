@@ -412,7 +412,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         {
             var rangeRequest = BridgeJson.FromElement<BridgeIndexedRangeRequest>(request.Payload);
             using var publication = await _registry.AcquireIndexedRangeAsync(rangeRequest, cancellationToken,
-                (configured, range) => BridgeRenderStyleResolver.ResolveRange(range, ResolvePresentationTheme(configured))).ConfigureAwait(false);
+                ResolveIndexedStyles).ConfigureAwait(false);
             var lease = publication.Value;
             try
             {
@@ -426,6 +426,20 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     lease.RuntimeGeneration, lease.PresentationGeneration, lease.Lease.LeaseId)).ConfigureAwait(false);
                 throw;
             }
+            break;
+        }
+        case BridgeMessageTypes.RefreshPresentationStyles:
+        {
+            var styleRequest = BridgeJson.FromElement<BridgePresentationStylesRequest>(request.Payload);
+            using var styles = _registry.RefreshPresentationStyles(styleRequest, ResolveSnapshotStyles, cancellationToken);
+            await ReplyAsync(BridgeMessageTypes.PresentationStyles, request.RequestId, styles.Value, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.RefreshIndexedStyles:
+        {
+            var styleRequest = BridgeJson.FromElement<BridgeIndexedLeaseRequest>(request.Payload);
+            using var styles = _registry.RefreshIndexedStyles(styleRequest, ResolveIndexedStyles, cancellationToken);
+            await ReplyAsync(BridgeMessageTypes.IndexedStyles, request.RequestId, styles.Value, cancellationToken).ConfigureAwait(false);
             break;
         }
         case BridgeMessageTypes.ReleaseIndexedLease:
@@ -1139,8 +1153,19 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             },
             cancellationToken);
 
-    private WidgetRail.WidgetStyling.WrssTheme? ResolvePresentationTheme(ConfiguredWidget configured) =>
-        _appearance is null ? configured.CompiledTheme : _appearance.ResolveWidgetTheme(configured.Id, configured.StylePackage);
+    private BridgeResolvedStyleSnapshot ResolveIndexedStyles(ConfiguredWidget configured, IndexedCollectionRange range)
+    {
+        if (_appearance is null) return new(0, BridgeRenderStyleResolver.ResolveRange(range, configured.CompiledTheme));
+        var snapshot = _appearance.ResolveWidgetThemeSnapshot(configured.Id, configured.StylePackage);
+        return new(snapshot.Revision, BridgeRenderStyleResolver.ResolveRange(range, snapshot.Theme));
+    }
+
+    private BridgeResolvedStyleSnapshot ResolveSnapshotStyles(ConfiguredWidget configured, ViewSnapshot snapshot)
+    {
+        if (_appearance is null) return new(0, BridgeRenderStyleResolver.Resolve(snapshot, configured.CompiledTheme));
+        var theme = _appearance.ResolveWidgetThemeSnapshot(configured.Id, configured.StylePackage);
+        return new(theme.Revision, BridgeRenderStyleResolver.Resolve(snapshot, theme.Theme));
+    }
 
     private async Task ReplySnapshotAsync(
         long requestId,
@@ -1153,8 +1178,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         var snapshot = snapshotResult.Snapshot;
         var configuredForStyle = snapshotResult.Configured;
-        var theme = ResolvePresentationTheme(configuredForStyle);
-        var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, theme);
+        var styles = ResolveSnapshotStyles(configuredForStyle, snapshot);
+        var renderStyles = styles.RenderStyles;
         var windowPreviews = _supportsWindowPreviews
             ? await WindowPreviewResolver.ResolveAsync(_consentStore, configuredForStyle, snapshot, cancellationToken).ConfigureAwait(false)
             : null;
@@ -1172,6 +1197,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 recoveryOriginSequence,
                 snapshot = document.RootElement.Clone(),
                 renderStyles,
+                appearanceRevision = styles.Revision,
                 windowPreviews = windowPreviews is { Count: > 0 } ? windowPreviews : null,
             }),
         }, cancellationToken).ConfigureAwait(false);
@@ -1196,8 +1222,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             return;
         }
 
-        var theme = ResolvePresentationTheme(presentation.Configured);
-        var renderStyles = BridgeRenderStyleResolver.Resolve(presentation.Snapshot, theme);
+        var styles = ResolveSnapshotStyles(presentation.Configured, presentation.Snapshot);
+        var renderStyles = styles.RenderStyles;
         var windowPreviews = _supportsWindowPreviews
             ? await WindowPreviewResolver.ResolveAsync(_consentStore, presentation.Configured, presentation.Snapshot, cancellationToken).ConfigureAwait(false)
             : null;
@@ -1215,6 +1241,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 recoveryOriginSequence = presentation.RecoveryOriginSequence,
                 update = document.RootElement.Clone(),
                 renderStyles,
+                appearanceRevision = styles.Revision,
                 windowPreviews = windowPreviews is { Count: > 0 } ? windowPreviews : null,
             }),
         }, cancellationToken).ConfigureAwait(false);

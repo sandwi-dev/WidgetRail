@@ -18,6 +18,7 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
     private sealed record SourcePresentation(WidgetPresentationBinding Binding, ViewNode Collection)
     { internal WidgetPresentationFrame Frame => Binding.Frame; }
     private readonly PresentationSession session;
+    private readonly DispatcherQueue dispatcher;
     private static readonly ConditionalWeakTable<PresentationSession, SemaphoreSlim> Admissions = new();
     private readonly SemaphoreSlim admission;
     private SourcePresentation presentation;
@@ -55,6 +56,7 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
     internal bool ContinuationFailed { get; private set; }
     internal bool ContinuationPaused { get; private set; }
     internal event Action? DiscoveryChanged;
+    internal event Action? StylesChanged;
 
     internal WidgetIndexedRows(PresentationSession session, WidgetPresentationFrame frame, ViewNode collection, DispatcherQueue dispatcher)
         : this(session, WidgetPresentationBinding.ForMain(frame), collection, dispatcher) { }
@@ -65,6 +67,7 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         DispatcherQueue dispatcher)
     {
         this.session = session;
+        this.dispatcher = dispatcher;
         if (session.MaximumConcurrentIndexedRequests < 1) throw new InvalidOperationException("The session has no indexed provider capacity.");
         admission = Admissions.GetValue(session, owner => new(owner.MaximumConcurrentIndexedRequests, owner.MaximumConcurrentIndexedRequests));
         var source = collection.IndexedCollection ?? throw new ArgumentException("Missing indexed source.", nameof(collection));
@@ -187,12 +190,21 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         {
             cancellation.ThrowIfCancellationRequested();
             if (!lease.IsCurrent || !current.Binding.IsCurrent) throw new OperationCanceledException("Indexed rows retired before native admission.");
+            // The lease owns this subscription; the source does not retain old
+            // leases after page eviction. Dispatch style-only notifications, not
+            // collection Reset/reacquisition or provider ContentRevision changes.
+            lease.RenderStylesChanged += (_, _) => ItemsDispatcherStylesChanged();
             return new(request.Query, request.RequestId, request.StartIndex,
                 lease.Range.Items.Select(item => new KeyedCollectionItem<WidgetIndexedRow>(item.Key, new(item, lease, this))).ToArray(),
                 request.ContentRevision, lease);
         }
         catch { await lease.DisposeAsync().ConfigureAwait(false); throw; }
     }
+
+    private void ItemsDispatcherStylesChanged() => dispatcher.TryEnqueue(() =>
+    {
+        if (!lifetime.IsCancellationRequested) StylesChanged?.Invoke();
+    });
 
     internal async Task<WidgetEncodedArtwork?> ResolveArtworkAsync(WidgetIndexedRow row, string handle, CancellationToken cancellation)
     {

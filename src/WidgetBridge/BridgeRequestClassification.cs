@@ -16,6 +16,8 @@ internal enum BridgeRequestKind
     CancelIndexedRange,
     AcquireIndexedRange,
     ReleaseIndexedLease,
+    RefreshIndexedStyles,
+    RefreshPresentationStyles,
     IndexedInput,
     ResolveIndexedArtwork,
     CancelIndexedArtwork,
@@ -62,6 +64,7 @@ internal readonly record struct BridgeRequestKey
             BridgeRequestKind.ReadIndexedRange or
             BridgeRequestKind.CancelIndexedRange or
             BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or BridgeRequestKind.IndexedInput or
+            BridgeRequestKind.RefreshIndexedStyles or BridgeRequestKind.RefreshPresentationStyles or
             BridgeRequestKind.ResolveIndexedArtwork or BridgeRequestKind.CancelIndexedArtwork or
             BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.ResolvePackageIcon or
@@ -83,6 +86,7 @@ internal readonly record struct BridgeRequestKey
             BridgeRequestKind.ReadIndexedRange or
             BridgeRequestKind.CancelIndexedRange or
             BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or BridgeRequestKind.IndexedInput or
+            BridgeRequestKind.RefreshIndexedStyles or BridgeRequestKind.RefreshPresentationStyles or
             BridgeRequestKind.ResolveIndexedArtwork or BridgeRequestKind.CancelIndexedArtwork or
             BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.ResolvePackageIcon or
@@ -151,6 +155,8 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.CancelIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.CancelIndexedRange),
                 BridgeMessageTypes.AcquireIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.AcquireIndexedRange),
                 BridgeMessageTypes.ReleaseIndexedLease => IndexedLease(request.Payload),
+                BridgeMessageTypes.RefreshIndexedStyles => IndexedLease(request.Payload, BridgeRequestKind.RefreshIndexedStyles),
+                BridgeMessageTypes.RefreshPresentationStyles => PresentationStyles(request.Payload),
                 BridgeMessageTypes.IndexedInput => IndexedInput(request.Payload),
                 BridgeMessageTypes.ResolveIndexedArtwork => IndexedArtwork(request.Payload, BridgeRequestKind.ResolveIndexedArtwork),
                 BridgeMessageTypes.CancelIndexedArtwork => IndexedArtwork(request.Payload, BridgeRequestKind.CancelIndexedArtwork),
@@ -203,12 +209,20 @@ internal static class BridgeRequestClassifier
             throw new BridgeProtocolException("Indexed identity is invalid.");
     }
 
-    private static BridgeRequestKey IndexedLease(JsonElement payload)
+    private static BridgeRequestKey IndexedLease(JsonElement payload, BridgeRequestKind kind = BridgeRequestKind.ReleaseIndexedLease)
     {
         var request = BridgeJson.FromElement<BridgeIndexedLeaseRequest>(payload);
         IndexedIdentity(request.WidgetId, request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration);
         if (!Guid.TryParseExact(request.LeaseId, "N", out _)) throw new BridgeProtocolException("Indexed lease ID is invalid.");
-        return Widget(request.WidgetId, BridgeRequestKind.ReleaseIndexedLease);
+        return Widget(request.WidgetId, kind);
+    }
+
+    private static BridgeRequestKey PresentationStyles(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgePresentationStylesRequest>(payload);
+        IndexedIdentity(request.WidgetId, request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration);
+        if (request.SnapshotSequence < 1) throw new BridgeProtocolException("Style snapshot sequence is invalid.");
+        return Widget(request.WidgetId, BridgeRequestKind.RefreshPresentationStyles);
     }
 
     private static BridgeRequestKey IndexedInput(JsonElement payload)

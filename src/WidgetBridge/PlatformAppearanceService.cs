@@ -87,13 +87,16 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
     }
 
     public WrssTheme ResolveWidgetTheme(string widgetId, WrssPackageResult widgetPackage)
+        => ResolveWidgetThemeSnapshot(widgetId, widgetPackage).Theme;
+
+    internal (long Revision, WrssTheme Theme) ResolveWidgetThemeSnapshot(string widgetId, WrssPackageResult widgetPackage)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         ArgumentNullException.ThrowIfNull(widgetPackage);
         var current = Current;
         if (_widgetThemes.TryGetValue(widgetId, out var cached) && cached.Revision == current.Revision &&
             ReferenceEquals(cached.Package, widgetPackage))
-            return cached.Theme;
+            return (cached.Revision, cached.Theme);
 
         var compiled = current.CompileForWidget(widgetPackage);
         if (!compiled.IsValid)
@@ -106,7 +109,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         }
         var entry = new WidgetThemeCacheEntry(current.Revision, widgetPackage, compiled.Theme!);
         _widgetThemes[widgetId] = entry;
-        return entry.Theme;
+        return (entry.Revision, entry.Theme);
     }
 
     private WidgetRail.PlatformDiagnostics.OverlayDisplayContext _display =

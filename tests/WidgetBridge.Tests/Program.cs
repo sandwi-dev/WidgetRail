@@ -29,6 +29,11 @@ if (args is ["--serve-indexed-validation", var validationPipe])
     await BridgeIndexedEndToEndScenarios.ServeValidationAsync(validationPipe);
     return 0;
 }
+if (args is ["--serve-themed-indexed-validation", var themedPipe, var themeSettingsRoot])
+{
+    await BridgeIndexedEndToEndScenarios.ServeThemedValidationAsync(themedPipe, themeSettingsRoot);
+    return 0;
+}
 if (args is ["--serve-discovered-validation", var discoveredPipe])
 {
     await DiscoveredBridgeScenarios.ServeAsync(discoveredPipe);
@@ -62,6 +67,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Discovered prefixes cross real worker bridge and session with retained action authority", DiscoveredBridgeScenarios.EndToEnd),
     ("Indexed styles failure releases acquired runtime semantics", BridgeIndexedLeaseRegistryScenarios.StylePreparationFailureReleasesExactRuntimeLease),
     ("Indexed styles match parent cascade and focus fragments", BridgeIndexedStyleScenarios.RangeStylesMatchSnapshotCascadeAndFragments),
+    ("Indexed styles refresh retained semantics without provider reload", BridgeIndexedLeaseRegistryScenarios.StyleRefreshUsesRetainedSemanticsAndRejectsRetirement),
     ("Indexed lease wire contracts and strict classification", BridgeIndexedLeaseWireScenarios.ContractsAndClassification),
     ("Indexed lease session through bridge to real worker", BridgeIndexedEndToEndScenarios.SessionToRealWorker),
     ("Indexed modal data lifetime and input scopes through real worker", BridgeIndexedEndToEndScenarios.RealWorkerModalDataAndInputScopes),

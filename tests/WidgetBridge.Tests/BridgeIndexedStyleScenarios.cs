@@ -37,6 +37,30 @@ internal static class BridgeIndexedStyleScenarios
 
 internal static partial class BridgeIndexedLeaseRegistryScenarios
 {
+    internal static async Task StyleRefreshUsesRetainedSemanticsAndRejectsRetirement()
+    {
+        await using var fixture = await Fixture.Start();
+        var snapshot = await fixture.Snapshot();
+        using var acquired = await fixture.Registry.AcquireIndexedRangeAsync(fixture.Request("styles"), CancellationToken.None);
+        var lease = acquired.Value;
+        var descriptor = fixture.Configured.PublicDescriptor();
+        var request = new BridgePresentationStylesRequest(descriptor.Id, descriptor.InstanceId, descriptor.RuntimeGeneration,
+            descriptor.PresentationGeneration, snapshot.Sequence);
+        var theme = WrssThemeCompiler.Compile([WrssParser.Parse("action-surface { color: #123456; } text { color: #abcdef; }", "updated.wrss").Document]).Theme;
+        using var normal = fixture.Registry.RefreshPresentationStyles(request,
+            (_, retained) => { Check(ReferenceEquals(retained, snapshot), "Ordinary refresh did not retain its genuine snapshot."); return new(8, BridgeRenderStyleResolver.Resolve(retained, theme)); }, default);
+        using var indexed = fixture.Registry.RefreshIndexedStyles(fixture.Release(lease),
+            (_, retained) => { Check(ReferenceEquals(retained, lease.Lease.Range), "Style refresh reconstructed item semantics."); return new(8, BridgeRenderStyleResolver.ResolveRange(retained, theme)); }, default);
+        Check(normal.Value.AppearanceRevision == 8 && indexed.Value.AppearanceRevision == 8, "Style revision was not tied to its immutable maps.");
+        Check(fixture.Client.Leases.Count == 1 && fixture.Client.Leases[0].Disposed == 0, "Styles reacquired or released provider semantics.");
+        Check(indexed.Value.LeaseId == lease.Lease.LeaseId && indexed.Value.RenderStyles.Count == lease.RenderStyles.Count, "Styles changed lease or node identity.");
+        Check(await fixture.Registry.AdmitIndexedInputAsync(fixture.Input(lease, snapshot.Sequence, ControllerButton.A), default) == WidgetOperationAdmission.Enqueued,
+            "Style refresh changed action admission.");
+        await fixture.Registry.ReleaseIndexedLeaseAsync(fixture.Release(lease));
+        await Reject(() => Task.FromResult(fixture.Registry.RefreshIndexedStyles(fixture.Release(lease), (_, range) => new(9, BridgeRenderStyleResolver.ResolveRange(range, theme)), default)));
+        Check(fixture.Client.Leases[0].Disposed == 1, "Retirement must release the same single lease exactly once.");
+    }
+
     internal static async Task StylePreparationFailureReleasesExactRuntimeLease()
     {
         await using var fixture = await Fixture.Start();

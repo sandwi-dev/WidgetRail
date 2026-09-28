@@ -26,6 +26,8 @@ internal static class BridgeIndexedLeaseWireScenarios
         {
             (BridgeMessageTypes.AcquireIndexedRange, RangeRequest, BridgeRequestKind.AcquireIndexedRange, true),
             (BridgeMessageTypes.ReleaseIndexedLease, lease, BridgeRequestKind.ReleaseIndexedLease, true),
+            (BridgeMessageTypes.RefreshIndexedStyles, lease, BridgeRequestKind.RefreshIndexedStyles, false),
+            (BridgeMessageTypes.RefreshPresentationStyles, new BridgePresentationStylesRequest("widget", "instance", "runtime", "presentation", 1), BridgeRequestKind.RefreshPresentationStyles, false),
             (BridgeMessageTypes.IndexedInput, input, BridgeRequestKind.IndexedInput, false),
             (BridgeMessageTypes.ResolveIndexedArtwork, ArtworkRequest, BridgeRequestKind.ResolveIndexedArtwork, true),
             (BridgeMessageTypes.CancelIndexedArtwork, ArtworkRequest, BridgeRequestKind.CancelIndexedArtwork, true),

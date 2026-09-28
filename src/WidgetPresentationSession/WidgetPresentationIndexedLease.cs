@@ -19,12 +19,20 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
     internal bool Retired;
     public string LeaseId { get; }
     public IndexedCollectionRange Range { get; }
-    public IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles { get; }
+    private BridgeResolvedStyleSnapshot styles;
+    public IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles => Volatile.Read(ref styles).RenderStyles;
+    public long AppearanceRevision => Volatile.Read(ref styles).Revision;
+    /// <summary>Styles changed on the session thread. Marshal to the native UI dispatcher.</summary>
+    public event EventHandler? RenderStylesChanged;
+    internal long StyleRefreshAttemptedRevision = -1;
+    internal void SetStyles(BridgeResolvedStyleSnapshot value) => Volatile.Write(ref styles, value);
+    internal void NotifyStylesChanged() => RenderStylesChanged?.Invoke(this, EventArgs.Empty);
     public bool IsCurrent => owner.IsIndexedLeaseCurrent(this);
 
     internal WidgetPresentationIndexedLease(WidgetPresentationSession owner, WidgetPresentationAuthority authority,
-        BridgeIndexedRangeRequest request, string scopeId, string leaseId, IndexedCollectionRange range, IReadOnlyDictionary<string, BridgeNodeRenderStyles> renderStyles)
-    { this.owner = owner; Authority = authority; Request = request; ScopeId = scopeId; LeaseId = leaseId; Range = range; RenderStyles = renderStyles; }
+        BridgeIndexedRangeRequest request, string scopeId, string leaseId, IndexedCollectionRange range, IReadOnlyDictionary<string, BridgeNodeRenderStyles> renderStyles,
+        long appearanceRevision = 0)
+    { this.owner = owner; Authority = authority; Request = request; ScopeId = scopeId; LeaseId = leaseId; Range = range; styles = new(appearanceRevision, renderStyles); }
 
     /// <summary>
     /// Tests ownership using the exact displayed frame and the same shortcut

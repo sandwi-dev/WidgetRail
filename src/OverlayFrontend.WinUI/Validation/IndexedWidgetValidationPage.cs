@@ -117,6 +117,8 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             session.PresentationChanged += Changed;
             await session.ListWidgetsAsync(lifetime.Token);
             await session.EstablishPresentationAsync(session.GetTarget("indexed-owned"), WidgetLifecycleState.Interactive, lifetime.Token);
+            var styleSettings = Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--style-validation-settings");
+            if (styleSettings is not null) await ProbeStylesAsync(styleSettings);
         }
         catch (Exception error) { failure = error.Message; Observe(); }
     }

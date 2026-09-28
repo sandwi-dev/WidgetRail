@@ -3,9 +3,29 @@ using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
+using WidgetRail.PlatformSettings;
 
 internal static class BridgeIndexedEndToEndScenarios
 {
+    internal static async Task ServeThemedValidationAsync(string pipe, string settingsRoot)
+    {
+        var paths = new PlatformSettingsPaths(Path.GetFullPath(settingsRoot));
+        var store = new PlatformSettingsStore(paths);
+        await store.UpdateAsync(value => value with { Appearance = value.Appearance with
+            { ThemeId = ThemeIdentity.BuiltInNeonCircuit, ThemeVersion = ThemeIdentity.BuiltInNeonCircuitVersion } });
+        await using var appearance = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)));
+        await appearance.StartAsync();
+        var document = WrssParser.Parse("image { width: 48px; height: 48px; } text { font-size: 16px; color: var(--text); }", "native-validation.wrss").Document;
+        var configured = new ConfiguredWidget
+        {
+            Id = "indexed-owned", Name = "Indexed ownership", InstanceId = "indexed-owned.instance",
+            PackageId = "dev.indexed", PublisherId = "dev", WorkerExecutable = Environment.ProcessPath!,
+            WorkerFingerprint = new('a', 64), CatalogFingerprint = new('a', 64), StylePackage = new([document], []),
+        };
+        await using var server = new WidgetBridgeServer(pipe, new([configured]), appearance: appearance);
+        await server.RunAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+    }
+
     internal static async Task ServeValidationAsync(string pipe)
     {
         var theme = WrssThemeCompiler.Compile([WrssParser.Parse("image { width: 48px; height: 48px; } text { font-size: 16px; }", "native-validation.wrss").Document]);

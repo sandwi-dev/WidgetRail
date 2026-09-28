@@ -74,6 +74,8 @@ public sealed record WidgetPresentationFrame(
     ViewSnapshot Snapshot,
     IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles)
 {
+    /// <summary>Trusted computed-style revision; independent of widget snapshot/input identity.</summary>
+    public long AppearanceRevision { get; init; }
     /// <summary>Host-only candidate identities. Capture additionally requires a current permission grant.</summary>
     public IReadOnlyDictionary<string, WidgetHostWindowTarget> WindowPreviews { get; init; } =
         new System.Collections.ObjectModel.ReadOnlyDictionary<string, WidgetHostWindowTarget>(new Dictionary<string, WidgetHostWindowTarget>());

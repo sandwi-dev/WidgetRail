@@ -18,6 +18,7 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
     private bool disposed;
     private NativeComputedStyleAdapter? containerStyle;
     private SelectorItem? styleContainer;
+    private WidgetPresentationIndexedLease? styledLease;
     internal Task SetPresentationActiveAsync(bool active) =>
         active && Row is WidgetIndexedRow { Lease.IsCurrent: false } ? Task.CompletedTask :
         presenter?.SetPresentationActiveAsync(active) ?? Task.CompletedTask;
@@ -37,6 +38,12 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
     {
         if (disposed) return;
         if (Row is not WidgetIndexedRow row) { Retire(); return; }
+        if (!ReferenceEquals(styledLease, row.Lease))
+        {
+            if (styledLease is not null) styledLease.RenderStylesChanged -= StylesChanged;
+            styledLease = row.Lease;
+            styledLease.RenderStylesChanged += StylesChanged;
+        }
         presenter ??= new(presentationOnly: true);
         _ = presenter.SetPresentationActiveAsync(row.Owner.IsPresentationActive);
         presenter.Session = row.Owner.Session;
@@ -68,6 +75,8 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
     }
     private void Retire()
     {
+        if (styledLease is not null) styledLease.RenderStylesChanged -= StylesChanged;
+        styledLease = null;
         containerStyle?.Dispose(); containerStyle = null; styleContainer = null;
         var previous = presenter;
         presenter = null;
@@ -85,6 +94,12 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
             finally { retiring.Remove(task); }
         }
     }
+    private void StylesChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (disposed || !IsLoaded || !ReferenceEquals(sender, styledLease) || styledLease?.IsCurrent != true) return;
+        try { ApplyRow(); }
+        catch (Exception error) { if (Row is WidgetIndexedRow row) row.Owner.Failed?.Invoke(error); }
+    });
     public async ValueTask DisposeAsync()
     {
         disposed = true;
