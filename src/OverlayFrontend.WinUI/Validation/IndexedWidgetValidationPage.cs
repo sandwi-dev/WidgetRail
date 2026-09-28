@@ -20,7 +20,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 /// <summary>Real bridge and worker rows rendered by the shared native presenter.</summary>
 internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposable
 {
-    private readonly WidgetViewPresenter presenter = new();
+    private WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new() { Text = "Connecting", MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly string pipe;
     private readonly CancellationTokenSource lifetime = new();
@@ -46,28 +46,32 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
         layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         Grid.SetRow(presenter, 1);
-        var probe = new Button { Content = "Check retained surfaces" };
+        var probe = new Button { Content = "Surfaces" };
         AutomationProperties.SetAutomationId(probe, "IndexedWidget.SurfaceProbe");
         probe.Click += (_, _) => _ = ProbeSurfacesAsync();
         var diagnostics = new Grid();
         diagnostics.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
         diagnostics.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         diagnostics.Children.Add(status);
-        var inputProbe = new Button { Content = "Check input route" };
+        var inputProbe = new Button { Content = "Input" };
         AutomationProperties.SetAutomationId(inputProbe, "IndexedWidget.InputProbe");
         inputProbe.Click += (_, _) => _ = ProbeInputRouteAsync();
-        var modalProbe = new Button { Content = "Check indexed modal" };
+        var modalProbe = new Button { Content = "Modal" };
         AutomationProperties.SetAutomationId(modalProbe, "IndexedWidget.ModalProbe");
         modalProbe.Click += (_, _) => _ = ProbeModalAsync();
-        var activationProbe = new Button { Content = "Check deferred activation" };
+        var activationProbe = new Button { Content = "Activation" };
         AutomationProperties.SetAutomationId(activationProbe, "IndexedWidget.ActivationProbe");
         activationProbe.Click += (_, _) => _ = ProbeActivationAsync();
-        var contextProbe = new Button { Content = "Check context menu" };
+        var contextProbe = new Button { Content = "Context" };
         AutomationProperties.SetAutomationId(contextProbe, "IndexedWidget.ContextProbe");
         contextProbe.Click += (_, _) => _ = ProbeContextAsync();
         var probes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { probe, inputProbe, modalProbe, activationProbe, contextProbe } };
         diagnostics.Children.Add(probes); Grid.SetColumn(probes, 1);
         layout.Children.Add(diagnostics); layout.Children.Add(presenter);
+        var memoryProbe = new Button { Content = "Memory" };
+        AutomationProperties.SetAutomationId(memoryProbe, "IndexedWidget.MementoProbe");
+        memoryProbe.Click += (_, _) => _ = ProbeMementoAsync();
+        probes.Children.Add(memoryProbe);
         Content = layout;
         presenter.Failed = error => { failure = error.Message; Observe(); };
         presenter.DispatchActionAsync = async request =>
@@ -82,6 +86,7 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             {
                 case VirtualKey.F14: _ = ProbeSurfacesAsync(); break;
                 case VirtualKey.F15: _ = ProbeSuspensionAsync(); break;
+                case VirtualKey.F16: _ = ProbeMementoAsync(); break;
                 case VirtualKey.F1: _ = ProbeGroupedFocusAsync(); break;
                 case VirtualKey.F2: _ = ProbeLogicalFocusAsync(); break;
                 case VirtualKey.F5: if (View() is { } list) list.ScrollIntoView(list.Items[70], ScrollIntoViewAlignment.Leading); break;

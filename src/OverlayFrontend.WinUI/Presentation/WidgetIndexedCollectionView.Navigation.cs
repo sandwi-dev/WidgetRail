@@ -5,6 +5,8 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.OverlayFrontend.WinUI.Collections;
+using System.ComponentModel;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -16,6 +18,7 @@ internal sealed partial class WidgetIndexedCollectionView
     private IndexedCollectionFocusTarget? pendingEntry;
     private bool entering;
     private bool allowEntryFallback;
+    private IndexedItemsSource<WidgetIndexedRow>.Retention? navigationRetention;
     private sealed record EntryIntent(int Index, IndexedCollectionFocusTarget? Target, bool AllowFallback);
     private EntryIntent? CaptureEntry() => entering && pendingIndex is { } index ? new(index, pendingEntry, allowEntryFallback) : null;
     private void RestoreEntry(EntryIntent? entry)
@@ -29,6 +32,7 @@ internal sealed partial class WidgetIndexedCollectionView
         QueueNavigation();
     }
     internal bool IsEntryPending => entering;
+    internal event Action? NavigationSettled;
     internal Action<IndexedCollectionFocusTarget>? FocusRemembered { get; set; }
 
     internal bool Enter(IndexedCollectionFocusTarget? target = null, bool allowFallback = false)
@@ -114,6 +118,13 @@ internal sealed partial class WidgetIndexedCollectionView
     private void QueueNavigation()
     {
         if (view is null) return;
+        if (source is not null && pendingIndex is { } target && target >= 0 && target < source.Items.Count &&
+            navigationRetention?.Slot.Index != target)
+        {
+            ReleaseNavigationRetention();
+            navigationRetention = source.Items.Retain(target);
+            navigationRetention.Slot.PropertyChanged += NavigationDataChanged;
+        }
         view.LayoutUpdated -= FinishNavigation;
         view.LayoutUpdated += FinishNavigation;
         if (!navigationQueued)
@@ -129,6 +140,22 @@ internal sealed partial class WidgetIndexedCollectionView
                 FinishNavigation(null, null!);
             });
         }
+    }
+
+    private void NavigationDataChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        // Placeholder geometry may have put the target outside realization after
+        // its actual row extent arrives. Reissue the current logical target once
+        // on payload readiness, never on a paint/frame timer or unrelated rows.
+        if (args.PropertyName is nameof(IndexedItem<WidgetIndexedRow>.Content) or nameof(IndexedItem<WidgetIndexedRow>.Failed)) QueueNavigation();
+    }
+
+    private void ReleaseNavigationRetention()
+    {
+        if (navigationRetention is not { } retention) return;
+        navigationRetention = null;
+        retention.Slot.PropertyChanged -= NavigationDataChanged;
+        retention.Dispose();
     }
 
     private int? FocusedIndex()
@@ -180,11 +207,14 @@ internal sealed partial class WidgetIndexedCollectionView
 
     private void CancelNavigation()
     {
+        var wasPending = pendingIndex is not null;
+        ReleaseNavigationRetention();
         CancelPendingActivation();
         pendingIndex = null;
         pendingEntry = null;
         entering = false;
         if (view is not null) view.LayoutUpdated -= FinishNavigation;
+        if (wasPending) NavigationSettled?.Invoke();
     }
 
     private void OnLosingFocus(UIElement sender, LosingFocusEventArgs args)

@@ -132,6 +132,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed) return;
         disposed = true;
+        CancelMemoryRestoration();
         ClearEntryLayoutWait();
         SettleTransitions();
         SettleModalExit();

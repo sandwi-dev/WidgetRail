@@ -59,6 +59,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void CancelGroupEntry()
     {
+        CancelMemoryRestoration();
         ++entryIntentVersion;
         pendingGroupEntry = null;
         foreach (var binding in bindings.Values)

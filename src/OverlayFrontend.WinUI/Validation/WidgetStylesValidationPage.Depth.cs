@@ -80,5 +80,6 @@ internal sealed partial class WidgetStylesValidationPage
         await Wait(() => Find<Button>("Widget.depth-button") is { IsLoaded: true });
         NativeComputedStyleAdapter.SetAccessibilityPolicy(AppearanceSettings.Default);
         await NativeCollectionDepthAsync();
+        await NativePresentationMemoryAsync();
     }
 }

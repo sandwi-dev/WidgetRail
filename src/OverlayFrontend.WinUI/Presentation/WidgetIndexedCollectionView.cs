@@ -156,7 +156,11 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private void UpdateGridWidth()
     {
         if (view is not null && source?.Declaration.CollectionLayout is { } layout)
+        {
+            var previousWidth = (view.ItemsPanelRoot as ItemsWrapGrid)?.ItemWidth;
             UpdateGridWidth(view, layout.MinimumColumnWidth ?? 160, layout.MaximumColumns ?? int.MaxValue);
+            if (pendingIndex is not null && previousWidth != (view.ItemsPanelRoot as ItemsWrapGrid)?.ItemWidth) QueueNavigation();
+        }
     }
     internal static void UpdateGridWidth(ListViewBase view, double minimum, int maximum)
     {

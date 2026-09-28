@@ -219,7 +219,9 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
     public void RangesChanged(ItemIndexRange visibleRange, IReadOnlyList<ItemIndexRange> trackedItems)
     {
         CheckAccess();
-        if (!active) return; // Collapsed layout must not erase the last viewport demand.
+        // Preserve existing demand through collapsed layout, but a newly created
+        // inactive source still needs its first native viewport for later resume.
+        if (!active && demandOrder.Count != 0) return;
         ++RangeNotifications;
         var visible = new List<int>();
         var tracked = new List<int>();
