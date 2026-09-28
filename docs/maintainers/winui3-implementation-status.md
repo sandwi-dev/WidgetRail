@@ -600,3 +600,19 @@ installed native product remains unchanged.
 Full migration remains incomplete. Grouped collections, production widget adoption,
 complete styling/themes, modal/popup integration, media/pinned surfaces, global
 animations and the production shell still require implementation and validation.
+
+## Native grouped range demand
+
+Executed grouped/flat/adapted probes confirm that CollectionViewSource preserves
+indexed inner access but hides IItemsRangeInfo from ListViewBase. The small
+NativeGroupedRangeView adapter restores direct range admission while delegating
+the actual ICollectionView behavior to WinUI. One flat indexed query supplies
+all group slices, avoiding per-group retention and provider budgets.
+
+The three modes pass 7/9/10 UI checks, with five additional adapter contract
+scenarios. At 30,000 logical items, deep focus/refresh/reversal required no full
+enumeration, with 17 observed native containers and a peak of 96 data slots.
+This is correctness evidence; real widget artwork and controller performance
+remain unproven. See `winui-grouped-collections-assessment.md` and
+`artifacts/winui-grouped/checkpoint/`. Public grouped declarations, production
+row/header templates and first-party adoption remain next work.
