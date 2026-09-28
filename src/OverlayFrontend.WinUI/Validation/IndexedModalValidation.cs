@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetPresentationSession;
@@ -80,7 +81,7 @@ internal static class IndexedModalValidation
             await Until(() => Node("modal-status")?.Text == "Item 75; revision 1" && Summary() == "Summary 201:75");
             Check(ReferenceEquals(update, Find<Button>("modal-update")) && FocusId() == "Widget.modal-update" &&
                 Near(scroll.VerticalOffset, offset), "worker content refresh preserves modal control and parent anchor");
-            await Until(() => RowText(container).Contains("Item 75", StringComparison.Ordinal) && Descendants(container).OfType<Image>().Any(image => image.Source is not null));
+            await Until(() => RowText(container).Contains("Item 75", StringComparison.Ordinal) && HasRowArtwork(container));
             Check(true, "reparented indexed row restores text and artwork after refresh");
 
             await Button(ControllerButton.B);
@@ -99,7 +100,7 @@ internal static class IndexedModalValidation
                 await Until(() => Node("modal-status")?.Text == "Item 75; revision 1");
                 await Button(ControllerButton.B);
                 await Until(() => !InModal() && FocusId() == "Widget.items.Item.75");
-                await Until(() => Descendants((DependencyObject)view.ContainerFromIndex(75)).OfType<Image>().Any(image => image.Source is not null));
+                await Until(() => HasRowArtwork((DependencyObject)view.ContainerFromIndex(75)));
                 Check(Near(scroll.VerticalOffset, offset) && RowText(container).Contains("Item 75", StringComparison.Ordinal),
                     $"repeated modal cycle {repetition + 1} preserves parent row content and viewport");
             }
@@ -151,7 +152,7 @@ internal static class IndexedModalValidation
             await Until(() => !InModal());
             await Until(() => view.ContainerFromIndex(0) is DependencyObject last &&
                 RowText(last).Contains("Item 0", StringComparison.Ordinal) &&
-                Descendants(last).OfType<Image>().Any(image => image.Source is not null));
+                HasRowArtwork(last));
             Check(true, "final query row restores rendered text and artwork after modal close");
             result = new("passed", checks, null);
         }
@@ -180,12 +181,12 @@ internal static class IndexedModalValidation
         }
         Task<bool> Button(ControllerButton button) => presenter.HandleControllerButtonAsync(button,
             origin: ControllerInputOrigin.AccessibilityAutomation, cancellationToken: cancellationToken);
-        async Task Until(Func<bool> condition)
+        async Task Until(Func<bool> condition, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(condition))] string? waitingFor = null)
         {
             var deadline = Environment.TickCount64 + 7000;
             while (!condition())
             {
-                if (Environment.TickCount64 > deadline) throw new TimeoutException($"Indexed modal did not settle: focus={FocusId()}, status={Node("status")?.Text}, summary={Summary()}, calls={Calls()}, row={DescribeRow()}");
+                if (Environment.TickCount64 > deadline) throw new TimeoutException($"Indexed modal did not settle: waiting={waitingFor}, focus={FocusId()}, status={Node("status")?.Text}, summary={Summary()}, calls={Calls()}, row={DescribeRow()}");
                 await Task.Delay(20, cancellationToken);
             }
         }
@@ -202,6 +203,7 @@ internal static class IndexedModalValidation
                 lease = (row.Row as WidgetIndexedRow)?.Lease.IsCurrent,
                 content = row.Content?.GetType().Name,
                 texts = Descendants(row).OfType<TextBlock>().Select(text => text.Text).ToArray(),
+                images = Descendants(row).OfType<Image>().Select(image => new { identity = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(image), image.IsLoaded, source = image.Source?.GetType().Name, parent = VisualTreeHelper.GetParent(image)?.GetType().Name }).ToArray(),
             }));
         }
         async Task SettleViewport(ScrollViewer scroll)
@@ -229,6 +231,11 @@ internal static class IndexedModalValidation
     private static Rect Bounds(FrameworkElement element, UIElement relativeTo) =>
         element.TransformToVisual(relativeTo).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
     private static string RowText(DependencyObject row) => string.Join(' ', Descendants(row).OfType<TextBlock>().Select(text => text.Text));
+    // The worker's cover is an 8x8 contrasting checker. Parent backgrounds use
+    // different tiny swatches, so those cannot accidentally satisfy this check.
+    private static bool HasRowArtwork(DependencyObject row) => Descendants(row).OfType<Image>().Any(image =>
+        image.IsLoaded && image.ActualWidth > 0 && image.ActualHeight > 0 &&
+        image.Source is BitmapImage { PixelWidth: 8, PixelHeight: 8 });
     private static ViewNode? FindNode(ViewNode node, string id) => node.Id == id ? node :
         node.Children.Select(child => FindNode(child, id)).FirstOrDefault(found => found is not null);
     private static IEnumerable<DependencyObject> Descendants(DependencyObject element)

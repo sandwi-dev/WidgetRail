@@ -207,7 +207,12 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
                     await releaseBackground.Task.WaitAsync(TimeSpan.FromSeconds(10));
                     Volatile.Write(ref backgroundState, "completed"); Invalidate();
                 }
-                var png = handle.Value != "background" || item % 3 == 0
+                // A contrasting yellow/dark checker makes missing or misplaced row
+                // images visible even when the parent background is the blue swatch.
+                // Background widths still distinguish adjacent retained item identities.
+                var png = handle.Value != "background"
+                    ? "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAIUlEQVR4nGP4f83hPwiriJmAMTqfgaACXBIwPmEFg8ANADROkCEUK5WhAAAAAElFTkSuQmCC"
+                    : item % 3 == 0
                     ? "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY9CYduI/AAT2AoYAkFFrAAAAAElFTkSuQmCC"
                     : item % 3 == 1
                     ? "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAPSURBVBhXYwiYduI/CAMAFd8FW0f/X3EAAAAASUVORK5CYII="

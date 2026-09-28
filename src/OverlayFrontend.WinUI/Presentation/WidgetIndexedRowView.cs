@@ -23,7 +23,12 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
         IsTabStop = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         Loaded += (_, _) => ApplyRow();
-        Unloaded += (_, _) => Retire();
+        Unloaded += (_, _) =>
+        {
+            // Native reparenting can deliver an old Unloaded after a new Loaded.
+            // Retire only when the row is actually outside the live visual tree.
+            if (!IsLoaded) Retire();
+        };
     }
     private void ApplyRow()
     {
