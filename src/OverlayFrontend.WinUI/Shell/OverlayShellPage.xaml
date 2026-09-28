@@ -14,13 +14,15 @@
                 <RowDefinition Height="46" />
                 <RowDefinition Height="76" />
             </Grid.RowDefinitions>
-            <Border x:Name="WidgetSurface" VerticalAlignment="Bottom">
-                <ContentControl x:Name="WidgetHost" IsTabStop="False"
-                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                                AutomationProperties.AutomationId="Overlay.Widget">
-                    <Grid x:Name="WidgetSurfaces" />
-                </ContentControl>
-            </Border>
+            <Border x:Name="WidgetSurface" VerticalAlignment="Bottom" IsHitTestVisible="False" />
+            <!-- Presenters remain parented in a full-size native layout stage.
+                 Incoming content can reach its final extent without resizing the
+                 committed backdrop or unloading/recreating native controls. -->
+            <ContentControl x:Name="WidgetHost" IsTabStop="False"
+                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="Overlay.Widget">
+                <Grid x:Name="WidgetSurfaces" />
+            </ContentControl>
             <Border x:Name="StatusChrome" VerticalAlignment="Bottom" Padding="20" CornerRadius="12"
                     AutomationProperties.AutomationId="Overlay.Recovery">
                 <Grid ColumnSpacing="12">

@@ -6,7 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     internal WidgetPresentationBinding? CurrentBinding => presentation;
-    private bool IsBindingCurrent(WidgetPresentationBinding origin) => presentationActive && !disposed && !applying &&
+    private bool IsBindingCurrent(WidgetPresentationBinding origin) => presentationInputEnabled && presentationActive && !disposed && !applying &&
         !presentationOnly && origin.SameInput(presentation);
 
     private async Task<bool> AdmitBindingAsync(WidgetPresentationBinding origin, CancellationToken token = default) =>

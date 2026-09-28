@@ -23,7 +23,7 @@ internal sealed partial class WidgetViewPresenter
         if (active && !suspension.IsCompletedSuccessfully) throw new InvalidOperationException("Presentation suspension failed.", suspension.Exception);
         if (!active) RememberFocus();
         presentationActive = active;
-        IsHitTestVisible = active;
+        IsHitTestVisible = active && presentationInputEnabled;
         var work = new List<Task>();
         if (!active)
         {

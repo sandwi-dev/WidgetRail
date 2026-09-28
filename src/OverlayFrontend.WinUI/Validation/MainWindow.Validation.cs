@@ -119,6 +119,8 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-widget-switches") is { } switchResult)
+            page.EnableSwitchValidation(switchResult);
         if (arguments.Contains("--shell-no-controller") && arguments.Contains("--replay-shell-input"))
             page.EnableValidationInputReplay();
     }

@@ -72,7 +72,7 @@ internal sealed partial class OverlayShellPage
     }
 
     private void ReconcileMediaHostState() => mediaOwner?.SetHostState(activeWidget,
-        !retired && visible && !switching, !retired && visible && !switching && interactive && foreground);
+        !retired && visible, !retired && visible && !switching && interactive && foreground);
 
     private void ShowPresentationStatus(string widgetName)
     {

@@ -36,7 +36,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private WidgetPresentationBinding? presentation;
     private ViewSnapshot? effectiveView => presentation?.View;
     private string activeScope => presentation?.Scope ?? string.Empty;
-    private bool CanDispatchAction => presentation?.Selection is not null ? Session is not null : DispatchActionAsync is not null;
+    private bool CanDispatchAction => presentationInputEnabled && (presentation?.Selection is not null ? Session is not null : DispatchActionAsync is not null);
     private bool applying;
     internal bool IsApplyingPresentation => applying;
     private bool needsEntry;
@@ -51,11 +51,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     internal Previews.WindowPreviewRenderer? WindowPreviews { get; set; }
     public Func<WidgetActionRequest, Task>? DispatchActionAsync { get; set; }
     public Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
-    internal bool IsInteractionCurrent(WidgetPresentationAuthority authority) => presentationActive && !disposed && !applying &&
+    internal bool IsInteractionCurrent(WidgetPresentationAuthority authority) => presentationInputEnabled && presentationActive && !disposed && !applying &&
         !presentationOnly && frame is not null && SameOwner(authority, frame.Authority) &&
         presentation?.IsCurrent == true && (presentation.Selection is not null || authority.ActiveInputScopeId == activeScope);
     private Task<bool> AdmitInteractionAsync(WidgetPresentationAuthority authority, CancellationToken cancellationToken = default) =>
-        !presentationActive ? Task.FromResult(false) :
+        !presentationActive || !presentationInputEnabled ? Task.FromResult(false) :
         EnsureInteractionAsync?.Invoke(authority, cancellationToken) ?? Task.FromResult(IsInteractionCurrent(authority));
 
     /// <summary>Explicit page/window entry. Ordinary data updates do not call this.</summary>

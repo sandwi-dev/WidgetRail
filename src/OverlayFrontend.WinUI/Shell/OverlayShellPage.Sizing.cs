@@ -15,8 +15,8 @@ internal sealed partial class OverlayShellPage
     internal WidgetSurfaceHints? SurfaceHints => IsMediaFullscreen ? new()
     { WidthMode = WidgetSurfaceAxisMode.FillAvailable, HeightMode = WidgetSurfaceAxisMode.FillAvailable } : authoredSurfaceHints;
     internal event Action? SizingChanged;
-    internal double ContentWidth => WidgetHost.ActualWidth;
-    internal double ContentHeight => WidgetHost.ActualHeight;
+    internal double ContentWidth => WidgetSurface.ActualWidth;
+    internal double ContentHeight => WidgetSurface.ActualHeight;
     internal JsonObject? SizingDiagnostics { get; private set; }
     internal void RecordSizing(SurfaceExtent available, SurfaceExtent chrome, SurfaceExtent resolved)
     {
@@ -53,6 +53,8 @@ internal sealed partial class OverlayShellPage
         var scale = DisplayScalePolicy.Resolve(savedAppearance, activeDisplayId);
         Appearance = savedAppearance with { InterfaceScale = scale.InterfaceScale, TextScale = scale.TextScale };
         surface?.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
+        if (preparingSurface is { } preparing && !ReferenceEquals(preparing.Presenter, surface))
+            preparing.Presenter.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
         if (pinned is { } current) ApplyPinnedAppearance(current);
         AppearanceLoaded?.Invoke(Appearance);
     }
@@ -69,8 +71,13 @@ internal sealed partial class OverlayShellPage
     internal SurfaceExtent? MeasureContent(SurfaceExtent constraint)
     {
         if (surface is null || !surface.IsLoaded) return null;
+        var width = surface.Width;
+        var height = surface.Height;
+        surface.Width = surface.Height = double.NaN;
         surface.Measure(new(constraint.Width, constraint.Height));
         var extent = new SurfaceExtent(surface.DesiredSize.Width, surface.DesiredSize.Height);
+        surface.Width = width;
+        surface.Height = height;
         // This policy probe must not leave a retained child measured against a
         // temporary constraint if the final HWND size happens to stay unchanged.
         surface.InvalidateMeasure();

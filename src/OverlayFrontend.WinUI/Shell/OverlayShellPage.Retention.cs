@@ -23,6 +23,7 @@ internal sealed partial class OverlayShellPage
         internal WidgetViewPresenter Presenter { get; } = presenter;
         internal WindowPreviewRenderer? Previews { get; } = previews;
         internal long LastUse { get; set; }
+        internal WidgetPresentationFrame? Frame { get; set; }
         internal bool RestoreMemoryOnFirstApply { get; set; } = true;
     }
 
@@ -42,22 +43,23 @@ internal sealed partial class OverlayShellPage
         surface.Visibility = Visibility.Collapsed;
     }
 
-    private async Task SelectWidgetSurfaceAsync(string id)
+    private async Task<RetainedWidgetSurface> PrepareWidgetSurfaceAsync(string id, CancellationToken cancellationToken)
     {
         var descriptor = owner!.Session.GetTarget(id).Descriptor;
-        if (retainedSurfaces.TryGetValue(id, out var retained) && !SameSurfaceOwner(retained.Descriptor, descriptor))
+        retainedSurfaces.TryGetValue(id, out var retained);
+        if (retained is not null && !SameSurfaceOwner(retained.Descriptor, descriptor))
         {
-            await RetireWidgetSurfaceAsync(id);
-            retained = null;
+            if (!ReferenceEquals(surface, retained.Presenter)) await RetireWidgetSurfaceAsync(id);
+            retained = null; // Keep the displayed incarnation until the replacement commits.
         }
         if (retained is null)
         {
-            // Dispose before allocating so rapid tray browsing cannot exceed the
-            // native surface budget even while asynchronous retirement drains.
             while (retainedSurfaces.Count >= RetainedSurfaceLimit)
             {
-                var oldest = retainedSurfaces.MinBy(pair => pair.Value.LastUse);
+                var oldest = retainedSurfaces.Where(pair => !ReferenceEquals(pair.Value.Presenter, surface))
+                    .MinBy(pair => pair.Value.LastUse);
                 await RetireWidgetSurfaceAsync(oldest.Key, forgetMemory: false);
+                cancellationToken.ThrowIfCancellationRequested();
             }
             var previews = CreatePreviewRenderer();
             var presenter = new WidgetViewPresenter
@@ -69,44 +71,42 @@ internal sealed partial class OverlayShellPage
             presenter.Failed = error =>
             {
                 if (ReferenceEquals(surface, presenter)) ReportFailure(error);
-                else System.Diagnostics.Trace.WriteLine("Inactive WinUI widget retirement: " + error.GetType().Name);
+                else System.Diagnostics.Trace.WriteLine("Preparing WinUI widget: " + error.GetType().Name);
             };
             presenter.ControllerGuideChanged += () => { if (ReferenceEquals(surface, presenter)) UpdateTrayHelp(); };
             presenter.SetAutomaticFocusEnabled(false);
+            presenter.SetPresentationInputEnabled(false);
             await presenter.SetPresentationActiveAsync(false);
             retained = new(descriptor, presenter, previews);
-            retainedSurfaces.Add(id, retained);
+            // A replacement incarnation occupies the preparation slot until commit.
+            if (!retainedSurfaces.ContainsKey(id)) retainedSurfaces.Add(id, retained);
             WidgetSurfaces.Children.Add(presenter);
         }
         retained.LastUse = ++surfaceUse;
-        surface = retained.Presenter;
-        previewRenderer = retained.Previews;
-        activeWidget = id;
-        publication = 0;
-        surface.SetAutomaticFocusEnabled(false);
-        surface.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
-    }
-
-    private async Task ResumeWidgetSurfaceAsync(WidgetPresentationFrame next)
-    {
-        if (surface is null) return;
-        ApplyWidgetSurfaceFrame(next);
-        surface.Visibility = Visibility.Visible;
-        await surface.SetPresentationActiveAsync(true);
+        retained.Presenter.SetAutomaticFocusEnabled(false);
+        retained.Presenter.SetPresentationInputEnabled(false);
+        retained.Presenter.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
+        return retained;
     }
 
     private void ApplyWidgetSurfaceFrame(WidgetPresentationFrame next)
     {
-        if (surface is null) return;
-        surface.Apply(next);
-        if (activeWidget is not { } id || !retainedSurfaces.TryGetValue(id, out var retained)) return;
+        if (surface is null || activeWidget is not { } id || !retainedSurfaces.TryGetValue(id, out var retained)) return;
+        ApplyWidgetSurfaceFrame(retained, next);
+    }
+
+    private void ApplyWidgetSurfaceFrame(RetainedWidgetSurface retained, WidgetPresentationFrame next)
+    {
+        retained.Presenter.Apply(next);
+        retained.Frame = next;
+        var id = next.Descriptor.Id;
         if (!SameSurfaceOwner(retained.Descriptor, next.Descriptor)) presentationMemory.Remove(id);
         retained.Descriptor = next.Descriptor;
         if (!retained.RestoreMemoryOnFirstApply) return;
         retained.RestoreMemoryOnFirstApply = false;
         if (presentationMemory.TryGet(StateOwner(next.Descriptor), out var memory))
         {
-            if (surface.RestorePresentationState(memory!)) ++memoryRestoreCount;
+            if (retained.Presenter.RestorePresentationState(memory!)) ++memoryRestoreCount;
             else presentationMemory.Remove(id);
         }
     }
@@ -121,7 +121,13 @@ internal sealed partial class OverlayShellPage
     {
         if (forgetMemory) presentationMemory.Remove(id);
         if (!retainedSurfaces.Remove(id, out var retained)) return;
+        await DisposeRetainedSurfaceAsync(retained);
+    }
+
+    private async Task DisposeRetainedSurfaceAsync(RetainedWidgetSurface retained)
+    {
         retained.Presenter.SetAutomaticFocusEnabled(false);
+        retained.Presenter.SetPresentationInputEnabled(false);
         retained.Previews?.SetVisible(false);
         WidgetSurfaces.Children.Remove(retained.Presenter);
         if (ReferenceEquals(surface, retained.Presenter)) { surface = null; previewRenderer = null; }

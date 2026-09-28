@@ -29,6 +29,9 @@ internal sealed partial class OverlayShellPage
         var content = new SurfaceExtent(available.Width, bands.ContentHeight);
         var resolved = OverlaySurfaceSizing.Resolve(SurfaceHints, content, new(0, 0), Appearance.TextScale, MeasureContent);
         WidgetSurface.Width = resolved.Width; WidgetSurface.Height = resolved.Height;
+        if (surface is not null) ConfigurePresenterExtent(surface, resolved);
+        if (preparingSurface is { } incoming && !ReferenceEquals(incoming.Presenter, surface))
+            SizePreparingSurface(incoming);
         StatusChrome.Width = Math.Min(560, content.Width);
         StatusChrome.MaxHeight = content.Height;
         var alignment = Appearance.OverlayPosition switch
@@ -113,7 +116,7 @@ internal sealed partial class OverlayShellPage
         if (IsMediaFullscreen || args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse &&
             !args.GetCurrentPoint(ProductionRoot).Properties.IsLeftButtonPressed) return;
         for (var node = args.OriginalSource as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
-            if (ReferenceEquals(node, WidgetSurface) || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, TrayHelp) || ReferenceEquals(node, StatusChrome)) return;
+            if (ReferenceEquals(node, WidgetSurface) || node is Presentation.WidgetViewPresenter || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, TrayHelp) || ReferenceEquals(node, StatusChrome)) return;
         args.Handled = true;
         HideRequested?.Invoke();
     }

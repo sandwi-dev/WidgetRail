@@ -32,13 +32,13 @@ internal sealed partial class OverlayShellPage
     internal event Action? ReturnFromPinnedRequested;
     private bool PinnedInputActive => pinned is { Window.Interactive: true, HasForeground: true };
     private bool PinnedInteractionRequested => pinned?.Window.Interactive == true;
-    private bool MainFocusEnabled => visible && interactive && foreground && !switching && !PinnedInteractionRequested;
+    private bool MainFocusEnabled => visible && interactive && foreground && !switching && activeWidget == requestedWidget && !PinnedInteractionRequested;
 
     private WidgetLifecycleState LifecycleFor(string id)
     {
-        var main = !retired && visible && id == requestedWidget;
+        var main = !retired && visible && (id == activeWidget || switching && preparingSurface?.Descriptor.Id == id);
         var pin = !retired && pinned is { Window.IsVisible: true } current && current.Selection.WidgetId == id;
-        if (main && interactive && foreground && !PinnedInputActive || pin && PinnedInputActive)
+        if (main && id == activeWidget && !switching && interactive && foreground && !PinnedInputActive || pin && PinnedInputActive)
             return WidgetLifecycleState.Interactive;
         return main || pin || id == pendingPinWidget ? WidgetLifecycleState.Visible : WidgetLifecycleState.Background;
     }

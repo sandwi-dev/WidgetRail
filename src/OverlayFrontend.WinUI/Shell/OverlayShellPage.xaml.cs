@@ -52,6 +52,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal OverlayShellPage(OverlayShellOptions options, ulong hostWindow = 0, bool startService = true)
     {
         this.options = options;
+        if (options.SwitchDiagnosticsPath is { } diagnostics) switchDiagnostics = new(diagnostics);
         this.hostWindow = hostWindow;
         preferencesStore = new(options.SettingsRoot);
         interactionAdmission = new(transitions);
@@ -163,69 +164,6 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (args.ClickedItem is BridgeWidgetDescriptor descriptor) await SelectAsync(descriptor.Id);
     }
 
-    private async Task SelectAsync(string id, bool enterWidget = true)
-    {
-        if (retired || owner is null) return;
-        ResetTrayInteraction();
-        interactionAdmission.Invalidate();
-        requestedWidget = id;
-        var version = ++selectionVersion;
-        switching = true;
-        interactive = enterWidget;
-        UpdateTrayHelp();
-        surface?.SetAutomaticFocusEnabled(false);
-        ReconcilePreviewVisibility();
-        ReconcileMediaHostState();
-        surface?.ResetPressedStyles();
-        surface?.DismissTransientControl();
-        try
-        {
-            await transitions.WaitAsync(lifetime.Token);
-            try
-            {
-                if (retired || version != selectionVersion) return;
-                if (activeWidget != id || surface is null ||
-                    !SameSurfaceOwner(retainedSurfaces[id].Descriptor, owner.Session.GetTarget(id).Descriptor))
-                {
-                    await SuspendWidgetSurfaceAsync();
-                    if (activeWidget is { } old)
-                        await TryBackgroundAsync(old);
-                    await SelectWidgetSurfaceAsync(id);
-                }
-                var next = await owner.Session.EstablishPresentationAsync(owner.Session.GetTarget(id),
-                    DesiredLifecycle, lifetime.Token);
-                if (retired || version != selectionVersion) return;
-                if (visible) await ResumeWidgetSurfaceAsync(next);
-                if (retired || version != selectionVersion) return;
-                if (!visible) await SuspendWidgetSurfaceAsync();
-                UpdateSurfaceHints(next.Snapshot.Surface);
-                ShowPresentationStatus(next.Descriptor.Name);
-                Tray.SelectedItem = Tray.Items.Cast<BridgeWidgetDescriptor>().FirstOrDefault(widget => widget.Id == id);
-                preferences = preferences with { LastWidget = id, ReopenWidget = true };
-                if (visible && !enterWidget) FocusTray();
-                UpdateDiagnostics();
-            }
-            finally { transitions.Release(); }
-        }
-        catch (OperationCanceledException) when (retired) { }
-        catch (Exception error) { if (version == selectionVersion) ReportFailure(error); }
-        finally
-        {
-            if (version == selectionVersion)
-            {
-                switching = false;
-                surface?.SetAutomaticFocusEnabled(MainFocusEnabled);
-                if (MainFocusEnabled) surface?.Enter(restoreNativeFocus: true);
-                ReconcilePreviewVisibility();
-                ReconcileMediaHostState();
-                // Establishment can overlap unsolicited refresh publications.
-                // Replay only the latest admitted state, never queued old views.
-                if (!retired && owner?.Session.GetState(id) is { } latest) ApplyState(latest);
-                UpdateDiagnostics();
-            }
-        }
-    }
-
     private WidgetLifecycleState DesiredLifecycle => activeWidget is { } id ? LifecycleFor(id) : WidgetLifecycleState.Background;
 
     private async Task TryBackgroundAsync(string id)
@@ -239,10 +177,34 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private void ApplyState(WidgetPresentationState state)
     {
-        if (retired || switching || !visible || state.WidgetId != activeWidget || state.PublicationRevision <= publication) return;
+        if (retired || !visible) return;
+        if (switching)
+        {
+            if (preparingSurface is { } preparing && state.WidgetId == requestedWidget &&
+                state.LastGood is { } incoming && SameSurfaceOwner(preparing.Descriptor, incoming.Descriptor))
+            {
+                try
+                {
+                    ApplyWidgetSurfaceFrame(preparing, incoming);
+                    SizePreparingSurface(preparing);
+                }
+                catch (Exception error)
+                {
+                    preparationFailure = (selectionVersion, error);
+                    switchCancellation?.Cancel();
+                }
+            }
+            return;
+        }
+        if (state.WidgetId != activeWidget || state.PublicationRevision <= publication) return;
         publication = state.PublicationRevision;
         if (state.Failure is { } failure) { ShowRecovery(failure.Message, true); return; }
         if (state.LastGood is not { } next || surface is null) return;
+        if (retainedSurfaces.TryGetValue(state.WidgetId, out var committed) && !SameSurfaceOwner(committed.Descriptor, next.Descriptor))
+        {
+            _ = SelectAsync(state.WidgetId, interactive);
+            return;
+        }
         try
         {
             ApplyWidgetSurfaceFrame(next); UpdateSurfaceHints(next.Snapshot.Surface); ShowPresentationStatus(next.Descriptor.Name);
@@ -303,12 +265,12 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                         {
                             interactionAdmission.Invalidate();
                             var selection = ++selectionVersion;
-                            activeWidget = null;
-                            ReconcileMediaHostState();
-                            await RetireWidgetSurfaceAsync(id);
                             if (current is not null) replacement = (id, selection, interactive);
                             else
                             {
+                                activeWidget = null;
+                                ReconcileMediaHostState();
+                                await RetireWidgetSurfaceAsync(id);
                                 requestedWidget = null;
                                 interactive = false;
                                 ShowRecovery("The selected widget is no longer installed.", false);
@@ -378,6 +340,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (!value) ExitPinnedInteraction(restoreMain: true);
         interactionAdmission.Invalidate();
         visible = value;
+        if (!value) switchCancellation?.Cancel();
+        surface?.SetPresentationInputEnabled(value && !switching && activeWidget == requestedWidget);
         ReconcileSystemStatus();
         surface?.SetAutomaticFocusEnabled(false);
         if (!value) _ = SavePreferencesAsync();
@@ -418,6 +382,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private async Task ReconcileLifecycleAsync(bool restore)
     {
+        if (restore && visible && requestedWidget is { } requested)
+        {
+            await SelectAsync(requested, interactive);
+            return;
+        }
         try
         {
             await transitions.WaitAsync(lifetime.Token);
@@ -425,25 +394,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             {
                 if (retired || owner is null || activeWidget is null) return;
                 var target = owner.Session.GetTarget(activeWidget);
-                if (restore && visible)
-                {
-                    var next = await owner.Session.EstablishPresentationAsync(target, DesiredLifecycle, lifetime.Token);
-                    if (visible && !retired)
-                    {
-                        await ResumeWidgetSurfaceAsync(next);
-                        if (!visible || retired) await SuspendWidgetSurfaceAsync();
-                        else
-                        {
-                            surface?.SetAutomaticFocusEnabled(MainFocusEnabled);
-                            UpdateSurfaceHints(next.Snapshot.Surface); QueueEntryFocus();
-                        }
-                    }
-                }
-                else
-                {
-                    if (!visible) await SuspendWidgetSurfaceAsync();
-                    await owner.Session.SetLifecycleAsync(target, DesiredLifecycle, lifetime.Token);
-                }
+                if (!visible) await SuspendWidgetSurfaceAsync();
+                await owner.Session.SetLifecycleAsync(target, DesiredLifecycle, lifetime.Token);
                 UpdateDiagnostics();
             }
             finally { transitions.Release(); }
@@ -454,7 +406,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     internal void QueueEntryFocus()
     {
-        if (retired || !visible) return;
+        if (retired || !visible || switching) return;
         if (PinnedInputActive) { pinned!.Presenter.Enter(restoreNativeFocus: true); return; }
         if (IsMediaFullscreen) fullscreenView.Enter();
         else if (interactive && RecoveryVisible && Retry.Visibility == Visibility.Visible) Retry.Focus(FocusState.Keyboard);
@@ -527,7 +479,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private async Task RetryPresentationAsync()
     {
-        if (!retrying && owner is not null && activeWidget is { } id)
+        if (!retrying && owner is not null && requestedWidget is { } id)
         {
             retrying = true;
             Retry.IsEnabled = false;
@@ -555,7 +507,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         var json = new JsonObject
         {
-            ["activeWidget"] = activeWidget, ["publication"] = publication, ["visible"] = visible, ["interactive"] = interactive,
+            ["activeWidget"] = activeWidget, ["requestedWidget"] = requestedWidget,
+            ["preparingWidget"] = preparingSurface?.Descriptor.Id, ["selectionVersion"] = selectionVersion, ["publication"] = publication, ["visible"] = visible, ["interactive"] = interactive,
             ["foreground"] = foreground, ["switching"] = switching, ["sizing"] = SizingDiagnostics?.DeepClone(),
             ["catalogCount"] = catalogItems.Count, ["bridgePid"] = owner?.ProcessId, ["retainedSurfaceCount"] = retainedSurfaces.Count,
             ["presentationMemoryCount"] = presentationMemory.Count, ["memoryRestoreCount"] = memoryRestoreCount,
@@ -591,6 +544,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         ReconcilePreviewVisibility();
         ReconcileMediaHostState();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged -= SystemAnimationsChanged;
+        switchCancellation?.Cancel();
         lifetime.Cancel();
         if (startup is not null) await startup;
         await SavePreferencesAsync();
@@ -619,6 +573,6 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 }
             }
         }
-        finally { transitions.Release(); lifetime.Dispose(); }
+        finally { transitions.Release(); switchDiagnostics?.Dispose(); lifetime.Dispose(); }
     }
 }

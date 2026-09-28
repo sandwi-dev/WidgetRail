@@ -9,6 +9,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private (object Item, long Selection)? pendingTrayFocus;
+    private long nativeTrayFocusSelection;
 
     private void RequestTrayFocus(object item)
     {
@@ -49,6 +50,9 @@ internal sealed partial class OverlayShellPage
         // Native fallback during a widget publication is not a domain transfer,
         // even if Windows could not cancel the focused-element-removal move.
         if (interactive && (switching || surface?.IsApplyingPresentation == true)) return;
+        // GettingFocus and GotFocus can straddle an asynchronous selection. A
+        // completion of the previous entry is not a fresh tray selection intent.
+        if (switching && nativeTrayFocusSelection != selectionVersion) return;
         RecordFocusTransfer("tray");
         SetInteractive(false);
         if (FocusedTrayWidget() is not { } descriptor) return;
@@ -59,6 +63,7 @@ internal sealed partial class OverlayShellPage
 
     private void TrayGettingFocus(UIElement sender, GettingFocusEventArgs args)
     {
+        nativeTrayFocusSelection = selectionVersion;
         if (!retired && visible && interactive && surface?.IsApplyingPresentation == true)
             args.TryCancel();
     }

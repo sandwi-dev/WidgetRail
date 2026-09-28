@@ -23,13 +23,13 @@ internal sealed partial class OverlayShellPage
     {
         if (previewCaptures is null || owner is null) return null;
         var renderer = previewCaptures.CreateRenderer(owner.Session, hostWindow);
-        renderer.SetVisible(visible && !retired && !switching);
+        renderer.SetVisible(false);
         // Expired/denied capture remains a local placeholder; do not replace the
         // widget's status with a transient capture or permission-refresh failure.
         renderer.Failed += error => System.Diagnostics.Trace.WriteLine("WinUI preview refresh: " + error.GetType().Name);
         return renderer;
     }
 
-    private void ReconcilePreviewVisibility() => previewRenderer?.SetVisible(visible && !retired && !switching);
+    private void ReconcilePreviewVisibility() => previewRenderer?.SetVisible(visible && !retired);
 
 }
