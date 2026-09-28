@@ -43,12 +43,80 @@ Their query objects freeze filtering/order before exposing the count.
   values used by range rendering; do not mutate a shared list after publication.
 - Neither operation renders all rows. Rebuild the ordinary page declaration so
   it captures the new descriptor. Source publication invalidates the widget.
-- Count zero means empty. It is not an unknown total. Do not invent a remote total
+- For a complete indexed source, count zero means empty. It is not an unknown total. Do not invent a remote total
   or expose a continuation token as a random-access range source. A finite returned
   snapshot can be indexed independently of a provider's larger remote library.
 - Persisted display metadata does not confer action authority. If showing saved
   placeholders during startup, render them disabled and replace them with a live
   query before enabling actions. Playnite's indexed Home test covers this handoff.
+
+## Forward-discovered providers
+
+Use `CreateDiscoveredCollection(sourceId, initialQuery, options)` when the provider
+has an opaque next token and no complete immutable result. Its shell uses the same
+`UI.CollectionList`/`UI.CollectionGrid` overloads. A discovered descriptor's `Count`
+is the addressable prefix already admitted, never a guessed remote total. Its
+`Discovery.HasMore` is independent of that count; initial zero with `HasMore=true`
+means discovery has not finished. Complete indexed descriptors have no Discovery.
+
+```csharp
+results = CreateDiscoveredCollection<Query, Result>("search", initialQuery, new()
+{
+    PageSize = 24,
+    MaximumItems = 1024,
+    LoadNext = async (query, continuation, count, token) =>
+    {
+        var page = await provider.SearchAsync(query.Text, continuation, count, token);
+        return new(page.Items, page.NextToken);
+    },
+    ItemKey = item => new(item.OccurrenceId),
+    RenderItem = (_, item, context) => UI.Button(item.Title, "open", context.Id("row")),
+    OnAction = (query, item, action, token) => OpenCapturedAsync(query, item, token),
+});
+```
+
+Keep query/item values immutable and keys stable. `LoadNext` returns at most the
+requested number of items; null continuation means exhausted. Tokens stay private
+to the worker and are bounded to 1024 characters. Empty filtered pages can advance
+the token. Repeated tokens are rejected to prevent loops. Page and token validation
+complete before any prefix is published. Source failure leaves existing data intact.
+
+The default duplicate policy is `Reject`: repeated domain entities need distinct
+occurrence keys. `KeepFirst` is an explicit unique-result policy, useful for YouTube
+videos repeated across search pages. It retains the first admitted value/key and
+does not silently update earlier rows. Duplicates still consume provider page size.
+
+Native incremental demand starts one load for the current query. Failure requires
+explicit Retry; changing the query uses `ReplaceQuery`, which retires previous
+ranges, actions and pending reads. A successful append retains old-prefix leases,
+artwork and action identity. Native source identity and the viewport remain owned
+by WinUI; authors never adjust offsets or realize placeholder trees. Discovered
+sources do not support static group partitions or arbitrary insertion/reordering.
+The WinUI adapter pauses after four consecutive successful pages that admit no
+new rows, exposing explicit **Load more**. This preserves truthful `HasMore` while
+preventing an underfilled native viewport from consuming arbitrary provider quota
+across empty or duplicate-only pages. New rows reset that burst count. This is a
+host demand policy; it does not alter provider tokens or the discovered history.
+
+`MaximumItems` is an explicit 1–4096 metadata-history limit (default 1024).
+Reaching it with more provider data publishes `LimitReached`, retaining `HasMore`
+and every admitted row. The host displays that limit; refine or replace the query
+to continue. There is no implicit leading-page eviction or invented backward-token
+support. Separate range/artwork budgets still control materialized payloads.
+Token history is also bounded to 4096 steps, including empty/duplicate-only pages.
+
+`PageSize` is 1–64 and no greater than `MaximumItems`. `ReadTimeout` is 100 ms–30 s.
+Cancelled providers retain their real capacity until they finish; at most four
+provider tasks can be active across current and retiring queries. Timeouts/errors
+publish bounded user-facing failures, and a still-draining load can report busy on
+Retry. Providers must still honor cancellation and avoid unbounded synchronous work.
+
+Tests can call `WidgetIndexedCollectionTestHost.ContinueAsync(collectionId)` and
+then `PublishSnapshot`, followed by ordinary range/action/artwork assertions.
+Use `retry: true` only to model deliberate Retry. Test old-prefix actions across
+append, replacement retirement, empty pages, duplicate policy, loops, cancellation,
+failure/retry, limits and deep reverse navigation. Native focus and viewport checks
+remain separate from worker tests. See YouTube Discover for a production adoption.
 
 ## Focus, details and actions
 
@@ -151,4 +219,6 @@ complete result or a first-class continuation-aware collection contract with
 unknown extent, growth and exact occurrence/action identity. Do not infer random
 access from an offset-shaped continuation or use the current retained count as
 the remote query count. This checkpoint does not make those cursor routes ready
-for a frontend that only accepts indexed collections.
+for a frontend that only accepts indexed collections. The discovered contract
+above now supplies that migration path, but those Spotify routes have not yet
+been converted in this checkpoint.

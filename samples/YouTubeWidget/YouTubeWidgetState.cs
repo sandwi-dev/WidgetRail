@@ -59,7 +59,9 @@ internal sealed record YouTubePlaybackRequest(
     double? RequestedValue = null,
     string? Text = null,
     string? ReturnFocusId = null,
-    string? VideoId = null);
+    string? VideoId = null,
+    long? SearchRevision = null,
+    IndexedCollectionFocusTarget? ReturnCollectionItem = null);
 
 /// <summary>
 /// One admitted setup mutation. The secret travels with the request and its
@@ -88,6 +90,8 @@ internal sealed record YouTubeSearchState
 
     public string QueryDraft { get; init; } = string.Empty;
     public string ActiveQuery { get; init; } = string.Empty;
+    public long Revision { get; init; }
+    public IndexedCollectionFocusTarget? ReturnCollectionItem { get; init; }
 
     /// <summary>The result row to restore focus to after returning from the player.</summary>
     public string? ReturnFocusId { get; init; }
@@ -511,7 +515,7 @@ internal sealed record YouTubeWidgetState
     public YouTubeWidgetState WithDeletedKey() => this with
     {
         Setup = Setup with { Configured = false, Busy = false },
-        Search = Search with { QueryDraft = string.Empty, ActiveQuery = string.Empty },
+        Search = Search with { QueryDraft = string.Empty, ActiveQuery = string.Empty, Revision = Search.Revision + 1, ReturnCollectionItem = null },
         SetupReturnRoute = SetupReturnRoute == YouTubeRoute.Search
             ? Playback.VideoId is null ? YouTubeRoute.Link : YouTubeRoute.Player
             : SetupReturnRoute,
@@ -532,7 +536,7 @@ internal sealed record YouTubeWidgetState
 
     public YouTubeWidgetState WithActiveQuery(string query) => this with
     {
-        Search = Search with { ActiveQuery = query },
+        Search = Search with { ActiveQuery = query, Revision = Search.Revision + 1, ReturnCollectionItem = null, ReturnFocusId = null },
     };
 
     public YouTubeWidgetState WithCommittedLink(string committedText, long sequence)
@@ -549,11 +553,12 @@ internal sealed record YouTubeWidgetState
         string returnFocusId,
         string videoId,
         long sequence,
-        string playerFocusGroupId)
+        string playerFocusGroupId,
+        IndexedCollectionFocusTarget? returnCollectionItem = null)
     {
         var selected = this with
         {
-            Search = Search with { ReturnFocusId = returnFocusId },
+            Search = Search with { ReturnFocusId = returnFocusId, ReturnCollectionItem = returnCollectionItem },
             Playback = Playback.WithSelectedVideo(videoId, sequence),
         };
         return selected.WithRootSection(

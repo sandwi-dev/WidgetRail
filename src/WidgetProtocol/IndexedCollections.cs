@@ -1,7 +1,16 @@
 namespace WidgetRail.WidgetProtocol;
 
 /// <summary>Exact indexed query identity. Payload eviction never changes Count.</summary>
-public sealed record IndexedCollectionDescriptor(string SourceId, long QueryGeneration, long ContentRevision, int Count);
+public sealed record IndexedCollectionDescriptor(string SourceId, long QueryGeneration, long ContentRevision, int Count)
+{
+    /// <summary>Null means a complete finite query. Otherwise Count is only the discovered, addressable prefix.</summary>
+    public DiscoveredCollectionState? Discovery { get; init; }
+}
+
+public enum DiscoveredCollectionStatus { Ready, Loading, Failed, LimitReached }
+public sealed record DiscoveredCollectionState(long Revision, bool HasMore, DiscoveredCollectionStatus Status,
+    int MaximumItems, string? ErrorCode = null, string? ErrorMessage = null);
+public enum IndexedCollectionRequestKind { Range, Continue, Retry }
 
 /// <summary>One contiguous display-only heading and item run in an existing flat indexed query.</summary>
 public sealed record IndexedCollectionGroup(string Key, string Header, int Count);
@@ -11,7 +20,11 @@ public sealed record IndexedCollectionFocusTarget(string CollectionId, string So
 
 public sealed record IndexedCollectionRangeRequest(
     string CollectionId, IndexedCollectionDescriptor Source, int StartIndex, int Count,
-    string DemandId, string? PinnedLayoutId = null);
+    string DemandId, string? PinnedLayoutId = null)
+{
+    /// <summary>Continuation control demands have zero rows and run on the bounded range lane.</summary>
+    public IndexedCollectionRequestKind Kind { get; init; }
+}
 
 public sealed record IndexedCollectionItem(string Key, ViewNode Root);
 
@@ -39,6 +52,7 @@ public static class IndexedCollectionContract
     {
         ArgumentNullException.ThrowIfNull(groups);
         ValidateDescriptor(source);
+        if (source.Discovery is not null) throw new ArgumentException("Discovered prefixes do not support static group partitions.", nameof(source));
         if (axis != ScrollAxis.Vertical)
             throw new ArgumentException("Indexed grouping requires a vertical collection.", nameof(axis));
         if (groups.Count > IndexedCollectionLimits.MaximumGroups)
@@ -83,7 +97,21 @@ public static class IndexedCollectionContract
         ArgumentOutOfRangeException.ThrowIfNegative(source.QueryGeneration);
         ArgumentOutOfRangeException.ThrowIfNegative(source.ContentRevision);
         ArgumentOutOfRangeException.ThrowIfNegative(source.Count);
+        if (source.Discovery is { } discovery && (discovery.Revision < 0 || !Enum.IsDefined(discovery.Status) ||
+            discovery.MaximumItems is < 1 or > 4096 || source.Count > discovery.MaximumItems ||
+            discovery.ErrorCode is { } code && !ProtocolValidationIdentifierContext.IsSafeIdentifier(code) ||
+            discovery.ErrorMessage is { Length: > 256 } || discovery.ErrorMessage?.Any(char.IsControl) == true ||
+            discovery.Status == DiscoveredCollectionStatus.Failed && (discovery.ErrorCode is null || string.IsNullOrWhiteSpace(discovery.ErrorMessage)) ||
+            discovery.Status == DiscoveredCollectionStatus.LimitReached && !discovery.HasMore))
+            throw new ArgumentException("Invalid discovered collection state.", nameof(source));
     }
+
+    /// <summary>Old prefixes retain data/action authority only for append-only discovered queries.</summary>
+    public static bool RetainsPrefix(IndexedCollectionDescriptor? current, IndexedCollectionDescriptor previous) =>
+        current == previous || current is { Discovery: { } next } && previous.Discovery is { } prior &&
+        current.SourceId == previous.SourceId && current.QueryGeneration == previous.QueryGeneration &&
+        current.ContentRevision == previous.ContentRevision && current.Count >= previous.Count &&
+        next.MaximumItems == prior.MaximumItems && next.Revision >= prior.Revision;
 
     public static void ValidateRequest(IndexedCollectionRangeRequest request)
     {
@@ -92,6 +120,13 @@ public static class IndexedCollectionContract
         RequireId(request.CollectionId);
         RequireId(request.DemandId);
         if (request.PinnedLayoutId is { } pinned) RequireId(pinned);
+        if (!Enum.IsDefined(request.Kind)) throw new ArgumentException("Unknown indexed request kind.", nameof(request));
+        if (request.Kind != IndexedCollectionRequestKind.Range)
+        {
+            if (request.Source.Discovery is null || request.Count != 0 || request.StartIndex != request.Source.Count)
+                throw new ArgumentException("Continuation demand must name the exact discovered tail.", nameof(request));
+            return;
+        }
         if (request.StartIndex < 0 || request.Count is < 1 or > IndexedCollectionLimits.MaximumRangeItems
             || (long)request.StartIndex + request.Count > request.Source.Count)
             throw new ArgumentOutOfRangeException(nameof(request), "Indexed range is outside the declared query.");
@@ -170,7 +205,7 @@ public static class IndexedCollectionContract
             var scope = entry.Node.InputScopeId ?? entry.Scope;
             if (entry.Node.Id == request.CollectionId)
             {
-                if (entry.Node.Kind != ViewNodeKind.IndexedCollection || entry.Node.IndexedCollection != request.Source)
+                if (entry.Node.Kind != ViewNodeKind.IndexedCollection || !RetainsPrefix(entry.Node.IndexedCollection, request.Source))
                     throw new ArgumentException("Indexed request does not match the current parent declaration.", nameof(request));
                 return (entry.Node, scope, projection);
             }

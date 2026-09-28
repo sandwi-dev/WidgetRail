@@ -24,6 +24,14 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
     internal WidgetPresentationFrame Frame => Volatile.Read(ref presentation).Frame;
     internal ViewNode Declaration => Volatile.Read(ref presentation).Collection;
     internal Action<Exception>? Failed { get; set; }
+    private readonly CancellationTokenSource lifetime = new();
+    private TaskCompletionSource? continuationPublication;
+    private Task? continuation;
+    private long continuationRevision;
+    private int emptyContinuations;
+    internal bool ContinuationFailed { get; private set; }
+    internal bool ContinuationPaused { get; private set; }
+    internal event Action? DiscoveryChanged;
 
     internal WidgetIndexedRows(PresentationSession session, WidgetPresentationFrame frame, ViewNode collection,
         DispatcherQueue dispatcher)
@@ -35,6 +43,12 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         presentation = new(frame, collection);
         Items = new(new(new(frame.Authority.RuntimeGeneration, frame.Authority.WidgetInstanceId, collection.Id), source.QueryGeneration),
             source.Count, dispatcher, ReadAsync, contentRevision: source.ContentRevision);
+        if (source.Discovery is not null)
+        {
+            Items.CanLoadMore = () => Declaration.IndexedCollection?.Discovery is
+                { HasMore: true, Status: DiscoveredCollectionStatus.Ready } && !ContinuationFailed && !ContinuationPaused && continuation is not { IsCompleted: false };
+            Items.LoadMore = token => ContinueAsync(false, token);
+        }
     }
 
     internal bool CanUpdate(WidgetPresentationFrame frame, ViewNode collection)
@@ -43,7 +57,10 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         var source = previous.Collection.IndexedCollection!;
         return SameOwner(previous.Frame.Authority, frame.Authority) && previous.Collection.Id == collection.Id &&
             collection.IndexedCollection is { } next && next.SourceId == source.SourceId &&
-            next.QueryGeneration == source.QueryGeneration && next.Count == source.Count && next.ContentRevision >= source.ContentRevision;
+            (next.Discovery is null) == (source.Discovery is null) &&
+            next.QueryGeneration == source.QueryGeneration &&
+            (next.Discovery is not null ? IndexedCollectionContract.RetainsPrefix(next, source) :
+                next.Count == source.Count && next.ContentRevision >= source.ContentRevision);
     }
 
     internal void Update(WidgetPresentationFrame frame, ViewNode collection)
@@ -51,7 +68,61 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         if (!CanUpdate(frame, collection)) throw new InvalidOperationException("The indexed query requires a new native source.");
         Volatile.Write(ref presentation, new(frame, collection));
         Items.RefreshContent(collection.IndexedCollection!.ContentRevision);
+        Items.Append(collection.IndexedCollection.Count);
         Items.RetryFailedPages();
+        if (collection.IndexedCollection.Discovery is { Status: not DiscoveredCollectionStatus.Loading } next && next.Revision > continuationRevision)
+            continuationPublication?.TrySetResult();
+    }
+
+    internal Task ContinueAsync(bool retry = false, CancellationToken cancellationToken = default)
+    {
+        if (continuation is { IsCompleted: false }) return continuation;
+        return continuation = ContinueCoreAsync(retry, cancellationToken);
+    }
+    private async Task ContinueCoreAsync(bool retry, CancellationToken cancellationToken)
+    {
+        if (ContinuationPaused && !retry) return;
+        if (retry) { ContinuationPaused = false; emptyContinuations = 0; }
+        ContinuationFailed = false;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(35));
+        var current = presentation;
+        var source = current.Collection.IndexedCollection!;
+        if (source.Discovery is not { HasMore: true }) return;
+        var frame = session.GetState(current.Frame.Authority.WidgetId)?.LastGood ?? current.Frame;
+        var publication = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        continuationRevision = source.Discovery.Revision;
+        continuationPublication = publication;
+        try
+        {
+            await admission.WaitAsync(cancellation.Token);
+            try
+            {
+                frame = session.GetState(current.Frame.Authority.WidgetId)?.LastGood ?? frame;
+                if (!SameOwner(current.Frame.Authority, frame.Authority)) throw new OperationCanceledException("Indexed widget owner changed.");
+                await session.ContinueDiscoveredCollectionAsync(frame.Authority, current.Collection.Id, source, retry, cancellation.Token);
+            }
+            finally { admission.Release(); }
+            if (Declaration.IndexedCollection?.Discovery is { } next && next.Revision > source.Discovery.Revision && next.Status != DiscoveredCollectionStatus.Loading)
+                publication.TrySetResult();
+            await publication.Task.WaitAsync(cancellation.Token);
+            if (Items.Count == source.Count && Declaration.IndexedCollection?.Discovery is
+                { HasMore: true, Status: DiscoveredCollectionStatus.Ready })
+            {
+                // Native underfill demand must not consume unlimited provider
+                // quota across filtered/duplicate-only pages with no new rows.
+                ContinuationPaused = ++emptyContinuations >= 4;
+            }
+            else emptyContinuations = 0;
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested || cancellationToken.IsCancellationRequested) { }
+        catch (Exception error) when (error is not (OutOfMemoryException or StackOverflowException or AccessViolationException))
+        { ContinuationFailed = true; }
+        finally
+        {
+            if (ReferenceEquals(continuationPublication, publication)) continuationPublication = null;
+            if (!lifetime.IsCancellationRequested) DiscoveryChanged?.Invoke();
+        }
     }
 
     private async Task<IndexedRangeResult<WidgetIndexedRow>> ReadAsync(IndexedRangeRequest request, CancellationToken cancellation)
@@ -98,5 +169,11 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         first.RuntimeGeneration == second.RuntimeGeneration && first.PresentationGeneration == second.PresentationGeneration &&
         first.SessionGeneration == second.SessionGeneration;
 
-    public ValueTask DisposeAsync() => Items.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        lifetime.Cancel();
+        if (continuation is not null) await continuation;
+        await Items.DisposeAsync();
+        lifetime.Dispose();
+    }
 }

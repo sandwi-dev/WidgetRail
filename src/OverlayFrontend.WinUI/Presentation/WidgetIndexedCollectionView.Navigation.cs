@@ -33,7 +33,9 @@ internal sealed partial class WidgetIndexedCollectionView
 
     internal bool Enter(IndexedCollectionFocusTarget? target = null, bool allowFallback = false)
     {
-        if (disposed || source is null || view is null || !CanReceiveInput || source.Items.Count == 0) return false;
+        if (disposed || source is null || view is null || !CanReceiveInput) return false;
+        if (source.Items.Count == 0 && source.Declaration.IndexedCollection?.Discovery is not
+            { HasMore: true, Status: DiscoveredCollectionStatus.Ready or DiscoveredCollectionStatus.Loading }) return false;
         if (target is not null && !MatchesQuery(target)) return false;
         CancelNavigation();
         entering = true;
@@ -90,6 +92,16 @@ internal sealed partial class WidgetIndexedCollectionView
             if (delta == 0) return false;
             target = current.Value + delta;
             if (target >= view.Items.Count && delta > 1 && current.Value / columns < (view.Items.Count - 1) / columns) target = view.Items.Count - 1;
+            if (target >= view.Items.Count && !source.ContinuationPaused && !source.ContinuationFailed && source.Declaration.IndexedCollection?.Discovery is
+                { HasMore: true, Status: DiscoveredCollectionStatus.Ready or DiscoveredCollectionStatus.Loading })
+            {
+                // The discovered tail is not a navigation exit. Consume this
+                // direction without accumulating a target beyond available data;
+                // reversal uses the current row immediately and page arrival
+                // never replays old movement. Failure/limit expose their footer.
+                if (source.Items.HasMoreItems) _ = source.ContinueAsync();
+                return true;
+            }
             if (target < 0 || target >= view.Items.Count) return pendingIndex is not null;
         }
         pendingIndex = target;
@@ -109,7 +121,7 @@ internal sealed partial class WidgetIndexedCollectionView
             DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
             {
                 navigationQueued = false;
-                if (pendingIndex is not { } index || view is null) return;
+                if (pendingIndex is not { } index || view is null || index >= view.Items.Count) return;
                 // One native request for the newest logical target. A run of
                 // controller frames never creates a backlog of layout work.
                 view.ScrollIntoView(view.Items[index], ScrollIntoViewAlignment.Default);
@@ -129,6 +141,12 @@ internal sealed partial class WidgetIndexedCollectionView
     private void FinishNavigation(object? sender, object args)
     {
         if (pendingIndex is not { } index || view is null || disposed) return;
+        if (index >= view.Items.Count)
+        {
+            if (source?.Declaration.IndexedCollection?.Discovery is not
+                { HasMore: true, Status: DiscoveredCollectionStatus.Ready or DiscoveredCollectionStatus.Loading }) CancelNavigation();
+            return;
+        }
         if (source?.Items[index] is not Collections.IndexedItem<Collections.WidgetIndexedRow> slot || slot.Failed)
         { CancelNavigation(); return; }
         // Retained pixels can describe the prior content revision (for example

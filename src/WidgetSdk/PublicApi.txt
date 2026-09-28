@@ -88,6 +88,8 @@ ctor WidgetRail.WidgetSdk.WidgetCursorPage<TItem>(System.Collections.Generic.IRe
 ctor WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>()
 ctor WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>(WidgetRail.WidgetSdk.WidgetPagedResourceStatus Status, System.Collections.Generic.IReadOnlyList<TItem> Items, WidgetRail.WidgetSdk.WidgetCollectionCursor? Before, WidgetRail.WidgetSdk.WidgetCollectionCursor? After, WidgetRail.WidgetSdk.WidgetCollectionItemKey? Anchor, string? RequestedFocusId, WidgetRail.WidgetSdk.WidgetResourceError? Error, long Revision)
 ctor WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>(string ScrollId, System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> ItemKey, System.Func<TItem,string> ItemFocusId, string? EmptyFocusId = null)
+ctor WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>()
+ctor WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>(System.Collections.Generic.IReadOnlyList<TItem> Items, string? Continuation)
 ctor WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor(string Id, string Name, int Width, int Height, int X, int Y, double RefreshRate, string Orientation, bool IsPrimary)
 ctor WidgetRail.WidgetSdk.WidgetDisplayProfileRequest(string? ProfileId = null, string? Name = null, string? RestoreId = null)
 ctor WidgetRail.WidgetSdk.WidgetDisplayProfileRestore(string Id, string ProfileName, System.DateTimeOffset Deadline)
@@ -291,6 +293,8 @@ enum WidgetRail.WidgetSdk.WidgetCommandPolicy.Serial = WidgetRail.WidgetSdk.Widg
 enum WidgetRail.WidgetSdk.WidgetCommandPolicy.SingleFlight = WidgetRail.WidgetSdk.WidgetCommandPolicy.SingleFlight
 enum WidgetRail.WidgetSdk.WidgetCursorDirection.After = WidgetRail.WidgetSdk.WidgetCursorDirection.After
 enum WidgetRail.WidgetSdk.WidgetCursorDirection.Before = WidgetRail.WidgetSdk.WidgetCursorDirection.Before
+enum WidgetRail.WidgetSdk.WidgetDiscoveredDuplicatePolicy.KeepFirst = WidgetRail.WidgetSdk.WidgetDiscoveredDuplicatePolicy.KeepFirst
+enum WidgetRail.WidgetSdk.WidgetDiscoveredDuplicatePolicy.Reject = WidgetRail.WidgetSdk.WidgetDiscoveredDuplicatePolicy.Reject
 enum WidgetRail.WidgetSdk.WidgetFocusTargetState.Disabled = WidgetRail.WidgetSdk.WidgetFocusTargetState.Disabled
 enum WidgetRail.WidgetSdk.WidgetFocusTargetState.Duplicate = WidgetRail.WidgetSdk.WidgetFocusTargetState.Duplicate
 enum WidgetRail.WidgetSdk.WidgetFocusTargetState.Missing = WidgetRail.WidgetSdk.WidgetFocusTargetState.Missing
@@ -1120,6 +1124,18 @@ method WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.Deconstruct(out string S
 method WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem>.Enter(string collectionId, long requestId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
+method WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem>.FocusTarget(string collectionId, WidgetRail.WidgetSdk.WidgetCollectionItemKey key, int index) -> WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget
+method WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem>.ReplaceQuery(TQuery query) -> void
+method WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>
+method WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>
+method WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.Deconstruct(out System.Collections.Generic.IReadOnlyList<TItem> Items, out string? Continuation) -> void
+method WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.<Clone>$() -> WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor
 method WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Deconstruct(out string Id, out string Name, out int Width, out int Height, out int X, out int Y, out double RefreshRate, out string Orientation, out bool IsPrimary) -> void
 method WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Equals(object? obj) -> bool
@@ -1182,6 +1198,7 @@ method WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.Equals(
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.AcquireAsync(string collectionId, int startIndex, int count, string? pinnedLayoutId = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease>
+method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.ContinueAsync(string collectionId, bool retry = false, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.PublishSnapshot() -> WidgetRail.WidgetProtocol.ViewSnapshot
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.ResolveArtworkAsync(string itemKey, WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.RouteAction(string itemKey, WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? contextActionOwnerId = null, string? contextActionId = null, WidgetRail.WidgetProtocol.IndexedCollectionInputContext? context = null) -> WidgetRail.WidgetSdk.WidgetOperationAdmission?
@@ -1719,8 +1736,10 @@ method static WidgetRail.WidgetSdk.UI.ChoiceRow(WidgetRail.WidgetSdk.WidgetIcon 
 method static WidgetRail.WidgetSdk.UI.ChoiceRow(string label, string action, string id, bool isSelected = false, bool isDisabled = false, bool isBusy = false, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.CodeText(string text, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.TextElement
 method static WidgetRail.WidgetSdk.UI.CollectionGrid(string id, double minimumColumnWidth, double estimatedItemExtent, int? maximumColumns = null, params WidgetRail.WidgetSdk.WidgetElement[] items) -> WidgetRail.WidgetSdk.ScrollElement
+method static WidgetRail.WidgetSdk.UI.CollectionGrid<TQuery,TItem>(string id, WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> source, double minimumColumnWidth, double estimatedItemExtent, string accessibilityLabel, int? maximumColumns = null) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.CollectionGrid<TQuery,TItem>(string id, WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, double minimumColumnWidth, double estimatedItemExtent, string accessibilityLabel, int? maximumColumns = null) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.CollectionList(string id, double estimatedItemExtent, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical, params WidgetRail.WidgetSdk.WidgetElement[] items) -> WidgetRail.WidgetSdk.ScrollElement
+method static WidgetRail.WidgetSdk.UI.CollectionList<TQuery,TItem>(string id, WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> source, double estimatedItemExtent, string accessibilityLabel, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.CollectionList<TQuery,TItem>(string id, WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, double estimatedItemExtent, string accessibilityLabel, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerButton button, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
 method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerPrompt prompt, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
@@ -1879,6 +1898,10 @@ method static WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.op_Equali
 method static WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>? left, WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>? left, WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>? left, WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>? left, WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.op_Equality(WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor? left, WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.op_Inequality(WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor? left, WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetDisplayProfileRequest.op_Equality(WidgetRail.WidgetSdk.WidgetDisplayProfileRequest? left, WidgetRail.WidgetSdk.WidgetDisplayProfileRequest? right) -> bool
@@ -2167,6 +2190,8 @@ method virtual WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Equals(WidgetRail.Wi
 method virtual WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.Equals(WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.Equals(WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Equals(WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetDisplayProfileRequest.Equals(WidgetRail.WidgetSdk.WidgetDisplayProfileRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetDisplayProfileRestore.Equals(WidgetRail.WidgetSdk.WidgetDisplayProfileRestore? other) -> bool
@@ -2238,6 +2263,7 @@ property System.Collections.Generic.IReadOnlyDictionary<TRoute,string> WidgetRai
 property System.Collections.Generic.IReadOnlyDictionary<string,string> WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.Headers { get; set; }
 property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Items { get; set; }
+property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetPage<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ActionSurfaceElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ButtonElement.Shortcuts { get; set; }
@@ -2290,19 +2316,25 @@ property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetCommandError> W
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.MapError { get; set; }
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.MapError { get; set; }
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.MapError { get; set; }
+property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError>? WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.MapError { get; set; }
 property System.Func<System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<TValue>> WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.Load { get; set; }
 property System.Func<TAuthority,TObservation,bool> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.MatchesProjectionAuthority { get; set; }
 property System.Func<TExecution,WidgetRail.WidgetSdk.WidgetOperationContext,System.Threading.Tasks.ValueTask<TResult?>> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Execute { get; set; }
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemKey { get; set; }
+property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.ItemKey { get; set; }
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ItemKey { get; set; }
 property System.Func<TItem,int,string> WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.ItemFocusId { get; set; }
 property System.Func<TItem,string> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemFocusId { get; set; }
 property System.Func<TObservation,long> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.CorrelationSequence { get; set; }
 property System.Func<TObservation,long>? WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.ObservationSequence { get; set; }
+property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.OnAction { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.OnAction { get; set; }
+property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>>? WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.ResolveArtwork { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>>? WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ResolveArtwork { get; set; }
+property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetIndexedItemContext,WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.RenderItem { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetIndexedItemContext,WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.RenderItem { get; set; }
 property System.Func<TQuery,int,int,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<TItem>>> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ReadRange { get; set; }
+property System.Func<TQuery,string?,int,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>>> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.LoadNext { get; set; }
 property System.Func<TState,TAuthority,TObservation,bool,bool> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.ConfirmsProjection { get; set; }
 property System.Func<TState,TExecution,TResult?,TState> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Reconcile { get; set; }
 property System.Func<TState,TObservation,bool,TState> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.Reconcile { get; set; }
@@ -2328,6 +2360,7 @@ property System.TimeSpan WidgetRail.WidgetSdk.ScrubberElement.Duration { get; se
 property System.TimeSpan WidgetRail.WidgetSdk.ScrubberElement.Position { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.ScrubberElement.Step { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.ToastElement.Duration { get; }
+property System.TimeSpan WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.ReadTimeout { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ReadTimeout { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.Timeout { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.CacheDuration { get; set; }
@@ -2378,6 +2411,7 @@ property WidgetRail.WidgetProtocol.ImageFit WidgetRail.WidgetSdk.ImageElement.Fi
 property WidgetRail.WidgetProtocol.ImageFit WidgetRail.WidgetSdk.WindowPreviewElement.Fit { get; set; }
 property WidgetRail.WidgetProtocol.ImageFit? WidgetRail.WidgetSdk.ButtonElement.LeadingImageFit { get; set; }
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.IndexedCollectionElement.Source { get; }
+property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem>.Descriptor { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Descriptor { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? WidgetRail.WidgetSdk.WidgetActionEvent.FocusedCollectionItem { get; set; }
 property WidgetRail.WidgetProtocol.IndexedCollectionRange WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.Range { get; }
@@ -2464,6 +2498,7 @@ property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.Widget
 property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.LoadingDirection { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Snapshot { get; }
+property WidgetRail.WidgetSdk.WidgetDiscoveredDuplicatePolicy WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.DuplicatePolicy { get; set; }
 property WidgetRail.WidgetSdk.WidgetDisplayProfileRestore? WidgetRail.WidgetSdk.WidgetDisplayProfilesState.PendingRestore { get; set; }
 property WidgetRail.WidgetSdk.WidgetDisplayProfilesService WidgetRail.WidgetSdk.WidgetHostServices.DisplayProfiles { get; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.BackgroundSurfaceElement.Content { get; set; }
@@ -2676,6 +2711,8 @@ property int WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.RetainedItemCount 
 property int WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.MaximumRetainedItems { get; set; }
 property int WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.PageSize { get; set; }
 property int WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.PaginationThreshold { get; set; }
+property int WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.MaximumItems { get; set; }
+property int WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.PageSize { get; set; }
 property int WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Height { get; set; }
 property int WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.Width { get; set; }
 property int WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor.X { get; set; }
@@ -3027,6 +3064,7 @@ property string? WidgetRail.WidgetSdk.WidgetAppLibraryQuery.SearchText { get; se
 property string? WidgetRail.WidgetSdk.WidgetAppLibraryQuery.SourceAttribution { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.RequestedFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.EmptyFocusId { get; set; }
+property string? WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.Continuation { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetDisplayProfileRequest.Name { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetDisplayProfileRequest.ProfileId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetDisplayProfileRequest.RestoreId { get; set; }
@@ -3086,6 +3124,7 @@ type enum WidgetRail.WidgetSdk.WidgetBluetoothRadioState : System.IComparable, S
 type enum WidgetRail.WidgetSdk.WidgetBluetoothUnpairingOutcome : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetCommandPolicy : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetCursorDirection : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum WidgetRail.WidgetSdk.WidgetDiscoveredDuplicatePolicy : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetFocusTargetState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetLifecycleState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -3226,6 +3265,9 @@ type sealed class WidgetRail.WidgetSdk.WidgetCursorResource<TItem>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorViewport<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>>
+type sealed class WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> : WidgetRail.WidgetSdk.IWidgetIndexedCollection
+type sealed class WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>>
+type sealed class WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayProfileMonitor>
 type sealed class WidgetRail.WidgetSdk.WidgetDisplayProfileRequest : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayProfileRequest>
 type sealed class WidgetRail.WidgetSdk.WidgetDisplayProfileRestore : System.IEquatable<WidgetRail.WidgetSdk.WidgetDisplayProfileRestore>

@@ -39,6 +39,21 @@ public sealed class WidgetIndexedCollectionTestHost : IDisposable
         }
     }
 
+    /// <summary>Demand one continuation using the current exact parent; publish its updated declaration after completion.</summary>
+    public async ValueTask ContinueAsync(string collectionId, bool retry = false, CancellationToken cancellationToken = default)
+    {
+        IndexedCollectionRangeRequest request;
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            var source = Find(snapshot.Root, collectionId)?.IndexedCollection ?? throw new ArgumentException("Missing collection.", nameof(collectionId));
+            request = new(collectionId, source, source.Count, 0, Guid.NewGuid().ToString("N"))
+                { Kind = retry ? IndexedCollectionRequestKind.Retry : IndexedCollectionRequestKind.Continue };
+        }
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
+        _ = await widget.ReadIndexedRangeAsync(request, cancellation.Token).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Acquires a bounded range from the current declared main or pinned collection.
     /// Reads obey the production provider, cancellation, timeout and retention limits.

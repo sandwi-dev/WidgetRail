@@ -154,6 +154,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.IndexedGroups is not null)
                 Add("indexed-collection-groups", ProtocolConstants.IndexedCollectionGroupsVersion, path,
                     "Grouped indexed collections require protocol v62.");
+            if (node.IndexedCollection?.Discovery is not null)
+                Add("discovered-collection", ProtocolConstants.DiscoveredCollectionVersion, path,
+                    "Discovered collection prefixes require protocol v63.");
             if (node.Kind == ViewNodeKind.IndexedCollection && snapshot.FocusGroupEntryRequest?.GroupId == node.Id)
                 Add("indexed-focus-entry", ProtocolConstants.IndexedCollectionFocusVersion, "$.focusGroupEntryRequest",
                     "Indexed collection entry requires protocol version 61 or later.");

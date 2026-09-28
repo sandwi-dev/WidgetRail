@@ -891,6 +891,8 @@ public static class ViewSnapshotValidator
                     CheckIdentifier(indexed.SourceId, $"{path}.indexedCollection.sourceId", "indexed source ID");
                     if (indexed.QueryGeneration < 0 || indexed.ContentRevision < 0 || indexed.Count < 0)
                         Add(path, "invalid_indexed_collection", "Indexed query generations, revisions and count cannot be negative.");
+                    try { IndexedCollectionContract.ValidateDescriptor(indexed); }
+                    catch (ArgumentException) { Add(path, "invalid_indexed_collection", "Indexed source extent or discovery state is invalid."); }
                 }
             }
             else if (node.IndexedCollection is not null)

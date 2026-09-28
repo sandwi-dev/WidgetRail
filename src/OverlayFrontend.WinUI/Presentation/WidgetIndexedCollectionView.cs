@@ -26,6 +26,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private bool inputActive;
     private bool CanReceiveInput => inputActive && view?.IsEnabled == true;
     private long sequence;
+    private readonly long discoveryForegroundToken;
     internal ListViewBase NativeView => view ?? throw new InvalidOperationException("Collection is not initialized.");
     internal Action? PresentationChanged { get; set; }
     internal Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
@@ -40,6 +41,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         IsTabStop = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
+        discoveryForegroundToken = RegisterPropertyChangedCallback(ForegroundProperty, (_, _) => UpdateDiscoveryForeground());
         SizeChanged += (_, _) => UpdateGridWidth();
         GotFocus += (_, _) => { ValidatePendingActivation(); RememberItemFocus(); };
         LostFocus += (_, _) => ValidatePendingActivation();
@@ -90,6 +92,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             DetachContainers();
             if (source is not null) RetireSource(source);
             source = new(session, frame, declaration, DispatcherQueue) { Failed = failed };
+            source.DiscoveryChanged += UpdateDiscoveryFooter;
         }
         else
         {
@@ -100,6 +103,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         AutomationProperties.SetName(view, declaration.AccessibilityLabel ?? declaration.Id);
         var active = scope == frame.Authority.ActiveInputScopeId;
         inputActive = active;
+        UpdateDiscoveryFooter();
         view.IsEnabled = declaration.IsDisabled != true && declaration.IsBusy != true;
         if (!CanReceiveInput) CancelNavigation();
         view.IsItemClickEnabled = active;
@@ -216,7 +220,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     {
         if (args.ClickedItem is IndexedItem<WidgetIndexedRow> { Value: { } row }) _ = InvokeAsync(row, ControllerButton.A);
     }
-    internal bool ActivateFocused() => InvokeFocused(ControllerButton.A);
+    internal bool ActivateFocused() => ActivateDiscoveryFooter() || InvokeFocused(ControllerButton.A);
     internal bool InvokeFocused(ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed)
     {
         if (button != ControllerButton.A && phase == ControllerEventPhase.Pressed) CancelPendingActivation();
@@ -274,6 +278,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     {
         if (disposed) return;
         disposed = true;
+        UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
         CancelPendingActivation();
         CancelNavigation();
         RetireViewRows();
@@ -286,6 +291,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
 
     private void RetireSource(WidgetIndexedRows previous)
     {
+        previous.DiscoveryChanged -= UpdateDiscoveryFooter;
         TrackRetirement(previous.DisposeAsync().AsTask());
     }
     private void RetireViewRows()

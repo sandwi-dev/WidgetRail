@@ -8,6 +8,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Discovered collections retain prefixes and bound continuation lifetime", () => WidgetIndexedCollectionTests.Diagnose(WidgetDiscoveredCollectionTests.Run)),
     ("Indexed groups partition flat sources and survive incremental transport", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedGroupTests.Run)),
     ("Indexed author test host exercises captured queue scope artwork and ownership", WidgetIndexedTestHostTests.Run),
     ("Indexed leases reclaim cancelled acquisition and bound real artwork work", WidgetIndexedLeaseTests.CancellationBudgets),

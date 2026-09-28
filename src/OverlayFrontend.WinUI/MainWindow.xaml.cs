@@ -116,7 +116,14 @@ public sealed partial class MainWindow : Window
         else if (validateGrouped || validateGroupedFlat || validateGroupedAdapted)
             RootFrame.Content = new Validation.GroupedCollectionValidationPage(flatBaseline: validateGroupedFlat, useRangeAdapter: validateGroupedAdapted);
         else if (indexedValidationPipe is not null)
-            RootFrame.Content = new Validation.IndexedWidgetValidationPage(indexedValidationPipe);
+        {
+            if (indexedValidationPipe.StartsWith("discovered-validation-", StringComparison.Ordinal))
+            {
+                var discovery = new Validation.DiscoveredCollectionValidationPage(indexedValidationPipe);
+                discovery.Initialize(); RootFrame.Content = discovery;
+            }
+            else RootFrame.Content = new Validation.IndexedWidgetValidationPage(indexedValidationPipe);
+        }
         else if (widgetConfiguration is not null)
             RootFrame.Content = new Validation.BridgeWidgetValidationPage(widgetConfiguration);
         else if (validateControls)

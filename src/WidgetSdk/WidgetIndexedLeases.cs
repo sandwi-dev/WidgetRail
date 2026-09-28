@@ -26,6 +26,7 @@ public abstract partial class Widget
         CancellationToken cancellationToken)
     {
         IndexedCollectionContract.ValidateRequest(request);
+        if (request.Kind != IndexedCollectionRequestKind.Range) throw new ArgumentException("Continuation requests do not acquire row leases.", nameof(request));
         var id = Guid.NewGuid().ToString("N");
         lock (indexedSourcesGate)
         {
@@ -57,7 +58,7 @@ public abstract partial class Widget
                 ObjectDisposedException.ThrowIf(indexedLeaseOwnerRetired, this);
                 parent = Volatile.Read(ref _latestSnapshot) ?? throw new InvalidOperationException("Parent presentation retired.");
                 IndexedCollectionContract.ValidateRange(parent, request, range);
-                if (source.Descriptor != request.Source) throw new InvalidOperationException("Indexed query retired.");
+                if (!IndexedCollectionContract.RetainsPrefix(source.Descriptor, request.Source)) throw new InvalidOperationException("Indexed query retired.");
                 foreach (var item in read.Items)
                     if (HasWidgetArtwork(item.Declaration.Root) && item.ResolveArtwork is null)
                         throw new InvalidOperationException("Indexed rows declaring widget-owned artwork require a captured artwork resolver.");
@@ -179,7 +180,7 @@ public abstract partial class Widget
         foreach (var (id, lease) in indexedLeases.ToArray())
         {
             var valid = !indexedLeaseOwnerRetired && parent is not null && !WidgetLifetimeToken.IsCancellationRequested &&
-                parent.WidgetInstanceId == lease.Lease.Range.WidgetInstanceId && lease.Source.Descriptor == lease.Request.Source;
+                parent.WidgetInstanceId == lease.Lease.Range.WidgetInstanceId && IndexedCollectionContract.RetainsPrefix(lease.Source.Descriptor, lease.Request.Source);
             if (valid)
             {
                 var key = (lease.Request.CollectionId, lease.Request.Source, lease.Request.PinnedLayoutId);

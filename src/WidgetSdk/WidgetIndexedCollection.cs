@@ -35,6 +35,8 @@ internal interface IWidgetIndexedCollection
 {
     IndexedCollectionDescriptor Descriptor { get; }
     ValueTask<WidgetIndexedRead> ReadAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken);
+    ValueTask ContinueAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken) =>
+        ValueTask.FromException(new InvalidOperationException("This source is a complete indexed query."));
 }
 
 /// <summary>
@@ -44,7 +46,12 @@ internal interface IWidgetIndexedCollection
 /// </summary>
 public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedCollection where TQuery : notnull where TItem : notnull
 {
-    private sealed record Query(TQuery Value, IndexedCollectionDescriptor Descriptor, CancellationTokenSource Lifetime);
+    private sealed class Query(TQuery value, IndexedCollectionDescriptor descriptor, CancellationTokenSource lifetime)
+    {
+        internal TQuery Value { get; } = value;
+        internal IndexedCollectionDescriptor Descriptor { get; set; } = descriptor;
+        internal CancellationTokenSource Lifetime { get; } = lifetime;
+    }
     private readonly object gate = new();
     private readonly WidgetIndexedCollectionOptions<TQuery, TItem> options;
     private readonly Action changed;
@@ -90,6 +97,9 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
     }
 
     public void PublishQuery(TQuery query, int count)
+        => PublishQuery(query, count, null);
+
+    internal void PublishQuery(TQuery query, int count, DiscoveredCollectionState? discovery)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentOutOfRangeException.ThrowIfNegative(count);
@@ -98,10 +108,23 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
         {
             widgetLifetime.ThrowIfCancellationRequested();
             previous = current;
-            current = new(query, current.Descriptor with { QueryGeneration = checked(current.Descriptor.QueryGeneration + 1), ContentRevision = 0, Count = count }, new());
+            current = new(query, current.Descriptor with { QueryGeneration = checked(current.Descriptor.QueryGeneration + 1), ContentRevision = 0, Count = count, Discovery = discovery }, new());
         }
         try { Retire(previous); }
         finally { changed(); }
+    }
+
+    internal void AppendPrefix(int count, DiscoveredCollectionState discovery)
+    {
+        lock (gate)
+        {
+            widgetLifetime.ThrowIfCancellationRequested();
+            if (count < current.Descriptor.Count) throw new InvalidOperationException("A discovered prefix cannot remove history.");
+            var next = current.Descriptor with { Count = count, Discovery = discovery };
+            IndexedCollectionContract.ValidateDescriptor(next);
+            current.Descriptor = next;
+        }
+        changed();
     }
 
     /// <summary>
@@ -136,7 +159,7 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
         lock (gate)
         {
             captured = current;
-            if (request.Source != captured.Descriptor) throw new InvalidOperationException("The indexed query has changed.");
+            if (request.Kind != IndexedCollectionRequestKind.Range || !IndexedCollectionContract.RetainsPrefix(captured.Descriptor, request.Source)) throw new InvalidOperationException("The indexed query has changed.");
             if (activeLoads >= 4) throw new InvalidOperationException("The indexed source read limit has been reached.");
             cancellationToken.ThrowIfCancellationRequested();
             widgetLifetime.ThrowIfCancellationRequested();
@@ -283,6 +306,13 @@ public abstract partial class Widget
         IWidgetIndexedCollection source;
         lock (indexedSourcesGate)
             source = indexedSources.GetValueOrDefault(request.Source.SourceId) ?? throw new InvalidOperationException("Indexed source is not registered.");
+        if (request.Kind != IndexedCollectionRequestKind.Range)
+        {
+            await source.ContinueAsync(request, cancellationToken).ConfigureAwait(false);
+            parent = Volatile.Read(ref _latestSnapshot) ?? throw new InvalidOperationException("Parent presentation retired during continuation.");
+            _ = IndexedCollectionContract.ResolveScope(parent, request);
+            return new(parent.WidgetInstanceId, request.CollectionId, request.Source, scope, request.StartIndex, request.DemandId, [], request.PinnedLayoutId);
+        }
         var read = await source.ReadAsync(request, cancellationToken).ConfigureAwait(false);
         var items = Array.AsReadOnly(read.Items.Select(item => item.Declaration).ToArray());
         var result = new IndexedCollectionRange(parent.WidgetInstanceId, request.CollectionId, request.Source,

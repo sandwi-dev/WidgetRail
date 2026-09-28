@@ -1,7 +1,9 @@
 using System.Collections;
 using System.Collections.Specialized;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Data;
+using Windows.Foundation;
 using WidgetRail.WidgetUi.State.Collections;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Collections;
@@ -13,13 +15,14 @@ internal sealed record IndexedRangeResult<T>(IndexedQueryIdentity Query, long Re
     IReadOnlyList<KeyedCollectionItem<T>> Items, long ContentRevision = 0, IAsyncDisposable? Lifetime = null) where T : notnull;
 
 /// <summary>
-/// One immutable-count query and one native items control's demand. Cache eviction
+/// One query and one native items control's demand. Complete counts are fixed;
+/// discovered counts grow only by admitted tail appends. Cache eviction
 /// releases payload/slot references without deleting logical positions. WinUI owns
 /// item realization, layout and scrolling. Replace the source for a new query.
 /// The trusted range reader must bound its work and honor cancellation; widget
 /// code must execute behind the service boundary, never in this delegate.
 /// </summary>
-internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, IItemsRangeInfo, IAsyncDisposable where T : notnull
+internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, IItemsRangeInfo, ISupportIncrementalLoading, IAsyncDisposable where T : notnull
 {
     internal const int MaximumRetainedIndices = 8;
 
@@ -68,7 +71,17 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
     private bool disposed;
     private Task? disposal;
     private long requestId;
-    public int Count { get; }
+    public int Count { get; private set; }
+    internal Func<bool>? CanLoadMore { get; set; }
+    internal Func<CancellationToken, Task>? LoadMore { get; set; }
+    public bool HasMoreItems => !disposed && (CanLoadMore?.Invoke() ?? false);
+    public IAsyncOperation<LoadMoreItemsResult> LoadMoreItemsAsync(uint requestedCount) => AsyncInfo.Run(async token =>
+    {
+        CheckAccess();
+        var before = Count;
+        if (HasMoreItems && LoadMore is { } load) await load(token);
+        return new LoadMoreItemsResult { Count = (uint)Math.Max(0, Count - before) };
+    });
     public IndexedQueryIdentity Query { get; }
     public long ContentRevision { get; private set; }
     public int RangeNotifications { get; private set; }
@@ -113,6 +126,19 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         foreach (var fetch in fetching.Values) { fetch.Cancellation.Cancel(); ++CancelledLoads; }
         fetching.Clear();
         failedPages.Clear();
+        QueuePump();
+    }
+
+    /// <summary>Publish only an admitted tail. Prefix slot identity, payloads and native viewport stay in place.</summary>
+    internal void Append(int count)
+    {
+        CheckAccess();
+        if (count < Count) throw new InvalidOperationException("An append cannot remove discovered positions.");
+        while (Count < count)
+        {
+            var index = Count++;
+            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, GetSlot(index), index));
+        }
         QueuePump();
     }
 
@@ -246,7 +272,7 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
             var start = page * pageSize;
             var length = Math.Min(pageSize, Count - start);
             if (fetching.ContainsKey(page) || failedPages.Contains(page) ||
-                pages.TryGetValue(page, out var loaded) && loaded.ContentRevision == ContentRevision) continue;
+                pages.TryGetValue(page, out var loaded) && loaded.ContentRevision == ContentRevision && loaded.Items.Count >= length) continue;
             var fetch = new Fetch(new(Query, ++requestId, start, length, ContentRevision));
             fetching.Add(page, fetch);
             ownedFetches.Add(fetch);
@@ -335,11 +361,11 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
             GetSlot(request.StartIndex + index).SetValue(copy[index].Key, copy[index].Value);
     }
 
-    // Count/order never change in this source. Payload publications notify slots,
-    // so cache refill/eviction never emits structural collection notifications.
-    public event NotifyCollectionChangedEventHandler? CollectionChanged { add { } remove { } }
+    // Existing order never changes. Only explicit Append emits structural Add;
+    // payload cache refill/eviction notifies slots and never resets the collection.
+    public event NotifyCollectionChangedEventHandler? CollectionChanged;
     public bool IsReadOnly => true;
-    public bool IsFixedSize => true;
+    public bool IsFixedSize => CanLoadMore is null;
     public bool IsSynchronized => false;
     public object SyncRoot => identity;
     public bool Contains(object? value) => IndexOf(value) >= 0;

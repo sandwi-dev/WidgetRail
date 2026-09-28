@@ -25,6 +25,11 @@ if (args is ["--serve-indexed-validation", var validationPipe])
     await BridgeIndexedEndToEndScenarios.ServeValidationAsync(validationPipe);
     return 0;
 }
+if (args is ["--serve-discovered-validation", var discoveredPipe])
+{
+    await DiscoveredBridgeScenarios.ServeAsync(discoveredPipe);
+    return 0;
+}
 
 if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var outputPath])
 {
@@ -47,6 +52,7 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Discovered prefixes cross real worker bridge and session with retained action authority", DiscoveredBridgeScenarios.EndToEnd),
     ("Indexed styles failure releases acquired runtime semantics", BridgeIndexedLeaseRegistryScenarios.StylePreparationFailureReleasesExactRuntimeLease),
     ("Indexed styles match parent cascade and focus fragments", BridgeIndexedStyleScenarios.RangeStylesMatchSnapshotCascadeAndFragments),
     ("Indexed lease wire contracts and strict classification", BridgeIndexedLeaseWireScenarios.ContractsAndClassification),
@@ -315,7 +321,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
     var instance = RequiredValue(arguments, "--widget-instance");
     return await WidgetWorkerBootstrap.RunAsync(
         arguments,
-        _ => string.Equals(instance, "indexed-owned.instance", StringComparison.Ordinal)
+        _ => string.Equals(instance, "discovered.instance", StringComparison.Ordinal)
+            ? new DiscoveredBridgeWidget()
+            : string.Equals(instance, "indexed-owned.instance", StringComparison.Ordinal)
             ? new IndexedOwnedBridgeProbeWidget()
             : string.Equals(instance, "indexed-real.instance", StringComparison.Ordinal)
             ? new IndexedBridgeProbeWidget()

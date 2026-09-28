@@ -39,15 +39,22 @@ public sealed partial class WidgetPresentationSession
         int startIndex, int count, string? pinnedLayoutId = null, CancellationToken cancellationToken = default) =>
         (await ReadIndexedCoreAsync(authority, collectionId, source, startIndex, count, pinnedLayoutId, true, cancellationToken).ConfigureAwait(false)).Lease!;
 
+    /// <summary>Loads one worker-private continuation. Existing prefixes keep their range/action authority.</summary>
+    public async Task ContinueDiscoveredCollectionAsync(WidgetPresentationAuthority authority, string collectionId,
+        IndexedCollectionDescriptor source, bool retry = false, CancellationToken cancellationToken = default) =>
+        _ = await ReadIndexedCoreAsync(authority, collectionId, source, source.Count, 0, null, false, cancellationToken,
+            retry ? IndexedCollectionRequestKind.Retry : IndexedCollectionRequestKind.Continue).ConfigureAwait(false);
+
     private sealed record IndexedReadResult(IndexedCollectionRange Range, WidgetPresentationIndexedLease? Lease);
 
     private async Task<IndexedReadResult> ReadIndexedCoreAsync(
         WidgetPresentationAuthority authority, string collectionId, IndexedCollectionDescriptor source,
-        int startIndex, int count, string? pinnedLayoutId, bool acquire, CancellationToken cancellationToken)
+        int startIndex, int count, string? pinnedLayoutId, bool acquire, CancellationToken cancellationToken,
+        IndexedCollectionRequestKind kind = IndexedCollectionRequestKind.Range)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var range = new IndexedCollectionRangeRequest(collectionId, source, startIndex, count,
-            Guid.NewGuid().ToString("N"), pinnedLayoutId);
+            Guid.NewGuid().ToString("N"), pinnedLayoutId) { Kind = kind };
         IndexedCollectionContract.ValidateRequest(range);
         IndexedDemand operation;
         lock (_gate)
