@@ -1,9 +1,43 @@
 # WinUI migration implementation status
 
-2026-09-27; branch `codex/winui3-frontend`. Main and the installed native candidate
+Updated 2026-09-28; branch `codex/winui3-frontend`. Main and the installed native candidate
 are untouched. Migration is active and incomplete.
 
-## Current implementation
+## Current summary
+
+- Real catalog/lifecycle shell is integrated. It reuses OwnedBridgeProcess and the
+  accepted native controller/activation adapter. Automated shell runs use
+  `--shell-no-controller`; production controller acceptance is still outstanding.
+- Both Playnite Home and Browse use captured indexed queries. The isolated real
+  package/provider probe loads 36 Home and 178 Library items, retrieves cover bytes,
+  and opens/dismisses details. A startup invalidation-before-first-snapshot race
+  was reproduced, tested and fixed; no diagnostic polling is required.
+- Native modal, Select, TextEntry/controller keyboard, context menus and sliders
+  are integrated. Scoped input and exact indexed action ownership remain enforced.
+- Responsive branches, static grids, basic poster layering and ordinary styles
+  are mapped. Native scroll routing and global-policy dialog entrances are wired.
+  Section transitions, focus motion, scale/depth and full styling remain incomplete.
+- Real Home and details render. A production long-description regression corrected
+  inactive scroll axes: details now keeps the poster and all navigation tabs in
+  view. Home focus bounds now fit poster content rather than the full rail height.
+- **Open production failure:** switching real Playnite Home to Library triggers
+  a WinUI layout cycle. High native tracing shows collection width feeding back
+  into item width. A viewport-owned width correction is being validated. Do not
+  launch this as a physical acceptance candidate yet.
+- Latest integrated managed gates: 75 session tests, 10 shell tests, 35 style tests.
+  Native fixture gates and real screenshots are recorded below and in
+  [Playnite validation](winui-playnite-validation.md); fixture results are not
+  production-widget performance acceptance.
+- Remaining product work includes special media/capture/pinned surfaces, remaining
+  widget adoption, complete shell placement/scaling/tray behavior, actual controller,
+  performance/memory/accessibility validation and packaging.
+
+## Checkpoint history
+
+The dated entries below preserve investigation evidence. Older failures and counts
+describe their checkpoint, not current status; the summary above takes precedence.
+
+### Initial implementation
 
 - Microsoft WinApp CLI 0.7.0 installed with user authorization. Developer Mode
   enabled with separate explicit UAC approval. Existing .NET SDK reused.
