@@ -15,7 +15,7 @@ public sealed partial class MainWindow : Window
     public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
         bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false, bool validateIndexed = false, bool validateFocusPolicy = false,
         string? indexedValidationPipe = null, bool validateGrouped = false, bool validateGroupedFlat = false, bool validateGroupedAdapted = false, bool validateSurfaces = false, bool validateSelect = false, bool validateMotion = false, bool validateModals = false, bool validateGlyphs = false, bool validateStyles = false, bool validateTextEntry = false, bool validateContextMenu = false,
-        string? shellConfiguration = null, bool shellNoController = false, bool validateSlider = false, bool validatePackageIcons = false, bool validateShellSizing = false)
+        string? shellConfiguration = null, bool shellNoController = false, bool validateSlider = false, bool validatePackageIcons = false, bool validateShellSizing = false, bool validateEmbeddedMedia = false)
     {
         InitializeComponent();
         themeSettings = Microsoft.UI.System.ThemeSettings.CreateForWindowId(AppWindow.Id);
@@ -60,6 +60,7 @@ public sealed partial class MainWindow : Window
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
+        else if (validateEmbeddedMedia) RootFrame.Content = new Validation.EmbeddedMediaValidationPage();
         else if (validatePackageIcons) RootFrame.Content = new Validation.PackageIconValidationPage();
         else if (validateShellSizing) RootFrame.Content = new Validation.ShellSizingValidationPage();
         else if (validateSlider) RootFrame.Content = new Validation.SliderControlValidationPage();

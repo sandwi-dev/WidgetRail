@@ -35,6 +35,7 @@
     <Content Include="..\..\assets\fonts\promptfont\NOTICE.txt" Link="licenses\PromptFont-NOTICE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\WidgetSdk\EmbeddedMediaAdapterRuntime.js" LogicalName="WidgetRail.MediaValidation.AdapterRuntime.js" />
     <Manifest Include="$(ApplicationManifest)" />
     <ProjectReference Include="..\OverlayPlatformClient\OverlayPlatformClient.csproj" />
     <ProjectReference Include="..\WidgetUi.State\WidgetUi.State.csproj" />
