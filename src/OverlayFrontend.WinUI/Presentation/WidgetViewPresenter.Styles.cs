@@ -124,6 +124,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     internal FrameworkElement Target => element;
     private readonly Dictionary<DependencyProperty, object> originals = [];
     private readonly Dictionary<string, (Color Color, SolidColorBrush Brush)> brushes = new(StringComparer.Ordinal);
+    private (Color Color, double Amount, LinearGradientBrush Brush)? shadedBackground;
     private FontFamily? fontFamily;
     private readonly List<(DependencyProperty Property, long Token)> registrations = [];
     private BridgeNodeRenderStyles? styles;
@@ -131,6 +132,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private ResourceDictionary? resources;
     private bool typographyOnly;
     private WidgetControlScaleMotion? scaleMotion;
+    private WidgetFocusDecoration? focusDecoration;
+    internal WidgetFocusDecoration? FocusDecoration => focusDecoration;
     internal WidgetControlScaleMotion? ScaleMotion => scaleMotion;
     private (bool Focused, bool Pressed)? interactionOverride;
     private (bool Focused, bool Pressed)? lastInteraction;
@@ -238,10 +241,15 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         }
         if (typographyOnly)
         {
+            focusDecoration?.Dispose(); focusDecoration = null;
             scaleMotion?.Dispose(); scaleMotion = null;
             RestoreSurfaces();
             return;
         }
+        // A collection item has one box owner. Its authored margin surrounds
+        // the native SelectorItem, so scaling its paint/focus stays inside the
+        // reserved gap instead of scaling an entire margin-inclusive cell.
+        RefreshBoxLayout();
         if (interactive && (styles?.Base.ContainsKey("scale") == true || styles?.Focused.ContainsKey("scale") == true || styles?.Pressed.ContainsKey("scale") == true))
         {
             scaleMotion ??= new(element);
@@ -249,9 +257,19 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
                 style?.GetValueOrDefault("transition-easing")?.Text, motionOptions);
         }
         else { scaleMotion?.Dispose(); scaleMotion = null; }
+        var focusStyle = pressed ? styles?.Pressed : styles?.Focused;
+        if (interactive && !contrast && element is Control focusControl &&
+            Number(focusStyle, "outline-width", true) is > 0 and var outlineWidth &&
+            focusStyle?.GetValueOrDefault("outline-color") is { } outlineColor && TryColor(outlineColor.Text, out var focusColor))
+        {
+            focusDecoration ??= WidgetFocusDecoration.Create(focusControl);
+            focusDecoration?.Apply(focusColor, (float)outlineWidth, (float)(Number(focusStyle, "corner-radius", true) ?? 0),
+                (float)(Number(focusStyle, "outline-offset") ?? 0), focused, motionOptions);
+        }
+        else { focusDecoration?.Dispose(); focusDecoration = null; }
         var opacity = Number(style, "opacity");
         Put(UIElement.OpacityProperty, opacity is null ? null : contrast ? 1d : Math.Clamp(opacity.Value, 0, 1));
-        var background = Brush(style, "background", contrast, true);
+        var background = SurfaceBackground(Brush(style, "background", contrast, true), style, contrast);
         var border = Brush(style, "border-color", contrast, false);
         var padding = Spacing(style, "padding");
         var radius = Number(style, "corner-radius", true) is { } value ? new CornerRadius(value) : (CornerRadius?)null;
@@ -292,6 +310,23 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         var current = element.GetValue(property);
         if (current is FontFamily currentFamily && value is FontFamily family && currentFamily.Source == family.Source) return;
         if (!Equals(current, value)) element.SetValue(property, value);
+    }
+    internal void RefreshBoxLayout()
+    {
+        if (disposed || element is not SelectorItem) return;
+        Put(FrameworkElement.MarginProperty, Spacing(styles?.Base, "margin"));
+        Put(FrameworkElement.WidthProperty, BoxLength("width"));
+        Put(FrameworkElement.HeightProperty, BoxLength("height"));
+        Put(FrameworkElement.MinWidthProperty, BoxLength("min-width"));
+        Put(FrameworkElement.MinHeightProperty, BoxLength("min-height"));
+        Put(FrameworkElement.MaxWidthProperty, BoxLength("max-width"));
+        Put(FrameworkElement.MaxHeightProperty, BoxLength("max-height"));
+    }
+    private double? BoxLength(string property)
+    {
+        if (styles?.Base.GetValueOrDefault(property) is not { Number: { } number } value || !double.IsFinite(number) || number < 0) return null;
+        var viewport = WidgetViewPresenter.ViewportFor(element);
+        return value.Unit switch { "px" or null => number, "vw" => viewport.Width * number / 100, "vh" => viewport.Height * number / 100, _ => null };
     }
 
     private void RestoreSurfaces()
@@ -353,6 +388,22 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         }
         if (brushes.TryGetValue(property, out var previous) && previous.Color == color) return previous.Brush;
         var brush = new SolidColorBrush(color); brushes[property] = (color, brush); return brush;
+    }
+    private Brush? SurfaceBackground(SolidColorBrush? background, IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, bool contrast)
+    {
+        var amount = contrast ? 0 : Math.Clamp(Number(style, "surface-shading") ?? 0, -.25, .25);
+        if (background is null || amount == 0 || background.Color.A == 0) { shadedBackground = null; return background; }
+        if (shadedBackground is { } cached && cached.Color == background.Color && cached.Amount == amount) return cached.Brush;
+        var gradient = new LinearGradientBrush { StartPoint = new(0, 0), EndPoint = new(0, 1) };
+        gradient.GradientStops.Add(new() { Offset = 0, Color = Shade(background.Color, amount) });
+        gradient.GradientStops.Add(new() { Offset = 1, Color = Shade(background.Color, -amount) });
+        shadedBackground = (background.Color, amount, gradient);
+        return gradient;
+    }
+    private static Color Shade(Color color, double amount)
+    {
+        byte Channel(byte value) => (byte)Math.Clamp(Math.Round(amount >= 0 ? value + (255 - value) * amount : value * (1 + amount)), 0, 255);
+        return Color.FromArgb(color.A, Channel(color.R), Channel(color.G), Channel(color.B));
     }
     private static double? Number(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, string property, bool length = false) =>
         style?.GetValueOrDefault(property) is { Number: { } value } candidate && double.IsFinite(value) &&
@@ -436,6 +487,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     {
         if (disposed) return;
         scaleMotion?.Dispose(); scaleMotion = null;
+        focusDecoration?.Dispose(); focusDecoration = null;
         foreach (var property in originals.Keys.ToArray()) Put(property, null);
         RestoreResources();
         if (interactive) { element.GotFocus -= Changed; element.LostFocus -= Changed; }

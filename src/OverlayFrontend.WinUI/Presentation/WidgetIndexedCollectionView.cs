@@ -176,19 +176,27 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         if (FocusedIndex() == slot.Index) { RememberItemFocus(); PresentationChanged?.Invoke(); }
         ContextChanged?.Invoke();
     }
+    internal void RefreshContainerLayout()
+    {
+        foreach (var container in containers.Keys) NativeComputedStyleAdapter.For(container)?.RefreshBoxLayout();
+    }
     internal static void ConfigureContainerLayout(SelectorItem container, ScrollAxis axis, double placeholderExtent)
     {
         container.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-        // GridViewItem's native default adds two DIPs on every side *outside*
-        // ItemWidth. Authored item margins already live in the fragment, so
-        // retaining the native margin both doubles spacing and changes wrapping.
-        container.Margin = new Thickness(0);
+        // Remove native template spacing until the row's single box-style owner
+        // supplies authored margins. Do not overwrite that owner on every slot
+        // notification: Content/HasValue notifications arrive after row binding.
+        var styleOwned = NativeComputedStyleAdapter.For(container) is not null;
+        if (!styleOwned) container.Margin = new Thickness(0);
         // The estimate belongs to a loading placeholder on the scrolling axis,
         // not a permanent minimum height. A horizontal poster rail must let the
         // native item fit its portrait rather than stretching its focus box to
         // the entire list viewport.
-        container.MinHeight = axis == ScrollAxis.Horizontal ? 0 : placeholderExtent;
-        container.MinWidth = axis == ScrollAxis.Horizontal ? placeholderExtent : 0;
+        if (!styleOwned)
+        {
+            container.MinHeight = axis == ScrollAxis.Horizontal ? 0 : placeholderExtent;
+            container.MinWidth = axis == ScrollAxis.Horizontal ? placeholderExtent : 0;
+        }
         container.VerticalAlignment = axis == ScrollAxis.Horizontal ? VerticalAlignment.Top : VerticalAlignment.Stretch;
     }
     private void DetachContainers()

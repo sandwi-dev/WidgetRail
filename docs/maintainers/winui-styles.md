@@ -38,7 +38,14 @@ panels and text do not subscribe to pointer/key/focus input.
 The host must call `presenter.ResetPressedStyles()` when relinquishing its input
 lease, including hiding a retained page without unloading it. Ordinary releases,
 focus loss, disabled state, scope replacement, unload and disposal clear held state.
-Native focus visuals remain enabled; these styles do not install focus animation.
+Native focus visuals remain the fallback when there is no authored outline.
+
+With an authored focused outline, the newer focus-decoration owner replaces the
+system ring with a native compositor outline using global focus motion settings.
+High Contrast and controls without an authored outline retain system focus. The
+outline does not replace the ordinary focused background/border style selection.
+`surface-shading` now produces a cached native gradient behind content; shadow and
+edge-stroke depth mapping remain incomplete. See `winui-motion.md` for ownership.
 
 Button/SelectorItem template state brushes are overridden in a resource wrapper,
 so native hover/pressed visual states do not replace authored colors. The original
@@ -53,11 +60,25 @@ never replaces the retained artwork ImageBrush. Collection box styles apply to
 the native ListView/GridView, not a potentially empty ContentControl wrapper.
 
 An indexed row's native SelectorItem owns root box styles, including padding and
-opacity. Its noninteractive fragment applies root typography only, with focus/press
+opacity, authored margin and size constraints. Its noninteractive fragment applies root typography only, with focus/press
 state explicitly forwarded from that container. Descendants retain their own Base
 styles. Row styles always come from its semantic lease, not the parent page map.
 This does not solve the separate transport requirement to re-resolve retained leases
 when a global WRSS theme changes.
+
+The fragment root relinquishes its duplicate margin and size constraints. Scale and focus decoration
+therefore operate on the painted card inside the authored gap, rather than scaling
+a margin-inclusive cell into the viewport edge. Container preparation clears only
+the native template's default margin and placeholder minimum before a style owner exists; later slot
+notifications must not reset live style-owned geometry. The responsive pass refreshes
+viewport-relative constraints on realized containers without realizing additional rows. This keeps the outer item
+extent and authored spacing stable while aligning native pointer/focus bounds with
+the card's painted box.
+
+Actual-widget validation at 125% scaling confirmed YouTube Music's authored
+82-DIP rows (103 physical pixels), and Playnite Library's focused top-left poster
+stays inside the viewport. Native Down moved from item 0 to item 7 in that seven-column
+layout. These are geometry/focus checks, not performance acceptance.
 
 WidgetModalPanel's native defaults now live in Style setters with ThemeResource
 values. Clearing a computed override therefore restores a live theme reference,

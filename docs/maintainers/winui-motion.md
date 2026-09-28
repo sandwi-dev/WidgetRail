@@ -139,8 +139,29 @@ Resize and policy changes settle active motion. Viewport clipping of enlarged fi
 last collection items still requires actual widget validation; native motion completion
 alone is not visual acceptance.
 
-This does not complete section transitions, focus-decoration integration, depth or
-dialog exits. Section transitions still need outgoing presentation lifetime ownership;
-focus decoration needs its own layer alongside the semantic control so its Fade/Settle
-channel cannot transform text or compete with this authored control scale. Surface
-shading and shadow declarations remain unmapped in the current native style adapter.
+The control-scale checkpoint alone does not complete section transitions, focus
+decoration, depth or dialog exits. The following incremental checkpoint addresses
+the authored focus outline and surface-shading; the remaining limits are explicit below.
+
+## Authored focus outline
+
+`WidgetFocusDecoration` connects the ordinary style adapter's authored focused outline
+to the existing global Fade/Settle/None policy. A host-only native ShapeVisual is placed
+in the control's child visual slot, with dedicated content/clip visuals for motion.
+It contains no XAML controls, actions or accessibility nodes. The outline is inset
+inside the control bounds and uses resolved outline color/width/offset/corner radius.
+This layer inherits authored control scale automatically; its own Fade/Settle channel
+never modifies the control's text, artwork, background or dimensions.
+
+The adapter restores WinUI system focus in High Contrast, when authored outline
+styles disappear, or when the child visual slot belongs to another native visual
+owner. Same-state updates do not replay motion. Resize settles to the current focus
+state; stale queued Unloaded after reparenting does not retire an already-loaded owner.
+This checkpoint animates the outline; focused background/border changes still use the
+shared native style state immediately. Coordinated focus-surface crossfades, section
+outgoing lifetime, navigation selection motion and dialog exits remain unfinished.
+
+Surface-shading is now a cached native vertical LinearGradientBrush behind content.
+Its top/bottom colors use the original renderer's bounded Shade formula and preserve
+the base color alpha. High Contrast removes this decorative gradient. Shadow and
+per-edge depth strokes remain separate unfinished mappings.

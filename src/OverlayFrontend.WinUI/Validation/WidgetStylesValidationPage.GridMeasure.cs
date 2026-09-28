@@ -31,10 +31,18 @@ internal sealed partial class WidgetStylesValidationPage
             ItemsPanel = (ItemsPanelTemplate)Application.Current.Resources["WidgetIndexedGridPanel"] };
         ScrollViewer.SetHorizontalScrollMode(grid, ScrollMode.Disabled);
         ScrollViewer.SetHorizontalScrollBarVisibility(grid, ScrollBarVisibility.Disabled);
+        var marginStyles = Compute("#nativeItem { margin: 6px; scale: 1; transition-duration: 140ms; } #nativeItem:focused { scale: 1.04; }",
+            "nativeItem", "actionSurface");
+        var itemStyles = new List<NativeComputedStyleAdapter>();
         grid.ContainerContentChanging += (_, args) =>
         {
             if (args.ItemContainer is SelectorItem container)
+            {
                 WidgetIndexedCollectionView.ConfigureContainerLayout(container, ScrollAxis.Vertical, 225);
+                var adapter = NativeComputedStyleAdapter.For(container);
+                if (adapter is null) { adapter = new(container); itemStyles.Add(adapter); }
+                adapter.Update(marginStyles);
+            }
         };
         grid.SizeChanged += (_, _) => WidgetIndexedCollectionView.UpdateGridWidth(grid, 160, 6);
         grid.Loaded += (_, _) => WidgetIndexedCollectionView.UpdateGridWidth(grid, 160, 6);
@@ -56,7 +64,13 @@ internal sealed partial class WidgetStylesValidationPage
                     Math.Abs(item.TransformToVisual(grid).TransformPoint(new(0, 0)).Y - y) < 1) &&
                 six.TransformToVisual(grid).TransformPoint(new(0, 0)).Y > y + 100,
                 "six actual native item containers occupy row one and item six starts row two");
+            Check(zero.Margin == new Thickness(6) && zero.ActualWidth < panel.ItemWidth,
+                "authored item margin is outside the native painted and focus box without adding a second gap");
             zero.Focus(FocusState.Keyboard);
+            await Wait(() => NativeComputedStyleAdapter.For(zero)?.ScaleMotion is { IsAnimating: false } && zero.Scale.X > 1);
+            var scaledBounds = zero.TransformToVisual(scroll).TransformBounds(new(0, 0, zero.ActualWidth, zero.ActualHeight));
+            Check(scaledBounds.X >= 0 && scaledBounds.Y >= 0,
+                "top-left authored poster scale remains inside the scroll viewport's reserved margin");
             FocusManager.TryMoveFocus(FocusNavigationDirection.Down, new FindNextElementOptions { SearchRoot = grid });
             await Wait(() => six.FocusState != FocusState.Unfocused);
             Check(six.FocusState == FocusState.Keyboard && panel.MaximumRowsOrColumns == grid.IndexFromContainer(six),
@@ -71,7 +85,7 @@ internal sealed partial class WidgetStylesValidationPage
             Check(panel.ItemWidth * 3 <= scroll.ViewportWidth - grid.Padding.Left - grid.Padding.Right + 1,
                 "native grid resize recomputes layout and navigation column count from the same viewport");
         }
-        finally { host.Children.Remove(grid); }
+        finally { foreach (var adapter in itemStyles) adapter.Dispose(); host.Children.Remove(grid); }
         presenter.Width = double.NaN;
 
         static ScrollViewer? FindGridScroll(DependencyObject element)

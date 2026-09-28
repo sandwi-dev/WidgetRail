@@ -26,13 +26,15 @@ internal sealed partial class WidgetViewPresenter
         var intrinsic = node.Kind == ViewNodeKind.LoadingIndicator
             ? node.IndicatorSize switch { LoadingIndicatorSize.Compact => 16d, LoadingIndicatorSize.Large => 48d, _ => 32d }
             : double.NaN;
-        element.Width = Length(node, "width") ?? intrinsic;
-        element.Height = Length(node, "height") ?? intrinsic;
-        element.MinWidth = Length(node, "min-width") ?? 0;
-        element.MinHeight = Length(node, "min-height") ?? 0;
-        element.MaxWidth = Length(node, "max-width") ?? double.PositiveInfinity;
-        element.MaxHeight = Length(node, "max-height") ?? double.PositiveInfinity;
-        element.Margin = NativeComputedStyleAdapter.Spacing(frame?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "margin") ?? new Thickness(0);
+        var containerOwnsBox = indexedRootStyleOnContainer && node.Id == fragmentRootId;
+        element.Width = containerOwnsBox ? double.NaN : Length(node, "width") ?? intrinsic;
+        element.Height = containerOwnsBox ? double.NaN : Length(node, "height") ?? intrinsic;
+        element.MinWidth = containerOwnsBox ? 0 : Length(node, "min-width") ?? 0;
+        element.MinHeight = containerOwnsBox ? 0 : Length(node, "min-height") ?? 0;
+        element.MaxWidth = containerOwnsBox ? double.PositiveInfinity : Length(node, "max-width") ?? double.PositiveInfinity;
+        element.MaxHeight = containerOwnsBox ? double.PositiveInfinity : Length(node, "max-height") ?? double.PositiveInfinity;
+        element.Margin = containerOwnsBox ? new Thickness(0) :
+            NativeComputedStyleAdapter.Spacing(frame?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "margin") ?? new Thickness(0);
         if (element is TextBlock text)
         {
             text.MaxLines = (int)(ComputedStyle(node, "max-lines")?.Number ?? 0);

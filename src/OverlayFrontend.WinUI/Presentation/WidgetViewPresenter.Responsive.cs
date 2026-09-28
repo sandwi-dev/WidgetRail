@@ -9,10 +9,11 @@ internal sealed partial class WidgetViewPresenter
 {
     // Responsive branches use the widget's viewport, never a row's measured size.
     // The protocol's existing breakpoint is shared by both frontends.
-    private (double Width, double Height) Viewport()
+    private (double Width, double Height) Viewport() => ViewportFor(this);
+    internal static (double Width, double Height) ViewportFor(FrameworkElement element)
     {
-        WidgetViewPresenter owner = this;
-        for (var parent = VisualTreeHelper.GetParent(this); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        FrameworkElement owner = element;
+        for (DependencyObject? parent = element; parent is not null; parent = VisualTreeHelper.GetParent(parent))
             if (parent is WidgetViewPresenter presenter && !presenter.presentationOnly) owner = presenter;
         return (owner.ActualWidth, owner.ActualHeight);
     }
@@ -44,6 +45,7 @@ internal sealed partial class WidgetViewPresenter
         {
             var element = bindings[declaration.Node.Id].Element;
             ApplySizeAndTypography(element, declaration.Node);
+            if (element is WidgetIndexedCollectionView collection) collection.RefreshContainerLayout();
             if (element is Grid grid && element is not (WidgetModalLayer or WidgetPosterPanel)) UpdateLayout(grid, declaration.Node);
         }
         UpdateModalGeometry();
