@@ -20,10 +20,12 @@ are untouched. Migration is active and incomplete.
 - Real Home and details render. A production long-description regression corrected
   inactive scroll axes: details now keeps the poster and all navigation tabs in
   view. Home focus bounds now fit poster content rather than the full rail height.
-- **Open production failure:** switching real Playnite Home to Library triggers
-  a WinUI layout cycle. High native tracing shows collection width feeding back
-  into item width. A viewport-owned width correction is being validated. Do not
-  launch this as a physical acceptance candidate yet.
+- The real Library layout-cycle crash is corrected by using native viewport width
+  and honoring explicit full-width alignment. Home, Library and both details pages
+  now render real artwork in the integrated shell. **Open production gate:** native
+  grid geometry currently shows five columns where navigation assumes six; actual
+  container-position regressions are being added. Do not launch this as a physical
+  acceptance candidate yet.
 - Latest integrated managed gates: 75 session tests, 10 shell tests, 35 style tests.
   Native fixture gates and real screenshots are recorded below and in
   [Playnite validation](winui-playnite-validation.md); fixture results are not
