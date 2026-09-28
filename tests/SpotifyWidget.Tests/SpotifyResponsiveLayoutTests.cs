@@ -81,11 +81,7 @@ internal static class SpotifyResponsiveLayoutTests
                 new(false, false, false, false, false, false, false, false), "Spotify"),
             null, "Playing Small Hours", null, 0, false, navigation,
             EmptyCursor<SpotifyMediaCollectionItem>(),
-            new SpotifyCursorPresentation<SpotifyPlaylistCollectionItem>(
-            playlistSnapshot, UI.VerticalScroll("spotify.playlists.scroll", []) with
-            {
-                CollectionAnchorKey = playlistItem.Key.Value,
-            }),
+            new(SpotifyPresentationHandleFixture.Discovered("spotify.playlists.scroll", grid: true)),
             null, null, null, false, null, false, null);
     }
 

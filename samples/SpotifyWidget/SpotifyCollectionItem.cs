@@ -15,14 +15,8 @@ internal sealed record SpotifyMediaCollectionItem(
 
 internal static class SpotifyCollectionPolicy
 {
-    // An 82-DIP authored row plus the 6-DIP scroll gap yields an 88-DIP
-    // logical stride. Larger transport batches amortize Web API latency; four
-    // pages retain forward lead and recently visited rows for direction changes.
+    // Provider batch size is independent of native realization and history caps.
     internal const int PageSize = 24;
-    internal const int RetainedItemTarget = PageSize * 4;
-    internal const int MaximumRetainedItems = 256;
-    internal const int PaginationThreshold = 2;
-    internal const double EstimatedItemExtent = 88d;
 }
 
 internal static class SpotifyCollectionIdentity
@@ -65,29 +59,6 @@ internal static class SpotifyCollectionIdentity
                 CultureInfo.InvariantCulture, out var offset) || offset < 0)
             throw new InvalidOperationException("Spotify returned an invalid collection cursor.");
         return offset;
-    }
-
-    internal static WidgetCursorPage<TItem> Page<TItem>(
-        IReadOnlyList<TItem> items,
-        int offset,
-        int limit,
-        int total,
-        bool hasAuthoritativeWindow) where TItem : notnull
-    {
-        if (offset < 0 || limit < 1 || total < 0 || offset > total || items.Count > limit)
-            throw new InvalidOperationException("Spotify returned an invalid collection page.");
-        WidgetCollectionCursor? before = offset == 0
-            ? null : Cursor(Math.Max(0, offset - limit));
-        var nextOffset = checked(offset + limit);
-        WidgetCollectionCursor? after = nextOffset >= total ? null : Cursor(nextOffset);
-        var page = new WidgetCursorPage<TItem>(items, before, after);
-        return hasAuthoritativeWindow && items.Count != 0
-            ? page with
-            {
-                FirstItemIndex = offset,
-                TotalItemCount = total,
-            }
-            : page;
     }
 
     private static string Token(string value)

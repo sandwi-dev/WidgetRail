@@ -557,12 +557,8 @@ internal static class SpotifyPresentation
         if (presentation.Navigation.Route == SpotifyRoute.PlaylistDetail &&
             presentation.PlaylistDetail is { } detail)
         {
-            var items = detail.Items.Snapshot;
-            if (items.Items.Count != 0 || items.Status == WidgetPagedResourceStatus.Ready)
-                return "spotify.playlist.play.shared";
-            return items.Error is null
-                ? "spotify.page.loading.shared.action"
-                : "spotify.page.error.shared.action";
+            return detail.Items.Source.Count > 0 || !detail.Items.State.HasMore
+                ? "spotify.playlist.play.shared" : detail.Items.Collection.Id;
         }
         if (destination == SpotifyDestination.Search) return "spotify.search.query";
         if (destination == SpotifyDestination.Queue)
@@ -583,18 +579,7 @@ internal static class SpotifyPresentation
         }
         if (destination == SpotifyDestination.Playlists)
         {
-            var items = presentation.Playlists.Snapshot;
-            if (items.Items.Count != 0)
-                return SpotifyCollectionIdentity.FocusId(
-                    "spotify.playlist.item", mode, items.Items[0].Key);
-            if (items.Status is WidgetPagedResourceStatus.Loading or
-                WidgetPagedResourceStatus.NotLoaded)
-                return "spotify.page.loading.shared.action";
-            if (items.Error is not null)
-                return "spotify.page.error.shared.action";
-            return items.HasBefore || items.HasAfter || items.RequestedFocusId is not null
-                ? "spotify.page.sparse.playlist.shared"
-                : "spotify.playlists.empty.shared.action";
+            return presentation.Playlists.Collection.Id;
         }
         if (presentation.PageLoading && presentation.Devices is null)
             return "spotify.page.loading.shared.action";
@@ -842,7 +827,7 @@ internal static class SpotifyPresentation
     private static WidgetElement DestinationPage(
         SpotifyDestination destination,
         WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> queue,
-        SpotifyCursorPresentation<SpotifyPlaylistCollectionItem> playlists,
+        SpotifyDiscoveredPresentation playlists,
         SpotifyPlaylistDetailPresentation? playlistDetail,
         SpotifyDevicesSummary? devices,
         SpotifyLocalPlaybackSummary? localPlayback,
@@ -906,126 +891,35 @@ internal static class SpotifyPresentation
             .Classes("spotify-page");
     }
 
-    private static WidgetElement PlaylistsPage(
-        SpotifyCursorPresentation<SpotifyPlaylistCollectionItem> playlistPresentation,
-        SpotifyPlaylistDetailPresentation? playlistDetail,
-        string mode)
+    private static WidgetElement PlaylistsPage(SpotifyDiscoveredPresentation playlists,
+        SpotifyPlaylistDetailPresentation? detail, string mode)
     {
-        if (playlistDetail is not null)
-            return PlaylistDetail(playlistDetail.Selection.Playlist,
-                playlistDetail.Items, mode);
-        var playlists = playlistPresentation.Snapshot;
-        if (playlists.Items.Count == 0 && playlists.Status is (
-                WidgetPagedResourceStatus.Loading or
-                WidgetPagedResourceStatus.NotLoaded))
-            return LoadingPage("Loading playlists", mode);
-        if (playlists.Error is { } playlistError && playlists.Items.Count == 0)
-            return PageFailure("Playlists unavailable", playlistError.Message, mode);
-        if (playlists.Items.Count == 0 && !playlists.HasBefore && !playlists.HasAfter &&
-            playlists.RequestedFocusId is null)
-            return UI.EmptyState("No playlists", "Your Spotify library has no playlists.",
-                $"spotify.playlists.empty.{mode}",
-                new ComponentAction("Refresh", "spotify.page.retry", WidgetGlyph.Refresh),
-                WidgetGlyph.Music).Classes("spotify-page");
-        var rows = playlists.Items.Select(item =>
-            (Item: item, Row: UI.Tile(
-                item.Value.Name, $"{item.Value.ItemCount} items",
-                $"spotify.playlist.open.{item.Key.Value}",
-                SpotifyCollectionIdentity.FocusId("spotify.playlist.item", mode, item.Key),
-                item.Value.OwnerName,
-                item.Value.Description, Artwork(item.Value.ArtworkUrl, item.Value.Name),
-                $"Open playlist {item.Value.Name}")
-                .PersistFocusAs(SpotifyCollectionIdentity.FocusId(
-                    "spotify.playlist.persist", "shared", item.Key))))
-            .Select(entry =>
-                entry.Row.CollectionItem(entry.Item.Key)
-                    .Classes("spotify-media-row", "spotify-playlist-row"))
-            .ToList<WidgetElement>();
-        var scroll = rows.Count == 0
-            ? playlistPresentation.Present([UI.ResponsiveGrid("spotify.playlists.grid", 280, 3,
-                    SparsePagePlaceholder("playlist", mode)).Classes("spotify-playlist-grid")])
-                .Classes("spotify-page-scroll")
-            : playlistPresentation.PresentCollectionGrid(rows).Classes("spotify-page-scroll", "spotify-playlist-grid");
-        var content = new List<WidgetElement>
-        {
-            UI.SectionHeader("Your playlists", $"spotify.playlists.header.{mode}",
-                "LIBRARY", trailing: SectionRefresh("playlists", mode)),
-            scroll,
-        };
-        if (playlists.Error is { } retainedError)
-            content.Add(RetainedPageError(retainedError.Message, mode));
-        return UI.Stack($"spotify.playlists.page.{mode}", content.ToArray())
-            .Classes("spotify-page");
+        if (detail is not null) return PlaylistDetail(detail.Selection.Playlist, detail.Items, mode);
+        return UI.Stack($"spotify.playlists.page.{mode}",
+            UI.SectionHeader("Your playlists", $"spotify.playlists.header.{mode}", "LIBRARY",
+                trailing: SectionRefresh("playlists", mode)), playlists.Collection).Classes("spotify-page");
     }
 
-    private static WidgetElement PlaylistDetail(
-        SpotifyPlaylistSummary playlist,
-        SpotifyCursorPresentation<SpotifyMediaCollectionItem> itemPresentation,
-        string mode)
+    internal static WidgetElement IndexedPlaylistRow(SpotifyPlaylistCollectionItem item) =>
+        UI.Tile(item.Value.Name, $"{item.Value.ItemCount} items", "spotify.playlist.open." + item.Key.Value,
+            SpotifyCollectionIdentity.FocusId("spotify.playlist.item", "shared", item.Key), item.Value.OwnerName,
+            item.Value.Description, Artwork(item.Value.ArtworkUrl, item.Value.Name), "Open playlist " + item.Value.Name)
+            .PersistFocusAs(SpotifyCollectionIdentity.FocusId("spotify.playlist.persist", "shared", item.Key))
+            .Classes("spotify-media-row", "spotify-playlist-row");
+
+    private static WidgetElement PlaylistDetail(SpotifyPlaylistSummary playlist, SpotifyDiscoveredPresentation items, string mode)
     {
-        var items = itemPresentation.Snapshot;
-        if (items.Status is (WidgetPagedResourceStatus.Loading or
-                WidgetPagedResourceStatus.NotLoaded) && items.Items.Count == 0)
-            return LoadingPage($"Loading {playlist.Name}", mode);
-        if (items.Error is { } itemError && items.Items.Count == 0)
-            return PageFailure("Playlist unavailable", itemError.Message, mode);
-        var rows = items.Items.Select((item, index) => PlaylistTrackRow(
-                item,
-                mode,
-                items.Items.Count == 1
-                    ? $"spotify.playlist.play.{mode}"
-                    : index == 0
-                        ? !items.HasBefore
-                            ? $"spotify.playlist.play.{mode}"
-                            : SpotifyCollectionIdentity.FocusId(
-                                "spotify.playlist.track", mode, item.Key)
-                        : SpotifyCollectionIdentity.FocusId(
-                            "spotify.playlist.track", mode, items.Items[index - 1].Key),
-                items.Items.Count == 1
-                    ? null
-                    : index == items.Items.Count - 1
-                        ? SpotifyCollectionIdentity.FocusId(
-                            "spotify.playlist.track", mode, item.Key)
-                        : SpotifyCollectionIdentity.FocusId(
-                            "spotify.playlist.track", mode, items.Items[index + 1].Key)))
-            .ToList<WidgetElement>();
-        var scroll = rows.Count == 0 ? itemPresentation.Present(rows) : itemPresentation.PresentCollectionList(rows);
-        var loading = items.Status is WidgetPagedResourceStatus.Loading or
-            WidgetPagedResourceStatus.Refreshing or
-            WidgetPagedResourceStatus.LoadingAdjacent;
-        var play = UI.Button("Play", "spotify.playlist.play",
-                $"spotify.playlist.play.{mode}")
-            .Icon(WidgetGlyph.Play, $"Play {playlist.Name}")
-            .Busy(loading)
-            .PersistFocusAs("spotify.playlist.play")
-            .Classes("spotify-page-action",
-                "spotify-playlist-header-action");
-        if (rows.FirstOrDefault() is { } firstRow) play = play.FocusDown(firstRow.Id);
-        var content = new List<WidgetElement>
-        {
-            UI.SectionHeader(playlist.Name, $"spotify.playlist.detail.header.{mode}",
-                    "PLAYLIST", playlist.Description,
-                    play)
-                .Classes("spotify-playlist-header"),
-            scroll.Classes("spotify-page-scroll"),
-        };
-        if (items.Error is { } retainedError)
-            content.Add(RetainedPageError(retainedError.Message, mode));
-        return UI.Stack($"spotify.playlist.detail.{mode}", content.ToArray())
-            .Classes("spotify-page", "spotify-playlist-detail");
+        var waiting = items.Source.Count == 0 && items.State.HasMore &&
+            items.State.Status is DiscoveredCollectionStatus.Ready or DiscoveredCollectionStatus.Loading;
+        var play = UI.Button("Play", "spotify.playlist.play", $"spotify.playlist.play.{mode}")
+            .Icon(WidgetGlyph.Play, "Play " + playlist.Name).Busy(waiting)
+            .Disabled(items.Source.Count == 0 && items.State.Status == DiscoveredCollectionStatus.Failed)
+            .PersistFocusAs("spotify.playlist.play").Classes("spotify-page-action", "spotify-playlist-header-action");
+        if (items.Source.Count > 0) play = play.FocusDown(items.Collection.Id);
+        return UI.Stack($"spotify.playlist.detail.{mode}",
+            UI.SectionHeader(playlist.Name, $"spotify.playlist.detail.header.{mode}", "PLAYLIST", playlist.Description, play)
+                .Classes("spotify-playlist-header"), items.Collection).Classes("spotify-page", "spotify-playlist-detail");
     }
-
-    private static ButtonElement SparsePagePlaceholder(string itemKind, string mode) =>
-        UI.Button($"No available {itemKind}s on this page", "spotify.page.noop",
-                $"spotify.page.sparse.{itemKind}.{mode}")
-            .PersistFocusAs($"spotify.page.sparse.{itemKind}")
-            .Classes("spotify-media-row", "is-quiet");
-
-    private static WidgetElement RetainedPageError(string error, string mode) =>
-        UI.Alert("More items unavailable", error, AlertTone.Warning,
-                $"spotify.page.retained-error.{mode}",
-                new ComponentAction("Try again", "spotify.page.retry", WidgetGlyph.Refresh))
-            .Classes("spotify-page-inline-error");
 
     private static WidgetElement DevicesPage(
         SpotifyDevicesSummary? devices,
@@ -1164,21 +1058,23 @@ internal static class SpotifyPresentation
         return row.CollectionItem(item.Key);
     }
 
-    private static WidgetElement PlaylistTrackRow(
-        SpotifyMediaCollectionItem item,
-        string mode,
-        string up,
-        string? down)
-    {
-        var row = MediaRow(item.Value, $"spotify.playlist.track.{item.Key.Value}",
-            SpotifyCollectionIdentity.FocusId("spotify.playlist.track", mode, item.Key),
-            SpotifyCollectionIdentity.FocusId(
-                "spotify.playlist.track.persist", "shared", item.Key));
-        row = row.ContextMenuShortcut(ControllerButton.Menu)
+    internal static WidgetElement IndexedPlaylistTrackRow(SpotifyMediaCollectionItem item) =>
+        MediaRow(item.Value, "spotify.playlist.track." + item.Key.Value,
+            SpotifyCollectionIdentity.FocusId("spotify.playlist.track", "shared", item.Key),
+            SpotifyCollectionIdentity.FocusId("spotify.playlist.track.persist", "shared", item.Key))
+            .ContextMenuShortcut(ControllerButton.Menu)
             .ContextAction("spotify.playlist.enqueue." + item.Key.Value, "Add to queue");
-        row = row.FocusUp(up);
-        if (down is not null) row = row.FocusDown(down);
-        return row.CollectionItem(item.Key);
+
+    internal static WidgetElement IndexedSearchRow(SpotifySearchCollectionItem item)
+    {
+        var row = UI.Tile(item.Value.Title,
+            item.Value.IsPlayable ? "Play " + item.Value.Kind.ToString().ToLowerInvariant() : "Unavailable",
+            "spotify.search.play." + item.Key.Value, "spotify.search.item." + item.Key.Value,
+            item.Value.Subtitle, artwork: Artwork(item.Value.ArtworkUrl, item.Value.Title),
+            accessibilityLabel: "Play " + item.Value.Kind.ToString().ToLowerInvariant() + " " + item.Value.Title)
+            .Disabled(!item.Value.IsPlayable).Classes("spotify-media-row");
+        return item.Value.Kind == SpotifySearchKind.Track ? row.ContextMenuShortcut(ControllerButton.Menu)
+            .ContextAction("spotify.search.enqueue." + item.Key.Value, "Add to queue") : row;
     }
 
     private static TileArtwork Artwork(string? url, string label) =>
@@ -1266,36 +1162,9 @@ internal static class SpotifyPresentation
                 .Disabled(query.Length == 0).Classes("spotify-page-action", "spotify-search-clear"))
             .Classes("spotify-search-controls");
         var children = new List<WidgetElement> { entry, controls };
-        var results = search?.Results.Snapshot;
         if (query.Length == 0)
-            children.Add(UI.Text("Find tracks, albums, artists and playlists.", "spotify.search.prompt")
-                .Classes("spotify-search-message"));
-        else if (search is not null && results is not null)
-        {
-            var rows = results.Items.Select(item =>
-            {
-                var row = UI.Tile(
-                    item.Value.Title, item.Value.IsPlayable ? "Play " + item.Value.Kind.ToString().ToLowerInvariant() : "Unavailable",
-                    "spotify.search.play." + item.Key.Value, "spotify.search.item." + item.Key.Value,
-                    item.Value.Subtitle, artwork: Artwork(item.Value.ArtworkUrl, item.Value.Title),
-                    accessibilityLabel: "Play " + item.Value.Kind.ToString().ToLowerInvariant() + " " + item.Value.Title)
-                .Disabled(!item.Value.IsPlayable).Classes("spotify-media-row");
-                if (item.Value.Kind == SpotifySearchKind.Track)
-                    row = row.ContextMenuShortcut(ControllerButton.Menu)
-                        .ContextAction("spotify.search.enqueue." + item.Key.Value, "Add to queue");
-                return row.CollectionItem(item.Key);
-            }).ToList();
-            if (rows.Count == 0)
-                rows.Add(UI.Text(results.Error is not null ? "Search couldn't finish. Try again." :
-                    results.Status == WidgetPagedResourceStatus.Ready ? "No results. Try another search or result type." : "Searching Spotify…",
-                    "spotify.search.message").Classes("spotify-search-message"));
-            children.Add((results.Items.Count == 0
-                ? search.Results.Present(rows)
-                : search.Results.PresentCollectionList(rows)).Classes("spotify-page-scroll"));
-            if (results.Error is { } error)
-                children.Add(UI.Alert("Search unavailable", error.Message, AlertTone.Warning, "spotify.search.error",
-                    new ComponentAction("Try again", "spotify.page.retry", WidgetGlyph.Refresh)));
-        }
+            children.Add(UI.Text("Find tracks, albums, artists and playlists.", "spotify.search.prompt").Classes("spotify-search-message"));
+        else if (search is not null) children.Add(search.Results.Collection);
         return UI.Stack("spotify.search.page", children.ToArray()).Classes("spotify-page", "spotify-search-page");
     }
 

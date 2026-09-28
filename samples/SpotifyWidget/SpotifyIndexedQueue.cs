@@ -7,7 +7,7 @@ internal sealed record SpotifyQueueQuery(long Generation, IReadOnlyList<SpotifyM
 
 /// <summary>
 /// Queue is one complete, bounded provider observation without adjacent cursors.
-/// Playlist/Search cursor windows are not complete queries and stay separate.
+/// Playlist/Search use separate discovered-prefix sources, not a fabricated total.
 /// </summary>
 internal static class SpotifyIndexedQueue
 {

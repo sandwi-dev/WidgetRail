@@ -194,7 +194,7 @@ and platform theme for both the parent and an actual deep range. Launch and
 running-add regressions route acquired leases against mocked host services; no
 real applications or user curation state are changed by those tests.
 
-## Spotify: complete queue versus cursor windows
+## Spotify: complete queue and discovered provider results
 
 [SpotifyIndexedQueue.cs](../../samples/SpotifyWidget/SpotifyIndexedQueue.cs)
 indexes the complete bounded queue observation returned by the provider. Its
@@ -211,14 +211,26 @@ existing behavior: first occurrence uses Next without replacing context; later
 occurrences start the bounded captured suffix, including repeated URIs. HTTPS
 artwork remains host-owned. Pinned Up Next keeps its existing two inline rows.
 
-Spotify playlist library, playlist details and Search still use cursor resources.
-Their retained pages can be evicted, filtered pages can be sparse, and remote
-totals can change between requests. None of those retained windows is advertised
-as a complete indexed source. Migrating them requires either a separately frozen
-complete result or a first-class continuation-aware collection contract with
-unknown extent, growth and exact occurrence/action identity. Do not infer random
-access from an offset-shaped continuation or use the current retained count as
-the remote query count. This checkpoint does not make those cursor routes ready
-for a frontend that only accepts indexed collections. The discovered contract
-above now supplies that migration path, but those Spotify routes have not yet
-been converted in this checkpoint.
+Playlist library, playlist details and Search use
+[SpotifyDiscoveredCollections.cs](../../samples/SpotifyWidget/SpotifyDiscoveredCollections.cs).
+Each keeps an append-only discovered prefix bounded to 1,024 logical items by
+default. Provider offsets stay in worker-private continuation tokens; remote totals
+only determine whether another page may exist. They never become indexed `Count`
+or justify random access. The host sees admitted count, continuation status and
+bounded range reads, and renders the common loading/retry/Load-more/limit footer.
+
+Library deduplicates by playlist ID using `KeepFirst`. Detail and Search preserve
+repeated occurrences with keys incorporating provider-page offset and admitted
+slot plus playlist/query context. Filtered response slots are not remote item
+indexes. Actions capture that occurrence and query, then revalidate route and
+availability after command admission. Background/reopen and destination changes
+retain accepted history; explicit refresh retires the query. Returning from a
+playlist or Settings uses the admitted keyed `FocusedCollectionItem`, with a
+one-shot request ID from the common navigation revision.
+
+The source prepares lazy grid/list declarations, with no inline item children or
+links to unrealized neighbors. Realization never controls metadata retention:
+reversing into previously admitted results reads the retained prefix without
+another provider request. The shared four-empty-page pause and explicit retry
+policies also apply. See the [Spotify development notes](../../samples/SpotifyWidget/DEVELOPMENT.md)
+and `SpotifyDiscoveredTests` for provider, action-authority and keyed-return examples.
