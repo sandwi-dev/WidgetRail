@@ -37,7 +37,8 @@ internal sealed partial class WidgetViewPresenter
         controllerPressedStyle = null;
         foreach (var adapter in nativeStyles.Values) adapter.SetControllerPressed(false);
         foreach (var binding in bindings.Values)
-            if (binding.Element is WidgetIndexedCollectionView collection) collection.SetControllerPressedStyle(false);
+            if (binding.Element is WidgetIndexedCollectionView collection)
+            { collection.CancelPendingActivation(); collection.SetControllerPressedStyle(false); }
     }
 
     private void ApplyComputedStyles(Binding binding, ViewNode node)

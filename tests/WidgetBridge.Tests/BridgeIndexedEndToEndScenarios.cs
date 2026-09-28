@@ -166,6 +166,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private int modalRevision;
     private readonly TaskCompletionSource releaseBackground = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private string backgroundState = "idle";
+    private TaskCompletionSource? activationReadGate;
     private long calls;
     private long focusRequest;
     private FocusGroupEntryRequest? entry;
@@ -175,6 +176,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         {
             ReadRange = async (query, start, count, token) =>
             {
+                if (query is >= 300 and <= 303 && Volatile.Read(ref activationReadGate) is { } gate) await gate.Task.WaitAsync(token);
                 await Task.Delay(query == 99 ? 500 : 80, token);
                 return Enumerable.Range(start, count).ToArray();
             },
@@ -183,9 +185,10 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             {
                 WidgetElement tile = query == 98 && item < 2
                     ? UI.Button($"Disabled {item}", "open", context.Id("row")).Disabled()
-                    : UI.ActionSurface("open", context.Id("row"), $"Item {item}",
+                    : UI.ActionSurface(query == 302 ? "alternate" : "open", context.Id("row"), $"Item {item}",
                         ActionSurfaceOrientation.Horizontal, UI.Artwork(new("cover"), context.Id("cover"), "Cover"),
                         UI.Text($"Item {item}", context.Id("title"))).Shortcut(ControllerButton.Y, actionId: "replace");
+                if (query == 303) tile = ((ActionSurfaceElement)tile).Disabled();
                 return query >= 100 ? tile.FocusBackground(new("background")).PresentOnFocus(UI.Text($"Summary {query}:{item}", context.Id("summary"))) : tile;
             },
             OnAction = (query, item, action, _) =>
@@ -252,6 +255,21 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         Volatile.Write(ref status, action.ActionId);
         if (action.ActionId == "parent" && surfaces) releaseBackground.TrySetResult();
         if (action.ActionId == "content") source.UpdateContent(surfaces ? 101 : 1);
+        if (action.ActionId == "activation-mode")
+        {
+            activationReadGate?.TrySetResult(); activationReadGate = null;
+            modalMode = grid = grouped = false; surfaces = true; modalItem = null;
+            source.PublishQuery(300, 100);
+            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+        }
+        if (action.ActionId is "activation-refresh" or "activation-changed" or "activation-disabled")
+        {
+            activationReadGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            source.UpdateContent(action.ActionId == "activation-changed" ? 302 : action.ActionId == "activation-disabled" ? 303 : 301);
+        }
+        if (action.ActionId == "activation-release") activationReadGate?.TrySetResult();
+        if (action.ActionId == "activation-replace") { source.PublishQuery(300, 100); entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75)); }
+        if (action.ActionId == "activation-modal") { modalItem = 75; ++modalOpening; }
         if (action.ActionId == "modal-mode")
         {
             modalMode = true; surfaces = true; grid = grouped = false; modalItem = null;

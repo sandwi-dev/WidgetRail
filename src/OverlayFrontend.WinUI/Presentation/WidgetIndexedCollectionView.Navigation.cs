@@ -63,6 +63,7 @@ internal sealed partial class WidgetIndexedCollectionView
 
     internal bool MoveFocus(FocusNavigationDirection direction)
     {
+        CancelPendingActivation();
         if (view is null || source is null || !CanReceiveInput || view.Items.Count == 0) return false;
         CancelEntry();
         var current = pendingIndex ?? FocusedIndex();
@@ -155,6 +156,7 @@ internal sealed partial class WidgetIndexedCollectionView
 
     private void CancelNavigation()
     {
+        CancelPendingActivation();
         pendingIndex = null;
         pendingEntry = null;
         entering = false;

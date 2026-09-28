@@ -40,7 +40,9 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
         SizeChanged += (_, _) => UpdateGridWidth();
-        GotFocus += (_, _) => RememberItemFocus();
+        GotFocus += (_, _) => { ValidatePendingActivation(); RememberItemFocus(); };
+        LostFocus += (_, _) => ValidatePendingActivation();
+        Unloaded += (_, _) => { if (!IsLoaded) CancelPendingActivation(); };
         GotFocus += (_, _) => PresentationChanged?.Invoke();
         AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelNavigation()), true);
         AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
@@ -109,6 +111,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         // Native controls may be rebuilt for presentation changes. Logical entry
         // belongs to the unchanged query, not that discarded control instance.
         if (ReferenceEquals(previousSource, source)) RestoreEntry(entry);
+        ValidatePendingActivation();
     }
 
     private void UpdateGridWidth()
@@ -153,6 +156,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     internal bool ActivateFocused() => InvokeFocused(ControllerButton.A);
     internal bool InvokeFocused(ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed)
     {
+        if (button != ControllerButton.A && phase == ControllerEventPhase.Pressed) CancelPendingActivation();
         if (!CanReceiveInput || view?.XamlRoot is null) return false;
         for (var focused = FocusManager.GetFocusedElement(view.XamlRoot) as DependencyObject;
              focused is not null && !ReferenceEquals(focused, view); focused = VisualTreeHelper.GetParent(focused))
@@ -163,9 +167,15 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             }
         return false;
     }
-    private async Task InvokeAsync(WidgetIndexedRow row, ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed)
+    private async Task InvokeAsync(WidgetIndexedRow row, ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed, bool allowDeferredActivation = true)
     {
-        if (disposed || !CanReceiveInput || !row.Lease.IsCurrent || source is null) return;
+        if (disposed || !CanReceiveInput || source is null) return;
+        if (button == ControllerButton.A && phase == ControllerEventPhase.Pressed)
+        {
+            if (pendingActivation is not null) return;
+            if (!row.Lease.IsCurrent) { if (allowDeferredActivation) DeferActivation(row); return; }
+        }
+        if (!row.Lease.IsCurrent) return;
         try { await row.Lease.AdmitInputAsync(source.Frame.Authority, row.Item.Key, button, phase,
             sequence: ++sequence, monotonicTimestampMicroseconds: Environment.TickCount64 * 1000); }
         catch (WidgetPresentationSessionException) when (!row.Lease.IsCurrent) { }
@@ -175,6 +185,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     {
         if (disposed) return;
         disposed = true;
+        CancelPendingActivation();
         CancelNavigation();
         RetireViewRows();
         DetachItems();
