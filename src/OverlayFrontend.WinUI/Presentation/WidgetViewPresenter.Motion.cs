@@ -13,6 +13,7 @@ internal sealed partial class WidgetViewPresenter
         systemAnimationsEnabled = animationsEnabled;
         NativeComputedStyleAdapter.SetMotionPolicy(value, animationsEnabled);
         NativeComputedStyleAdapter.SetTextScale(value.TextScale);
+        NativeComputedStyleAdapter.SetAccessibilityPolicy(value);
         if (!presentationOnly) FontSize = nativeBaseFontSize * (double.IsFinite(value.TextScale)
             ? Math.Clamp(value.TextScale, AppearanceSettings.MinimumTextScale, AppearanceSettings.MaximumTextScale) : 1);
         foreach (var binding in bindings.Values)

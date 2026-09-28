@@ -92,6 +92,13 @@ internal sealed partial class WidgetViewPresenter
 internal sealed class NativeComputedStyleAdapter : IDisposable
 {
     private static WidgetMotionOptions motionOptions = WidgetMotionOptions.From(AppearanceSettings.Default, true);
+    private static WidgetAccessibilityPolicy accessibility = WidgetAccessibilityPolicy.From(AppearanceSettings.Default);
+    internal static void SetAccessibilityPolicy(AppearanceSettings settings)
+    {
+        var next = WidgetAccessibilityPolicy.From(settings);
+        if (next == accessibility) return;
+        accessibility = next; EnvironmentChanged?.Invoke();
+    }
     private static double textScale = 1;
     internal static void SetTextScale(double value)
     {
@@ -206,7 +213,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         if (lastInteraction != (focused, pressed))
         { lastInteraction = (focused, pressed); InteractionChanged?.Invoke(focused, pressed); }
         var style = pressed ? styles?.Pressed : focused ? styles?.Focused : styles?.Base;
-        var contrast = Volatile.Read(ref highContrastOverride) is var contrastOverride && (contrastOverride < 0 ? Volatile.Read(ref systemHighContrast) != 0 : contrastOverride != 0);
+        var systemContrast = Volatile.Read(ref highContrastOverride) is var contrastOverride && (contrastOverride < 0 ? Volatile.Read(ref systemHighContrast) != 0 : contrastOverride != 0);
+        var contrast = accessibility.HighContrast(systemContrast);
         var fontSize = Number(style, "font-size", true) is { } font ? Math.Clamp(font, 1, 512) * textScale : (double?)null;
         if (element is TextBlock text)
         {
@@ -268,7 +276,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         }
         else { focusDecoration?.Dispose(); focusDecoration = null; }
         var opacity = Number(style, "opacity");
-        Put(UIElement.OpacityProperty, opacity is null ? null : contrast ? 1d : Math.Clamp(opacity.Value, 0, 1));
+        Put(UIElement.OpacityProperty, accessibility.Opacity(opacity, contrast));
         var background = SurfaceBackground(Brush(style, "background", contrast, true), style, contrast);
         var border = Brush(style, "border-color", contrast, false);
         var padding = Spacing(style, "padding");
@@ -374,6 +382,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private SolidColorBrush? Brush(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, string property, bool contrast, bool background)
     {
         if (style?.GetValueOrDefault(property) is not { } value || !TryColor(value.Text, out var color)) return null;
+        if (background) color.A = accessibility.BackgroundAlpha(color.A);
         if (contrast && color.A != 0)
         {
             var resources = Application.Current.Resources;
@@ -408,9 +417,12 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private static double? Number(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, string property, bool length = false) =>
         style?.GetValueOrDefault(property) is { Number: { } value } candidate && double.IsFinite(value) &&
         (!length || candidate.Unit is null or "px") ? length ? Math.Max(0, value) : value : null;
-    private static FontWeight? Weight(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style) =>
-        style?.GetValueOrDefault("font-weight") is { } value ? new FontWeight
-            { Weight = (ushort)Math.Clamp(value.Number ?? (value.Text == "bold" ? 700 : 400), 100, 900) } : null;
+    private static FontWeight? Weight(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style)
+    {
+        ushort? authored = style?.GetValueOrDefault("font-weight") is { } value
+            ? (ushort)Math.Clamp(value.Number ?? (value.Text == "bold" ? 700 : 400), 100, 900) : null;
+        return accessibility.FontWeight(authored) is { } weight ? new FontWeight { Weight = weight } : null;
+    }
     private FontFamily? Family(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style)
     {
         if (style?.GetValueOrDefault("font-family") is not { Text.Length: > 0 } value) return null;

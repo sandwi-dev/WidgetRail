@@ -25,8 +25,12 @@ are untouched. Migration is active and incomplete.
   are mapped. Native scroll routing and global-policy dialog entrances are wired.
   Focused/pressed scale uses native presentation animation; effective TextScale
   reaches typography. The modal veil now paints above its retained parent.
-  These pass 52 native style checks and 25 modal checks in their lane. Section
-  transitions, focus decoration, depth and complete styling remain incomplete.
+  Authored focus outlines now use compositor Fade/Settle; native gradients provide
+  cached surface shading. Indexed box dimensions/margins have one native owner,
+  including viewport-unit refresh on resize. All 79 integrated native style checks
+  pass; actual Playnite and music geometry checks pass in the presentation lane.
+  Saved Bold Text, Contrast and Reduced Transparency preferences are now applied
+  after styles. Section transitions, shadows and complete styling remain incomplete.
 - Authored surface sizing and per-display interface zoom are integrated, reusing
   existing display identity/settings and platform placement. Sixteen shell tests,
   13 native sizing checks and real Playnite at Windows 125% DPI/interface 75% pass.
@@ -70,8 +74,8 @@ are untouched. Migration is active and incomplete.
   details with artwork and no corresponding stale-artwork overlay error.
 - Real music startup exposed Auto-sized loading indicators in unbounded measurement;
   native intrinsic sizes now survive style projection. Authored poster aspect ratios
-  are mapped. All 56 integrated native style checks pass. Root/container sizing and
-  enlarged-card clipping still need the presentation lane's correction.
+  are mapped. Root/container sizing and enlarged-card clipping corrections are
+  integrated; the presentation lane verified native row positions and screenshots.
   Native fixture gates and real screenshots are recorded below and in
   [Playnite validation](winui-playnite-validation.md); fixture results are not
   production-widget performance acceptance.
