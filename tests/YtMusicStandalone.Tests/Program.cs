@@ -497,6 +497,13 @@ static async Task CursorTraversal()
         await widget.OnActionAsync(new("refresh", "refresh"));
         await Until(() => BrowseScroll(widget).IndexedCollection is { Count: 500 });
         var before = BrowseScroll(widget).IndexedCollection;
+        using (var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "large-styles"))
+        {
+            var theme = WidgetRail.Tests.RendererFixtureExporter.CompileTheme(AppContext.BaseDirectory, "standalone.wrss");
+            _ = WidgetRail.WidgetBridge.BridgeRenderStyleResolver.Resolve(host.CurrentSnapshot, theme);
+            using var page = await host.AcquireAsync(BrowseScroll(widget).Id, 0, 32);
+            _ = WidgetRail.WidgetBridge.BridgeRenderStyleResolver.ResolveRange(page.Range, theme);
+        }
         foreach (var index in new[] { 0, 499, 120, 2, 250 })
             Check((await Rows(widget, index, 1))[0].ActionId == "item." + index, "Direct random access returned wrong occurrence");
         Check(BrowseScroll(widget).Children.Count == 0 && BrowseScroll(widget).ScrollNearEndActionId is null, "Legacy cursor/tree still present");
