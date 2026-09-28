@@ -67,7 +67,7 @@ try {
     Check 'grid controller navigation retains the column across native realization' ($gridNavigation.navigation -eq ('last:'+[Math]::Min(99,12*$grid.columns)+';stalled:0'))
     Key F2
     $entry=Until '09-logical-focus' {param($v) $v.logicalFocus -ne 'pending'} 20
-    Check 'logical entry verifies keys and preserves one-shot focus lifecycle' ($entry.logicalFocus -eq 'passed:10')
+    Check 'logical entry verifies keys and preserves one-shot focus lifecycle' ($entry.logicalFocus -eq 'passed:12')
     Ui @('invoke','Widget.groups') | Out-Null
     $grouped=Until '10-grouped' {param($v) $v.groupCount -eq 4 -and $v.control -eq 'GridView'}
     Ui @('wait-for','Widget.items.Item.0','-p','Name','--value','Item 0','-t','5000') | Out-Null

@@ -169,7 +169,21 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
             Check(FocusId() == "Widget.parent", "withdrawn request stole focus");
             await Send("focus-disabled");
             await Until(() => FocusId() == "Widget.items.Item.2");
-            logicalFocus = "passed:10";
+            Parent();
+            await Send("focus-delayed");
+            await Until(() => Descendants(presenter).OfType<WidgetIndexedCollectionView>().Single().IsEntryPending);
+            await Send("grid", "grid");
+            await Until(() => FocusId() == "Widget.items.Item.75");
+            await Send("grid", "grid");
+            Parent();
+            await Send("focus-delayed");
+            await Until(() => Descendants(presenter).OfType<WidgetIndexedCollectionView>().Single().IsEntryPending);
+            await Send("group-partition");
+            await Until(() => FocusId() == "Widget.items.Item.75");
+            await Send("groups", "groups");
+            await Send("group-partition");
+            await Send("groups", "groups");
+            logicalFocus = "passed:12";
         }
         catch (Exception error) { logicalFocus = "failed:" + error.Message; }
         Observe();

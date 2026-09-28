@@ -657,3 +657,20 @@ cancellation and retirement. Evidence: `artifacts/winui-playnite-capture-retirem
 This is service correctness evidence, not WinUI Playnite appearance/performance.
 Next: final widget projection, captured actions and logical modal return targets,
 then complete presenter support and actual overlay integration.
+
+## Pending indexed focus across presentation changes
+
+Review found that rebuilding a collection for layout/group partition changes
+cancelled an already-consumed exact entry while its row was loading. The collection
+now retains that logical intent when its source/query owner remains unchanged and
+restores it after rebuilding native presentation. Query replacement, disabled
+scope, request withdrawal and superseding input retain their cancellation behavior.
+
+The real-worker sequence now includes delayed exact entry during list/grid changes
+and regrouping; all 17 UI checks pass with twelve logical-entry cases. The 15
+indexed bridge tests and clean WinUI analyzer build also pass. Evidence:
+`artifacts/winui-grouped/entry-checkpoint-ui/` and `entry-final-bridge-tests.log`.
+A test fixture initially used a reserved D-pad shortcut; changing its test-only
+command to X restored valid worker startup. A separate interrupted artifact write
+was an inspection/file-sharing conflict, not a UI result; the clean full run is
+the accepted evidence.

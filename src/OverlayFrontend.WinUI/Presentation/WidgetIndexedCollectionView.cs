@@ -47,6 +47,8 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     internal void Apply(WidgetPresentationFrame frame, ViewNode declaration, string scope)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        var entry = CaptureEntry();
+        var previousSource = source;
         var layout = declaration.CollectionLayout ?? throw new InvalidDataException("Indexed collection layout is missing.");
         if (view is null || layoutKind != layout.Kind || axis != declaration.ScrollAxis)
         {
@@ -93,6 +95,9 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         ScrollViewer.SetVerticalScrollMode(view, axis == ScrollAxis.Horizontal ? ScrollMode.Disabled : ScrollMode.Enabled);
         ScrollViewer.SetHorizontalScrollMode(view, axis == ScrollAxis.Horizontal ? ScrollMode.Enabled : ScrollMode.Disabled);
         UpdateGridWidth();
+        // Native controls may be rebuilt for presentation changes. Logical entry
+        // belongs to the unchanged query, not that discarded control instance.
+        if (ReferenceEquals(previousSource, source)) RestoreEntry(entry);
     }
 
     private void UpdateGridWidth()

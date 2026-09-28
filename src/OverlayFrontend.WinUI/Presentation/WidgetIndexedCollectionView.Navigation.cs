@@ -16,6 +16,18 @@ internal sealed partial class WidgetIndexedCollectionView
     private IndexedCollectionFocusTarget? pendingEntry;
     private bool entering;
     private bool allowEntryFallback;
+    private sealed record EntryIntent(int Index, IndexedCollectionFocusTarget? Target, bool AllowFallback);
+    private EntryIntent? CaptureEntry() => entering && pendingIndex is { } index ? new(index, pendingEntry, allowEntryFallback) : null;
+    private void RestoreEntry(EntryIntent? entry)
+    {
+        if (entry is null || entering || view is null || source is null || !view.IsEnabled || entry.Index >= source.Items.Count) return;
+        if (entry.Target is not null && !MatchesQuery(entry.Target)) return;
+        entering = true;
+        pendingEntry = entry.Target;
+        pendingIndex = entry.Index;
+        allowEntryFallback = entry.AllowFallback;
+        QueueNavigation();
+    }
     internal bool IsEntryPending => entering;
     internal Action<IndexedCollectionFocusTarget>? FocusRemembered { get; set; }
 
