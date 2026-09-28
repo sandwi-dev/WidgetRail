@@ -12,7 +12,7 @@ public sealed partial class MainWindow : Window
     private bool cleanupStarted;
 
     public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
-        bool validateCollection = false, string? widgetConfiguration = null)
+        bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false)
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
@@ -49,8 +49,11 @@ public sealed partial class MainWindow : Window
         }
         else if (widgetConfiguration is not null)
             RootFrame.Content = new Validation.BridgeWidgetValidationPage(widgetConfiguration);
+        else if (validateControls)
+            RootFrame.Content = new Validation.WidgetControlsValidationPage();
         else RootFrame.Navigate(validateExternalSurface ? typeof(Validation.ExternalSurfacePage) :
-            validateCollection ? typeof(Validation.CollectionValidationPage) : typeof(MainPage));
+            validateCollection ? typeof(Validation.CollectionValidationPage) :
+            validateGridView ? typeof(Validation.GridViewValidationPage) : typeof(MainPage));
         AppWindow.Closing += async (_, args) =>
         {
             if (closingAfterCleanup || RootFrame.Content is not IAsyncDisposable resource) return;

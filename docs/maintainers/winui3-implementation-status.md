@@ -213,3 +213,67 @@ Evidence: `artifacts/winui-bridge/` contains build/test binlogs and real bridge
 smoke output; `artifacts/winui-clock/results.json`, `clock-verified.png` and
 `profile/overlay.log` contain the real worker/UI round-trip evidence. All changes
 remain on the isolated migration branch; no main merge, push or release.
+
+## Native control retention and typed host events
+
+`Presentation/WidgetViewPresenter` is the shared beginning of the declaration
+adapter. It creates standard WinUI controls, retains them by scope/element/kind/
+item ancestry within a worker owner, and reconciles changed child membership.
+WinUI still owns measurement, layout, painting, directional focus and control
+behavior; this is not a custom layout/virtualization/frame scheduler. The real
+Clock fixture now uses it, removing its separate four-kind renderer. The native
+controller fixture/replay also uses the same presenter for entry, directional
+focus and activation instead of creating its own test buttons.
+
+Currently supported: Stack, Row, ordinary Scroll, Text, Button, standard
+ActionSurface, Progress, LoadingIndicator and Spacer, with basic resolved font
+size. Control identity survives ordinary content updates and reparenting. Worker
+replacement creates fresh controls and retires saved command tokens. Inactive
+scope controls cannot dispatch; returning to a scope can restore its still-valid
+focus. Entry work is coalesced and ordinary updates do not take focus from outside
+the widget. This remains an incomplete adapter: full styling/themes, explicit
+focus groups/neighbors/shortcuts, images/icons, modals, collections, media,
+responsive layout and the remaining controls still need implementation. Unsupported
+node/layout families fail before membership mutation; they are not substitutes
+for migrated product features. WinUI object creation/property failure is not an
+atomic transaction guarantee; the surface owner must show its failed state.
+
+Sixteen scripted UI checks pass through the shared presenter: authored initial
+focus on the second button, single activation, insertion/reparenting with stable
+control and focus, scope switch/return, inactive-scope rejection, external focus
+retention, disabled-target fallback, new-owner initial focus/new identity and
+rejection of a retained retired command, and two deliberate presses while the
+first admission remains pending. WinUI command execution does not introduce a
+second single-flight queue over the worker's action policy. Real Clock round trip still passes all
+ten checks. Native-shaped controller replay passes through the shared presenter,
+including Guide hide/show and retained focus. These remain automated checks, not
+physical controller acceptance. Final frontend analyzer build has zero warnings
+and errors; evidence is under `artifacts/winui-controls/`.
+
+The managed session now publishes typed catalog/appearance revision notifications
+and host effects. It accepts the actual producer's initiation timestamp and
+activation target fields, rejects stale/replayed effects, preserves host-private
+native identity and supplies authority revalidation after UI dispatch. Unknown
+optional effects are explicitly Unsupported. Retirement/restart boundaries prevent
+old effects from reviving. The host must still enforce its visible-session policy
+and revalidate HWND/process/class identity; receiving a typed event does not
+execute it. Twenty-seven session tests pass, including exact producer shapes,
+malformed target rejection, stale/replayed effects, retirement and monotonic
+revision notifications. No service/provider dependencies were reintroduced.
+
+### GridView comparison: retention remains unresolved
+
+The opt-in `--validate-gridview` fixture tests standard GridView/ItemsWrapGrid over
+the same keyed ItemsSource, without custom offsets/anchor compensation. It also
+fails prepend and leading-eviction retention. Final isolated run: seven checks
+pass, four fail. Item0 after prepend keeps its logical focus but moves y=4 to
+y=1180 at offset zero. Removing thirty leading items while Item600 is focused
+leaves its container offscreen and the viewport advances to Item628. Append and
+same-key updates pass independently; visual-tree container counts remain bounded.
+
+This rules out a control swap as the collection fix. The fixture and
+`scripts/Test-WinUiGridView.ps1` preserve the regression, not an accepted production
+collection. Evidence and six inspected screenshots are in
+`artifacts/winui-gridview/isolated-cases/`. Resolve the collection admission/data
+virtualization and anchoring contract before wiring it to Playnite. No compensating
+scroll code or unsuccessful adapter was added to the shared presenter.

@@ -64,11 +64,13 @@ install and enable the existing Clock sample in that catalog using wrail; never
 substitute the user's default catalog/profile for this fixture.
 
 The fixture starts and owns a real WidgetBridge child and consumes its validated
-snapshot. Stack/Row/Text/Button are mapped to standard WinUI controls. Refresh
+snapshot. The shared `Presentation/WidgetViewPresenter` maps admitted declarations
+to standard WinUI controls. Refresh
 uses current snapshot/scope authority, and subsequent publications update existing
-controls without replacing focus. Unsupported kinds/structural changes fail
-visibly; this limited validation adapter is not a shipping renderer or a supported
-SDK contract. Existing resolved font size is projected for basic readability;
+controls without replacing focus. The shared presenter also preserves controls
+through structural insertion and reparenting; unsupported control/layout families
+fail visibly. This incomplete migration adapter is not a supported new SDK
+contract. Existing resolved font size is projected for basic readability;
 complete style/state/theme migration remains outstanding.
 
 Run `scripts/Test-WinUiBridgeWidget.ps1 -AppPid <pid>` after project-mode launch.
@@ -80,3 +82,16 @@ wake idle desktop presentation; no hardware-controller claim follows from this.
 
 The client now depends on `WidgetBridge.Contracts`, not the backend executable.
 Shared DTO namespaces and wire shapes are unchanged; managed consumers must rebuild.
+
+`--validate-controls` exercises the same shared presenter without a worker or
+hardware. `scripts/Test-WinUiControls.ps1` checks initial focus, membership changes,
+scope gating/return, updates while external controls own focus, disabled-target
+fallback and retired-control action rejection. Capture artifacts do not prove
+the rest of the widget feature vocabulary or performance under large collections.
+The presenter deliberately rejects native collection declarations rather than
+expanding them into nonvirtualized StackPanels.
+
+`--validate-gridview` is an independent native-control comparison for the unresolved
+collection anchor issue. Its script currently reports failures for prepend and
+leading eviction. It is retained as evidence; do not substitute it for the shipping
+collection implementation or describe a bounded realized count as scroll correctness.

@@ -1,0 +1,45 @@
+<Page
+    x:Class="WidgetRail.OverlayFrontend.WinUI.Validation.GridViewValidationPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Page.Resources>
+        <!-- Trusted bindings over shared keyed entries, never worker-supplied XAML. -->
+        <DataTemplate x:Key="GridItemTemplate">
+            <Border Width="140" Height="160" Padding="12"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    CornerRadius="{ThemeResource ControlCornerRadius}">
+                <TextBlock Text="{Binding Value.Title, Mode=OneWay}" TextWrapping="Wrap"
+                           Style="{StaticResource BodyTextBlockStyle}" />
+            </Border>
+        </DataTemplate>
+    </Page.Resources>
+    <Grid RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="F5 reveal 600 | F6 inspect | F7 prepend | F8 append | F9 evict | F10 update"
+                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
+        <GridView x:Name="CollectionView" Grid.Row="1" AutomationProperties.AutomationId="GridCollection.View"
+                  AutomationProperties.Name="Native GridView validation"
+                  ItemTemplate="{StaticResource GridItemTemplate}" SelectionMode="None"
+                  IsItemClickEnabled="True" ItemClick="ItemClicked" ContainerContentChanging="ContainerContentChanging">
+            <GridView.ItemContainerStyle>
+                <Style TargetType="GridViewItem" BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                    <Setter Property="Margin" Value="4" />
+                </Style>
+            </GridView.ItemContainerStyle>
+            <GridView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <ItemsWrapGrid Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </GridView.ItemsPanel>
+        </GridView>
+        <StackPanel Grid.Row="2">
+            <TextBlock x:Name="StatusText" AutomationProperties.AutomationId="GridCollection.Status" />
+            <TextBlock x:Name="ObservationText" AutomationProperties.AutomationId="GridCollection.Observation"
+                       MaxHeight="32" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+    </Grid>
+</Page>

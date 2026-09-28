@@ -1,17 +1,16 @@
 using System.Text.Json;
-using CommunityToolkit.Mvvm.Input;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using WidgetRail.WidgetPresentationSession;
-using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>
 /// Real bridge/worker round-trip fixture. Deliberately limited to the Clock
-/// sample's Stack/Row/Text/Button vocabulary; not the production view adapter.
+/// sample; uses the shared presenter and real asynchronous action path.
 /// </summary>
 internal sealed class BridgeWidgetValidationPage : Page, IAsyncDisposable
 {
@@ -21,16 +20,12 @@ internal sealed class BridgeWidgetValidationPage : Page, IAsyncDisposable
     private readonly Options options;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock status = new() { Text = "Connecting to widget service…", TextWrapping = TextWrapping.Wrap };
-    private readonly ContentControl surface = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch };
-    private readonly Dictionary<string, FrameworkElement> elements = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, ViewNode> nodes = new(StringComparer.Ordinal);
+    private readonly WidgetViewPresenter surface = new();
     private OwnedBridgeProcess? owner;
-    private WidgetPresentationFrame? frame;
     private Task? startup;
     private Task? disposal;
     private bool retired;
     private long publication;
-    private long actionSequence;
     private int applied;
 
     public BridgeWidgetValidationPage(string configurationPath)
@@ -42,6 +37,7 @@ internal sealed class BridgeWidgetValidationPage : Page, IAsyncDisposable
             throw new InvalidDataException("This validation fixture accepts only the Clock sample.");
         AutomationProperties.SetAutomationId(status, "Bridge.Status");
         AutomationProperties.SetAutomationId(surface, "Bridge.Surface");
+        surface.DispatchActionAsync = InvokeAsync;
         Content = new StackPanel { Spacing = 16, Children = { status, surface } };
         Loaded += (_, _) => startup ??= StartAsync();
     }
@@ -86,80 +82,26 @@ internal sealed class BridgeWidgetValidationPage : Page, IAsyncDisposable
 
     private void Apply(WidgetPresentationFrame next)
     {
-        var declared = Flatten(next.Snapshot.Root).ToArray();
-        if (declared.Any(node => node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Text or ViewNodeKind.Button)))
-            throw new NotSupportedException("Node kind is outside the bridge fixture vocabulary.");
-        if (frame is null)
-            surface.Content = Create(next.Snapshot.Root);
-        else if (declared.Length != nodes.Count || declared.Any(node => !nodes.TryGetValue(node.Id, out var prior)
-            || prior.Kind != node.Kind || !prior.Children.Select(child => child.Id).SequenceEqual(node.Children.Select(child => child.Id))))
-            throw new NotSupportedException("Structural updates require the production view adapter.");
-        foreach (var node in declared)
-        {
-            nodes[node.Id] = node;
-            var element = elements[node.Id];
-            AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
-            if (element is TextBlock text) text.Text = node.Text ?? string.Empty;
-            if (element is Button button) { button.Content = node.Text; button.IsEnabled = node.IsDisabled != true && node.IsBusy != true; }
-            if (next.RenderStyles.TryGetValue(node.Id, out var styles)
-                && styles.Base.TryGetValue("font-size", out var size) && size.Number is > 0 and <= 512)
-            {
-                if (element is TextBlock label) label.FontSize = size.Number.Value;
-                if (element is Control control) control.FontSize = size.Number.Value;
-            }
-        }
-        var initial = frame is null;
-        frame = next;
+        surface.Apply(next);
         status.Text = $"Ready: {next.Descriptor.Name}; snapshot {next.Authority.SnapshotSequence}; publications {++applied}; bridge {owner?.ProcessId}";
-        if (initial) DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            if (!retired && next.Snapshot.InitialFocusId is { } id && elements.TryGetValue(id, out var element) && element is Control control)
-                control.Focus(FocusState.Keyboard);
-        });
     }
 
-    private FrameworkElement Create(ViewNode node)
+    private async Task InvokeAsync(WidgetActionRequest request)
     {
-        FrameworkElement element = node.Kind switch
-        {
-            ViewNodeKind.Stack or ViewNodeKind.Row => new StackPanel { Spacing = 12,
-                Orientation = node.Kind == ViewNodeKind.Row ? Orientation.Horizontal : Orientation.Vertical },
-            ViewNodeKind.Text => new TextBlock { TextWrapping = TextWrapping.Wrap },
-            ViewNodeKind.Button => new Button { Command = new AsyncRelayCommand(() => InvokeAsync(node.Id)) },
-            _ => throw new NotSupportedException(node.Kind.ToString()),
-        };
-        elements.Add(node.Id, element);
-        AutomationProperties.SetAutomationId(element, $"Widget.{node.Id}");
-        if (element is StackPanel panel)
-            foreach (var child in node.Children) panel.Children.Add(Create(child));
-        return element;
-    }
-
-    private async Task InvokeAsync(string id)
-    {
-        if (retired || frame is not { } current || owner is null || !nodes.TryGetValue(id, out var node)
-            || node.IsDisabled == true || node.IsBusy == true || node.ActionId is null) return;
+        if (retired || owner is null) return;
         try
         {
-            await owner.Session.SendActionAsync(current.Authority, new(node.ActionId, id,
-                Sequence: ++actionSequence, MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000,
-                InputScopeId: current.Authority.ActiveInputScopeId) { FocusedElementId = id }, lifetime.Token);
+            await owner.Session.SendActionAsync(request.Authority, request.Action, lifetime.Token);
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { if (!retired) status.Text = $"Action failed: {error.Message}"; }
-    }
-
-    private static IEnumerable<ViewNode> Flatten(ViewNode node)
-    {
-        yield return node;
-        foreach (var child in node.Children)
-            foreach (var descendant in Flatten(child)) yield return descendant;
     }
 
     public ValueTask DisposeAsync() => new(disposal ??= StopAsync());
     private async Task StopAsync()
     {
         retired = true;
+        surface.DispatchActionAsync = null;
         lifetime.Cancel();
         if (startup is not null) await startup;
         if (owner is not null)
