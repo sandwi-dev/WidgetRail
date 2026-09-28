@@ -6,6 +6,24 @@ internal static class WidgetIndexedLeaseTests
 {
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(5);
 
+    public static async Task BrokerArtworkDoesNotRequireWidgetResolver()
+    {
+        const string brokerHandle = "library.art.0123456789abcdef0123456789abcdef";
+        await using var broker = new Fixture(new("broker", Artwork: true), withResolver: false, artworkHandle: brokerHandle);
+        await broker.Start();
+        var lease = await broker.Acquire();
+        Equal(brokerHandle, lease.Range.Items[0].Root.FocusBackgroundArtworkHandle);
+        True(await broker.ResolveIndexedArtworkAsync(new(lease.LeaseId, "key-0"), brokerHandle, default) is null,
+            "broker pixels do not come from widget code");
+        await using var missing = new Fixture(new("widget", Artwork: true), withResolver: false);
+        await missing.Start();
+        await Throws<InvalidOperationException>(async () => await missing.Acquire());
+        await using var malformed = new Fixture(new("malformed", Artwork: true), withResolver: false,
+            artworkHandle: "library.art.invalid");
+        await malformed.Start();
+        await Throws<InvalidOperationException>(async () => await malformed.Acquire());
+    }
+
     public static async Task CapturedActions()
     {
         await using var widget = new Fixture(); await widget.Start();
@@ -179,7 +197,7 @@ internal static class WidgetIndexedLeaseTests
         private long sequence;
         internal long PublishedSequence => sequence;
         internal Func<Query, Item, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>> Artwork = (_, _, _, _) => ValueTask.FromResult<WidgetEncodedArtwork?>(Png);
-        internal Fixture(Query? initial = null)
+        internal Fixture(Query? initial = null, bool withResolver = true, string artworkHandle = "cover")
         {
             Source = CreateIndexedCollection<Query, Item>("source", initial ?? new("initial"), 1, new()
             {
@@ -189,7 +207,7 @@ internal static class WidgetIndexedLeaseTests
                 {
                     Id = context.Id("row"), Kind = ViewNodeKind.ActionSurface, ActionId = "open", AccessibilityLabel = item.Key,
                     ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal, IsBusy = query.Busy,
-                    FocusBackgroundArtworkHandle = query.Artwork ? "cover" : null,
+                    FocusBackgroundArtworkHandle = query.Artwork ? artworkHandle : null,
                     Shortcuts = [new(ControllerButton.Y, "row-y", RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld)],
                     ContextMenuButton = ControllerButton.X,
                     ContextActions = [new("favorite", "Favorite"), new("disabled", "Disabled", IsDisabled: true)],
@@ -201,7 +219,7 @@ internal static class WidgetIndexedLeaseTests
                     if (HoldRows is { } hold) { RowEntered.TrySetResult(); await hold.Task.WaitAsync(token); }
                     await events.Writer.WriteAsync($"{query.Name}:{item.Key}:{action.ActionId}", token);
                 },
-                ResolveArtwork = (query, item, handle, token) => Artwork(query, item, handle, token),
+                ResolveArtwork = withResolver ? (query, item, handle, token) => Artwork(query, item, handle, token) : null,
             });
         }
         internal async Task Start() { await WidgetTestHost.InitializeAsync(this); await WidgetTestHost.SetLifecycleStateAsync(this, WidgetLifecycleState.Visible); Publish(); }

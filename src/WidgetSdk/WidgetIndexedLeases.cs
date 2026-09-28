@@ -59,8 +59,8 @@ public abstract partial class Widget
                 IndexedCollectionContract.ValidateRange(parent, request, range);
                 if (source.Descriptor != request.Source) throw new InvalidOperationException("Indexed query retired.");
                 foreach (var item in read.Items)
-                    if (HasArtwork(item.Declaration.Root) && item.ResolveArtwork is null)
-                        throw new InvalidOperationException("Indexed rows declaring opaque artwork require a captured artwork resolver.");
+                    if (HasWidgetArtwork(item.Declaration.Root) && item.ResolveArtwork is null)
+                        throw new InvalidOperationException("Indexed rows declaring widget-owned artwork require a captured artwork resolver.");
                 var lease = new IndexedCollectionLease(id, range);
                 indexedReservations.Remove(id);
                 indexedLeases.Add(id, new(lease, request, source, read));
@@ -195,8 +195,9 @@ public abstract partial class Widget
         }
     }
     private void ClearIndexedLeases() { lock (indexedSourcesGate) { indexedLeaseOwnerRetired = true; indexedLeases.Clear(); } }
-    private static bool HasArtwork(ViewNode node) => node.ArtworkHandle is not null || node.FocusBackgroundArtworkHandle is not null ||
-        (node.FocusPresentation is { } focus && HasArtwork(focus)) || (node.DefaultFocusPresentation is { } fallback && HasArtwork(fallback)) || node.Children.Any(HasArtwork);
+    private static bool HasWidgetArtwork(ViewNode node) => IsWidgetArtwork(node.ArtworkHandle) || IsWidgetArtwork(node.FocusBackgroundArtworkHandle) ||
+        (node.FocusPresentation is { } focus && HasWidgetArtwork(focus)) || (node.DefaultFocusPresentation is { } fallback && HasWidgetArtwork(fallback)) || node.Children.Any(HasWidgetArtwork);
+    private static bool IsWidgetArtwork(string? handle) => handle is not null && !WidgetRail.Internal.AppLibraryArtworkHandle.IsBrokerHandle(handle);
     private static bool ContainsArtwork(ViewNode node, string handle) => node.ArtworkHandle == handle || node.FocusBackgroundArtworkHandle == handle ||
         (node.FocusPresentation is { } focus && ContainsArtwork(focus, handle)) ||
         (node.DefaultFocusPresentation is { } fallback && ContainsArtwork(fallback, handle)) || node.Children.Any(child => ContainsArtwork(child, handle));

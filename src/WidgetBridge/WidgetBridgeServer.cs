@@ -448,7 +448,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.ResolveIndexedArtwork:
         {
             var artworkRequest = BridgeJson.FromElement<BridgeIndexedArtworkRequest>(request.Payload);
-            var artwork = await _registry.ResolveIndexedArtworkAsync(artworkRequest, cancellationToken).ConfigureAwait(false);
+            var artwork = await _registry.ResolveIndexedArtworkAsync(artworkRequest, cancellationToken,
+                ResolveIndexedBrokerArtworkAsync).ConfigureAwait(false);
             await ReplyAsync(BridgeMessageTypes.IndexedArtwork, request.RequestId,
                 new BridgeIndexedArtworkResponse(artworkRequest.WidgetId, artworkRequest.InstanceId,
                     artworkRequest.RuntimeGeneration, artworkRequest.PresentationGeneration,
@@ -898,6 +899,17 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         {
             // Developer diagnostics are observational and cannot own the Bridge reply.
         }
+    }
+
+    private async Task<WidgetEncodedArtwork?> ResolveIndexedBrokerArtworkAsync(ConfiguredWidget configured,
+        string handle, CancellationToken cancellationToken)
+    {
+        if (_appLibraryArtwork is null) return null;
+        var identity = new BrokerWidgetIdentity(configured.PackageId, configured.PublisherId, configured.InstanceId);
+        var encoded = await _appLibraryArtwork.ResolveAsync(identity, handle, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return encoded is not null && _appLibraryArtwork.IsCurrent(identity, handle)
+            ? new WidgetEncodedArtwork(WidgetArtworkContentType.Png, Convert.FromBase64String(encoded)) : null;
     }
 
     private async Task ReplyRequestFailureAsync(

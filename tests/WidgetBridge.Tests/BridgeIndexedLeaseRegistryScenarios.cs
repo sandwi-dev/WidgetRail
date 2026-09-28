@@ -5,6 +5,43 @@ using WidgetRail.WidgetSdk;
 
 internal static partial class BridgeIndexedLeaseRegistryScenarios
 {
+    internal static async Task BrokerArtworkUsesExactLeaseAndHostIdentity()
+    {
+        await using var fixture = await Fixture.Start();
+        fixture.Client.ArtworkHandle = "library.art.0123456789abcdef0123456789abcdef";
+        _ = await fixture.Snapshot();
+        using var publication = await fixture.Registry.AcquireIndexedRangeAsync(fixture.Request("broker-art"), default);
+        var lease = publication.Value;
+        var request = new BridgeIndexedArtworkRequest(lease.WidgetId, lease.InstanceId, lease.RuntimeGeneration,
+            lease.PresentationGeneration, new(lease.Lease.LeaseId, "item.0"), fixture.Client.ArtworkHandle, "broker-demand");
+        var pixels = new WidgetEncodedArtwork(WidgetArtworkContentType.Png,
+            Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq1sAAAAASUVORK5CYII="));
+        int calls = 0;
+        Task<WidgetEncodedArtwork?> Resolve(ConfiguredWidget configured, string handle, CancellationToken token)
+        {
+            Check(ReferenceEquals(configured, fixture.Configured) && handle == fixture.Client.ArtworkHandle, "Host artwork lost exact widget identity.");
+            ++calls;
+            return Task.FromResult<WidgetEncodedArtwork?>(pixels);
+        }
+        Check(await fixture.Registry.ResolveIndexedArtworkAsync(request, default, Resolve) == pixels, "Host artwork not returned.");
+        Check(!fixture.Client.Leases.Single().ArtworkStarted.Task.IsCompleted, "Broker handle reached widget resolver.");
+        Check(await fixture.Registry.ResolveIndexedArtworkAsync(request with { ArtworkHandle = "library.art.ffffffffffffffffffffffffffffffff" }, default, Resolve) is null,
+            "Undeclared broker handle was accepted.");
+        Check(await fixture.Registry.ResolveIndexedArtworkAsync(request with { Item = new(lease.Lease.LeaseId, "other") }, default, Resolve) is null,
+            "Another item borrowed artwork authority.");
+        Check(calls == 1, "Undeclared demand reached host registry.");
+        Check(await fixture.Registry.ResolveIndexedArtworkAsync(request, default) is null, "Missing broker resolver fell through to widget.");
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blocked = fixture.Registry.ResolveIndexedArtworkAsync(request, default, async (_, _, token) =>
+        {
+            started.SetResult();
+            await Task.Delay(Timeout.Infinite, token);
+            return pixels;
+        });
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Check(await fixture.Registry.ReleaseIndexedLeaseAsync(fixture.Release(lease)), "Host artwork did not release with lease.");
+        await Reject(() => blocked);
+    }
     internal static async Task DataLifetimeAndInputAuthorityAreSeparate()
     {
         await using var fixture = await Fixture.Start();
@@ -231,6 +268,7 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
         internal IndexedCollectionDescriptor Source = new("source", 1, 0, 100);
         internal string Shortcut = "shortcut";
         internal string Caption = "caption";
+        internal string ArtworkHandle = "artwork";
         internal bool ActiveOtherScope;
         internal Action? AfterAcquire;
         internal readonly List<FakeLease> Leases = [];
@@ -304,7 +342,7 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
                 [
                     new()
                     {
-                        Id = "item.image", Kind = ViewNodeKind.Image, ArtworkHandle = "artwork",
+                        Id = "item.image", Kind = ViewNodeKind.Image, ArtworkHandle = ArtworkHandle,
                         ImageFit = ImageFit.Cover, AccessibilityLabel = "Cover",
                     },
                 ],

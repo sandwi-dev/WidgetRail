@@ -56,6 +56,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Indexed lease registry separates data lifetime and input authority", BridgeIndexedLeaseRegistryScenarios.DataLifetimeAndInputAuthorityAreSeparate),
     ("Indexed lease registry duplicates and cancellation preserve ownership", BridgeIndexedLeaseRegistryScenarios.DuplicateAndCancellationPreserveOwnership),
     ("Indexed lease registry artwork drains before retirement", BridgeIndexedLeaseRegistryScenarios.ArtworkReleaseDrainsBeforeRetirement),
+    ("Indexed broker artwork preserves exact lease and host identity", BridgeIndexedLeaseRegistryScenarios.BrokerArtworkUsesExactLeaseAndHostIdentity),
     ("Indexed lease registry bounds owners and drains replacement", BridgeIndexedLeaseRegistryScenarios.BoundedOwnersAndReplacementRelease),
     ("Indexed lease wire cancellation and serial input scheduling", BridgeIndexedLeaseWireScenarios.CancellationWaitsOnlyForExactAdmissionAndInputRetainsSerialOrdering),
     ("Indexed bridge server wire orders cancellation and publishes ranges", BridgeIndexedRangeScenarios.ServerWireOrdersCancellationAndPublishesRanges),

@@ -22,7 +22,7 @@ Supply these callbacks:
 | `ItemKey` | Return a stable occurrence key. Two appearances of the same song need distinct keys; a position alone is not an identity. |
 | `RenderItem` | Build one Button or ActionSurface for the captured item. It must always exist; apply filtering before computing count and order. Use `context.Id(name)` for stable item-local child IDs. |
 | `OnAction` | Handle the captured query/item/action. Do not look up `SourceElementId` in a mutable viewport buffer or use the current item at the old index. |
-| `ResolveArtwork` | Resolve only the opaque artwork declared by that item. Return null when absent; do not block query publication waiting for images. |
+| `ResolveArtwork` | Required for widget-owned opaque artwork. Resolve only handles declared by that captured item. Broker-provided app-library icons are resolved by the host and need no callback. Return null when absent; do not block query publication waiting for images. |
 
 `estimatedItemExtent` estimates loading geometry; it does not replace WinUI's
 measurement of realized content. The grid's minimum width and optional maximum
@@ -79,3 +79,9 @@ Each range is bounded to 64 items and 2048 nodes. A source admits four provider
 tasks; cancellation does not free a task that ignores its token until it finishes.
 Keep range reads bounded and avoid remote work in `RenderItem`. These safeguards
 apply equally to full-trust and sandboxed widget declarations.
+
+App-library artwork handles must be retained unchanged from the broker response.
+Their reserved syntax does not grant access: the host checks the current widget
+identity, live broker registration and exact row lease before returning pixels.
+Do not manufacture handles or replace app icons with widget callbacks. Mixed rows
+still need `ResolveArtwork` for any additional widget-owned images.

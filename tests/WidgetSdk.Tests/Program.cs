@@ -16,6 +16,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Indexed leases keep repeat identity across recycling but not query replacement", WidgetIndexedLeaseTests.RepeatIdentity),
     ("Indexed leases separate modal input pinned projections and retained artwork", WidgetIndexedLeaseTests.ModalPinnedAndArtwork),
     ("Indexed leases bound retention and reclaim retired queries", WidgetIndexedLeaseTests.RetentionBounds),
+    ("Indexed broker artwork retains host resolution without widget callbacks", WidgetIndexedLeaseTests.BrokerArtworkDoesNotRequireWidgetResolver),
     ("Indexed collections declare lazy versioned exact-count sources", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.Declarations)),
     ("Indexed collection focus uses exact query occurrence identity", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.LogicalFocus)),
     ("Indexed collections validate parent scope and pinned authority", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.Authority)),

@@ -277,18 +277,21 @@ internal sealed partial class BridgeClientRegistry
         finally { lock (_gate) EndIndexedOperationLocked(owner); }
     }
 
-    internal async Task<WidgetEncodedArtwork?> ResolveIndexedArtworkAsync(BridgeIndexedArtworkRequest request, CancellationToken cancellationToken)
+    internal async Task<WidgetEncodedArtwork?> ResolveIndexedArtworkAsync(BridgeIndexedArtworkRequest request, CancellationToken cancellationToken,
+        Func<ConfiguredWidget, string, CancellationToken, Task<WidgetEncodedArtwork?>>? resolveBrokerArtwork = null)
     {
         IndexedCollectionInputContract.ValidateReference(request.Item);
         if (!BridgeRequestKey.IsBoundedIdentifier(request.DemandId) || !BridgeRequestKey.IsBoundedIdentifier(request.ArtworkHandle))
             throw new BridgeProtocolException("Indexed artwork demand is invalid.");
         IndexedOwner owner;
         IndexedArtworkOperation operation;
+        ConfiguredWidget configured;
         lock (_gate)
         {
             owner = FindIndexedOwnerLocked(request.WidgetId, request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration, request.Item.LeaseId)
                 ?? throw new BridgeProtocolException("Indexed artwork lease is unavailable.");
             _ = DemandIndexedOwnerLocked(owner);
+            configured = owner.Registration.Configured;
             var item = owner.Runtime.Lease.Range.Items.SingleOrDefault(item => item.Key == request.Item.ItemKey);
             if (item is null || !ContainsIndexedArtwork(item.Root, request.ArtworkHandle))
                 return null;
@@ -301,7 +304,11 @@ internal sealed partial class BridgeClientRegistry
         }
         try
         {
-            var artwork = await owner.Runtime.ResolveArtworkAsync(request.Item.ItemKey, request.ArtworkHandle, operation.Cancellation.Token).ConfigureAwait(false);
+            // Broker handles are resolved only by their host registry, never by a
+            // widget callback. The exact row lease guards both request and completion.
+            var artwork = WidgetRail.PlatformBroker.AppLibraryArtworkRegistry.IsHandle(request.ArtworkHandle)
+                ? resolveBrokerArtwork is null ? null : await resolveBrokerArtwork(configured, request.ArtworkHandle, operation.Cancellation.Token).ConfigureAwait(false)
+                : await owner.Runtime.ResolveArtworkAsync(request.Item.ItemKey, request.ArtworkHandle, operation.Cancellation.Token).ConfigureAwait(false);
             lock (_gate)
             {
                 operation.Cancellation.Token.ThrowIfCancellationRequested();

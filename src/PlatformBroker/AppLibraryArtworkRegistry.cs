@@ -166,8 +166,7 @@ internal sealed class AppLibraryArtworkRegistry
 
     private static string NewHandle() => "library.art." + Guid.NewGuid().ToString("N");
     internal static bool IsHandle(string? value) =>
-        value is { Length: 44 } && value.StartsWith("library.art.", StringComparison.Ordinal) &&
-        value.AsSpan(12).ToString().All(character => char.IsAsciiHexDigit(character));
+        WidgetRail.Internal.AppLibraryArtworkHandle.IsBrokerHandle(value);
 
     internal sealed class Session(
         BrokerWidgetIdentity identity,
