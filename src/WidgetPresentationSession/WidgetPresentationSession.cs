@@ -1289,7 +1289,9 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     private static bool ContainsArtwork(ViewNode node, string handle) =>
         (string.Equals(node.ArtworkHandle, handle, StringComparison.Ordinal) ||
          string.Equals(node.FocusBackgroundArtworkHandle, handle, StringComparison.Ordinal)) ||
-        node.Children.Any(child => ContainsArtwork(child, handle));
+        node.Children.Any(child => ContainsArtwork(child, handle)) ||
+        node.FocusPresentation is { } focus && ContainsArtwork(focus, handle) ||
+        node.DefaultFocusPresentation is { } fallback && ContainsArtwork(fallback, handle);
 
     private static WidgetPresentationSessionException Stale(
         string code,

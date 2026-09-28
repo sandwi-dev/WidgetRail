@@ -81,6 +81,11 @@ try {
     Key F10
     $groupedListMoves=Until '13-grouped-list-navigation' {param($v) $v.navigation -ne 'pending'} 12
     Check 'grouped list traverses section headers without lost controller steps' ($groupedListMoves.navigation -eq 'last:60;stalled:0')
+    Ui @('invoke','Widget.surfaces') | Out-Null
+    Until '14-surfaces-ready' {param($v) $v.status -eq 'surfaces' -and $v.count -eq 100} | Out-Null
+    Key F14
+    $surfaceResult=Until '15-surfaces' {param($v) $v.surfaces -ne 'pending'} 20
+    Check 'native surfaces preserve item artwork identity, reject late images and survive recycling' ($surfaceResult.surfaces -eq 'passed:8')
     Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'indexed-widget.png')) | Out-Null
 } finally {
     $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory 'results.json')

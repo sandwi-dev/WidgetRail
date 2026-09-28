@@ -49,7 +49,7 @@ internal sealed partial class WidgetViewPresenter
         for (var index = 0; index < count; ++index)
         {
             var child = node.Children[index];
-            var grow = ComputedStyle(child, "flex-grow")?.Number ?? (child.Kind == ViewNodeKind.IndexedCollection ? 1 : 0);
+            var grow = ComputedStyle(child, "flex-grow")?.Number ?? (ContainsCollection(child) && Length(child, horizontal ? "width" : "height") is null ? 1 : 0);
             var length = grow > 0 ? new GridLength(grow, GridUnitType.Star) : GridLength.Auto;
             if (horizontal) grid.ColumnDefinitions[index].Width = length;
             else grid.RowDefinitions[index].Height = length;
@@ -57,4 +57,5 @@ internal sealed partial class WidgetViewPresenter
             Grid.SetColumn(bindings[child.Id].Element, horizontal ? index : 0);
         }
     }
+    private static bool ContainsCollection(ViewNode node) => node.Kind == ViewNodeKind.IndexedCollection || node.Children.Any(ContainsCollection);
 }

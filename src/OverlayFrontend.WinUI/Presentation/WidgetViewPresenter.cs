@@ -110,6 +110,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             {
                 remembered.Clear();
                 ResetGroupFocus();
+                ClearSurfaceState();
             }
             declarations = plan;
             bindings = nextBindings;
@@ -142,6 +143,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         }
         finally { applying = false; }
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
+        QueueSurfaceUpdate();
     }
 
     private void QueueEntryFocus()
@@ -225,6 +227,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             RememberGroupFocus(binding);
             UpdateNativeNeighbors();
         }
+        QueueSurfaceUpdate();
     }
 
     private async Task InvokeAsync(WidgetElementIdentity identity, object token)
@@ -259,7 +262,13 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.IndexedCollection:
                 if (Session is null) throw new InvalidOperationException("Indexed widgets require a presentation session.");
                 element = new WidgetIndexedCollectionView(Session, ReportFailure)
-                { FocusRemembered = item => RememberCollectionFocus(declaration.Identity, item) };
+                { FocusRemembered = item => RememberCollectionFocus(declaration.Identity, item), PresentationChanged = QueueSurfaceUpdate };
+                break;
+            case ViewNodeKind.BackgroundSurface:
+            case ViewNodeKind.FocusPresentationSurface:
+                var surface = new WidgetPresentationSurface(node.Kind);
+                element = surface;
+                children = surface.ContentPanel;
                 break;
             case ViewNodeKind.Scroll:
                 children = new StackPanel { Spacing = 12 };
@@ -348,7 +357,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 || node.CollectionAnchorKey is not null || node.CollectionGeneration is not null || node.CollectionResetGeneration is not null
                 || node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null
                 || node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Button or ViewNodeKind.ActionSurface
-                    or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image))
+                    or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
+                    or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface))
                 throw new NotSupportedException($"WinUI presentation for {node.Kind} with these declarations is not implemented.");
             var scope = node.InputScopeId ?? inheritedScope;
             var path = node.CollectionItemKey is { } key ? itemPath + key.Length + ":" + key : itemPath;

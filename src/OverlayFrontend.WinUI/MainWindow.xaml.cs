@@ -13,7 +13,7 @@ public sealed partial class MainWindow : Window
 
     public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
         bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false, bool validateIndexed = false, bool validateFocusPolicy = false,
-        string? indexedValidationPipe = null, bool validateGrouped = false, bool validateGroupedFlat = false, bool validateGroupedAdapted = false)
+        string? indexedValidationPipe = null, bool validateGrouped = false, bool validateGroupedFlat = false, bool validateGroupedAdapted = false, bool validateSurfaces = false)
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
@@ -55,6 +55,7 @@ public sealed partial class MainWindow : Window
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
+        else if (validateSurfaces) RootFrame.Content = new Validation.PresentationSurfaceValidationPage();
         else if (validateGrouped || validateGroupedFlat || validateGroupedAdapted)
             RootFrame.Content = new Validation.GroupedCollectionValidationPage(flatBaseline: validateGroupedFlat, useRangeAdapter: validateGroupedAdapted);
         else if (indexedValidationPipe is not null)

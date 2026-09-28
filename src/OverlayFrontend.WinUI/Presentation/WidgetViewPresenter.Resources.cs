@@ -26,6 +26,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (imageDemands.Remove(binding, out var demand)) { demand.Lifetime.Cancel(); demand.Lifetime.Dispose(); }
         if (binding.Element is WidgetIndexedCollectionView collection) TrackRetirement(collection.DisposeAsync().AsTask());
+        if (binding.Element is WidgetPresentationSurface surface) TrackRetirement(surface.DisposeAsync().AsTask());
     }
 
     private void TrackRetirement(Task task)
@@ -58,7 +59,13 @@ internal sealed partial class WidgetViewPresenter
     private void UpdateImage(Binding binding, Image image, ViewNode node)
     {
         image.Stretch = node.ImageFit switch { ImageFit.Contain => Stretch.Uniform, ImageFit.Cover => Stretch.UniformToFill, _ => Stretch.Fill };
-        var identity = node.ArtworkHandle is { } handle ? "handle:" + ArtworkGeneration + ":" + handle : node.ImageSource ?? string.Empty;
+        UpdateArtwork(binding, node, value => image.Source = value, ResolveArtworkAsync, ArtworkGeneration);
+    }
+
+    private void UpdateArtwork(Binding binding, ViewNode node, Action<ImageSource?> publish,
+        Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? resolver, string generation)
+    {
+        var identity = node.ArtworkHandle is { } handle ? "handle:" + generation + ":" + handle : node.ImageSource ?? string.Empty;
         if (imageDemands.TryGetValue(binding, out var prior) && prior.Identity == identity) return;
         if (imageDemands.Remove(binding, out prior)) { prior.Lifetime.Cancel(); prior.Lifetime.Dispose(); }
         var lifetime = new CancellationTokenSource();
@@ -66,9 +73,9 @@ internal sealed partial class WidgetViewPresenter
         imageDemands.Add(binding, demand);
         // Retained logical rows keep their previous pixels while replacement
         // artwork decodes. A different item creates a different Image binding.
-        if (identity.Length == 0) { image.Source = null; return; }
+        if (identity.Length == 0) { publish(null); return; }
         if (node.ImageSource is { } uri && Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && parsed.Scheme == Uri.UriSchemeHttps)
-        { image.Source = new BitmapImage(parsed); return; }
+        { publish(new BitmapImage(parsed)); return; }
         TrackRetirement(LoadAsync());
         async Task LoadAsync()
         {
@@ -76,18 +83,26 @@ internal sealed partial class WidgetViewPresenter
             try
             {
                 byte[]? bytes = null;
-                if (node.ArtworkHandle is { } opaque && ResolveArtworkAsync is { } resolver)
-                    bytes = (await resolver(opaque, token))?.Bytes.ToArray();
+                if (node.ArtworkHandle is { } opaque)
+                {
+                    if (resolver is not null) bytes = (await resolver(opaque, token))?.Bytes.ToArray();
+                    else if (Session is { } session && frame is { } current)
+                        bytes = (await session.ResolveArtworkAsync(current.Authority, opaque, token)).EncodedBytes.ToArray();
+                }
                 else if (node.ImageSource?.StartsWith("data:image/png;base64,", StringComparison.Ordinal) == true)
                     bytes = Convert.FromBase64String(node.ImageSource[22..]);
                 token.ThrowIfCancellationRequested();
-                if (bytes is null) return;
+                if (bytes is null)
+                {
+                    if (!disposed && imageDemands.GetValueOrDefault(binding) == demand) publish(null);
+                    return;
+                }
                 using var stream = new InMemoryRandomAccessStream();
                 await stream.WriteAsync(bytes.AsBuffer()).AsTask(token);
                 stream.Seek(0);
                 var bitmap = new BitmapImage();
                 await bitmap.SetSourceAsync(stream).AsTask(token);
-                if (!disposed && !token.IsCancellationRequested && imageDemands.GetValueOrDefault(binding) == demand) image.Source = bitmap;
+                if (!disposed && !token.IsCancellationRequested && imageDemands.GetValueOrDefault(binding) == demand) publish(bitmap);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         }
@@ -97,6 +112,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed) return;
         disposed = true;
+        ClearSurfaceState();
         foreach (var binding in bindings.Values) Retire(binding);
         Content = null;
         bindings.Clear(); declarations.Clear();

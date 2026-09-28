@@ -12,6 +12,33 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 [TestClass]
 public sealed class ArtworkDemandTests
 {
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task PresentationFragmentArtworkUsesSnapshotAuthority(bool focused)
+    {
+        await using var server = new ScriptedBridgeServer();
+        var expected = Artwork(7);
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            var list = await ReadAsync(channel);
+            await SendAsync(channel, list.RequestId, BridgeMessageTypes.Widgets,
+                new { revision = 1, isComplete = true, widgets = new[] { Descriptor } });
+            var establish = await ReadAsync(channel);
+            await SnapshotAsync(channel, establish.RequestId, 1, focused);
+            var demand = await ReadDemandAsync(channel);
+            await AckAsync(channel, demand.RequestId);
+            await CompleteAsync(channel, demand, expected);
+            await StopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName))
+        {
+            var frame = await EstablishAsync(session);
+            var result = await session.ResolveArtworkAsync(frame.Authority, Handle).WaitAsync(Deadline);
+            CollectionAssert.AreEqual(expected, result.EncodedBytes.ToArray());
+        }
+        await serverTask.WaitAsync(Deadline);
+    }
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
     private const string Handle = "artwork.shared";
     private static readonly BridgeWidgetDescriptor Descriptor = new()
@@ -262,7 +289,7 @@ public sealed class ArtworkDemandTests
         var establish = await ReadAsync(channel);
         await SnapshotAsync(channel, establish.RequestId, 1);
     }
-    private static async Task SnapshotAsync(BridgeFrameChannel channel, long requestId, long sequence)
+    private static async Task SnapshotAsync(BridgeFrameChannel channel, long requestId, long sequence, bool? fragmentFocused = null)
     {
         var snapshot = new ViewSnapshot
         {
@@ -270,6 +297,18 @@ public sealed class ArtworkDemandTests
             Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack, Children =
                 [new ViewNode { Id = "image", Kind = ViewNodeKind.Image, ArtworkHandle = Handle, ImageFit = ImageFit.Contain, AccessibilityLabel = "Artwork" }] },
         };
+        if (fragmentFocused is { } focused)
+        {
+            var image = snapshot.Root.Children[0];
+            var fallback = new ViewNode { Id = "default", Kind = ViewNodeKind.Text, Text = "Fallback" };
+            snapshot = snapshot with { Root = new ViewNode
+            {
+                Id = "root", Kind = ViewNodeKind.FocusPresentationSurface,
+                DefaultFocusPresentation = focused ? fallback : image,
+                Children = [new() { Id = "item", Kind = ViewNodeKind.Button, Text = "Item", ActionId = "activate",
+                    FocusPresentation = focused ? image : null }],
+            } };
+        }
         using var document = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
         await SendAsync(channel, requestId, BridgeMessageTypes.Snapshot,
             new { widgetId = Descriptor.Id, transactionKind = "ordinaryCheckpoint", baseSequence = 0, recoveryOriginSequence = 0,

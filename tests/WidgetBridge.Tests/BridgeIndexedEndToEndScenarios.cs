@@ -85,6 +85,9 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private bool grouped;
     private int headerRevision;
     private bool repartitioned;
+    private bool surfaces;
+    private readonly TaskCompletionSource releaseBackground = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private string backgroundState = "idle";
     private long calls;
     private long focusRequest;
     private FocusGroupEntryRequest? entry;
@@ -98,11 +101,15 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
                 return Enumerable.Range(start, count).ToArray();
             },
             ItemKey = item => new("item." + item),
-            RenderItem = (query, item, context) => query == 98 && item < 2
-                ? UI.Button($"Disabled {item}", "open", context.Id("row")).Disabled()
-                : UI.ActionSurface("open", context.Id("row"), $"Item {item}",
-                ActionSurfaceOrientation.Horizontal, UI.Artwork(new("cover"), context.Id("cover"), "Cover"),
-                UI.Text($"Item {item}", context.Id("title"))).Shortcut(ControllerButton.Y, actionId: "replace"),
+            RenderItem = (query, item, context) =>
+            {
+                WidgetElement tile = query == 98 && item < 2
+                    ? UI.Button($"Disabled {item}", "open", context.Id("row")).Disabled()
+                    : UI.ActionSurface("open", context.Id("row"), $"Item {item}",
+                        ActionSurfaceOrientation.Horizontal, UI.Artwork(new("cover"), context.Id("cover"), "Cover"),
+                        UI.Text($"Item {item}", context.Id("title"))).Shortcut(ControllerButton.Y, actionId: "replace");
+                return query >= 100 ? tile.FocusBackground(new("background")).PresentOnFocus(UI.Text($"Summary {query}:{item}", context.Id("summary"))) : tile;
+            },
             OnAction = (query, item, action, _) =>
             {
                 Interlocked.Increment(ref calls);
@@ -111,15 +118,29 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
                 Invalidate();
                 return ValueTask.CompletedTask;
             },
-            ResolveArtwork = (_, _, _, _) => ValueTask.FromResult<WidgetEncodedArtwork?>(new(WidgetArtworkContentType.Png,
-                Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq1sAAAAASUVORK5CYII="))),
+            ResolveArtwork = async (query, item, handle, _) =>
+            {
+                // Adjacent rows deliberately share the same handle and range lease,
+                // but decode to different pixel widths. A late provider ignores cancellation.
+                if (query == 100 && item == 2 && handle.Value == "background")
+                {
+                    Volatile.Write(ref backgroundState, "pending"); Invalidate();
+                    await releaseBackground.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                    Volatile.Write(ref backgroundState, "completed"); Invalidate();
+                }
+                var png = handle.Value != "background" || item % 3 == 0
+                    ? "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY9CYduI/AAT2AoYAkFFrAAAAAElFTkSuQmCC"
+                    : item % 3 == 1
+                    ? "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAPSURBVBhXYwiYduI/CAMAFd8FW0f/X3EAAAAASUVORK5CYII="
+                    : "iVBORw0KGgoAAAANSUhEUgAAAAMAAAABCAYAAAAb4BS0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAPSURBVBhXY6iYduI/DAMANJwIgAW7QakAAAAASUVORK5CYII=";
+                return new(WidgetArtworkContentType.Png, Convert.FromBase64String(png));
+            },
         });
     }
     public override WidgetView Render() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
-        UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"),
-        UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid"), UI.Button("Toggle groups", "groups", "groups")),
-        Collection()
-            .Shortcut(ControllerButton.X, "parent"))
+        UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"), UI.Text(Volatile.Read(ref backgroundState), "background-state"),
+        UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid"), UI.Button("Toggle groups", "groups", "groups"), UI.Button("Surfaces", "surfaces", "surfaces")),
+        Collection())
         .Shortcut(ControllerButton.LeftBumper, actionId: "focus-exact")
         .Shortcut(ControllerButton.RightBumper, actionId: "focus-default")
         .Shortcut(ControllerButton.LeftTrigger, actionId: "focus-wrong")
@@ -133,10 +154,12 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     {
         Interlocked.Increment(ref calls);
         Volatile.Write(ref status, action.ActionId);
-        if (action.ActionId == "content") source.UpdateContent(1);
+        if (action.ActionId == "parent" && surfaces) releaseBackground.TrySetResult();
+        if (action.ActionId == "content") source.UpdateContent(surfaces ? 101 : 1);
         if (action.ActionId == "grid") grid = !grid;
         if (action.ActionId == "groups") { grouped = !grouped; grid = true; source.UpdateContent(0); }
-        if (action.ActionId == "group-label") ++headerRevision;
+        if (action.ActionId == "surfaces") { surfaces = !surfaces; source.PublishQuery(surfaces ? 100 : 0, 100); }
+        if (action.ActionId == "group-label") { ++headerRevision; }
         if (action.ActionId == "group-partition") { grouped = true; repartitioned = !repartitioned; }
         if (action.ActionId == "focus-exact") entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
         if (action.ActionId == "focus-default") entry = source.Enter("items", ++focusRequest);
@@ -159,11 +182,14 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         }
         Invalidate(); return ValueTask.CompletedTask;
     }
-    private IndexedCollectionElement Collection()
+    private WidgetElement Collection()
     {
         var element = grid ? UI.CollectionGrid("items", source, 180, 100, "Items", 5) : UI.CollectionList("items", source, 64, "Items");
-        if (grouped && repartitioned) return element.Grouped(new("first", $"Section A {headerRevision}", 40), new("second", $"Section B {headerRevision}", 60));
-        return grouped ? element.Grouped(new("first", $"Section A {headerRevision}", 5), new("empty", "Empty section", 0),
-            new("second", $"Section B {headerRevision}", 7), new("third", $"Section C {headerRevision}", 88)) : element;
+        if (surfaces) return UI.BackgroundSurface(
+            UI.FocusPresentationSurface(element.Shortcut(ControllerButton.X, "parent"), UI.Text("Default summary", "default-summary"), "summary-surface") with { RetainLastPresentation = true },
+            "background-surface").UseFocusedDescendantArtwork();
+        if (grouped && repartitioned) return element.Grouped(new("first", $"Section A {headerRevision}", 40), new("second", $"Section B {headerRevision}", 60)).Shortcut(ControllerButton.X, "parent");
+        return (grouped ? element.Grouped(new("first", $"Section A {headerRevision}", 5), new("empty", "Empty section", 0),
+            new("second", $"Section B {headerRevision}", 7), new("third", $"Section C {headerRevision}", 88)) : element).Shortcut(ControllerButton.X, "parent");
     }
 }

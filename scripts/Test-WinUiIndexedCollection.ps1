@@ -75,10 +75,11 @@ try {
     $deadline=[DateTime]::UtcNow.AddSeconds(12)
     do {
         $ownership=Observe '07-ownership'
-        if($ownership.lifetimeResult -ne 'pending'){break}
+        if($ownership.lifetimeResult -ne 'pending' -and $ownership.retentionResult -ne 'pending'){break}
         Start-Sleep -Milliseconds 50
     } while([DateTime]::UtcNow -lt $deadline)
     Check 'real dispatcher ownership and cancellation scenarios pass' ($ownership.lifetimeResult -eq 'passed:7')
+    Check 'explicit indexed presentation retention scenarios pass' ($ownership.retentionResult -like 'passed:*')
     Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'indexed.png')) | Out-Null
     Ui @('invoke','Shell.Close') | Out-Null
 } finally {

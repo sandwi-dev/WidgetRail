@@ -674,3 +674,28 @@ A test fixture initially used a reserved D-pad shortcut; changing its test-only
 command to X restored valid worker startup. A separate interrupted artifact write
 was an inspection/file-sharing conflict, not a UI result; the clean full run is
 the accepted evidence.
+
+## Retained native background and focus-presentation checkpoint
+
+Native presentation surfaces now consume the shared logical source policy. The
+background uses an ImageBrush so artwork intrinsic size cannot enlarge the collection
+viewport. Focus fragments are presentation-only subtrees. Indexed contributions retain
+bounded data through the existing range source, independently of visual realization;
+content refresh updates the same slots and removal releases demand.
+
+Artwork identity includes both the range lease and exact row key. A real-worker
+regression verifies adjacent rows sharing one lease and handle decode different images,
+and that a delayed former row cannot replace the newly selected artwork. Missing
+artwork clears obsolete pixels. Session artwork authorization now includes authored
+focus/default fragments.
+
+Validation: analyzer build clean; 73 session tests, 15 indexed bridge tests, 18 native
+worker UI checks (including eight surface cases), ten standalone surface-policy checks,
+16 explicit retention checks and seven existing ownership checks passed. Screenshot
+review confirms the fixture's constrained list and presentation placement; it is not
+a production-theme or performance acceptance. Evidence: artifacts/winui-surfaces/.
+
+This checkpoint implements basic selection, retention and layout. Full WRSS styling,
+depth, animation and production-widget adoption remain incomplete. Test windows closed.
+Parallel work continues in separate Playnite, shared-controls and styling/motion
+worktrees; changes integrate only into codex/winui3-frontend, never main.

@@ -26,6 +26,7 @@ public sealed partial class IndexedCollectionValidationPage : Page, IAsyncDispos
         source = new(new(new("validation", "indexed.instance", "indexed"), 1), 1_000_000, DispatcherQueue, ReadAsync);
         CollectionView.ItemsSource = source;
         source.StateChanged += (_, _) => Observe();
+        Loaded += (_, _) => _ = CheckLifetimesAsync();
         KeyDown += (_, args) =>
         {
             switch (args.Key)
@@ -55,6 +56,7 @@ public sealed partial class IndexedCollectionValidationPage : Page, IAsyncDispos
 
     private int acquired;
     private string lifetimeResult = "pending";
+    private string retentionResult = "pending";
     private bool lifetimeStarted;
     private async Task CheckLifetimesAsync()
     {
@@ -62,6 +64,8 @@ public sealed partial class IndexedCollectionValidationPage : Page, IAsyncDispos
         lifetimeStarted = true;
         try { lifetimeResult = $"passed:{await IndexedSourceLifetimeScenarios.RunAsync(DispatcherQueue)}"; }
         catch (Exception error) { lifetimeResult = $"failed:{error.Message}"; }
+        try { retentionResult = $"passed:{await IndexedSourceRetentionScenarios.RunAsync(DispatcherQueue)}"; }
+        catch (Exception error) { retentionResult = $"failed:{error.Message}"; }
         Observe();
     }
     private int released;
@@ -110,6 +114,7 @@ public sealed partial class IndexedCollectionValidationPage : Page, IAsyncDispos
             failures = source.FailedLoads, realized = nodes.OfType<ListViewItem>().Count(), focus = item?.Index, loaded = item?.HasValue,
             revision = source.ContentRevision, detail = item?.Value?.Subtitle,
             lifetimeResult,
+            retentionResult,
             acquired = Volatile.Read(ref acquired), released = Volatile.Read(ref released), duplicateReleases = Volatile.Read(ref duplicateReleases),
             y = bounds.Y, height = bounds.Height, offset = viewer?.VerticalOffset, viewport = viewer?.ViewportHeight, invokes,
         });

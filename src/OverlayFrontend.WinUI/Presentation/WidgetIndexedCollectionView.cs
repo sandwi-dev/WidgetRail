@@ -25,6 +25,11 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private bool disposed;
     private long sequence;
     internal ListViewBase NativeView => view ?? throw new InvalidOperationException("Collection is not initialized.");
+    internal Action? PresentationChanged { get; set; }
+    internal bool Owns(WidgetIndexedRows owner) => ReferenceEquals(owner, source);
+    internal WidgetIndexedRow? FocusedRow() => source is not null && FocusedIndex() is { } index
+        ? ((IndexedItem<WidgetIndexedRow>)source.Items[index]).Value : null;
+    internal IndexedItemsSource<WidgetIndexedRow>.Retention? RetainFocusedRow() => source is not null && FocusedIndex() is { } index ? source.Items.Retain(index) : null;
 
     internal WidgetIndexedCollectionView(PresentationSession session, Action<Exception> failed)
     {
@@ -34,6 +39,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         VerticalContentAlignment = VerticalAlignment.Stretch;
         SizeChanged += (_, _) => UpdateGridWidth();
         GotFocus += (_, _) => RememberItemFocus();
+        GotFocus += (_, _) => PresentationChanged?.Invoke();
         AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelNavigation()), true);
         AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {
@@ -127,7 +133,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         AutomationProperties.SetAutomationId(container, "Widget." + (source?.Declaration.Id ?? "collection") + ".Item." + slot.Index);
         AutomationProperties.SetName(container, slot.Value?.Item.Root.AccessibilityLabel ?? slot.Value?.Item.Root.Text ?? $"Loading item {slot.Index + 1}");
         if (pendingIndex == slot.Index) FinishNavigation(null, null!);
-        if (FocusedIndex() == slot.Index) RememberItemFocus();
+        if (FocusedIndex() == slot.Index) { RememberItemFocus(); PresentationChanged?.Invoke(); }
     }
     private void DetachContainers()
     {

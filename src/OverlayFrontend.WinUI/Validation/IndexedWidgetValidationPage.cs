@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetPresentationSession;
@@ -30,6 +31,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
     private string navigation = "pending";
     private string logicalFocus = "not-run";
     private string groupedFocus = "not-run";
+    private string surfaces = "not-run";
     private bool retired;
 
     public IndexedWidgetValidationPage(string pipe)
@@ -40,7 +42,14 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         Grid.SetRow(presenter, 1);
-        layout.Children.Add(status); layout.Children.Add(presenter);
+        var probe = new Button { Content = "Check retained surfaces" };
+        AutomationProperties.SetAutomationId(probe, "IndexedWidget.SurfaceProbe");
+        probe.Click += (_, _) => _ = ProbeSurfacesAsync();
+        var diagnostics = new Grid();
+        diagnostics.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        diagnostics.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        diagnostics.Children.Add(status); diagnostics.Children.Add(probe); Grid.SetColumn(probe, 1);
+        layout.Children.Add(diagnostics); layout.Children.Add(presenter);
         Content = layout;
         presenter.Failed = error => { failure = error.Message; Observe(); };
         presenter.DispatchActionAsync = async request =>
@@ -53,6 +62,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         {
             switch (args.Key)
             {
+                case VirtualKey.F14: _ = ProbeSurfacesAsync(); break;
                 case VirtualKey.F1: _ = ProbeGroupedFocusAsync(); break;
                 case VirtualKey.F2: _ = ProbeLogicalFocusAsync(); break;
                 case VirtualKey.F5: if (View() is { } list) list.ScrollIntoView(list.Items[70], ScrollIntoViewAlignment.Leading); break;
@@ -254,6 +264,77 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         catch (Exception error) { groupedFocus = "failed:" + error.Message; }
         Observe();
     }
+
+    private async Task ProbeSurfacesAsync()
+    {
+        if (surfaces == "pending") return;
+        surfaces = "pending"; Observe();
+        try
+        {
+            var view = View() ?? throw new InvalidOperationException("Missing list.");
+            await FocusItem(0);
+            await Until(() => Summary() == "Summary 100:0" && Artwork()?.PixelWidth == 1);
+            var first = ((IndexedItem<WidgetIndexedRow>)view.Items[0]).Value!;
+            var second = ((IndexedItem<WidgetIndexedRow>)view.Items[1]).Value!;
+            Check(ReferenceEquals(first.Lease, second.Lease), "artwork fixture must share the range lease");
+            await FocusItem(1);
+            await Until(() => Summary() == "Summary 100:1" && Artwork()?.PixelWidth == 2);
+            await FocusItem(2);
+            await Until(() => BackgroundState() == "pending");
+            await FocusItem(1);
+            await Until(() => Summary() == "Summary 100:1" && Artwork()?.PixelWidth == 2);
+            var selected = Artwork();
+            var frame = session!.GetState("indexed-owned")!.LastGood!;
+            await session.SendActionAsync(frame.Authority, new("parent", "parent", InputScopeId: "root"), lifetime.Token);
+            await Until(() => BackgroundState() == "completed");
+            await Task.Delay(150, lifetime.Token);
+            Check(ReferenceEquals(selected, Artwork()) && Artwork()?.PixelWidth == 2, "late same-page artwork replaced selected row");
+            await FocusItem(0);
+            await Until(() => Summary() == "Summary 100:0" && Artwork()?.PixelWidth == 1);
+            Descendants(presenter).OfType<Button>().First(button => AutomationProperties.GetAutomationId(button) == "Widget.parent").Focus(FocusState.Keyboard);
+            view.ScrollIntoView(view.Items[80], ScrollIntoViewAlignment.Leading);
+            await Until(() => view.ContainerFromIndex(80) is Control &&
+                (view.ContainerFromIndex(0) is not FrameworkElement first || first.TransformToVisual(view).TransformPoint(default).Y + first.ActualHeight <= 0));
+            await Task.Delay(250, lifetime.Token);
+            Check(Summary() == "Summary 100:0" && HasArtwork(), "recycling lost retained presentation");
+            await RefreshContentAsync();
+            await Until(() => Summary() == "Summary 101:0");
+            await FocusItem(80);
+            await Until(() => Summary() == "Summary 101:80" && HasArtwork());
+            Check(Descendants(presenter).OfType<WidgetPresentationSurface>().All(surface => !surface.IsTabStop), "surface became an input target");
+            surfaces = "passed:8";
+        }
+        catch (Exception error) { surfaces = "failed:" + error.Message; }
+        Observe();
+        string? Summary() => Descendants(presenter).OfType<TextBlock>().Select(text => text.Text).FirstOrDefault(text => text.StartsWith("Summary ", StringComparison.Ordinal));
+        bool HasArtwork() => Descendants(presenter).OfType<WidgetPresentationSurface>().Any(surface => surface.ArtworkSource is not null);
+        BitmapImage? Artwork() => Descendants(presenter).OfType<WidgetPresentationSurface>().Select(surface => surface.ArtworkSource).OfType<BitmapImage>().FirstOrDefault();
+        string? BackgroundState() => FindNode(session?.GetState("indexed-owned")?.LastGood?.Snapshot.Root, "background-state")?.Text;
+        static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+        async Task FocusItem(int index)
+        {
+            var view = View()!;
+            view.ScrollIntoView(view.Items[index], ScrollIntoViewAlignment.Leading);
+            await Until(() => view.ContainerFromIndex(index) is Control { IsLoaded: true });
+            ((Control)view.ContainerFromIndex(index)).Focus(FocusState.Keyboard);
+        }
+        async Task Until(Func<bool> condition)
+        {
+            var deadline = Environment.TickCount64 + 5000;
+            while (!condition())
+            {
+                if (Environment.TickCount64 > deadline) throw new TimeoutException("Surface probe did not settle; summary=" + Summary());
+                await Task.Delay(20, lifetime.Token);
+            }
+        }
+    }
+
+    private static ViewNode? FindNode(ViewNode? root, string id)
+    {
+        if (root is null || root.Id == id) return root;
+        foreach (var child in root.Children) if (FindNode(child, id) is { } found) return found;
+        return null;
+    }
     private void Observe()
     {
         if (retired) return;
@@ -270,12 +351,12 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
             imageWidth = nodes.OfType<Image>().Select(image => image.ActualWidth).DefaultIfEmpty().Max(),
             focus = focus is null ? null : AutomationProperties.GetAutomationId(focus), y = bounds.Y,
             offset = scroll?.VerticalOffset, viewport = scroll?.ViewportHeight, height = view?.ActualHeight,
-            status = frame?.Snapshot.Root.Children.Single(node => node.Id == "status").Text,
-            calls = frame?.Snapshot.Root.Children.Single(node => node.Id == "calls").Text,
+            status = FindNode(frame?.Snapshot.Root, "status")?.Text,
+            calls = FindNode(frame?.Snapshot.Root, "calls")?.Text,
             columns = view?.ItemsPanelRoot is ItemsWrapGrid wrap ? wrap.MaximumRowsOrColumns : 1,
-            revision = frame?.Snapshot.Root.Children.Single(node => node.Id == "items").IndexedCollection?.ContentRevision,
-            navigation, logicalFocus, groupedFocus,
-            groupCount = frame?.Snapshot.Root.Children.Single(node => node.Id == "items").IndexedGroups?.Count ?? 0,
+            revision = FindNode(frame?.Snapshot.Root, "items")?.IndexedCollection?.ContentRevision,
+            navigation, logicalFocus, groupedFocus, surfaces,
+            groupCount = FindNode(frame?.Snapshot.Root, "items")?.IndexedGroups?.Count ?? 0,
         });
     }
     private static IEnumerable<DependencyObject> Descendants(DependencyObject root)

@@ -442,3 +442,26 @@ This first header contract supplies text using the shared WinUI heading template
 Full theme/pseudo-state integration remains outstanding; arbitrary interactive
 header trees are not implicitly supported by this contract. Real widget Home
 adoption must verify its existing heading appearance and actions separately.
+
+### Retained presentation demand
+
+Native container realization and displayed background/summary demand are separate
+lifetimes. `IndexedItemsSource.Retain(index)` holds an existing slot/page for a
+presentation consumer without retaining its XAML item container or adding another
+provider/cache/semantic lease. Tokens share reference counts, are bounded to eight
+distinct positions per source, follow ordinary content refresh, and become harmless
+after source disposal. Native visible demand has scheduling priority, then explicit
+presentation demand, then native tracked buffers. All use the same bounded provider
+and release budget.
+
+The native presenter consumes BackgroundSurface and FocusPresentationSurface through
+the shared PresentationSourceCoordinator. Static declarations contribute directly;
+indexed rows retain only the selected logical data for each nearest owning surface.
+An offscreen selected row can update its summary/artwork without resurrecting its
+tile. Source/query/surface removal releases that demand. Input scopes do not erase
+a still-valid retained parent presentation. Fragments use a presentation-only native
+presenter and never acquire their own focus/action authority.
+
+This checkpoint supplies selection, native layout and image-brush presentation.
+Full WRSS surface appearance, depth and transition integration remain separate
+migration work; do not infer final visual parity from the validation probes.

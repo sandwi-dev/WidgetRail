@@ -21,6 +21,25 @@ internal sealed record IndexedRangeResult<T>(IndexedQueryIdentity Query, long Re
 /// </summary>
 internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, IItemsRangeInfo, IAsyncDisposable where T : notnull
 {
+    internal const int MaximumRetainedIndices = 8;
+
+    /// <summary>
+    /// One explicit presentation lifetime over the existing source slot/page. Dispose
+    /// on the source dispatcher; disposal after source shutdown is always harmless.
+    /// </summary>
+    internal sealed class Retention : IDisposable
+    {
+        private IndexedItemsSource<T>? owner;
+        internal Retention(IndexedItemsSource<T> owner, IndexedItem<T> slot) { this.owner = owner; Slot = slot; }
+        public IndexedItem<T> Slot { get; }
+        public void Dispose()
+        {
+            // A wrong-thread call must not consume the token before CheckAccess fails.
+            owner?.ReleaseRetention(Slot.Index);
+            owner = null;
+        }
+    }
+
     private sealed class Fetch(IndexedRangeRequest request)
     {
         public IndexedRangeRequest Request { get; } = request;
@@ -40,6 +59,9 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
     private Exception? releaseFailure;
     private readonly int pageSize;
     private readonly int concurrency;
+    private readonly Dictionary<int, int> retainedIndices = [];
+    private IReadOnlyList<int> visiblePages = [];
+    private IReadOnlyList<int> trackedPages = [];
     private HashSet<int> demandedPages = [];
     private IReadOnlyList<int> demandOrder = [];
     private bool queued;
@@ -58,6 +80,7 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
     public int CancelledLoads { get; private set; }
     public int FailedLoads { get; private set; }
     public int PendingReleases { get { lock (releaseGate) return releases.Count; } }
+    internal int RetainedIndices => retainedIndices.Count;
     public event EventHandler? StateChanged;
 
     public IndexedItemsSource(IndexedQueryIdentity query, int count, DispatcherQueue dispatcher,
@@ -124,26 +147,70 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         return slot;
     }
 
+    /// <summary>
+    /// Retains an item for a focused background or presentation fragment, independent
+    /// of native container realization. Shares normal page acquisition, revisions and
+    /// provider budgets; never creates a second semantic lease for the same page.
+    /// </summary>
+    internal Retention Retain(int index)
+    {
+        CheckAccess();
+        if (index < 0 || index >= Count) throw new ArgumentOutOfRangeException(nameof(index));
+        if (!retainedIndices.TryGetValue(index, out var references) && retainedIndices.Count >= MaximumRetainedIndices)
+            throw new InvalidOperationException("The indexed presentation-retention limit has been reached.");
+        retainedIndices[index] = checked(references + 1);
+        var retention = new Retention(this, GetSlot(index));
+        RebuildDemand();
+        return retention;
+    }
+
+    private void ReleaseRetention(int index)
+    {
+        if (disposed) return;
+        CheckAccess();
+        if (retainedIndices[index] == 1) retainedIndices.Remove(index);
+        else --retainedIndices[index];
+        RebuildDemand();
+    }
+
     public void RangesChanged(ItemIndexRange visibleRange, IReadOnlyList<ItemIndexRange> trackedItems)
     {
         CheckAccess();
         ++RangeNotifications;
-        var next = new HashSet<int>();
-        var order = new List<int>();
-        Include(visibleRange);
-        foreach (var range in trackedItems) Include(range);
-        demandedPages = next;
-        demandOrder = order;
-        QueuePump();
+        var visible = new List<int>();
+        var tracked = new List<int>();
+        var seenVisible = new HashSet<int>();
+        var seenTracked = new HashSet<int>();
+        Include(visibleRange, visible, seenVisible);
+        foreach (var range in trackedItems) Include(range, tracked, seenTracked);
+        visiblePages = visible;
+        trackedPages = tracked;
+        RebuildDemand();
 
-        void Include(ItemIndexRange range)
+        void Include(ItemIndexRange range, List<int> pages, HashSet<int> seen)
         {
             if (range.Length == 0 || Count == 0) return;
             var start = Math.Clamp((long)range.FirstIndex, 0, Count);
             var end = Math.Clamp((long)range.FirstIndex + range.Length, 0, Count);
             if (end <= start) return;
             for (var page = (int)start / pageSize; page <= (end - 1) / pageSize; ++page)
-                if (next.Add(page)) order.Add(page);
+                if (seen.Add(page)) pages.Add(page);
+        }
+    }
+
+    private void RebuildDemand()
+    {
+        var next = new HashSet<int>();
+        var order = new List<int>();
+        Include(visiblePages);
+        Include(retainedIndices.Keys.Select(index => index / pageSize));
+        Include(trackedPages);
+        demandedPages = next;
+        demandOrder = order;
+        QueuePump();
+        void Include(IEnumerable<int> pages)
+        {
+            foreach (var page in pages) if (next.Add(page)) order.Add(page);
         }
     }
 
@@ -301,6 +368,7 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         foreach (var page in pages.Values) Release(page.Lifetime);
         pages.Clear();
         slots.Clear(); demandedPages.Clear(); demandOrder = []; failedPages.Clear(); fetching.Clear();
+        retainedIndices.Clear(); visiblePages = []; trackedPages = [];
     }
     public ValueTask DisposeAsync()
     {
