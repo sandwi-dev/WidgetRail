@@ -130,10 +130,11 @@ are untouched. Migration is active and incomplete.
   viewport assertion is now corrected by retaining the mounted parent instead of
   reparenting it through the modal. Modal exits pass 36 checks, and the isolated
   real-worker modal test passes all 25 cases including scaled dismissal. The full
-  indexed sequence still passes 19/20: a later repeated opening can leave focus on
-  the parent. That remains under investigation. Initial test timing errors were
-  also corrected without weakening viewport assertions. Evidence:
-  `artifacts/winui-layout-regression/` and the modal lane handoff.
+  indexed sequence now passes 20/20 on two reviewed runs. A native initial-focus
+  attempt could occur before its target was ready; exact-binding Loaded/LayoutUpdated
+  readiness now retries entry without input replay or viewport writes. Initial test
+  timing errors were also corrected without weakening viewport assertions. Evidence:
+  `artifacts/winui-layout-regression/` and the modal lane's `entry-handoff.md`.
 
 - Combined section/input/media-adapter build passes the analyzer with zero warnings
   and errors. Its real Playnite Library/tray/details pass completes all six checks;
