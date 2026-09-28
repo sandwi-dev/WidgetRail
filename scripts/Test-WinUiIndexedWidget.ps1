@@ -86,6 +86,12 @@ try {
     Key F14
     $surfaceResult=Until '15-surfaces' {param($v) $v.surfaces -ne 'pending'} 20
     Check 'native surfaces preserve item artwork identity, reject late images and survive recycling' ($surfaceResult.surfaces -eq 'passed:8')
+    Ui @('invoke','IndexedWidget.InputProbe') | Out-Null
+    $inputResult=Until '16-input-route' {param($v) $v.inputRoute -ne 'pending'} 12
+    Check 'shared input preserves release and indexed ancestor semantics' ($inputResult.inputRoute -eq 'passed:3')
+    Ui @('invoke','IndexedWidget.ModalProbe') | Out-Null
+    $modalResult=Until '17-indexed-modal' {param($v) $v.modalResult -ne 'pending'} 30
+    Check 'real worker indexed parent survives native modal lifecycle' ($modalResult.modalResult -eq 'passed:24')
     Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'indexed-widget.png')) | Out-Null
 } finally {
     $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory 'results.json')
