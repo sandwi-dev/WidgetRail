@@ -79,5 +79,6 @@ internal sealed partial class WidgetStylesValidationPage
         presenter.Apply(CreateFrame(root, styles));
         await Wait(() => Find<Button>("Widget.depth-button") is { IsLoaded: true });
         NativeComputedStyleAdapter.SetAccessibilityPolicy(AppearanceSettings.Default);
+        await NativeCollectionDepthAsync();
     }
 }

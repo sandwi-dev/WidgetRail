@@ -300,7 +300,10 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         var hasEdges = !contrast && edgeColors.Any(property => style?.ContainsKey(property) == true);
         var shadowColor = !contrast && style?.GetValueOrDefault("shadow-color") is { } shadowValue && TryColor(shadowValue.Text, out var shadowRgba)
             ? shadowRgba : Microsoft.UI.Colors.Transparent;
-        if ((DepthSlotsFactory is not null || element is Button) && (hasEdges || shadowColor.A > 0))
+        var supportsDepth = DepthSlotsFactory is not null ||
+            element is Button && WidgetNativeDepth.HasTemplateSlots(element) ||
+            element is SelectorItem && WidgetVisualAdornment.CanAttach(element);
+        if (supportsDepth && (hasEdges || shadowColor.A > 0))
         {
             Color Edge(string property) => style?.GetValueOrDefault(property) is { } authored && TryColor(authored.Text, out var color)
                 ? color : border is SolidColorBrush fallback ? fallback.Color : Microsoft.UI.Colors.Transparent;

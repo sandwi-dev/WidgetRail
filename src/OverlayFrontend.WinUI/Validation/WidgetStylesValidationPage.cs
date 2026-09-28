@@ -230,5 +230,10 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         var end = Environment.TickCount64 + 5000;
         while (!predicate()) { if (Environment.TickCount64 > end) throw new TimeoutException("Native style state did not settle."); await Task.Delay(16); }
     }
-    public ValueTask DisposeAsync() => presenter.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        foreach (var specimen in depthSpecimens) specimen.Dispose();
+        depthSpecimens.Clear();
+        return presenter.DisposeAsync();
+    }
 }

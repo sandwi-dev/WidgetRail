@@ -2,7 +2,6 @@ using System.Numerics;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
 using Windows.UI;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Motion;
@@ -14,6 +13,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Motion;
 internal sealed class WidgetFocusDecoration : IDisposable
 {
     private readonly Control control;
+    private readonly WidgetVisualAdornment adornment;
     private readonly bool nativeFocusVisuals;
     private readonly ContainerVisual viewport;
     private readonly ShapeVisual visual;
@@ -36,14 +36,14 @@ internal sealed class WidgetFocusDecoration : IDisposable
 
     internal static WidgetFocusDecoration? Create(Control control)
     {
-        // Respect another native visual owner; never overwrite a media/third-
-        // party visual. Native system focus remains the fallback in that case.
-        if (ElementCompositionPreview.GetElementChildVisual(control) is not null) return null;
-        return new(control);
+        // Share only our adornment owner, never a media/third-party child slot.
+        // Native system focus remains the fallback for foreign visual owners.
+        var adornment = WidgetVisualAdornment.Acquire(control, WidgetVisualAdornment.Layer.Focus);
+        return adornment is null ? null : new(control, adornment);
     }
-    private WidgetFocusDecoration(Control control)
+    private WidgetFocusDecoration(Control control, WidgetVisualAdornment adornment)
     {
-        this.control = control;
+        this.control = control; this.adornment = adornment;
         nativeFocusVisuals = control.UseSystemFocusVisuals;
         // Do not obtain the control's backing visual: WinUI facade Scale and
         // ScaleTransition prohibit that interop path. Only our child visuals
@@ -57,7 +57,7 @@ internal sealed class WidgetFocusDecoration : IDisposable
         outline.StrokeBrush = brush;
         visual.Shapes.Add(outline);
         viewport.Children.InsertAtTop(visual);
-        ElementCompositionPreview.SetElementChildVisual(control, viewport);
+        adornment.Visual.Children.InsertAtTop(viewport);
         control.UseSystemFocusVisuals = false;
         control.SizeChanged += Resized; control.Loaded += Loaded; control.Unloaded += Unloaded;
     }
@@ -112,8 +112,7 @@ internal sealed class WidgetFocusDecoration : IDisposable
         if (disposed) return;
         RetireTargets();
         control.SizeChanged -= Resized; control.Loaded -= Loaded; control.Unloaded -= Unloaded;
-        if (ReferenceEquals(ElementCompositionPreview.GetElementChildVisual(control), viewport))
-            ElementCompositionPreview.SetElementChildVisual(control, null);
+        adornment.Dispose();
         control.UseSystemFocusVisuals = nativeFocusVisuals;
         viewport.Children.RemoveAll(); visual.Shapes.Clear();
         outline.Dispose(); geometry.Dispose(); brush.Dispose(); visual.Dispose(); viewport.Dispose(); disposed = true;

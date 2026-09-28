@@ -2,9 +2,11 @@ using System.Numerics;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
+using WidgetRail.OverlayFrontend.WinUI.Motion;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -17,6 +19,8 @@ internal sealed class WidgetNativeDepth : IDisposable
     private readonly FrameworkElement element;
     private readonly (Grid Shadow, Grid Edges)? suppliedSlots;
     private (Grid Shadow, Grid Edges)? slots;
+    private WidgetVisualAdornment? adornment;
+    private WidgetOuterShadowMask? outerMask;
     private WidgetDepthStyle? style;
     private ContainerVisual? edges;
     private SpriteVisual? shadowVisual;
@@ -34,6 +38,9 @@ internal sealed class WidgetNativeDepth : IDisposable
     internal int NativeResourceCreates { get; private set; }
     internal int EdgeCount => edgeVisuals.Count;
     internal bool IsRealized => shadowVisual is not null;
+    internal bool UsesOuterMask => outerMask is not null;
+    internal float MaskPadding => outerMask?.Padding ?? 0;
+    internal static bool HasTemplateSlots(FrameworkElement element) => FindSlots(element) is not null;
 
     internal WidgetNativeDepth(FrameworkElement element, (Grid Shadow, Grid Edges)? suppliedSlots)
     {
@@ -49,13 +56,15 @@ internal sealed class WidgetNativeDepth : IDisposable
     {
         if (disposed || style is not { } value || !element.IsLoaded || element.ActualWidth <= 0 || element.ActualHeight <= 0) return;
         slots ??= suppliedSlots ?? FindSlots(element);
-        if (slots is not { } host) return;
+        if (slots is null && element is SelectorItem)
+            adornment ??= WidgetVisualAdornment.Acquire(element, WidgetVisualAdornment.Layer.Depth);
+        if (slots is null && adornment is null) return;
         var compositor = CompositionTarget.GetCompositorForCurrentThread();
         if (shadowVisual is null)
         {
             // These are dedicated slots. Never steal another visual owner's slot.
-            if (ElementCompositionPreview.GetElementChildVisual(host.Shadow) is not null ||
-                ElementCompositionPreview.GetElementChildVisual(host.Edges) is not null) return;
+            if (slots is { } host && (ElementCompositionPreview.GetElementChildVisual(host.Shadow) is not null ||
+                ElementCompositionPreview.GetElementChildVisual(host.Edges) is not null)) return;
             shadowVisual = compositor.CreateSpriteVisual();
             shadow = compositor.CreateDropShadow(); shadowVisual.Shadow = shadow;
             maskGeometry = compositor.CreateRoundedRectangleGeometry();
@@ -70,8 +79,17 @@ internal sealed class WidgetNativeDepth : IDisposable
                 var visual = compositor.CreateSpriteVisual(); var brush = compositor.CreateColorBrush();
                 visual.Brush = brush; edges.Children.InsertAtTop(visual); edgeVisuals.Add((visual, brush));
             }
-            ElementCompositionPreview.SetElementChildVisual(host.Shadow, shadowVisual);
-            ElementCompositionPreview.SetElementChildVisual(host.Edges, edges);
+            if (slots is { } target)
+            {
+                ElementCompositionPreview.SetElementChildVisual(target.Shadow, shadowVisual);
+                ElementCompositionPreview.SetElementChildVisual(target.Edges, edges);
+            }
+            else
+            {
+                outerMask = new(shadowVisual);
+                adornment!.Visual.Children.InsertAtBottom(outerMask.Visual);
+                adornment.Visual.Children.InsertAtTop(edges);
+            }
             ++NativeResourceCreates;
         }
         var size = new Vector2((float)element.ActualWidth, (float)element.ActualHeight);
@@ -81,6 +99,7 @@ internal sealed class WidgetNativeDepth : IDisposable
         shadow.Opacity = value.Shadow.A / 255f;
         shadow.BlurRadius = value.Blur; shadow.Offset = new(value.Offset, 0);
         shadowVisual.Opacity = edges.Opacity = value.Opacity;
+        outerMask?.Resize(size, value.Radius, value.Blur, value.Offset);
         var top = Math.Min((float)value.Border.Top, size.Y);
         var bottom = Math.Min((float)value.Border.Bottom, size.Y - top);
         var left = Math.Min((float)value.Border.Left, size.X);
@@ -103,6 +122,8 @@ internal sealed class WidgetNativeDepth : IDisposable
     }
     private void Retire()
     {
+        adornment?.Dispose(); adornment = null;
+        outerMask?.Dispose(); outerMask = null;
         if (slots is { } host)
         {
             if (ReferenceEquals(ElementCompositionPreview.GetElementChildVisual(host.Shadow), shadowVisual)) ElementCompositionPreview.SetElementChildVisual(host.Shadow, null);

@@ -82,9 +82,26 @@ Removing author ownership restores the original timelines. This avoids stale aut
 brushes in native keyframe theme-resource caches.
 
 Indexed ListView/GridView containers keep their optimized native templates. WinUI
-requires ListViewItemPresenter as the template root, so collection-container shadows
-and separate edge colors remain unmapped; uniform borders remain visible. Descendant
-panels/buttons can use depth normally. Do not wrap the optimized presenter in a Grid.
+requires ListViewItemPresenter as the template root. Their shadows therefore use a
+CompositionMaskBrush outer mask: an offscreen rounded outline excludes the entire
+content interior from the sampled shadow. The extent includes authored signed offsets
+and blur, with no CPU rasterization. Four separate edge strokes share a rounded clip.
+The depth layer and focus outline lease separate ordered layers from one owned child
+visual; either can retire independently. Foreign child visuals are never replaced.
+Do not wrap the optimized presenter in a Grid or obtain its backing visual while
+WinUI owns its scale facade.
+
+Technique reference: [CommunityToolkit AttachedCardShadow](https://github.com/CommunityToolkit/Windows/blob/main/components/Media/src/Shadows/AttachedCardShadow.cs),
+CompositionMaskBrush mode. The WidgetRail implementation uses native composition
+resources directly and adds no toolkit or Win2D dependency.
+
+The native depth gate passes 146 style checks, 36 modal checks and the 20-check
+indexed sequence. The style fixture retains list/grid specimens for screen capture:
+`Styles.Depth.Row` and `Styles.Depth.Poster` can receive focus to inspect authored
+scale, exterior shadows and independent focus outlines. Native template identity,
+foreign visual ownership, independent decoration retirement, unload/reload and
+High Contrast are asserted separately. Pixel review confirmed the mask keeps
+translucent content untinted and leaves the authored border/focus strokes visible.
 
 Other Button/SelectorItem template state brushes are overridden in a resource wrapper,
 so native hover/pressed visual states do not replace authored colors. The original
