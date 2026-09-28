@@ -52,7 +52,33 @@ catch (Exception error)
 }
 
 WidgetPresentationFrame Frame() => session.GetState(widgetId)?.LastGood ?? throw new InvalidOperationException("No published frame.");
-async Task CollectionReady() => await Until(() => Nodes(Frame().Snapshot.Root).Any(node => node.IndexedCollection is { Count: > 0 }));
+async Task CollectionReady()
+{
+    WidgetPresentationAuthority? inspected = null;
+    while (true)
+    {
+        timeout.Token.ThrowIfCancellationRequested();
+        if (session.GetState(widgetId)?.Failure is { } failed) throw new InvalidOperationException(failed.Code);
+        var current = Frame();
+        if (current.Authority != inspected && Nodes(current.Snapshot.Root).FirstOrDefault(node => node.IndexedCollection is { Count: > 0 }) is { } collection)
+        {
+            inspected = current.Authority;
+            try
+            {
+                var rows = await session.ReadIndexedRangeAsync(current.Authority, collection.Id, collection.IndexedCollection!, 0, 1,
+                    cancellationToken: timeout.Token);
+                // Saved display rows intentionally have a count but no current
+                // action authority. Wait for ordinary live publication, not Retry.
+                if (rows.Items[0].Root.IsDisabled != true && rows.Items[0].Root.IsBusy != true) return;
+            }
+            catch (WidgetPresentationSessionException) when (Frame().Authority != current.Authority)
+            {
+                // Publication replaced this exact read; inspect its successor.
+            }
+        }
+        await Task.Delay(30, timeout.Token);
+    }
+}
 async Task Until(Func<bool> condition)
 {
     var lastSequence = -1L;

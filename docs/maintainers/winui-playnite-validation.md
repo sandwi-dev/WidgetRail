@@ -48,6 +48,27 @@ details opening/dismissal on both pages. Evidence is under
 native rendering, controller navigation, appearance and performance require the
 actual shell and are not implied by this result.
 
+The subsequent `production-warm` workspace includes the indexed saved-display
+startup correction. Both first-run and saved-state real-provider probes pass.
+The native shell cold-started without Retry, showed actual cover images, moved
+Library focus from item 0 to item 6 at 125% DPI, and opened that game's details
+with Install focused without invoking it. Screenshots and sanitized layout
+diagnostics are in that workspace. This is functional/layout evidence, not a
+controller or smoothness acceptance result.
+
+`scripts/Test-WinUiPlaynite.ps1 -AppPid <owned test PID> -OutputDirectory <new path>
+-Page Home|Library -CloseAfter` checks cold startup and real rows, opens details,
+verifies initial Play/Install focus without invoking it, and captures page/details
+screenshots for visual review. Run each page against a fresh shell; the script
+never invokes Retry, game launch/install, or metadata mutations. It does not replace
+physical controller, sustained-scroll, DPI-change or performance validation.
+
+First scripted results: Home passes five checks. Library passes startup, navigation,
+row readiness, capture and shutdown, but its details-open wait failed once; a later
+direct run succeeded. Preserve `production-warm/library-smoke/results.json` as the
+failed evidence. Activation timing remains under investigation; do not present the
+earlier successful manual sequence as a completed repeatability gate.
+
 For explicit geometry diagnosis, add `LayoutDiagnosticsPath` to shell-options.json
 with an absolute output path in an existing directory. The shell coalesces captures
 after publications and writes control geometry/style metadata without text, image

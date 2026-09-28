@@ -22,11 +22,23 @@ are untouched. Migration is active and incomplete.
   view. Home focus bounds now fit poster content rather than the full rail height.
 - The real Library layout-cycle crash is corrected by using native viewport width
   and honoring explicit full-width alignment. Home, Library and both details pages
-  now render real artwork in the integrated shell. **Open production gate:** native
-  grid geometry currently shows five columns where navigation assumes six; actual
-  container-position regressions are being added. Do not launch this as a physical
-  acceptance candidate yet.
-- Latest integrated managed gates: 75 session tests, 10 shell tests, 35 style tests.
+  now render real artwork in the integrated shell. Adaptive cells are allocated in
+  physical pixels so native rounding at 125% DPI no longer wraps six columns into
+  five. A real Library Down move now goes from item 0 to item 6. The native style
+  fixture passes 42 checks, including the production fractional-width case.
+- Saved Home placeholders now use bounded indexed publications instead of expanding
+  into the parent tree and exceeding its style budget. They remain display-only;
+  live replacement retires their bindings. The fresh real package starts without
+  Retry, and both its empty-state and saved-state transport probes pass.
+- Latest integrated managed gates: 157 Playnite tests, 83 session tests, 10 shell
+  tests, 35 style tests. Package-icon transport is admitted by exact inventory/hash
+  and bounded independently. OriginalColor Icon/Button/Select rendering is integrated
+  with 15 native checks and a 7-check/45-symbol glyph regression. ThemeTint currently
+  retains the semantic fallback; native SVG alpha-mask capability work remains.
+- Repeatable real-package smoke: Home startup/row/details/focus/shutdown passes all
+  five checks. Library startup/navigation/row passes, but one unfocused UIA poster
+  invocation did not open details; a separate immediate run succeeded. This remains
+  an unresolved activation/publication timing gate, not a clean Library acceptance.
   Native fixture gates and real screenshots are recorded below and in
   [Playnite validation](winui-playnite-validation.md); fixture results are not
   production-widget performance acceptance.
