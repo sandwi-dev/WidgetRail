@@ -188,6 +188,9 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
                     : UI.ActionSurface(query == 302 ? "alternate" : "open", context.Id("row"), $"Item {item}",
                         ActionSurfaceOrientation.Horizontal, UI.Artwork(new("cover"), context.Id("cover"), "Cover"),
                         UI.Text($"Item {item}", context.Id("title"))).Shortcut(ControllerButton.Y, actionId: "replace");
+                if (query >= 400) tile = ((ActionSurfaceElement)tile).ContextMenuShortcut(ControllerButton.X)
+                    .ContextAction("context-play", "Play").ContextAction("context-disabled", "Unavailable", disabled: true)
+                    .ContextAction("context-remove", "Remove", WidgetContextActionStyle.Danger);
                 if (query == 303) tile = ((ActionSurfaceElement)tile).Disabled();
                 return query >= 100 ? tile.FocusBackground(new("background")).PresentOnFocus(UI.Text($"Summary {query}:{item}", context.Id("summary"))) : tile;
             },
@@ -270,6 +273,14 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         if (action.ActionId == "activation-release") activationReadGate?.TrySetResult();
         if (action.ActionId == "activation-replace") { source.PublishQuery(300, 100); entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75)); }
         if (action.ActionId == "activation-modal") { modalItem = 75; ++modalOpening; }
+        if (action.ActionId == "context-mode")
+        {
+            modalMode = true; surfaces = true; grid = grouped = false; modalItem = null;
+            source.PublishQuery(400, 100);
+            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+        }
+        if (action.ActionId == "context-refresh") source.UpdateContent(401);
+        if (action.ActionId == "context-replace") source.PublishQuery(402, 100);
         if (action.ActionId == "modal-mode")
         {
             modalMode = true; surfaces = true; grid = grouped = false; modalItem = null;

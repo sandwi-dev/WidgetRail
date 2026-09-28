@@ -26,12 +26,13 @@ internal sealed partial class WidgetViewPresenter
             if (phase == ControllerEventPhase.Pressed)
             {
                 if (button == ControllerButton.B) DismissTransientControl();
-                else if (button == ControllerButton.A) ActivateSelect();
+                else if (button == ControllerButton.A) { if (!ActivateContextMenu()) ActivateSelect(); }
             }
             // No parent shortcut is allowed through an open popup, including
             // release/repeat events from a previously pressed button.
             return true;
         }
+        if (phase == ControllerEventPhase.Pressed && OpenContextMenu(button)) return true;
         if (button == ControllerButton.A)
         {
             if (phase == ControllerEventPhase.Pressed) ActivateFocused();
@@ -40,7 +41,7 @@ internal sealed partial class WidgetViewPresenter
         if (FocusedBinding() is { Element: WidgetIndexedCollectionView collection } focused && Eligible(focused))
         {
             CancelGroupEntry();
-            return collection.InvokeFocused(button, phase);
+            return await collection.InvokeFocusedInputAsync(button, phase);
         }
         if (Session is not { } session) return false;
         var authority = frame.Authority;

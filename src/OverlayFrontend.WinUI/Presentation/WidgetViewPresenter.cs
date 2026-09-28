@@ -197,7 +197,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (applying || !IsLoaded || frame is null) return false;
         CancelGroupEntry();
         if (textEntryPopup is { } edit) { edit.Dialog.MoveFocus(direction); return true; }
-        if (MoveSelectFocus(direction)) return true;
+        if (MoveContextFocus(direction) || MoveSelectFocus(direction)) return true;
         if (FindIndexedCollection()?.MoveFocus(direction) == true) return true;
         var scope = bindings.Values.FirstOrDefault(binding => declarations[binding.Identity.Id].Node.InputScopeId == frame.Authority.ActiveInputScopeId)
             ?? (bindings.GetValueOrDefault(frame.Snapshot.Root.Id)?.Identity.Scope == frame.Authority.ActiveInputScopeId
@@ -209,7 +209,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         if (applying || disposed || presentationOnly) return;
         CancelGroupEntry();
-        if (ActivateTextEntry() || ActivateSelect()) return;
+        if (ActivateContextMenu() || ActivateTextEntry() || ActivateSelect()) return;
         if (FindIndexedCollection()?.ActivateFocused() == true) return;
         if (!applying && FocusedBinding() is { Element: Button { Command: { } command } button } binding
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
@@ -286,7 +286,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.IndexedCollection:
                 if (Session is null) throw new InvalidOperationException("Indexed widgets require a presentation session.");
                 element = new WidgetIndexedCollectionView(Session, ReportFailure)
-                { FocusRemembered = item => RememberCollectionFocus(declaration.Identity, item), PresentationChanged = QueueSurfaceUpdate };
+                { FocusRemembered = item => RememberCollectionFocus(declaration.Identity, item), PresentationChanged = QueueSurfaceUpdate, ContextChanged = ValidateTransientControl };
                 break;
             case ViewNodeKind.BackgroundSurface:
             case ViewNodeKind.FocusPresentationSurface:

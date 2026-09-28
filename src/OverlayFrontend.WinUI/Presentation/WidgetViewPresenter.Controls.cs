@@ -18,12 +18,12 @@ internal sealed partial class WidgetViewPresenter
     private SelectPopup? selectPopup;
     private int selectFocusIndex;
 
-    internal bool HasTransientControl => selectPopup is not null || textEntryPopup is not null;
+    internal bool HasTransientControl => selectPopup is not null || textEntryPopup is not null || contextPopup is not null;
 
     /// <summary>Route B here before widget shortcuts/modal dismissal. Also call when hiding the host.</summary>
     internal bool DismissTransientControl()
     {
-        if (DismissTextEntry()) return true;
+        if (DismissTextEntry() || DismissContextMenu()) return true;
         if (selectPopup is not { } popup) return false;
         selectPopup = null; // revoke immediately; an exiting popup has no action authority
         popup.Flyout.Hide();
@@ -89,6 +89,11 @@ internal sealed partial class WidgetViewPresenter
     private bool TryRestoreTransientFocus()
     {
         if (textEntryPopup is { } edit) { edit.Dialog.RestoreFocus(); return true; }
+        if (contextPopup is { } menu)
+        {
+            if (!ContextIsCurrent(menu)) { DismissContextMenu(); return false; }
+            menu.Items[contextFocusIndex].Focus(FocusState.Keyboard); return true;
+        }
         if (selectPopup is not { } popup) return false;
         if (!SelectIsCurrent(popup)) { DismissTransientControl(); return false; }
         if (selectFocusIndex >= 0 && selectFocusIndex < popup.Items.Count)
@@ -98,6 +103,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void ValidateTransientControl()
     {
+        if (contextPopup is { } menu && !ContextIsCurrent(menu)) DismissContextMenu();
         if (textEntryPopup is { } edit && !TextEntryIsCurrent(edit)) DismissTextEntry();
         if (selectPopup is { } popup && !SelectIsCurrent(popup)) DismissTransientControl();
     }

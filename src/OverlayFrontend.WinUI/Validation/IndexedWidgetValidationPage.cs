@@ -35,6 +35,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
     private string inputRoute = "not-run";
     private string modalResult = "not-run";
     private string activationResult = "not-run";
+    private string contextResult = "not-run";
     private bool retired;
 
     public IndexedWidgetValidationPage(string pipe)
@@ -61,7 +62,10 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         var activationProbe = new Button { Content = "Check deferred activation" };
         AutomationProperties.SetAutomationId(activationProbe, "IndexedWidget.ActivationProbe");
         activationProbe.Click += (_, _) => _ = ProbeActivationAsync();
-        var probes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { probe, inputProbe, modalProbe, activationProbe } };
+        var contextProbe = new Button { Content = "Check context menu" };
+        AutomationProperties.SetAutomationId(contextProbe, "IndexedWidget.ContextProbe");
+        contextProbe.Click += (_, _) => _ = ProbeContextAsync();
+        var probes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { probe, inputProbe, modalProbe, activationProbe, contextProbe } };
         diagnostics.Children.Add(probes); Grid.SetColumn(probes, 1);
         layout.Children.Add(diagnostics); layout.Children.Add(presenter);
         Content = layout;
@@ -398,6 +402,14 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         activationResult = result.ResultCode == "passed" ? $"passed:{result.Checks.Count}" : "failed:" + result.Error;
         Observe();
     }
+    private async Task ProbeContextAsync()
+    {
+        if (contextResult == "pending" || session is null) return;
+        contextResult = "pending"; Observe();
+        var result = await IndexedContextMenuValidation.RunAsync(presenter, session, lifetime.Token);
+        contextResult = result.ResultCode == "passed" ? $"passed:{result.Checks.Count}" : "failed:" + result.Error;
+        Observe();
+    }
     private void Observe()
     {
         if (retired) return;
@@ -418,7 +430,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
             calls = FindNode(frame?.Snapshot.Root, "calls")?.Text,
             columns = view?.ItemsPanelRoot is ItemsWrapGrid wrap ? wrap.MaximumRowsOrColumns : 1,
             revision = FindNode(frame?.Snapshot.Root, "items")?.IndexedCollection?.ContentRevision,
-            navigation, logicalFocus, groupedFocus, surfaces, inputRoute, modalResult, activationResult,
+            navigation, logicalFocus, groupedFocus, surfaces, inputRoute, modalResult, activationResult, contextResult,
             groupCount = FindNode(frame?.Snapshot.Root, "items")?.IndexedGroups?.Count ?? 0,
         });
     }

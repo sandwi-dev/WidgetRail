@@ -112,6 +112,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         // belongs to the unchanged query, not that discarded control instance.
         if (ReferenceEquals(previousSource, source)) RestoreEntry(entry);
         ValidatePendingActivation();
+        ContextChanged?.Invoke();
     }
 
     private void UpdateGridWidth()
@@ -143,6 +144,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         AutomationProperties.SetName(container, slot.Value?.Item.Root.AccessibilityLabel ?? slot.Value?.Item.Root.Text ?? $"Loading item {slot.Index + 1}");
         if (pendingIndex == slot.Index) FinishNavigation(null, null!);
         if (FocusedIndex() == slot.Index) { RememberItemFocus(); PresentationChanged?.Invoke(); }
+        ContextChanged?.Invoke();
     }
     private void DetachContainers()
     {
@@ -167,19 +169,31 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             }
         return false;
     }
-    private async Task InvokeAsync(WidgetIndexedRow row, ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed, bool allowDeferredActivation = true)
+    internal async Task<bool> InvokeFocusedInputAsync(ControllerButton button, ControllerEventPhase phase)
     {
-        if (disposed || !CanReceiveInput || source is null) return;
+        if (button != ControllerButton.A && phase == ControllerEventPhase.Pressed) CancelPendingActivation();
+        if (!CanReceiveInput || view?.XamlRoot is null) return false;
+        for (var focused = FocusManager.GetFocusedElement(view.XamlRoot) as DependencyObject;
+             focused is not null && !ReferenceEquals(focused, view); focused = VisualTreeHelper.GetParent(focused))
+            if (focused is SelectorItem container && containers.TryGetValue(container, out var item))
+                // Loading/retired targets consume the event. Only a current worker
+                // admission returning null means this button is actually unbound.
+                return item.Slot.Value is not { } row || await InvokeAsync(row, button, phase);
+        return false;
+    }
+    private async Task<bool> InvokeAsync(WidgetIndexedRow row, ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed, bool allowDeferredActivation = true)
+    {
+        if (disposed || !CanReceiveInput || source is null) return true;
         if (button == ControllerButton.A && phase == ControllerEventPhase.Pressed)
         {
-            if (pendingActivation is not null) return;
-            if (!row.Lease.IsCurrent) { if (allowDeferredActivation) DeferActivation(row); return; }
+            if (pendingActivation is not null) return true;
+            if (!row.Lease.IsCurrent) { if (allowDeferredActivation) DeferActivation(row); return true; }
         }
-        if (!row.Lease.IsCurrent) return;
-        try { await row.Lease.AdmitInputAsync(source.Frame.Authority, row.Item.Key, button, phase,
-            sequence: ++sequence, monotonicTimestampMicroseconds: Environment.TickCount64 * 1000); }
-        catch (WidgetPresentationSessionException) when (!row.Lease.IsCurrent) { }
-        catch (Exception error) { failed(error); }
+        if (!row.Lease.IsCurrent) return true;
+        try { return await row.Lease.AdmitInputAsync(source.Frame.Authority, row.Item.Key, button, phase,
+            sequence: ++sequence, monotonicTimestampMicroseconds: Environment.TickCount64 * 1000) is not null; }
+        catch (WidgetPresentationSessionException error) when (!row.Lease.IsCurrent || error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale") { return true; }
+        catch (Exception error) { failed(error); return true; }
     }
     public async ValueTask DisposeAsync()
     {

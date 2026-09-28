@@ -132,3 +132,34 @@ selection, not a custom geometry/navigation renderer. Run
 widget probe separately validates initial/exact/remembered entry, native neighbor
 entry, wrong/stale targets, disabled items and cancellation during delayed reads.
 Physical controller acceptance remains separate from these automated checks.
+
+## Native context menus
+
+The shared presenter renders SDK context actions with `MenuFlyout`. Menu, X and Y
+are resolved from authored declarations: the focused action surface wins (Menu by
+default), then a single visible container menu in the active input scope. A
+nonfocusable controller-hint row can anchor the scoped menu. Ambiguous hints do
+not open a popup. This does not replace or remap ordinary worker shortcuts.
+
+An open menu owns normalized controller input ahead of Select, widget shortcuts
+and modal dismissal. Native WinUI handles placement and popup rendering. Direction
+boundaries remain inside the popup; disabled/busy actions are skipped. B dismisses
+the menu and restores its exact opener when that owner remains current. The host
+must call `DismissTransientControl` when hiding/deactivating the overlay, as it
+already does for Select and text entry.
+
+Each opening captures semantic owner identity, actions and scope. Unrelated
+snapshots may advance; replaced owners/actions, disabled ancestors, modal scopes,
+query replacement, unloaded anchors and stale indexed leases revoke the popup.
+Indexed commands retain the exact row and use its existing lease admission API;
+a selection is never replayed against a replacement lease. Revocation precedes
+asynchronous action dispatch and the retention is released after admission.
+
+`--validate-context-menu` exercises real native popup/controller routing with a
+synthetic action sink, writing `context-menu-result.json` under the existing WinUI
+diagnostics directory. The indexed worker fixture exposes
+`IndexedWidget.ContextProbe` for exact row actions, refresh/query invalidation,
+modal precedence and scroll/focus retention; its output is
+`indexed-context-menu-result.json`. These are correctness checks, not production
+widget performance measurements. Slider and live media/window-preview controls
+remain separate migration work.
