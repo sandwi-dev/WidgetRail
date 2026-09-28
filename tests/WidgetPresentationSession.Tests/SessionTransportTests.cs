@@ -103,8 +103,12 @@ public sealed class SessionTransportTests
             {
                 await channel.WriteAsync(new BridgeEnvelope
                 {
-                    Type = BridgeMessageTypes.CatalogChanged,
-                    Payload = BridgeJson.ToElement(new BridgeCatalogChangedEvent(revision)),
+                    Type = BridgeMessageTypes.HostEffect,
+                    Payload = BridgeJson.ToElement(new
+                    {
+                        widgetId = $"unadmitted-{revision}", runtimeGeneration = new string('a', 32),
+                        effect = "closeOverlayAfterAppLaunch", sequence = revision, initiatedAtMilliseconds = 0,
+                    }),
                 }, CancellationToken.None);
             }
             await ExpectStopAsync(channel);
@@ -114,10 +118,10 @@ public sealed class SessionTransportTests
             Options() with { MaximumRetainedDiagnostics = 2 });
         try
         {
-            await WaitUntilAsync(() => session.Diagnostics.Count == 2);
+            await WaitUntilAsync(() => session.Diagnostics.LastOrDefault()?.WidgetId == "unadmitted-5");
             Assert.AreEqual(2, session.Diagnostics.Count);
-            StringAssert.Contains(session.Diagnostics[0].Message, "4");
-            StringAssert.Contains(session.Diagnostics[1].Message, "5");
+            Assert.AreEqual("unadmitted-4", session.Diagnostics[0].WidgetId);
+            Assert.AreEqual("unadmitted-5", session.Diagnostics[1].WidgetId);
         }
         finally
         {

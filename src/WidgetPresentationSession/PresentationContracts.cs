@@ -80,6 +80,46 @@ public sealed record WidgetPresentationState(
 
 public sealed record WidgetPresentationInvalidation(string WidgetId, long Revision);
 
+/// <summary>Identifies the worker incarnation admitted when an effect arrived.</summary>
+public sealed record WidgetHostEffectAuthority(
+    string WidgetId, string WidgetInstanceId, string RuntimeGeneration, long SessionGeneration);
+
+public enum WidgetHostEffectKind
+{
+    /// <summary>An optional effect unknown to this frontend; never execute it.</summary>
+    Unsupported,
+    CloseOverlayAfterAppLaunch,
+    ActivateTaskWindow,
+}
+
+/// <summary>
+/// Host-private native window identity. Revalidate process creation and class identity
+/// with the platform adapter before activation. Never send this to widget workers.
+/// </summary>
+public sealed record WidgetHostWindowTarget(
+    string WindowId, ulong Handle, uint ProcessId, ulong ProcessCreated, string ClassName);
+
+/// <summary>
+/// Broker-issued, one-shot effect. Sequence is session-wide. InitiatedAtMilliseconds
+/// uses Windows uptime, not wall time. A UI dispatcher must recheck authority and
+/// its current visible session before acting; admission is not platform execution.
+/// Unsupported effects are observable but must be ignored. No raw provider payload is exposed.
+/// </summary>
+public sealed record WidgetPresentationHostEffect(
+    WidgetHostEffectAuthority Authority, WidgetHostEffectKind Kind, string WireName,
+    long Sequence, long InitiatedAtMilliseconds, WidgetHostWindowTarget? WindowTarget);
+
+public sealed class WidgetHostEffectEventArgs(WidgetPresentationHostEffect effect) : EventArgs
+{
+    public WidgetPresentationHostEffect Effect { get; } = effect;
+}
+
+/// <summary>A revision notification, not a replacement catalog or appearance snapshot.</summary>
+public sealed class WidgetRevisionChangedEventArgs(long revision) : EventArgs
+{
+    public long Revision { get; } = revision;
+}
+
 public sealed record WidgetPresentationArtwork(
     WidgetPresentationAuthority Authority,
     string ArtworkHandle,

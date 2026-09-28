@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text.Json;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
@@ -24,6 +25,10 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         _artwork = [];
     private readonly Queue<WidgetPresentationDiagnostic> _diagnostics = [];
     private long _catalogRevision = -1;
+    private long _notifiedCatalogRevision = -1;
+    private long _notifiedAppearanceRevision = -1;
+    private long _hostEffectSequence;
+    private readonly Dictionary<string, long> _hostEffectAdmissionBoundaries = new(StringComparer.Ordinal);
     private int _pendingArtworkCount;
     private long _publicationRevision;
     private bool _publicationOwner;
@@ -61,6 +66,31 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
     public event EventHandler<WidgetPresentationInvalidatedEventArgs>? Invalidated;
     public event EventHandler<WidgetPresentationArtworkEventArgs>? ArtworkResolved;
     public event EventHandler<WidgetPresentationDiagnosticEventArgs>? DiagnosticPublished;
+    /// <summary>Raised on the transport thread. Marshal to the UI thread and recheck authority before acting.</summary>
+    public event EventHandler<WidgetHostEffectEventArgs>? HostEffectReceived;
+    /// <summary>Fetch the new catalog explicitly; notifications never mutate the admitted catalog.</summary>
+    public event EventHandler<WidgetRevisionChangedEventArgs>? CatalogChanged;
+    /// <summary>Signals a newer appearance revision; does not contain theme/settings values.</summary>
+    public event EventHandler<WidgetRevisionChangedEventArgs>? AppearanceChanged;
+
+    public long LatestCatalogNotificationRevision { get { lock (_gate) return _notifiedCatalogRevision; } }
+    public long LatestAppearanceNotificationRevision { get { lock (_gate) return _notifiedAppearanceRevision; } }
+
+    /// <summary>
+    /// Rechecks worker membership after dispatching an effect to another thread. This
+    /// does not consume the effect or validate foreground/visible-session/window identity.
+    /// Hosts must execute each delivered sequence at most once.
+    /// </summary>
+    public bool IsHostEffectAuthorityCurrent(WidgetHostEffectAuthority authority)
+    {
+        ArgumentNullException.ThrowIfNull(authority);
+        lock (_gate)
+            return !_disposed && _terminalFailure is null &&
+                _descriptors.TryGetValue(authority.WidgetId, out var descriptor) &&
+                descriptor.InstanceId == authority.WidgetInstanceId &&
+                descriptor.RuntimeGeneration == authority.RuntimeGeneration &&
+                _sessionGenerations.GetValueOrDefault(authority.WidgetId) == authority.SessionGeneration;
+    }
 
     internal Func<Task>? BridgeFailureCapturedForTesting { get; set; }
 
@@ -137,12 +167,17 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             foreach (var pair in byId)
             {
                 if (!_descriptors.TryGetValue(pair.Key, out var prior))
+                {
+                    if (_sessionGenerations.ContainsKey(pair.Key))
+                        _hostEffectAdmissionBoundaries[pair.Key] = Environment.TickCount64;
                     _sessionGenerations[pair.Key] =
                         _sessionGenerations.GetValueOrDefault(pair.Key) + 1;
+                }
                 else if (prior.InstanceId != pair.Value.InstanceId ||
                          prior.RuntimeGeneration != pair.Value.RuntimeGeneration ||
                          prior.PresentationGeneration != pair.Value.PresentationGeneration)
                 {
+                    _hostEffectAdmissionBoundaries[pair.Key] = Environment.TickCount64;
                     _sessionGenerations[pair.Key] =
                         _sessionGenerations.GetValueOrDefault(pair.Key) + 1;
                     startPublications |= RetireStateLocked(pair.Key);
@@ -150,6 +185,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             }
             foreach (var removed in _descriptors.Keys.Where(id => !byId.ContainsKey(id)).ToArray())
             {
+                _hostEffectAdmissionBoundaries[removed] = Environment.TickCount64;
                 _sessionGenerations[removed] =
                     _sessionGenerations.GetValueOrDefault(removed) + 1;
                 startPublications |= RetireStateLocked(removed);
@@ -433,29 +469,127 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             HandleArtwork(envelope.Payload);
             break;
         case BridgeMessageTypes.CatalogChanged:
-            RequireObjectProperties(envelope.Payload, "revision");
-            RecordDiagnostic(
-                "catalog_changed",
-                $"Widget catalog revision {ReadInt64(envelope.Payload, "revision", 0)} is available.");
+            HandleRevisionChanged(envelope.Payload, catalog: true);
             break;
         case BridgeMessageTypes.HostEffect:
-            RequireObjectProperties(
-                envelope.Payload, "widgetId", "runtimeGeneration", "effect", "sequence");
-            RecordDiagnostic(
-                "host_effect",
-                $"Host effect '{Bound(ReadString(envelope.Payload, "effect"))}' is available.",
-                ReadString(envelope.Payload, "widgetId"));
+            HandleHostEffect(envelope.Payload);
             break;
         case BridgeMessageTypes.AppearanceChanged:
-            RequireObjectProperties(envelope.Payload, "revision");
-            RecordDiagnostic(
-                envelope.Type,
-                $"Revision {ReadInt64(envelope.Payload, "revision", 0)} is available.");
+            HandleRevisionChanged(envelope.Payload, catalog: false);
             break;
         default:
             throw new BridgeProtocolException(
                 $"WidgetBridge sent unknown event '{envelope.Type}'.");
         }
+    }
+
+    private void HandleRevisionChanged(JsonElement payload, bool catalog)
+    {
+        RequireObjectProperties(payload, "revision");
+        var revision = ReadInt64(payload, "revision", 0);
+        lock (_gate)
+        {
+            if (_disposed || _terminalFailure is not null) return;
+            if (catalog)
+            {
+                if (revision <= Math.Max(_catalogRevision, _notifiedCatalogRevision)) return;
+                _notifiedCatalogRevision = revision;
+            }
+            else
+            {
+                if (revision <= _notifiedAppearanceRevision) return;
+                _notifiedAppearanceRevision = revision;
+            }
+        }
+        (catalog ? CatalogChanged : AppearanceChanged)?.Invoke(this, new(revision));
+    }
+
+    private void HandleHostEffect(JsonElement payload)
+    {
+        RequireAllowedProperties(payload, new HashSet<string>(StringComparer.Ordinal)
+        {
+            "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds", "windowPreviews",
+        }, "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds");
+        var widgetId = ReadHostIdentifier(payload, "widgetId");
+        var runtime = ReadHostIdentifier(payload, "runtimeGeneration");
+        var name = ReadHostIdentifier(payload, "effect");
+        var sequence = ReadInt64(payload, "sequence", 1);
+        var initiatedAt = ReadInt64(payload, "initiatedAtMilliseconds", 0);
+        var kind = name switch
+        {
+            "closeOverlayAfterAppLaunch" => WidgetHostEffectKind.CloseOverlayAfterAppLaunch,
+            "activateTaskWindow" => WidgetHostEffectKind.ActivateTaskWindow,
+            _ => WidgetHostEffectKind.Unsupported,
+        };
+        WidgetHostWindowTarget? target = null;
+        if (kind == WidgetHostEffectKind.ActivateTaskWindow)
+            target = ReadHostWindowTarget(payload);
+        else if (kind == WidgetHostEffectKind.CloseOverlayAfterAppLaunch && payload.TryGetProperty("windowPreviews", out _))
+            throw new BridgeProtocolException("An app-launch close effect cannot carry window targets.");
+
+        WidgetHostEffectAuthority? authority = null;
+        lock (_gate)
+        {
+            if (_disposed || _terminalFailure is not null) return;
+            if (sequence > _hostEffectSequence)
+            {
+                // Sequence is global, including unsupported effects and retired workers.
+                _hostEffectSequence = sequence;
+                if (_descriptors.TryGetValue(widgetId, out var descriptor) &&
+                    descriptor.RuntimeGeneration == runtime &&
+                    (!_hostEffectAdmissionBoundaries.TryGetValue(widgetId, out var boundary) || initiatedAt > boundary))
+                    authority = new(widgetId, descriptor.InstanceId, runtime,
+                        _sessionGenerations.GetValueOrDefault(widgetId));
+            }
+        }
+        if (authority is null)
+        {
+            RecordDiagnostic("stale_host_effect", "A stale or replayed host effect was rejected.", widgetId);
+            return;
+        }
+        HostEffectReceived?.Invoke(this, new(new(authority, kind, name, sequence, initiatedAt, target)));
+    }
+
+    private static string ReadHostIdentifier(JsonElement payload, string name)
+    {
+        var value = ReadString(payload, name);
+        if (value.Length > 128 || value.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.')))
+            throw new BridgeProtocolException("A host effect identifier is invalid.");
+        return value;
+    }
+
+    private static WidgetHostWindowTarget ReadHostWindowTarget(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("windowPreviews", out var targets) || targets.ValueKind != JsonValueKind.Object)
+            throw new BridgeProtocolException("A task activation effect requires one window target.");
+        var entries = targets.EnumerateObject().ToArray();
+        if (entries.Length != 1)
+            throw new BridgeProtocolException("A task activation effect requires one window target.");
+        var entry = entries[0];
+        return ReadHostWindowTarget(entry.Name, entry.Value);
+    }
+
+    private static WidgetHostWindowTarget ReadHostWindowTarget(string id, JsonElement target)
+    {
+        if (id.Length is 0 or > 128 || id.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.')))
+            throw new BridgeProtocolException("A task activation window identifier is invalid.");
+        RequireObjectProperties(target, "handle", "processId", "processCreated", "className");
+        var handle = ReadHex(target, "handle");
+        var created = ReadHex(target, "processCreated");
+        var pid = ReadInt64(target, "processId", 1);
+        var className = ReadString(target, "className");
+        if (pid > uint.MaxValue || className.Length > 256 || className.Any(char.IsControl))
+            throw new BridgeProtocolException("A task activation window identity is invalid.");
+        return new(id, handle, (uint)pid, created, className);
+    }
+
+    private static ulong ReadHex(JsonElement payload, string property)
+    {
+        var value = ReadString(payload, property);
+        if (value.Length > 16 || value.Any(character => !char.IsAsciiHexDigit(character)) ||
+            !ulong.TryParse(value, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var number) || number == 0)
+            throw new BridgeProtocolException("A task activation native identity is invalid.");
+        return number;
     }
 
     private void HandleFailure(JsonElement payload)
@@ -596,6 +730,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             if (_descriptors.ContainsKey(failure.WidgetId))
             {
                 var current = _states.GetValueOrDefault(failure.WidgetId);
+                _hostEffectAdmissionBoundaries[failure.WidgetId] = Environment.TickCount64;
                 _sessionGenerations[failure.WidgetId] = checked(
                     _sessionGenerations.GetValueOrDefault(failure.WidgetId) + 1);
                 _ = CommitStateLocked(
@@ -978,6 +1113,9 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                     "The widget descriptor is no longer current.");
             generation = _sessionGenerations.GetValueOrDefault(target.Descriptor.Id) + 1;
             _sessionGenerations[target.Descriptor.Id] = generation;
+            // Runtime fingerprints can survive restart. An effect initiated before
+            // retiring this local incarnation must not acquire the new authority.
+            _hostEffectAdmissionBoundaries[target.Descriptor.Id] = Environment.TickCount64;
             cleared = CommitStateLocked(
                 new WidgetPresentationState(target.Descriptor.Id, null, null, 0),
                 publish: true);
