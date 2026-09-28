@@ -13,6 +13,7 @@ public static class WrssLimits
     public const int MaximumSelectorCharacters = 512;
     public const int MaximumValueCharacters = 4_096;
     public const int MaximumExpandedValueCharacters = 16_384;
+    public const int MaximumColorFunctionNesting = 32;
 }
 
 public enum WrssSourceReadStatus

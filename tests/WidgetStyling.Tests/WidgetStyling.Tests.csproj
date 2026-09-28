@@ -10,6 +10,9 @@
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="..\..\samples\PlayniteLibraryWidget\styles\default.wrss"
+             Link="Themes\playnite-library.wrss"
+             CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\src\PlatformSettings\Themes\builtin-default.wrss"
              Link="Themes\builtin-default.wrss"
              CopyToOutputDirectory="PreserveNewest" />

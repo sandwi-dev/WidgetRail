@@ -75,6 +75,35 @@ overrides those defaults, and an explicit widget-package definition overrides
 the global value. When a widget omits a token, its declarations inherit the
 selected theme or host default.
 
+### Color transparency
+
+Every color property accepts `alpha(color, multiplier)`. It multiplies the
+color's existing alpha; RGB channels are preserved. The multiplier must be a
+finite number from `0` to `1`, or a percentage from `0%` to `100%`. Out-of-range
+color components and multipliers are errors, not clamped values.
+
+```css
+.panel {
+  background: alpha(var(--surface), .84);
+  border-color: alpha(var(--border, var(--surface-muted)), 84%);
+}
+```
+
+For example, `alpha(rgba(23, 26, 34, .98), .84)` computes to
+`rgba(23, 26, 34, 0.8232)`. `alpha(transparent, .84)` remains transparent.
+The color can be any supported hex, `rgb()`, `rgba()`, or nested `alpha()`
+expression. Both arguments can use `var()` and its ordinary fallback rules;
+tokens resolve through the theme cascade before the color is evaluated.
+Up to 32 nested `alpha()` calls are allowed after token expansion. Existing
+source-value and expanded-value size limits continue to apply.
+
+Use color alpha for translucent panel fills and borders with fully readable
+children. `opacity` is a separate presentation property: native WinUI applies it
+to the entire element subtree, including text, controls, and artwork. An
+`alpha()` expression is computed once by the trusted style compiler into an
+ordinary RGBA color; widgets do not run code and frontends need no new color
+function interpreter.
+
 ## Property allowlist
 
 The canonical runtime list is `WrssPropertyCatalog.AllowedProperties`. It currently includes:

@@ -35,6 +35,14 @@ and use a `.class-name` selector. Roles such as `button` can style a kind of con
 
 ## Let the theme supply colors
 
+For a translucent surface with opaque labels and artwork, use
+`background: alpha(var(--surface), .84)` and, if needed,
+`border-color: alpha(var(--border, var(--surface-muted)), .84)`. This multiplies
+the theme color's existing alpha without dimming child content. Avoid container
+`opacity` for that effect; WinUI applies opacity to the whole subtree. See the
+[color transparency contract](../reference/wrss.md#color-transparency) for
+supported arguments and limits.
+
 Shared tokens include `--accent`, `--surface`, `--text`, `--text-muted`, and
 `--focus`. If your widget leaves a token undefined, it can inherit the global
 theme or host default. An explicit package definition overrides that default.

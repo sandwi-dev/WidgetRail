@@ -133,9 +133,8 @@ public static partial class WrssPropertyCatalog
         switch (definition.Type)
         {
             case PropertyType.Color:
-                if (!TryColor(value, out var normalizedColor))
+                if (!TryColor(value, out var normalizedColor, out error))
                 {
-                    error = "Expected transparent, #RGB, #RGBA, #RRGGBB, #RRGGBBAA, rgb(), or rgba() with in-range components.";
                     return false;
                 }
                 computed = new WrssComputedValue(WrssValueKind.Color, normalizedColor);
@@ -373,7 +372,7 @@ public static partial class WrssPropertyCatalog
     private static bool TryInvariantDouble(string value, out double number) =>
         double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out number) && double.IsFinite(number);
 
-    private static bool TryColor(string value, out string normalized)
+    private static bool TryBaseColor(string value, out string normalized)
     {
         normalized = string.Empty;
         if (value == "transparent")
