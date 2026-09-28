@@ -55,6 +55,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
     ("Ready UI publishes persistent player navigation metadata and WRSS contracts", SpotifyResponsiveLayoutTests.PersistentPlayerNavigationAndMetadataContract),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
+    ("Pinned Up Next is a finite native scroll with exact duplicate queue actions", PinnedUpNextFiniteActions),
+    ("Pinned Up Next preserves disabled rows and rejects retired projection targets", PinnedUpNextDisabledAndRetired),
     ("Typed pinned Up Next demand survives lifecycle and transport",
         TypedPinnedUpNextDemandSurvivesLifecycleAndTransport),
     ("Queue realizes deep bounded occurrences with native navigation authority", QueueTraversesContinuously),
@@ -732,6 +734,82 @@ static async Task TypedPinnedUpNextDemandSurvivesLifecycleAndTransport()
     await StopAsync(widget);
 }
 
+static async Task PinnedUpNextFiniteActions()
+{
+    var harness = SpotifyHarness.Ready();
+    var repeated = harness.Queue.Items[0];
+    harness.Queue = harness.Queue with { Items = [repeated, repeated, repeated with { Uri = "spotify:track:tail", Title = "Tail" }] };
+    var widget = await StartAsync(harness);
+    try
+    {
+        var host = WidgetTestHost.CreatePinnedLayoutHost(widget, "spotify.pinned.finite");
+        Assert.True(await host.SelectAsync(SpotifyPresentation.UpNextPinnedLayoutId), "Up Next selection was rejected.");
+        await WaitUntil(() => PinnedQueueRows(widget.Render().CreateSnapshot("inspect", 1)).Length == 2);
+        await host.ReplaceSnapshotAsync();
+        var layout = host.CurrentSnapshot.PinnedLayouts.Single(value => value.Id == SpotifyPresentation.UpNextPinnedLayoutId);
+        var rows = PinnedQueueRows(host.CurrentSnapshot);
+        Assert.Equal(SpotifyPresentation.UpNextPinnedScope, layout.ActiveInputScopeId);
+        Assert.Equal(2, rows.Length);
+        Assert.Equal(2, rows.Select(row => row.Id).Distinct().Count());
+        Assert.Equal(2, rows.Select(row => row.FocusPersistenceId).Distinct().Count());
+        Assert.Equal(2, rows.Select(row => row.ActionId).Distinct().Count());
+        Assert.True(PinnedNodes(layout.Root!).All(node => node.CollectionItemKey is null && node.CollectionAnchorKey is null && node.CollectionGeneration is null &&
+            node.CollectionResetGeneration is null && node.VirtualCollectionWindow is null && node.CollectionLayout is null &&
+            node.ScrollNearStartActionId is null && node.ScrollNearEndActionId is null && node.IndexedCollection is null), "Finite pinned rows must not carry lazy/cursor metadata.");
+        Assert.Equal(ViewNodeKind.Scroll, Find(layout.Root!, "spotify.pinned-up-next.scroll").Kind);
+        Assert.Equal(rows[1].Id, rows[0].Focus!.Down);
+        Assert.Equal(rows[0].Id, rows[1].Focus!.Up);
+        Assert.True(rows.All(row => row.Focus!.Left == layout.InitialFocusId), "Pinned rows must return to the player.");
+        Assert.True(rows.All(row => PinnedNodes(row).Any(node => node.ArtworkHandle == repeated.ArtworkUrl || node.ImageSource == repeated.ArtworkUrl)),
+            "Pinned row artwork reference changed while removing the cursor anchor.");
+        Assert.True(await host.RouteActionAsync(ControllerButton.A, rows[1].Id), "Second occurrence was not admitted.");
+        await WaitUntil(() => harness.StartedPlayback.Count == 1 && harness.QueueCalls > 1);
+        Assert.SequenceEqual(new[] { repeated.Uri, "spotify:track:tail" }, harness.StartedPlayback.Single().ItemUris!);
+        Assert.Equal<string?>(null, harness.StartedPlayback.Single().ContextUri);
+        await host.ReplaceSnapshotAsync();
+        rows = PinnedQueueRows(host.CurrentSnapshot);
+        Assert.True(await host.RouteActionAsync(ControllerButton.A, rows[0].Id), "First occurrence was not admitted.");
+        await WaitUntil(() => harness.Commands.Count(command => command.Operation == SpotifyPlaybackOperation.Next) == 1);
+        Assert.Equal(1, harness.StartedPlayback.Count);
+    }
+    finally { await StopAsync(widget); }
+}
+
+static async Task PinnedUpNextDisabledAndRetired()
+{
+    var harness = SpotifyHarness.Ready();
+    var original = harness.Queue.Items[0];
+    harness.Queue = harness.Queue with { Items = [original with { IsPlayable = false }, original with { Uri = "spotify:track:available" }] };
+    var widget = await StartAsync(harness);
+    try
+    {
+        var host = WidgetTestHost.CreatePinnedLayoutHost(widget, "spotify.pinned.disabled");
+        Assert.True(await host.SelectAsync(SpotifyPresentation.UpNextPinnedLayoutId), "Up Next selection was rejected.");
+        await WaitUntil(() => PinnedQueueRows(widget.Render().CreateSnapshot("inspect", 1)).Length == 2);
+        await host.ReplaceSnapshotAsync();
+        var rows = PinnedQueueRows(host.CurrentSnapshot);
+        Assert.Equal(true, rows[0].IsDisabled);
+        await host.RouteActionAsync(ControllerButton.A, rows[0].Id);
+        Assert.Equal(0, harness.Commands.Count); Assert.Equal(0, harness.StartedPlayback.Count);
+        Assert.True(await host.SelectAsync(SpotifyPresentation.CompactPinnedLayoutId), "Compact selection was rejected.");
+        await host.ReplaceSnapshotAsync();
+        Assert.True(!await host.RouteActionAsync(ControllerButton.A, rows[1].Id), "An old Up Next target must not resolve inside Compact.");
+        Assert.Equal(0, harness.StartedPlayback.Count);
+        Assert.True(await host.RevokeAsync(), "Pinned selection did not retire.");
+        Assert.True(!await host.RouteActionAsync(ControllerButton.A, rows[1].Id), "Retired selection admitted a queue action.");
+    }
+    finally { await StopAsync(widget); }
+}
+
+static ViewNode[] PinnedQueueRows(ViewSnapshot snapshot) =>
+    PinnedNodes(snapshot.PinnedLayouts.Single(value => value.Id == SpotifyPresentation.UpNextPinnedLayoutId).Root!)
+        .Where(node => node.ActionId?.StartsWith("spotify.queue.play.", StringComparison.Ordinal) == true).ToArray();
+
+static IEnumerable<ViewNode> PinnedNodes(ViewNode root)
+{
+    yield return root;
+    foreach (var child in root.Children) foreach (var node in PinnedNodes(child)) yield return node;
+}
 static void AssertPinnedUpNextReady(ViewSnapshot snapshot)
 {
     var layout = snapshot.PinnedLayouts.Single(candidate =>

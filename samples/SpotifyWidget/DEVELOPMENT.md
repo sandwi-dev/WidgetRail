@@ -58,6 +58,16 @@ ordinary overlay deactivation does not revoke a still-selected pinned surface.
 Each immutable presentation supplies the focus target that exists in its exact
 ready, empty, setup, connection, failure, or loading root while the typed handle
 continues to own the stable layout metadata.
+Up Next deliberately renders at most two ordinary rows inside a native scroll.
+It is a finite preview, not a pageable collection, so it declares neither a
+cursor anchor nor `CollectionItem` metadata. Its stable row IDs, persistence IDs
+and action IDs still encode the exact queue occurrence, including repeated songs.
+The first occurrence performs Next; the second starts the bounded queue
+suffix from that occurrence through the existing queue action path. Native scrolling
+reveals either row; existing links return to the player or its realized neighbor.
+Pinned scope/selection lifetime, availability and artwork contracts are unchanged.
+The full Queue page always uses its complete indexed source; the obsolete eager
+cursor-rendering fallback is removed.
 
 ## State ownership
 

@@ -209,7 +209,10 @@ An action checks the exact current observation and route after command admission
 then executes the captured occurrence and suffix. This preserves Spotify's
 existing behavior: first occurrence uses Next without replacing context; later
 occurrences start the bounded captured suffix, including repeated URIs. HTTPS
-artwork remains host-owned. Pinned Up Next keeps its existing two inline rows.
+artwork remains host-owned. Pinned Up Next is deliberately a finite preview of two
+ordinary rows. Their occurrence identity remains encoded in row/action/persistence
+IDs; neither cursor anchors nor `CollectionItem` metadata belong on that plain scroll.
+The main Queue page requires its complete indexed source and has no eager fallback.
 
 Playlist library, playlist details and Search use
 [SpotifyDiscoveredCollections.cs](../../samples/SpotifyWidget/SpotifyDiscoveredCollections.cs).

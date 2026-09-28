@@ -193,10 +193,6 @@ internal static class SpotifyPresentation
         if (queue.Items.Count != 0)
         {
             var items = queue.Items.Take(PinnedUpNextMaximumItems).ToArray();
-            var projectedAnchor = queue.Anchor is { } retainedAnchor &&
-                                  items.Any(item => item.Key == retainedAnchor)
-                ? retainedAnchor
-                : items[0].Key;
             var rows = items.Select((item, index) =>
             {
                 var itemId = SpotifyCollectionIdentity.FocusId(
@@ -213,12 +209,14 @@ internal static class SpotifyPresentation
                 if (index + 1 != items.Length)
                     row = row.FocusDown(SpotifyCollectionIdentity.FocusId(
                         "spotify.queue.item", mode, items[index + 1].Key));
-                return row.CollectionItem(item.Key)
-                    .Classes("spotify-pinned-next-row");
+                // IDs, persistence IDs and action IDs already encode the exact
+                // occurrence. CollectionItem would imply a legacy cursor here.
+                return row.Classes("spotify-pinned-next-row");
             }).ToArray();
+            // This deliberately finite two-row projection needs no virtual window
+            // or cursor anchor. Native scrolling reveals either stable keyed row.
             content = UI.VerticalScroll($"spotify.{mode}.scroll", rows)
-                .Classes("spotify-pinned-queue-scroll") with
-            { CollectionAnchorKey = projectedAnchor.Value };
+                .Classes("spotify-pinned-queue-scroll");
         }
         else if (queue.Status is WidgetPagedResourceStatus.Loading or
                  WidgetPagedResourceStatus.NotLoaded)
@@ -549,7 +547,6 @@ internal static class SpotifyPresentation
         SpotifyPresentationState presentation,
         SpotifyDestination destination)
     {
-        const string mode = "shared";
         if (presentation.Navigation.Route == SpotifyRoute.Setup)
             return presentation.SetupBusy
                 ? "spotify.setup.close"
@@ -566,9 +563,7 @@ internal static class SpotifyPresentation
             var queue = presentation.Queue;
             if (queue.Items.Count != 0)
             {
-                if (presentation.IndexedQueue is not null) return "spotify.queue.scroll";
-                return SpotifyCollectionIdentity.FocusId(
-                    "spotify.queue.item", mode, queue.Items[0].Key);
+                return "spotify.queue.scroll";
             }
             if (queue.Status is WidgetPagedResourceStatus.Loading or
                 WidgetPagedResourceStatus.NotLoaded)
@@ -862,21 +857,7 @@ internal static class SpotifyPresentation
                 $"spotify.queue.empty.{mode}",
                 new ComponentAction("Refresh", "spotify.page.retry", WidgetGlyph.Refresh),
                 WidgetGlyph.Next).Classes("spotify-page");
-        var rows = indexedQueue is not null ? [] : queue.Items.Select((item, index) => QueueRow(
-                item,
-                mode,
-                index == 0
-                    ? null
-                    : SpotifyCollectionIdentity.FocusId(
-                        "spotify.queue.item", mode, queue.Items[index - 1].Key),
-                index == queue.Items.Count - 1
-                    ? null
-                    : SpotifyCollectionIdentity.FocusId(
-                        "spotify.queue.item", mode, queue.Items[index + 1].Key)))
-            .ToArray();
-        WidgetElement scroll = indexedQueue is not null ? indexedQueue : UI.CollectionList("spotify.queue.scroll", 82, items: rows)
-            .Classes("spotify-page-scroll") with
-        { CollectionAnchorKey = queue.Anchor?.Value };
+        var scroll = indexedQueue ?? throw new InvalidOperationException("A populated Spotify queue requires its complete indexed source.");
         var content = new List<WidgetElement>
         {
             UI.SectionHeader("Up next", $"spotify.queue.header.{mode}", "QUEUE",
@@ -1039,23 +1020,6 @@ internal static class SpotifyPresentation
         // Native lazy collection owns neighbors; item fragments never point at
         // unrealized siblings or confuse the first row of a range with queue head.
         return row with { AccessibilityLabel = (first ? "Next track: " : "Play from here: ") + item.Value.Title };
-    }
-
-    private static WidgetElement QueueRow(
-        SpotifyMediaCollectionItem item,
-        string mode,
-        string? up,
-        string? down)
-    {
-        var row = MediaRow(item.Value, $"spotify.queue.play.{item.Key.Value}",
-                SpotifyCollectionIdentity.FocusId("spotify.queue.item", mode, item.Key),
-                SpotifyCollectionIdentity.FocusId(
-                    "spotify.queue.persist", "shared", item.Key),
-                up is null ? "Next track" : "Play from here");
-        row = row with { AccessibilityLabel = (up is null ? "Next track: " : "Play from here: ") + item.Value.Title };
-        if (up is not null) row = row.FocusUp(up);
-        if (down is not null) row = row.FocusDown(down);
-        return row.CollectionItem(item.Key);
     }
 
     internal static WidgetElement IndexedPlaylistTrackRow(SpotifyMediaCollectionItem item) =>
