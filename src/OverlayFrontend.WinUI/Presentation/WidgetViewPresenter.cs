@@ -18,7 +18,7 @@ internal sealed record WidgetActionRequest(WidgetPresentationAuthority Authority
 /// control behavior and painting. This adapter retains controls by semantic identity
 /// and reconciles declaration membership; it contains no geometry or frame scheduler.
 /// </summary>
-internal sealed class WidgetViewPresenter : ContentControl
+internal sealed partial class WidgetViewPresenter : ContentControl
 {
     private sealed record Declaration(ViewNode Node, WidgetElementIdentity Identity, string? ParentId);
     private sealed record Binding(WidgetElementIdentity Identity, FrameworkElement Element, Panel? Children, object Token);
@@ -48,6 +48,8 @@ internal sealed class WidgetViewPresenter : ContentControl
         XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled;
         Loaded += (_, _) => QueueEntryFocus();
         GotFocus += (_, _) => RememberFocus();
+        GettingFocus += OnGettingFocus;
+        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => pendingGroupEntry = null), true);
     }
 
     public void Apply(WidgetPresentationFrame next)
@@ -84,7 +86,11 @@ internal sealed class WidgetViewPresenter : ContentControl
                         binding.Children.Children.RemoveAt(index);
                 }
             }
-            if (!sameOwner) remembered.Clear();
+            if (!sameOwner)
+            {
+                remembered.Clear();
+                ResetGroupFocus();
+            }
             declarations = plan;
             bindings = nextBindings;
             frame = next;
@@ -109,11 +115,12 @@ internal sealed class WidgetViewPresenter : ContentControl
             needsEntry = needsEntry || !sameOwner || oldScope != next.Authority.ActiveInputScopeId
                 || (focused is not null && (!bindings.TryGetValue(focused.Identity.Id, out var current)
                     || !ReferenceEquals(current, focused) || !Eligible(current)));
+            UpdateFocusPolicy(next.Snapshot);
             pendingRestore = !needsEntry && focused is not null && Eligible(focused)
                 && !ReferenceEquals(FocusedBinding(), focused) ? focused : null;
         }
         finally { applying = false; }
-        if (needsEntry || pendingRestore is not null) QueueEntryFocus();
+        if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
     }
 
     private void QueueEntryFocus()
@@ -127,6 +134,7 @@ internal sealed class WidgetViewPresenter : ContentControl
     {
         focusQueued = false;
         if (!IsLoaded || XamlRoot is null || frame is null || applying) return;
+        if (TryRestoreGroupEntry()) return;
         if (pendingRestore is { } restore)
         {
             pendingRestore = null;
@@ -145,11 +153,19 @@ internal sealed class WidgetViewPresenter : ContentControl
         if (target?.Element is Control control && control.Focus(FocusState.Keyboard)) needsEntry = false;
     }
 
-    public bool MoveFocus(FocusNavigationDirection direction) => !applying && IsLoaded
-        && FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = this });
+    public bool MoveFocus(FocusNavigationDirection direction)
+    {
+        if (applying || !IsLoaded || frame is null) return false;
+        pendingGroupEntry = null;
+        var scope = bindings.Values.FirstOrDefault(binding => declarations[binding.Identity.Id].Node.InputScopeId == frame.Authority.ActiveInputScopeId)
+            ?? (bindings.GetValueOrDefault(frame.Snapshot.Root.Id)?.Identity.Scope == frame.Authority.ActiveInputScopeId
+                ? bindings.GetValueOrDefault(frame.Snapshot.Root.Id) : null);
+        return scope is not null && FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = scope.Element });
+    }
 
     public void ActivateFocused()
     {
+        pendingGroupEntry = null;
         if (!applying && FocusedBinding() is { Element: Button { Command: { } command } button } binding
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
     }
@@ -158,10 +174,11 @@ internal sealed class WidgetViewPresenter : ContentControl
         && declarations[binding.Identity.Id].Node is { IsFocusable: true, IsDisabled: not true, IsBusy: not true }
         && binding.Element.Visibility == Visibility.Visible;
 
-    private Binding? FocusedBinding()
+    private Binding? FocusedBinding() => XamlRoot is null ? null : FindBinding(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject);
+
+    private Binding? FindBinding(DependencyObject? element)
     {
-        if (XamlRoot is null) return null;
-        for (var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject; focused is not null && !ReferenceEquals(focused, this);
+        for (var focused = element; focused is not null && !ReferenceEquals(focused, this);
             focused = VisualTreeHelper.GetParent(focused))
         {
             var id = focused is FrameworkElement { Tag: WidgetElementIdentity identity } ? identity.Id : string.Empty;
@@ -172,7 +189,12 @@ internal sealed class WidgetViewPresenter : ContentControl
 
     private void RememberFocus()
     {
-        if (!applying && FocusedBinding() is { } binding && Eligible(binding)) remembered[binding.Identity.Scope] = binding.Identity;
+        if (!applying && FocusedBinding() is { } binding && Eligible(binding))
+        {
+            remembered[binding.Identity.Scope] = binding.Identity;
+            RememberGroupFocus(binding);
+            UpdateNativeNeighbors();
+        }
     }
 
     private async Task InvokeAsync(WidgetElementIdentity identity, object token)

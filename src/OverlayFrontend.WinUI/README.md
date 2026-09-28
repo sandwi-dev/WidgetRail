@@ -103,3 +103,17 @@ on its completion, and eviction/reload without deleting positions. It closes the
 window after success. This adapter is not connected to worker collection requests
 yet; see [the collection contract](../../docs/maintainers/winui-indexed-collections.md)
 for provider capabilities, SDK/service work and unresolved cursor behavior.
+
+
+`--validate-focus-policy` exercises the shared presenter's declarative focus policy
+through native WinUI controls and `FocusManager`. Explicit neighbors are assigned
+to native XYFocus properties, including neighbors naming remembered-child groups.
+Spatial group entry honors the remembered child, then the declared default, then
+an eligible descendant when the default is unavailable. Input scopes constrain
+native directional search. Group requests are consumed once per worker, may wait
+for ready content, and cannot replay on routine updates; withdrawal or subsequent
+user navigation/activation/pointer input retires a deferred request. New worker
+ownership clears remembered groups. This is focus policy over WinUI's target
+selection, not a custom geometry/navigation renderer. Run
+`scripts/Test-WinUiFocusPolicy.ps1`; it uses no controller hardware. Real lazy-item
+focus integration and physical controller acceptance remain separate work.
