@@ -49,7 +49,23 @@ internal sealed class TextEntryValidationPage : Page, IAsyncDisposable
     {
         try
         {
-            Apply(); await Open();
+            Apply(); await Task.Delay(150);
+            var revokedOpener = (Button)Find(presenter, "Widget.entry")!;
+            revokedOpener.Focus(FocusState.Keyboard);
+            var beforeRevocation = FocusedId;
+            presenter.SetPresentationInputEnabled(false);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)new ButtonAutomationPeer(revokedOpener)
+                .GetPattern(PatternInterface.Invoke)).Invoke();
+            await Task.Delay(150);
+            Check(!presenter.HasTransientControl && actions.Count == 0 && FocusedId == beforeRevocation,
+                "native invocation cannot open TextEntry after presentation input is revoked");
+            presenter.SetPresentationInputEnabled(true);
+            await Open();
+            presenter.SetPresentationInputEnabled(false);
+            await Closed();
+            Check(actions.Count == 0, "input revocation dismisses existing text entry without committing");
+            presenter.SetPresentationInputEnabled(true);
+            await Open();
             Check(FocusedId == "Widget.TextEntry.Key.10", "controller starts on first letter without click");
             presenter.MoveFocus(FocusNavigationDirection.Right);
             Check(FocusedId == "Widget.TextEntry.Key.11", "controller navigation uses native keyboard geometry");

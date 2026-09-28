@@ -42,6 +42,22 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
         try
         {
             Apply();
+            await Task.Delay(150);
+            var revokedOpener = (Button)Find(presenter, "Widget.picker")!;
+            revokedOpener.Focus(FocusState.Keyboard);
+            var beforeRevocation = FocusedId;
+            presenter.SetPresentationInputEnabled(false);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(revokedOpener)
+                .GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            await Task.Delay(150);
+            Check(!presenter.HasTransientControl && actions.Count == 0 && FocusedId == beforeRevocation,
+                "native invocation cannot open Select after outgoing presentation input is revoked");
+            presenter.SetPresentationInputEnabled(true);
+            await OpenAsync();
+            presenter.SetPresentationInputEnabled(false);
+            await Task.Delay(150);
+            Check(!presenter.HasTransientControl && actions.Count == 0, "input revocation dismisses an existing Select without action");
+            presenter.SetPresentationInputEnabled(true);
             await OpenAsync();
             Check(FocusedId == "Widget.picker.Option.first", "selected option receives initial focus");
             presenter.MoveFocus(FocusNavigationDirection.Down);

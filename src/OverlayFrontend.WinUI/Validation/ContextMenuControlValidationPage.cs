@@ -37,6 +37,13 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
         {
             Apply();
             await OpenAsync(ControllerButton.X, "poster", "poster");
+            presenter.SetPresentationInputEnabled(false);
+            Check(!presenter.HasTransientControl && actions.Count == 0,
+                "revoking outgoing presentation input dismisses context menu without action");
+            Check(!await presenter.HandleControllerButtonAsync(ControllerButton.X) && !presenter.HasTransientControl,
+                "revoked context owner cannot reopen while still drawable");
+            presenter.SetPresentationInputEnabled(true);
+            await OpenAsync(ControllerButton.X, "poster", "poster");
             Check(presenter.CaptureControllerGuide().Select(hint => hint.Button).SequenceEqual(new ControllerButton?[] { ControllerButton.A }), "open popup guide suppresses parent shortcuts");
             Check(FocusedId.EndsWith("Context.play", StringComparison.Ordinal), "focused surface X menu wins over scoped X hint");
             presenter.MoveFocus(FocusNavigationDirection.Down);

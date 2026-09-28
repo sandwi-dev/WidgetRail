@@ -45,7 +45,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void OpenSelect(WidgetElementIdentity identity, object token)
     {
-        if (applying || disposed || presentationOnly || frame is null ||
+        if (applying || disposed || presentationOnly || !presentationInputEnabled || frame is null ||
             !bindings.TryGetValue(identity.Id, out var binding) || binding.Identity != identity ||
             !ReferenceEquals(binding.Token, token) || !Eligible(binding) || !binding.Element.IsLoaded) return;
         DismissTransientControl();
@@ -75,6 +75,7 @@ internal sealed partial class WidgetViewPresenter
         flyout.Opened += (_, _) =>
         {
             if (!ReferenceEquals(selectPopup, popup)) return;
+            if (!SelectIsCurrent(popup)) { DismissTransientControl(); return; }
             var selected = Array.FindIndex(options, option => option.IsSelected && !option.IsDisabled && !option.IsBusy);
             if (selected < 0) selected = Array.FindIndex(items, item => item.IsEnabled);
             if (selected >= 0) items[selected].Focus(FocusState.Keyboard);
@@ -117,7 +118,7 @@ internal sealed partial class WidgetViewPresenter
         if (selectPopup is { } popup && !SelectIsCurrent(popup)) DismissTransientControl();
     }
 
-    private bool SelectIsCurrent(SelectPopup popup) => !disposed && frame is not null &&
+    private bool SelectIsCurrent(SelectPopup popup) => !disposed && presentationInputEnabled && frame is not null &&
         popup.Presentation.SameInput(presentation) &&
         bindings.TryGetValue(popup.Owner.Identity.Id, out var binding) && ReferenceEquals(binding, popup.Owner) &&
         Eligible(binding) && declarations[binding.Identity.Id].Node.SelectOptions.SequenceEqual(popup.Options);

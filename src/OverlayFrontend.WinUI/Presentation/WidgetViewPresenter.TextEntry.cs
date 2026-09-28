@@ -25,7 +25,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void OpenTextEntry(WidgetElementIdentity identity, object token)
     {
-        if (applying || disposed || presentationOnly || frame is null || XamlRoot is null ||
+        if (applying || disposed || presentationOnly || !presentationInputEnabled || frame is null || XamlRoot is null ||
             !bindings.TryGetValue(identity.Id, out var binding) || binding.Identity != identity ||
             !ReferenceEquals(binding.Token, token) || !Eligible(binding) || !binding.Element.IsLoaded) return;
         DismissTransientControl();
@@ -57,7 +57,7 @@ internal sealed partial class WidgetViewPresenter
         }
     }
 
-    private bool TextEntryIsCurrent(TextEntryPopup popup) => !disposed && frame is not null &&
+    private bool TextEntryIsCurrent(TextEntryPopup popup) => !disposed && presentationInputEnabled && frame is not null &&
         popup.Presentation.SameInput(presentation) &&
         bindings.TryGetValue(popup.Owner.Identity.Id, out var binding) && ReferenceEquals(binding, popup.Owner) && Eligible(binding) &&
         declarations[binding.Identity.Id].Node is { } node && node.ActionId == popup.Declaration.ActionId &&

@@ -3,7 +3,8 @@ param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '../artifacts/winui-native-controls'),
     [ValidateSet('select','text-entry','slider','context-menu','embedded-media')][string[]]$Fixture,
     [switch]$IncludeMedia,
-    [switch]$UsePlatformActivation
+    [switch]$UsePlatformActivation,
+    [switch]$BehaviorOnly
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
@@ -18,6 +19,7 @@ $cases = @(
     @{ Flag='--validate-context-menu'; File='context-menu-result.json' }
 )
 if ($IncludeMedia -or $Fixture -contains 'embedded-media') { $cases += @{ Flag='--validate-embedded-media'; File='embedded-media-result.json'; Media=$true } }
+if ($BehaviorOnly -and ($IncludeMedia -or $Fixture -contains 'embedded-media')) { throw 'Media qualification requires its pixel captures.' }
 if ($Fixture) { $cases = @($cases | Where-Object { $Fixture -contains ($_.Flag -replace '^--validate-', '') }) }
 $summary = [Collections.Generic.List[object]]::new()
 # Requires an analyzer-built x64 Debug frontend and exclusive package deployment.
@@ -59,13 +61,15 @@ try {
                 Start-Sleep -Milliseconds 150
             } while ([DateTime]::UtcNow -lt $deadline)
             if ($null -ne $result) { $result | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $OutputDirectory $case.File) }
-            & winapp ui screenshot -w $mainHwnd --capture-screen -o (Join-Path $OutputDirectory "$($case.Flag.TrimStart('-')).png") --json | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw 'Could not capture native control pixels.' }
+            if (-not $BehaviorOnly) {
+                & winapp ui screenshot -w $mainHwnd --capture-screen -o (Join-Path $OutputDirectory "$($case.Flag.TrimStart('-')).png") --json | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw 'Could not capture native control pixels.' }
+            }
             $passed = $result.result -eq 'passed' -or ($case.Media -and $result.passed -eq $true -and $result.phase -eq 'complete')
             if (-not $passed -or @($result.checks).Count -eq 0) {
                 throw "Fixture failed or timed out: $($case.Flag): $($result.error)"
             }
-            $summary.Add(@{ fixture=$case.Flag; result='passed'; checks=@($result.checks).Count })
+            $summary.Add(@{ fixture=$case.Flag; result='passed'; checks=@($result.checks).Count; pixelsCaptured=(-not $BehaviorOnly) })
         }
         catch {
             $summary.Add(@{ fixture=$case.Flag; result='failed'; detail=$_.Exception.Message })

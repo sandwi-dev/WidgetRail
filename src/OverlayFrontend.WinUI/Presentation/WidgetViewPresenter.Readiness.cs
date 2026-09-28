@@ -12,6 +12,7 @@ internal sealed partial class WidgetViewPresenter
     {
         presentationInputEnabled = enabled;
         IsHitTestVisible = enabled && presentationActive;
+        if (!enabled) DismissTransientControl();
     }
 
     internal bool HasPreparedLayout => !disposed && !applying && presentationActive && frame is not null &&

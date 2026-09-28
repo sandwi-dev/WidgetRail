@@ -31,6 +31,7 @@ internal sealed partial class WidgetViewPresenter
 
     private bool OpenContextMenu(ControllerButton trigger)
     {
+        if (!presentationInputEnabled) return false;
         if (FindContextTarget(trigger) is not { } target) return false;
         // Declared context ownership consumes the button even when every option
         // is unavailable; it must not fall through to an unrelated shortcut.
@@ -122,6 +123,7 @@ internal sealed partial class WidgetViewPresenter
 
     private bool ContextIsCurrent(ContextPopup popup)
     {
+        if (!presentationInputEnabled) return false;
         if (disposed || frame is null || !popup.Presentation.SameInput(presentation) ||
             !bindings.TryGetValue(popup.Owner.Identity.Id, out var owner) || !ReferenceEquals(owner, popup.Owner) ||
             !ContextOwnerAvailable(owner) || !popup.Anchor.IsLoaded) return false;

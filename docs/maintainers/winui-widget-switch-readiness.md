@@ -66,3 +66,21 @@ Bridge. Evidence: `artifacts/winui-shell/switch-fixture-integrated-01/`. The sam
 combined frontend passes all 199 native style checks. These tests preserve the
 distinction between layout readiness, sampled retained pixels, and actual display
 timing; they are not a smoothness benchmark or physical acceptance.
+# Popup ownership during switching
+
+Outgoing content remains drawable while incoming content prepares, but its popup
+ownership ends as soon as presentation input is revoked. Select and TextEntry
+check that gate both at opening and in delayed native continuations. Revocation
+also dismisses an existing Select, text editor or context menu without restoring
+focus into the outgoing widget. Logical focus eligibility remains independent so
+retained focus/viewport capture is not lost.
+
+Native automation regressions invoke real button peers after revocation and
+verify that no popup, focus transfer or action occurs. Existing open controls are
+also revoked. The combined behavior run passes 21 Select, 28 TextEntry and 60
+context-menu checks, with an analyzer-clean build. Evidence:
+`artifacts/winui-shell/popup-admission-behavior-02/`. This run intentionally uses
+the control runner's `-BehaviorOnly` mode and makes no new pixel-parity claim.
+The first run's Select behavior passed but its foreground-required screenshot
+was refused; that capture failure is preserved in `popup-admission-native-01/`.
+Media qualification does not permit behavior-only mode.
