@@ -262,10 +262,10 @@ The resolver has a ten-second ceiling, also bounded by caller/widget cancellatio
 Six new SDK scenario groups exercise these semantics; all 134 SDK checks and 14
 API compatibility tests pass. Existing six indexed-runtime and five indexed-bridge
 checks still pass after updating their source declarations for the required action
-callback. **Lease acquisition, item invocation and item-artwork now have a worker/runtime
-IPC path, but are not connected through bridge/session retention yet.** The bridge
-range endpoint remains read-only. Complete bridge origin/current input validation,
-lease ownership and native row templates before converting production widgets.
+callback. **Lease acquisition, item invocation and item-artwork now have a complete
+worker/runtime/bridge/session path.** Plain range reads remain data-only; frontend
+interactive rows must use explicit acquisition. Native row-template integration
+and production widget conversion remain incomplete.
 
 
 ### Runtime ownership handoff
@@ -281,7 +281,32 @@ Input and data have separate authority. The data lease follows its immutable que
 and item values. Each input must name the current worker snapshot after trusted
 origin/current binding validation, so retained data neither preserves obsolete
 page shortcuts nor prevents new page shortcuts from working. The bridge integration
-must perform that origin/current check before forwarding the worker sequence.
+performs that origin/current check before forwarding the worker sequence.
+
+### Bridge and presentation-session ownership
+
+The bridge retains exact worker leases and compares origin/current logical input
+bindings before forwarding input. Current modal scope affects interaction, not
+retention of unchanged parent rows. Query/projection/registration changes release
+the captured owner after active operations drain. Failed delivery and late
+acquisition cancellation also release the owner, while rejected duplicate
+acquisitions preserve an existing successful lease.
+
+The presentation-session facade returns `WidgetPresentationIndexedLease` with
+immutable rows, typed input admission, artwork resolution and asynchronous
+disposal. The caller supplies the frame actually displayed when input originated.
+An admitted action remains on the existing worker action queue; cancellation does
+not retract or retarget it. Retained, reserved and retiring ranges all count toward
+budgets. The host transport reserves separate capacity for provider work,
+cancellation and ordinary controls; it schedules at most four releases together.
+Release admission and reply have separate deadlines, and session shutdown is
+bounded even if ordinary control requests stop responding.
+
+The full session suite passes 64 tests. Thirteen indexed bridge tests include a
+session-to-bridge-to-real-worker round trip covering captured row actions, parent
+shortcuts, artwork, query replacement and shutdown. All four existing dispatcher
+and eighteen registry regressions also pass. These are correctness checks;
+production-widget performance still requires native templates and real sources.
 
 ### Native page ownership and content refresh
 

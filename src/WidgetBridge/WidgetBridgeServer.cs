@@ -408,6 +408,61 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             await ReplyAsync(BridgeMessageTypes.IndexedRange, request.RequestId, range.Value, cancellationToken).ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.AcquireIndexedRange:
+        {
+            var rangeRequest = BridgeJson.FromElement<BridgeIndexedRangeRequest>(request.Payload);
+            using var publication = await _registry.AcquireIndexedRangeAsync(rangeRequest, cancellationToken).ConfigureAwait(false);
+            var lease = publication.Value;
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await ReplyAsync(BridgeMessageTypes.IndexedLease, request.RequestId, lease, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            catch
+            {
+                await _registry.ReleaseIndexedLeaseAsync(new(lease.WidgetId, lease.InstanceId,
+                    lease.RuntimeGeneration, lease.PresentationGeneration, lease.Lease.LeaseId)).ConfigureAwait(false);
+                throw;
+            }
+            break;
+        }
+        case BridgeMessageTypes.ReleaseIndexedLease:
+        {
+            var leaseRequest = BridgeJson.FromElement<BridgeIndexedLeaseRequest>(request.Payload);
+            var released = await _registry.ReleaseIndexedLeaseAsync(leaseRequest).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { released }, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.IndexedInput:
+        {
+            var inputRequest = BridgeJson.FromElement<BridgeIndexedInputRequest>(request.Payload);
+            var admission = await _registry.AdmitIndexedInputAsync(inputRequest, cancellationToken).ConfigureAwait(false);
+            // Null is deliberately retained: an unhandled input is not enqueued.
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId,
+                new Dictionary<string, string?> { ["admission"] = admission is { } value ? JsonSerializer.SerializeToElement(value, BridgeJson.Options).GetString() : null },
+                cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.ResolveIndexedArtwork:
+        {
+            var artworkRequest = BridgeJson.FromElement<BridgeIndexedArtworkRequest>(request.Payload);
+            var artwork = await _registry.ResolveIndexedArtworkAsync(artworkRequest, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.IndexedArtwork, request.RequestId,
+                new BridgeIndexedArtworkResponse(artworkRequest.WidgetId, artworkRequest.InstanceId,
+                    artworkRequest.RuntimeGeneration, artworkRequest.PresentationGeneration,
+                    artworkRequest.Item, artworkRequest.ArtworkHandle, artworkRequest.DemandId,
+                    artwork is null ? string.Empty : WidgetEncodedArtworkContract.ContentTypeValue(artwork.ContentType),
+                    artwork?.Bytes ?? ReadOnlyMemory<byte>.Empty), cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.CancelIndexedArtwork:
+        {
+            var artworkRequest = BridgeJson.FromElement<BridgeIndexedArtworkRequest>(request.Payload);
+            var cancelled = await _registry.CancelIndexedArtworkAsync(artworkRequest).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { cancelled }, cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.CancelIndexedRange:
         {
             var rangeRequest = BridgeJson.FromElement<BridgeIndexedRangeRequest>(request.Payload);

@@ -41,6 +41,14 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Indexed lease wire contracts and strict classification", BridgeIndexedLeaseWireScenarios.ContractsAndClassification),
+    ("Indexed lease session through bridge to real worker", BridgeIndexedEndToEndScenarios.SessionToRealWorker),
+    ("Indexed lease registry real worker semantic round trip", BridgeIndexedLeaseRegistryScenarios.RealWorkerLeaseRoundTrip),
+    ("Indexed lease registry separates data lifetime and input authority", BridgeIndexedLeaseRegistryScenarios.DataLifetimeAndInputAuthorityAreSeparate),
+    ("Indexed lease registry duplicates and cancellation preserve ownership", BridgeIndexedLeaseRegistryScenarios.DuplicateAndCancellationPreserveOwnership),
+    ("Indexed lease registry artwork drains before retirement", BridgeIndexedLeaseRegistryScenarios.ArtworkReleaseDrainsBeforeRetirement),
+    ("Indexed lease registry bounds owners and drains replacement", BridgeIndexedLeaseRegistryScenarios.BoundedOwnersAndReplacementRelease),
+    ("Indexed lease wire cancellation and serial input scheduling", BridgeIndexedLeaseWireScenarios.CancellationWaitsOnlyForExactAdmissionAndInputRetainsSerialOrdering),
     ("Indexed bridge server wire orders cancellation and publishes ranges", BridgeIndexedRangeScenarios.ServerWireOrdersCancellationAndPublishesRanges),
     ("Indexed bridge real worker reads cancel and retire boundedly", BridgeIndexedRangeScenarios.RealWorkerReadDoesNotBlockAndRetires),
     ("Indexed bridge reads preserve serial work and exact cancellation", BridgeIndexedRangeScenarios.SlowReadsPreserveSerialWork),
@@ -297,7 +305,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
     var instance = RequiredValue(arguments, "--widget-instance");
     return await WidgetWorkerBootstrap.RunAsync(
         arguments,
-        _ => string.Equals(instance, "indexed-real.instance", StringComparison.Ordinal)
+        _ => string.Equals(instance, "indexed-owned.instance", StringComparison.Ordinal)
+            ? new IndexedOwnedBridgeProbeWidget()
+            : string.Equals(instance, "indexed-real.instance", StringComparison.Ordinal)
             ? new IndexedBridgeProbeWidget()
             : string.Equals(instance, "virtual.instance", StringComparison.Ordinal)
             ? new VirtualCollectionBridgeWidget()

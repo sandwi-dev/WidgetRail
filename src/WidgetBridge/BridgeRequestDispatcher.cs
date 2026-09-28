@@ -107,8 +107,8 @@ internal sealed class BridgeRequestDispatcher : IAsyncDisposable
             if (_active.Count >= _maximumConcurrentRequests)
                 return BridgeRequestDispatch.CapacityExceeded;
 
-            if (requestKey.Kind == BridgeRequestKind.ReadIndexedRange &&
-                _active.Values.Count(entry => entry.Key.Kind == BridgeRequestKind.ReadIndexedRange) >= MaximumConcurrentIndexedReads)
+            if (requestKey.IsIndexedProvider &&
+                _active.Values.Count(entry => entry.Key.IsIndexedProvider) >= MaximumConcurrentIndexedReads)
                 return BridgeRequestDispatch.CapacityExceeded;
             var predecessor = !requestKey.IsIndependent && requestKey.WidgetId is not null &&
                 _widgetTails.TryGetValue(requestKey.WidgetId, out var tail)
@@ -116,7 +116,12 @@ internal sealed class BridgeRequestDispatcher : IAsyncDisposable
                 : Task.CompletedTask;
             if (requestKey.Kind == BridgeRequestKind.CancelIndexedRange && requestKey.IndexedRange is { } demand)
             {
-                var earlierRead = _active.Values.FirstOrDefault(entry => entry.Key.Kind == BridgeRequestKind.ReadIndexedRange && entry.Key.IndexedRange == demand);
+                var earlierRead = _active.Values.FirstOrDefault(entry => entry.Key.Kind is (BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.AcquireIndexedRange) && entry.Key.IndexedRange == demand);
+                if (earlierRead is not null) predecessor = earlierRead.Admitted.Task;
+            }
+            if (requestKey.Kind == BridgeRequestKind.CancelIndexedArtwork && requestKey.IndexedArtwork is { } artwork)
+            {
+                var earlierRead = _active.Values.FirstOrDefault(entry => entry.Key.Kind == BridgeRequestKind.ResolveIndexedArtwork && entry.Key.IndexedArtwork == artwork);
                 if (earlierRead is not null) predecessor = earlierRead.Admitted.Task;
             }
             var entry = new RequestEntry(requestId, requestKey);

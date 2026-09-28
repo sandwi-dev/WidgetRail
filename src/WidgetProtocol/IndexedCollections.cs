@@ -49,6 +49,10 @@ public static class IndexedCollectionContract
 
     public static string ResolveScope(ViewSnapshot parent, IndexedCollectionRangeRequest request) => Resolve(parent, request).Scope;
 
+    /// <summary>Returns the active input scope of the request's main or pinned projection.</summary>
+    public static string ResolveActiveInputScope(ViewSnapshot parent, IndexedCollectionRangeRequest request) =>
+        Resolve(parent, request).Projection.ActiveInputScopeId;
+
     public static void ValidateRange(ViewSnapshot parent, IndexedCollectionRangeRequest request, IndexedCollectionRange range)
     {
         var binding = Resolve(parent, request);

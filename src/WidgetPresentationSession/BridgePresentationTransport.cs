@@ -9,10 +9,18 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
     private readonly NamedPipeClientStream _pipe;
     private readonly BridgeFrameChannel _channel;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
+    // Bridge dispatcher admits at most 16 concurrent requests. Leave one slot
+    // for reply finalization/shutdown and reserve provider
+    // cancellation slots independently from ordinary controls and lease release.
+    internal const int MaximumWireRequests = 15;
     private readonly SemaphoreSlim _pendingCapacity;
+    private readonly SemaphoreSlim _providerCapacity;
+    private readonly SemaphoreSlim _cancellationCapacity;
+    private readonly SemaphoreSlim _controlCapacity;
+    private sealed record PendingResponse(TaskCompletionSource<BridgeEnvelope> Completion, SemaphoreSlim Lane);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _gate = new();
-    private readonly Dictionary<long, TaskCompletionSource<BridgeEnvelope>> _pending = [];
+    private readonly Dictionary<long, PendingResponse> _pending = [];
     private Task? _receiveLoop;
     private long _requestId;
     private Exception? _terminalFailure;
@@ -31,8 +39,13 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
         _pipe = pipe;
         _channel = channel;
         _requestId = initialRequestId;
-        _pendingCapacity = new SemaphoreSlim(
-            maximumPendingRequests, maximumPendingRequests);
+        var total = Math.Min(maximumPendingRequests, MaximumWireRequests);
+        var provider = Math.Min(4, (total - 1) / 2);
+        var control = total - 2 * provider;
+        _pendingCapacity = new(total, total);
+        _providerCapacity = new(provider, Math.Max(1, provider));
+        _cancellationCapacity = new(provider, Math.Max(1, provider));
+        _controlCapacity = new(control, control);
     }
 
     internal event Action<BridgeEnvelope>? EventReceived;
@@ -115,7 +128,15 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
         string type, T payload, CancellationToken cancellationToken, TaskCompletionSource? written)
     {
         using var admission = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
-        await _pendingCapacity.WaitAsync(admission.Token).ConfigureAwait(false);
+        var lane = type switch
+        {
+            BridgeMessageTypes.ReadIndexedRange or BridgeMessageTypes.AcquireIndexedRange or BridgeMessageTypes.ResolveIndexedArtwork => _providerCapacity,
+            BridgeMessageTypes.CancelIndexedRange or BridgeMessageTypes.CancelIndexedArtwork => _cancellationCapacity,
+            _ => _controlCapacity,
+        };
+        await lane.WaitAsync(admission.Token).ConfigureAwait(false);
+        try { await _pendingCapacity.WaitAsync(admission.Token).ConfigureAwait(false); }
+        catch { lane.Release(); throw; }
         var requestId = Interlocked.Increment(ref _requestId);
         var completion = new TaskCompletionSource<BridgeEnvelope>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -129,12 +150,13 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
             lock (_gate)
             {
                 ThrowIfTerminalLocked();
-                _pending.Add(requestId, completion);
+                _pending.Add(requestId, new(completion, lane));
             }
         }
         catch
         {
             _pendingCapacity.Release();
+            lane.Release();
             throw;
         }
 
@@ -222,6 +244,9 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
             _lifetime.Dispose();
             _writeGate.Dispose();
             _pendingCapacity.Dispose();
+            _providerCapacity.Dispose();
+            _cancellationCapacity.Dispose();
+            _controlCapacity.Dispose();
         }
     }
 
@@ -237,13 +262,16 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
                     EventReceived?.Invoke(envelope);
                     continue;
                 }
-                TaskCompletionSource<BridgeEnvelope>? completion;
+                PendingResponse? pending;
                 lock (_gate)
                 {
-                    if (_pending.Remove(envelope.RequestId, out completion))
+                    if (_pending.Remove(envelope.RequestId, out pending))
+                    {
                         _pendingCapacity.Release();
+                        pending.Lane.Release();
+                    }
                 }
-                if (completion is null || !completion.TrySetResult(envelope))
+                if (pending is null || !pending.Completion.TrySetResult(envelope))
                     throw new BridgeProtocolException(
                         "WidgetBridge returned an unknown or duplicate response.");
             }
@@ -259,7 +287,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
 
     private void FailTerminal(Exception exception, bool notify)
     {
-        TaskCompletionSource<BridgeEnvelope>[] pending;
+        PendingResponse[] pending;
         lock (_gate)
         {
             if (_terminalFailure is not null) return;
@@ -272,7 +300,8 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
         foreach (var completion in pending)
         {
             _pendingCapacity.Release();
-            completion.TrySetException(failure);
+            completion.Lane.Release();
+            completion.Completion.TrySetException(failure);
         }
         _lifetime.Cancel();
         if (notify) Failed?.Invoke(exception);

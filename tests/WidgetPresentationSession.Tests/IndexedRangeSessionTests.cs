@@ -8,7 +8,7 @@ using WidgetRail.WidgetSdk;
 namespace WidgetRail.WidgetPresentationSession.Tests;
 
 [TestClass]
-public sealed class IndexedRangeSessionTests
+public sealed partial class IndexedRangeSessionTests
 {
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(8);
     private static readonly IndexedCollectionDescriptor Source = new("games", 1, 0, 10000);

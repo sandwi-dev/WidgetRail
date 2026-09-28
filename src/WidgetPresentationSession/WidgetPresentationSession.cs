@@ -434,8 +434,22 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         _disposed = true;
         _lifetime.Cancel();
         Task[] indexed;
-        lock (_gate) indexed = _indexedDemands.Values.Select(item => item.Done.Task).ToArray();
-        await Task.WhenAll(indexed).ConfigureAwait(false);
+        lock (_gate)
+        {
+            RetireIndexedRangesLocked();
+            indexed = _indexedDemands.Values.Select(item => item.Done.Task)
+                .Concat(_indexedArtworkDemands.Values.Select(item => item.Done.Task))
+                .Concat(_indexedLeaseRetirements).ToArray();
+        }
+        var indexedDrain = Task.WhenAll(indexed);
+        try { await indexedDrain.WaitAsync(TimeSpan.FromSeconds(4)).ConfigureAwait(false); }
+        catch (TimeoutException)
+        {
+            // A stalled ordinary control can own admission ahead of lease releases.
+            // Session shutdown must still reach the bounded transport stop boundary.
+            await _transport.DisposeAsync().ConfigureAwait(false);
+            await indexedDrain.ConfigureAwait(false);
+        }
         await _transport.DisposeAsync().ConfigureAwait(false);
         Task[] refreshes;
         lock (_gate) refreshes = _refreshes.Values.ToArray();
@@ -449,6 +463,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         }
         var disposed = new ObjectDisposedException(nameof(WidgetPresentationSession));
         foreach (var item in artwork) item.Completion.TrySetException(disposed);
+        _indexedReleaseCapacity.Dispose();
         _lifetime.Dispose();
     }
 

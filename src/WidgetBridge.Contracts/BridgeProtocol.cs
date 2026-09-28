@@ -30,6 +30,13 @@ internal static class BridgeMessageTypes
     public const string ReadIndexedRange = "read-indexed-range";
     public const string IndexedRange = "indexed-range";
     public const string CancelIndexedRange = "cancel-indexed-range";
+    public const string AcquireIndexedRange = "acquire-indexed-range";
+    public const string IndexedLease = "indexed-lease";
+    public const string ReleaseIndexedLease = "release-indexed-lease";
+    public const string IndexedInput = "indexed-input";
+    public const string ResolveIndexedArtwork = "resolve-indexed-artwork";
+    public const string CancelIndexedArtwork = "cancel-indexed-artwork";
+    public const string IndexedArtwork = "indexed-artwork";
     public const string ResolveArtwork = "resolve-artwork";
     public const string Artwork = "artwork";
     public const string ResolvePackageIcon = "resolve-package-icon";
@@ -367,3 +374,18 @@ internal sealed record BridgeIndexedRangeRequest(
 internal sealed record BridgeIndexedRangeResponse(
     string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
     IndexedCollectionRange Range);
+internal sealed record BridgeIndexedLeaseResponse(
+    string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
+    IndexedCollectionLease Lease);
+internal sealed record BridgeIndexedLeaseRequest(
+    string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration, string LeaseId);
+internal sealed record BridgeIndexedInputRequest(
+    string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
+    IndexedCollectionInputRequest Input, IndexedCollectionInputContext Context);
+internal sealed record BridgeIndexedArtworkRequest(
+    string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
+    IndexedCollectionItemReference Item, string ArtworkHandle, string DemandId);
+internal sealed record BridgeIndexedArtworkResponse(
+    string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
+    IndexedCollectionItemReference Item, string ArtworkHandle, string DemandId,
+    string ContentType, ReadOnlyMemory<byte> ContentBase64);

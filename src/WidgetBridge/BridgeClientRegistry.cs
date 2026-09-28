@@ -263,6 +263,8 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
         new(
             transactionKind, baseSequence, recoveryOriginSequence,
             await GetSnapshotAsync(cancellationToken).ConfigureAwait(false), null);
+    Task<IBridgeIndexedLease> AcquireIndexedRangeAsync(IndexedCollectionRangeRequest request, int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        Task.FromException<IBridgeIndexedLease>(new NotSupportedException("Indexed leases are unavailable."));
     // Implementations must use the exact already-running worker, never start/recover,
     // and own bounded cancellation/drain before returning. The registry retains a
     // publication lease until this operation actually ends; no abandoned WaitAsync.
@@ -338,6 +340,8 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         client.GetPresentationAsync(
             capabilities, presentationGeneration, baseSequence,
             transactionKind, recoveryOriginSequence, cancellationToken);
+    public async Task<IBridgeIndexedLease> AcquireIndexedRangeAsync(IndexedCollectionRangeRequest request, int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        new WidgetProcessBridgeIndexedLease(await client.AcquireIndexedRangeAsync(request, expectedStartOrdinal, cancellationToken).ConfigureAwait(false));
     public Task<IndexedCollectionRange> ReadIndexedRangeAsync(IndexedCollectionRangeRequest request, int expectedStartOrdinal, CancellationToken cancellationToken) =>
         client.ReadIndexedRangeAsync(request, expectedStartOrdinal, cancellationToken);
     public Task SetLifecycleStateAsync(

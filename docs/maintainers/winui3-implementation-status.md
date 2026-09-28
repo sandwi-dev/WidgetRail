@@ -481,3 +481,39 @@ rejections now bypass withdrawal; cancelled or unadmitted successful replies sti
 withdraw their exact demand. A real-worker regression verifies the original row
 action and artwork remain valid. All thirteen indexed runtime checks pass, and the
 WinUI analyzer checkpoint build passes without warnings or errors.
+
+## Interactive indexed data path and native content refresh
+
+Bridge and presentation-session ownership now connect the runtime's semantic
+leases end to end. The registry validates origin/current row and parent bindings,
+keeps unchanged data across modals, and retires exact owners on query/projection/
+worker changes. Active input/artwork operations keep registrations alive until
+they drain. The session exposes disposable immutable row ranges with typed input
+admission and artwork APIs. Independent provider/cancellation/control admission
+and bounded release batches prevent bulk eviction from saturating the bridge;
+separate release admission/reply deadlines cover a stalled ordinary control lane.
+
+Validation: 64 session tests, 13 indexed bridge scenarios (including both pipes
+and a real worker), four existing dispatcher and eighteen registry scenarios pass.
+The full WinUI analyzer build has zero warnings/errors. New fixture errors were
+corrected without changing production behavior: opaque test artwork lacked an
+accessibility label, and an end-to-end test used the shortcut label overload
+instead of the explicit `actionId` argument.
+
+The native indexed source now owns/retires asynchronous page lifetimes and
+refreshes content without replacing logical slots. Thirteen native UI checks
+pass, including seven dispatcher lifetime scenarios. At index 600,000, refreshed
+content preserved focus and exact scroll offset; the million-row source retained
+96 slots and 21 native containers with no enumeration. This is a source fixture,
+not production-widget performance evidence.
+
+Evidence: `artifacts/winui-indexed/lease-final-*.log`,
+`artifacts/winui-indexed/lease-complete-build.log`,
+`artifacts/winui-indexed/native-ownership-ui/`, and
+`artifacts/winui-session-leases/admission-tests.log` with corresponding binlogs.
+Validation windows were closed. No controller physical acceptance was requested.
+
+Next: connect these leases to native item templates, constrain collection layout,
+validate navigation to unrealized items, and adopt real YouTube/Playnite sources.
+The remaining styles, modals, media, pinned surfaces, animations and shell work
+are still required for the full migration. Nothing was merged to main.

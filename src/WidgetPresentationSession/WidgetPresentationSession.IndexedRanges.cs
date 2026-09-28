@@ -1,5 +1,6 @@
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.WidgetPresentationSession;
 
@@ -29,7 +30,20 @@ public sealed partial class WidgetPresentationSession
     /// </summary>
     public async Task<IndexedCollectionRange> ReadIndexedRangeAsync(
         WidgetPresentationAuthority authority, string collectionId, IndexedCollectionDescriptor source,
-        int startIndex, int count, string? pinnedLayoutId = null, CancellationToken cancellationToken = default)
+        int startIndex, int count, string? pinnedLayoutId = null, CancellationToken cancellationToken = default) =>
+        (await ReadIndexedCoreAsync(authority, collectionId, source, startIndex, count, pinnedLayoutId, false, cancellationToken).ConfigureAwait(false)).Range;
+
+    /// <summary>Retains bounded row action/artwork authority independently of realized controls.</summary>
+    public async Task<WidgetPresentationIndexedLease> AcquireIndexedRangeAsync(
+        WidgetPresentationAuthority authority, string collectionId, IndexedCollectionDescriptor source,
+        int startIndex, int count, string? pinnedLayoutId = null, CancellationToken cancellationToken = default) =>
+        (await ReadIndexedCoreAsync(authority, collectionId, source, startIndex, count, pinnedLayoutId, true, cancellationToken).ConfigureAwait(false)).Lease!;
+
+    private sealed record IndexedReadResult(IndexedCollectionRange Range, WidgetPresentationIndexedLease? Lease);
+
+    private async Task<IndexedReadResult> ReadIndexedCoreAsync(
+        WidgetPresentationAuthority authority, string collectionId, IndexedCollectionDescriptor source,
+        int startIndex, int count, string? pinnedLayoutId, bool acquire, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var range = new IndexedCollectionRangeRequest(collectionId, source, startIndex, count,
@@ -45,44 +59,76 @@ public sealed partial class WidgetPresentationSession
             var scopeId = IndexedCollectionContract.ResolveScope(_states[authority.WidgetId].LastGood!.Snapshot, range);
             // Reserve space for each range's cancellation and at least one ordinary
             // action. Slow range providers must not occupy every transport slot.
-            var capacity = Math.Min(_options.MaximumPendingIndexedRanges, (_options.MaximumPendingRequests - 1) / 2);
-            if (_indexedDemands.Count >= capacity)
+            var capacity = Math.Min(_options.MaximumPendingIndexedRanges, IndexedProviderCapacity);
+            if (_indexedDemands.Count + _indexedArtworkDemands.Count >= capacity)
                 throw new WidgetPresentationSessionException("indexed_saturated", "The indexed range request limit has been reached.");
+            if (acquire && (_indexedLeases.Count + _indexedLeaseRetirements.Count + _indexedLeaseReservations >= Widget.MaximumIndexedLeases ||
+                _indexedLeases.Values.Sum(lease => lease.Range.Items.Count) + _indexedLeaseReservedItems + _indexedLeaseRetiringItems + count > Widget.MaximumIndexedLeaseItems))
+                throw new WidgetPresentationSessionException("indexed_lease_saturated", "The indexed retention budget is full.");
             var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
             lifetime.CancelAfter(_options.IndexedRangeTimeout);
             operation = new(authority, new(authority.WidgetId, authority.WidgetInstanceId,
                 authority.RuntimeGeneration, authority.PresentationGeneration, range), lifetime, scopeId);
             _indexedDemands.Add(range.DemandId, operation);
+            if (acquire) { ++_indexedLeaseReservations; _indexedLeaseReservedItems += count; }
         }
         Task<BridgeEnvelope>? reply = null;
+        var succeeded = false;
+        var rejected = false;
         try
         {
             operation.Lifetime.Token.ThrowIfCancellationRequested();
             // Keep original correlation alive until either result or cancellation
             // completes. Cancelling the local await must not drop a late wire reply.
-            reply = _transport.RequestWithWriteCompletionAsync(BridgeMessageTypes.ReadIndexedRange, operation.Request, operation.Written);
+            reply = _transport.RequestWithWriteCompletionAsync(acquire ? BridgeMessageTypes.AcquireIndexedRange : BridgeMessageTypes.ReadIndexedRange, operation.Request, operation.Written);
             ObserveIndexedReply(operation.Written.Task);
             ObserveIndexedReply(reply);
             var envelope = await reply.WaitAsync(operation.Lifetime.Token).ConfigureAwait(false);
             operation.Lifetime.Token.ThrowIfCancellationRequested();
             if (envelope.Type == BridgeMessageTypes.Error)
             {
+                rejected = true;
                 var failure = ReadRequestFailure(envelope.Payload);
                 throw new WidgetPresentationSessionException(failure.Code, failure.Message);
             }
-            if (envelope.Type != BridgeMessageTypes.IndexedRange)
+            if (envelope.Type != (acquire ? BridgeMessageTypes.IndexedLease : BridgeMessageTypes.IndexedRange))
                 throw new BridgeProtocolException("WidgetBridge returned an unexpected indexed range response.");
-            var response = BridgeJson.FromElement<BridgeIndexedRangeResponse>(envelope.Payload);
-            if (response.WidgetId != authority.WidgetId || response.InstanceId != authority.WidgetInstanceId ||
-                response.RuntimeGeneration != authority.RuntimeGeneration || response.PresentationGeneration != authority.PresentationGeneration)
-                throw new BridgeProtocolException("WidgetBridge returned foreign indexed range authority.");
+            IndexedCollectionRange received;
+            string? leaseId = null;
+            if (acquire)
+            {
+                var response = BridgeJson.FromElement<BridgeIndexedLeaseResponse>(envelope.Payload);
+                if (!MatchesIndexedIdentity(authority, response.WidgetId, response.InstanceId, response.RuntimeGeneration, response.PresentationGeneration) ||
+                    response.Lease is null || !Guid.TryParseExact(response.Lease.LeaseId, "N", out _))
+                    throw new BridgeProtocolException("WidgetBridge returned foreign or malformed indexed lease authority.");
+                received = response.Lease.Range;
+                leaseId = response.Lease.LeaseId;
+            }
+            else
+            {
+                var response = BridgeJson.FromElement<BridgeIndexedRangeResponse>(envelope.Payload);
+                if (!MatchesIndexedIdentity(authority, response.WidgetId, response.InstanceId, response.RuntimeGeneration, response.PresentationGeneration))
+                    throw new BridgeProtocolException("WidgetBridge returned foreign indexed range authority.");
+                received = response.Range;
+            }
             lock (_gate)
             {
                 operation.Lifetime.Token.ThrowIfCancellationRequested();
                 if (!IsIndexedDemandCurrentLocked(operation))
                     throw new WidgetPresentationSessionException("indexed_retired", "The indexed parent or query retired.");
-                IndexedCollectionContract.ValidateRange(_states[authority.WidgetId].LastGood!.Snapshot, range, response.Range);
-                return response.Range;
+                IndexedCollectionContract.ValidateRange(_states[authority.WidgetId].LastGood!.Snapshot, range, received);
+                var nodes = 0;
+                var frozen = received with { Items = Array.AsReadOnly(received.Items.Select(item =>
+                    item with { Root = WidgetDeclarationSnapshot.Freeze(item.Root, 1, ref nodes) }).ToArray()) };
+                WidgetPresentationIndexedLease? lease = null;
+                if (acquire)
+                {
+                    if (_indexedLeases.ContainsKey(leaseId!)) throw new BridgeProtocolException("WidgetBridge reused an owned lease identity.");
+                    lease = new(this, authority, operation.Request, operation.ScopeId, leaseId!, frozen);
+                    _indexedLeases.Add(leaseId!, lease);
+                }
+                succeeded = true;
+                return new(frozen, lease);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
@@ -96,13 +142,17 @@ public sealed partial class WidgetPresentationSession
         {
             try
             {
-                if (reply is { IsCompleted: false })
+                if (reply is not null && (!reply.IsCompleted || acquire && !succeeded && !rejected))
                     await CancelIndexedDemandAsync(operation, reply).ConfigureAwait(false);
             }
             finally
             {
                 Task? retirement;
-                lock (_gate) { _indexedDemands.Remove(range.DemandId); retirement = operation.Retirement; }
+                lock (_gate)
+                {
+                    _indexedDemands.Remove(range.DemandId); retirement = operation.Retirement;
+                    if (acquire) { --_indexedLeaseReservations; _indexedLeaseReservedItems -= count; }
+                }
                 try { if (retirement is not null) await retirement.ConfigureAwait(false); }
                 finally { operation.Lifetime.Dispose(); operation.Done.TrySetResult(); }
             }
@@ -125,6 +175,7 @@ public sealed partial class WidgetPresentationSession
 
     private void RetireIndexedRangesLocked(string? widgetId = null, WidgetPresentationAuthority? retained = null)
     {
+        RetireIndexedLeasesLocked(widgetId, retained);
         foreach (var demand in _indexedDemands.Values)
             if ((widgetId is null || demand.Authority.WidgetId == widgetId) &&
                 (retained is null || !IsIndexedDemandCurrentLocked(demand)))
@@ -138,16 +189,19 @@ public sealed partial class WidgetPresentationSession
 
     // A data demand belongs to its query and projection, not to every unrelated
     // parent snapshot revision or the currently interactive modal scope.
-    private bool IsIndexedDemandCurrentLocked(IndexedDemand demand)
+    private bool IsIndexedDemandCurrentLocked(IndexedDemand demand) =>
+        IsIndexedOwnerCurrentLocked(demand.Authority, demand.Request.Range, demand.ScopeId);
+
+    private bool IsIndexedOwnerCurrentLocked(WidgetPresentationAuthority authority, IndexedCollectionRangeRequest request, string scopeId)
     {
-        if (_disposed || _terminalFailure is not null || _indexedHiddenWidgets.Contains(demand.Authority.WidgetId) ||
-            !_descriptors.TryGetValue(demand.Authority.WidgetId, out var descriptor) ||
-            descriptor.InstanceId != demand.Authority.WidgetInstanceId || descriptor.RuntimeGeneration != demand.Authority.RuntimeGeneration ||
-            descriptor.PresentationGeneration != demand.Authority.PresentationGeneration ||
-            _sessionGenerations.GetValueOrDefault(demand.Authority.WidgetId) != demand.Authority.SessionGeneration ||
-            !_states.TryGetValue(demand.Authority.WidgetId, out var state) || state.LastGood is not { } parent ||
-            !SameIndexedOwner(demand.Authority, parent.Authority)) return false;
-        try { return IndexedCollectionContract.ResolveScope(parent.Snapshot, demand.Request.Range) == demand.ScopeId; }
+        if (_disposed || _terminalFailure is not null || _indexedHiddenWidgets.Contains(authority.WidgetId) ||
+            !_descriptors.TryGetValue(authority.WidgetId, out var descriptor) ||
+            descriptor.InstanceId != authority.WidgetInstanceId || descriptor.RuntimeGeneration != authority.RuntimeGeneration ||
+            descriptor.PresentationGeneration != authority.PresentationGeneration ||
+            _sessionGenerations.GetValueOrDefault(authority.WidgetId) != authority.SessionGeneration ||
+            !_states.TryGetValue(authority.WidgetId, out var state) || state.LastGood is not { } parent ||
+            !SameIndexedOwner(authority, parent.Authority)) return false;
+        try { return IndexedCollectionContract.ResolveScope(parent.Snapshot, request) == scopeId; }
         catch (Exception exception) when (exception is ArgumentException or ProtocolValidationException) { return false; }
     }
 

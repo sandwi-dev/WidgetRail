@@ -447,3 +447,21 @@ cancellation cancel captured demand. Production IBridgeWidgetClient range reads
 must preserve WidgetProcessClient's bounded cancellation/terminal-session
 contract; the registry does not abandon client calls or dispose their resources
 under a still-running trusted implementation.
+
+`acquire-indexed-range` additionally returns a bounded semantic lease. The registry
+owns the exact worker lease until explicit release, cancelled/failed delivery,
+query/projection retirement or session teardown. Owned ranges, items and nodes
+include pending acquisition reservations; a retiring owner remains accounted for
+until its active operations and remote release finish. No registry lock is held
+during provider work or remote disposal.
+
+`indexed-input` joins the ordinary per-widget ordering. It resolves the leased
+row and logical parent path in both the user's origin snapshot and the current
+snapshot. Only an unchanged, available binding can be forwarded with the current
+worker sequence. A modal disables parent input without discarding unchanged
+parent data. Row actions and parent shortcuts use the same worker action queue.
+
+`resolve-indexed-artwork` and exact-demand cancellation use the independent
+provider lane. The handle must occur in the retained row or its presentation
+fragment. Artwork and input retain the owning registration through actual
+completion, so query/worker replacement cannot dispose it underneath them.

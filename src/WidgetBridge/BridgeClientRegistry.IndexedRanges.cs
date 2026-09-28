@@ -123,8 +123,10 @@ internal sealed partial class BridgeClientRegistry
         lock (_gate)
         {
             // Look up the exact captured demand; never resolve/create/restart a client.
-            if (!indexedReads.TryGetValue(request, out var operation) || operation.Completing) return Task.FromResult(false);
+            if (!indexedReads.TryGetValue(request, out var operation) || operation.Completing)
+                return CancelDeliveredIndexedDemandLocked(request);
             operation.Cancel();
+            _ = CancelDeliveredIndexedDemandLocked(request);
             return Task.FromResult(true);
         }
     }
@@ -132,6 +134,9 @@ internal sealed partial class BridgeClientRegistry
     private ViewSnapshot DemandIndexedAuthorityLocked(ClientRegistration registration, BridgeIndexedRangeRequest request)
     {
         var descriptor = registration.Configured.PublicDescriptor();
+        if (request.Range.PinnedLayoutId is not null && (!descriptor.PinningSupported ||
+            request.Range.PinnedLayoutId == PinnedSurfaceContract.FullWidgetLayoutId && !descriptor.FullWidgetPinningSupported))
+            throw new BridgeProtocolException("Indexed pinned projection is not supported by this widget.");
         if (!IsCurrentLocked(registration) || !registration.HasCurrentSnapshotWorker ||
             descriptor.InstanceId != request.InstanceId || descriptor.RuntimeGeneration != request.RuntimeGeneration ||
             descriptor.PresentationGeneration != request.PresentationGeneration ||
@@ -144,12 +149,14 @@ internal sealed partial class BridgeClientRegistry
 
     private void CancelIndexedReadsLocked(ClientRegistration registration)
     {
+        RetireIndexedOwnersLocked(registration, validate: false);
         foreach (var operation in indexedReads.Values)
             if (ReferenceEquals(operation.Registration, registration)) operation.Cancel();
     }
 
     private void CancelInvalidIndexedReadsLocked(ClientRegistration registration)
     {
+        RetireIndexedOwnersLocked(registration, validate: true);
         foreach (var (request, operation) in indexedReads)
         {
             if (!ReferenceEquals(operation.Registration, registration)) continue;
