@@ -26,7 +26,11 @@ internal sealed partial class WidgetViewPresenter
     private (bool Focused, bool Pressed)? indexedRootInteraction;
 
     internal static void SetHighContrastStyleOverride(bool? value) => NativeComputedStyleAdapter.SetHighContrastOverride(value);
-    internal static void SetSystemHighContrast(bool value) => NativeComputedStyleAdapter.SetSystemHighContrast(value);
+    internal static void SetSystemHighContrast(bool value)
+    {
+        NativeComputedStyleAdapter.SetSystemHighContrast(value);
+        WidgetPresentationSurface.SetSystemHighContrast(value);
+    }
     internal void UseIndexedContainerStyles() => indexedRootStyleOnContainer = true;
     internal void SetIndexedRootInteraction(bool focused, bool pressed)
     {

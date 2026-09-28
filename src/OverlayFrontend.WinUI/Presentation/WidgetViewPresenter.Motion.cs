@@ -12,6 +12,7 @@ internal sealed partial class WidgetViewPresenter
         if (appearance != value || systemAnimationsEnabled != animationsEnabled) SettleTransitions();
         appearance = value ?? throw new ArgumentNullException(nameof(value));
         systemAnimationsEnabled = animationsEnabled;
+        WidgetPresentationSurface.SetMotionAppearance(value, animationsEnabled);
         NativeComputedStyleAdapter.SetMotionPolicy(value, animationsEnabled);
         NativeComputedStyleAdapter.SetTextScale(value.TextScale);
         NativeComputedStyleAdapter.SetAccessibilityPolicy(value);
