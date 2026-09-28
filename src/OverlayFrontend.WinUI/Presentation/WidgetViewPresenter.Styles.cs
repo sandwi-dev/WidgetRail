@@ -160,6 +160,9 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private static readonly SolidColorBrush transparentSurface = new(Microsoft.UI.Colors.Transparent);
     internal WidgetFocusDecoration? FocusDecoration => focusDecoration;
     internal WidgetControlScaleMotion? ScaleMotion => scaleMotion;
+    internal double ArtworkScaleEnvelope => !interactive ? 1 : Math.Max(1,
+        Math.Min(2, Math.Max(Number(styles?.Base, "scale") ?? 1,
+            Math.Max(Number(styles?.Focused, "scale") ?? 1, Number(styles?.Pressed, "scale") ?? 1))));
     private (bool Focused, bool Pressed)? interactionOverride;
     private (bool Focused, bool Pressed)? lastInteraction;
     internal event Action<bool, bool>? InteractionChanged;

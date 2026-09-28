@@ -27,6 +27,7 @@ internal sealed partial class WidgetViewPresenter
             UpdateNativeNeighbors();
         }
         finally { applying = false; }
+        RefreshArtworkDemands();
         // Geometry-changing themes still invalidate native measure/arrange via
         // their property setters; this is not a paint-only optimization.
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();

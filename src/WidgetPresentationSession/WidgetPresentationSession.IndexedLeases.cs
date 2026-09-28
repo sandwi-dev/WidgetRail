@@ -258,7 +258,7 @@ public sealed partial class WidgetPresentationSession
             }
             var type = WidgetEncodedArtworkContract.ParseContentType(payload.ContentType);
             if (type is null) throw new BridgeProtocolException("WidgetBridge returned unsupported indexed artwork.");
-            var artwork = new WidgetEncodedArtwork(type.Value, payload.ContentBase64.ToArray());
+            var artwork = new WidgetEncodedArtwork(type.Value, payload.ContentBase64);
             if (!WidgetEncodedArtworkContract.IsValid(artwork)) throw new BridgeProtocolException("WidgetBridge returned invalid indexed artwork bytes.");
             lock (_gate) { operation.Lifetime.Token.ThrowIfCancellationRequested(); DemandIndexedLeaseLocked(lease); }
             return artwork;

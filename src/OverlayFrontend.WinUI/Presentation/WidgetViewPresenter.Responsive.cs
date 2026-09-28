@@ -51,6 +51,7 @@ internal sealed partial class WidgetViewPresenter
             UpdateContainerLayout(bindings[declaration.Node.Id], declaration.Node);
         }
         UpdateModalGeometry();
+        RefreshArtworkDemands();
         UpdateNativeNeighbors();
         ValidateTransientControl();
         if (focused is null || Eligible(focused)) return;

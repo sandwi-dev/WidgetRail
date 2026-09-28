@@ -1,20 +1,23 @@
-using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetPresentationSession;
-using Windows.Storage.Streams;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
-    private sealed record ImageDemand(string Identity, WidgetPresentationBinding? Origin, CancellationTokenSource Lifetime)
-    { internal bool Completed { get; set; } }
+    private sealed class ImageDemand(string identity, WidgetPresentationBinding? origin, CancellationTokenSource lifetime)
+    {
+        internal string Identity { get; } = identity;
+        internal WidgetPresentationBinding? Origin { get; set; } = origin;
+        internal CancellationTokenSource Lifetime { get; } = lifetime;
+        internal bool Completed { get; set; }
+        internal NativeArtworkDemand? Native { get; set; }
+    }
     private readonly Dictionary<Binding, ImageDemand> imageDemands = [];
     private readonly HashSet<Task> retirements = [];
     private bool disposed;
@@ -69,13 +72,20 @@ internal sealed partial class WidgetViewPresenter
         Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? resolver, string generation)
     {
         if (!presentationActive) return;
+        var fit = node.ImageFit ?? (binding.Element is WidgetPresentationSurface ? ImageFit.Cover : ImageFit.Fill);
         var identity = node.ArtworkHandle is { } handle ? "handle:" + generation + ":" + handle : node.ImageSource ?? string.Empty;
         // Ordinary opaque artwork is admitted against one snapshot. Indexed
         // artwork belongs to its retained lease generation. Keep decoded pixels,
         // but restart unfinished ordinary demand when its snapshot is replaced.
         var origin = node.ArtworkHandle is not null && generation.Length == 0 ? presentation : null;
         if (imageDemands.TryGetValue(binding, out var prior) && prior.Identity == identity &&
-            (prior.Completed || (origin?.Selection is not null ? origin.SameInput(prior.Origin) : prior.Origin?.Frame.Authority == origin?.Frame.Authority))) return;
+            (prior.Completed || (origin?.Selection is not null ? origin.SameInput(prior.Origin) : prior.Origin?.Frame.Authority == origin?.Frame.Authority)))
+        {
+            // Retained pixels can survive a snapshot; a later size upgrade must
+            // resolve against the newly displayed authority, never the old one.
+            if (prior.Completed) prior.Origin = origin;
+            prior.Native?.Refresh(fit); return;
+        }
         if (imageDemands.Remove(binding, out prior)) { prior.Lifetime.Cancel(); prior.Lifetime.Dispose(); }
         var lifetime = new CancellationTokenSource();
         var demand = new ImageDemand(identity, origin, lifetime);
@@ -83,49 +93,61 @@ internal sealed partial class WidgetViewPresenter
         // Retained logical rows keep their previous pixels while replacement
         // artwork decodes. A different item creates a different Image binding.
         if (identity.Length == 0) { demand.Completed = true; publish(null); return; }
-        if (node.ImageSource is { } uri && Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && parsed.Scheme == Uri.UriSchemeHttps)
-        { demand.Completed = true; publish(new BitmapImage(parsed)); return; }
-        TrackRetirement(LoadAsync());
-        async Task LoadAsync()
+        demand.Native = new(binding.Element, fit,
+            () => !disposed && presentationActive && imageDemands.GetValueOrDefault(binding) == demand,
+            ResolveAsync, publish, value => demand.Completed = value, TrackRetirement, DecodeFailed, lifetime.Token);
+
+        async Task<NativeArtworkPayload?> ResolveAsync(CancellationToken token)
         {
-            var token = lifetime.Token;
-            try
+            if (node.ArtworkHandle is { } opaque)
             {
-                byte[]? bytes = null;
-                if (node.ArtworkHandle is { } opaque)
+                if (resolver is not null)
                 {
-                    if (resolver is not null) bytes = (await resolver(opaque, token))?.Bytes.ToArray();
-                    else if (Session is { } session && demand.Origin is { } captured)
-                        bytes = (captured.Selection is { } selection && captured.Projection is { } projection
-                            ? await session.ResolvePinnedArtworkAsync(selection, projection, opaque, token)
-                            : await session.ResolveArtworkAsync(captured.Frame.Authority, opaque, token)).EncodedBytes.ToArray();
+                    var artwork = await resolver(opaque, token);
+                    return artwork is null ? null : new(artwork.Bytes);
                 }
-                else if (node.ImageSource?.StartsWith("data:image/png;base64,", StringComparison.Ordinal) == true)
-                    bytes = Convert.FromBase64String(node.ImageSource[22..]);
-                token.ThrowIfCancellationRequested();
-                if (bytes is null)
+                if (Session is { } session && demand.Origin is { } captured)
                 {
-                    if (!disposed && imageDemands.GetValueOrDefault(binding) == demand) { demand.Completed = true; publish(null); }
-                    return;
+                    var artwork = captured.Selection is { } selection && captured.Projection is { } projection
+                        ? await session.ResolvePinnedArtworkAsync(selection, projection, opaque, token)
+                        : await session.ResolveArtworkAsync(captured.Frame.Authority, opaque, token);
+                    return new(artwork.EncodedBytes);
                 }
-                using var stream = new InMemoryRandomAccessStream();
-                await stream.WriteAsync(bytes.AsBuffer()).AsTask(token);
-                stream.Seek(0);
-                var bitmap = new BitmapImage();
-                await bitmap.SetSourceAsync(stream).AsTask(token);
-                if (!disposed && !token.IsCancellationRequested && imageDemands.GetValueOrDefault(binding) == demand)
-                { demand.Completed = true; publish(bitmap); }
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-            catch (WidgetPresentationSessionException error) when (demand.Origin is not null &&
-                (IsRetiredInput(error) || error.Code is "unknown_artwork" or "stale_artwork_authority"))
-            {
-                // The next snapshot may reach the session before UI dispatch.
-                // Its Apply starts a fresh request; this is not a widget failure.
-                if (imageDemands.GetValueOrDefault(binding) == demand)
-                { imageDemands.Remove(binding); lifetime.Dispose(); }
-            }
+            else if (node.ImageSource is { } uri && Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && parsed.Scheme == Uri.UriSchemeHttps)
+                return new(ReadOnlyMemory<byte>.Empty, parsed);
+            else if (node.ImageSource?.StartsWith("data:image/png;base64,", StringComparison.Ordinal) == true)
+                return new(await Task.Run(() => DecodeInlineArtwork(node.ImageSource), token));
+            return null;
         }
+        void DecodeFailed(Exception error)
+        {
+            if (error is WidgetPresentationSessionException retired && demand.Origin is not null &&
+                (IsRetiredInput(retired) || retired.Code is "unknown_artwork" or "stale_artwork_authority"))
+            {
+                // A fresh snapshot restarts this request using its real authority.
+                if (imageDemands.GetValueOrDefault(binding) == demand)
+                { imageDemands.Remove(binding); lifetime.Cancel(); lifetime.Dispose(); }
+                return;
+            }
+            ReportFailure(error);
+        }
+    }
+
+    private void RefreshArtworkDemands()
+    {
+        foreach (var demand in imageDemands.Values) demand.Native?.RefreshSize();
+    }
+
+    private static ReadOnlyMemory<byte> DecodeInlineArtwork(string source)
+    {
+        var encoded = source.AsSpan(22);
+        if (encoded.Length > ((ProtocolConstants.MaximumEncodedArtworkBytes + 2) / 3) * 4)
+            throw new InvalidDataException("Inline artwork exceeds its encoded resource bound.");
+        var buffer = new byte[(encoded.Length / 4) * 3];
+        if (!Convert.TryFromBase64Chars(encoded, buffer, out var written) || written is 0 or > ProtocolConstants.MaximumEncodedArtworkBytes)
+            throw new InvalidDataException("Inline artwork encoding is invalid.");
+        return buffer.AsMemory(0, written);
     }
 
     public async ValueTask DisposeAsync()

@@ -62,6 +62,7 @@ internal sealed partial class WidgetViewPresenter
             ["sequence"] = frame?.Authority.SnapshotSequence, ["ActualWidth"] = Number(ActualWidth), ["ActualHeight"] = Number(ActualHeight),
             ["motion"] = new JsonObject { ["starts"] = transitionStarts, ["targets"] = LastTransitionTargetCount,
                 ["outgoing"] = OutgoingTransitionCount, ["outcome"] = lastTransitionOutcome?.ToString() },
+            ["artwork"] = JsonSerializer.SerializeToNode(NativeArtworkCounters.Snapshot(), NativeArtworkJsonContext.Default.NativeArtworkStatistics),
             ["nodes"] = new JsonArray(nodes),
         };
         File.WriteAllText(path, snapshot.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));

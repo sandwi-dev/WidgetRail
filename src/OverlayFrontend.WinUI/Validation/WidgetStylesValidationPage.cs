@@ -40,6 +40,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Environment.GetCommandLineArgs().Contains("--artwork-only")) { await NativeArtworkAsync(); return; }
         WidgetViewPresenter.SetHighContrastStyleOverride(false);
         var styles = Styles();
         Apply(styles);
@@ -124,6 +125,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         await NativeDepthAsync();
         await NativeTypographyAsync();
         await NativeAppearancePublicationAsync();
+        await NativeArtworkAsync();
         if (App.ValidationFixturePath is { } fixture) await PlayniteProductionLayoutAsync(fixture);
     }
 
@@ -227,10 +229,11 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
     private static bool Near(double actual, double expected) => Math.Abs(actual - expected) < 0.000001;
     private void Check(bool value, string message)
     { if (!value) throw new InvalidOperationException(message); checks.Add(message); }
-    private static async Task Wait(Func<bool> predicate)
+    private static async Task Wait(Func<bool> predicate,
+        [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(predicate))] string? condition = null)
     {
         var end = Environment.TickCount64 + 5000;
-        while (!predicate()) { if (Environment.TickCount64 > end) throw new TimeoutException("Native style state did not settle."); await Task.Delay(16); }
+        while (!predicate()) { if (Environment.TickCount64 > end) throw new TimeoutException("Native style state did not settle: " + condition); await Task.Delay(16); }
     }
     public ValueTask DisposeAsync()
     {
