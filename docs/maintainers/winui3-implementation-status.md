@@ -1017,3 +1017,19 @@ Combined evidence under `artifacts/winui-shell`: 82 native geometry checks,
 automated correctness checks. Contextual guide recovery/menu validation and
 physical acceptance of the combined shell remain separate, as do performance,
 memory, accessibility, packaging and the deferred pinned-window work.
+
+The semantic guide now includes recovery and tray-menu ownership. Its isolated
+combined-shell checks pass: 66 managed, 87 production, 29 shell-chrome, 56 context-menu
+and five real tray checks. That change is integrated as `e10a09d4`.
+
+Final review/qualification remains open. A geometry-changing theme can leave grid
+capacity stale when padding changes without outer SizeChanged; a native regression
+is prepared. The real four-widget eviction run also failed exact viewport restoration:
+the correct game returned, but its focused screen Y changed from 524 to 572 pixels.
+Evidence: `artifacts/winui-shell/combined-eviction-01`. Use the isolated config at
+`artifacts/winui-shell/eviction-production-01/shell-options.json` with
+`--shell-no-controller --replay-shell-input`; the destinations are
+`widgetrail.samples.ytmusic`, `settings`, and `media-sessions`. The earlier warm
+profile lacks the fourth widget and cannot establish forced eviction. Do not call
+this checkpoint physically ready or relax the viewport assertion while these
+investigations remain open.
