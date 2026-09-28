@@ -53,6 +53,12 @@ internal sealed partial class WidgetStylesValidationPage
         var copyBounds = scrim.TransformToVisual(panel).TransformBounds(new(0, 0, scrim.ActualWidth, scrim.ActualHeight));
         Check(Math.Abs(copyBounds.Bottom - panel.ActualHeight) < .01 && image.Stretch == Stretch.UniformToFill,
             "poster copy is bottom aligned over native cover artwork");
+        styles["poster.scrim"] = Compute("#badge { height: 34px; min-height: 34px; padding: 7px 8px; }", "badge", "stack");
+        presenter.Apply(CreateFrame(new() { Id = "poster.root", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[poster] }, styles));
+        presenter.UpdateLayout();
+        copyBounds = scrim.TransformToVisual(panel).TransformBounds(new(0, 0, scrim.ActualWidth, scrim.ActualHeight));
+        Check(Math.Abs(copyBounds.Bottom - panel.ActualHeight) < 1 && copyBounds.Height < 40,
+            "fixed-height poster badge and its layout wrapper remain at the bottom edge");
         styles["poster"] = Compute("#poster { width: 120px; aspect-ratio: 1; padding: 0px; }", "poster", "actionSurface");
         presenter.Apply(CreateFrame(new() { Id = "poster.root", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[poster] }, styles));
         await Wait(() => Near(panel.ActualWidth, panel.ActualHeight));

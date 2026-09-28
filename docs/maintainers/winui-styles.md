@@ -222,3 +222,15 @@ Reference: https://learn.microsoft.com/windows/windows-app-sdk/api/winrt/microso
 No OS contrast preference was changed during validation; actual theme switching remains
 part of production acceptance. These checks cover the implemented subset, not complete
 WRSS geometry, depth or animation parity.
+
+## Poster badge placement
+
+Poster children use their `LayoutElement` for Grid placement and alignment. That
+is the wrapper owning authored dimensions when motion/depth creates one. Aligning
+only the inner element works accidentally for auto-height copy but centers a
+fixed-height wrapper, as seen with Playnite's install-status strips. The native
+regression reproduces that failure with a 34-DIP scrim, then verifies its bottom
+edge after correction. The full style suite passes 200 checks. Real Library
+screenshots confirm bottom-edge strips; the five eviction/modal checks still pass.
+Evidence: `artifacts/winui-shell/poster-badge-{red,green}-native/` and
+`artifacts/winui-shell/combined-switch-01/poster-retention/`.
