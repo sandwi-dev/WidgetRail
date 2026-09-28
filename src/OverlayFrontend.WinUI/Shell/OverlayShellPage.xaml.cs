@@ -41,6 +41,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private long visibleSince = Environment.TickCount64;
     private readonly System.Collections.ObjectModel.ObservableCollection<BridgeWidgetDescriptor> catalogItems = [];
     internal event Action? HideRequested;
+    internal event Action<WidgetPresentationHostEffect>? TaskWindowActivationRequested;
     internal event Action<AppearanceSettings>? AppearanceLoaded;
     internal event Action? BridgeReady;
     internal AppearanceSettings Appearance { get; private set; } = AppearanceSettings.Default;
@@ -284,9 +285,20 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (retired || !visible || effect.Authority.WidgetId != activeWidget || effect.InitiatedAtMilliseconds < visibleSince ||
             owner?.Session.IsHostEffectAuthorityCurrent(effect.Authority) != true) return;
         if (effect.Kind == WidgetHostEffectKind.CloseOverlayAfterAppLaunch) HideRequested?.Invoke();
-        // Native task-window activation requires revalidating target process/window
-        // identity. It is not executed by this catalog/lifecycle checkpoint.
+        else if (effect.Kind == WidgetHostEffectKind.ActivateTaskWindow) TaskWindowActivationRequested?.Invoke(effect);
     });
+
+    internal void ActivateTaskWindow(WidgetPresentationHostEffect effect,
+        WidgetRail.OverlayPlatformClient.TaskWindowActivation activation, Action hide)
+    {
+        if (retired || !visible || effect.Kind != WidgetHostEffectKind.ActivateTaskWindow || effect.WindowTarget is not { } target) return;
+        bool Current() => !retired && effect.Authority.WidgetId == activeWidget &&
+            owner?.Session.IsHostEffectAuthorityCurrent(effect.Authority) == true;
+        var result = activation.Execute(new(target.Handle, target.ProcessId, target.ProcessCreated, target.ClassName),
+            effect.InitiatedAtMilliseconds, visibleSince, Current, hide);
+        if (result == WidgetRail.OverlayPlatformClient.TaskWindowActivationResult.Denied)
+            System.Diagnostics.Debug.WriteLine("Task window activation request was not accepted by Windows.");
+    }
 
     internal void SetVisible(bool value)
     {

@@ -48,7 +48,7 @@ are untouched. Migration is active and incomplete.
   into the parent tree and exceeding its style budget. They remain display-only;
   live replacement retires their bindings. The fresh real package starts without
   Retry, and both its empty-state and saved-state transport probes pass.
-- Latest integrated managed gates: 157 Playnite tests, 88 session tests, 24 shell
+- Latest integrated managed gates: 157 Playnite tests, 135 session tests, 24 shell
   tests, 35 style tests. Package-icon transport is admitted by exact inventory/hash
   and bounded independently. OriginalColor Icon/Button/Select rendering is integrated
   with native icon checks and a 7-check/45-symbol glyph regression. ThemeTint now
@@ -82,6 +82,14 @@ are untouched. Migration is active and incomplete.
 - Remaining product work includes special media/capture/pinned surfaces, remaining
   widget adoption, complete tray/chrome behavior, actual controller,
   performance/memory/accessibility validation and packaging.
+- Embedded-media document admission and ordered playback observations are integrated.
+  Compatible snapshots retain document ownership; retirement is permanent and cancels
+  pending work. The full integrated session suite passes all 135 tests. Native browser
+  presentation is being validated separately; this is not production media acceptance.
+- Task-window activation is wired through the existing host effect, with native
+  identity and age checks before and after hiding. See
+  [task-window activation](winui-task-window-activation.md); full Task Switcher
+  physical acceptance still awaits window-preview rendering.
 
 ## Checkpoint history
 

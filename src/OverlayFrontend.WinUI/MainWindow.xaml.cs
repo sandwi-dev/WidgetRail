@@ -73,6 +73,9 @@ public sealed partial class MainWindow : Window
             ShellCard.Padding = new Thickness(16);
             ShellLayout.RowSpacing = 12;
             page.HideRequested += HideOverlay;
+            var taskActivation = new WidgetRail.OverlayPlatformClient.TaskWindowActivation(
+                new WidgetRail.OverlayPlatformClient.WindowsTaskWindowActivation());
+            page.TaskWindowActivationRequested += effect => page.ActivateTaskWindow(effect, taskActivation, HideOverlay);
             page.AppearanceLoaded += ApplyOverlayPlacement;
             if (!shellNoController)
             {
