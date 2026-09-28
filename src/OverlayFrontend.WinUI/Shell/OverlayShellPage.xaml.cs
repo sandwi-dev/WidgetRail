@@ -61,6 +61,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         Tray.ItemsSource = catalogItems;
         Loaded += (_, _) => startup ??= StartAsync();
         Tray.GotFocus += TrayGotFocus;
+        Tray.GettingFocus += TrayGettingFocus;
         WidgetHost.GotFocus += (_, _) => { RecordFocusTransfer("widget"); SetInteractive(true); };
         Tray.ContainerContentChanging += (_, args) =>
         {

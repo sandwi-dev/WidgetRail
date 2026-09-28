@@ -131,24 +131,28 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         var sameOwner = nextPresentation.SameSurface(presentation);
         if (!presentationOnly && sameOwner && frame!.Authority.SnapshotSequence >= next.Authority.SnapshotSequence) return;
         var plan = Plan(root, rootScope);
-        var transition = PrepareTransitions(plan, sameOwner);
-        var modalExit = PrepareModalExit(plan, sameOwner);
-        var nextBindings = new Dictionary<string, Binding>(StringComparer.Ordinal);
-        foreach (var declaration in plan.Values)
-            nextBindings.Add(declaration.Node.Id, sameOwner && !transition.ReplacedIds.Contains(declaration.Node.Id)
-                && bindings.TryGetValue(declaration.Node.Id, out var retained)
-                && retained.Identity == declaration.Identity
-                && declarations[declaration.Node.Id].Node.Transition?.Kind == declaration.Node.Transition?.Kind
-                && declarations[declaration.Node.Id].Node.ActionSurfacePresentation == declaration.Node.ActionSurfacePresentation
-                ? retained : Create(declaration, IsModalDialog(declaration, plan)));
-
+        // Transition preparation already revokes and detaches native controls.
+        // Capture logical focus and enter the publication transaction before any
+        // such mutation can trigger WinUI's focused-element-removal recovery.
         var focused = FocusedBinding();
         var oldScope = activeScope;
-        var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
-        var currentModal = root.Kind == ViewNodeKind.ModalLayer ? nextBindings[root.Id].LayoutElement : null;
+        TransitionCommit transition;
+        ModalExit? modalExit;
         applying = true;
         try
         {
+            transition = PrepareTransitions(plan, sameOwner);
+            modalExit = PrepareModalExit(plan, sameOwner);
+            var nextBindings = new Dictionary<string, Binding>(StringComparer.Ordinal);
+            foreach (var declaration in plan.Values)
+                nextBindings.Add(declaration.Node.Id, sameOwner && !transition.ReplacedIds.Contains(declaration.Node.Id)
+                    && bindings.TryGetValue(declaration.Node.Id, out var retained)
+                    && retained.Identity == declaration.Identity
+                    && declarations[declaration.Node.Id].Node.Transition?.Kind == declaration.Node.Transition?.Kind
+                    && declarations[declaration.Node.Id].Node.ActionSurfacePresentation == declaration.Node.ActionSurfacePresentation
+                    ? retained : Create(declaration, IsModalDialog(declaration, plan)));
+            var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
+            var currentModal = root.Kind == ViewNodeKind.ModalLayer ? nextBindings[root.Id].LayoutElement : null;
             // Detach only changed parentage before any insert. In-place property
             // updates and adjacent insertions never clear surviving child controls.
             if (motionStage is not null)

@@ -44,14 +44,22 @@ internal sealed partial class OverlayShellPage
 
     private void TrayGotFocus(object sender, RoutedEventArgs args)
     {
-        RecordFocusTransfer("tray");
         // ItemClick can precede the native focus event from that same click.
         // Keep its explicit enter intent rather than converting it to a preview.
-        if (switching && interactive) return;
+        // Native fallback during a widget publication is not a domain transfer,
+        // even if Windows could not cancel the focused-element-removal move.
+        if (interactive && (switching || surface?.IsApplyingPresentation == true)) return;
+        RecordFocusTransfer("tray");
         SetInteractive(false);
         if (FocusedTrayWidget() is not { } descriptor) return;
         if (descriptor.Id != requestedWidget) { trayHold.Cancel(); FinishTrayReorder(); CloseTrayMenu(false); }
         Tray.SelectedItem = descriptor;
         if (descriptor.Id != requestedWidget) _ = SelectAsync(descriptor.Id, enterWidget: false);
+    }
+
+    private void TrayGettingFocus(UIElement sender, GettingFocusEventArgs args)
+    {
+        if (!retired && visible && interactive && surface?.IsApplyingPresentation == true)
+            args.TryCancel();
     }
 }

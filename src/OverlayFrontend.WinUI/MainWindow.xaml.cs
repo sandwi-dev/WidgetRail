@@ -85,6 +85,8 @@ public sealed partial class MainWindow : Window
                 unchecked((ulong)WinRT.Interop.WindowNative.GetWindowHandle(this)));
             RootFrame.Content = page;
             ShellCard.Style = (Style)ShellRoot.Resources["ProductionShellCardStyle"];
+            if (shellNoController && Environment.GetCommandLineArgs().Contains("--replay-shell-input"))
+                page.EnableValidationInputReplay();
             ShellCard.Margin = new Thickness(16);
             ShellCard.Padding = new Thickness(16);
             ShellLayout.RowSpacing = 12;
