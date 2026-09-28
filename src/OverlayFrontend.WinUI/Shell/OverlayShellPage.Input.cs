@@ -26,8 +26,7 @@ internal sealed partial class OverlayShellPage
         if (trayHold.Capturing && (frame.State.Buttons & 0x8000) == 0 && (frame.ReleasedButtons & 0x8000) == 0)
         { trayHold.Reset(); shellOwnedReleases.Remove(ControllerButton.Y); }
         _ = RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, !reordering, Environment.TickCount64));
-        surface?.SetControllerFamily(frame.LastInputFamily);
-        pinned?.Presenter.SetControllerFamily(frame.LastInputFamily);
+        Presentation.WidgetControllerPrompts.Set(frame.LastInputFamily);
         if (pinned is not null && (frame.State.Buttons & 0x300) == 0x300 && (frame.PressedButtons & 0x4000) != 0)
         { shellOwnedReleases.Add(ControllerButton.X); _ = UnpinAsync(save: true); return; }
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;

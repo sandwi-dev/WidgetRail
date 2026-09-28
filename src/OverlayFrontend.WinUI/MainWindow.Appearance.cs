@@ -12,7 +12,6 @@ public sealed partial class MainWindow
     private OverlayDesktopBackdrop? desktopBackdrop;
     private bool backdropAvailable = true;
     private readonly Windows.UI.ViewManagement.UISettings shellUi = new();
-    private readonly SolidColorBrush shellForeground = new();
 
     private void InitializeShellAppearance(OverlayShellPage page)
     {
@@ -20,6 +19,7 @@ public sealed partial class MainWindow
         // would defeat a transparent declaration even with a transparent inner panel.
         ShellCard.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         ShellCard.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        page.InitializeShellChrome(ShellHeader, ShellTitle, ShellClose);
         desktopBackdrop = new(); desktopBackdrop.DismissRequested += HideOverlay;
         page.SurfaceAppearanceChanged += RefreshShellAppearance;
         page.AppearanceLoaded += settings => { RefreshShellAppearance(); _ = page.RefreshShellPaletteAsync(); };
@@ -30,7 +30,7 @@ public sealed partial class MainWindow
             if (args.DidVisibilityChange || args.DidPositionChange || args.DidSizeChange) RefreshShellAppearance();
         };
         Activated += (_, args) => { if (args.WindowActivationState != WindowActivationState.Deactivated) RefreshShellAppearance(); };
-        Closed += (_, _) => { desktopBackdrop.Dispose(); desktopBackdrop = null; };
+        Closed += (_, _) => { desktopBackdrop.Dispose(); desktopBackdrop = null; page.DisposeShellChrome(); };
     }
 
     private void RefreshShellAppearance()
@@ -42,22 +42,7 @@ public sealed partial class MainWindow
             ? shellUi.GetColorValue(Windows.UI.ViewManagement.UIColorType.Background)
             : Microsoft.UI.Colors.Transparent;
         if (ShellCard.Background is SolidColorBrush shellBrush) shellBrush.Color = shellColor;
-        shellForeground.Color = shellUi.GetColorValue(Windows.UI.ViewManagement.UIColorType.Foreground);
-        if (policy.HighContrast) page.Foreground = shellForeground;
-        else page.ClearValue(Control.ForegroundProperty);
-        foreach (var child in ShellHeader.Children)
-        {
-            if (child is TextBlock title)
-            {
-                if (policy.HighContrast) title.Foreground = shellForeground;
-                else title.ClearValue(TextBlock.ForegroundProperty);
-            }
-            else if (child is Control control)
-            {
-                if (policy.HighContrast) control.Foreground = shellForeground;
-                else control.ClearValue(Control.ForegroundProperty);
-            }
-        }
+        page.RefreshShellChrome();
         OverlaySurfacePaint.Apply(page.SurfaceBackground, policy, page.ShellPalette);
         var color = OverlaySurfacePaint.Background(page.ShellPalette, "backdrop", Microsoft.UI.Colors.Black);
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).OuterBounds;

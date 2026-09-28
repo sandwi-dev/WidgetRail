@@ -10,7 +10,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid ColumnSpacing="12">
+        <Grid x:Name="StatusChrome" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -44,8 +44,8 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <TextBlock x:Name="TrayHelp" Grid.Row="3" TextWrapping="Wrap" Visibility="Collapsed"
-                   Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                   AutomationProperties.AutomationId="Overlay.TrayHelp" />
+        <ContentControl x:Name="TrayHelp" Grid.Row="3" IsTabStop="False" IsHitTestVisible="False"
+                        HorizontalContentAlignment="Stretch" Visibility="Collapsed"
+                        AutomationProperties.AutomationId="Overlay.TrayHelp" />
     </Grid>
 </Page>

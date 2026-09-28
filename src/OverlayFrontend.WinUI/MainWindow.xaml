@@ -27,8 +27,8 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="WidgetRail" Style="{ThemeResource TitleTextBlockStyle}" />
-                    <Button Grid.Column="1" AutomationProperties.AutomationId="Shell.Close"
+                    <TextBlock x:Name="ShellTitle" Text="WidgetRail" Style="{ThemeResource TitleTextBlockStyle}" />
+                    <Button x:Name="ShellClose" Grid.Column="1" AutomationProperties.AutomationId="Shell.Close"
                             AutomationProperties.Name="Close WidgetRail frontend"
                             Content="Close" Click="CloseClicked" />
                 </Grid>

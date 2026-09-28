@@ -1,0 +1,25 @@
+<Page x:Class="WidgetRail.OverlayFrontend.WinUI.Validation.ShellChromeValidationPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:bridge="using:WidgetRail.WidgetBridge">
+    <StackPanel x:Name="Host" Spacing="12">
+        <TextBlock x:Name="Result" Text="Shell chrome checks pending" TextWrapping="Wrap" AutomationProperties.AutomationId="Chrome.Result" />
+        <Grid x:Name="Header" Padding="8">
+            <TextBlock x:Name="Title" Text="WidgetRail" />
+        </Grid>
+        <TextBlock x:Name="Status" Text="Real built-in theme roles and native controller prompts" />
+        <ListView x:Name="Tray" SelectionMode="Single" IsItemClickEnabled="True"
+                  AutomationProperties.AutomationId="Chrome.Tray" AutomationProperties.Name="Widgets"
+                  ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+            <ListView.ItemsPanel><ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ListView.ItemsPanel>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="bridge:BridgeWidgetDescriptor">
+                    <ContentControl Margin="8" IsTabStop="False" IsHitTestVisible="False" Loaded="RowLoaded" />
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+        <ContentControl x:Name="GuideHost" IsTabStop="False" HorizontalContentAlignment="Stretch" />
+        <Button x:Name="Outside" Content="Outside tray" AutomationProperties.AutomationId="Chrome.Outside" />
+    </StackPanel>
+</Page>

@@ -24,6 +24,7 @@ internal sealed partial class OverlayShellPage
 
     private void InitializeTrayCommands()
     {
+        InitializeTrayGuide();
         Tray.ContextRequested += (sender, args) =>
         {
             var target = FindTrayWidget(args.OriginalSource as DependencyObject) ?? FocusedTrayWidget();
@@ -78,13 +79,10 @@ internal sealed partial class OverlayShellPage
     }
     private void UpdateTrayHelp()
     {
-        var text = reordering ? "Reordering widgets. Left/Right moves this widget. A, B or Y finishes."
-            : "A opens the widget. Y reorders; hold Y to restart. Menu opens commands.";
-        AutomationProperties.SetHelpText(Tray, text);
-        TrayHelp.Text = text;
+        trayGuide.SetState(reordering, interactive);
+        AutomationProperties.SetHelpText(Tray, trayGuide.HelpText);
         // Keep the native layout slot stable when focus enters/leaves the tray.
         TrayHelp.Visibility = Visibility.Visible;
-        TrayHelp.Opacity = interactive ? 0 : 1;
         AutomationProperties.SetAccessibilityView(TrayHelp, interactive
             ? AccessibilityView.Raw : AccessibilityView.Content);
     }
