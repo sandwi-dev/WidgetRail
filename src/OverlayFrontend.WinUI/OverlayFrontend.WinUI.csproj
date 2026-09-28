@@ -45,6 +45,9 @@
     <Content Include="..\..\artifacts\winui-platform\Release\OverlayPlatformInterop.dll"
              Condition="Exists('..\..\artifacts\winui-platform\Release\OverlayPlatformInterop.dll')"
              Link="OverlayPlatformInterop.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\artifacts\winui-preview\Release\WinUiWindowPreviewNative.dll"
+             Condition="Exists('..\..\artifacts\winui-preview\Release\WinUiWindowPreviewNative.dll')"
+             Link="WinUiWindowPreviewNative.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\WinUIEx\LICENSE" Link="licenses\WinUIEx.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <!--
