@@ -26,6 +26,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void Retire(Binding binding)
     {
+        RetireMediaViewport(binding);
         RetireComputedStyles(binding);
         if (buttonIcons.Remove(binding, out var buttonIcon)) buttonIcon.Dispose();
         if (binding.Element is WidgetPackageIconView packageIcon) packageIcon.Dispose();

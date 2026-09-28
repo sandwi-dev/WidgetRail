@@ -9,6 +9,21 @@ policy, the existing adapter message protocol and native input/element lifetime.
 
 All surface methods run on the WinUI dispatcher thread.
 
+`OverlayShellPage` now owns one `EmbeddedMediaOwner` and a collapsed parking layer.
+The owner subscribes directly to session publications, independently of the shell's
+active-widget/visible-view filter. It admits at most four resident or retiring
+controllers; reaching capacity preserves the parked sessions and their audio.
+`WidgetViewPresenter` only registers/retire its `WidgetMediaViewport` slots. Slot
+replacement moves the same browser through parking; ordinary command updates do
+not reparent it. Hidden and inactive declaration removal retires the document.
+Shutdown awaits resolution, observations and controller teardown before the bridge.
+
+The SDK viewport remains nonfocusable and pointer-inert. Authored native Play,
+Pause and seek controls use the existing normalized input/action path and publish
+typed playback commands. No controller reader or new browser focus model exists.
+Native WinUI layout gives MediaViewport a bounded growing track; the browser is
+clipped inside it. Pinned/fullscreen endpoint transfer remains separate work.
+
 1. Resolve `WidgetPresentationEmbeddedMediaDocument` with the exact current frame
    authority through `WidgetPresentationSession.ResolveEmbeddedMediaAsync`.
 2. Confirm `GetEmbeddedMediaState(document)` still returns a declaration before
@@ -56,7 +71,14 @@ already consumed command. A single admitted document must have one active surfac
   verifies both `event.isTrusted` and active browser user activation before
   `audio.play()`. No autoplay bypass flag is used.
 - Programmatic Play waits while parked or covered; non-gesture commands can run
-  while parked. A revoked in-flight activation releases input outside the action.
+  while parked. A revoked in-flight activation releases input outside the action,
+  then uses the existing SDK `initialize` authority reset to abort its operation
+  without closing audio or navigating/recreating the browser. Consumed Play is not
+  replayed after reopening. An exact canceled-command terminal is sent when still
+  current; queued messages from the retired transport generation are discarded.
+- Native popup ownership is checked at the actual activation boundary. The
+  existing SDK rejection of widget-local ModalLayer plus embedded media remains
+  unchanged; host dialogs and native flyouts can cover the media surface.
 - Late initialization/messages cannot acquire a retired document. All event and
   nested-frame subscriptions are removed at teardown; browser closure retires audio.
 
@@ -65,7 +87,9 @@ already consumed command. A single admitted document must have one active surfac
 `--validate-embedded-media` runs a trusted named-pipe bundle fixture through real
 session admission, exact SDK runtime bytes and native WebView2. It covers origin,
 range and message rejection, trusted activation, playback commands, park/resume,
-modal input gating and omission teardown. The WAV contains silence, so no audible
-test is required. This is frontend adapter proof, not real YouTube/provider,
-compact-pinned/fullscreen presentation, production-shell wiring or physical
-controller acceptance. Those remain owner/integration gates.
+modal input gating and omission teardown. Its owner phase uses the real presenter
+and shell media owner, normalized A input, compatible snapshots, tree replacement,
+native popup interruption while audio continues, hidden updates, four real native
+controllers, inactive retirement and awaited teardown. The WAV contains silence.
+This is synthetic frontend/owner proof, not real YouTube/provider, compact-pinned/
+fullscreen presentation or physical controller acceptance.

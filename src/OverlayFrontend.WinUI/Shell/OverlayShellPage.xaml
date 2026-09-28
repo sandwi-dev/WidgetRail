@@ -22,6 +22,8 @@
         <ContentControl x:Name="WidgetHost" Grid.Row="1" IsTabStop="False"
                         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
                         AutomationProperties.AutomationId="Overlay.Widget" />
+        <Grid x:Name="MediaParking" Grid.Row="1" Visibility="Collapsed" IsHitTestVisible="False"
+              AutomationProperties.AccessibilityView="Raw" />
         <ListView x:Name="Tray" Grid.Row="2" SelectionMode="Single" IsItemClickEnabled="True"
                   ItemClick="TrayItemClicked" AutomationProperties.Name="Widgets"
                   AutomationProperties.AutomationId="Overlay.Tray"

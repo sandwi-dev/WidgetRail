@@ -105,5 +105,5 @@ internal sealed partial class WidgetViewPresenter
         }
     }
     private bool FillsAxis(ViewNode node, string property) => ComputedStyle(node, property) is { Unit: "%", Number: 100 };
-    private static bool NeedsConstrainedViewport(ViewNode node) => node.Kind is ViewNodeKind.IndexedCollection or ViewNodeKind.Scroll or ViewNodeKind.ModalLayer || node.Children.Any(NeedsConstrainedViewport);
+    private static bool NeedsConstrainedViewport(ViewNode node) => node.Kind is ViewNodeKind.IndexedCollection or ViewNodeKind.Scroll or ViewNodeKind.ModalLayer or ViewNodeKind.MediaViewport || node.Children.Any(NeedsConstrainedViewport);
 }

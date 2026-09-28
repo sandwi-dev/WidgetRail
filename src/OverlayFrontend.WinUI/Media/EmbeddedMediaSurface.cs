@@ -17,7 +17,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 /// is not session retirement. Only Dispose closes its document and audio lifetime.
 /// All methods and callbacks are UI-thread confined.
 /// </summary>
-internal sealed class EmbeddedMediaSurface : IDisposable
+internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
 {
     private static Task<CoreWebView2Environment>? sharedEnvironment;
     // Bridge observations have host lifetime, independent of the page's event sequence.
@@ -39,11 +39,15 @@ internal sealed class EmbeddedMediaSurface : IDisposable
     private bool inputEnabled;
     private int pendingSubmissions;
     private Task? initialization;
+    private readonly HashSet<Task> observations = [];
+    private EmbeddedMediaPlaybackEvent? lastPlayback;
 
     public FrameworkElement Element => browser;
     public bool IsRetired => retired;
     public bool IsReady => !retired && transport.Ready;
     public string? FailureCode { get; private set; }
+    internal Func<bool>? InputAuthority { get; set; }
+    private bool AcceptsInput => !retired && visible && inputEnabled && (InputAuthority?.Invoke() ?? true);
     public event Action<string>? Diagnostic;
     public event Action? BackRequested;
     public event Action? StateChanged;
@@ -73,7 +77,10 @@ internal sealed class EmbeddedMediaSurface : IDisposable
         visible = isVisible;
         inputEnabled = isVisible && acceptsInput;
         browser.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
-        browser.IsHitTestVisible = inputEnabled;
+        // SDK viewports expose pixels; authored native controls retain pointer/focus
+        // ownership. Host-only trusted activation uses the fixed browser input path.
+        browser.IsHitTestVisible = false;
+        if (!AcceptsInput) CancelActivation();
         Refresh();
     }
 
@@ -83,13 +90,14 @@ internal sealed class EmbeddedMediaSurface : IDisposable
         var state = session.GetEmbeddedMediaState(document);
         if (state is null) { Dispose(); return; }
         AutomationProperties.SetName(browser, state.Declaration.AccessibleName);
+        if (!AcceptsInput) CancelActivation();
         Pump();
     }
 
     /// <summary>Only authored commands on a visible, input-enabled viewport may consume controller input.</summary>
     public bool Dispatch(EmbeddedMediaCommand command)
     {
-        if (retired || !visible || !inputEnabled) return false;
+        if (!AcceptsInput) return false;
         var state = session.GetEmbeddedMediaState(document);
         if (state is null) { Dispose(); return false; }
         if (!state.Declaration.Commands.Contains(command)) return false;
@@ -111,12 +119,12 @@ internal sealed class EmbeddedMediaSurface : IDisposable
         {
             sharedEnvironment ??= CoreWebView2Environment.CreateWithOptionsAsync(null, Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "EmbeddedMedia"), null).AsTask();
-            environment = await sharedEnvironment;
+            environment = await sharedEnvironment.WaitAsync(lifetime.Token);
             if (!Current()) return;
             var options = environment.CreateCoreWebView2ControllerOptions();
             options.ProfileName = "media-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(document.Authority.WidgetId)))[..32];
             options.IsInPrivateModeEnabled = true;
-            await browser.EnsureCoreWebView2Async(environment, options);
+            await browser.EnsureCoreWebView2Async(environment, options).AsTask(lifetime.Token);
             if (!Current()) return;
             core = browser.CoreWebView2;
             var settings = core.Settings;
@@ -225,12 +233,26 @@ internal sealed class EmbeddedMediaSurface : IDisposable
         catch (Exception error) when (error is System.Runtime.InteropServices.COMException or InvalidOperationException) { }
     }
 
-    private async void OnMessage(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
+    private void OnMessage(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
+    {
+        var operation = HandleMessageAsync(args);
+        observations.Add(operation);
+        _ = ObserveAsync();
+        async Task ObserveAsync()
+        {
+            try { await operation; }
+            finally { observations.Remove(operation); }
+        }
+    }
+
+    private async Task HandleMessageAsync(CoreWebView2WebMessageReceivedEventArgs args)
     {
         if (!Current()) return;
         try
         {
-            if (!policy.IsDocument(args.Source) || !transport.TryAccept(args.WebMessageAsJson, out var observed))
+            var json = args.WebMessageAsJson;
+            if (policy.IsDocument(args.Source) && transport.IsRetiredAuthority(json)) return;
+            if (!policy.IsDocument(args.Source) || !transport.TryAccept(json, out var observed))
             { Fault("media-invalid-message"); return; }
             if (observed!.Type == "armed")
             {
@@ -240,6 +262,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable
             if (!transport.Busy) deadline.Stop();
             if (observed.Playback is { } playback)
             {
+                lastPlayback = playback;
                 var state = session.GetEmbeddedMediaState(document);
                 // A newer widget command supersedes older completion authority; never
                 // attribute an old acknowledgement to the new command or replay it.
@@ -256,7 +279,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable
                 }
             }
             if (!Current()) return;
-            if (observed.Type == "back" && visible && inputEnabled) BackRequested?.Invoke();
+            if (observed.Type == "back" && AcceptsInput) BackRequested?.Invoke();
             StateChanged?.Invoke();
             Pump();
         }
@@ -266,7 +289,9 @@ internal sealed class EmbeddedMediaSurface : IDisposable
 
     private async Task ActivateAsync(EmbeddedMediaObservation observed)
     {
-        if (!Current() || !visible || !inputEnabled || core is null ||
+        if (!Current()) return;
+        if (!AcceptsInput) { CancelActivation(); return; }
+        if (core is null ||
             observed.X + observed.Width > browser.ActualWidth || observed.Y + observed.Height > browser.ActualHeight)
         { Fault("media-activation-unavailable"); return; }
         // WinUI owns the WebView2 controller and exposes no SendMouseInput. This fixed
@@ -275,13 +300,52 @@ internal sealed class EmbeddedMediaSurface : IDisposable
         var x = observed.X + observed.Width / 2; var y = observed.Y + observed.Height / 2;
         await currentCore.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type = "mousePressed", x, y, button = "left", buttons = 1, clickCount = 1 }));
         if (!Current()) return; // Closing the controller also releases browser input.
-        if (!visible || !inputEnabled || transport.PendingCommandId != observed.CommandId)
+        if (!AcceptsInput || transport.PendingCommandId != observed.CommandId)
         {
             // Release outside the action if host authority changed during the asynchronous press.
             await currentCore.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", "{\"type\":\"mouseReleased\",\"x\":-1,\"y\":-1,\"button\":\"left\",\"buttons\":0,\"clickCount\":0}");
+            CancelActivation();
             return;
         }
         await currentCore.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type = "mouseReleased", x, y, button = "left", buttons = 0, clickCount = 1 }));
+    }
+
+    private void CancelActivation()
+    {
+        if (retired || core is null || transport.CancelActivation(out var canceled) is not { } reset) return;
+        // Abort the adapter operation without closing its browser or existing audio.
+        // The reset is handled by the already shipped SDK runtime; no script injection.
+        Send(reset);
+        Diagnostic?.Invoke("media-activation-canceled");
+        if (canceled is null) return;
+        var task = PublishCancellationAsync(canceled);
+        observations.Add(task);
+        _ = ObserveAsync();
+        async Task ObserveAsync() { try { await task; } finally { observations.Remove(task); } }
+    }
+
+    private async Task PublishCancellationAsync(EmbeddedMediaPlaybackCommand command)
+    {
+        ++pendingSubmissions;
+        try
+        {
+            var state = session.GetEmbeddedMediaState(document);
+            if (state?.Declaration.PendingCommand is not { } pending || pending.Sequence != command.Sequence || pending.MediaKey != command.MediaKey) return;
+            var value = new EmbeddedMediaPlaybackEvent
+            {
+                SessionId = document.SessionId, Sequence = Interlocked.Increment(ref nextPlaybackObservation),
+                CommandSequence = command.Sequence, MediaKey = command.MediaKey, State = EmbeddedMediaPlaybackState.Error,
+                PositionSeconds = lastPlayback?.PositionSeconds ?? 0, DurationSeconds = lastPlayback?.DurationSeconds ?? 0,
+                Volume = lastPlayback?.Volume ?? 1, PlaybackRate = lastPlayback?.PlaybackRate ?? 1,
+                Muted = lastPlayback?.Muted ?? false, Loop = lastPlayback?.Loop ?? false, ErrorCode = "activation-canceled",
+            };
+            await session.SendEmbeddedMediaPlaybackEventAsync(document, value, lifetime.Token);
+        }
+        catch (OperationCanceledException) when (retired) { }
+        catch (WidgetPresentationSessionException) { /* Superseded owner/command cannot inherit this terminal. */ }
+        catch (WidgetRail.WidgetBridge.BridgeProtocolException) { /* The bridge revalidates command ownership independently. */ }
+        catch (Exception error) when (!IsFatal(error)) { if (!retired) Diagnostic?.Invoke("media-cancellation-report-failed"); }
+        finally { --pendingSubmissions; if (!retired) Pump(); }
     }
 
     private void Pump()
@@ -289,7 +353,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable
         if (!Current() || core is null || pendingSubmissions != 0 || transport.Busy || !transport.Ready) return;
         var command = session.GetEmbeddedMediaState(document)?.Declaration.PendingCommand;
         // Gesture-requiring playback waits for a visible, uncovered viewport.
-        if (command is null || command.Kind == EmbeddedMediaPlaybackCommandKind.Play && (!visible || !inputEnabled)) return;
+        if (command is null || command.Kind == EmbeddedMediaPlaybackCommandKind.Play && !AcceptsInput) return;
         var message = transport.Dispatch(command);
         if (message is not null) Send(message);
     }
@@ -300,6 +364,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable
         {
             deadline.Stop(); deadline.Start();
             core.PostWebMessageAsJson(message);
+            if (transport.AwaitingActivation) Diagnostic?.Invoke("media-activation-requested");
         }
         catch (Exception error) when (!IsFatal(error)) { Fault("media-command-transport-failed"); }
     }
@@ -325,6 +390,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable
     {
         if (retired) return;
         retired = true;
+        InputAuthority = null;
         inputEnabled = visible = false;
         lifetime.Cancel();
         deadline.Stop(); deadline.Tick -= OnDeadline;
@@ -363,5 +429,12 @@ internal sealed class EmbeddedMediaSurface : IDisposable
             { Diagnostic?.Invoke("media-close-after-process-exit"); }
             finally { lifetime.Dispose(); }
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        if (initialization is not null) await initialization;
+        await Task.WhenAll(observations.ToArray());
     }
 }

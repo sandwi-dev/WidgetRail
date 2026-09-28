@@ -73,6 +73,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             await LoadAppearanceAsync();
             owner = await OwnedBridgeProcess.StartAsync(new(options.InstallationRoot,
                 options.SettingsRoot, options.InstalledCatalogRoot), lifetime.Token);
+            InitializeMediaOwner();
             owner.Session.PresentationChanged += Changed;
             owner.Session.CatalogChanged += CatalogChanged;
             owner.Session.AppearanceChanged += AppearanceChanged;
@@ -120,6 +121,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         }
         while (catalogItems.Count > catalog.Widgets.Count) catalogItems.RemoveAt(catalogItems.Count - 1);
         Tray.SelectedItem = catalogItems.FirstOrDefault(widget => widget.Id == selected);
+        ReconcileMediaHostState();
         UpdateDiagnostics();
     }
 
@@ -135,6 +137,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         requestedWidget = id;
         var version = ++selectionVersion;
         switching = true;
+        ReconcileMediaHostState();
         surface?.ResetPressedStyles();
         surface?.DismissTransientControl();
         try
@@ -151,7 +154,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     WidgetHost.Content = null;
                     activeWidget = id;
                     publication = 0;
-                    surface = new() { Session = owner.Session, DispatchActionAsync = InvokeAsync, EnsureInteractionAsync = EnsureInteractionAsync, Failed = ReportFailure };
+                    surface = new() { Session = owner.Session, MediaOwner = mediaOwner, DispatchActionAsync = InvokeAsync, EnsureInteractionAsync = EnsureInteractionAsync, Failed = ReportFailure };
                     surface.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
                     WidgetHost.Content = surface;
                 }
@@ -176,6 +179,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             if (version == selectionVersion)
             {
                 switching = false;
+                ReconcileMediaHostState();
                 // Establishment can overlap unsolicited refresh publications.
                 // Replay only the latest admitted state, never queued old views.
                 if (!retired && owner?.Session.GetState(id) is { } latest) ApplyState(latest);
@@ -245,6 +249,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     {
                         ++selectionVersion;
                         requestedWidget = activeWidget = null;
+                        ReconcileMediaHostState();
                         if (surface is not null) await surface.DisposeAsync();
                         surface = null;
                         WidgetHost.Content = null;
@@ -305,6 +310,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (retired || visible == value) return;
         interactionAdmission.Invalidate();
         visible = value;
+        ReconcileMediaHostState();
         ResetInputPresentation();
         if (value) visibleSince = Environment.TickCount64;
         UpdateDiagnostics();
@@ -316,6 +322,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (interactive == value || retired) return;
         if (!value) interactionAdmission.Invalidate();
         interactive = value;
+        ReconcileMediaHostState();
         UpdateDiagnostics();
         _ = ReconcileLifecycleAsync(restore: false);
     }
@@ -325,6 +332,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (foreground == value || retired) return;
         interactionAdmission.Invalidate();
         foreground = value;
+        ReconcileMediaHostState();
         _ = ReconcileLifecycleAsync(restore: false);
     }
 
@@ -388,6 +396,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             target.Descriptor.PresentationGeneration != authority.PresentationGeneration ||
             target.Descriptor.InstanceId != authority.WidgetInstanceId) return false;
         interactive = true;
+        ReconcileMediaHostState();
         UpdateDiagnostics();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
         var ownership = (capturedSurface, authority.RuntimeGeneration, authority.PresentationGeneration,
@@ -447,6 +456,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         interactionAdmission.Invalidate();
         retired = true;
+        ReconcileMediaHostState();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged -= SystemAnimationsChanged;
         lifetime.Cancel();
         if (startup is not null) await startup;
@@ -461,7 +471,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 owner.Session.HostEffectReceived -= HostEffectReceived;
             }
             try { if (surface is not null) await surface.DisposeAsync(); }
-            finally { if (owner is not null) await owner.DisposeAsync(); }
+            finally
+            {
+                try { if (mediaOwner is not null) await mediaOwner.DisposeAsync(); }
+                finally { if (owner is not null) await owner.DisposeAsync(); }
+            }
         }
         finally { transitions.Release(); lifetime.Dispose(); }
     }

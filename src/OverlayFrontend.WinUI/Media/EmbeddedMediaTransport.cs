@@ -10,7 +10,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 internal sealed class EmbeddedMediaTransport(string sessionId)
 {
     private static long nextGeneration;
-    private readonly long generation = Interlocked.Increment(ref nextGeneration);
+    private long generation = Interlocked.Increment(ref nextGeneration);
+    private long retiredGeneration;
     private long nextCommand;
     private long lastEvent;
     private double playbackRate = 1;
@@ -22,6 +23,37 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
     public string MediaKey { get; private set; } = "";
     public long LastPlaybackSequence { get; private set; }
     public long PendingCommandId => pending?.Id ?? 0;
+    public bool AwaitingActivation => pending?.Command == "arm-activate";
+
+    public string? CancelActivation(out EmbeddedMediaPlaybackCommand? canceled)
+    {
+        canceled = null;
+        if (pending?.Command != "arm-activate") return null;
+        canceled = pending.Playback;
+        retiredGeneration = generation;
+        generation = Interlocked.Increment(ref nextGeneration);
+        pending = null;
+        lastEvent = 0;
+        Ready = false;
+        // initialize is the existing SDK runtime's authority/AbortSignal reset.
+        // Preserve the consumed playback sequence: reopening must not replay Play.
+        return Initialize();
+    }
+
+    public bool IsRetiredAuthority(string json)
+    {
+        if (retiredGeneration == 0 || json.Length is < 2 or > 512) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 4 });
+            var root = document.RootElement;
+            string[] names = ["environmentGeneration", "surfaceGeneration", "sessionGeneration", "controllerGeneration", "documentGeneration"];
+            // Only the exact immediately retired transport authority is discarded.
+            // Foreign/future authority and malformed current envelopes still fault.
+            return names.All(name => root.TryGetProperty(name, out var value) && value.TryGetInt64(out var number) && number == retiredGeneration);
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException) { return false; }
+    }
 
     private sealed record Pending(long Id, string Command, EmbeddedMediaPlaybackCommand? Playback)
     {

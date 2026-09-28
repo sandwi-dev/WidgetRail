@@ -19,7 +19,7 @@ using PresentationSession = WidgetRail.WidgetPresentationSession.WidgetPresentat
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Trusted bundle fixture through real session admission, native WebView2 and SDK adapter runtime.</summary>
-internal sealed class EmbeddedMediaValidationPage : Page, IAsyncDisposable
+internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposable
 {
     private readonly TextBlock status = new() { Text = "Embedded media checks pending", TextWrapping = TextWrapping.Wrap };
     private readonly Grid viewport = new() { Width = 720, Height = 360 };
@@ -40,6 +40,8 @@ internal sealed class EmbeddedMediaValidationPage : Page, IAsyncDisposable
     private bool parked;
     private long snapshotSequence;
     private int resolveCount;
+    private readonly Dictionary<string, EmbeddedMediaSession?> publishedMedia = [];
+    private readonly Dictionary<string, long> publishedSequences = [];
     private bool retired;
     private static BridgeWidgetDescriptor Descriptor => new() { Id = "media-validation", Name = "Embedded media", InstanceId = "media-validation.instance",
         RuntimeGeneration = new('a', 32), PresentationGeneration = new('b', 32), PackageContentDigest = new('c', 64), Icon = WidgetGlyph.Music };
@@ -108,9 +110,11 @@ internal sealed class EmbeddedMediaValidationPage : Page, IAsyncDisposable
             await Task.Delay(1500);
             dialog.Hide(); await showing; dialog = null;
             surface.UpdatePresentation(true, true);
+            var definition = declaration!;
             declaration = null;
             await SnapshotAsync(); surface.Refresh();
             Check(surface.IsRetired && session.GetEmbeddedMediaState(document) is null, "omitting the declaration retires and closes the native browser");
+            await RunOwnerChecksAsync(definition);
             status.Text = $"Embedded media checks passed: {checks.Count}";
             Write(new { passed = true, phase = "complete", checks, diagnostics, events });
         }
@@ -210,9 +214,9 @@ internal sealed class EmbeddedMediaValidationPage : Page, IAsyncDisposable
         Check(events.Last(value => value.CommandSequence == sequence).ErrorCode is null, "command " + kind + " completes without adapter failure");
     }
 
-    private async Task<WidgetPresentationFrame> SnapshotAsync()
+    private async Task<WidgetPresentationFrame> SnapshotAsync(string? widgetId = null)
     {
-        var next = session!.EstablishPresentationAsync(session.GetTarget(Descriptor.Id), WidgetLifecycleState.Interactive, lifetime.Token);
+        var next = session!.EstablishPresentationAsync(session.GetTarget(widgetId ?? Descriptor.Id), WidgetLifecycleState.Interactive, lifetime.Token);
         if (await Task.WhenAny(next, serving!) == serving) throw serverFailure ?? new InvalidOperationException("Fixture server closed unexpectedly");
         return await next.WaitAsync(TimeSpan.FromSeconds(10));
     }
@@ -239,13 +243,15 @@ internal sealed class EmbeddedMediaValidationPage : Page, IAsyncDisposable
             switch (request.Type)
             {
                 case "hello": type = "hello-accepted"; break;
-                case "list-widgets": type = "widgets"; body = new { revision = 1, isComplete = true, widgets = new[] { Descriptor } }; break;
+                case "list-widgets": type = "widgets"; body = new { revision = 1, isComplete = true, widgets = FixtureDescriptors() }; break;
                 case "resolve-embedded-media":
                     ++resolveCount;
-                    var media = declaration!;
+                    var requestedWidget = request.Payload.GetProperty("widgetId").GetString()!;
+                    var descriptor = FixtureDescriptors().Single(value => value.Id == requestedWidget);
+                    var media = publishedMedia[requestedWidget]!;
                     type = "embedded-media";
-                    body = new { widgetId = Descriptor.Id, instanceId = Descriptor.InstanceId, runtimeGeneration = Descriptor.RuntimeGeneration, presentationGeneration = Descriptor.PresentationGeneration,
-                        sequence = snapshotSequence, sessionId = media.Id, media.EntryAsset, media.Surface, media.AspectRatio, media.AccessibleName, media.Commands, media.AllowedFrameOrigins,
+                    body = new { widgetId = descriptor.Id, instanceId = descriptor.InstanceId, runtimeGeneration = descriptor.RuntimeGeneration, presentationGeneration = descriptor.PresentationGeneration,
+                        sequence = publishedSequences[requestedWidget], sessionId = media.Id, media.EntryAsset, media.Surface, media.AspectRatio, media.AccessibleName, media.Commands, media.AllowedFrameOrigins,
                         media.AllowedFrameDomainFamilies, media.PendingCommand, media.SupportedPresentations, media.MediaSeekStepSeconds,
                         resources = assets.Select(asset => new { path = asset.Key, contentType = asset.Value.Type, sha256 = Convert.ToHexString(SHA256.HashData(asset.Value.Bytes)).ToLowerInvariant(), contentBase64 = Convert.ToBase64String(asset.Value.Bytes) }).ToArray() };
                     break;
@@ -256,12 +262,17 @@ internal sealed class EmbeddedMediaValidationPage : Page, IAsyncDisposable
                     await ReplyAsync(request.RequestId, type, body); return;
                 case "set-widget-lifecycle": case "get-snapshot":
                     type = "snapshot";
-                    var snapshot = new ViewSnapshot { Sequence = ++snapshotSequence, WidgetInstanceId = Descriptor.InstanceId, ActiveInputScopeId = "page", EmbeddedMediaSession = declaration,
-                        Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = declaration is null || parked ? [] : [new ViewNode { Id = "viewport", Kind = ViewNodeKind.MediaViewport, MediaSessionId = declaration.Id, AccessibilityLabel = declaration.AccessibleName }] } };
+                    var snapshotWidget = request.Payload.GetProperty("widgetId").GetString()!;
+                    var snapshotDescriptor = FixtureDescriptors().Single(value => value.Id == snapshotWidget);
+                    var snapshot = new ViewSnapshot { Sequence = ++snapshotSequence, WidgetInstanceId = snapshotDescriptor.InstanceId, ActiveInputScopeId = "page", EmbeddedMediaSession = declaration,
+                        InitialFocusId = ownerChecks ? "native.play" : null,
+                        Root = ownerChecks ? OwnerRoot() : new() { Id = "page", Kind = ViewNodeKind.Stack, Children = declaration is null || parked ? [] : [new ViewNode { Id = "viewport", Kind = ViewNodeKind.MediaViewport, MediaSessionId = declaration.Id, AccessibilityLabel = declaration.AccessibleName }] } };
                     var errors = ViewSnapshotValidator.Validate(snapshot);
                     if (errors.Count != 0) throw new InvalidOperationException(string.Join("; ", errors.Select(error => error.Message)));
                     using (var serialized = JsonDocument.Parse(SnapshotJson.Serialize(snapshot)))
-                        body = new { widgetId = Descriptor.Id, transactionKind = "ordinaryCheckpoint", baseSequence = 0, recoveryOriginSequence = 0, snapshot = serialized.RootElement.Clone(), renderStyles = new Dictionary<string, BridgeNodeRenderStyles>() };
+                        body = new { widgetId = snapshotWidget, transactionKind = "ordinaryCheckpoint", baseSequence = 0, recoveryOriginSequence = 0, snapshot = serialized.RootElement.Clone(), renderStyles = new Dictionary<string, BridgeNodeRenderStyles>() };
+                    publishedMedia[snapshotWidget] = declaration;
+                    publishedSequences[snapshotWidget] = snapshotSequence;
                     break;
                 default: throw new InvalidOperationException("Unexpected fixture request: " + request.Type);
             }
@@ -304,12 +315,15 @@ internal sealed class EmbeddedMediaValidationPage : Page, IAsyncDisposable
             const audio=document.getElementById('audio'),button=document.getElementById('play');let key='',state='ready';
             const error=code=>WidgetRailEmbeddedMediaAdapter.error(code);
             WidgetRailEmbeddedMediaAdapter.create({focus:'play',bounds:()=>{let r=button.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}},
-              snapshot:()=>({mediaKey:key,playbackState:state,positionSeconds:audio.currentTime,durationSeconds:Number.isFinite(audio.duration)?audio.duration:1,volume:audio.volume,playbackRate:audio.playbackRate,muted:audio.muted,loop:audio.loop}),
+              snapshot:()=>({mediaKey:key,playbackState:state==='playing'&&audio.paused?'paused':state,positionSeconds:audio.currentTime,durationSeconds:Number.isFinite(audio.duration)?audio.duration:1,volume:audio.volume,playbackRate:audio.playbackRate,muted:audio.muted,loop:audio.loop}),
               driver:{load:async o=>{key=o.mediaKey;audio.pause();audio.currentTime=0;state='ready';
                 let r=await fetch('tone.wav',{headers:{Range:'bytes=0-3'}});if(r.status!==206||(await r.arrayBuffer()).byteLength!==4)throw error('range-failed');
                 let missing=await fetch('missing.txt');if(missing.status!==404)throw error('missing-not-blocked');},
-                activate:()=>({completion:new Promise((resolve,reject)=>button.addEventListener('click',async event=>{try{
-                  if(!event.isTrusted||!navigator.userActivation.isActive)throw error('gesture-not-trusted');await audio.play();state='playing';button.textContent='Playing with trusted activation';resolve();}catch(e){reject(e)}},{once:true}))}),
+                activate:async o=>{await new Promise(r=>setTimeout(r,75));if(o.signal.aborted)throw error('activation-aborted');return {completion:new Promise((resolve,reject)=>{
+                  const cancel=()=>{button.removeEventListener('click',click);reject(error('activation-aborted'))};
+                  const click=async event=>{o.signal.removeEventListener('abort',cancel);try{
+                    if(!event.isTrusted||!navigator.userActivation.isActive)throw error('gesture-not-trusted');await audio.play();state='playing';button.textContent='Playing with trusted activation';resolve();}catch(e){reject(e)}};
+                  button.addEventListener('click',click,{once:true});o.signal.addEventListener('abort',cancel,{once:true});})}},
                 pause:()=>{audio.pause();state='paused';button.textContent='Paused'},setVolume:o=>{audio.volume=o.volume},
                 toggle:()=>{audio.pause();state='paused'},back:()=>({type:'back'})}});
             </script>
@@ -346,6 +360,8 @@ internal sealed class EmbeddedMediaValidationPage : Page, IAsyncDisposable
     {
         if (retired) return;
         retired = true; dialog?.Hide(); surface?.Dispose();
+        if (ownerPresenter is not null) await ownerPresenter.DisposeAsync();
+        if (mediaOwner is not null) await mediaOwner.DisposeAsync();
         if (session is not null) await session.DisposeAsync();
         lifetime.Cancel();
         if (run is not null) await run;
