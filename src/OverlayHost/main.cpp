@@ -11254,10 +11254,12 @@ private:
     [[nodiscard]] bool AcquireOverlayForegroundInput() {
         if (!window_ || !IsWindow(window_) || !IsWindowVisible(window_)) return false;
 
+        const bool wasForeground = IsOverlayProcessForeground();
         std::uint32_t acquired{};
         const bool confirmed = platform_ &&
             WidgetRailOverlayPlatformAcquireForeground(platform_, &acquired) == WidgetRailOverlayPlatformStatus::Ok &&
             acquired != WRAIL_OVERLAY_PLATFORM_FALSE;
+        if (confirmed && !wasForeground) (void)SetFocus(window_);
         if (foregroundAcquisitionFeedback_.CompleteAttempt(confirmed))
             InvalidateRect(window_, nullptr, FALSE);
         if (!lastForegroundOwnership_ || *lastForegroundOwnership_ != confirmed) {

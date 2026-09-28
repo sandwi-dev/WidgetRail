@@ -50,7 +50,7 @@ internal sealed class ControllerValidationPage : Page
         ? AutomationProperties.GetAutomationId(focused).Replace("Widget.", "", StringComparison.Ordinal) : string.Empty;
     public void SetReplayStatus(string value) => replay.Text = value;
 
-    public void QueueEntryFocus() => presenter.Enter();
+    public void QueueEntryFocus() => presenter.Enter(restoreNativeFocus: true);
 
     public void Receive(ControllerFrame frame)
     {

@@ -1117,7 +1117,6 @@ WidgetRailOverlayPlatformAcquireForeground(
     if (plan.attemptDirect) {
         (void)SetForegroundWindow(window);
         (void)SetActiveWindow(window);
-        (void)SetFocus(window);
     }
     // The Guide callback does not itself grant foreground rights. Reuse the
     // native host's single bounded queue-attachment fallback, never a retry loop.
@@ -1127,9 +1126,10 @@ WidgetRailOverlayPlatformAcquireForeground(
         (void)BringWindowToTop(window);
         (void)SetForegroundWindow(window);
         (void)SetActiveWindow(window);
-        (void)SetFocus(window);
         (void)AttachThreadInput(currentThread, foregroundThread, FALSE);
     }
+    // Control focus belongs to the frontend. WinUI uses a child content HWND;
+    // assigning focus to its outer window can suppress native focus visuals.
     *confirmed = ToAbiBoolean(isForeground());
     return WidgetRailOverlayPlatformStatus::Ok;
 }

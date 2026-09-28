@@ -47,6 +47,9 @@ accepted Guide source, requested and actual window visibility, foreground proces
 identity, failure and disposal. It does not log ordinary controller frames. Use
 these boundaries to distinguish missing native events from activation failure;
 a connected-controller label alone does not prove Guide delivery or foreground ownership.
+Foreground acquisition does not assign keyboard focus to the outer HWND. WinUI
+restores Keyboard focus on its retained native leaf after window activation;
+logical group/collection memory is not reset for that operation.
 
 Controller replay: launch with `--replay-controller`. It uses a deterministic
 IOverlayPlatformNative test backend rather than hardware, but passes frames through

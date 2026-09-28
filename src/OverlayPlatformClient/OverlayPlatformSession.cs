@@ -86,6 +86,7 @@ public sealed class OverlayPlatformSession : IDisposable
     /// Makes one foreground acquisition attempt for the registered overlay window.
     /// Call on its owning UI thread after showing it. False means Windows did not
     /// confirm foreground ownership; no persistent activation retry is scheduled.
+    /// The frontend remains responsible for restoring focus inside its UI tree.
     /// </summary>
     public bool AcquireForeground() => Invoke(h =>
     {

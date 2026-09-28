@@ -582,7 +582,12 @@ ABI 5, with same-process/thread HWND validation and actual ownership confirmatio
 Thirteen native ownership checks and nineteen managed tests pass. The WinUI caller
 uses that adapter. A live physical Guide trace now confirms reactivation from a
 visible background window to the WinUI process, then successful hiding on the next
-press. User confirmation of navigation/A remains pending. Earlier controller
+press. The user confirmed activation/navigation/A/hiding, then reported that the
+focus cue disappeared after Alt+Tab. Foreground acquisition now leaves control
+focus to each frontend: the legacy host focuses its HWND, while WinUI explicitly
+reasserts Keyboard focus on its existing leaf. Controller replay passes with
+HasKeyboardFocus true on the retained Second button. Physical confirmation of the
+focus cue is pending in the relaunched test. Earlier controller
 replay passed cold entry, navigation, one action per press, hide/show and retained
 focus. Bounded asynchronous diagnostics preserve native Guide delivery and actual
 foreground/visibility; activation is never inferred from a show request alone.

@@ -30,6 +30,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private bool applying;
     private bool needsEntry;
     private bool focusQueued;
+    private bool restoreNativeFocus;
     private Binding? pendingRestore;
     private long actionSequence;
     private readonly bool presentationOnly;
@@ -37,8 +38,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     public Func<WidgetActionRequest, Task>? DispatchActionAsync { get; set; }
 
     /// <summary>Explicit page/window entry. Ordinary data updates do not call this.</summary>
-    public void Enter()
+    public void Enter(bool restoreNativeFocus = false)
     {
+        this.restoreNativeFocus |= restoreNativeFocus;
         needsEntry = needsEntry || FocusedBinding() is not { } focused || !Eligible(focused);
         QueueEntryFocus();
     }
@@ -154,7 +156,12 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         focusQueued = false;
         if (!IsLoaded || XamlRoot is null || frame is null || applying) return;
+        var reassertFocus = restoreNativeFocus;
+        restoreNativeFocus = false;
         if (TryRestoreGroupEntry()) return;
+        if (reassertFocus && FocusedBinding() is { } current && Eligible(current) &&
+            FocusManager.GetFocusedElement(XamlRoot) is Control leaf && leaf.Focus(FocusState.Keyboard))
+            needsEntry = false;
         if (pendingRestore is { } restore)
         {
             pendingRestore = null;
