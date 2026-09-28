@@ -58,6 +58,7 @@ internal sealed partial class WidgetViewPresenter
         else work.AddRange(retirements.ToArray());
         var completion = Task.WhenAll(work);
         if (!active) suspension = completion;
+        NotifyControllerGuideChanged();
         return completion;
     }
 }

@@ -25,7 +25,8 @@ internal sealed partial class WidgetViewPresenter
     {
         if (DismissTextEntry() || DismissContextMenu()) return true;
         if (selectPopup is not { } popup) return false;
-        selectPopup = null; // revoke immediately; an exiting popup has no action authority
+        selectPopup = null;
+        NotifyControllerGuideChanged(); // revoke immediately; an exiting popup has no action authority
         popup.Flyout.Hide();
         foreach (var icon in popup.Icons) icon.Dispose();
         return true;
@@ -63,6 +64,7 @@ internal sealed partial class WidgetViewPresenter
         var icons = options.Select((option, index) => CreateSelectIcon(items[index], option)).OfType<WidgetNativePackageIcon>().ToArray();
         var popup = new SelectPopup(binding, presentation!, options, flyout, items, icons);
         selectPopup = popup;
+        NotifyControllerGuideChanged();
         for (var index = 0; index < items.Length; ++index)
         {
             var option = options[index];
@@ -80,12 +82,14 @@ internal sealed partial class WidgetViewPresenter
         flyout.Closed += (_, _) =>
         {
             if (ReferenceEquals(selectPopup, popup)) selectPopup = null;
+            NotifyControllerGuideChanged();
             foreach (var icon in popup.Icons) icon.Dispose();
         };
         try { flyout.ShowAt(binding.Element); }
         catch (Exception error)
         {
             if (ReferenceEquals(selectPopup, popup)) selectPopup = null;
+            NotifyControllerGuideChanged();
             foreach (var icon in popup.Icons) icon.Dispose();
             ReportFailure(error);
         }

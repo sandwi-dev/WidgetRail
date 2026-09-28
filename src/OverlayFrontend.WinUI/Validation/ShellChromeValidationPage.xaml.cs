@@ -114,6 +114,29 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
             var restored = (ListViewItem)Tray.ContainerFromIndex(0); restored.Focus(FocusState.Keyboard);
             await Until(() => ColorOf(restored.Foreground) == Value(neon, "tray-item:selected:focused", "color"));
             Check(true, "recycled tray identity receives current palette and selected state");
+            Host.Width = 430;
+            var complete = "An authored command label that cannot fit beside the required host navigation controls";
+            guide.SetWidgetHints([new(ControllerPrompt.X, complete, ControllerButton.X),
+                new(ControllerPrompt.LeftTrigger, "Previous section", ControllerButton.LeftTrigger, Group: "triggers"),
+                new(ControllerPrompt.RightTrigger, "Next section", ControllerButton.RightTrigger, Group: "triggers"),
+                new(ControllerPrompt.Y, "Refresh", ControllerButton.Y)]);
+            guide.SetState(false, true); Host.UpdateLayout();
+            Check(guide.Opacity == 1 && guide.DisplayedHints.Any(hint => hint.Prompt == ControllerPrompt.B) &&
+                guide.DisplayedHints.Any(hint => hint.Prompt == ControllerPrompt.Guide), "widget guide keeps host Back and Close visible");
+            Check(!guide.DisplayedHints.Any(hint => hint.Label == complete), "native measured fitting omits complete long labels instead of truncating");
+            Check(guide.DisplayedHints.Count(hint => hint.Group == "triggers") is 0 or 2, "paired section hints fit together");
+            var widgetGuideHeight = guide.ActualHeight;
+            guide.SetWidgetHints([new(ControllerPrompt.A, "Select", ControllerButton.A)]); Host.UpdateLayout();
+            Check(Math.Abs(widgetGuideHeight - guide.ActualHeight) < .1, "popup and widget guides share stable native slot");
+            var invoked = new List<ControllerGuideHint>();
+            guide.Invoked += invoked.Add;
+            var nativeGuideButton = ((Panel)guide.BackgroundSurface).Children.OfType<Button>().First(button => button.IsHitTestVisible);
+            var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(nativeGuideButton);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
+            await Until(() => invoked.Count == 1);
+            Check(invoked[0].Button == ControllerButton.A, "native guide button requests one normalized input without storing an action id");
+            Check(!nativeGuideButton.IsTabStop && !nativeGuideButton.AllowFocusOnInteraction, "guide pointer actions preserve widget focus authority");
+            guide.SetWidgetHints(null); guide.SetState(false, false); Host.Width = double.NaN; Host.UpdateLayout();
             Result.Text = $"Passed {checks.Count} shell chrome checks · PlayStation hints";
             Write(new { result = "passed", checks });
         }

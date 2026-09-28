@@ -96,7 +96,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         Loaded += (_, _) => QueueEntryFocus();
         SizeChanged += (_, _) => { SettleTransitions(); SettleModalExit(); RefreshResponsiveLayout(); };
         Unloaded += (_, _) => { DismissTransientControl(); if (!IsLoaded) { SettleTransitions(); SettleModalExit(); } };
-        GotFocus += (_, _) => RememberFocus();
+        GotFocus += (_, _) => { RememberFocus(); NotifyControllerGuideChanged(); };
         GettingFocus += OnGettingFocus;
         AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelGroupEntry()), true);
         AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
@@ -217,6 +217,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 && !ReferenceEquals(FocusedBinding(), focused) ? focused : null;
         }
         finally { applying = false; }
+        NotifyControllerGuideChanged();
         ValidateTransientControl();
         ValidateSliderAdjustment();
         QueueMediaRefresh();
@@ -366,7 +367,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.IndexedCollection:
                 if (Session is null) throw new InvalidOperationException("Indexed widgets require a presentation session.");
                 element = new WidgetIndexedCollectionView(Session, ReportFailure)
-                { EnsureInteractionAsync = AdmitInteractionAsync, FocusRemembered = item => RememberCollectionFocus(declaration.Identity, item), PresentationChanged = QueueSurfaceUpdate, ContextChanged = ValidateTransientControl };
+                { EnsureInteractionAsync = AdmitInteractionAsync, FocusRemembered = item => RememberCollectionFocus(declaration.Identity, item), PresentationChanged = QueueSurfaceUpdate, ContextChanged = () => { ValidateTransientControl(); NotifyControllerGuideChanged(); } };
                 break;
             case ViewNodeKind.BackgroundSurface:
             case ViewNodeKind.FocusPresentationSurface:

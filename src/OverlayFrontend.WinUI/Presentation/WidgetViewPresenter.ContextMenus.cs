@@ -26,28 +26,42 @@ internal sealed partial class WidgetViewPresenter
 
     // Match the SDK contract: a focused action surface wins, otherwise exactly
     // one visible container in the active scope may claim Menu/X/Y.
+    private sealed record ContextTarget(Binding Owner, ViewNode Node, FrameworkElement Anchor,
+        WidgetIndexedRow? Row = null, WidgetIndexedCollectionView? Collection = null);
+
     private bool OpenContextMenu(ControllerButton trigger)
     {
+        if (FindContextTarget(trigger) is not { } target) return false;
+        // Declared context ownership consumes the button even when every option
+        // is unavailable; it must not fall through to an unrelated shortcut.
+        if (!HasAvailableActions(target.Node)) return true;
+        return ShowContextMenu(target.Owner, target.Node, trigger, target.Anchor, target.Row,
+            target.Collection?.RetainFocusedRow());
+    }
+
+    // Shared by dispatch and the read-only guide; neither guessing from a label
+    // nor retaining an indexed lease is necessary to discover the available route.
+    private ContextTarget? FindContextTarget(ControllerButton trigger)
+    {
         if (applying || disposed || presentationOnly || frame is null ||
-            trigger is not (ControllerButton.Menu or ControllerButton.X or ControllerButton.Y)) return false;
+            trigger is not (ControllerButton.Menu or ControllerButton.X or ControllerButton.Y)) return null;
         var focused = FocusedBinding();
         if (focused is { Element: WidgetIndexedCollectionView indexed } && Eligible(focused) &&
             indexed.CaptureContextRow() is { } rowTarget && Matches(rowTarget.Row.Item.Root, trigger))
-            return ShowContextMenu(focused, rowTarget.Row.Item.Root, trigger, rowTarget.Anchor, rowTarget.Row,
-                indexed.RetainFocusedRow());
+            return new(focused, rowTarget.Row.Item.Root, rowTarget.Anchor, rowTarget.Row, indexed);
         if (focused is not null && ContextOwnerAvailable(focused) &&
             declarations[focused.Identity.Id].Node is { Kind: ViewNodeKind.ActionSurface } surface && Matches(surface, trigger))
-            return ShowContextMenu(focused, surface, trigger, focused.Element);
+            return new(focused, surface, focused.Element);
         var candidates = bindings.Values.Where(binding => ContextOwnerAvailable(binding) &&
             declarations[binding.Identity.Id].Node is { Kind: not ViewNodeKind.ActionSurface } node &&
-            node.ContextMenuButton == trigger && HasAvailableActions(node)).Take(2).ToArray();
-        return candidates.Length == 1 && ShowContextMenu(candidates[0], declarations[candidates[0].Identity.Id].Node,
-            trigger, candidates[0].Element);
+            node.ContextMenuButton == trigger && node.ContextActions.Count > 0).Take(2).ToArray();
+        return candidates.Length == 1 ? new(candidates[0], declarations[candidates[0].Identity.Id].Node,
+            candidates[0].Element) : null;
     }
 
     private static bool HasAvailableActions(ViewNode node) => node.ContextActions.Any(action => !action.IsDisabled && !action.IsBusy);
     private static bool Matches(ViewNode node, ControllerButton trigger) => node.Kind == ViewNodeKind.ActionSurface &&
-        (node.ContextMenuButton ?? ControllerButton.Menu) == trigger && node.IsDisabled != true && node.IsBusy != true && HasAvailableActions(node);
+        (node.ContextMenuButton ?? ControllerButton.Menu) == trigger && node.IsDisabled != true && node.IsBusy != true && node.ContextActions.Count > 0;
 
     private bool ContextOwnerAvailable(Binding binding)
     {
@@ -80,6 +94,7 @@ internal sealed partial class WidgetViewPresenter
         var popup = new ContextPopup(owner, source, presentation!, trigger, FocusedBinding()?.Identity.Id,
             FocusManager.GetFocusedElement(XamlRoot) as Control, anchor, flyout, items, row, retention);
         contextPopup = popup;
+        NotifyControllerGuideChanged();
         contextFocusIndex = Array.FindIndex(items, item => item.IsEnabled);
         for (var index = 0; index < items.Length; ++index)
         {
@@ -136,6 +151,7 @@ internal sealed partial class WidgetViewPresenter
         popup.Closed = true;
         popup.Anchor.Unloaded -= popup.UnloadedHandler;
         if (ReferenceEquals(contextPopup, popup)) contextPopup = null;
+        NotifyControllerGuideChanged();
         if (!popup.Invoking) popup.Retention?.Dispose();
         if (!HasTransientControl && ContextIsCurrent(popup) && popup.ReturnFocus is { IsLoaded: true, IsEnabled: true } target)
             target.Focus(FocusState.Keyboard);

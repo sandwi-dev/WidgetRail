@@ -20,7 +20,7 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
     private readonly List<WidgetActionRequest> actions = [];
     private long sequence;
     private long runtime = 1;
-    private bool disabled, ambiguous, modal, removed, rebound;
+    private bool disabled, ambiguous, modal, removed, rebound, unavailableOptions;
     private Exception? failure;
     private Task? run;
     public ContextMenuControlValidationPage()
@@ -37,6 +37,7 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
         {
             Apply();
             await OpenAsync(ControllerButton.X, "poster", "poster");
+            Check(presenter.CaptureControllerGuide().Select(hint => hint.Button).SequenceEqual(new ControllerButton?[] { ControllerButton.A }), "open popup guide suppresses parent shortcuts");
             Check(FocusedId.EndsWith("Context.play", StringComparison.Ordinal), "focused surface X menu wins over scoped X hint");
             presenter.MoveFocus(FocusNavigationDirection.Down);
             Check(FocusedId.EndsWith("Context.remove", StringComparison.Ordinal), "navigation skips disabled and busy actions");
@@ -68,6 +69,12 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
             Check(true, "nonfocusable scope hint works away from an action surface");
             presenter.DismissTransientControl();
             await Task.Delay(150);
+            unavailableOptions = true; Apply();
+            await FocusAsync("poster");
+            Check(!presenter.CaptureControllerGuide().Any(hint => hint.Button == ControllerButton.X), "unavailable context actions are not advertised");
+            Check(await presenter.HandleControllerButtonAsync(ControllerButton.X) && !presenter.HasTransientControl,
+                "unavailable context owner consumes X without opening or falling through");
+            unavailableOptions = false; Apply();
             ambiguous = true; Apply();
             await WaitAsync(() => Find(presenter, "Widget.ambiguous") is { ActualWidth: > 0, ActualHeight: > 0 });
             await FocusAsync("after");
@@ -82,6 +89,8 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
             disabled = false; Apply();
             await OpenAsync(ControllerButton.X, "poster", "poster");
             modal = true; Apply(); Check(!presenter.HasTransientControl, "modal scope supersedes parent popup");
+            await FocusAsync("modal.button");
+            Check(!presenter.CaptureControllerGuide().Any(hint => hint.Button == ControllerButton.Menu), "modal guide excludes parent scope menu");
             await OpenAsync(ControllerButton.X, "modal.button", "modal.button");
             await presenter.HandleControllerButtonAsync(ControllerButton.B);
             await WaitAsync(() => FocusedId == "Widget.modal.button");
@@ -121,6 +130,7 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
     {
         await Task.Delay(175);
         await FocusAsync(focused);
+        Check(presenter.CaptureControllerGuide().Any(hint => hint.Button == button && hint.Label == "Options"), $"guide and dispatch resolve the same {button} context owner {owner}");
         Check(await presenter.HandleControllerButtonAsync(button), $"{button} handled for {owner} at {sequence}");
         await WaitAsync(() => presenter.HasTransientControl && FocusedId.StartsWith($"Widget.{owner}.Context.", StringComparison.Ordinal));
     }
@@ -144,8 +154,8 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
     {
         ViewNode Poster(string id, ControllerButton? button) => new() { Id = id, Kind = ViewNodeKind.ActionSurface,
             ActionId = "open", AccessibilityLabel = id, ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal, ContextMenuButton = button, IsDisabled = disabled,
-            ContextActions = [ new(rebound ? "play.changed" : "play", "Play"), new("disabled", "Disabled", IsDisabled: true),
-                new("busy", "Busy", IsBusy: true), new("remove", "Remove", WidgetContextActionStyle.Danger)],
+            ContextActions = [ new(rebound ? "play.changed" : "play", "Play", IsDisabled: unavailableOptions), new("disabled", "Disabled", IsDisabled: true),
+                new("busy", "Busy", IsBusy: true), new("remove", "Remove", WidgetContextActionStyle.Danger, IsDisabled: unavailableOptions)],
             Children = [new() { Id = id + ".text", Kind = ViewNodeKind.Text, Text = id }] };
         ViewNode Hint(string id, ControllerButton button) => new() { Id = id, Kind = ViewNodeKind.Row, ContextMenuButton = button,
             ContextActions = [new("more", "More options")], Children = [new() { Id = id + ".text", Kind = ViewNodeKind.Text, Text = id }] };

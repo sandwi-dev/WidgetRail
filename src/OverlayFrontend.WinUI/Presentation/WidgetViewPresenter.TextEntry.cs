@@ -35,6 +35,7 @@ internal sealed partial class WidgetViewPresenter
         dialog.BindRoot(XamlRoot);
         var popup = new TextEntryPopup(binding, presentation!, node, dialog);
         textEntryPopup = popup;
+        NotifyControllerGuideChanged();
         textEntryLifetime = ShowTextEntryAsync(popup, textEntryLifetime);
     }
 
@@ -49,6 +50,7 @@ internal sealed partial class WidgetViewPresenter
         finally
         {
             if (ReferenceEquals(textEntryPopup, popup)) textEntryPopup = null;
+            NotifyControllerGuideChanged();
             popup.Dialog.Erase();
             // Revoke before restoring; never restore an obsolete page/runtime.
             if (textEntryPopup is null && TextEntryIsCurrent(popup)) FocusBinding(popup.Owner);
@@ -66,6 +68,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (textEntryPopup is not { } popup) return false;
         textEntryPopup = null;
+        NotifyControllerGuideChanged();
         popup.Dialog.Erase();
         popup.Dialog.Hide();
         return true;

@@ -25,6 +25,7 @@ internal sealed partial class OverlayShellPage
     private void InitializeTrayCommands()
     {
         InitializeTrayGuide();
+        InitializeSemanticGuide();
         Tray.ContextRequested += (sender, args) =>
         {
             var target = FindTrayWidget(args.OriginalSource as DependencyObject) ?? FocusedTrayWidget();
@@ -79,12 +80,12 @@ internal sealed partial class OverlayShellPage
     }
     private void UpdateTrayHelp()
     {
+        trayGuide.SetWidgetHints(interactive ? surface?.CaptureControllerGuide() ?? [] : null);
         trayGuide.SetState(reordering, interactive);
         AutomationProperties.SetHelpText(Tray, trayGuide.HelpText);
         // Keep the native layout slot stable when focus enters/leaves the tray.
         TrayHelp.Visibility = Visibility.Visible;
-        AutomationProperties.SetAccessibilityView(TrayHelp, interactive
-            ? AccessibilityView.Raw : AccessibilityView.Content);
+        AutomationProperties.SetAccessibilityView(TrayHelp, AccessibilityView.Content);
     }
 
     private void MoveTrayWidget(int delta)

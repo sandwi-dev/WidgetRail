@@ -71,6 +71,7 @@ internal sealed partial class OverlayShellPage
                 if (ReferenceEquals(surface, presenter)) ReportFailure(error);
                 else System.Diagnostics.Trace.WriteLine("Inactive WinUI widget retirement: " + error.GetType().Name);
             };
+            presenter.ControllerGuideChanged += () => { if (ReferenceEquals(surface, presenter)) UpdateTrayHelp(); };
             presenter.SetAutomaticFocusEnabled(false);
             await presenter.SetPresentationActiveAsync(false);
             retained = new(descriptor, presenter, previews);

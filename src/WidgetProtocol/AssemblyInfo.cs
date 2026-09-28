@@ -7,3 +7,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WidgetProtocol.ContractParity.Tests")]
 
 [assembly: InternalsVisibleTo("WidgetPresentationSession")]
+[assembly: InternalsVisibleTo("OverlayFrontend.WinUI")]
+[assembly: InternalsVisibleTo("WinUiShell.Tests")]
