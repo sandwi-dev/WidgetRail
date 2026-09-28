@@ -192,7 +192,7 @@ internal static class IndexedModalValidation
             var deadline = Environment.TickCount64 + 7000;
             while (!condition())
             {
-                if (Environment.TickCount64 > deadline) throw new TimeoutException($"Indexed modal did not settle: waiting={waitingFor}, focus={FocusId()}, status={Node("status")?.Text}, summary={Summary()}, calls={Calls()}, row={DescribeRow()}");
+                if (Environment.TickCount64 > deadline) throw new TimeoutException($"Indexed modal did not settle: waiting={waitingFor}, inModal={InModal()}, focus={FocusId()}, status={Node("status")?.Text}, summary={Summary()}, calls={Calls()}, row={DescribeRow()}, presenter={presenter.FocusDiagnostics()}");
                 await Task.Delay(20, cancellationToken);
             }
         }

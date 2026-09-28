@@ -241,10 +241,14 @@ the offset afterward. The real-worker indexed-modal suite passes all 25 checks,
 including refreshed row content, repeated cycles and scaled dismissal.
 
 Native exit validation passes 36 modal checks and the broader 98-check native
-style suite. The complete indexed scenario sequence still has a separate open
-regression: after earlier navigation/surface probes, a later reopen reaches the
-worker but focus remains on the parent row. The isolated 25-check modal scenario
-passes, so the full sequence is not yet accepted as green.
+style suite. The complete 20-check indexed scenario sequence now passes too.
+The full-sequence reopen regression was an initial-focus readiness gap: the
+correct modal scope and initial button were published, but the first native Focus
+attempt failed before readiness and no later event retried it. Entry now waits
+on that exact control's native Loaded/LayoutUpdated notifications. It rechecks
+binding identity, active scope and eligibility before queuing entry; successful
+focus, retirement and disposal remove the subscriptions. No input action is
+replayed and no timer or forced layout loop is introduced.
 
 ## Focus-selected background artwork
 

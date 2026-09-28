@@ -26,6 +26,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void Retire(Binding binding)
     {
+        if (ReferenceEquals(waitingEntry, binding)) ClearEntryLayoutWait();
         RetireMediaViewport(binding);
         RetireComputedStyles(binding);
         if (buttonIcons.Remove(binding, out var buttonIcon)) buttonIcon.Dispose();
@@ -127,6 +128,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed) return;
         disposed = true;
+        ClearEntryLayoutWait();
         SettleTransitions();
         SettleModalExit();
         WidgetControllerPrompts.Changed -= ControllerPromptsChanged;

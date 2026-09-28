@@ -224,7 +224,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (target is null && frame.Snapshot.InitialFocusId is { } initial && bindings.TryGetValue(initial, out var initialBinding)
             && Eligible(initialBinding)) target = initialBinding;
         target ??= bindings.Values.FirstOrDefault(Eligible);
-        if (target is not null && FocusBinding(target)) needsEntry = false;
+        if (target is not null)
+        {
+            if (FocusBinding(target)) { needsEntry = false; ClearEntryLayoutWait(); }
+            else WaitForEntryLayout(target);
+        }
     }
 
     public bool MoveFocus(FocusNavigationDirection direction)
@@ -274,6 +278,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         if (!applying && FocusedBinding() is { } binding && Eligible(binding))
         {
+            if (waitingEntry is not null) { needsEntry = false; ClearEntryLayoutWait(); }
             remembered[binding.Identity.Scope] = binding.Identity;
             RememberGroupFocus(binding);
             UpdateNativeNeighbors();
