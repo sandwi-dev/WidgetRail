@@ -12,6 +12,13 @@ internal static class BridgeIndexedLeaseWireScenarios
 
     internal static Task ContractsAndClassification()
     {
+        var finiteRange = BridgeJson.ToElement(RangeRequest.Range);
+        Check(!finiteRange.TryGetProperty("kind", out _) && !finiteRange.GetProperty("source").TryGetProperty("discovery", out _),
+            "Existing finite range wire shape must not acquire continuation-only fields.");
+        var continuation = BridgeJson.ToElement(RangeRequest.Range with { Kind = IndexedCollectionRequestKind.Continue });
+        Check(continuation.GetProperty("kind").GetString() == "continue", "Continuation commands must retain their explicit kind.");
+        Check(BridgeJson.FromElement<IndexedCollectionRangeRequest>(finiteRange).Kind == IndexedCollectionRequestKind.Range,
+            "An omitted request kind must retain the finite range default.");
         var lease = new BridgeIndexedLeaseRequest("widget", "instance", "runtime", "presentation", LeaseId);
         var input = new BridgeIndexedInputRequest("widget", "instance", "runtime", "presentation",
             new(new(LeaseId, "item"), ControllerButton.A), new("scope", 1, 2, 300));

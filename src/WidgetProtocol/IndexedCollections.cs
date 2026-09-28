@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace WidgetRail.WidgetProtocol;
 
 /// <summary>Exact indexed query identity. Payload eviction never changes Count.</summary>
@@ -23,6 +25,7 @@ public sealed record IndexedCollectionRangeRequest(
     string DemandId, string? PinnedLayoutId = null)
 {
     /// <summary>Continuation control demands have zero rows and run on the bounded range lane.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IndexedCollectionRequestKind Kind { get; init; }
 }
 
