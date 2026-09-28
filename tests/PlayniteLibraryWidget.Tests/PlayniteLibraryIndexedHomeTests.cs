@@ -1,4 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Text.Json;
+using WidgetRail.WidgetBridge;
 using WidgetRail.Samples.PlayniteLibrary;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
@@ -7,6 +9,47 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 
 public sealed partial class PlayniteLibraryTests
 {
+    [TestMethod]
+    public async Task IndexedWarmHomeKeepsLargeSavedDisplayOutsideParentStyleBudget()
+    {
+        var saved = Enumerable.Range(0, 128).Select(index =>
+            new PlayniteLibraryDisplayItem($"saved-warm-{index}", $"Warm game {index}", "Steam")).ToArray();
+        var warm = new PlayniteLibraryPrivateState(PlayniteLibraryPrivateState.CurrentVersion, saved);
+        var pending = new TaskCompletionSource<WidgetAppLibraryPage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var provider = new FakeHost(0, new WidgetTestPrivateState(JsonSerializer.Serialize(warm), 1))
+        { QueryHandler = (_, token) => new(pending.Task.WaitAsync(token)) };
+        var widget = Create(provider);
+        await Visible(widget);
+        try
+        {
+            await Bounded(provider.FirstQueryStarted.Task, "warm provider admission");
+            await Bounded(widget.WhenWarmStateIdleAsync(), "warm indexed publication");
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "warm-native");
+            var snapshot = host.CurrentSnapshot;
+            var collection = Nodes(snapshot.Root).Single(node => node.Kind == ViewNodeKind.IndexedCollection);
+            Assert.AreEqual(WidgetAppLibraryService.MaximumSavedItems, collection.IndexedCollection!.Count);
+            Assert.IsTrue(Nodes(snapshot.Root).Count() < 80, "Saved games must not expand the ordinary parent snapshot.");
+            var theme = RendererFixtureExporter.CompileTheme(Path.Combine(AppContext.BaseDirectory, "styles"), "default.wrss");
+            _ = BridgeRenderStyleResolver.Resolve(snapshot, theme); // The production style budget remains enforced.
+            using var lease = await host.AcquireAsync(collection.Id, WidgetAppLibraryService.MaximumSavedItems - 2, 2);
+            Assert.HasCount(2, lease.Range.Items);
+            Assert.IsTrue(lease.Range.Items.All(item => item.Root.IsDisabled == true));
+            Assert.IsNull(lease.RouteAction(lease.Range.Items[0].Key, ControllerButton.A));
+            Assert.AreEqual(0, provider.Launches.Count);
+            pending.TrySetResult(new([Item(1)], null, null, "warm-finished"));
+            await Bounded(widget.WhenLibraryIdleAsync(), "live replacement of warm display");
+            var ready = host.PublishSnapshot();
+            var live = Nodes(ready.Root).Single(node => node.Kind == ViewNodeKind.IndexedCollection);
+            Assert.AreEqual(1, live.IndexedCollection!.Count);
+            Assert.IsFalse(widget.RenderState.Value.IndexedHome.Publication!.Query.IsWarmDisplayOnly);
+            using var current = await host.AcquireAsync(live.Id, 0, 1);
+            Assert.IsFalse(current.Range.Items[0].Root.IsDisabled == true);
+            Assert.AreEqual("saved-00001", widget.RenderState.Value.IndexedHome.Publication.Query.ReadRange(0, 1)[0].Row.Current!.Value.SavedId);
+            Assert.IsNull(lease.RouteAction(lease.Range.Items[0].Key, ControllerButton.A), "Saved display leases cannot gain live action authority.");
+        }
+        finally { await Background(widget); pending.TrySetResult(new([], null, null, "warm-finished")); }
+    }
+
     [TestMethod]
     public async Task IndexedHomeProductionRouteOpensDeepModalAndReturnsToExactOccurrence()
     {

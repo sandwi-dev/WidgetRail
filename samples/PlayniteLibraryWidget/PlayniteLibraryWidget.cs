@@ -1228,6 +1228,17 @@ public sealed partial class PlayniteLibraryWidget : Widget
             {
                 _organization = normalized;
                 _stateRevision = revision;
+                if (HomeState.Publication is null && normalized.Items.Count > 0)
+                {
+                    // Saved rows remain display-only logical items while the
+                    // provider loads; do not expand them into the parent tree.
+                    var warm = new PlayniteLibraryHomeQuery(PlayniteLibraryHomeQuery.Empty.Source,
+                        normalized, PlayniteLibraryFixedRows.Empty, _model.Value.Collection.FavoriteFilter,
+                        warmDisplayOnly: true);
+                    var content = new PlayniteLibraryHomeContent(warm, actionsEnabled: false);
+                    _indexedHome.PublishQuery(content, warm.Count);
+                    UpdateHomeState(state => state with { Publication = content, Selection = _model.Value.Collection });
+                }
             }
             if (HomeState.Publication is null && BrowseState.Publication is null)
                 _model.Update(state => state with

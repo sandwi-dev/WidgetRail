@@ -12,6 +12,7 @@ internal sealed class PlayniteLibraryHomeQuery
     private readonly Entry[] entries;
     private readonly Dictionary<WidgetCollectionItemKey, int> indices;
     internal PlayniteLibraryCapturedQuery Source { get; }
+    internal bool IsWarmDisplayOnly { get; }
     internal PlayniteLibraryFixedRows FixedRows { get; }
     internal IReadOnlyList<PlayniteLibraryCategory> Categories { get; }
     internal int Count => entries.Length;
@@ -22,7 +23,7 @@ internal sealed class PlayniteLibraryHomeQuery
         PlayniteLibraryPrivateState.Empty, PlayniteLibraryFixedRows.Empty, false);
 
     internal PlayniteLibraryHomeQuery(PlayniteLibraryCapturedQuery source, PlayniteLibraryPrivateState organization,
-        PlayniteLibraryFixedRows fixedRows, bool favoriteOnly)
+        PlayniteLibraryFixedRows fixedRows, bool favoriteOnly, bool warmDisplayOnly = false)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(organization);
@@ -30,6 +31,7 @@ internal sealed class PlayniteLibraryHomeQuery
         if (source.Context.Scope is not (PlayniteLibraryQueryScope.Home or PlayniteLibraryQueryScope.RecentlyPlayed))
             throw new ArgumentException("Home requires a Home or RecentlyPlayed capture.", nameof(source));
         Source = source;
+        IsWarmDisplayOnly = warmDisplayOnly;
         FixedRows = new(Array.AsReadOnly(fixedRows.Recent.ToArray()), Array.AsReadOnly(fixedRows.Manual.ToArray()),
             Array.AsReadOnly(fixedRows.TitleMatches.ToArray()));
         var favorites = organization.FavoriteSavedIds.ToHashSet(StringComparer.Ordinal);
@@ -80,7 +82,7 @@ internal sealed class PlayniteLibraryHomeQuery
         }
         var live = source.Games.Select(game => game.Id).Concat(fixedRows.All.Select(item => item.Value.SavedId)).ToHashSet(StringComparer.Ordinal);
         var referenced = PlayniteLibraryOrganizationPolicy.ReferencedSavedIds(organization).ToHashSet(StringComparer.Ordinal);
-        foreach (var display in organization.Items.Select(item => stored[item.SavedId]).Where(item => referenced.Contains(item.SavedId) &&
+        foreach (var display in organization.Items.Select(item => stored[item.SavedId]).Where(item => (warmDisplayOnly || referenced.Contains(item.SavedId)) &&
                      !organization.ManualSavedIds.Contains(item.SavedId, StringComparer.Ordinal) && !live.Contains(item.SavedId) && Matches(item))
                      .Take(WidgetAppLibraryService.MaximumSavedItems))
             if (used.Add(display.SavedId)) result.Add(Make(null, null, display, false));

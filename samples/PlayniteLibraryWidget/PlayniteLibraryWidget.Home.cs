@@ -33,7 +33,7 @@ public sealed partial class PlayniteLibraryWidget
     private WidgetOperationHandle EnsureIndexedHome()
     {
         lock (_gate)
-            if (HomeState.Publication is not null && IndexedHomeSelectionIsCurrent() || Operations.IsBusy(IndexedHomeOperation))
+            if (HomeState.Publication is { Query.IsWarmDisplayOnly: false } && IndexedHomeSelectionIsCurrent() || Operations.IsBusy(IndexedHomeOperation))
                 return new(WidgetOperationAdmission.Completed, Task.FromResult(new WidgetOperationResult(WidgetOperationStatus.Succeeded)));
         return RefreshIndexedHome();
     }
@@ -147,7 +147,7 @@ public sealed partial class PlayniteLibraryWidget
     private PlayniteLibraryHomeContent CaptureHomeContent(PlayniteLibraryHomeQuery query, object owner)
     {
         var local = _model.Value;
-        return new(query, !local.OrganizationBusy,
+        return new(query, !query.IsWarmDisplayOnly && !local.OrganizationBusy,
             local.LaunchingSavedId, _launchStates, owner);
     }
 
@@ -201,7 +201,7 @@ public sealed partial class PlayniteLibraryWidget
         {
             if (HomeState.Publication is not { } previous) return;
             var query = new PlayniteLibraryHomeQuery(previous.Query.Source, PresentationOrganizationLocked(),
-                previous.Query.FixedRows, HomeState.Selection?.FavoriteFilter == true);
+                previous.Query.FixedRows, HomeState.Selection?.FavoriteFilter == true, previous.Query.IsWarmDisplayOnly);
             if (previous.Query.SameProjection(query)) return;
             var same = previous.Query.SameMembership(query);
             var next = CaptureHomeContent(query, same ? previous.QueryOwner : new object());

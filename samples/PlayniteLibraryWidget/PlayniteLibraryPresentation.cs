@@ -526,7 +526,7 @@ internal static class PlayniteLibraryPresentation
                     row.FocusId, initialFocus, StringComparison.Ordinal)))
                 initialFocus = rail.Selected?.FocusId ?? "playnite-library.search";
         }
-        else if ((indexedHome is null || snapshot.Status != WidgetPagedResourceStatus.Ready) && state.Route == PlayniteLibraryRoute.Library &&
+        else if (indexedHome is null && state.Route == PlayniteLibraryRoute.Library &&
                  state.Organization.Items.Any(item =>
                      !state.Organization.ExcludedSavedIds.Contains(
                          item.SavedId, StringComparer.Ordinal)) && snapshot.Status is

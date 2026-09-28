@@ -41,12 +41,20 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsNotNull(focus);
         foreach (var style in new[]
                  {
-                     "playnite-library-home-actions", "playnite-library-home-summary",
-                     "playnite-library-browse-foreground", "playnite-library-categories-shell",
+                     "playnite-library-categories-shell",
                      "playnite-library-hidden-shell", "playnite-library-playnite-shell",
                      "playnite-library-empty",
                  })
             Assert.AreEqual(surface, Resolve("stack", style).Get("background")?.Text, style);
+        foreach (var style in new[] { "playnite-library-home-actions", "playnite-library-home-summary", "playnite-library-browse-foreground" })
+        {
+            var panel = Resolve("stack", style);
+            // Theme surfaces have .98 alpha; the panel multiplies that by .84,
+            // preserving each theme's RGB without dimming text or artwork.
+            StringAssert.EndsWith(surface, ", 0.98)");
+            Assert.AreEqual(surface.Replace(", 0.98)", ", 0.8232)"), panel.Get("background")?.Text, style);
+            Assert.IsNull(panel.Get("opacity"), style);
+        }
         Assert.AreEqual(raised, Resolve("action-surface", "playnite-library-category").Get("background")?.Text);
         Assert.AreEqual(raised, Resolve("button", "playnite-library-control").Get("background")?.Text);
         Assert.AreEqual(text, Resolve("text", "playnite-library-summary-title").Get("color")?.Text);

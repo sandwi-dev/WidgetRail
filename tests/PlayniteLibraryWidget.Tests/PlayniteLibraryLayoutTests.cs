@@ -323,7 +323,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         var topActionsStyle = theme.Resolve(new WrssElement("row", null,
             new HashSet<string>(["playnite-library-home-actions"],
                 StringComparer.Ordinal)));
-        Assert.AreEqual("rgba(21, 21, 20, 0.98)", topActionsStyle.Get("background")?.Text);
+        Assert.AreEqual("rgba(21, 21, 20, 0.8232)", topActionsStyle.Get("background")?.Text);
+        Assert.IsNull(topActionsStyle.Get("opacity"), "Panel alpha must not dim its children.");
 
         var browseView = PlayniteLibraryPresentation.Render(State(
             collection, organization, PlayniteLibraryRoute.Browse, []));
