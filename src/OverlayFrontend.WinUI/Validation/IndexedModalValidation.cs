@@ -149,6 +149,10 @@ internal static class IndexedModalValidation
             Check(true, "replacement row retains current action authority after modal lifecycle");
             await Button(ControllerButton.B);
             await Until(() => !InModal());
+            await Until(() => view.ContainerFromIndex(0) is DependencyObject last &&
+                RowText(last).Contains("Item 0", StringComparison.Ordinal) &&
+                Descendants(last).OfType<Image>().Any(image => image.Source is not null));
+            Check(true, "final query row restores rendered text and artwork after modal close");
             result = new("passed", checks, null);
         }
         catch (Exception error) { result = new("failed", checks, error.ToString()); }
@@ -181,9 +185,24 @@ internal static class IndexedModalValidation
             var deadline = Environment.TickCount64 + 7000;
             while (!condition())
             {
-                if (Environment.TickCount64 > deadline) throw new TimeoutException($"Indexed modal did not settle: focus={FocusId()}, status={Node("status")?.Text}, summary={Summary()}, calls={Calls()}");
+                if (Environment.TickCount64 > deadline) throw new TimeoutException($"Indexed modal did not settle: focus={FocusId()}, status={Node("status")?.Text}, summary={Summary()}, calls={Calls()}, row={DescribeRow()}");
                 await Task.Delay(20, cancellationToken);
             }
+        }
+        string DescribeRow()
+        {
+            var view = Descendants(presenter).OfType<ListViewBase>().FirstOrDefault();
+            var focus = FocusId();
+            var index = int.TryParse(focus[(focus.LastIndexOf('.') + 1)..], out var focusedIndex) ? focusedIndex : 0;
+            if (view?.ContainerFromIndex(index) is not DependencyObject container) return "unrealized";
+            return JsonSerializer.Serialize(Descendants(container).OfType<WidgetIndexedRowView>().Select(row => new
+            {
+                row.IsLoaded, row.ActualWidth, row.ActualHeight,
+                key = (row.Row as WidgetIndexedRow)?.Item.Key,
+                lease = (row.Row as WidgetIndexedRow)?.Lease.IsCurrent,
+                content = row.Content?.GetType().Name,
+                texts = Descendants(row).OfType<TextBlock>().Select(text => text.Text).ToArray(),
+            }));
         }
         async Task SettleViewport(ScrollViewer scroll)
         {

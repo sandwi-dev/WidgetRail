@@ -91,7 +91,7 @@ try {
     Check 'shared input preserves release and indexed ancestor semantics' ($inputResult.inputRoute -eq 'passed:3')
     Ui @('invoke','IndexedWidget.ModalProbe') | Out-Null
     $modalResult=Until '17-indexed-modal' {param($v) $v.modalResult -ne 'pending'} 30
-    Check 'real worker indexed parent survives native modal lifecycle' ($modalResult.modalResult -eq 'passed:24')
+    Check 'real worker indexed parent survives native modal lifecycle' ($modalResult.modalResult -eq 'passed:25')
     Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'indexed-widget.png')) | Out-Null
 } finally {
     $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory 'results.json')

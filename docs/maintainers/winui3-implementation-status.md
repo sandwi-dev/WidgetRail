@@ -740,3 +740,27 @@ The unstyled validation gallery is not production-theme acceptance.
 All changes remain on codex/winui3-frontend. Main, installed native packages and
 controller ownership are unchanged. Shared styling and indexed-modal investigation
 continue in their isolated lanes. No production WinUI candidate is ready yet.
+
+## Integration validation follow-up and open row lifetime defect
+
+Native styles pass 24 checks after desktop ThemeSettings and resource ownership
+corrections; the supported subset and omissions are recorded in winui-styles.md.
+The combined indexed test passed 20 checks before strengthening the final rendering
+assertion. Screenshot inspection showed the final replacement-query row could have
+focus but no text/artwork. The new 25th modal assertion reproduces that defect.
+
+A diagnostic run found the row loaded, its semantic lease current, its payload key
+correct, but its Content null. The failure is not missing game data. Delaying Unloaded
+retirement did not resolve all repeated-modal cases. A stable parent-layer experiment
+also failed the full lifecycle sequence and was removed from production changes;
+its patch is retained under artifacts/winui-surfaces/stable-parent-experiment.patch.
+The integration source retains the strengthened failing regression and bounded row
+metadata diagnostics. Do not call the combined modal gate green or launch a physical
+candidate based only on the earlier 24 modal checks.
+
+Evidence: styled-combined-ui/17-indexed-modal.json, modal-row-diagnostic.json,
+row-lifetime-ui/17-indexed-modal.json and modal-entry-ui/17-indexed-modal.json under
+artifacts/winui-surfaces. The earlier intermittent first-A observation is also still
+unresolved. Continue by inspecting the native item-template/rendered-row lifetime,
+including why a live row can lose its presenter while its data owner remains valid.
+Main and the installed native product remain untouched.
