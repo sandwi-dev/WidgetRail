@@ -19907,14 +19907,10 @@ static int RunWidgetRail(HINSTANCE instance, int showCommand, bool& restart) {
     }
     // The installer checks this lifetime marker before touching installed files.
     // Declare it before the app/ownership objects so cleanup finishes first.
-    struct InstallerLifetimeMarker {
-        HANDLE handle{CreateMutexW(nullptr, FALSE, L"Local\\WidgetRail.OverlayHost.Running")};
-        ~InstallerLifetimeMarker() { if (handle) CloseHandle(handle); }
-    } installerLifetimeMarker;
-    if (!installerLifetimeMarker.handle) return EXIT_FAILURE;
-    if (const HANDLE setup = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\WidgetRail.Setup")) {
-        CloseHandle(setup);
-        SaveStartupError(L"WidgetRail setup is running. Open WidgetRail after setup finishes.");
+    widgetrail::process::OverlayInstallationLifetime installerLifetimeMarker;
+    std::wstring installationError;
+    if (!installerLifetimeMarker.Begin(installationError)) {
+        SaveStartupError(installationError);
         return EXIT_FAILURE;
     }
     // Process-local only: children use the packaged runtime without installing

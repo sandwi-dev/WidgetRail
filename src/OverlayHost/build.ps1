@@ -483,6 +483,8 @@ function Invoke-OverlayPlatformInteropBuild {
         '/DWRAIL_GAMEINPUT_ISOLATION_READER',
         '/LD',
         (Join-Path $platformDirectory 'OverlayPlatformInterop.cpp'),
+        (Join-Path $platformDirectory 'OverlayProcessInterop.cpp'),
+        (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationCore.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationReader.cpp'),
         (Join-Path $platformDirectory 'ControllerIsolationRoutingSession.cpp'),

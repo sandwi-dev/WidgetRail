@@ -17,6 +17,21 @@ enum class OwnershipResult {
     Owner,
     ClientAcknowledged,
     ClientFailed,
+    AlreadyRunning,
+};
+
+enum class ActivationMode { Show, EnsureRunning };
+
+// Shared by both frontends; held until their complete process cleanup finishes.
+class OverlayInstallationLifetime final {
+public:
+    ~OverlayInstallationLifetime();
+    OverlayInstallationLifetime() = default;
+    OverlayInstallationLifetime(const OverlayInstallationLifetime&) = delete;
+    OverlayInstallationLifetime& operator=(const OverlayInstallationLifetime&) = delete;
+    [[nodiscard]] bool Begin(std::wstring& error);
+private:
+    HANDLE running_{};
 };
 
 class OverlayProcessOwner final {
@@ -29,7 +44,8 @@ public:
     [[nodiscard]] OwnershipResult Begin(
         std::wstring_view profile,
         std::chrono::milliseconds clientTimeout,
-        std::wstring& error);
+        std::wstring& error,
+        ActivationMode mode = ActivationMode::Show);
     void BindNotificationWindow(HWND window, UINT message) noexcept;
     [[nodiscard]] bool WaitForShow(std::chrono::milliseconds timeout) const noexcept;
     void Stop() noexcept;

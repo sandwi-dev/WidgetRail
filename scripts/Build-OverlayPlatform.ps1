@@ -3,7 +3,9 @@
 Builds only the native Windows platform boundary used by the WinUI frontend.
 .DESCRIPTION
 Does not build Taffy, OverlayHost, managed workers, or packages, and never loads
-or initializes the resulting DLL. Restore uses the existing native dependency
+or initializes the resulting DLL unless a focused test switch is supplied.
+Process-lifecycle tests load only the ownership exports; they never initialize
+controller hardware. Restore uses the existing native dependency
 manifest. GameInput's static loader uses the separately installed runtime; its
 redistributable is copied but never installed by this script.
 #>
@@ -15,7 +17,8 @@ param(
     [string]$Architecture = 'x64',
     [string]$OutputDirectory,
     [switch]$NoRestore,
-    [switch]$TestForeground
+    [switch]$TestForeground,
+    [switch]$TestProcessLifecycle
 )
 
 $ErrorActionPreference = 'Stop'
@@ -92,9 +95,10 @@ $sources = @(
     'ControllerIsolationRoutingSession.cpp', 'GameInputSelectedControllerReader.cpp',
     'DualSenseHidReader.cpp', 'ControllerIsolationHostSession.cpp', 'LocalControllerPolicy.cpp',
     'HidHideConfigurationAdapter.cpp', 'ViGEmOutputAdapter.cpp', 'OverlayPlatformPolicy.cpp',
-    'OverlayPlatformPlacement.cpp', 'OverlayPlatformTargeting.cpp'
+    'OverlayPlatformPlacement.cpp', 'OverlayPlatformTargeting.cpp', 'OverlayProcessInterop.cpp'
 ) | ForEach-Object { Join-Path $platformDirectory $_ }
 $sources += (Join-Path $viGEmDirectory 'src\ViGEmClient.cpp'), (Join-Path $hostDirectory 'GuideInputCompatibility.cpp')
+$sources += (Join-Path $hostDirectory 'OverlayProcessOwner.cpp')
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 # Explicit static CRT matches the legacy build's cl default and avoids adding a
 # redistributable DLL dependency solely for the WinUI platform boundary.
@@ -119,6 +123,22 @@ try {
     $imports = & $dumpbin /nologo /dependents (Join-Path $OutputDirectory 'OverlayPlatformInterop.dll')
     if ($LASTEXITCODE -ne 0) { throw 'Dependency inspection failed.' }
     $imports | Set-Content -LiteralPath (Join-Path $logDirectory 'dependencies.txt') -Encoding utf8
+    if ($TestProcessLifecycle) {
+        $testArguments = @('/nologo', '/MT', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-',
+            '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') + $includeArguments + @(
+            (Join-Path $repositoryRoot 'tests\OverlayPlatformInterop.Tests\ProcessLifecycleTests.cpp'),
+            (Join-Path $hostDirectory 'OverlayProcessOwner.cpp'),
+            "/Fo:$objectDirectory\", "/Fe:$OutputDirectory\ProcessLifecycleTests.exe", '/link', "/LIBPATH:$OutputDirectory"
+        ) + $libraryArguments + @('OverlayPlatformInterop.lib', 'user32.lib', 'advapi32.lib')
+        & $compiler @testArguments
+        if ($LASTEXITCODE -ne 0) { throw "Process lifecycle test build failed with exit code $LASTEXITCODE." }
+        $testOutput = Join-Path $logDirectory "process-lifecycle-$([Guid]::NewGuid()).out.log"
+        $testErrors = Join-Path $logDirectory "process-lifecycle-$([Guid]::NewGuid()).err.log"
+        $test = Start-Process -FilePath (Join-Path $OutputDirectory 'ProcessLifecycleTests.exe') -WindowStyle Hidden -PassThru -RedirectStandardOutput $testOutput -RedirectStandardError $testErrors
+        if (!$test.WaitForExit(20000)) { $test.Kill(); throw 'Process lifecycle test exceeded 20 seconds.' }
+        Get-Content -LiteralPath $testOutput, $testErrors
+        if ($test.ExitCode -ne 0) { throw "Process lifecycle test failed with exit code $($test.ExitCode)." }
+    }
     if ($TestForeground) {
         $testArguments = @('/nologo', '/MT', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-',
             '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') + $includeArguments + @(

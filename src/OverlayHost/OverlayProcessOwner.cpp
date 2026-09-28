@@ -181,12 +181,33 @@ OverlayProcessOwner::~OverlayProcessOwner() {
     Stop();
 }
 
+OverlayInstallationLifetime::~OverlayInstallationLifetime() {
+    if (running_) CloseHandle(running_);
+}
+
+bool OverlayInstallationLifetime::Begin(std::wstring& error) {
+    if (running_) { error = L"Installation lifetime is already active."; return false; }
+    running_ = CreateMutexW(nullptr, FALSE, L"Local\\WidgetRail.OverlayHost.Running");
+    if (!running_) { error = L"WidgetRail installation lifetime could not be registered."; return false; }
+    const HANDLE setup = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\WidgetRail.Setup");
+    const DWORD failure = setup ? ERROR_SUCCESS : GetLastError();
+    if (setup) CloseHandle(setup);
+    if (setup || failure != ERROR_FILE_NOT_FOUND) {
+        CloseHandle(running_); running_ = nullptr;
+        error = L"WidgetRail setup is running or its state could not be verified. Open WidgetRail after setup finishes.";
+        return false;
+    }
+    return true;
+}
+
 OwnershipResult OverlayProcessOwner::Begin(
     const std::wstring_view profile,
     const std::chrono::milliseconds clientTimeout,
-    std::wstring& error) {
+    std::wstring& error,
+    const ActivationMode mode) {
     if (mutex_ || owner_ || !ValidProcessProfile(profile) || clientTimeout.count() < 1 ||
-        clientTimeout > std::chrono::seconds(10)) {
+        clientTimeout > std::chrono::seconds(10) ||
+        (mode != ActivationMode::Show && mode != ActivationMode::EnsureRunning)) {
         error = L"Overlay process ownership options are invalid.";
         return OwnershipResult::ClientFailed;
     }
@@ -230,6 +251,12 @@ OwnershipResult OverlayProcessOwner::Begin(
         CloseHandle(mutex_);
         mutex_ = nullptr;
         return OwnershipResult::ClientFailed;
+    }
+    // Quiet startup must not wake a resident renderer, including older native
+    // versions whose activation protocol only supports Show.
+    if (mode == ActivationMode::EnsureRunning) {
+        CloseHandle(mutex_); mutex_ = nullptr; error.clear();
+        return OwnershipResult::AlreadyRunning;
     }
     const bool acknowledged = SendShow(clientTimeout, error);
     CloseHandle(mutex_);

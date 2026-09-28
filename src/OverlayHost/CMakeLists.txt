@@ -91,6 +91,7 @@ add_executable(OverlayHost WIN32
     DeclarativeRenderer.cpp CollectionLayoutState.cpp
     GuideInputCompatibility.cpp
     ../OverlayPlatformInterop/OverlayPlatformInterop.cpp
+    ../OverlayPlatformInterop/OverlayProcessInterop.cpp
     ../OverlayPlatformInterop/OverlayPlatformPolicy.cpp
     ../OverlayPlatformInterop/OverlayPlatformPlacement.cpp
     ../OverlayPlatformInterop/OverlayPlatformTargeting.cpp

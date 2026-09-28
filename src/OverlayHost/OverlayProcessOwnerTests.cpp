@@ -100,6 +100,13 @@ int main() {
               "first launch wins per-user profile ownership");
         Check(std::chrono::steady_clock::now() - ownerBeginStarted < 3s,
               "first-owner startup returns inside its readiness bound");
+        auto quietClient = std::async(std::launch::async, [profile] {
+            widgetrail::process::OverlayProcessOwner quiet;
+            std::wstring detail;
+            return quiet.Begin(profile, 3s, detail, widgetrail::process::ActivationMode::EnsureRunning);
+        });
+        Check(quietClient.get() == widgetrail::process::OwnershipResult::AlreadyRunning && !owner.WaitForShow(0ms),
+              "quiet duplicate observes the existing owner without issuing Show");
         auto hiddenClient = std::async(std::launch::async, Client, profile, 3s);
         Check(hiddenClient.get() == widgetrail::process::OwnershipResult::ClientAcknowledged,
               "hidden no-HWND owner acknowledges one Show client");
