@@ -70,6 +70,7 @@ public sealed partial class MainWindow : Window
         else if (validatePackageIcons) RootFrame.Content = new Validation.PackageIconValidationPage();
         else if (validateShellSizing) RootFrame.Content = new Validation.ShellSizingValidationPage();
         else if (Environment.GetCommandLineArgs().Contains("--validate-shell-appearance")) RootFrame.Content = new Validation.ShellAppearanceValidationPage(this);
+        else if (Environment.GetCommandLineArgs().Contains("--validate-pinned-window")) RootFrame.Content = new Validation.PinnedWindowValidationPage(this);
         else if (validateSlider) RootFrame.Content = new Validation.SliderControlValidationPage();
         else if (validateContextMenu) RootFrame.Content = new Validation.ContextMenuControlValidationPage();
         else if (shellConfiguration is not null)

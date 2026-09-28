@@ -93,8 +93,12 @@ validation. It is not yet a complete replacement for the native overlay.
   integrated. Ordinary pinned context/text and scoped artwork now use explicit
   version-1 private bridge/worker requests. Pinned windows and compact-media transfer
   remain. See [pinned authority](winui-pinned-session.md).
+  A peer WinUI window/placement/preferences foundation now passes 14 native window
+  checks, including real passive/interactive mouse routing and opacity screenshots.
+  It is not yet connected to the production Pin command; see
+  [pinned window foundation](winui-pinned-window.md).
 - **Managed gates:** latest relevant integrated suites pass 233 presentation-session,
-  36 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 73 Spotify and 50 YouTube
+  40 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 73 Spotify and 50 YouTube
   checks. The latest integrated collection gates pass 16 indexed plus one discovered
   SDK scenario and 17 indexed plus one real-worker discovered bridge scenario;
   the prior complete SDK checkpoint passed 138. Counts identify their recorded checkpoint;
@@ -105,6 +109,8 @@ validation. It is not yet a complete replacement for the native overlay.
   Actual artwork is visible in the reviewed screenshots. Evidence is under
   `artifacts/winui-shell/finite-range-native-replay` and `music-integrated-replay`.
   Tray icons pass 36 native checks including 12 catalog scenarios in their lane.
+  The Full Application reference sample now uses the exact-count indexed contract
+  for its complete 10,000-record model; all five integrated sample tests pass.
 
 Remaining product work includes remaining continuation-source adoption, preview
 coverage beyond ordinary roots, pinned projections/media ownership, radial tray and complete shell
