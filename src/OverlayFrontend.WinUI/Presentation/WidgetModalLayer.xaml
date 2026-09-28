@@ -1,0 +1,7 @@
+<Grid
+    x:Class="WidgetRail.OverlayFrontend.WinUI.Presentation.WidgetModalLayer"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border x:Name="Scrim" Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            Canvas.ZIndex="1" />
+</Grid>

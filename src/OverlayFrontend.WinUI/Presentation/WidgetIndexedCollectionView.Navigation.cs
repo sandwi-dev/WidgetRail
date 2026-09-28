@@ -20,7 +20,7 @@ internal sealed partial class WidgetIndexedCollectionView
     private EntryIntent? CaptureEntry() => entering && pendingIndex is { } index ? new(index, pendingEntry, allowEntryFallback) : null;
     private void RestoreEntry(EntryIntent? entry)
     {
-        if (entry is null || entering || view is null || source is null || !view.IsEnabled || entry.Index >= source.Items.Count) return;
+        if (entry is null || entering || view is null || source is null || !CanReceiveInput || entry.Index >= source.Items.Count) return;
         if (entry.Target is not null && !MatchesQuery(entry.Target)) return;
         entering = true;
         pendingEntry = entry.Target;
@@ -33,7 +33,7 @@ internal sealed partial class WidgetIndexedCollectionView
 
     internal bool Enter(IndexedCollectionFocusTarget? target = null, bool allowFallback = false)
     {
-        if (disposed || source is null || view is null || !view.IsEnabled || source.Items.Count == 0) return false;
+        if (disposed || source is null || view is null || !CanReceiveInput || source.Items.Count == 0) return false;
         if (target is not null && !MatchesQuery(target)) return false;
         CancelNavigation();
         entering = true;
@@ -63,7 +63,7 @@ internal sealed partial class WidgetIndexedCollectionView
 
     internal bool MoveFocus(FocusNavigationDirection direction)
     {
-        if (view is null || source is null || !view.IsEnabled || view.Items.Count == 0) return false;
+        if (view is null || source is null || !CanReceiveInput || view.Items.Count == 0) return false;
         CancelEntry();
         var current = pendingIndex ?? FocusedIndex();
         if (current is null) return false;

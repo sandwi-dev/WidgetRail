@@ -1,0 +1,192 @@
+using System.Text.Json;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
+
+namespace WidgetRail.OverlayFrontend.WinUI.Validation;
+
+/// <summary>Runs public SDK WithModal through the native presenter, without owning controller input.</summary>
+internal sealed class ModalValidationPage : Page, IAsyncDisposable
+{
+    private readonly WidgetViewPresenter presenter = new();
+    private readonly TextBlock status = new() { Text = "Modal checks pending", TextWrapping = TextWrapping.Wrap };
+    private readonly Border widget;
+    private readonly List<string> checks = [];
+    private readonly List<WidgetActionRequest> actions = [];
+    private long sequence;
+    private long owner = 1;
+    private string? modal;
+    private string detailText = "Details";
+    private Task? running;
+    private Exception? failure;
+
+    public ModalValidationPage()
+    {
+        AutomationProperties.SetAutomationId(status, "Modal.Result");
+        widget = new Border { Width = 760, Height = 480, Child = presenter,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new(20, 50, 0, 20) };
+        Content = new Grid { Children = { status, widget } };
+        presenter.Failed = error => failure = error;
+        presenter.DispatchActionAsync = request => { actions.Add(request); return Task.CompletedTask; };
+        Loaded += (_, _) => running ??= RunAsync();
+    }
+
+    private async Task RunAsync()
+    {
+        try
+        {
+            Apply();
+            await Until(() => Find("parent.scroll") is ScrollViewer { ScrollableHeight: > 0 });
+            var parentScroll = (ScrollViewer)Find("parent.scroll")!;
+            var parentButton = (Button)Find("game.12")!;
+            parentButton.Focus(FocusState.Keyboard);
+            parentScroll.ChangeView(null, 480, null, true);
+            await Task.Delay(180);
+            var offset = parentScroll.VerticalOffset;
+            var extent = parentScroll.ScrollableHeight;
+            var viewport = parentScroll.ViewportHeight;
+            var parentWidth = parentScroll.ActualWidth;
+            Check(offset > 0 && FocusedId == "Widget.game.12", "fixture begins at a scrolled parent item");
+            var parentCommand = parentButton.Command!;
+
+            modal = "details.game12"; Apply();
+            await Until(() => FocusedId == "Widget.play" && Find(modal) is { ActualWidth: > 0 });
+            var panel = (WidgetModalPanel)Find(modal)!;
+            Check(ReferenceEquals(parentScroll, Find("parent.scroll")) && ReferenceEquals(parentButton, Find("game.12")), "modal retains original parent controls");
+            Check(Near(parentScroll.VerticalOffset, offset) && Near(parentScroll.ScrollableHeight, extent) &&
+                Near(parentScroll.ViewportHeight, viewport) && Near(parentScroll.ActualWidth, parentWidth), "opening preserves parent viewport geometry and offset");
+            Check(parentButton.IsEnabled && !parentButton.IsTabStop && !parentButton.IsHitTestVisible,
+                "inactive parent remains visually enabled but cannot receive input");
+            parentButton.Focus(FocusState.Keyboard);
+            Check(FocusedId == "Widget.play", "programmatic focus cannot enter inactive parent scope");
+            parentCommand.Execute(null);
+            Check(actions.Count == 0, "retained parent command has no modal action authority");
+            Check(AutomationProperties.GetIsDialog(panel), "dialog is exposed to automation");
+            CheckLocalBounds(panel, "dialog is bounded inside corner-positioned widget");
+
+            var modalScroll = (ScrollViewer)Find(modal + ".scroll")!;
+            await Until(() => modalScroll.ScrollableHeight > 0);
+            modalScroll.ChangeView(null, 200, null, true);
+            await Task.Delay(100);
+            Check(modalScroll.VerticalOffset > 0 && Near(parentScroll.VerticalOffset, offset), "dialog scroll is independent of parent");
+            ((Button)Find("second")!).Focus(FocusState.Keyboard);
+            await Task.Delay(100);
+            var modalOffset = modalScroll.VerticalOffset;
+            detailText = "Updated details"; Apply();
+            await Task.Delay(100);
+            Check(ReferenceEquals(panel, Find(modal)) && FocusedId == "Widget.second" && Near(modalScroll.VerticalOffset, modalOffset),
+                "ordinary dialog update preserves control focus and scroll");
+            presenter.Enter(restoreNativeFocus: true);
+            await Task.Delay(100);
+            Check(FocusedId == "Widget.second", "host foreground restoration preserves dialog focus");
+            for (var count = 0; count < 4; ++count) presenter.MoveFocus(FocusNavigationDirection.Left);
+            Check(!FocusedId.StartsWith("Widget.game.", StringComparison.Ordinal), "controller boundary remains in dialog");
+
+            ((Button)Find("picker")!).Focus(FocusState.Keyboard);
+            presenter.ActivateFocused();
+            await Until(() => presenter.HasTransientControl);
+            Check(presenter.DismissTransientControl() && Find(modal) is not null, "Select dismisses before its owning modal");
+            await Task.Delay(150);
+
+            widget.Width = 330; widget.Height = 300;
+            await Until(() => panel.ActualWidth < 330 && panel.ActualHeight < 300);
+            CheckLocalBounds(panel, "dialog reclamps on small widget resize");
+            widget.Width = 760; widget.Height = 480;
+            await Until(() => panel.ActualWidth > 600 && panel.ActualHeight > 400);
+            CheckLocalBounds(panel, "dialog expands again without stale small bounds");
+
+            ((Button)Find("second")!).Focus(FocusState.Keyboard);
+            modal = "details.game13"; Apply();
+            await Until(() => FocusedId == "Widget.play");
+            Check(!ReferenceEquals(panel, Find(modal)), "new modal scope gets fresh controls and initial focus");
+            var retiredPlay = ((Button)Find("play")!).Command!;
+            modal = null; Apply();
+            await Until(() => FocusedId == "Widget.game.12");
+            Check(ReferenceEquals(parentScroll, Find("parent.scroll")) && Near(parentScroll.VerticalOffset, offset),
+                "closing returns exact parent focus and viewport");
+            retiredPlay.Execute(null);
+            Check(actions.Count == 0, "retired dialog command cannot dispatch after close");
+
+            modal = "details.game13"; Apply();
+            await Until(() => FocusedId == "Widget.play");
+            Check(FocusedId == "Widget.play", "reopening removed dialog scope starts at initial focus");
+            presenter.ActivateFocused();
+            await Until(() => actions.Count == 1);
+            Check(actions[0].Action.ActionId == "play" && actions[0].Action.InputScopeId == modal + ".scope", "dialog action dispatches once with its own scope");
+            var priorPanel = Find(modal);
+            ++owner; Apply();
+            await Until(() => FocusedId == "Widget.play");
+            Check(!ReferenceEquals(priorPanel, Find(modal)), "runtime replacement retires dialog identity");
+            if (failure is not null) throw failure;
+            status.Text = $"Passed {checks.Count} modal checks";
+            WriteResult(new { result = "passed", checks });
+        }
+        catch (Exception error)
+        {
+            status.Text = "Modal validation failed: " + error.Message;
+            WriteResult(new { result = "failed", checks, error = error.ToString() });
+        }
+    }
+
+    private void Apply()
+    {
+        var parent = new WidgetView(UI.Stack("parent",
+            UI.Text("Library", "heading"),
+            UI.VerticalScroll("parent.scroll", Enumerable.Range(0, 30)
+                .Select(index => (WidgetElement)UI.Button("Game " + index, "game." + index, "game." + index)).ToArray()))
+            .InputScope("parent"), InitialFocusId: "game.12", ActiveInputScopeId: "parent");
+        var view = modal is null ? parent : parent.WithModal(new(modal, detailText,
+            UI.Stack("details.content", UI.Button("Play", "play", "play"), UI.Button("Second", "second", "second"),
+                UI.Select("Completion", [new("none", "None", "none", true), new("done", "Done", "done")], "picker"),
+                UI.Stack("long.description", Enumerable.Range(0, 60).Select(index =>
+                    (WidgetElement)UI.Text($"Description line {index}", "line." + index)).ToArray())), "play", "dismiss"));
+        var snapshot = view.CreateSnapshot("modal.instance", ++sequence);
+        var descriptor = new BridgeWidgetDescriptor { Id = "modal", Name = "Modal validation", InstanceId = snapshot.WidgetInstanceId,
+            RuntimeGeneration = $"runtime-{owner}", PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };
+        presenter.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, owner,
+            snapshot.WidgetInstanceId, sequence, snapshot.ActiveInputScopeId), descriptor, snapshot,
+            new Dictionary<string, BridgeNodeRenderStyles>()));
+    }
+
+    private void CheckLocalBounds(FrameworkElement panel, string name)
+    {
+        var location = panel.TransformToVisual(widget).TransformPoint(new(0, 0));
+        Check(location.X >= 15 && location.Y >= 15 && location.X + panel.ActualWidth <= widget.ActualWidth - 15 &&
+            location.Y + panel.ActualHeight <= widget.ActualHeight - 15, name);
+    }
+    private static bool Near(double first, double second) => Math.Abs(first - second) < 1;
+    private string FocusedId => FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused
+        ? AutomationProperties.GetAutomationId(focused) : string.Empty;
+    private FrameworkElement? Find(string id) => Find(presenter, "Widget." + id);
+    private static FrameworkElement? Find(DependencyObject element, string id)
+    {
+        if (element is FrameworkElement candidate && AutomationProperties.GetAutomationId(candidate) == id) return candidate;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); ++index)
+            if (Find(VisualTreeHelper.GetChild(element, index), id) is { } found) return found;
+        return null;
+    }
+    private static async Task Until(Func<bool> condition)
+    {
+        for (var attempt = 0; attempt < 150; ++attempt) { if (condition()) return; await Task.Delay(20); }
+        throw new TimeoutException("Modal layout/focus did not settle");
+    }
+    private void Check(bool condition, string name)
+    {
+        if (!condition) throw new InvalidOperationException(name);
+        checks.Add(name);
+    }
+    private static void WriteResult<T>(T value)
+    {
+        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "diagnostics");
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, "modal-controls-result.json"), JsonSerializer.Serialize(value));
+    }
+    public ValueTask DisposeAsync() => presenter.DisposeAsync();
+}

@@ -156,6 +156,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void OnGettingFocus(UIElement sender, GettingFocusEventArgs args)
     {
+        if (RejectInactiveFocus(args)) return;
         if (!applying && !redirectingGroupFocus && args.Direction != FocusNavigationDirection.None) CancelGroupEntry();
         // Pointer focus and explicit programmatic focus retain their exact target.
         // WinUI finds spatial candidates; group policy only chooses the declared

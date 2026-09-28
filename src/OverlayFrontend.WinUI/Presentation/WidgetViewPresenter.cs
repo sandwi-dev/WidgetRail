@@ -82,7 +82,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         var nextBindings = new Dictionary<string, Binding>(StringComparer.Ordinal);
         foreach (var declaration in plan.Values)
             nextBindings.Add(declaration.Node.Id, sameOwner && bindings.TryGetValue(declaration.Node.Id, out var retained)
-                && retained.Identity == declaration.Identity ? retained : Create(declaration));
+                && retained.Identity == declaration.Identity ? retained : Create(declaration, IsModalDialog(declaration, plan)));
 
         var focused = FocusedBinding();
         var oldScope = frame?.Authority.ActiveInputScopeId;
@@ -100,6 +100,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 for (var index = binding.Children.Children.Count - 1; index >= 0; --index)
                 {
                     var child = binding.Children.Children[index];
+                    if (binding.Element is WidgetModalLayer layer && ReferenceEquals(child, layer.Chrome)) continue;
                     var childId = ((FrameworkElement)child).Tag is WidgetElementIdentity identity ? identity.Id : string.Empty;
                     if (!plan.TryGetValue(childId, out var nextChild) || nextChild.ParentId != id
                         || !nextBindings.TryGetValue(id, out var nextParent) || !ReferenceEquals(nextParent, binding)
@@ -133,6 +134,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                         panel.Children.Insert(index, child);
                     }
             }
+            UpdateModalGeometry();
             Content = bindings[root.Id].Element;
             needsEntry = needsEntry || !sameOwner || oldScope != next.Authority.ActiveInputScopeId
                 || (focused is not null && (!bindings.TryGetValue(focused.Identity.Id, out var current)
@@ -252,7 +254,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         catch (Exception error) { ReportFailure(error); }
     }
 
-    private Binding Create(Declaration declaration)
+    private Binding Create(Declaration declaration, bool modalDialog)
     {
         var node = declaration.Node;
         var token = new object();
@@ -262,7 +264,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         {
             case ViewNodeKind.Stack:
             case ViewNodeKind.Row:
-                element = children = new Grid();
+                element = children = modalDialog ? new WidgetModalPanel() : new Grid();
+                break;
+            case ViewNodeKind.ModalLayer:
+                element = children = new WidgetModalLayer();
                 break;
             case ViewNodeKind.IndexedCollection:
                 if (Session is null) throw new InvalidOperationException("Indexed widgets require a presentation session.");
@@ -310,7 +315,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         var element = binding.Element;
         if (element is WidgetIndexedCollectionView indexed) indexed.Apply(frame!, node, binding.Identity.Scope);
         if (element is Image image) UpdateImage(binding, image, node);
-        if (element is Grid layout) UpdateLayout(layout, node);
+        if (element is Grid layout && element is not WidgetModalLayer) UpdateLayout(layout, node);
         ApplySizeAndTypography(element, node);
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
         if (element is TextBlock text) text.Text = node.Text ?? string.Empty;
@@ -365,7 +370,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 || node.CollectionAnchorKey is not null || node.CollectionGeneration is not null || node.CollectionResetGeneration is not null
                 || node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null
                 || node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Button or ViewNodeKind.ActionSurface
-                    or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
+                    or ViewNodeKind.ModalLayer or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
                     or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface))
                 throw new NotSupportedException($"WinUI presentation for {node.Kind} with these declarations is not implemented.");
             var scope = node.InputScopeId ?? inheritedScope;

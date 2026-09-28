@@ -23,6 +23,8 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private CollectionLayoutKind? layoutKind;
     private ScrollAxis? axis;
     private bool disposed;
+    private bool inputActive;
+    private bool CanReceiveInput => inputActive && view?.IsEnabled == true;
     private long sequence;
     internal ListViewBase NativeView => view ?? throw new InvalidOperationException("Collection is not initialized.");
     internal Action? PresentationChanged { get; set; }
@@ -94,8 +96,11 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         AutomationProperties.SetAutomationId(view, "Widget." + declaration.Id + ".Items");
         AutomationProperties.SetName(view, declaration.AccessibilityLabel ?? declaration.Id);
         var active = scope == frame.Authority.ActiveInputScopeId;
-        view.IsEnabled = active && declaration.IsDisabled != true && declaration.IsBusy != true;
-        if (!view.IsEnabled) CancelNavigation();
+        inputActive = active;
+        view.IsEnabled = declaration.IsDisabled != true && declaration.IsBusy != true;
+        if (!CanReceiveInput) CancelNavigation();
+        view.IsItemClickEnabled = active;
+        foreach (var container in containers.Keys) container.IsTabStop = active;
         view.IsTabStop = active;
         view.IsHitTestVisible = active;
         ScrollViewer.SetVerticalScrollMode(view, axis == ScrollAxis.Horizontal ? ScrollMode.Disabled : ScrollMode.Enabled);
@@ -127,6 +132,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     }
     private void UpdateContainer(SelectorItem container, IndexedItem<WidgetIndexedRow> slot)
     {
+        container.IsTabStop = inputActive;
         container.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         container.MinHeight = source?.Declaration.CollectionLayout?.EstimatedItemExtent ?? 0;
         container.IsEnabled = slot.Value?.Item.Root is not { IsDisabled: true } and not { IsBusy: true };
@@ -147,7 +153,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     internal bool ActivateFocused() => InvokeFocused(ControllerButton.A);
     internal bool InvokeFocused(ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed)
     {
-        if (view?.XamlRoot is null) return false;
+        if (!CanReceiveInput || view?.XamlRoot is null) return false;
         for (var focused = FocusManager.GetFocusedElement(view.XamlRoot) as DependencyObject;
              focused is not null && !ReferenceEquals(focused, view); focused = VisualTreeHelper.GetParent(focused))
             if (focused is SelectorItem container && containers.TryGetValue(container, out var item))
@@ -159,7 +165,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     }
     private async Task InvokeAsync(WidgetIndexedRow row, ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed)
     {
-        if (disposed || !row.Lease.IsCurrent || source is null) return;
+        if (disposed || !CanReceiveInput || !row.Lease.IsCurrent || source is null) return;
         try { await row.Lease.AdmitInputAsync(source.Frame.Authority, row.Item.Key, button, phase,
             sequence: ++sequence, monotonicTimestampMicroseconds: Environment.TickCount64 * 1000); }
         catch (WidgetPresentationSessionException) when (!row.Lease.IsCurrent) { }
