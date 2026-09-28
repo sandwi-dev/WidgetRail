@@ -51,6 +51,7 @@ public partial class App : Application
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         var arguments = Shell.FrontendArguments.Parse(args.Arguments, Environment.GetCommandLineArgs().Skip(1));
+        if (arguments.Contains("--trace-layout")) DebugSettings.LayoutCycleTracingLevel = LayoutCycleTracingLevel.High;
         var widgetConfiguration = Shell.FrontendArguments.Value(arguments, "--widget-config");
         var main = new MainWindow(arguments.Contains("--validate-external-surface"), arguments.Contains("--validate-controller"),
             arguments.Contains("--replay-controller"), arguments.Contains("--validate-collection"), widgetConfiguration,
