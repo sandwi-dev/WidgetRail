@@ -3,6 +3,7 @@ namespace WidgetRail.WidgetProtocol;
 /// <summary>A bounded worker-owned semantic range, independent of native container realization.</summary>
 public sealed record IndexedCollectionLease(string LeaseId, IndexedCollectionRange Range);
 public sealed record IndexedCollectionItemReference(string LeaseId, string ItemKey);
+public sealed record IndexedCollectionInputContext(string InputScopeId, long SnapshotSequence, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 public sealed record IndexedCollectionInputRequest(IndexedCollectionItemReference Item,
     ControllerButton Button, ControllerEventPhase Phase = ControllerEventPhase.Pressed,
     string? ContextActionOwnerId = null, string? ContextActionId = null);
@@ -10,9 +11,9 @@ public sealed record IndexedCollectionInputRequest(IndexedCollectionItemReferenc
 internal sealed record IndexedInputBinding(string ActionId, string OwnerId, ViewNodeKind OwnerKind, bool IsItem);
 
 /// <summary>Logical ancestry shared by trusted host admission and worker revalidation.</summary>
-internal static class IndexedCollectionInputContract
+public static class IndexedCollectionInputContract
 {
-    internal static void ValidateReference(IndexedCollectionItemReference reference)
+    public static void ValidateReference(IndexedCollectionItemReference reference)
     {
         ArgumentNullException.ThrowIfNull(reference);
         if (!Guid.TryParseExact(reference.LeaseId, "N", out _) || reference.ItemKey is null ||
@@ -20,7 +21,15 @@ internal static class IndexedCollectionInputContract
             throw new ArgumentException("Indexed item reference is invalid.", nameof(reference));
     }
 
-    internal static void ValidateInput(IndexedCollectionInputRequest request)
+    public static void ValidateContext(IndexedCollectionInputContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (context.InputScopeId is null || !ProtocolValidationIdentifierContext.IsSafeIdentifier(context.InputScopeId) ||
+            context.SnapshotSequence <= 0 || context.Sequence < 0 || context.MonotonicTimestampMicroseconds < 0)
+            throw new ArgumentException("Indexed input context is invalid.", nameof(context));
+    }
+
+    public static void ValidateInput(IndexedCollectionInputRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         ValidateReference(request.Item);
@@ -32,25 +41,18 @@ internal static class IndexedCollectionInputContract
             throw new ArgumentException("Indexed context selection identity is invalid.", nameof(request));
     }
 
-    internal static IReadOnlyList<ViewNode> CaptureOwners(ViewSnapshot parent, IndexedCollectionRangeRequest request,
-        bool requireActiveScope)
+    internal static IReadOnlyList<ViewNode> ResolveOwnerPath(ViewSnapshot parent, IndexedCollectionRangeRequest request)
     {
         var binding = IndexedCollectionContract.Resolve(parent, request);
-        if (requireActiveScope && binding.Projection.ActiveInputScopeId != binding.Scope)
+        if (binding.Projection.ActiveInputScopeId != binding.Scope)
             throw new InvalidOperationException("The indexed collection is outside the active input scope.");
         var path = new List<ViewNode>();
         if (!Find(binding.Projection.Root)) throw new InvalidOperationException("Indexed ancestry is unavailable.");
         var scopeStart = path.FindLastIndex(node => node.InputScopeId is not null);
         if (scopeStart > 0) path.RemoveRange(0, scopeStart);
-        // Retain only input ownership, not the entire parent tree through Children.
-        return Array.AsReadOnly(path.Select(node => new ViewNode
-        {
-            Id = node.Id, Kind = node.Kind, InputScopeId = node.InputScopeId,
-            IsDisabled = node.IsDisabled, IsBusy = node.IsBusy,
-            Shortcuts = Array.AsReadOnly(node.Shortcuts.ToArray()),
-            ContextMenuButton = node.ContextMenuButton,
-            ContextActions = Array.AsReadOnly(node.ContextActions.ToArray()),
-        }).ToArray());
+        // The path is used only during admission. Leases retain item data, not
+        // an obsolete parent tree or its page-level shortcut definitions.
+        return path.AsReadOnly();
 
         bool Find(ViewNode node)
         {

@@ -89,6 +89,13 @@ if (expectedRuntime is not null && !RuntimeEnvironment.GetRuntimeDirectory().Sta
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Indexed lease IPC acquires invokes and releases captured rows", IndexedLeaseRuntimeScenarios.ClientRoundTrip),
+    ("Indexed lease IPC artwork cancellation preserves input and worker", IndexedLeaseRuntimeScenarios.ArtworkCancellation),
+    ("Indexed lease IPC release retires pending artwork", IndexedLeaseRuntimeScenarios.ReleaseDuringArtwork),
+    ("Indexed lease IPC cannot start or target replacement workers", IndexedLeaseRuntimeScenarios.ReplacedWorker),
+    ("Indexed lease IPC cancellation withdraws delivered leases", IndexedLeaseRuntimeScenarios.DeliveredCancellation),
+    ("Indexed lease IPC failed delivery releases worker retention", IndexedLeaseRuntimeScenarios.FailedDelivery),
+    ("Indexed lease IPC duplicate rejection preserves original lease", IndexedLeaseRuntimeScenarios.DuplicateAcquisitionPreservesLease),
     ("Indexed ranges preserve serial input render and lifecycle responsiveness", IndexedRangeRuntimeScenarios.ResponsiveAndCancellable),
     ("Indexed ranges bound admission and cancel exact demands", IndexedRangeRuntimeScenarios.BoundedAndExact),
     ("Indexed ranges preserve SDK provider slots after cancellation", IndexedRangeRuntimeScenarios.CancellationRetainsProviderBound),
@@ -241,7 +248,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         arguments.Contains("--gesture-custom-probe", StringComparer.Ordinal) ||
         arguments.Contains("--gesture-adversarial-probe", StringComparer.Ordinal);
     var gestureProbe = usesGestureProbe ? new GestureProbeCapabilityClient() : null;
-    Widget widget = arguments.Contains("--indexed-range-probe", StringComparer.Ordinal)
+    Widget widget = arguments.Contains("--indexed-lease-probe", StringComparer.Ordinal)
+        ? new IndexedLeaseProbeWidget()
+        : arguments.Contains("--indexed-range-probe", StringComparer.Ordinal)
         ? new IndexedRangeProbeWidget()
         : arguments.Contains("--hanging-destroy", StringComparer.Ordinal)
         ? new HangingDestroyWidget()

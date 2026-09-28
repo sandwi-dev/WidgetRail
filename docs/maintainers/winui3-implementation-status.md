@@ -424,7 +424,7 @@ realized lazy-row focus, which remain outstanding.
 
 The indexed source options now require a typed captured-item `OnAction` callback
 and optionally supply a captured artwork resolver. Internal semantic leases retain
-bounded frozen rows and a compact parent input-owner path. Shared logical binding
+bounded frozen rows and resolve the current parent input-owner path at admission. Shared logical binding
 resolution preserves row versus ancestor shortcuts, menu option availability,
 nested scopes, pinned ownership and modal input suppression. Typed item execution
 uses the existing serial action queue with query-aware repeat identity; no second
@@ -443,3 +443,41 @@ The semantic lease API is currently internal to the worker SDK. Runtime, bridge
 and session delivery/release/interaction routes plus native item templates and
 first-party widget conversion remain incomplete. Existing range data still grants
 no remote row action/artwork authority. The migration remains active and unmerged.
+
+
+## Worker/runtime semantic lease transport
+
+The actual worker pipe now supports acquisition/release, typed item input and
+independent artwork requests. An internal disposable client lease owns the exact
+captured process session, prevents use after disposal and never starts/reaches a
+replacement worker. Cancellation after delivery and failed reply writes reclaim
+worker retention. Range/artwork lanes share bounded cancellation/drain mechanics
+while retaining independent four-request budgets; input remains on the existing
+serial queue. Release and cancellation acknowledgements are strictly typed.
+
+A code review corrected the distinction between retained data and current input:
+leases retain immutable row data, not a frozen parent shortcut path. Input carries
+a current worker snapshot sequence and scope. Page-level bindings are resolved
+from that snapshot; stale input cannot execute a changed page command. The bridge
+must still compare the user's origin frame with its current declarations before
+forwarding that sequence. An admitted action may itself replace its query without
+invalidating its admission acknowledgement.
+
+Twelve indexed-runtime scenarios pass (six new lease scenarios), including real
+worker acquisition/invocation/artwork, cancellation/reload, release during artwork,
+worker replacement, late cancellation and failed delivery. Ten existing focused
+action/teardown scenarios, five indexed-bridge tests, forty-seven presentation
+session tests and the 134 SDK checks also pass. The replacement-worker test first
+attempted unload while Interactive; its setup now performs the required Background
+transition before unload. No production workaround was added for that test error.
+
+Bridge/session semantic-lease tables and native interactive item templates are
+still unimplemented. Existing bridge range reads remain data-only. No candidate
+was installed/launched and nothing was merged to main.
+
+Final transport review found that a rejected duplicate acquisition cancelled its
+original successful demand and released the existing lease. Terminal worker
+rejections now bypass withdrawal; cancelled or unadmitted successful replies still
+withdraw their exact demand. A real-worker regression verifies the original row
+action and artwork remain valid. All thirteen indexed runtime checks pass, and the
+WinUI analyzer checkpoint build passes without warnings or errors.

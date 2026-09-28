@@ -268,3 +268,43 @@ boundary retires the session.
 Stop closes range admission and cancels/drains admitted read tasks before its
 acknowledgement and widget destruction. Both sandboxed and full-trust bootstraps
 compile the same read lane from WidgetApplicationRuntime.
+
+
+## Indexed semantic lease IPC
+
+The runtime now has `acquire-indexed-range` / `indexed-lease`,
+`release-indexed-range`, `indexed-input`, `resolve-indexed-artwork` and
+`cancel-indexed-artwork` messages. Acquisition uses the same bounded range lane
+as read-only preparation. Range cancellation also withdraws a lease that was
+already written but has not been admitted by its host. Failed delivery releases
+worker retention; the SDK's widget lifetime reclaims all remaining leases on stop.
+
+`WidgetProcessIndexedLease` is an internal disposable handle tied to the captured
+worker session. Its acquisition requires an exact already-running start ordinal.
+Input, artwork and release never start a worker or target its replacement. Local
+lease retention is capped at 32, and disposing a handle immediately stops new
+uses and cancels its artwork demand before releasing the remote lease. Release
+and cancellation acknowledgements must contain their typed boolean result.
+
+Input context carries the current worker snapshot sequence, input scope, controller
+sequence and timestamp. The SDK resolves parent shortcuts from that current
+snapshot, not from the page that happened to be present when data was acquired.
+The trusted bridge must validate origin/current bindings before forwarding the
+current worker sequence; it must not silently replace a stale input context.
+An action's own page/query changes after admission do not turn its acknowledgement
+into a stale-data error. Cancellation of an input caller stops waiting, not an
+already-admitted action; its bounded exchange retains response correlation.
+
+Range preparation and artwork share a reusable asynchronous-lane lifecycle,
+with separate four-request budgets. Artwork never occupies the serial action,
+render or lifecycle processor. Its actual SDK provider count remains bounded even
+if cancellation is ignored. Caller/lease cancellation sends an exact artwork
+request-ID cancellation and drains the original response. Frame writes use
+session deadlines rather than caller cancellation. Stop drains both read lanes
+before acknowledgement/destruction.
+
+Six real-worker/direct-wire lease scenarios pass, plus the six existing indexed
+range scenarios and ten focused action/teardown regressions. This implements the
+worker/runtime hop. Bridge/session lease tables, origin/current input admission,
+lease retirement and native row templates are still required before production
+widgets can use this path.

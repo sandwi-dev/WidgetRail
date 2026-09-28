@@ -42,8 +42,11 @@ internal static class WidgetIndexedLeaseTests
         Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, widget.Send(lease, ControllerButton.A, owner: "collection", action: "collection-menu"));
         Equal("parent:collection-menu", await widget.Next());
         Equal<WidgetOperationAdmission?>(null, widget.Send(lease, ControllerButton.A, owner: "missing", action: "favorite"));
+        var oldPageSequence = widget.PublishedSequence;
         widget.ParentAction = "changed-next"; widget.Publish();
-        Equal<WidgetOperationAdmission?>(null, widget.Send(lease, ControllerButton.RightTrigger));
+        Equal<WidgetOperationAdmission?>(null, widget.Send(lease, ControllerButton.RightTrigger, snapshotSequence: oldPageSequence));
+        Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, widget.Send(lease, ControllerButton.RightTrigger));
+        Equal("parent:changed-next", await widget.Next());
         Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, widget.Send(lease, ControllerButton.A));
         Equal("initial:key-0:open", await widget.Next());
         widget.CollectionBusy = true; widget.Publish();
@@ -165,6 +168,7 @@ internal static class WidgetIndexedLeaseTests
         internal string ParentAction = "next";
         internal bool Modal, Pinned, CollectionBusy, SeparateCollectionScope;
         private long sequence;
+        internal long PublishedSequence => sequence;
         internal Func<Query, Item, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>> Artwork = (_, _, _, _) => ValueTask.FromResult<WidgetEncodedArtwork?>(Png);
         internal Fixture(Query? initial = null)
         {
@@ -195,9 +199,9 @@ internal static class WidgetIndexedLeaseTests
         internal ValueTask<IndexedCollectionLease> Acquire(string collection = "collection", string? pinned = null, int count = 1, CancellationToken cancellationToken = default) =>
             AcquireIndexedRangeAsync(new(collection, Source.Descriptor, 0, count, Guid.NewGuid().ToString("N"), pinned), cancellationToken);
         internal WidgetOperationAdmission? Send(IndexedCollectionLease lease, ControllerButton button,
-            ControllerEventPhase phase = ControllerEventPhase.Pressed, string? owner = null, string? action = null, string? scope = null) =>
+            ControllerEventPhase phase = ControllerEventPhase.Pressed, string? owner = null, string? action = null, string? scope = null, long? snapshotSequence = null) =>
             AdmitIndexedInput(new(new(lease.LeaseId, "key-0"), button, phase, owner, action),
-                new("ignored", "ignored", InputScopeId: scope ?? lease.Range.ScopeId));
+                new(scope ?? lease.Range.ScopeId, snapshotSequence ?? sequence));
         internal Task<string> Next() => events.Reader.ReadAsync().AsTask().WaitAsync(Limit);
         public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
         {

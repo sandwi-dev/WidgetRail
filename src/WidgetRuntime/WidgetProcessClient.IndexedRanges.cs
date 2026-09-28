@@ -16,16 +16,36 @@ public sealed partial class WidgetProcessClient
     /// Reads declarative items without granting action authority. Query, scope and
     /// generation must still match the currently published parent when the reply arrives.
     /// </summary>
-    public Task<IndexedCollectionRange> ReadIndexedRangeAsync(
+    public async Task<IndexedCollectionRange> ReadIndexedRangeAsync(
         IndexedCollectionRangeRequest request, CancellationToken cancellationToken = default) =>
-        ReadIndexedRangeCoreAsync(request, null, cancellationToken);
+        (await ReadIndexedRangeCoreAsync(request, null, false, cancellationToken).ConfigureAwait(false)).Range;
 
-    internal Task<IndexedCollectionRange> ReadIndexedRangeAsync(
+    internal async Task<IndexedCollectionRange> ReadIndexedRangeAsync(
         IndexedCollectionRangeRequest request, int expectedStartOrdinal, CancellationToken cancellationToken) =>
-        ReadIndexedRangeCoreAsync(request, expectedStartOrdinal, cancellationToken);
+        (await ReadIndexedRangeCoreAsync(request, expectedStartOrdinal, false, cancellationToken).ConfigureAwait(false)).Range;
 
-    private async Task<IndexedCollectionRange> ReadIndexedRangeCoreAsync(
-        IndexedCollectionRangeRequest request, int? expectedStartOrdinal, CancellationToken cancellationToken)
+    private int activeOwnedIndexedLeases;
+    internal async Task<WidgetProcessIndexedLease> AcquireIndexedRangeAsync(
+        IndexedCollectionRangeRequest request, int expectedStartOrdinal, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (Interlocked.Increment(ref activeOwnedIndexedLeases) > WidgetRail.WidgetSdk.Widget.MaximumIndexedLeases)
+        {
+            Interlocked.Decrement(ref activeOwnedIndexedLeases);
+            throw new InvalidOperationException("The indexed process lease budget is full.");
+        }
+        try
+        {
+            var result = await ReadIndexedRangeCoreAsync(request, expectedStartOrdinal, true, cancellationToken).ConfigureAwait(false);
+            return new(this, result.Session, result.Lease!, request, () => Interlocked.Decrement(ref activeOwnedIndexedLeases));
+        }
+        catch { Interlocked.Decrement(ref activeOwnedIndexedLeases); throw; }
+    }
+
+    private sealed record IndexedReadResult(IndexedCollectionRange Range, IndexedCollectionLease? Lease, WidgetProcessSession Session);
+
+    private async Task<IndexedReadResult> ReadIndexedRangeCoreAsync(
+        IndexedCollectionRangeRequest request, int? expectedStartOrdinal, bool acquire, CancellationToken cancellationToken)
     {
         IndexedCollectionContract.ValidateRequest(request);
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -41,6 +61,9 @@ public sealed partial class WidgetProcessClient
         WidgetPendingRequests.WidgetPendingRequest? pending = null;
         var sent = false;
         var completed = false;
+        var succeeded = false;
+        var rejected = false;
+        var messageType = acquire ? MessageTypes.AcquireIndexedRange : MessageTypes.ReadIndexedRange;
         try
         {
             if (expectedStartOrdinal is null) await EnsureConnectedAsync(demand.Token).ConfigureAwait(false);
@@ -55,7 +78,7 @@ public sealed partial class WidgetProcessClient
             finally { _lifecycleGate.Release(); }
             var parent = Volatile.Read(ref _materializedSnapshot) ?? throw new InvalidOperationException("No parent presentation is available.");
             _ = IndexedCollectionContract.ResolveScope(parent, request);
-            pending = session.PendingRequests.Register(MessageTypes.ReadIndexedRange);
+            pending = session.PendingRequests.Register(messageType);
             // Only transport/session deadlines may interrupt writing a frame.
             using (var writeDeadline = CancellationTokenSource.CreateLinkedTokenSource(session.CancellationToken))
             {
@@ -64,7 +87,7 @@ public sealed partial class WidgetProcessClient
                 {
                     await session.WriteAsync(new RuntimeEnvelope
                     {
-                        Type = MessageTypes.ReadIndexedRange, RequestId = pending.RequestId, Payload = RuntimeJson.ToElement(request),
+                        Type = messageType, RequestId = pending.RequestId, Payload = RuntimeJson.ToElement(request),
                     }, writeDeadline.Token).ConfigureAwait(false);
                     sent = true;
                 }
@@ -75,7 +98,10 @@ public sealed partial class WidgetProcessClient
             deadline.CancelAfter(TimeSpan.FromSeconds(35));
             RuntimeEnvelope response;
             try { response = await pending.Response.WaitAsync(deadline.Token).ConfigureAwait(false); }
-            catch (WidgetProcessException) { completed = true; throw; }
+            // A terminal worker rejection did not transfer a lease. Cancelling
+            // that demand would withdraw an earlier successful acquisition with
+            // the same identity (for example after a rejected duplicate retry).
+            catch (WidgetProcessException) { completed = true; rejected = true; throw; }
             catch (OperationCanceledException) when (!demand.IsCancellationRequested && !session.CancellationToken.IsCancellationRequested)
             { throw new TimeoutException("The indexed range response timed out."); }
             completed = true;
@@ -83,17 +109,25 @@ public sealed partial class WidgetProcessClient
             if (!ReferenceEquals(Volatile.Read(ref _session), session) || session.IsTerminal ||
                 expectedStartOrdinal is { } expectedOrdinal && Starts != expectedOrdinal)
                 throw new OperationCanceledException("The indexed range session retired.");
-            if (response.Type != MessageTypes.IndexedRange) throw new WidgetProtocolViolationException("The worker returned an unexpected indexed range response.");
-            var result = RuntimeJson.FromElement<IndexedCollectionRange>(response.Payload);
+            if (response.Type != (acquire ? MessageTypes.IndexedLease : MessageTypes.IndexedRange))
+                throw new WidgetProtocolViolationException("The worker returned an unexpected indexed range response.");
+            var lease = acquire ? RuntimeJson.FromElement<IndexedCollectionLease>(response.Payload) : null;
+            if (lease is not null && !Guid.TryParseExact(lease.LeaseId, "N", out _))
+                throw new WidgetProtocolViolationException("The worker returned invalid indexed lease identity.");
+            var result = acquire
+                ? lease!.Range ?? throw new WidgetProtocolViolationException("The worker returned no indexed lease data.")
+                : RuntimeJson.FromElement<IndexedCollectionRange>(response.Payload);
             parent = Volatile.Read(ref _materializedSnapshot) ?? throw new InvalidOperationException("The parent presentation retired.");
             IndexedCollectionContract.ValidateRange(parent, request, result);
-            return result;
+            demand.Token.ThrowIfCancellationRequested();
+            succeeded = true;
+            return new(result, lease, session);
         }
         finally
         {
             try
             {
-                if (sent && !completed && session is { IsTerminal: false })
+                if (sent && (!completed || acquire && !succeeded && !rejected) && session is { IsTerminal: false })
                     await CancelConnectedIndexedRangeAsync(session, request, pending!.Response).ConfigureAwait(false);
             }
             finally
@@ -145,6 +179,7 @@ public sealed partial class WidgetProcessClient
             var response = await pending.Response.WaitAsync(deadline.Token).ConfigureAwait(false);
             if (response.Type != MessageTypes.Acknowledged)
                 throw new WidgetProtocolViolationException("The worker did not acknowledge indexed cancellation.");
+            _ = RuntimeJson.FromElement<IndexedCancellationResultPayload>(response.Payload);
             // Retain correlation until the original demand has a terminal response.
             // Otherwise its late cancellation reply would become an unknown request ID.
             try { _ = await originalResponse.WaitAsync(deadline.Token).ConfigureAwait(false); }

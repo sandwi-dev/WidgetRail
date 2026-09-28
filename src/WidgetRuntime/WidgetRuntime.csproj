@@ -10,6 +10,8 @@
     <Compile Remove="WidgetWorkerNotificationLane.cs" />
     <Compile Remove="WidgetWorkerServer.cs" />
     <Compile Remove="WidgetIndexedRangeLane.cs" />
+    <Compile Remove="WidgetIndexedArtworkLane.cs" />
+    <Compile Remove="WidgetWorkerAsyncLane.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\PlatformBroker\PlatformBroker.csproj" />

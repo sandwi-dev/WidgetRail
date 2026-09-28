@@ -235,17 +235,17 @@ continue to invoke `Widget.OnActionAsync`. `ResolveArtwork(query, item, handle,
 token)` is optional, but required when a leased row or its focus presentation
 declares opaque artwork handles. HTTPS image loading remains a host responsibility.
 
-Internal lease acquisition retains frozen row declarations, immutable captured
-values/delegates, and only the input-owner path from the parent (not another full
-parent tree). Each lease has a fresh opaque ID. Pending acquisition and retained
+Internal lease acquisition retains frozen row declarations and immutable captured
+values/delegates. Parent input-owner paths are resolved during admission against
+an exact current worker snapshot; they are not frozen into the data lease. Each lease has a fresh opaque ID. Pending acquisition and retained
 data share limits of 32 ranges, 1024 items and 32768 nodes; pending reads reserve
 their worst-case node budget before loading and transfer that reservation atomically
 at publication. Duplicate demand identity is rejected. Release, query/content
 retirement, parent removal/scope change and widget destruction reclaim leases.
 Routine parent revisions and modal opening preserve unchanged parent data.
 
-Input admission compares captured and current logical bindings, respects nested
-input scopes, checks exact menu options and owner availability, and invokes either
+Worker input admission validates the current snapshot sequence and logical binding,
+respects nested input scopes, checks exact menu options and owner availability, and invokes either
 the captured item callback or ordinary parent handler. Collection-disabled/busy
 state blocks row commands while unrelated page shortcuts remain available. The
 existing serial queue owns execution, diagnostics, capability/invocation context,
@@ -262,7 +262,23 @@ The resolver has a ten-second ceiling, also bounded by caller/widget cancellatio
 Six new SDK scenario groups exercise these semantics; all 134 SDK checks and 14
 API compatibility tests pass. Existing six indexed-runtime and five indexed-bridge
 checks still pass after updating their source declarations for the required action
-callback. **Lease acquisition, item invocation and item-artwork requests are not
-wired through runtime/bridge/session IPC yet.** Existing range transport remains
-read-only. Complete explicit lease delivery/release and cancellation ownership
-before enabling interactive native row templates or converting production widgets.
+callback. **Lease acquisition, item invocation and item-artwork now have a worker/runtime
+IPC path, but are not connected through bridge/session retention yet.** The bridge
+range endpoint remains read-only. Complete bridge origin/current input validation,
+lease ownership and native row templates before converting production widgets.
+
+
+### Runtime ownership handoff
+
+The runtime's disposable lease handle binds to an exact already-running worker.
+Acquisition/release, item input and artwork requests now cross the real worker pipe.
+A failed lease reply or cancellation after reply delivery reclaims SDK retention.
+Disposal cancels pending artwork, and an old lease cannot start or target a new
+worker. The range and artwork lanes have separate bounded capacities and share
+one cancellation/drain implementation; ordinary action execution remains serial.
+
+Input and data have separate authority. The data lease follows its immutable query
+and item values. Each input must name the current worker snapshot after trusted
+origin/current binding validation, so retained data neither preserves obsolete
+page shortcuts nor prevents new page shortcuts from working. The bridge integration
+must perform that origin/current check before forwarding the worker sequence.

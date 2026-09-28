@@ -15,7 +15,7 @@ public abstract partial class Widget
     internal const int MaximumIndexedLeaseItems = 1024;
     internal const int MaximumIndexedLeaseNodes = 32768;
     private sealed record IndexedLeaseState(IndexedCollectionLease Lease, IndexedCollectionRangeRequest Request,
-        IWidgetIndexedCollection Source, WidgetIndexedRead Read, IReadOnlyList<ViewNode> Owners);
+        IWidgetIndexedCollection Source, WidgetIndexedRead Read);
     private sealed record IndexedActionIdentity(string Source, long Query, string Collection, string? PinnedLayout, string Key);
     private int activeIndexedArtwork;
     private bool indexedLeaseOwnerRetired;
@@ -63,12 +63,22 @@ public abstract partial class Widget
                         throw new InvalidOperationException("Indexed rows declaring opaque artwork require a captured artwork resolver.");
                 var lease = new IndexedCollectionLease(id, range);
                 indexedReservations.Remove(id);
-                indexedLeases.Add(id, new(lease, request, source, read,
-                    IndexedCollectionInputContract.CaptureOwners(parent, request, requireActiveScope: false)));
+                indexedLeases.Add(id, new(lease, request, source, read));
                 return lease;
             }
         }
         finally { lock (indexedSourcesGate) indexedReservations.Remove(id); }
+    }
+
+    internal bool ReleaseIndexedDemand(IndexedCollectionRangeRequest request)
+    {
+        IndexedCollectionContract.ValidateRequest(request);
+        lock (indexedSourcesGate)
+        {
+            var ids = indexedLeases.Where(pair => pair.Value.Request == request).Select(pair => pair.Key).ToArray();
+            foreach (var id in ids) indexedLeases.Remove(id);
+            return ids.Length != 0;
+        }
     }
 
     internal bool ReleaseIndexedRange(string leaseId)
@@ -79,12 +89,10 @@ public abstract partial class Widget
 
     // Null means stale/unbound input; an admission value belongs to the existing queue.
     internal WidgetOperationAdmission? AdmitIndexedInput(IndexedCollectionInputRequest input,
-        WidgetActionEvent correlation, WidgetCapabilityGestureContext? gestureContext = null)
+        IndexedCollectionInputContext correlation, WidgetCapabilityGestureContext? gestureContext = null)
     {
         IndexedCollectionInputContract.ValidateInput(input);
-        ArgumentNullException.ThrowIfNull(correlation);
-        if (correlation.RequestedValue is not null || correlation.CommittedText is not null)
-            throw new ArgumentException("Indexed item activation cannot commit text or slider values.", nameof(correlation));
+        IndexedCollectionInputContract.ValidateContext(correlation);
         WidgetActionEvent action;
         WidgetActionExecutionBinding? binding;
         lock (indexedSourcesGate)
@@ -95,12 +103,12 @@ public abstract partial class Widget
             var item = lease.Read.Items.SingleOrDefault(item => item.Declaration.Key == input.Item.ItemKey);
             if (item is null) return null;
             var parent = Volatile.Read(ref _latestSnapshot)!;
+            if (parent.Sequence != correlation.SnapshotSequence) return null;
             IReadOnlyList<ViewNode> currentOwners;
-            try { currentOwners = IndexedCollectionInputContract.CaptureOwners(parent, lease.Request, requireActiveScope: true); }
+            try { currentOwners = IndexedCollectionInputContract.ResolveOwnerPath(parent, lease.Request); }
             catch (InvalidOperationException) { return null; }
-            var origin = IndexedCollectionInputContract.Resolve(lease.Owners, item.Declaration.Root, input);
             var current = IndexedCollectionInputContract.Resolve(currentOwners, item.Declaration.Root, input);
-            if (origin is null || current != origin) return null;
+            if (current is null) return null;
             action = new WidgetActionEvent(current.ActionId, current.OwnerId, input.Button, input.Phase,
                 correlation.Sequence, correlation.MonotonicTimestampMicroseconds, InputScopeId: lease.Lease.Range.ScopeId)
                 { FocusedElementId = item.Declaration.Root.Id };
