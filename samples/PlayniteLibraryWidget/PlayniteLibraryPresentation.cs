@@ -91,8 +91,11 @@ internal static class PlayniteLibraryPresentation
 
     internal static WidgetView Render(PlayniteLibraryPresentationState state,
         WidgetCollectionItems<TileInput>? browseItems = null,
-        WidgetIndexedCollection<PlayniteLibraryBrowseContent, PlayniteLibraryBrowseItem>? indexedBrowse = null)
+        WidgetIndexedCollection<PlayniteLibraryBrowseContent, PlayniteLibraryBrowseItem>? indexedBrowse = null,
+        WidgetIndexedCollection<PlayniteLibraryHomeContent, PlayniteLibraryHomeItem>? indexedHome = null)
     {
+        if (indexedHome is not null && state.Route != PlayniteLibraryRoute.Library)
+            throw new ArgumentException("An indexed Home source belongs only to Home.", nameof(indexedHome));
         if (indexedBrowse is not null && state.Route != PlayniteLibraryRoute.Browse)
             throw new ArgumentException("An indexed Browse source belongs only to the Browse page.", nameof(indexedBrowse));
         if (indexedBrowse is not null)
@@ -389,6 +392,23 @@ internal static class PlayniteLibraryPresentation
                     "hidden", PlayniteLibraryIdentity.Key(rows[0].Display.SavedId));
             }
         }
+        else if (indexedHome is { Descriptor.Count: > 0 })
+        {
+            catalogPage = true;
+            var children = new List<WidgetElement> { PlayniteLibraryIndexedHome.Rail(indexedHome),
+                UI.Row("playnite-library.organization.hints", StableControllerHint(ControllerButton.X,
+                    "Game options", "playnite-library.hint.options", !state.OrganizationBusy,
+                    "Game options")).Classes("playnite-library-footer") };
+            if (snapshot.Error is { } retained)
+            {
+                var error = PlayniteLibraryAvailabilityPresentation.Error(retained);
+                children.Add(UI.Alert(error.Title, error.Message, AlertTone.Warning,
+                    "playnite-library.retained-error", new ComponentAction("Try again", "playnite-library.retry", WidgetGlyph.Refresh))
+                    .Classes("playnite-library-warning"));
+            }
+            content = UI.Stack("playnite-library.content", children.ToArray()).Classes("playnite-library-content");
+            initialFocus = HomeRailId;
+        }
         else if (indexedBrowse is { Descriptor.Count: > 0 })
         {
             // Native collection owns its viewport. There is no nested ScrollViewer,
@@ -407,7 +427,7 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-content");
             initialFocus = state.BrowseInitialFocusId ?? ScrollId;
         }
-        else if (indexedBrowse is null && (snapshot.Items.Any(item =>
+        else if (indexedBrowse is null && indexedHome is null && (snapshot.Items.Any(item =>
                      !state.Organization.ExcludedSavedIds.Contains(
                          item.Value.SavedId, StringComparer.Ordinal)) ||
                  (state.Route != PlayniteLibraryRoute.Browse &&
@@ -506,7 +526,7 @@ internal static class PlayniteLibraryPresentation
                     row.FocusId, initialFocus, StringComparison.Ordinal)))
                 initialFocus = rail.Selected?.FocusId ?? "playnite-library.search";
         }
-        else if (state.Route == PlayniteLibraryRoute.Library &&
+        else if ((indexedHome is null || snapshot.Status != WidgetPagedResourceStatus.Ready) && state.Route == PlayniteLibraryRoute.Library &&
                  state.Organization.Items.Any(item =>
                      !state.Organization.ExcludedSavedIds.Contains(
                          item.SavedId, StringComparer.Ordinal)) && snapshot.Status is
@@ -637,7 +657,12 @@ internal static class PlayniteLibraryPresentation
                 .Classes("playnite-library-content");
         }
         FocusGroupEntryRequest? contentEntry = null;
-        if (indexedBrowse is { Descriptor.Count: > 0 } && catalogPage)
+        if (indexedHome is { Descriptor.Count: > 0 } && catalogPage)
+        {
+            if (state.ContentEntryRequestId > 0 && snapshot.Status is WidgetPagedResourceStatus.Ready or WidgetPagedResourceStatus.Error)
+                contentEntry = indexedHome.Enter(HomeRailId, state.ContentEntryRequestId);
+        }
+        else if (indexedBrowse is { Descriptor.Count: > 0 } && catalogPage)
         {
             if (state.ContentEntryRequestId > 0 && !state.BrowseRetained &&
                 snapshot.Status is WidgetPagedResourceStatus.Ready or WidgetPagedResourceStatus.Error)

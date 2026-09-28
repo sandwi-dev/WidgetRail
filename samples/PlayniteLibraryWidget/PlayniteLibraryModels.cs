@@ -55,6 +55,17 @@ internal sealed record PlayniteLibraryIndexedBrowseState
     internal long ModalReturnRequestId { get; init; }
 }
 
+internal sealed record PlayniteLibraryIndexedHomeState
+{
+    internal PlayniteLibraryHomeContent? Publication { get; init; }
+    internal WidgetPagedResourceStatus Status { get; init; } = WidgetPagedResourceStatus.NotLoaded;
+    internal WidgetResourceError? Error { get; init; }
+    internal long Attempt { get; init; }
+    internal PlayniteLibraryCollectionState? Selection { get; init; }
+    internal IndexedCollectionFocusTarget? ModalReturn { get; init; }
+    internal long ModalReturnRequestId { get; init; }
+}
+
 internal sealed class PlayniteLibraryActionFeedback(
     string title,
     string message,
@@ -72,6 +83,7 @@ internal sealed record PlayniteLibraryRenderState
     // Collection is the Home route's independent query/selection model.
     internal required PlayniteLibraryCollectionState Collection { get; init; }
     internal required PlayniteLibraryCollectionState BrowseCollection { get; init; }
+    internal PlayniteLibraryIndexedHomeState IndexedHome { get; init; } = new();
     internal PlayniteLibraryIndexedBrowseState IndexedBrowse { get; init; } = new();
     internal required WidgetAppLibraryQuery HiddenQuery { get; init; }
     internal PlayniteLibraryFixedRows FixedRows { get; init; } =

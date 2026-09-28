@@ -16,7 +16,8 @@ public sealed partial class PlayniteLibraryTests
         var selected = PlayniteLibraryItem.From(Item(80));
         var target = new PlayniteLibraryGameTarget(selected, () => true);
         var misleadingControl = PlayniteLibraryIdentity.FocusId("grid", PlayniteLibraryItem.From(Item(0)).Key);
-        Assert.IsFalse(widget.HomeCollection.Items.Any(item => item.Key == selected.Key));
+        Assert.IsFalse(Nodes(Snapshot(widget, 1).Root).Any(node => node.CollectionItemKey == selected.Key.Value),
+            "Logical membership does not eagerly render this target.");
         await widget.HandleCapturedGameActionAsync(target, new(PlayniteLibraryActions.Favorite, misleadingControl));
         CollectionAssert.Contains(host.Authority.FavoriteGameIds.ToArray(), selected.Value.SavedId);
         CollectionAssert.DoesNotContain(host.Authority.FavoriteGameIds.ToArray(), Item(0).SavedId);
