@@ -135,7 +135,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         var response = await RequestAsync(
             BridgeMessageTypes.ListWidgets,
-            new { },
+            new BridgeEmptyPayload(),
             BridgeMessageTypes.Widgets,
             cancellationToken).ConfigureAwait(false);
         RequireObjectProperties(response.Payload, "revision", "isComplete", "widgets");
@@ -143,9 +143,10 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         if (completeness.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
             throw new BridgeProtocolException("WidgetBridge returned invalid catalog completeness.");
         var revision = ReadInt64(response.Payload, "revision", minimum: 0);
-        var widgets = response.Payload.GetProperty("widgets")
-            .Deserialize<BridgeWidgetDescriptor[]>(BridgeJson.Options)
-            ?? throw new BridgeProtocolException("WidgetBridge returned a null widget catalog.");
+        var rawWidgets = response.Payload.GetProperty("widgets");
+        if (rawWidgets.ValueKind == JsonValueKind.Null)
+            throw new BridgeProtocolException("WidgetBridge returned a null widget catalog.");
+        var widgets = BridgeJson.FromElement<BridgeWidgetDescriptor[]>(rawWidgets);
         if (widgets.Length > 256 || widgets.Any(widget => widget is null))
             throw new BridgeProtocolException("WidgetBridge returned an invalid widget catalog.");
         var byId = new Dictionary<string, BridgeWidgetDescriptor>(StringComparer.Ordinal);
@@ -292,7 +293,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
                 StringComparison.Ordinal))
             throw new BridgeProtocolException("WidgetBridge restarted a different widget.");
         var state = response.Payload.GetProperty("state")
-            .Deserialize<WidgetLifecycleState>(BridgeJson.Options);
+            .Deserialize(BridgeJson.TypeInfo<WidgetLifecycleState>());
         ValidatePresentationLifecycle(state);
         lock (_gate)
         {
@@ -1073,7 +1074,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         if (!string.Equals(snapshot.WidgetInstanceId, descriptor.InstanceId, StringComparison.Ordinal))
             throw new BridgeProtocolException("WidgetBridge returned a mismatched widget instance.");
         var renderStyles = payload.GetProperty("renderStyles")
-            .Deserialize<Dictionary<string, BridgeNodeRenderStyles>>(BridgeJson.Options)
+            .Deserialize(BridgeJson.TypeInfo<Dictionary<string, BridgeNodeRenderStyles>>())
             ?? throw new BridgeProtocolException("WidgetBridge returned null render styles.");
         var frozenStyles = BridgeRenderStyleContract.ValidateAndFreeze(renderStyles,
             BridgeRenderStyleContract.SnapshotNodeIds(snapshot), requireComplete: false);
@@ -1312,7 +1313,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         RequireObjectProperties(payload, "admission");
         var admission = payload.GetProperty("admission")
-            .Deserialize<WidgetOperationAdmission>(BridgeJson.Options);
+            .Deserialize(BridgeJson.TypeInfo<WidgetOperationAdmission>());
         if (admission is not (WidgetOperationAdmission.Enqueued or
                               WidgetOperationAdmission.Replaced))
             throw new BridgeProtocolException("WidgetBridge returned an invalid action admission.");

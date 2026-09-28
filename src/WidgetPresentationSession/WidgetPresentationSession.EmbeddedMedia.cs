@@ -215,7 +215,7 @@ public sealed partial class WidgetPresentationSession
             "allowedFrameDomainFamilies", "supportedPresentations", "resources"];
         RequireAllowedProperties(payload, required.Concat(["pendingCommand", "mediaSeekStepSeconds"]).ToHashSet(StringComparer.Ordinal), required);
         BridgeEmbeddedMediaBundle bundle;
-        try { bundle = payload.Deserialize<BridgeEmbeddedMediaBundle>(BridgeJson.Options) ?? throw new BridgeProtocolException("Empty media bundle."); }
+        try { bundle = payload.Deserialize(BridgeJson.TypeInfo<BridgeEmbeddedMediaBundle>()) ?? throw new BridgeProtocolException("Empty media bundle."); }
         catch (JsonException error) { throw new BridgeProtocolException("Malformed media bundle.", error); }
         if (bundle.WidgetId != authority.WidgetId || bundle.InstanceId != authority.WidgetInstanceId ||
             bundle.RuntimeGeneration != authority.RuntimeGeneration || bundle.PresentationGeneration != authority.PresentationGeneration ||

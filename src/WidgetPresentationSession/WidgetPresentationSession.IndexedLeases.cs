@@ -192,7 +192,7 @@ public sealed partial class WidgetPresentationSession
                     throw new BridgeProtocolException("WidgetBridge returned an invalid indexed input result.");
                 RequireObjectProperties(response.Payload, "admission");
                 if (response.Payload.GetProperty("admission").ValueKind == JsonValueKind.Null) return null;
-                var admission = response.Payload.GetProperty("admission").Deserialize<WidgetOperationAdmission>(BridgeJson.Options);
+                var admission = response.Payload.GetProperty("admission").Deserialize(BridgeJson.TypeInfo<WidgetOperationAdmission>());
                 if (admission is not (WidgetOperationAdmission.Enqueued or WidgetOperationAdmission.Joined or WidgetOperationAdmission.Replaced or
                     WidgetOperationAdmission.RejectedInactive or WidgetOperationAdmission.RejectedCapacity))
                     throw new BridgeProtocolException("WidgetBridge returned an invalid indexed input admission.");

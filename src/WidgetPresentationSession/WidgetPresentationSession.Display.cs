@@ -20,7 +20,7 @@ public sealed partial class WidgetPresentationSession
             devicePaths.Distinct(StringComparer.OrdinalIgnoreCase).Count() != devicePaths.Count)
             throw new ArgumentException("Invalid monitor connection context.");
         var response = await RequestAsync(BridgeMessageTypes.GetPlatformAppearance,
-            new { display = new { id = connectionId, name, devicePaths } }, BridgeMessageTypes.PlatformAppearance, cancellationToken).ConfigureAwait(false);
+            new BridgeAppearanceRequest(new(connectionId, name, devicePaths)), BridgeMessageTypes.PlatformAppearance, cancellationToken).ConfigureAwait(false);
         var active = ReadString(response.Payload, "activeDisplayId", allowEmpty: true);
         if (active.Length > 256 || active.Any(char.IsControl)) throw new BridgeProtocolException("Invalid active display identity.");
         return active;

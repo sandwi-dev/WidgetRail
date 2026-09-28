@@ -1039,7 +1039,7 @@ internal sealed class ScriptedBridgeServer : IAsyncDisposable
             {
                 Type = BridgeMessageTypes.HelloAccepted,
                 RequestId = hello.RequestId,
-                Payload = BridgeJson.ToElement(new { }),
+                Payload = BridgeJson.ToElement(new BridgeEmptyPayload()),
             }, CancellationToken.None);
             await scenario(channel);
         });

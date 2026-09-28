@@ -42,7 +42,7 @@ public sealed partial class WidgetPresentationSession
         {
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime);
             deadline.CancelAfter(PreviewGrantLifetime);
-            var exchange = RequestAsync(BridgeMessageTypes.WindowPreviewPermissions, new { widgetId = displayed.Authority.WidgetId },
+            var exchange = RequestAsync(BridgeMessageTypes.WindowPreviewPermissions, new WidgetIdRequest(displayed.Authority.WidgetId),
                 BridgeMessageTypes.WindowPreviewPermissions, deadline.Token);
             _ = exchange.ContinueWith(static task => { _ = task.Exception; }, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);

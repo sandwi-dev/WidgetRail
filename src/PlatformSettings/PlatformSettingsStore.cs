@@ -9,7 +9,7 @@ public sealed class PlatformSettingsStore
     public const int MaximumSettingsBytes = 64 * 1024;
     private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan LockRetry = TimeSpan.FromMilliseconds(40);
-    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    private static readonly PlatformSettingsJsonContext JsonContext = new(CreateJsonOptions());
 
     private readonly PlatformSettingsPaths _paths;
     private readonly string _lockFile;
@@ -34,7 +34,7 @@ public sealed class PlatformSettingsStore
         {
             StrictJson.RejectDuplicateProperties(bytes);
             var currentBytes = RetireObsoleteSettings(bytes);
-            var document = JsonSerializer.Deserialize<PlatformSettingsDocument>(currentBytes, JsonOptions)
+            var document = JsonSerializer.Deserialize(currentBytes, JsonContext.PlatformSettingsDocument)
                 ?? throw new JsonException("Settings document was null.");
             Validate(document);
             return document;
@@ -129,7 +129,7 @@ public sealed class PlatformSettingsStore
         PlatformSettingsDocument document,
         CancellationToken cancellationToken)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(document, JsonContext.PlatformSettingsDocument);
         if (bytes.Length > MaximumSettingsBytes)
             throw new PlatformSettingsException(
                 "settings_too_large", $"Platform settings exceed {MaximumSettingsBytes} bytes.");
@@ -232,7 +232,33 @@ public sealed class PlatformSettingsStore
             // Loading is read-only; the next normal write persists the migration.
             appearance["focusAnimation"] = "Fade";
         }
-        return JsonSerializer.SerializeToUtf8Bytes(root);
+        // Source-generated init-only contracts assign type defaults for omitted
+        // members. Preserve the documented legacy omission defaults, while
+        // leaving explicit nulls and required/unknown members to strict validation.
+        FillMissing(root, PlatformSettingsDocument.Default, JsonContext.PlatformSettingsDocument);
+        if (root["appearance"] is JsonObject legacyAppearance)
+            FillMissing(legacyAppearance, new AppearanceSettings
+            {
+                ThemeId = "", ThemeVersion = "", InterfaceScale = 0, TextScale = 0,
+                BackdropOpacity = 0, Motion = default,
+            }, JsonContext.AppearanceSettings);
+        if (root["controllers"] is JsonObject controllers)
+            FillMissing(controllers, new ControllerSettings(), JsonContext.ControllerSettings);
+        if (root["builtInWidgets"] is JsonObject builtIns)
+            FillMissing(builtIns, new BuiltInWidgetSettings(), JsonContext.BuiltInWidgetSettings);
+        return System.Text.Encoding.UTF8.GetBytes(root.ToJsonString());
+    }
+
+    private static void FillMissing<T>(JsonObject target, T defaults,
+        System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> contract)
+    {
+        JsonObject? template = null;
+        foreach (var property in contract.Properties)
+            if (!property.IsRequired && !target.ContainsKey(property.Name))
+            {
+                template ??= JsonSerializer.SerializeToNode(defaults, contract)!.AsObject();
+                target.Add(property.Name, template[property.Name]?.DeepClone());
+            }
     }
 
     private static string SafeMessage(string value)

@@ -8,7 +8,7 @@ public sealed partial class WidgetPresentationSession
     /// <summary>Read the bridge-resolved host shell palette without changing display or settings.</summary>
     public async Task<IReadOnlyDictionary<string, BridgeNodeRenderStyles>> ReadShellStylesAsync(CancellationToken cancellationToken = default)
     {
-        var response = await RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { },
+        var response = await RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new BridgeEmptyPayload(),
             BridgeMessageTypes.PlatformAppearance, cancellationToken).ConfigureAwait(false);
         if (response.Payload.ValueKind != JsonValueKind.Object || !response.Payload.TryGetProperty("shellStyles", out var raw) ||
             raw.ValueKind != JsonValueKind.Object || raw.EnumerateObject().Count() > 16)
@@ -21,7 +21,7 @@ public sealed partial class WidgetPresentationSession
             if (!allowed.Contains(property.Name) || styles.ContainsKey(property.Name) || property.Value.ValueKind != JsonValueKind.Object ||
                 property.Value.EnumerateObject().Count() > BridgeRenderStyleLimits.MaximumPropertiesPerState)
                 throw new BridgeProtocolException("Invalid shell style role.");
-            var state = property.Value.Deserialize<Dictionary<string, BridgeComputedStyleValue>>(BridgeJson.Options)
+            var state = property.Value.Deserialize(BridgeJson.TypeInfo<Dictionary<string, BridgeComputedStyleValue>>())
                 ?? throw new BridgeProtocolException("Missing shell style state.");
             styles.Add(property.Name, new() { Base = state, Focused = state, Pressed = state });
         }

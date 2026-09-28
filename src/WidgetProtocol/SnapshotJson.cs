@@ -5,23 +5,27 @@ namespace WidgetRail.WidgetProtocol;
 
 public static class SnapshotJson
 {
-    private static readonly JsonSerializerOptions Options = CreateOptions();
+    private static readonly ProtocolJsonContext Context = new(CreateOptions());
 
     public static byte[] Serialize(ViewSnapshot snapshot)
     {
         var errors = ViewSnapshotValidator.Validate(snapshot);
         if (errors.Count != 0)
             throw new ProtocolValidationException(errors);
-        return JsonSerializer.SerializeToUtf8Bytes(snapshot, Options);
+        return JsonSerializer.SerializeToUtf8Bytes(snapshot, Context.ViewSnapshot);
     }
 
     public static ViewSnapshot Deserialize(ReadOnlySpan<byte> payload)
     {
-        var snapshot = JsonSerializer.Deserialize<ViewSnapshot>(payload, Options)
+        var snapshot = JsonSerializer.Deserialize(payload, Context.ViewSnapshot)
             ?? throw new JsonException("The snapshot payload was null.");
         var errors = ViewSnapshotValidator.Validate(snapshot);
-        if (errors.Count != 0)
-            throw new ProtocolValidationException(errors);
+        if (errors.Count != 0 && SnapshotOmissionDefaults.TryRestore(payload, out var compatible))
+        {
+            snapshot = JsonSerializer.Deserialize(compatible, Context.ViewSnapshot)!;
+            errors = ViewSnapshotValidator.Validate(snapshot);
+        }
+        if (errors.Count != 0) throw new ProtocolValidationException(errors);
         return snapshot;
     }
 

@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Security.Cryptography;
@@ -81,6 +83,9 @@ internal sealed record BridgeEnvelope
 
 internal sealed record BridgeHello(string ClientName, bool WindowPreviews = false);
 internal sealed record WidgetIdRequest(string WidgetId);
+internal sealed record BridgeEmptyPayload;
+internal sealed record BridgeDisplayIdentity(string Id, string Name, IReadOnlyList<string> DevicePaths);
+internal sealed record BridgeAppearanceRequest(BridgeDisplayIdentity Display);
 internal sealed record BridgePresentationRequest(
     string WidgetId,
     PresentationUpdateCapabilities? Capabilities = null,
@@ -213,9 +218,26 @@ internal static class BridgeJson
 {
     internal static readonly JsonSerializerOptions Options = CreateOptions();
 
-    public static JsonElement ToElement<T>(T value) => JsonSerializer.SerializeToElement(value, Options);
-    public static T FromElement<T>(JsonElement element) =>
-        element.Deserialize<T>(Options) ?? throw new JsonException($"A {typeof(T).Name} payload was null.");
+    public static JsonElement ToElement<T>(T value) => JsonSerializer.SerializeToElement(value, TypeInfo<T>());
+    public static T FromElement<T>(JsonElement element)
+    {
+        var result = element.Deserialize(TypeInfo<T>()) ?? throw new JsonException($"A {typeof(T).Name} payload was null.");
+        // Keep additive catalog omissions equivalent to the immutable model's
+        // initializers. Explicit null remains invalid at admission.
+        if (result is BridgeWidgetDescriptor[] widgets)
+            for (var index = 0; index < widgets.Length; ++index)
+            {
+                var widget = widgets[index];
+                if (widget is null) continue;
+                var raw = element[index];
+                if (widget.IconAssets is null && !raw.TryGetProperty("iconAssets", out _)) widget = widget with { IconAssets = [] };
+                if (widget.QuickActions is null && !raw.TryGetProperty("quickActions", out _)) widget = widget with { QuickActions = [] };
+                widgets[index] = widget;
+            }
+        return result;
+    }
+
+    internal static JsonTypeInfo<T> TypeInfo<T>() => (JsonTypeInfo<T>)Options.GetTypeInfo(typeof(T));
 
     private static JsonSerializerOptions CreateOptions()
     {
@@ -226,6 +248,11 @@ internal static class BridgeJson
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         };
+        // Trusted Bridge tools still support their existing reflection-based
+        // diagnostic payloads. Trimmed hosts use only the generated wire contracts.
+        options.TypeInfoResolver = JsonSerializer.IsReflectionEnabledByDefault
+            ? new DefaultJsonTypeInfoResolver()
+            : BridgeJsonContext.Default;
         options.Converters.Add(new EmbeddedMediaCommandJsonConverter());
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return options;
@@ -253,21 +280,25 @@ internal sealed class BridgeFrameChannel(Stream stream, int maximumMessageBytes)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
         ArgumentNullException.ThrowIfNull(payload);
-        await WriteSerializedAsync(
-            new BridgeOutgoingEnvelope<T>
-            {
-                Type = type,
-                RequestId = requestId,
-                Payload = payload,
-            },
-            cancellationToken).ConfigureAwait(false);
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("protocolVersion", BridgeProtocol.CurrentVersion);
+            writer.WriteString("type", type);
+            writer.WriteNumber("requestId", requestId);
+            writer.WritePropertyName("payload");
+            JsonSerializer.Serialize(writer, payload, BridgeJson.TypeInfo<T>());
+            writer.WriteEndObject();
+        }
+        await WriteBytesAsync(buffer.WrittenMemory, cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask WriteSerializedAsync<T>(
-        T envelope,
-        CancellationToken cancellationToken)
+    private ValueTask WriteSerializedAsync(BridgeEnvelope envelope, CancellationToken cancellationToken) =>
+        WriteBytesAsync(JsonSerializer.SerializeToUtf8Bytes(envelope, BridgeJson.TypeInfo<BridgeEnvelope>()), cancellationToken);
+
+    private async ValueTask WriteBytesAsync(ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(envelope, BridgeJson.Options);
         if (bytes.Length is <= 0 || bytes.Length > _maximumMessageBytes)
             throw new BridgeProtocolException($"Bridge message length {bytes.Length} is invalid.");
         var header = new byte[sizeof(int)];
@@ -286,8 +317,16 @@ internal sealed class BridgeFrameChannel(Stream stream, int maximumMessageBytes)
             throw new BridgeProtocolException($"Peer announced invalid bridge message length {length}.");
         var bytes = new byte[length];
         await _stream.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
-        var envelope = JsonSerializer.Deserialize<BridgeEnvelope>(bytes, BridgeJson.Options)
+        var envelope = JsonSerializer.Deserialize(bytes, BridgeJson.TypeInfo<BridgeEnvelope>())
             ?? throw new BridgeProtocolException("Peer sent a null bridge message.");
+        if (envelope.ProtocolVersion == 0)
+        {
+            // Preserve the existing additive-envelope default only for omission;
+            // an explicitly supplied unsupported version still fails below.
+            using var document = JsonDocument.Parse(bytes);
+            if (!document.RootElement.TryGetProperty("protocolVersion", out _))
+                envelope = envelope with { ProtocolVersion = BridgeProtocol.CurrentVersion };
+        }
         if (envelope.ProtocolVersion != BridgeProtocol.CurrentVersion)
             throw new BridgeProtocolException(
                 $"Unsupported bridge protocol {envelope.ProtocolVersion}; expected {BridgeProtocol.CurrentVersion}.");
@@ -324,14 +363,6 @@ internal sealed class BridgeFrameChannel(Stream stream, int maximumMessageBytes)
             if (bytes is not null) CryptographicOperations.ZeroMemory(bytes);
         }
     }
-}
-
-internal sealed record BridgeOutgoingEnvelope<T>
-{
-    public int ProtocolVersion { get; init; } = BridgeProtocol.CurrentVersion;
-    public required string Type { get; init; }
-    public long RequestId { get; init; }
-    public required T Payload { get; init; }
 }
 
 internal sealed class BridgeProtectedWifiSecret : IDisposable

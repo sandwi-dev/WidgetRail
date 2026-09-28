@@ -212,7 +212,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
                 try
                 {
                     var response = await RequestCoreAsync(BridgeMessageTypes.Stop,
-                        new { }, stop.Token, stopping: true).ConfigureAwait(false);
+                        new BridgeEmptyPayload(), stop.Token, stopping: true).ConfigureAwait(false);
                     if (response.Type != BridgeMessageTypes.Acknowledged)
                         throw new BridgeProtocolException("WidgetBridge returned an invalid stop response.");
                 }
