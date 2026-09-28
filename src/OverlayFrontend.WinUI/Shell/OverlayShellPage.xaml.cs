@@ -36,6 +36,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private bool switching;
     private bool catalogQueued;
     private bool catalogDirty;
+    private bool layoutCaptureQueued;
     private long visibleSince = Environment.TickCount64;
     private readonly System.Collections.ObjectModel.ObservableCollection<BridgeWidgetDescriptor> catalogItems = [];
     internal event Action? HideRequested;
@@ -194,6 +195,23 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (state.LastGood is not { } next || surface is null) return;
         try { surface.Apply(next); Status.Text = next.Descriptor.Name; Retry.Visibility = Visibility.Collapsed; }
         catch (Exception error) { ReportFailure(error); }
+        if (!layoutCaptureQueued && options.LayoutDiagnosticsPath is { } diagnosticPath)
+        {
+            layoutCaptureQueued = true;
+            var captured = surface;
+            _ = CaptureLayoutAsync();
+            async Task CaptureLayoutAsync()
+            {
+                try
+                {
+                    await Task.Delay(500, lifetime.Token);
+                    if (!retired && ReferenceEquals(captured, surface)) captured.WriteLayoutDiagnostics(diagnosticPath);
+                }
+                catch (OperationCanceledException) when (retired) { }
+                catch (Exception error) { System.Diagnostics.Trace.WriteLine(error.GetType().Name); }
+                finally { layoutCaptureQueued = false; }
+            }
+        }
         UpdateDiagnostics();
     }
 

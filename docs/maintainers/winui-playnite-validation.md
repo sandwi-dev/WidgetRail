@@ -47,3 +47,9 @@ details opening/dismissal on both pages. Evidence is under
 `artifacts/winui-playnite/production-first/`. These are transport/data checks;
 native rendering, controller navigation, appearance and performance require the
 actual shell and are not implied by this result.
+
+For explicit geometry diagnosis, add `LayoutDiagnosticsPath` to shell-options.json
+with an absolute output path in an existing directory. The shell coalesces captures
+after publications and writes control geometry/style metadata without text, image
+handles or image bytes. Omit this option for normal runs and performance measurement.
+It is off by default and is not a screenshot or proof of actual pixel appearance.
