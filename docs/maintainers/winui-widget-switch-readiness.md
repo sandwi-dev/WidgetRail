@@ -53,3 +53,16 @@ rapid reversal, bounded retention, valid empty/loading trees, worker failure,
 hide/reopen, dynamic updates and same-ID incarnation replacement. It compares
 outgoing raster pixels during preparation and observes native render callbacks;
 these checks complement, rather than replace, a screen recording of presentation.
+
+`scripts/Test-WinUiWidgetSwitches.ps1` creates that isolated fixture, launches the
+already-built Debug frontend, verifies the result belongs to the launched process,
+and closes only that process through normal window shutdown. Supply
+`-BridgeInstallation` and a fresh `-OutputDirectory`. The script requires exclusive
+use of the WinUI development package identity and preserves results on failure.
+
+The combined frontend (including radial chooser, bounded artwork demand and the
+current Windows SDK projection) passes all 21 switch checks against its rebuilt
+Bridge. Evidence: `artifacts/winui-shell/switch-fixture-integrated-01/`. The same
+combined frontend passes all 199 native style checks. These tests preserve the
+distinction between layout readiness, sampled retained pixels, and actual display
+timing; they are not a smoothness benchmark or physical acceptance.
