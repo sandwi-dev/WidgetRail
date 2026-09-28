@@ -10,8 +10,8 @@ per-edge border widths, corner radius, padding, opacity, font size/family/weight
 text alignment and character spacing. Character spacing additionally supports em.
 Box geometry, viewport units and full cross-axis percentage sizes are handled by
 the layout adapter described in `winui-layout.md`. Separate edge colors, focus
-outlines and native depth paint are covered below. Other transforms, text transforms
-and rich typography remain outside this bounded mapping. No shadow animator is introduced.
+outlines and native depth paint are covered below. Text layout and display casing
+are covered below. Rich text runs remain outside this mapping. No shadow animator is introduced.
 FontIcon receives foreground and font size while retaining its glyph-specific font.
 
 The newer control-scale adapter maps existing WRSS scale states to native composition;
@@ -20,6 +20,51 @@ TextScale, with fresh values derived from the style map rather than the previous
 font size. Font metrics trigger native reflow instead of scaling text as a bitmap.
 The root presenter also establishes a scaled inherited default. Host display policy
 continues to own selecting the effective TextScale and InterfaceScale.
+
+## Shared text layout
+
+`WidgetTextStyleAdapter` projects existing WRSS typography onto native `TextBlock`
+properties. Plain text, button/select/text-entry labels, shared component text and
+indexed presentation fragments use the same implementation and complete state maps.
+Button labels are explicit native text elements; glyph labels use a native Grid
+with a constrained text column so an unbounded horizontal StackPanel cannot defeat
+their line limits. This does not replace WinUI text measurement or layout.
+
+- `max-lines: 1` selects NoWrap. Larger limits use native multiline layout.
+- `overflow-wrap: anywhere` uses Wrap (native emergency breaks). `normal` also
+  uses Wrap: TextBlock has no exact equivalent of the previous renderer's legacy
+  DirectWrite WRAP mode. WrapWholeWords is intentionally not substituted because
+  it would overflow long words instead of retaining the existing native fallback.
+- `text-overflow: ellipsis` uses CharacterEllipsis; `clip` uses pixel-level Clip,
+  rather than None, which can truncate at word boundaries.
+- Unitless `line-height` multiplies the effective scaled font size and uses native
+  BlockLineHeight. Native font metrics continue to determine glyph placement.
+- `text-transform: uppercase/lowercase/none` changes display casing using invariant
+  Unicode casing. The latest authored source is retained, including updates whose
+  displayed text happens to be identical. Accessibility labels, action data and text
+  entry values remain unchanged. Glyph codepoints are never case-transformed.
+- Pixel character spacing grows with TextScale; em spacing retains its em ratio.
+
+Removing a property restores its prior native local/default value. In particular,
+absent line constraints preserve native defaults rather than inserting a global
+line cap. A theme can still explicitly impose a cap. Focused/pressed state changes
+and row recycling use the same ownership rules. The native style validation fixture
+covers source restoration, line metrics, wrapping/trimming, scaled tracking,
+ordinary/glyph button labels and indexed fragment state changes.
+
+Mapping reference: Microsoft UI XAML's `CTextBlock::ConfigureDWriteTextLayout`
+maps Wrap to DirectWrite EMERGENCY_BREAK and WrapWholeWords to WHOLE_WORD.
+The previous host's `NativeTextLayout.cpp` uses WRAP for normal and
+EMERGENCY_BREAK for anywhere. Native TextBlock remains the layout owner; no
+custom line breaker is added to imitate the unavailable legacy mode.
+
+Typography checkpoint validation: analyzer build has no warnings/errors; the
+native style fixture passes 164 checks, the ordinary control fixture passes 16,
+the four native control fixtures pass 104, and package icons pass 36. Evidence is
+under `artifacts/typography-parity`. Initial typography-fixture failures were fixed
+by awaiting queued focus styling and using the real indexed `ApplyFragment` entry
+point; production code did not change during those repairs. These are automated
+native checks, not physical controller or full-product acceptance.
 
 ## State and reset ownership
 

@@ -434,7 +434,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
         if (element is FontIcon icon) WidgetGlyphs.Apply(icon, node, playStationPrompts);
         if (element is WidgetPackageIconView packageIcon) UpdateNativeIcon(packageIcon, node);
-        if (element is TextBlock text) text.Text = node.Kind == ViewNodeKind.TextEntry ? TextEntryLabel(node) : node.Text ?? string.Empty;
+        if (element is TextBlock text) WidgetTextStyleAdapter.SetSource(text, node.Kind == ViewNodeKind.TextEntry ? TextEntryLabel(node) : node.Text ?? string.Empty);
         if (element is Control control)
         {
             control.IsEnabled = node.IsDisabled != true && node.IsBusy != true;
@@ -442,7 +442,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview) && (!node.IsFocusable || binding.Identity.Scope == activeScope);
         }
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);
-        if (element is Button entry && node.Kind == ViewNodeKind.TextEntry) entry.Content = TextEntryLabel(node);
+        if (element is Button entry && node.Kind == ViewNodeKind.TextEntry) UpdateButtonLabel(entry, TextEntryLabel(node));
         if (element is ScrollViewer scroll)
         {
             var horizontal = node.ScrollAxis == ScrollAxis.Horizontal;

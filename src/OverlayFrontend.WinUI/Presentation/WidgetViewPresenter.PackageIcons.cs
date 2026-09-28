@@ -1,3 +1,4 @@
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
@@ -50,17 +51,25 @@ internal sealed partial class WidgetViewPresenter
         if (node.Glyph is null)
         {
             if (buttonIcons.Remove(binding, out var previous)) previous.Dispose();
-            button.Content = node.Text; return;
+            UpdateButtonLabel(button, node.Text ?? string.Empty); return;
         }
         if (!buttonIcons.TryGetValue(binding, out var icon))
         {
             icon = new(); buttonIcons.Add(binding, icon);
-            button.Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
-                Children = { icon, new TextBlock() } };
+            var label = new TextBlock();
+            Grid.SetColumn(label, 1);
+            button.Content = new Grid { ColumnSpacing = 8,
+                ColumnDefinitions = { new() { Width = GridLength.Auto }, new() { Width = new(1, GridUnitType.Star) } },
+                Children = { icon, label } };
         }
-        var panel = (StackPanel)button.Content;
-        ((TextBlock)panel.Children[1]).Text = node.Text ?? string.Empty;
+        var panel = (Grid)button.Content;
+        WidgetTextStyleAdapter.SetSource((TextBlock)panel.Children[1], node.Text ?? string.Empty);
         UpdateNativeIcon(icon, node);
+    }
+    private static void UpdateButtonLabel(Button button, string source)
+    {
+        if (button.Content is not TextBlock label) button.Content = label = new TextBlock();
+        WidgetTextStyleAdapter.SetSource(label, source);
     }
     private WidgetNativePackageIcon? CreateSelectIcon(ToggleMenuFlyoutItem item, WidgetSelectOption option)
     {

@@ -65,6 +65,8 @@ internal sealed partial class WidgetViewPresenter
         adapter.SelectionSurface = binding.MotionHost?.SelectionSurface;
         adapter.DepthSlotsFactory = (binding.Element is Panel or Border or WidgetPresentationSurface || binding.MotionHost?.SelectionSurface is not null) && binding.MotionHost is { } depthHost
             ? depthHost.EnsureDepthSlots : null;
+        adapter.TextContent = node.Kind is ViewNodeKind.Button or ViewNodeKind.Select or ViewNodeKind.TextEntry && binding.Element is Button button
+            ? button.Content switch { TextBlock label => label, Grid panel => panel.Children.OfType<TextBlock>().SingleOrDefault(), _ => null } : null;
         adapter.Update(presentation?.RenderStyles.GetValueOrDefault(node.Id),
             typographyOnly: indexedRootStyleOnContainer && node.Id == fragmentRootId,
             interaction: indexedRootStyleOnContainer && node.Id == fragmentRootId ? indexedRootInteraction : null);
@@ -140,6 +142,9 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private readonly Dictionary<string, (Color Color, SolidColorBrush Brush)> brushes = new(StringComparer.Ordinal);
     private (Color Color, double Amount, LinearGradientBrush Brush)? shadedBackground;
     private FontFamily? fontFamily;
+    internal TextBlock? TextContent { get; set; }
+    private TextBlock? styledText;
+    private WidgetTextStyleAdapter? textStyle;
     private readonly List<(DependencyProperty Property, long Token)> registrations = [];
     private BridgeNodeRenderStyles? styles;
     private ResourceDictionary? priorResources;
@@ -260,6 +265,15 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
                 TextAlignment.Center => HorizontalAlignment.Center, _ => (HorizontalAlignment?)null,
             });
         }
+        var textTarget = element as TextBlock ?? TextContent;
+        if (!ReferenceEquals(styledText, textTarget))
+        {
+            textStyle?.Dispose();
+            styledText = textTarget;
+            textStyle = textTarget is null ? null : new(textTarget);
+        }
+        if (textTarget is not null)
+            textStyle!.Apply(style, fontSize ?? (element is Control textOwner ? textOwner.FontSize : textTarget.FontSize));
         if (typographyOnly)
         {
             depth?.Dispose(); depth = null;
@@ -493,7 +507,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         };
     private static int? CharacterSpacing(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, double fontSize) =>
         style?.GetValueOrDefault("letter-spacing") is { Number: { } number } value && double.IsFinite(number) && fontSize > 0
-            ? value.Unit switch { "em" => (int)Math.Round(number * 1000), null or "px" => (int)Math.Round(number * 1000 / fontSize), _ => null } : null;
+            ? value.Unit switch { "em" => (int)Math.Round(number * 1000), null or "px" => (int)Math.Round(number * textScale * 1000 / fontSize), _ => null } : null;
     private static Thickness? BorderWidth(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style)
     {
         var all = Number(style, "border-width", true);
@@ -552,6 +566,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     public void Dispose()
     {
         if (disposed) return;
+        textStyle?.Dispose(); textStyle = null; styledText = null;
         scaleMotion?.Dispose(); scaleMotion = null;
         depth?.Dispose(); depth = null;
         buttonStates?.Restore(); buttonStates = null;

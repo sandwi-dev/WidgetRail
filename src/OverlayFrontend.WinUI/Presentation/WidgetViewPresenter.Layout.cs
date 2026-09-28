@@ -35,11 +35,6 @@ internal sealed partial class WidgetViewPresenter
         element.MaxHeight = containerOwnsBox ? double.PositiveInfinity : Length(node, "max-height") ?? double.PositiveInfinity;
         element.Margin = containerOwnsBox ? new Thickness(0) :
             NativeComputedStyleAdapter.Spacing(presentation?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "margin") ?? new Thickness(0);
-        if (element is TextBlock text)
-        {
-            text.MaxLines = (int)(ComputedStyle(node, "max-lines")?.Number ?? 0);
-            text.TextTrimming = ComputedStyle(node, "text-overflow")?.Text == "ellipsis" ? TextTrimming.CharacterEllipsis : TextTrimming.None;
-        }
     }
 
     private void UpdateContainerLayout(Binding binding, ViewNode node)
