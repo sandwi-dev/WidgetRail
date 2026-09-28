@@ -714,3 +714,29 @@ Seven native glyph checks pass across all 45 declared controller/semantic symbol
 including family changes, accessible labels, fallback font selection and noninteractive
 behavior. Packaged font rendering was inspected in artifacts/winui-surfaces/glyphs-fixed.png.
 The unstyled validation gallery is not production-theme acceptance.
+
+## Parallel integration pass, 2026-09-28
+
+- Production Playnite Browse now uses a complete captured indexed query instead of
+  its retained cursor window. Query/authority/source publication is coordinated;
+  exact game targets and logical modal return survive content updates. The integrated
+  widget suite passes 149 tests; the application lane also passes 28 runtime tests.
+  Home still uses its previous rail and awaits conversion. This sample requires the
+  indexed frontend; it has not been installed over the native product.
+- Native Select passes 17 lifecycle/input checks. A shared normalized-button entry
+  gives popups precedence, sends indexed actions through owned row leases, and uses
+  the existing worker input pipeline for ordinary shortcuts. The real-worker input
+  probe passes its three checks.
+- Widget-local modals pass 21 standalone native checks and screenshot review after
+  correcting fixture geometry/default panel fill. The real-worker indexed-parent
+  probe is still under investigation: one run did not admit its first activation;
+  standalone success does not close the indexed-parent gate.
+- Motion policy preserves global settings and uses native composition batches.
+  Nine policy tests and 18 actual compositor/focus checks pass. Production section,
+  modal and focus wiring remains incomplete; no smoothness acceptance is claimed.
+- The real Clock worker still passes ten transport/action/focus/shutdown checks.
+  Its presenter now binds artwork/session resources and retires before the bridge.
+
+All changes remain on codex/winui3-frontend. Main, installed native packages and
+controller ownership are unchanged. Shared styling and indexed-modal investigation
+continue in their isolated lanes. No production WinUI candidate is ready yet.
