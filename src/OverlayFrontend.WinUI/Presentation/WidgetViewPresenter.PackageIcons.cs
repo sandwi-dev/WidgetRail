@@ -65,7 +65,7 @@ internal sealed partial class WidgetViewPresenter
     private WidgetNativePackageIcon? CreateSelectIcon(ToggleMenuFlyoutItem item, WidgetSelectOption option)
     {
         if (option.Glyph is not { } glyph) return null;
-        var icon = new WidgetNativePackageIcon(value => item.Icon = value);
+        var icon = new WidgetNativePackageIcon(value => item.Icon = value, () => XamlRoot);
         icon.Update(glyph, option.PackageIcon, option.AccessibilityLabel ?? option.Label, IconResolver(), PackageGeneration, IconDiagnostic);
         return icon;
     }

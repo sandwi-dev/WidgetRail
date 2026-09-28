@@ -234,18 +234,25 @@ existing parent session. Native glyph fallback appears immediately; removal,
 rebind, popup dismissal and catalog replacement revoke pending publication.
 Native controller-family fonts and accessible labels retain their prior meaning.
 
-**ThemeTint is not yet implemented.** It requires preserving the fully composed
-SVG alpha mask and applying the current theme brush. `SvgImageSource` does not
-expose a tint operation and `LoadedImageSurface` supports WIC raster formats,
-not SVG. ThemeTint keeps the required semantic fallback and emits the bounded
-`package_icon_theme_tint_unavailable` diagnostic. It never displays original
-colors as if that fulfilled the tint contract. A future tint path must preserve
-opacity/overlap, brush updates and High Contrast without rewriting SVG colors.
+ThemeTint uses WinUI's SVG renderer and `RenderTargetBitmap` on a noninteractive,
+clipped preparation layer. Native PNG encoding transfers the unchanged raster
+alpha to `LoadedImageSurface`; a compositor mask applies the current foreground.
+No SVG attributes or pixels are recolored. Foreground brush/color/opacity and theme
+updates only change the compositor color brush, with no capture or decode.
 
-`--validate-package-icons` exercises actual native SVG sources, Select adornments,
-semantic fallback, replacement/cancellation and explicit unsupported-tint reporting.
-The fixture has no filesystem/network icon authority; real admission is covered
-by presentation-session transport tests and the existing bridge package validator.
+Masks are shared by admitted normalized content hash and size bucket per XAML
+root. Retention is capped at 64 entries/8 MiB; preparation is serialized and admits
+at most 16 pending assets. Visible icons hold leases; only idle completed entries
+are evicted. Larger sizes and DPI changes acquire a higher-resolution bucket up
+to the SDK's 512px limit, preserving the prior mask during preparation. Closing
+icons releases their leases; XAML root teardown cancels preparation and releases
+surfaces. OriginalColor remains a direct native SVG source.
+
+`--validate-package-icons` covers real native sources/masks, original and tinted
+Select adornments, alpha overlap, brush changes, Light/Dark theme changes,
+replacement/cancellation and bounded size upgrades. Existing session/bridge tests
+cover exact manifest authority independently. `--probe-svg-raster` records the
+native capture variants that established the preparation path.
 
 The optional `--validate-package-icons --probe-svg-mask` probe compares a simple
 SVG alpha mask, a PNG alpha mask and a direct solid compositor visual in one
