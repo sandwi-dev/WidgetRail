@@ -48,6 +48,7 @@ internal sealed class BridgeWidgetValidationPage : Page, IAsyncDisposable
         {
             owner = await OwnedBridgeProcess.StartAsync(new(options.InstallationRoot,
                 options.SettingsRoot, options.InstalledCatalogRoot), lifetime.Token);
+            surface.Session = owner.Session;
             owner.Session.PresentationChanged += Changed;
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             deadline.CancelAfter(TimeSpan.FromSeconds(15));
@@ -107,8 +108,12 @@ internal sealed class BridgeWidgetValidationPage : Page, IAsyncDisposable
         if (owner is not null)
         {
             owner.Session.PresentationChanged -= Changed;
-            await owner.DisposeAsync();
         }
-        lifetime.Dispose();
+        try { await surface.DisposeAsync(); }
+        finally
+        {
+            try { if (owner is not null) await owner.DisposeAsync(); }
+            finally { lifetime.Dispose(); }
+        }
     }
 }
