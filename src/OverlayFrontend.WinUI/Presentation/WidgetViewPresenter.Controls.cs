@@ -50,6 +50,7 @@ internal sealed partial class WidgetViewPresenter
         DismissTransientControl();
         var options = declarations[identity.Id].Node.SelectOptions.ToArray();
         var flyout = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
+        Input.GamepadKeyBoundary.ObserveFlyout(flyout, binding.Element);
         var items = options.Select(option =>
         {
             var item = new ToggleMenuFlyoutItem { Text = option.Label, IsChecked = option.IsSelected,

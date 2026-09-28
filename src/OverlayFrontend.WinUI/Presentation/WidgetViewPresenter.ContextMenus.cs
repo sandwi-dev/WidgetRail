@@ -66,6 +66,7 @@ internal sealed partial class WidgetViewPresenter
         DismissTransientControl();
         CancelGroupEntry();
         var flyout = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
+        Input.GamepadKeyBoundary.ObserveFlyout(flyout, anchor);
         var items = node.ContextActions.Select(action =>
         {
             var item = new MenuFlyoutItem { Text = action.Label, IsEnabled = !action.IsDisabled && !action.IsBusy };

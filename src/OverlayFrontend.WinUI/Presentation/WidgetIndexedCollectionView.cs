@@ -71,6 +71,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelNavigation()), true);
         AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {
+            if (Input.GamepadKeyBoundary.Owns(this, args)) return;
             if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or Windows.System.VirtualKey.Left or
                 Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Tab or Windows.System.VirtualKey.Home or
                 Windows.System.VirtualKey.End or Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown)

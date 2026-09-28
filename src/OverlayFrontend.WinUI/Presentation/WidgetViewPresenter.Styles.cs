@@ -209,9 +209,9 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private void PointerPressed(object sender, PointerRoutedEventArgs args) { pointerPressed = true; Queue(); }
     private void PointerReleased(object sender, PointerRoutedEventArgs args) { pointerPressed = false; Queue(); }
     private void KeyDown(object sender, KeyRoutedEventArgs args)
-    { if (args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space) { keyboardPressed = true; Queue(); } }
+    { if (!Input.GamepadKeyBoundary.Owns(element, args) && args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space) { keyboardPressed = true; Queue(); } }
     private void KeyUp(object sender, KeyRoutedEventArgs args)
-    { if (args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space) { keyboardPressed = false; Queue(); } }
+    { if (!Input.GamepadKeyBoundary.Owns(element, args) && args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space) { keyboardPressed = false; Queue(); } }
     private void Queue()
     {
         if (disposed || Interlocked.CompareExchange(ref queued, 1, 0) != 0) return;

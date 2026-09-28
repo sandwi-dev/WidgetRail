@@ -167,6 +167,7 @@ internal sealed partial class OverlayShellPage
             var selection = selectionVersion;
             if (!TrayOwnerCurrent(descriptor, selection) || Tray.ContainerFromItem(descriptor) is not Control anchor) return;
             var menu = new TrayMenu(descriptor, selection, new MenuFlyout { Placement = FlyoutPlacementMode.Top }, anchor, []);
+            Input.GamepadKeyBoundary.ObserveFlyout(menu.Flyout, anchor);
             trayMenu = menu;
             foreach (var action in descriptor.QuickActions)
                 Add(action.Label, "Quick." + action.Id, () => InvokeTrayQuickActionAsync(descriptor, action, selection));

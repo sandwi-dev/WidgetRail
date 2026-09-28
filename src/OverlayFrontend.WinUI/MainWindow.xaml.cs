@@ -9,6 +9,7 @@ public sealed partial class MainWindow : Window
     private readonly Microsoft.UI.System.ThemeSettings themeSettings;
     private readonly Input.PlatformInputPump? input;
     private readonly Input.ControllerInputTrace? controllerTrace;
+    private readonly Input.GamepadKeyBoundary? gamepadKeys;
     private readonly Validation.ControllerReplayScenario? replay;
     private bool closingAfterCleanup;
     private bool cleanupStarted;
@@ -67,6 +68,7 @@ public sealed partial class MainWindow : Window
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
         else if (validateWindowPreview) RootFrame.Content = new Validation.WindowPreviewValidationPage();
+        else if (Environment.GetCommandLineArgs().Contains("--validate-gamepad-boundary")) RootFrame.Content = new Validation.GamepadKeyBoundaryValidationPage();
         else if (validateEmbeddedMedia) RootFrame.Content = new Validation.EmbeddedMediaValidationPage();
         else if (validatePackageIcons) RootFrame.Content = new Validation.PackageIconValidationPage();
         else if (validateShellSizing) RootFrame.Content = new Validation.ShellSizingValidationPage();
@@ -146,6 +148,11 @@ public sealed partial class MainWindow : Window
             validateGridView ? typeof(Validation.GridViewValidationPage) : typeof(MainPage));
         if (input is not null && Environment.GetCommandLineArgs().Contains("--trace-controller-input"))
             controllerTrace = new(ShellRoot, input.TraceInput);
+        if (input is not null)
+        {
+            gamepadKeys = new(ShellRoot, () => !cleanupStarted && input.IsActive && AppWindow.IsVisible && input.IsForeground);
+            input.Failed += _ => gamepadKeys.Dispose();
+        }
         AppWindow.Closing += (sender, args) =>
         {
             if (closingAfterCleanup || RootFrame.Content is not IAsyncDisposable resource) return;
@@ -172,9 +179,11 @@ public sealed partial class MainWindow : Window
             themeSettings.Changed -= SystemThemeChanged;
             RetireOverlaySizing();
             controllerTrace?.Dispose();
+            gamepadKeys?.Dispose();
             input?.Dispose();
             replay?.Dispose();
             (RootFrame.Content as Validation.ExternalSurfacePage)?.Retire();
+            (RootFrame.Content as Validation.GamepadKeyBoundaryValidationPage)?.Dispose();
         };
     }
 

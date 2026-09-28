@@ -22,6 +22,7 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     public event Action? ToggleRequested;
     public event Action<Exception>? Failed;
     internal bool IsForeground => IsForegroundProcess();
+    internal bool IsActive => !closed && visible && session is not null;
     internal nint PlacementWindow
     {
         get

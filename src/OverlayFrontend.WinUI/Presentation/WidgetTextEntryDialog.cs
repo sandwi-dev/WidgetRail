@@ -28,6 +28,7 @@ internal sealed class WidgetTextEntryDialog : ContentDialog
 
     internal WidgetTextEntryDialog(ViewNode node, Action<bool> finish)
     {
+        Input.GamepadKeyBoundary.ObserveDialog(this);
         this.finish = finish;
         maximumLength = node.TextEntryMaximumLength ?? ProtocolConstants.MaximumTextEntryLength;
         Title = node.AccessibilityLabel ?? node.TextEntryPlaceholder ?? "Enter text";
@@ -80,6 +81,7 @@ internal sealed class WidgetTextEntryDialog : ContentDialog
         Closing += (_, _) => { if (!completed) Complete(false); };
         AddHandler(PreviewKeyDownEvent, new KeyEventHandler((_, args) =>
         {
+            if (Input.GamepadKeyBoundary.Owns(this, args)) return;
             if (args.Key == Windows.System.VirtualKey.Escape) { args.Handled = true; Complete(false); }
             else if (args.Key == Windows.System.VirtualKey.Enter)
             { args.Handled = true; Complete(true); }
