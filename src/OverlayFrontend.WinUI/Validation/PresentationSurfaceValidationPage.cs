@@ -11,7 +11,7 @@ using WidgetRail.WidgetSdk;
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Native presentation-policy checks without keyboard injection or controller ownership.</summary>
-internal sealed class PresentationSurfaceValidationPage : Page, IAsyncDisposable
+internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new() { Text = "pending" };
@@ -94,6 +94,7 @@ internal sealed class PresentationSurfaceValidationPage : Page, IAsyncDisposable
             await Until(() => revisionArtworkCalls == 4 && BackgroundSurface()?.ArtworkSource is not null);
             Check(failure is null, "normal snapshot replacement became a widget error");
             Check(failure is null, failure ?? "unknown presenter error");
+            await ArtworkMotionAsync();
             status.Text = $"passed:{checks}";
         }
         catch (Exception error) { releaseSlow.TrySetResult(); releaseRevision.TrySetResult(); status.Text = "failed:" + error.Message; }

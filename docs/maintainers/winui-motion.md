@@ -207,3 +207,42 @@ Surface-shading is now a cached native vertical LinearGradientBrush behind conte
 Its top/bottom colors use the original renderer's bounded Shade formula and preserve
 the base color alpha. High Contrast removes this decorative gradient. Shadow and
 per-edge depth strokes remain separate unfinished mappings.
+
+## Focus-selected background artwork
+
+`WidgetArtworkCrossfade` accepts already decoded ImageSource instances from
+`WidgetPresentationSurface`. It cannot choose sources, resolve handles, request
+bytes or decode images. The existing presentation-source coordinator and artwork
+demand generation/cancellation checks remain authoritative. Authored default
+artwork and artwork from the focused descendant use this same consumer.
+
+Two native image layers behind the widget content animate through one composition
+batch. The helper owns their opacity only; text, controls and the overall surface
+opacity remain independent. Global motion/system-animation preference and speed
+control the 150ms settling interval and 400ms blend. Reduced motion, reduced
+transparency or effective High Contrast use immediate replacement. The host feeds
+these preferences through `WidgetPresentationSurface.SetMotionAppearance` and
+`SetSystemHighContrast`; new surfaces observe the current projected preferences.
+
+A short one-shot delay coalesces rapid focus changes into a single latest proposal.
+An active blend finishes without resetting to its old base. A newer ready proposal
+then blends from the just-finished image; there is no queue of intermediate targets.
+At most three decoded image references remain: two painted images and the latest
+proposal. Completion never rewrites the logical latest source, and an obsolete
+completion cannot resurrect a cleared image. Null/missing artwork clears all
+references immediately. There are no per-frame callbacks, captures or readbacks.
+
+Resize, unload, preference changes and disposal retire outstanding timers/native
+animation owners. Same-source and image-fit updates reuse the decoded object
+without replaying a fade. This is artwork presentation; it does not animate the
+FocusPresentationSurface's text/control fragment or change its source retention.
+
+The native presentation-surface suite passes 27 checks, including existing
+stale-resolution/no-refetch checks plus blend lifetime, coalescing, source clearing,
+content independence, accessibility settings, resize, unload and teardown. This
+is native behavioral validation, not physical animation-quality acceptance.
+
+The section suite additionally reproduced a zero-height incoming content target
+retaining its outgoing tree indefinitely. The pending LayoutUpdated handler now
+settles such a transition at the completed native layout pass, without a timeout.
+The regression passes in the 91-check native style suite.
