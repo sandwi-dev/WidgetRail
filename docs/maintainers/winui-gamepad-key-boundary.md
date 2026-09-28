@@ -47,3 +47,10 @@ establish the cause of the user's physical double-movement report: the available
 physical trace contained stick movement, with no recorded gamepad key events.
 Physical controller validation and the separate foreground-delivery correction
 remain distinct evidence.
+
+The user subsequently tested the combined candidate `f1f5557e` (PID 43788) and
+reported "Finished—single steps now" for the D-pad retest. This is physical
+acceptance of single-step behavior on that candidate. It does not isolate which
+route caused the original symptom or qualify every controller/backend combination.
+The trace was preserved under
+`artifacts/winui-shell/input-typography/accepted/controller.log` before closing it.

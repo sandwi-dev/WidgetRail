@@ -990,3 +990,9 @@ checks pass, including positive no-owner controls, single semantic activation an
 movement, keyboard input, menus, selects, dialogs and retirement. The combined
 build also passed all 164 native style checks and controller replay. This validates
 the duplicate-route prevention mechanism, not the cause of the original physical symptom.
+
+Physical follow-up: the user reported "Finished—single steps now" on candidate
+`f1f5557e` (PID 43788). Single-step input is accepted for that test; the original
+duplicate cause was not captured. The next shared work covers production shell
+geometry, contextual guide, passive system status and theme refresh. Pin follow-ups
+remain deferred. No change is merged into main.
