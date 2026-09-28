@@ -15,6 +15,46 @@ never run both controller owners simultaneously.
    project references. Do not launch the packaged executable directly.
 
 The default page is an honest foundation placeholder, not a migrated widget.
+
+## Production workspace shell checkpoint
+
+`--shell-config="<absolute-json-path>"` opens the reusable native catalog/worker
+shell. Options are `InstallationRoot`, `SettingsRoot`, `InstalledCatalogRoot`, and
+optional `InitialWidgetId`. All roots must be absolute. This starts one owned
+bridge using the existing admission and sandbox/trust contracts; the tray comes
+from that bridge's actual catalog. This mode does not substitute fixture data.
+The Clock-only `--widget-config` mode remains separate and unchanged.
+
+The shell serializes catalog/lifecycle transitions, coalesces obsolete widget
+selection intents, backgrounds the outgoing worker, and disposes its native
+surface before switching ownership. Guide hide backgrounds the widget; reopening
+establishes a new visible snapshot before restoring native focus. Tray focus uses
+Visible lifecycle; widget focus uses Interactive. Unsolicited updates use current
+session publication authority and never rebase actions to another widget. Catalog
+removal retires the selected surface. Shutdown cancels demand, disposes surfaces,
+then closes the owned bridge. Actual Settings is another catalog worker, not a
+duplicate native settings implementation.
+
+This is still a migration checkpoint. The native platform adapter owns the single
+input reader, Guide activation/foreground request, and neutral-state admission.
+Use `--shell-no-controller` for UI automation alongside an existing overlay; it
+never creates a controller reader. Window extent and anchor use the existing
+platform placement operation, Windows DPI and persisted global appearance. Full
+content/interface scale, per-monitor overrides, authored surface-size requests,
+radial tray/reorder/pinning, controller guide, task activation and pinned/media
+surfaces remain to be connected. Right-stick kinetics has policy tests; its
+presenter scroll seam is integrated with the concurrent presentation checkpoint.
+Do not treat this shell or Clock UI checks as production Playnite performance
+evidence or full controller acceptance.
+
+`scripts/Test-WinUiShell.ps1 -AppPid <pid>` checks actual catalog selection, native
+tray focus and reopening, and captures a desktop screenshot. Launch packaged
+through winapp with a dedicated profile/catalog and serialize deployment with
+other migration lanes. `Overlay.Status` has a bounded UIA HelpText diagnostic
+containing widget ID, bridge PID, publication revision and lifecycle intent.
+
+## Foundation validation modes
+
 Development-only argument `--validate-external-surface` exercises static trusted
 HTML in WebView2 and a WinUI ContentDialog above it. It accepts no widget URLs,
 scripts or credentials. `scripts/Test-WinUiExternalSurface.ps1 -AppPid <pid>` checks

@@ -14,7 +14,8 @@ public sealed partial class MainWindow : Window
 
     public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
         bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false, bool validateIndexed = false, bool validateFocusPolicy = false,
-        string? indexedValidationPipe = null, bool validateGrouped = false, bool validateGroupedFlat = false, bool validateGroupedAdapted = false, bool validateSurfaces = false, bool validateSelect = false, bool validateMotion = false, bool validateModals = false, bool validateGlyphs = false, bool validateStyles = false, bool validateTextEntry = false, bool validateContextMenu = false)
+        string? indexedValidationPipe = null, bool validateGrouped = false, bool validateGroupedFlat = false, bool validateGroupedAdapted = false, bool validateSurfaces = false, bool validateSelect = false, bool validateMotion = false, bool validateModals = false, bool validateGlyphs = false, bool validateStyles = false, bool validateTextEntry = false, bool validateContextMenu = false,
+        string? shellConfiguration = null, bool shellNoController = false)
     {
         InitializeComponent();
         themeSettings = Microsoft.UI.System.ThemeSettings.CreateForWindowId(AppWindow.Id);
@@ -60,6 +61,28 @@ public sealed partial class MainWindow : Window
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
         else if (validateContextMenu) RootFrame.Content = new Validation.ContextMenuControlValidationPage();
+        else if (shellConfiguration is not null)
+        {
+            var page = new Shell.OverlayShellPage(Shell.OverlayShellOptions.Load(shellConfiguration));
+            RootFrame.Content = page;
+            ShellCard.Margin = new Thickness(16);
+            ShellCard.Padding = new Thickness(16);
+            ShellLayout.RowSpacing = 12;
+            page.HideRequested += HideOverlay;
+            page.AppearanceLoaded += ApplyOverlayPlacement;
+            if (!shellNoController)
+            {
+                try
+                {
+                    input = new(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this));
+                    input.FrameReceived += page.Receive;
+                    input.Failed += page.ReportFailure;
+                    input.ToggleRequested += ToggleOverlay;
+                    input.PrepareShow();
+                }
+                catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
+            }
+        }
         else if (validateTextEntry) RootFrame.Content = new Validation.TextEntryValidationPage();
         else if (validateStyles) RootFrame.Content = new Validation.WidgetStylesValidationPage();
         else if (validateGlyphs) RootFrame.Content = new Validation.GlyphValidationPage();
@@ -91,8 +114,17 @@ public sealed partial class MainWindow : Window
         Activated += (_, args) =>
         {
             if (args.WindowActivationState != WindowActivationState.Deactivated)
+            {
                 (RootFrame.Content as Validation.ControllerValidationPage)?.QueueEntryFocus();
-            else (RootFrame.Content as Validation.ControllerValidationPage)?.ResetInputPresentation();
+                (RootFrame.Content as Shell.OverlayShellPage)?.SetForeground(true);
+                (RootFrame.Content as Shell.OverlayShellPage)?.QueueEntryFocus();
+            }
+            else
+            {
+                (RootFrame.Content as Validation.ControllerValidationPage)?.ResetInputPresentation();
+                (RootFrame.Content as Shell.OverlayShellPage)?.SetForeground(input?.IsForeground == true);
+                (RootFrame.Content as Shell.OverlayShellPage)?.ResetInputPresentation();
+            }
         };
         Closed += (_, _) =>
         {
@@ -107,6 +139,7 @@ public sealed partial class MainWindow : Window
     {
         input?.SetVisible(true);
         (RootFrame.Content as Validation.ControllerValidationPage)?.QueueEntryFocus();
+        (RootFrame.Content as Shell.OverlayShellPage)?.QueueEntryFocus();
     }
 
     public void StartReplay() => replay?.Start();

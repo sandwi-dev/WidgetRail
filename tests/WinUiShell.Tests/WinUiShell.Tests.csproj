@@ -1,0 +1,12 @@
+<Project Sdk="MSTest.Sdk/4.3.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\FrontendArguments.cs" Link="FrontendArguments.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\OverlayShellOptions.cs" Link="OverlayShellOptions.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\RightStickScroll.cs" Link="RightStickScroll.cs" />
+  </ItemGroup>
+</Project>

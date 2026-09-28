@@ -50,15 +50,14 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
-        var arguments = args.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Concat(Environment.GetCommandLineArgs().Skip(1)).ToHashSet(StringComparer.Ordinal);
-        var widgetConfiguration = Environment.GetCommandLineArgs().Skip(1)
-            .FirstOrDefault(value => value.StartsWith("--widget-config=", StringComparison.Ordinal))?["--widget-config=".Length..];
+        var arguments = Shell.FrontendArguments.Parse(args.Arguments, Environment.GetCommandLineArgs().Skip(1));
+        var widgetConfiguration = Shell.FrontendArguments.Value(arguments, "--widget-config");
         var main = new MainWindow(arguments.Contains("--validate-external-surface"), arguments.Contains("--validate-controller"),
             arguments.Contains("--replay-controller"), arguments.Contains("--validate-collection"), widgetConfiguration,
             arguments.Contains("--validate-gridview"), arguments.Contains("--validate-controls"), arguments.Contains("--validate-indexed"), arguments.Contains("--validate-focus-policy"),
             arguments.FirstOrDefault(value => value.StartsWith("--indexed-validation-pipe=", StringComparison.Ordinal))?["--indexed-validation-pipe=".Length..],
-            arguments.Contains("--validate-grouped"), arguments.Contains("--validate-grouped-flat"), arguments.Contains("--validate-grouped-adapted"), arguments.Contains("--validate-surfaces"), arguments.Contains("--validate-select"), arguments.Contains("--validate-motion"), arguments.Contains("--validate-modals"), arguments.Contains("--validate-glyphs"), arguments.Contains("--validate-styles"), arguments.Contains("--validate-text-entry"), arguments.Contains("--validate-context-menu"));
+            arguments.Contains("--validate-grouped"), arguments.Contains("--validate-grouped-flat"), arguments.Contains("--validate-grouped-adapted"), arguments.Contains("--validate-surfaces"), arguments.Contains("--validate-select"), arguments.Contains("--validate-motion"), arguments.Contains("--validate-modals"), arguments.Contains("--validate-glyphs"), arguments.Contains("--validate-styles"), arguments.Contains("--validate-text-entry"), arguments.Contains("--validate-context-menu"),
+            Shell.FrontendArguments.Value(arguments, "--shell-config"), arguments.Contains("--shell-no-controller"));
         Window = main;
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         Window.Activate();

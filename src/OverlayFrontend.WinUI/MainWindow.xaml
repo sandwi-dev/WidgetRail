@@ -4,15 +4,15 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="WidgetRail — WinUI frontend">
     <Grid x:Name="ShellRoot" Background="Transparent">
-        <Border Margin="32" Padding="24" CornerRadius="16"
+        <Border x:Name="ShellCard" Margin="32" Padding="24" CornerRadius="16"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-            <Grid RowSpacing="24">
+            <Grid x:Name="ShellLayout" RowSpacing="24">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <Grid ColumnSpacing="24">
+                <Grid x:Name="ShellHeader" ColumnSpacing="24">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
