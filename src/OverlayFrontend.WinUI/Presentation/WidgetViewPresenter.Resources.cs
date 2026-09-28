@@ -68,6 +68,7 @@ internal sealed partial class WidgetViewPresenter
     private void UpdateArtwork(Binding binding, ViewNode node, Action<ImageSource?> publish,
         Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? resolver, string generation)
     {
+        if (!presentationActive) return;
         var identity = node.ArtworkHandle is { } handle ? "handle:" + generation + ":" + handle : node.ImageSource ?? string.Empty;
         // Ordinary opaque artwork is admitted against one snapshot. Indexed
         // artwork belongs to its retained lease generation. Keep decoded pixels,

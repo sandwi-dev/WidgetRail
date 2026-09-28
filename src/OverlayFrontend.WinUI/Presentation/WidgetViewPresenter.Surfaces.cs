@@ -21,7 +21,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void QueueSurfaceUpdate()
     {
-        if (presentationOnly || disposed || applying || surfacesQueued) return;
+        if (!presentationActive || presentationOnly || disposed || applying || surfacesQueued) return;
         surfacesQueued = true;
         if (!DispatcherQueue.TryEnqueue(() =>
         {
@@ -40,7 +40,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void UpdateSurfaces()
     {
-        if (frame is null || presentationOnly) return;
+        if (!presentationActive || frame is null || presentationOnly) return;
         var surfaces = new List<PresentationSurface<SurfaceValue>>();
         var contributions = new List<PresentationContribution<SurfaceValue>>();
         var surfaceBindings = new Dictionary<PresentationSurfaceId, Binding>();
@@ -103,6 +103,7 @@ internal sealed partial class WidgetViewPresenter
             var surface = (WidgetPresentationSurface)binding.Element;
             var value = selection.Content;
             var selectedRow = value.Row;
+            if (selectedRow is { Lease.IsCurrent: false }) continue; // Keep pixels until the retained logical slot reacquires authority.
             var generation = selectedRow is null ? ArtworkGeneration : selectedRow.Lease.LeaseId + ":" + selectedRow.Item.Key.Length + ":" + selectedRow.Item.Key;
             var resolve = selectedRow is null ? ResolveArtworkAsync : async (string handle, CancellationToken token) =>
             {
@@ -120,6 +121,7 @@ internal sealed partial class WidgetViewPresenter
                 fragment.ResolveArtworkAsync = resolve;
                 fragment.ArtworkGeneration = generation;
                 fragment.Failed = ReportFailure;
+                _ = fragment.SetPresentationActiveAsync(true);
                 fragment.ApplyFragment(selectedRow is null ? frame : frame with { RenderStyles = selectedRow.Lease.RenderStyles }, value.Node, value.Scope);
             }
             if (selectedRow is null && surfaceRetentions.Remove(selection.Surface, out var unused)) unused.Dispose();

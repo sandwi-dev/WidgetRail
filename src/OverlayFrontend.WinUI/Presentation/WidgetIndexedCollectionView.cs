@@ -24,7 +24,29 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private ScrollAxis? axis;
     private bool disposed;
     private bool inputActive;
-    private bool CanReceiveInput => inputActive && view?.IsEnabled == true;
+    private bool presentationActive = true;
+    private bool CanReceiveInput => presentationActive && inputActive && view?.IsEnabled == true;
+    internal async Task SetPresentationActiveAsync(bool active)
+    {
+        presentationActive = active;
+        if (!active) { CancelNavigation(); CancelPendingActivation(); }
+        if (view is not null)
+        {
+            view.IsHitTestVisible = active && inputActive;
+            view.IsTabStop = active && inputActive;
+            view.IsItemClickEnabled = active && inputActive;
+            foreach (var container in containers.Keys) container.IsTabStop = active && inputActive;
+        }
+        var drains = new List<Task>();
+        if (source is not null) drains.Add(source.SetPresentationActiveAsync(active));
+        if (view is not null) Visit(view);
+        await Task.WhenAll(drains);
+        void Visit(DependencyObject node)
+        {
+            if (node is WidgetIndexedRowView row) { drains.Add(row.SetPresentationActiveAsync(active)); return; }
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); ++i) Visit(VisualTreeHelper.GetChild(node, i));
+        }
+    }
     private long sequence;
     private long discoveryForegroundToken;
     internal ListViewBase NativeView => view ?? throw new InvalidOperationException("Collection is not initialized.");
@@ -97,6 +119,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             DetachContainers();
             if (source is not null) RetireSource(source);
             source = new(session, frame, declaration, DispatcherQueue) { Failed = failed };
+            if (!presentationActive) _ = source.SetPresentationActiveAsync(false);
             source.DiscoveryChanged += UpdateDiscoveryFooter;
         }
         else
@@ -106,8 +129,8 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         ApplyGroups(declaration.IndexedGroups);
         AutomationProperties.SetAutomationId(view, "Widget." + declaration.Id + ".Items");
         AutomationProperties.SetName(view, declaration.AccessibilityLabel ?? declaration.Id);
-        var active = scope == frame.Authority.ActiveInputScopeId;
-        inputActive = active;
+        inputActive = scope == frame.Authority.ActiveInputScopeId;
+        var active = presentationActive && inputActive;
         UpdateDiscoveryFooter();
         view.IsEnabled = declaration.IsDisabled != true && declaration.IsBusy != true;
         if (!CanReceiveInput) CancelNavigation();
@@ -175,7 +198,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     }
     private void UpdateContainer(SelectorItem container, IndexedItem<WidgetIndexedRow> slot)
     {
-        container.IsTabStop = inputActive;
+        container.IsTabStop = presentationActive && inputActive;
         ConfigureContainerLayout(container, axis ?? ScrollAxis.Vertical,
             slot.Value is null ? source?.Declaration.CollectionLayout?.EstimatedItemExtent ?? 0 : 0);
         container.IsEnabled = slot.Value?.Item.Root is not { IsDisabled: true } and not { IsBusy: true };

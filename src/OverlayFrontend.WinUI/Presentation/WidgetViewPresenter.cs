@@ -47,10 +47,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     internal Previews.WindowPreviewRenderer? WindowPreviews { get; set; }
     public Func<WidgetActionRequest, Task>? DispatchActionAsync { get; set; }
     public Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
-    internal bool IsInteractionCurrent(WidgetPresentationAuthority authority) => !disposed && !applying &&
+    internal bool IsInteractionCurrent(WidgetPresentationAuthority authority) => presentationActive && !disposed && !applying &&
         !presentationOnly && frame is not null && SameOwner(authority, frame.Authority) &&
         authority.ActiveInputScopeId == frame.Authority.ActiveInputScopeId;
     private Task<bool> AdmitInteractionAsync(WidgetPresentationAuthority authority, CancellationToken cancellationToken = default) =>
+        !presentationActive ? Task.FromResult(false) :
         EnsureInteractionAsync?.Invoke(authority, cancellationToken) ?? Task.FromResult(IsInteractionCurrent(authority));
 
     /// <summary>Explicit page/window entry. Ordinary data updates do not call this.</summary>
@@ -168,7 +169,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             declarations = plan;
             bindings = nextBindings;
             frame = next;
-            if (!presentationOnly) WindowPreviews?.Apply(next);
+            if (presentationActive && !presentationOnly) WindowPreviews?.Apply(next);
             UpdateResponsiveVisibility();
             foreach (var scope in remembered.Keys.ToArray())
                 if (!bindings.TryGetValue(remembered[scope].Id, out var member) || member.Identity != remembered[scope])
@@ -207,13 +208,13 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         QueueMediaRefresh();
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
         QueueSurfaceUpdate();
-        StartTransitions(transition);
-        StartModalExit(modalExit);
+        if (presentationActive) { StartTransitions(transition); StartModalExit(modalExit); }
+        else { SettleTransitions(); SettleModalExit(); }
     }
 
     private void QueueEntryFocus()
     {
-        if (presentationOnly || !automaticFocusEnabled) return;
+        if (!presentationActive || presentationOnly || !automaticFocusEnabled) return;
         if (focusQueued) return;
         focusQueued = true;
         if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, RestoreFocus)) focusQueued = false;
@@ -222,7 +223,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private void RestoreFocus()
     {
         focusQueued = false;
-        if (!automaticFocusEnabled || !IsLoaded || XamlRoot is null || frame is null || applying) return;
+        if (!presentationActive || !automaticFocusEnabled || !IsLoaded || XamlRoot is null || frame is null || applying) return;
         var reassertFocus = restoreNativeFocus;
         restoreNativeFocus = false;
         if (TryRestoreTransientFocus()) return;
@@ -253,7 +254,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
     public bool MoveFocus(FocusNavigationDirection direction)
     {
-        if (applying || !IsLoaded || frame is null) return false;
+        if (!presentationActive || applying || !IsLoaded || frame is null) return false;
         CancelGroupEntry();
         if (textEntryPopup is { } edit) { edit.Dialog.MoveFocus(direction); return true; }
         if (MoveContextFocus(direction) || MoveSelectFocus(direction) || MoveSlider(direction)) return true;
@@ -266,7 +267,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
     public void ActivateFocused()
     {
-        if (applying || disposed || presentationOnly) return;
+        if (!presentationActive || applying || disposed || presentationOnly) return;
         CancelGroupEntry();
         if (ActivateContextMenu() || ActivateTextEntry() || ActivateSelect() || HandleSliderButton(ControllerButton.A, ControllerEventPhase.Pressed)) return;
         if (FocusedBinding() is { Identity.Kind: ViewNodeKind.Slider } slider && Eligible(slider))
@@ -276,7 +277,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
     }
 
-    private bool Eligible(Binding binding) => frame is not null && binding.Identity.Scope == frame.Authority.ActiveInputScopeId
+    private bool Eligible(Binding binding) => presentationActive && frame is not null && binding.Identity.Scope == frame.Authority.ActiveInputScopeId
         && (declarations[binding.Identity.Id].Node.IsFocusable || binding.Element is WidgetIndexedCollectionView)
         && declarations[binding.Identity.Id].Node is { IsDisabled: not true, IsBusy: not true }
         && binding.Element.Visibility == Visibility.Visible;
@@ -407,13 +408,17 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private void Update(Binding binding, ViewNode node)
     {
         var element = binding.Element;
-        if (element is WidgetIndexedCollectionView indexed) indexed.Apply(frame!, node, binding.Identity.Scope);
+        if (element is WidgetIndexedCollectionView indexed)
+        {
+            if (!presentationActive) _ = indexed.SetPresentationActiveAsync(false);
+            indexed.Apply(frame!, node, binding.Identity.Scope);
+        }
         if (element is Image image) UpdateImage(binding, image, node);
         UpdateContainerLayout(binding, node);
         if (binding.Children is WidgetPosterPanel poster) UpdatePoster(poster, node);
         ApplySizeAndTypography(element, node);
         if (element is Media.WidgetMediaViewport viewport) UpdateMediaViewport(viewport, node, binding.Identity.Scope);
-        if (element is Previews.WidgetWindowPreview preview) preview.Configure(presentationOnly ? null : WindowPreviews, frame!, node);
+        if (element is Previews.WidgetWindowPreview preview) preview.Configure(presentationOnly || !presentationActive ? null : WindowPreviews, frame!, node);
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
         if (element is FontIcon icon) WidgetGlyphs.Apply(icon, node, playStationPrompts);
         if (element is WidgetPackageIconView packageIcon) UpdateNativeIcon(packageIcon, node);

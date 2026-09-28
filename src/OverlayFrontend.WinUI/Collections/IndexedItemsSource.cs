@@ -69,12 +69,13 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
     private IReadOnlyList<int> demandOrder = [];
     private bool queued;
     private bool disposed;
+    private bool active = true;
     private Task? disposal;
     private long requestId;
     public int Count { get; private set; }
     internal Func<bool>? CanLoadMore { get; set; }
     internal Func<CancellationToken, Task>? LoadMore { get; set; }
-    public bool HasMoreItems => !disposed && (CanLoadMore?.Invoke() ?? false);
+    public bool HasMoreItems => active && !disposed && (CanLoadMore?.Invoke() ?? false);
     public IAsyncOperation<LoadMoreItemsResult> LoadMoreItemsAsync(uint requestedCount) => AsyncInfo.Run(async token =>
     {
         CheckAccess();
@@ -83,6 +84,22 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         return new LoadMoreItemsResult { Count = (uint)Math.Max(0, Count - before) };
     });
     public IndexedQueryIdentity Query { get; }
+    internal bool IsPresentationActive => active;
+    internal Task SetPresentationActiveAsync(bool value)
+    {
+        CheckAccess();
+        if (active == value) return Task.CompletedTask;
+        active = value;
+        if (value) { QueuePump(); return Task.CompletedTask; }
+        foreach (var fetch in fetching.Values) { fetch.Cancellation.Cancel(); ++CancelledLoads; }
+        fetching.Clear(); failedPages.Clear();
+        foreach (var page in pages.Values) Release(page.Lifetime);
+        pages.Clear();
+        // Logical slots and their last presentation stay intact. Their retired
+        // payloads confer no input authority; resume reacquires every demanded page.
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        return DrainAsync(ownedFetches.Select(fetch => fetch.Task).ToArray());
+    }
     public long ContentRevision { get; private set; }
     public int RangeNotifications { get; private set; }
     public int IndexReads { get; private set; }
@@ -202,6 +219,7 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
     public void RangesChanged(ItemIndexRange visibleRange, IReadOnlyList<ItemIndexRange> trackedItems)
     {
         CheckAccess();
+        if (!active) return; // Collapsed layout must not erase the last viewport demand.
         ++RangeNotifications;
         var visible = new List<int>();
         var tracked = new List<int>();
@@ -242,13 +260,14 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
 
     private void QueuePump()
     {
-        if (disposed || queued) return;
+        if (disposed || !active || queued) return;
         queued = true;
         if (!dispatcher.TryEnqueue(DispatcherQueuePriority.Low, () => { queued = false; if (!disposed) Pump(); })) queued = false;
     }
 
     private void Pump()
     {
+        if (!active) return;
         foreach (var page in pages.Keys.ToArray())
             if (!demandedPages.Contains(page))
             {

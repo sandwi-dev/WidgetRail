@@ -18,7 +18,7 @@ using Windows.System;
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Real bridge and worker rows rendered by the shared native presenter.</summary>
-internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
+internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new() { Text = "Connecting", MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -81,6 +81,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
             switch (args.Key)
             {
                 case VirtualKey.F14: _ = ProbeSurfacesAsync(); break;
+                case VirtualKey.F15: _ = ProbeSuspensionAsync(); break;
                 case VirtualKey.F1: _ = ProbeGroupedFocusAsync(); break;
                 case VirtualKey.F2: _ = ProbeLogicalFocusAsync(); break;
                 case VirtualKey.F5: if (View() is { } list) list.ScrollIntoView(list.Items[70], ScrollIntoViewAlignment.Leading); break;

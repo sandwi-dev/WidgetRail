@@ -18,6 +18,9 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
     private bool disposed;
     private NativeComputedStyleAdapter? containerStyle;
     private SelectorItem? styleContainer;
+    internal Task SetPresentationActiveAsync(bool active) =>
+        active && Row is WidgetIndexedRow { Lease.IsCurrent: false } ? Task.CompletedTask :
+        presenter?.SetPresentationActiveAsync(active) ?? Task.CompletedTask;
     public WidgetIndexedRowView()
     {
         IsTabStop = false;
@@ -35,6 +38,7 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
         if (disposed) return;
         if (Row is not WidgetIndexedRow row) { Retire(); return; }
         presenter ??= new(presentationOnly: true);
+        _ = presenter.SetPresentationActiveAsync(row.Owner.IsPresentationActive);
         presenter.Session = row.Owner.Session;
         presenter.UseIndexedContainerStyles();
         presenter.Failed = row.Owner.Failed;

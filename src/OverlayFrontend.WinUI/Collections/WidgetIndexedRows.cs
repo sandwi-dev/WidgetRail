@@ -25,6 +25,25 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
     internal ViewNode Declaration => Volatile.Read(ref presentation).Collection;
     internal Action<Exception>? Failed { get; set; }
     private readonly CancellationTokenSource lifetime = new();
+    private CancellationTokenSource activity = new();
+    internal bool IsPresentationActive => Items.IsPresentationActive;
+    internal async Task SetPresentationActiveAsync(bool active)
+    {
+        if (Items.IsPresentationActive == active) return;
+        if (!active)
+        {
+            activity.Cancel();
+            var drain = Items.SetPresentationActiveAsync(false);
+            if (continuation is { } pending) await pending;
+            await drain;
+        }
+        else
+        {
+            activity.Dispose(); activity = new();
+            ContinuationFailed = false;
+            await Items.SetPresentationActiveAsync(true);
+        }
+    }
     private TaskCompletionSource? continuationPublication;
     private Task? continuation;
     private long continuationRevision;
@@ -76,6 +95,7 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
 
     internal Task ContinueAsync(bool retry = false, CancellationToken cancellationToken = default)
     {
+        if (!IsPresentationActive) return Task.CompletedTask;
         if (continuation is { IsCompleted: false }) return continuation;
         return continuation = ContinueCoreAsync(retry, cancellationToken);
     }
@@ -84,7 +104,8 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         if (ContinuationPaused && !retry) return;
         if (retry) { ContinuationPaused = false; emptyContinuations = 0; }
         ContinuationFailed = false;
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token);
+        var activeToken = activity.Token;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token, activeToken);
         cancellation.CancelAfter(TimeSpan.FromSeconds(35));
         var current = presentation;
         var source = current.Collection.IndexedCollection!;
@@ -115,13 +136,13 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
             }
             else emptyContinuations = 0;
         }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested || cancellationToken.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested || activeToken.IsCancellationRequested || cancellationToken.IsCancellationRequested) { }
         catch (Exception error) when (error is not (OutOfMemoryException or StackOverflowException or AccessViolationException))
         { ContinuationFailed = true; }
         finally
         {
             if (ReferenceEquals(continuationPublication, publication)) continuationPublication = null;
-            if (!lifetime.IsCancellationRequested) DiscoveryChanged?.Invoke();
+            if (!lifetime.IsCancellationRequested && !activeToken.IsCancellationRequested) DiscoveryChanged?.Invoke();
         }
     }
 
@@ -159,8 +180,9 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
 
     internal async Task<WidgetEncodedArtwork?> ResolveArtworkAsync(WidgetIndexedRow row, string handle, CancellationToken cancellation)
     {
-        await admission.WaitAsync(cancellation).ConfigureAwait(false);
-        try { return await row.Lease.ResolveArtworkAsync(row.Item.Key, handle, cancellation).ConfigureAwait(false); }
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, activity.Token, lifetime.Token);
+        await admission.WaitAsync(linked.Token).ConfigureAwait(false);
+        try { return await row.Lease.ResolveArtworkAsync(row.Item.Key, handle, linked.Token).ConfigureAwait(false); }
         finally { admission.Release(); }
     }
 
@@ -175,5 +197,6 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         if (continuation is not null) await continuation;
         await Items.DisposeAsync();
         lifetime.Dispose();
+        activity.Dispose();
     }
 }

@@ -15,7 +15,7 @@ internal sealed partial class WidgetViewPresenter
     internal bool ScrollBy(double horizontalDelta, double verticalDelta)
     {
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Scroll on the widget dispatcher.");
-        if (disposed || applying || !IsLoaded || frame is null || !double.IsFinite(horizontalDelta) || !double.IsFinite(verticalDelta)) return false;
+        if (!presentationActive || disposed || applying || !IsLoaded || frame is null || !double.IsFinite(horizontalDelta) || !double.IsFinite(verticalDelta)) return false;
         if (HasTransientControl) return true;
         CancelGroupEntry();
         ScrollViewer? target = null;

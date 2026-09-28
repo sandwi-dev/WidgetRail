@@ -53,7 +53,7 @@ internal sealed partial class WidgetViewPresenter
         if (changes.Count == 0) return commit;
         SettleTransitions();
         var options = WidgetMotionOptions.From(appearance, systemAnimationsEnabled);
-        if (!sameOwner || !IsLoaded || options.Reduced || options.Section == WidgetRail.PlatformSettings.WidgetSectionAnimation.None) return commit;
+        if (!presentationActive || !sameOwner || !IsLoaded || options.Reduced || options.Section == WidgetRail.PlatformSettings.WidgetSectionAnimation.None) return commit;
         foreach (var change in changes)
         {
             foreach (var nextLayout in visible.Where(d => d.Node.Transition is { Kind: WidgetTransitionKind.Layout } t && t.GroupId == change.GroupId))

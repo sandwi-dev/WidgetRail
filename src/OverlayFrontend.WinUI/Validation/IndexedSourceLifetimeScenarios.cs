@@ -61,7 +61,38 @@ internal static class IndexedSourceLifetimeScenarios
         Check(((IndexedItem<string>)source[4]).Value == "2:4" && nextOwner.Releases == 0,
             "invalid result releases only its own data and preserves the previous page");
 
+        var preserved = source[4];
+        var revision = source.ContentRevision;
+        var resets = 0;
+        source.CollectionChanged += (_, _) => ++resets;
+        await source.SetPresentationActiveAsync(false);
+        Check(nextOwner.Releases == 1 && ReferenceEquals(preserved, source[4]) && source.ContentRevision == revision,
+            "suspension releases page authority while retaining logical position and revision");
+        source.RangesChanged(new(0, 2), []); // native collapse may report an empty/top range
+        await Task.Delay(50);
+        Check(requests.IsEmpty && !source.HasMoreItems, "hidden source does not fetch or continue");
+        await source.SetPresentationActiveAsync(true);
+        var resumed = await Next();
+        Check(resumed.Request.StartIndex == 4 && resumed.Request.ContentRevision == revision,
+            "same-revision resume reacquires saved viewport demand");
+        Complete(resumed);
+        await Until(() => source.CompletedLoads == 4);
+        Check(ReferenceEquals(preserved, source[4]) && resets == 0, "resume keeps source slot identity without structural reset");
+
         source.RefreshContent(4);
+        var duringSuspend = await Next();
+        var suspension = source.SetPresentationActiveAsync(false);
+        Check(!suspension.IsCompleted, "suspension drains cancellation-ignoring providers before background");
+        var lateOwner = Complete(duringSuspend);
+        await suspension;
+        Check(lateOwner.Releases == 1 && source.CompletedLoads == 4,
+            "late successful reply releases once without publishing into suspended rows");
+        await source.SetPresentationActiveAsync(true);
+        Complete(await Next());
+        await Until(() => source.CompletedLoads == 5);
+        Check(ReferenceEquals(preserved, source[4]), "repeated suspension preserves logical identity");
+
+        source.RefreshContent(5);
         var duringClose = await Next();
         var disposal = source.DisposeAsync().AsTask();
         Check(!disposal.IsCompleted, "source disposal waits for actual outstanding provider completion");

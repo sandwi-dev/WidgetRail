@@ -18,7 +18,7 @@ internal sealed partial class WidgetViewPresenter
         CancellationToken cancellationToken = default)
     {
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Route widget input on its WinUI dispatcher.");
-        if (disposed || applying || presentationOnly || frame is null) return false;
+        if (!presentationActive || disposed || applying || presentationOnly || frame is null) return false;
         if (textEntryPopup is { } edit) { edit.Dialog.Handle(button, phase); return true; }
         if (button == ControllerButton.A) UpdateControllerPressedStyle(phase);
         if (HasTransientControl)

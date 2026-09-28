@@ -23,7 +23,7 @@ internal sealed partial class WidgetViewPresenter
         var incomingModal = plan.Values.Any(d => d.Node.Kind == ViewNodeKind.ModalLayer);
         if (!sameOwner || incomingModal) SettleModalExit();
         var options = WidgetMotionOptions.From(appearance, systemAnimationsEnabled);
-        if (!sameOwner || incomingModal || !IsLoaded || motionStage is null || options.Reduced || !options.AnimateDialogs) return null;
+        if (!presentationActive || !sameOwner || incomingModal || !IsLoaded || motionStage is null || options.Reduced || !options.AnimateDialogs) return null;
         var prior = declarations.Values.FirstOrDefault(d => d.Node.Kind == ViewNodeKind.ModalLayer);
         if (prior is null || bindings[prior.Node.Id].Element is not WidgetModalLayer layer || Bounds(layer) is not { } bounds) return null;
         var parentId = prior.Node.Children[0].Id;

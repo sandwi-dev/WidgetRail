@@ -11,7 +11,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void QueueMediaRefresh()
     {
-        if (MediaOwner is null || disposed || mediaRefreshQueued) return;
+        if (!presentationActive || MediaOwner is null || disposed || mediaRefreshQueued) return;
         mediaRefreshQueued = true;
         if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             { mediaRefreshQueued = false; if (!disposed) MediaOwner?.Refresh(); })) mediaRefreshQueued = false;
@@ -24,8 +24,8 @@ internal sealed partial class WidgetViewPresenter
         viewport.Configure(declaration, !presentationOnly && scope == frame?.Authority.ActiveInputScopeId);
         // Apply is synchronous on this dispatcher. Its temporary preparation flag
         // is not a revocation of the durable browser's already-admitted command.
-        viewport.CanAcceptInput = () => !disposed && !presentationOnly && !HasTransientControl;
-        if (!presentationOnly && frame is { } current && declaration is not null)
+        viewport.CanAcceptInput = () => presentationActive && !disposed && !presentationOnly && !HasTransientControl;
+        if (presentationActive && !presentationOnly && frame is { } current && declaration is not null)
             MediaOwner?.Bind(current.Authority, node.Id, declaration.Id, viewport);
         else MediaOwner?.Unbind(viewport);
     }
