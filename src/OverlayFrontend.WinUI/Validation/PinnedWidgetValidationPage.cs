@@ -20,7 +20,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 internal sealed class PinnedWidgetValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
-    private readonly TextBlock status = new() { Text = "Connecting", TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock status = new() { Text = "Connecting", TextWrapping = TextWrapping.Wrap, MaxLines = 3, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly CancellationTokenSource lifetime = new();
     private readonly List<string> checks = [];
     private readonly string pipe;
@@ -75,8 +75,8 @@ internal sealed class PinnedWidgetValidationPage : Page, IAsyncDisposable
             presenter.ActivateFocused(); await Status("open:");
             Check(lifecycleScopes.Contains("dialog.scope"), "host interaction retains original lifecycle authority");
             await presenter.HandleControllerButtonAsync(ControllerButton.Y); await Status("refresh:");
-            Focus("choice"); presenter.ActivateFocused(); await Until(() => presenter.HasTransientControl);
-            presenter.MoveFocus(FocusNavigationDirection.Down); presenter.ActivateFocused(); await Status("select-second:");
+            Focus("choice"); presenter.ActivateFocused(); await Until(() => FocusId() == "Widget.choice.Option.first");
+            presenter.MoveFocus(FocusNavigationDirection.Down); await Until(() => FocusId() == "Widget.choice.Option.second"); presenter.ActivateFocused(); await Status("select-second:");
             await Until(() => !presenter.HasTransientControl);
             Check(true, "Select commits through exact pinned binding");
 
@@ -85,8 +85,8 @@ internal sealed class PinnedWidgetValidationPage : Page, IAsyncDisposable
             await presenter.HandleControllerButtonAsync(ControllerButton.RightTrigger); await Status("commit:pinned text");
             await Until(() => !presenter.HasTransientControl);
             Check(true, "native text editor commits bounded pinned text");
-            await presenter.HandleControllerButtonAsync(ControllerButton.Menu); await Until(() => presenter.HasTransientControl);
-            await Task.Delay(80, lifetime.Token); presenter.ActivateFocused(); await Status("menu:");
+            await presenter.HandleControllerButtonAsync(ControllerButton.Menu); await Until(() => FocusId() == "Widget.pin.Context.menu");
+            presenter.ActivateFocused(); await Status("menu:");
             Check(true, "container context menu keeps independent focused entry");
             Focus("volume"); ((Slider)Find("volume")).Value = 5; await Status("volume:5");
             Check(true, "native slider retains pinned action scope");
@@ -98,8 +98,8 @@ internal sealed class PinnedWidgetValidationPage : Page, IAsyncDisposable
             Check(ReferenceEquals(before, Button("open")), "main modal reopen does not reconstruct pinned view");
 
             await FocusRow(30); await presenter.HandleControllerButtonAsync(ControllerButton.A); await Status("row-open:30");
-            await presenter.HandleControllerButtonAsync(ControllerButton.X); await Until(() => presenter.HasTransientControl);
-            await Task.Delay(80, lifetime.Token); presenter.ActivateFocused(); await Status("row-menu:30");
+            await presenter.HandleControllerButtonAsync(ControllerButton.X); await Until(() => FocusId().EndsWith(".Context.row-menu", StringComparison.Ordinal));
+            presenter.ActivateFocused(); await Status("row-menu:30");
             Check(true, "native virtualized pinned row and context actions carry real frame and lease");
 
             passive = true; var count = Calls(); var previousDenial = denied;

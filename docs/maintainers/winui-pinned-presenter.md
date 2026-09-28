@@ -78,3 +78,21 @@ assembly. Its regression checks prove that pin/fragment styles never manufacture
 an input frame, that main and pinned domains differ, and that stale selections
 cannot create new frontend bindings. Native runtime acceptance must be reported
 separately from managed and analyzer-build results.
+
+## Native validation result
+
+The dedicated pinned fixture passed all 19 checks at the desktop's 125% scale.
+Nearby native gates passed 19 Select, 26 text-entry, 21 slider, 38 context-menu
+checks, and all 20 indexed-view checks (including modal, retained artwork and
+navigation probes). The tested build also contained the separately committed
+presentation-memento changes from 94d4776b. These are automated native checks,
+not a user physical-controller acceptance claim.
+
+The initial pinned fixture attempted Select navigation before the native flyout
+had assigned focus. Its wait now observes the native option's focus instead of
+assuming opening is synchronous. Context menus use the same explicit readiness
+check. No production presenter correction was required by these native runs.
+The runner handles the initial Connecting state and uses a screen capture for
+transparent WinUI windows; ordinary window capture omitted composed text pixels.
+Evidence is under `artifacts/pinned-presenter/native-03`, `nearby-controls` and
+`nearby-indexed` in the validation worktree.

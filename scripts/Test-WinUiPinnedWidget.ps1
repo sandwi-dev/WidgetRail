@@ -12,12 +12,13 @@ try {
         $raw=& winapp ui get-value PinnedWidget.Status -a $AppPid --json
         if($LASTEXITCODE -ne 0){throw 'Could not read pinned fixture result.'}
         $value=($raw -join "`n") | ConvertFrom-Json
+        if($value.text -eq 'Connecting'){ Start-Sleep -Milliseconds 150; continue }
         $result=$value.text | ConvertFrom-Json
         if($result.completed -ne 0 -or $result.failure){break}
         Start-Sleep -Milliseconds 150
     } while([DateTime]::UtcNow -lt $deadline)
     $result | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $OutputDirectory 'result.json')
-    & winapp ui screenshot -a $AppPid -o (Join-Path $OutputDirectory 'pinned.png') --json | Out-Null
+    & winapp ui screenshot -a $AppPid --capture-screen -o (Join-Path $OutputDirectory 'pinned.png') --json | Out-Null
     if($LASTEXITCODE -ne 0){throw 'Could not capture the pinned native fixture.'}
     if($result.completed -ne 1 -or $result.failure -or $result.checks -lt 18 -or $result.ordinaryActions -ne 0){
         throw "Pinned fixture failed: $($result | ConvertTo-Json -Compress)"

@@ -59,7 +59,7 @@ internal sealed class PinnedPresenterBridgeWidget : Widget
     internal static async Task Serve(string pipe)
     {
         var theme = WrssThemeCompiler.Compile([WrssParser.Parse(
-            "image { width: 40px; height: 40px; } .main-action { font-size: 12px; } .pin-action { font-size: 23px; } .alternate-action { font-size: 19px; }", "pinned-validation.wrss").Document]);
+            "image { width: 40px; height: 40px; } slider { width: 220px; min-width: 200px; } .main-action { font-size: 12px; } .pin-action { font-size: 23px; } .alternate-action { font-size: 19px; }", "pinned-validation.wrss").Document]);
         if (!theme.IsValid) throw new InvalidOperationException("Pinned fixture theme invalid.");
         var configured = new ConfiguredWidget { Id = "pinned-presenter", Name = "Pinned presenter", InstanceId = "pinned-presenter.instance",
             PackageId = "dev.pinned", PublisherId = "dev", WorkerExecutable = Environment.ProcessPath!, WorkerFingerprint = new('a', 64),
