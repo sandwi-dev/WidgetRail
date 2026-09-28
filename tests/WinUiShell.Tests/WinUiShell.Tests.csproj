@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ControllerGuideModel.cs" Link="ControllerGuideModel.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ShellStatusSnapshot.cs" Link="ShellStatusSnapshot.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\WidgetStateHistory.cs" Link="WidgetStateHistory.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\OverlayAppearancePolicy.cs" Link="OverlayAppearancePolicy.cs" />
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />

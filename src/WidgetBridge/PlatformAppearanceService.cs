@@ -268,6 +268,9 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             ("hint", "hint", EmptyStates()),
             ("controller-glyph", "controller-glyph", EmptyStates()),
             ("status", "status", EmptyStates()),
+            ("tray-clock", "status", EmptyStates()),
+            ("tray-date", "status", EmptyStates()),
+            ("tray-status-icon", "status", EmptyStates()),
         };
         var result = new SortedDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>(StringComparer.Ordinal);
         var total = 0;
@@ -276,8 +279,8 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             var resolved = theme.Resolve(new WrssElement(
                 definition.Role,
                 $"shell.{definition.Key.Replace(':', '.')}",
-                definition.Key == "controller-glyph"
-                    ? new HashSet<string>(StringComparer.Ordinal) { "wrail-controller-glyph" }
+                definition.Key is "controller-glyph" or "tray-clock" or "tray-date" or "tray-status-icon"
+                    ? new HashSet<string>(StringComparer.Ordinal) { "wrail-" + definition.Key }
                     : new HashSet<string>(StringComparer.Ordinal),
                 definition.States));
             if (resolved.Properties.Count > BridgeRenderStyleLimits.MaximumPropertiesPerState)

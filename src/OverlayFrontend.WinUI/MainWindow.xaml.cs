@@ -68,6 +68,7 @@ public sealed partial class MainWindow : Window
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
         else if (validateWindowPreview) RootFrame.Content = new Validation.WindowPreviewValidationPage();
+        else if (Environment.GetCommandLineArgs().Contains("--validate-shell-status")) RootFrame.Content = new Validation.ShellStatusValidationPage();
         else if (Environment.GetCommandLineArgs().Contains("--validate-gamepad-boundary")) RootFrame.Content = new Validation.GamepadKeyBoundaryValidationPage();
         else if (validateEmbeddedMedia) RootFrame.Content = new Validation.EmbeddedMediaValidationPage();
         else if (validatePackageIcons) RootFrame.Content = new Validation.PackageIconValidationPage();

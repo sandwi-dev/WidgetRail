@@ -90,6 +90,10 @@ hint {
   line-height: 1.3;
 }
 
+.wrail-tray-clock { color: var(--text); font-family: var(--font-text); font-size: 22px; font-weight: 600; line-height: 1; }
+.wrail-tray-date { color: var(--text-muted); font-family: var(--font-text); font-size: 11px; line-height: 1; }
+.wrail-tray-status-icon { color: var(--text-muted); font-size: 16px; }
+
 button {
   min-height: 44px;
   padding: 10px 14px;
