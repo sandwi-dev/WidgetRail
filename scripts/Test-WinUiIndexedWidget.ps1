@@ -95,6 +95,8 @@ try {
     Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'indexed-widget.png')) | Out-Null
 } finally {
     $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory 'results.json')
-    Ui @('invoke','Shell.Close') | Out-Null
+    # Preserve the original failure if deployment or a crash already ended the
+    # process; cleanup must not replace it with a second "process not found".
+    if(Get-Process -Id $AppPid -ErrorAction SilentlyContinue) { Ui @('invoke','Shell.Close') | Out-Null }
 }
 "Indexed widget checks passed: $($results.Count)."

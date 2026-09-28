@@ -3,6 +3,8 @@ param([Parameter(Mandatory)][int]$AppPid,
       [string]$OutputDirectory=(Join-Path $PSScriptRoot '../artifacts/winui-indexed/activation'))
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
+& winapp ui wait-for Widget.items.Item.0 -a $AppPid -t 5000 --json | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Indexed worker did not publish its initial native row.' }
 & winapp ui invoke IndexedWidget.ActivationProbe -a $AppPid --json | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Could not start activation probe.' }
 $deadline=[DateTime]::UtcNow.AddSeconds(45)

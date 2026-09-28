@@ -764,3 +764,37 @@ artifacts/winui-surfaces. The earlier intermittent first-A observation is also s
 unresolved. Continue by inspecting the native item-template/rendered-row lifetime,
 including why a live row can lose its presenter while its data owner remains valid.
 Main and the installed native product remain untouched.
+
+## Indexed modal lifetime and keyboard follow-up, 2026-09-28
+
+The missing row content was caused by queued native Unloaded notifications arriving
+after the same row was loaded again. Row retirement now checks its current IsLoaded
+state; explicit disposal and genuine unload still retire it. Temporary per-row/image
+tracing was removed after confirming the event ordering.
+
+The subsequent repeated-modal timeout was a different defect, not missing artwork:
+the live Image contained its decoded source, but the next A arrived during a content
+refresh while the displayed row's lease was retired. The collection now retains one
+bounded activation intent for the same focused item/action, then uses the replacement
+lease. Navigation, another button, hiding, changed scope/query/action/availability,
+or a two-second expiry cancel it. SDK/session stale-lease checks remain unchanged.
+
+Fixture row images now use yellow/dark checkerboards distinct from the blue parent
+background. Modal assertions verify decoded 8x8 cover images with nonzero displayed
+size, and timeout diagnostics identify the actual pending condition. Visual inspection
+of the final replacement-query row confirms both text and checker artwork.
+
+Integration validation: analyzer and worker builds have zero warnings/errors; 16
+indexed bridge tests, all 20 combined native worker checks (including all 25 modal
+assertions), and 11 dedicated deferred-activation checks pass. One combined attempt
+was interrupted by another worktree's package deployment and was inconclusive; its
+replacement run passed. Evidence: artifacts/winui-surfaces/combined-row-fixed/,
+integrated-activation/, and integrated-indexed-tests.log. Scripts wait for initial
+worker readiness and preserve the original failure when cleanup finds an exited app.
+
+Native TextEntry/controller keyboard is integrated with guarded commit/cancel,
+native password semantics, local edit state, authority revocation and live prompt
+fonts. Its 26 native checks also pass on the integration branch. Details and remaining
+physical/production/theme validation are in winui-text-entry.md. These are correctness
+fixtures, not production-widget performance or full migration acceptance. Main and
+the installed native product remain untouched.
