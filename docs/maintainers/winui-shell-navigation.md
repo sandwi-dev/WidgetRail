@@ -45,8 +45,10 @@ Validation at the initial navigation checkpoint:
   mismatch: ordinary range requests included the new continuation request kind.
   `Kind=Range` now omits that default field; explicit Continue/Retry retain it.
   Strict wire tests and an actual enabled-row probe against the unchanged fixture
-  runtime pass (`finite-range-probe/result.json`). The native details replay after
-  this wire correction remains required before closing that regression.
+  runtime pass (`finite-range-probe/result.json`). The subsequent full native
+  Library/tray/details replay passes all six checks, with visible real artwork
+  (`finite-range-native-replay`). Music's five Home/Library/return checks also pass
+  (`music-integrated-replay`). Neither sequence launches media or a game.
 
 None of these checks establishes complete production controller acceptance,
 inactive-page scroll retention, radial behavior, or pinned-window interaction.

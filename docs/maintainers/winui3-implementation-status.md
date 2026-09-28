@@ -25,7 +25,9 @@ validation. It is not yet a complete replacement for the native overlay.
   renders native indexed item fragments. OriginalColor and ThemeTint package icons
   retain exact admitted package authority. Button/panel/modal depth is integrated,
   with native button hover/pressed/disabled states preserved. Collection-container
-  depth remains an active follow-up using native masks and shared visual ownership.
+  depth uses native outer masks and shared visual ownership while preserving stock
+  ListViewItem/GridViewItem templates. Tray package icons use the same admitted
+  package renderer, retaining native selection and focus semantics.
 - **Collections:** the exact-count SDK/range/lease contract, native ListView/GridView
   virtualization, grouped lists, logical focus entry, background/summary retention and
   captured actions are integrated. Playnite Home/Library, YouTube Music's finite
@@ -33,7 +35,7 @@ validation. It is not yet a complete replacement for the native overlay.
   Apps Catalog retains explicit paging. General opaque continuations are a separate
   integrated contract: workers retain opaque tokens and publish an append-only
   discovered prefix to native incremental loading. YouTube video Discover/Search
-  now uses it. Spotify playlist/detail/Search adoption remains active. The combined
+  now uses it, as do Spotify playlist/detail/Search. The combined
   continuation fixture passes 36 native assertions, including empty/duplicate
   pages, bounded automatic demand, Retry, held-tail/reverse input, retained
   viewport/action identities and native list/grid footer replacement. See
@@ -53,7 +55,7 @@ validation. It is not yet a complete replacement for the native overlay.
   presentation transforms. Background artwork crossfades retain bounded decoded
   images. Global animation settings, text scale, bold text, contrast and reduced
   transparency apply after authored styles. The reviewed depth checkpoint passes
-  126 native style checks, 36 modal checks and the 20-check indexed sequence;
+  146 native style checks, 36 modal checks and the 20-check indexed sequence;
   background/presentation checks pass 27. Physical animation quality remains separate.
 - **Sizing:** declared surface hints, per-display interface/text zoom and existing
   display identity/placement policy are integrated. Native sizing checks pass 13 cases;
@@ -83,15 +85,17 @@ validation. It is not yet a complete replacement for the native overlay.
   integrated. Ordinary pinned context/text and scoped artwork remain, along with
   pinned windows and compact-media transfer. See [pinned authority](winui-pinned-session.md).
 - **Managed gates:** latest relevant integrated suites pass 223 presentation-session,
-  29 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 83 Spotify and 50 YouTube
+  29 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 73 Spotify and 50 YouTube
   checks. The latest integrated collection gates pass 16 indexed plus one discovered
   SDK scenario and 17 indexed plus one real-worker discovered bridge scenario;
   the prior complete SDK checkpoint passed 138. Counts identify their recorded checkpoint;
   affected suites must run again after later contract changes. Analyzer builds are clean.
-  The latest Playnite native replay exposed a finite-range wire mismatch with the
-  older isolated test runtime. Default Range now omits the continuation-only field;
-  strict wire and enabled-provider-row probes pass. The native details replay after
-  this correction remains pending; earlier six-check results predate it.
+  The finite-range wire mismatch with the older isolated test runtime is corrected:
+  default Range omits the continuation-only field. The full native Library/tray/
+  details replay now passes six checks, with five Music Home/Library/return checks.
+  Actual artwork is visible in the reviewed screenshots. Evidence is under
+  `artifacts/winui-shell/finite-range-native-replay` and `music-integrated-replay`.
+  Tray icons pass 36 native checks including 12 catalog scenarios in their lane.
 
 Remaining product work includes remaining continuation-source adoption, preview
 coverage beyond ordinary roots, pinned projections/media ownership, radial tray and complete shell
@@ -103,11 +107,13 @@ installed native candidate are untouched; fixture passes are not migration accep
 
 - Window previews: ordinary production wiring and controlled pixel validation complete;
   broader projection inventory and real Task Switcher workflows remain.
-- Continuation collections: SDK/wire lifecycle and YouTube Discover are integrated;
-  Spotify's library/detail/Search adoption is active. Its indexed Queue remains intact.
-- Depth styling: button/panel/modal depth integrated; native collection masks pending.
+- Continuation collections: SDK/wire lifecycle, YouTube Discover/Search and Spotify
+  library/detail/Search are integrated. Provider reachability beyond the bounded
+  discovered-prefix metadata cap remains a deliberate open product requirement.
+- Depth styling: button/panel/modal and native collection masks integrated.
 - Pinned authority: independent projections and exact-layout action admission.
-- Root integration: combined production regression checks and remaining shell behavior.
+- Root integration: inactive widget suspension/resumption and bounded native view
+  retention are in progress; this is not yet a passed deep-scroll return gate.
 
 After these checkpoints, remaining feature coverage includes Spotify collection
 adoption, broader WindowPreview projections, pinned/fullscreen integration, radial
