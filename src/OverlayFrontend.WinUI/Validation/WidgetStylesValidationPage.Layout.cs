@@ -53,6 +53,10 @@ internal sealed partial class WidgetStylesValidationPage
         var copyBounds = scrim.TransformToVisual(panel).TransformBounds(new(0, 0, scrim.ActualWidth, scrim.ActualHeight));
         Check(Math.Abs(copyBounds.Bottom - panel.ActualHeight) < .01 && image.Stretch == Stretch.UniformToFill,
             "poster copy is bottom aligned over native cover artwork");
+        styles["poster"] = Compute("#poster { width: 120px; aspect-ratio: 1; padding: 0px; }", "poster", "actionSurface");
+        presenter.Apply(CreateFrame(new() { Id = "poster.root", Kind = ViewNodeKind.Stack, Children = [poster] }, styles));
+        await Wait(() => Near(panel.ActualWidth, panel.ActualHeight));
+        Check(Near(panel.AspectRatio, 1), "square authored posters use their resolved aspect ratio");
         var before = Find<Button>("Widget.poster");
         presenter.Apply(CreateFrame(new() { Id = "poster.root", Kind = ViewNodeKind.Stack,
             Children = [poster with { ActionSurfacePresentation = ActionSurfacePresentation.Standard }] }, styles));

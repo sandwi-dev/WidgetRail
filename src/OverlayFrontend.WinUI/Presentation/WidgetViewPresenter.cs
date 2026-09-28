@@ -385,8 +385,6 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             progress.Maximum = node.Maximum ?? 100;
             progress.Value = node.Value ?? 0;
         }
-        if (element is ProgressRing ring)
-            ring.Width = ring.Height = node.IndicatorSize switch { LoadingIndicatorSize.Compact => 16, LoadingIndicatorSize.Large => 48, _ => 32 };
         ApplyComputedStyles(binding, node);
     }
 

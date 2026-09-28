@@ -115,6 +115,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         await ResponsiveAndPostersAsync();
         await NativeGridMeasureAsync();
         await NativeScaleAsync();
+        await LoadingIndicatorGeometryAsync();
         if (App.ValidationFixturePath is { } fixture) await PlayniteProductionLayoutAsync(fixture);
     }
 

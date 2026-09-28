@@ -20,8 +20,14 @@ internal sealed partial class WidgetViewPresenter
 
     private void ApplySizeAndTypography(FrameworkElement element, ViewNode node)
     {
-        element.Width = Length(node, "width") ?? double.NaN;
-        element.Height = Length(node, "height") ?? double.NaN;
+        // ProgressRing's animated visual needs a finite box even when its parent
+        // measures an Auto row/column without a bound. Preserve the declaration's
+        // intrinsic indicator size instead of erasing it during style projection.
+        var intrinsic = node.Kind == ViewNodeKind.LoadingIndicator
+            ? node.IndicatorSize switch { LoadingIndicatorSize.Compact => 16d, LoadingIndicatorSize.Large => 48d, _ => 32d }
+            : double.NaN;
+        element.Width = Length(node, "width") ?? intrinsic;
+        element.Height = Length(node, "height") ?? intrinsic;
         element.MinWidth = Length(node, "min-width") ?? 0;
         element.MinHeight = Length(node, "min-height") ?? 0;
         element.MaxWidth = Length(node, "max-width") ?? double.PositiveInfinity;

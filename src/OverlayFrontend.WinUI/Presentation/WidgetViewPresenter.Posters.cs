@@ -8,6 +8,9 @@ internal sealed partial class WidgetViewPresenter
 {
     private void UpdatePoster(WidgetPosterPanel panel, ViewNode node)
     {
+        var ratio = ComputedStyle(node, "aspect-ratio")?.Number;
+        var resolved = ratio is > 0 && double.IsFinite(ratio.Value) ? ratio.Value : 2d / 3;
+        if (panel.AspectRatio != resolved) { panel.AspectRatio = resolved; panel.InvalidateMeasure(); }
         foreach (var child in node.Children)
         {
             var element = bindings[child.Id].Element;
