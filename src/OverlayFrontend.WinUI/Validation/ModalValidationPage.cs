@@ -9,6 +9,8 @@ using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
+using WidgetRail.OverlayFrontend.WinUI.Motion;
+using WidgetRail.PlatformSettings;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
@@ -59,6 +61,11 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             modal = "details.game12"; Apply();
             await Until(() => FocusedId == "Widget.play" && Find(modal) is { ActualWidth: > 0 });
             var panel = (WidgetModalPanel)Find(modal)!;
+            var modalLayer = AncestorLayer(panel);
+            await Until(() => modalLayer.OpeningMotion is not null);
+            var opening = modalLayer.OpeningMotion!;
+            Check(await opening.WaitAsync(TimeSpan.FromSeconds(2)) == WidgetMotionOutcome.Completed,
+                "real presenter dialog opening completes on the native composition batch");
             Check(ReferenceEquals(parentScroll, Find("parent.scroll")) && ReferenceEquals(parentButton, Find("game.12")), "modal retains original parent controls");
             Check(Near(parentScroll.VerticalOffset, offset) && Near(parentScroll.ScrollableHeight, extent) &&
                 Near(parentScroll.ViewportHeight, viewport) && Near(parentScroll.ActualWidth, parentWidth), "opening preserves parent viewport geometry and offset");
@@ -83,6 +90,7 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             await Task.Delay(100);
             Check(ReferenceEquals(panel, Find(modal)) && FocusedId == "Widget.second" && Near(modalScroll.VerticalOffset, modalOffset),
                 "ordinary dialog update preserves control focus and scroll");
+            Check(ReferenceEquals(opening, modalLayer.OpeningMotion), "ordinary dialog snapshot does not replay entrance motion");
             presenter.Enter(restoreNativeFocus: true);
             await Task.Delay(100);
             Check(FocusedId == "Widget.second", "host foreground restoration preserves dialog focus");
@@ -121,9 +129,14 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             await Until(() => actions.Count == 1);
             Check(actions[0].Action.ActionId == "play" && actions[0].Action.InputScopeId == modal + ".scope", "dialog action dispatches once with its own scope");
             var priorPanel = Find(modal);
+            presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
             ++owner; Apply();
             await Until(() => FocusedId == "Widget.play");
             Check(!ReferenceEquals(priorPanel, Find(modal)), "runtime replacement retires dialog identity");
+            var reducedLayer = AncestorLayer(Find(modal)!);
+            await Until(() => reducedLayer.OpeningMotion is not null);
+            Check(reducedLayer.OpeningMotion!.IsCompletedSuccessfully && await reducedLayer.OpeningMotion == WidgetMotionOutcome.Completed,
+                "global reduced-motion settings settle a fresh dialog without an animation timer");
             if (failure is not null) throw failure;
             status.Text = $"Passed {checks.Count} modal checks";
             WriteResult(new { result = "passed", checks });
@@ -162,6 +175,12 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             location.Y + panel.ActualHeight <= widget.ActualHeight - 15, name);
     }
     private static bool Near(double first, double second) => Math.Abs(first - second) < 1;
+    private static WidgetModalLayer AncestorLayer(DependencyObject element)
+    {
+        for (var current = VisualTreeHelper.GetParent(element); current is not null; current = VisualTreeHelper.GetParent(current))
+            if (current is WidgetModalLayer layer) return layer;
+        throw new InvalidOperationException("Missing native modal layer.");
+    }
     private string FocusedId => FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused
         ? AutomationProperties.GetAutomationId(focused) : string.Empty;
     private FrameworkElement? Find(string id) => Find(presenter, "Widget." + id);

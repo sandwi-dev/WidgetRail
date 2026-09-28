@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using WidgetRail.OverlayFrontend.WinUI.Motion;
+using WidgetRail.PlatformSettings;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -9,7 +11,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 /// viewport; the parent is retained in its original size and scroll coordinates.
 /// The input-blocking scrim is below the dialog and above the unchanged parent.
 /// </summary>
-internal sealed partial class WidgetModalLayer : Grid
+internal sealed partial class WidgetModalLayer : Grid, IDisposable
 {
     private FrameworkElement? dialog;
     private double preferredWidth;
@@ -20,6 +22,15 @@ internal sealed partial class WidgetModalLayer : Grid
     private double authoredMaxHeight;
     private readonly RectangleGeometry boundsClip = new();
     internal UIElement Chrome => Scrim;
+    private WidgetDialogMotion? motion;
+    internal Task<WidgetMotionOutcome>? OpeningMotion => motion?.Opening;
+    private AppearanceSettings appearance = AppearanceSettings.Default;
+    private bool systemAnimationsEnabled = true;
+    internal void ApplyAppearance(AppearanceSettings value, bool animationsEnabled)
+    {
+        appearance = value; systemAnimationsEnabled = animationsEnabled;
+        motion?.ApplyAppearance(value, animationsEnabled);
+    }
 
     public WidgetModalLayer()
     {
@@ -31,6 +42,11 @@ internal sealed partial class WidgetModalLayer : Grid
     internal void Configure(FrameworkElement parent, FrameworkElement panel,
         double width, double height, double maximumWidth, double maximumHeight)
     {
+        if (!ReferenceEquals(dialog, panel))
+        {
+            motion?.Dispose();
+            motion = new(panel, Scrim, appearance, systemAnimationsEnabled);
+        }
         dialog = panel;
         preferredWidth = width;
         preferredHeight = height;
@@ -63,4 +79,6 @@ internal sealed partial class WidgetModalLayer : Grid
         dialog.Width = Math.Min(preferredWidth, dialog.MaxWidth);
         dialog.Height = Math.Min(preferredHeight, dialog.MaxHeight);
     }
+
+    public void Dispose() { motion?.Dispose(); motion = null; }
 }

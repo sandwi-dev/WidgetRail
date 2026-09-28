@@ -16,10 +16,10 @@ internal readonly record struct WidgetMotionPlayback(WidgetCompositionTarget Tar
 internal sealed class WidgetCompositionTarget : IDisposable
 {
     private readonly Visual visual;
-    private readonly Visual viewport;
+    private readonly Visual? viewport;
     private readonly CompositionObject translation;
     private readonly string translationProperty;
-    private readonly InsetClip clip;
+    private readonly InsetClip? clip;
     private readonly Vector3 originalTranslation;
     private readonly Vector3 originalScale;
     private readonly Vector3 originalCenter;
@@ -34,11 +34,11 @@ internal sealed class WidgetCompositionTarget : IDisposable
     internal WidgetCompositionTarget(Visual content, Visual clipViewport, Vector2 size)
         : this(content, clipViewport, size, xamlTranslation: false) { }
 
-    private WidgetCompositionTarget(Visual content, Visual clipViewport, Vector2 size, bool xamlTranslation)
+    private WidgetCompositionTarget(Visual content, Visual? clipViewport, Vector2 size, bool xamlTranslation)
     {
-        ArgumentNullException.ThrowIfNull(content); ArgumentNullException.ThrowIfNull(clipViewport);
-        if (ReferenceEquals(content, clipViewport) || clipViewport.Clip is not null ||
-            content.Compositor != clipViewport.Compositor || !float.IsFinite(size.X) || !float.IsFinite(size.Y) || size.X <= 0 || size.Y <= 0)
+        ArgumentNullException.ThrowIfNull(content);
+        if (ReferenceEquals(content, clipViewport) || clipViewport?.Clip is not null ||
+            clipViewport is not null && content.Compositor != clipViewport.Compositor || !float.IsFinite(size.X) || !float.IsFinite(size.Y) || size.X <= 0 || size.Y <= 0)
             throw new ArgumentException("Motion requires separate, unclipped viewport/content layers in one compositor and a finite size.");
         visual = content; viewport = clipViewport;
         originalScale = visual.Scale; originalOpacity = visual.Opacity; originalCenter = visual.CenterPoint;
@@ -47,7 +47,7 @@ internal sealed class WidgetCompositionTarget : IDisposable
         if (xamlTranslation) visual.Properties.TryGetVector3("Translation", out originalTranslation);
         else originalTranslation = visual.Offset;
         visual.CenterPoint = new(size / 2, 0);
-        clip = Compositor.CreateInsetClip(); viewport.Clip = clip;
+        if (viewport is not null) { clip = Compositor.CreateInsetClip(); viewport.Clip = clip; }
     }
 
     /// <summary>Pass dedicated XAML motion wrappers, not a button whose text/style must remain unchanged.</summary>
@@ -58,20 +58,32 @@ internal sealed class WidgetCompositionTarget : IDisposable
         return new(ElementCompositionPreview.GetElementVisual(contentLayer), ElementCompositionPreview.GetElementVisual(viewportLayer), size, true);
     }
 
+    /// <summary>Dialog-owned surface whose ancestor already supplies widget-local clipping.</summary>
+    internal static WidgetCompositionTarget ForClippedDialog(UIElement dialog, Vector2 size)
+    {
+        ElementCompositionPreview.SetIsTranslationEnabled(dialog, true);
+        return new(ElementCompositionPreview.GetElementVisual(dialog), null, size, true);
+    }
+
     internal void Start(WidgetMotionRecipe recipe, bool fromCurrent)
     {
         Check();
         Validate(recipe);
+        if (clip is null && (recipe.From.Insets != Vector4.Zero || recipe.To.Insets != Vector4.Zero))
+            throw new ArgumentException("A target without its own viewport cannot animate clipping.", nameof(recipe));
         if (!fromCurrent) Set(recipe.From);
         if (recipe.Duration == TimeSpan.Zero) { Set(recipe.To); return; }
         using var easing = Compositor.CreateCubicBezierEasingFunction(new(1f / 3, 0), new(2f / 3, 1));
         AnimateVector(translation, translationProperty, originalTranslation + recipe.To.Translation);
         AnimateVector(visual, nameof(Visual.Scale), originalScale * recipe.To.Scale);
         AnimateScalar(visual, nameof(Visual.Opacity), originalOpacity * recipe.To.Opacity);
-        AnimateScalar(clip, nameof(InsetClip.LeftInset), recipe.To.Insets.X);
-        AnimateScalar(clip, nameof(InsetClip.TopInset), recipe.To.Insets.Y);
-        AnimateScalar(clip, nameof(InsetClip.RightInset), recipe.To.Insets.Z);
-        AnimateScalar(clip, nameof(InsetClip.BottomInset), recipe.To.Insets.W);
+        if (clip is not null)
+        {
+            AnimateScalar(clip, nameof(InsetClip.LeftInset), recipe.To.Insets.X);
+            AnimateScalar(clip, nameof(InsetClip.TopInset), recipe.To.Insets.Y);
+            AnimateScalar(clip, nameof(InsetClip.RightInset), recipe.To.Insets.Z);
+            AnimateScalar(clip, nameof(InsetClip.BottomInset), recipe.To.Insets.W);
+        }
 
         void AnimateVector(CompositionObject target, string property, Vector3 to)
         {
@@ -97,16 +109,22 @@ internal sealed class WidgetCompositionTarget : IDisposable
         if (ReferenceEquals(translation, visual)) visual.Offset = originalTranslation + pose.Translation;
         else visual.Properties.InsertVector3(translationProperty, originalTranslation + pose.Translation);
         visual.Scale = originalScale * pose.Scale; visual.Opacity = originalOpacity * pose.Opacity;
-        clip.LeftInset = pose.Insets.X; clip.TopInset = pose.Insets.Y;
-        clip.RightInset = pose.Insets.Z; clip.BottomInset = pose.Insets.W;
+        if (clip is not null)
+        {
+            clip.LeftInset = pose.Insets.X; clip.TopInset = pose.Insets.Y;
+            clip.RightInset = pose.Insets.Z; clip.BottomInset = pose.Insets.W;
+        }
     }
 
     private void Stop()
     {
         translation.StopAnimation(translationProperty);
         visual.StopAnimation(nameof(Visual.Scale)); visual.StopAnimation(nameof(Visual.Opacity));
-        clip.StopAnimation(nameof(InsetClip.LeftInset)); clip.StopAnimation(nameof(InsetClip.TopInset));
-        clip.StopAnimation(nameof(InsetClip.RightInset)); clip.StopAnimation(nameof(InsetClip.BottomInset));
+        if (clip is not null)
+        {
+            clip.StopAnimation(nameof(InsetClip.LeftInset)); clip.StopAnimation(nameof(InsetClip.TopInset));
+            clip.StopAnimation(nameof(InsetClip.RightInset)); clip.StopAnimation(nameof(InsetClip.BottomInset));
+        }
     }
     private void Check()
     {
@@ -133,8 +151,8 @@ internal sealed class WidgetCompositionTarget : IDisposable
         if (disposed) return;
         Check(); Set(WidgetMotionPose.Identity);
         visual.CenterPoint = originalCenter;
-        viewport.Clip = null;
-        clip.Dispose(); disposed = true;
+        if (viewport is not null) viewport.Clip = null;
+        clip?.Dispose(); disposed = true;
     }
 }
 

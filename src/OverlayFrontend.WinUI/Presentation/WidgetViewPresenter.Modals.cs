@@ -11,6 +11,7 @@ internal sealed partial class WidgetViewPresenter
         foreach (var binding in bindings.Values)
         {
             if (binding.Element is not WidgetModalLayer layer) continue;
+            layer.ApplyAppearance(appearance, systemAnimationsEnabled);
             var node = declarations[binding.Identity.Id].Node;
             var dialog = node.Children[1];
             layer.Configure(bindings[node.Children[0].Id].Element, bindings[dialog.Id].Element,

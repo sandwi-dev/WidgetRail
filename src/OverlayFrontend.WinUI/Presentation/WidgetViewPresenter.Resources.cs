@@ -28,6 +28,7 @@ internal sealed partial class WidgetViewPresenter
         if (imageDemands.Remove(binding, out var demand)) { demand.Lifetime.Cancel(); demand.Lifetime.Dispose(); }
         if (binding.Element is WidgetIndexedCollectionView collection) TrackRetirement(collection.DisposeAsync().AsTask());
         if (binding.Element is WidgetPresentationSurface surface) TrackRetirement(surface.DisposeAsync().AsTask());
+        if (binding.Element is WidgetModalLayer layer) layer.Dispose();
     }
 
     private void TrackRetirement(Task task)
