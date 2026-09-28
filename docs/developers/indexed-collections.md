@@ -85,3 +85,43 @@ Their reserved syntax does not grant access: the host checks the current widget
 identity, live broker registration and exact row lease before returning pixels.
 Do not manufacture handles or replace app icons with widget callbacks. Mixed rows
 still need `ResolveArtwork` for any additional widget-owned images.
+
+## Games & Apps: finite broker snapshots
+
+[GamesAppsWidget.Indexed.cs](../../src/FirstPartyWidgets/GamesAppsWidget/GamesAppsWidget.Indexed.cs)
+shows the same contract applied to a finite system-provider result. Library and
+Running each register a stable source. Their immutable query captures the exact
+ordered app array, row presentation state, route generation, and (for Running)
+the broker observation revision. Ranges slice that array; no remote item count or
+random-access provider API is invented. Catalog keeps its explicit bounded
+Previous/Next page controls.
+
+The occurrence key is derived from the durable opaque SavedId, not AppId or a
+position. Existing hashed row element IDs remain stable; new widgets should use
+`context.Id` when they do not already have a collision-free item ID scheme.
+Membership/order changes publish a query; metadata, availability and busy-state
+changes update content without changing keys or query generation. Repeated
+renders with unchanged row state do not advance the descriptor.
+
+Row actions receive the captured app. They recheck route/generation and exact
+SavedId/AppId inside the command's mutation lock. Running additions also require
+the captured observation revision, then use broker confirmation/registration as
+before. Launches still resolve the SavedId immediately before requesting launch,
+so current opaque AppId rotation remains supported. Existing CAS persistence,
+curation, cleanup and launch-result handling are shared with the bounded Catalog
+workflow. No action uses the current item at an old row index.
+
+The ordinary page initially focuses its collection ID. Deliberate selection
+changes use a keyed `FocusTarget`/`Enter` request; ordinary data refreshes do not
+continually re-enter the list. When a still-present key moves to a new query, the
+existing one-shot intent is kept valid with the same request ID, so a host that
+already consumed it does not replay the focus move. The native host owns deep
+focus and scroll memory.
+
+Games & Apps tests retain the actual empty-child indexed parent. Semantic
+inspection acquires bounded ranges through `WidgetIndexedCollectionTestHost` and
+keeps those fragments in a test-only side table, rather than fabricating inline
+children in the production snapshot. Styling checks use the installed widget WRSS
+and platform theme for both the parent and an actual deep range. Launch and
+running-add regressions route acquired leases against mocked host services; no
+real applications or user curation state are changed by those tests.

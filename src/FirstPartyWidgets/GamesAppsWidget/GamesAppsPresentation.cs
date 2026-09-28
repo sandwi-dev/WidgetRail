@@ -30,7 +30,8 @@ internal sealed record GamesAppsPresentationState(
     bool HasNextPage,
     bool CanLoadPrevious,
     WidgetLifecycleState LifecycleState,
-    GamesAppsToastNotice? Toast);
+    GamesAppsToastNotice? Toast,
+    IndexedCollectionElement? Collection = null);
 
 internal static class GamesAppsPresentation
 {
@@ -205,11 +206,7 @@ internal static class GamesAppsPresentation
                 state.LibraryMutationBusy ||
                 state.LifecycleState != WidgetLifecycleState.Interactive);
 
-        var tiles = curated.Select(item => LibraryTile(state, item)
-            .CollectionItem(new WidgetCollectionItemKey(LibraryElementId(item.SavedId)))).ToArray();
-        return UI.CollectionGrid("games.library.scroll", GridMinimumColumnWidth, 90,
-                GridMaximumColumns, tiles)
-            .Classes("games-page-scroll", "games-library-scroll", "games-collection-scroll");
+        return state.Collection ?? throw new InvalidOperationException("Library requires its captured indexed source.");
     }
 
     private static WidgetElement RenderCatalogContent(
@@ -229,14 +226,11 @@ internal static class GamesAppsPresentation
                     WidgetGlyph.Play),
                 state.LifecycleState != WidgetLifecycleState.Interactive);
 
+        if (running)
+            return state.Collection ?? throw new InvalidOperationException("Running requires its captured indexed source.");
         var curated = state.LibrarySavedIds.ToHashSet(StringComparer.Ordinal);
         var tiles = state.Items.Select(item => CatalogTile(
             state, item, running, curated.Contains(item.SavedId))).ToArray();
-        if (running)
-            return UI.CollectionGrid("games.running.scroll", GridMinimumColumnWidth, 90,
-                    GridMaximumColumns, tiles.Select((tile, index) => tile.CollectionItem(
-                        new WidgetCollectionItemKey(CatalogElementId(state.Items[index].SavedId)))).ToArray())
-                .Classes("games-page-scroll", "games-running-scroll", "games-collection-scroll");
         var children = new List<WidgetElement>();
         if (state.CanLoadPrevious)
             children.Add(PageButton(
@@ -276,7 +270,7 @@ internal static class GamesAppsPresentation
             .Classes("games-route-progress");
     }
 
-    private static ActionSurfaceElement LibraryTile(
+    internal static ActionSurfaceElement LibraryTile(
         GamesAppsPresentationState state,
         WidgetAppLibraryItem item)
     {
@@ -311,7 +305,7 @@ internal static class GamesAppsPresentation
                 : "is-application");
     }
 
-    private static ActionSurfaceElement CatalogTile(
+    internal static ActionSurfaceElement CatalogTile(
         GamesAppsPresentationState state,
         WidgetAppLibraryItem item,
         bool running,
@@ -492,12 +486,13 @@ internal static class GamesAppsPresentation
             var saved = selectedLibraryItem?.SavedId ?? state.LibrarySavedIds.FirstOrDefault(savedId =>
                 state.Items.Any(item => string.Equals(
                     item.SavedId, savedId, StringComparison.Ordinal)));
-            return saved is null ? "games.state.action" : LibraryElementId(saved);
+            return saved is null ? "games.state.action" : "games.library.scroll";
         }
         if (state.Items.Count == 0)
             return page == GamesAppsPage.Running
                 ? "games.running.empty.action"
                 : "games.catalog.empty.action";
+        if (page == GamesAppsPage.Running) return "games.running.scroll";
         if (page == GamesAppsPage.Catalog && state.CanLoadPrevious)
             return "games.previous-page";
         var selected = state.Items.FirstOrDefault(item => string.Equals(
@@ -516,7 +511,7 @@ internal static class GamesAppsPresentation
                 item.SavedId, savedId, StringComparison.Ordinal)));
         return firstSavedId is null
             ? contentEntryFocusId
-            : LibraryElementId(firstSavedId);
+            : "games.library.scroll";
     }
 
     private static string DestinationId(GamesAppsPage page) => page switch

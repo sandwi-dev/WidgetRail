@@ -27,7 +27,7 @@ public enum GamesAppsPage
 /// bounded names, conservative kinds, and opaque host IDs. Listing and launch
 /// remain separate consent-gated broker operations.
 /// </summary>
-public sealed class GamesAppsWidget : Widget
+public sealed partial class GamesAppsWidget : Widget
 {
     private const string RetryActionId = "games.retry";
     private const string RefreshCatalogActionId = "games.refresh-catalog";
@@ -88,6 +88,8 @@ public sealed class GamesAppsWidget : Widget
     internal GamesAppsWidget(TimeProvider timeProvider)
     {
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _indexedLibrary = CreateAppCollection("games.source.library", GamesAppsPage.Library);
+        _indexedRunning = CreateAppCollection("games.source.running", GamesAppsPage.Running);
         _navigation = CreateNavigatorWithOptions(
             "games.navigation",
             GamesAppsPage.Library,
@@ -126,6 +128,7 @@ public sealed class GamesAppsWidget : Widget
     {
         var navigation = _navigation.Value;
         GamesAppsPresentationState presentation;
+        FocusGroupEntryRequest? focusRequest;
         lock (_gate)
         {
             presentation = new GamesAppsPresentationState(
@@ -144,6 +147,8 @@ public sealed class GamesAppsWidget : Widget
                 _catalog.CanLoadPrevious,
                 LifecycleState,
                 _toast);
+            presentation = PrepareIndexedPresentation(presentation);
+            focusRequest = ResolveIndexedFocusRequest(navigation, presentation);
         }
         var view = GamesAppsPresentation.Render(presentation);
         var scoped = _navigation.Scope(navigation, view.Root);
@@ -154,7 +159,7 @@ public sealed class GamesAppsWidget : Widget
             InitialFocusId = navigation.Revision == 0
                 ? view.InitialFocusId
                 : navigation.InitialFocusId,
-            FocusGroupEntryRequest = navigation.FocusGroupEntryRequest,
+            FocusGroupEntryRequest = focusRequest,
         };
     }
 
@@ -376,7 +381,7 @@ public sealed class GamesAppsWidget : Widget
         }
     }
 
-    private async Task RemoveCuratedAsync(string appId, CancellationToken cancellationToken)
+    private async Task RemoveCuratedAsync(string appId, CancellationToken cancellationToken, AppActionOrigin? origin = null)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
@@ -398,6 +403,7 @@ public sealed class GamesAppsWidget : Widget
             var rejected = false;
             lock (_gate)
             {
+                if (!IsAppActionCurrentLocked(origin)) return;
                 if (Page != GamesAppsPage.Library) return;
                 item = _items.FirstOrDefault(candidate =>
                     string.Equals(candidate.AppId, appId, StringComparison.Ordinal));
@@ -1533,7 +1539,7 @@ public sealed class GamesAppsWidget : Widget
         ScheduleToastExpiry(notice);
     }
 
-    private async Task AddRunningAsync(string savedId, CancellationToken cancellationToken)
+    private async Task AddRunningAsync(string savedId, CancellationToken cancellationToken, AppActionOrigin? origin = null)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
@@ -1548,6 +1554,7 @@ public sealed class GamesAppsWidget : Widget
             string? observationRevision;
             lock (_gate)
             {
+                if (!IsAppActionCurrentLocked(origin)) return;
                 if (Page != GamesAppsPage.Running ||
                     _libraryItems.Any(item => item.SavedId == savedId)) return;
                 observationRevision = _runningRevision;
@@ -1793,7 +1800,7 @@ public sealed class GamesAppsWidget : Widget
             ToastTone.Danger);
     }
 
-    private async Task LaunchAsync(string appId, CancellationToken cancellationToken)
+    private async Task LaunchAsync(string appId, CancellationToken cancellationToken, AppActionOrigin? origin = null)
     {
         if (LifecycleState != WidgetLifecycleState.Interactive) return;
         using var commandLifetime = CancellationTokenSource.CreateLinkedTokenSource(
@@ -1810,6 +1817,7 @@ public sealed class GamesAppsWidget : Widget
             if (!acquired) return;
             lock (_gate)
             {
+                if (!IsAppActionCurrentLocked(origin)) return;
                 selected = _items.FirstOrDefault(item => item.AppId == appId);
                 if (selected is null || !_resolvedSavedIds.Contains(selected.SavedId) ||
                     LifecycleState != WidgetLifecycleState.Interactive)
