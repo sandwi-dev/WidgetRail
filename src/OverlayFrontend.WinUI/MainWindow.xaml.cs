@@ -73,7 +73,8 @@ public sealed partial class MainWindow : Window
         else if (validateContextMenu) RootFrame.Content = new Validation.ContextMenuControlValidationPage();
         else if (shellConfiguration is not null)
         {
-            var page = new Shell.OverlayShellPage(Shell.OverlayShellOptions.Load(shellConfiguration));
+            var page = new Shell.OverlayShellPage(Shell.OverlayShellOptions.Load(shellConfiguration),
+                unchecked((ulong)WinRT.Interop.WindowNative.GetWindowHandle(this)));
             RootFrame.Content = page;
             ShellCard.Style = (Style)ShellRoot.Resources["ProductionShellCardStyle"];
             ShellCard.Margin = new Thickness(16);

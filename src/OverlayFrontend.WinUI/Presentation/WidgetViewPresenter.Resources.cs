@@ -28,6 +28,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (ReferenceEquals(waitingEntry, binding)) ClearEntryLayoutWait();
         RetireMediaViewport(binding);
+        if (binding.Element is Previews.WidgetWindowPreview preview) preview.Dispose();
         RetireComputedStyles(binding);
         if (buttonIcons.Remove(binding, out var buttonIcon)) buttonIcon.Dispose();
         if (binding.Element is WidgetPackageIconView packageIcon) packageIcon.Dispose();

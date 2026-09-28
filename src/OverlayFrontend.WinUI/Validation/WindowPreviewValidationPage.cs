@@ -52,7 +52,7 @@ internal sealed partial class WindowPreviewValidationPage : Page, IAsyncDisposab
         AutomationProperties.SetAutomationId(status, "Preview.Status");
         AutomationProperties.SetAutomationId(canvas, "Preview.Viewport");
         var buttons = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, MaximumRowsOrColumns = 7, ItemWidth = 105, ItemHeight = 38 };
-        foreach (var command in new[] { "Resize", "Transform", "Hide", "Show", "Expire", "Resume", "Deny", "Allow", "Exclude", "Restore", "Device", "Unload", "Reload", "Budget", "Collapse", "Expand", "Viewport" })
+        foreach (var command in new[] { "Resize", "Transform", "Hide", "Show", "Expire", "Resume", "Deny", "Allow", "Exclude", "Restore", "Device", "Unload", "Reload", "Budget", "Collapse", "Expand", "Viewport", "Presenter", "PresenterUpdate", "PresenterReplace", "PresenterRemove", "PresenterRestore" })
         {
             var button = new Button { Content = command, Margin = new(2) };
             AutomationProperties.SetAutomationId(button, "Preview." + command);
@@ -118,6 +118,11 @@ internal sealed partial class WindowPreviewValidationPage : Page, IAsyncDisposab
         try
         {
             var before = preview.InspectNative();
+            if (command.StartsWith("Presenter", StringComparison.Ordinal))
+            {
+                await PresenterCommandAsync(command);
+                Check(true, command + " completed"); Update(command); return;
+            }
             switch (command)
             {
                 case "Resize":
@@ -246,12 +251,12 @@ internal sealed partial class WindowPreviewValidationPage : Page, IAsyncDisposab
                     case "set-widget-lifecycle":
                         type = "snapshot";
                         var snapshot = new ViewSnapshot { Sequence = ++sequence, WidgetInstanceId = Descriptor.InstanceId, ActiveInputScopeId = "root",
-                            Root = new() { Id = "root", Kind = ViewNodeKind.Stack, Children = targets.Keys.Select(id => new ViewNode { Id = id, Kind = ViewNodeKind.WindowPreview,
+                            Root = presenterRoot ?? new() { Id = "root", Kind = ViewNodeKind.Stack, Children = targets.Keys.Select(id => new ViewNode { Id = id, Kind = ViewNodeKind.WindowPreview,
                                 WindowId = id, PreviewAspectRatio = 1.6, ImageFit = ImageFit.Cover, AccessibilityLabel = "Owned fixture window" }).ToArray() } };
                         using (var serialized = JsonDocument.Parse(SnapshotJson.Serialize(snapshot)))
                             body = new { widgetId = Descriptor.Id, transactionKind = "ordinaryCheckpoint", baseSequence = 0, recoveryOriginSequence = 0,
                                 snapshot = serialized.RootElement.Clone(), renderStyles = new Dictionary<string, BridgeNodeRenderStyles>(),
-                                windowPreviews = targets.ToDictionary(pair => pair.Key, pair => new { handle = pair.Value.Handle.ToString("x", CultureInfo.InvariantCulture),
+                                windowPreviews = targets.Where(pair => snapshot.Root.Children.Any(node => node.WindowId == pair.Key)).ToDictionary(pair => pair.Key, pair => new { handle = pair.Value.Handle.ToString("x", CultureInfo.InvariantCulture),
                                     processId = pair.Value.ProcessId, processCreated = pair.Value.ProcessCreated.ToString("x", CultureInfo.InvariantCulture), className = pair.Value.ClassName }) };
                         break;
                     case "stop": await ReplyAsync(request.RequestId, type, body); return;
@@ -287,6 +292,7 @@ internal sealed partial class WindowPreviewValidationPage : Page, IAsyncDisposab
     public async ValueTask DisposeAsync()
     {
         if (retired) return; retired = true;
+        if (widgetPresenter is not null) await widgetPresenter.DisposeAsync();
         if (renderer is not null) await renderer.DisposeAsync();
         if (captures is not null) await captures.DisposeAsync();
         if (session is not null) await session.DisposeAsync();

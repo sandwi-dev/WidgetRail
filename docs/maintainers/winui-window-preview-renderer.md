@@ -7,6 +7,19 @@ not an interactive view into the captured application.
 
 ## Integration
 
+The production shell now owns this service and creates one renderer for its active
+widget. It opts `BridgeProcessOptions.WindowPreviews` in only after the capture
+service initializes successfully. `WidgetViewPresenter` supplies its committed
+frame; `WidgetWindowPreview` preserves the native slot for compatible publications
+and replaces capture when the admitted target or image fit changes. Shell hiding,
+widget replacement, catalog removal and shutdown all retire demand before session
+teardown. Hidden/unloaded/offscreen slots stop the binding timer and native polling
+after removal, resuming from demand events.
+
+This covers ordinary widget roots, including Task Switcher declarations. Indexed
+range and pinned/focus-fragment previews still need their own admitted target
+inventory and shared lifecycle; those slots remain noninteractive placeholders.
+
 Create one shell-owned `WindowPreviewCaptureService`, then call its
 `CreateRenderer` with each widget's `WidgetPresentationSession` and trusted host
 HWND. All renderers share its device, eight slots and aggregate resource budget.
@@ -114,3 +127,11 @@ reported its dispatcher-blocked phase; afterward the authored magenta placeholde
 returned. Eight-source admission was exercised across two renderer instances.
 The frontend analyzer build completed without warnings or errors. These results
 cover the owned fixture, not arbitrary user applications or real driver removal.
+
+The combined production-presenter checkpoint passes 24 state/pixel stages and 41
+fixture assertions, including compatible updates, identity replacement, removal,
+reappearance and three idle-work assertions. Screenshots were inspected at 125%
+scaling (`artifacts/winui-preview/presenter-integration`). Production shell browse
+regressions also pass six Playnite Library/tray/details checks and five YouTube
+Music checks; these do not establish Task Switcher physical acceptance. Managed
+session and shell suites pass 189 and 24 tests respectively.

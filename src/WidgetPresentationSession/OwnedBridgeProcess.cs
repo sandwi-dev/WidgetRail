@@ -7,6 +7,8 @@ namespace WidgetRail.WidgetPresentationSession;
 public sealed record BridgeProcessOptions(string InstallationRoot, string SettingsRoot, string InstalledCatalogRoot)
 {
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(10);
+    /// <summary>Opt in only when the frontend owns a permission-checked capture renderer.</summary>
+    public bool WindowPreviews { get; init; }
 
     internal ProcessStartInfo CreateStartInfo(string pipeName)
     {
@@ -71,7 +73,7 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(options.ConnectTimeout);
         var connection = WidgetPresentationSession.ConnectAsync(pipe,
-            new() { ClientName = "WidgetRail.WinUI", ConnectTimeout = options.ConnectTimeout }, deadline.Token);
+            new() { ClientName = "WidgetRail.WinUI", ConnectTimeout = options.ConnectTimeout, WindowPreviews = options.WindowPreviews }, deadline.Token);
         var exited = child.WaitForExitAsync(deadline.Token);
         try
         {

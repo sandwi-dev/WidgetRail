@@ -54,35 +54,38 @@ validation. It is not yet a complete replacement for the native overlay.
   checks with inspected screenshots. Real-provider fullscreen and production shell
   routing/placement still need joint verification. Pinned transfer is unfinished.
   See [fullscreen media](winui-fullscreen-media.md).
-- **Window previews:** session target/permission admission is integrated but production
-  capture is not enabled. The separate GPU-renderer lane passes 15 native policy checks
-  and root's 19-stage pixel run, including expiry while the dispatcher is blocked.
+- **Window previews:** the production shell enables target/permission admission after
+  its shared GPU capture owner initializes. Ordinary widget declarations now map to
+  native preview slots with target replacement and deterministic retirement. The
+  integrated renderer passes 15 native policy checks and 24 state/pixel stages (41
+  fixture assertions), including expiry while the dispatcher is blocked and idle
+  polling/binding suspension. Playnite/Music browse regressions pass six/five checks.
   Imported swapchains are opaque: safety blanking is black during a UI stall, with the
   authored fallback restored after dispatch resumes. Transparent DrawingSurface output
-  was rejected because it retained expired pixels while blocked. Renderer integration
-  and an idle-work review remain. Task-window activation already uses the shared native
-  identity/foreground policy; full Task Switcher acceptance awaits preview integration.
+  was rejected because it retained expired pixels while blocked. Task-window activation
+  uses the shared native identity/foreground policy; full Task Switcher acceptance
+  remains. Indexed/pinned/focus-fragment capture needs separate admitted inventory.
 - **Managed gates:** latest relevant integrated suites pass 189 presentation-session,
   24 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 83 Spotify, 49 YouTube,
   138 SDK and 17 indexed bridge checks. Counts identify their recorded checkpoint;
   affected suites must run again after later contract changes. Analyzer builds are clean.
 
 Remaining product work includes continuation-source integration/adoption, preview
-integration, pinned projections/media ownership, radial tray and complete shell
+coverage beyond ordinary roots, pinned projections/media ownership, radial tray and complete shell
 appearance/backdrop behavior, remaining styling, real-provider workflows, full
 controller/performance/memory/accessibility validation and packaging. Main and the
 installed native candidate are untouched; fixture passes are not migration acceptance.
 
 ## Active implementation lanes
 
-- Window previews: native GPU-backed capture, permission renewal and target lifetime,
-  with controlled helper-window validation before production wiring.
+- Window previews: ordinary production wiring and controlled pixel validation complete;
+  broader projection inventory and real Task Switcher workflows remain.
 - Continuation collections: explicit discovered-prefix SDK/wire lifecycle, native
   incremental loading and YouTube Discover adoption. Spotify's other cursor routes
   follow after this contract is proven; its indexed Queue is already integrated.
-- Widget-local modal exits: compositor motion with immediate scope retirement and
-  safe close/reopen behavior.
-- Root integration: fullscreen media, production integration and regression checks.
+- Depth styling: authored shadows and per-edge borders through native composition.
+- Pinned authority: independent projections and exact-layout action admission.
+- Root integration: combined production regression checks and remaining shell behavior.
 
 After these checkpoints, remaining feature coverage includes Spotify and YouTube
 video collection adoption, WindowPreview, pinned/fullscreen projections, radial

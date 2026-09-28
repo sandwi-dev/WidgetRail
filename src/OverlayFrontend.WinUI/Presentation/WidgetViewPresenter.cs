@@ -43,6 +43,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private readonly bool presentationOnly;
     private readonly double nativeBaseFontSize;
     public PresentationSession? Session { get; set; }
+    internal Previews.WindowPreviewRenderer? WindowPreviews { get; set; }
     public Func<WidgetActionRequest, Task>? DispatchActionAsync { get; set; }
     public Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
     internal bool IsInteractionCurrent(WidgetPresentationAuthority authority) => !disposed && !applying &&
@@ -149,6 +150,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             declarations = plan;
             bindings = nextBindings;
             frame = next;
+            if (!presentationOnly) WindowPreviews?.Apply(next);
             UpdateResponsiveVisibility();
             foreach (var scope in remembered.Keys.ToArray())
                 if (!bindings.TryGetValue(remembered[scope].Id, out var member) || member.Identity != remembered[scope])
@@ -365,6 +367,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.Slider: element = presentationOnly ? new TextBlock() : CreateSlider(declaration.Identity, token); break;
             case ViewNodeKind.Image: element = new Image(); break;
             case ViewNodeKind.MediaViewport: element = new Media.WidgetMediaViewport(); break;
+            case ViewNodeKind.WindowPreview: element = new Previews.WidgetWindowPreview(); break;
             case ViewNodeKind.Text: element = new TextBlock { TextWrapping = TextWrapping.Wrap }; break;
             case ViewNodeKind.Progress: element = new ProgressBar(); break;
             case ViewNodeKind.LoadingIndicator: element = new ProgressRing { IsActive = true }; break;
@@ -387,6 +390,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (binding.Children is WidgetPosterPanel poster) UpdatePoster(poster, node);
         ApplySizeAndTypography(element, node);
         if (element is Media.WidgetMediaViewport viewport) UpdateMediaViewport(viewport, node, binding.Identity.Scope);
+        if (element is Previews.WidgetWindowPreview preview) preview.Configure(presentationOnly ? null : WindowPreviews, frame!, node);
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
         if (element is FontIcon icon) WidgetGlyphs.Apply(icon, node, playStationPrompts);
         if (element is WidgetPackageIconView packageIcon) UpdateNativeIcon(packageIcon, node);
@@ -395,7 +399,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         {
             control.IsEnabled = node.IsDisabled != true && node.IsBusy != true;
             control.IsTabStop = node.IsFocusable && binding.Identity.Scope == frame!.Authority.ActiveInputScopeId;
-            control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport) && (!node.IsFocusable || binding.Identity.Scope == frame!.Authority.ActiveInputScopeId);
+            control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview) && (!node.IsFocusable || binding.Identity.Scope == frame!.Authority.ActiveInputScopeId);
         }
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);
         if (element is Button entry && node.Kind == ViewNodeKind.TextEntry) entry.Content = TextEntryLabel(node);
@@ -439,7 +443,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 || node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null
                 || node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll or ViewNodeKind.Button or ViewNodeKind.ActionSurface
                     or ViewNodeKind.Slider or ViewNodeKind.ModalLayer or ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
-                    or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ControllerGlyph or ViewNodeKind.Icon or ViewNodeKind.MediaViewport))
+                    or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ControllerGlyph or ViewNodeKind.Icon or ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview))
                 throw new NotSupportedException($"WinUI presentation for {node.Kind} with these declarations is not implemented.");
             var scope = node.InputScopeId ?? inheritedScope;
             var path = node.CollectionItemKey is { } key ? itemPath + key.Length + ":" + key : itemPath;

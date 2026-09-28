@@ -29,12 +29,14 @@ internal sealed class WindowPreviewRenderer : IAsyncDisposable
     // Must be the exact frame currently displayed by the trusted presenter.
     internal void Apply(WidgetPresentationFrame frame) { lock (gate) { if (!retired) displayed = frame; } }
     internal WindowPreviewSurface CreateSurface(string id, ImageFit fit)
+        => TryCreateSurface(id, fit) ?? throw new InvalidOperationException("The displayed window preview is unavailable or exceeds capture capacity.");
+    internal WindowPreviewSurface? TryCreateSurface(string id, ImageFit fit)
     {
         lock (gate)
         {
             ObjectDisposedException.ThrowIf(retired, this);
             if (surfaces.Count >= 64 || displayed?.WindowPreviews.GetValueOrDefault(id) is not { } target)
-                throw new InvalidOperationException("The displayed window preview is unavailable or exceeds capture capacity.");
+                return null;
             var surface = new WindowPreviewSurface(engine, session, target, hostWindow, fit);
             surface.SetOwnerVisible(enabled);
             surfaces.Add(surface); return surface;

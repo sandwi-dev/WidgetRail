@@ -108,7 +108,8 @@ try {
         @('Resize',$true), @('Transform',$true), @('Hide',$false), @('Show',$true),
         @('Expire',$false), @('Resume',$true), @('Deny',$false), @('Allow',$true),
         @('Exclude',$false), @('Restore',$true), @('Device',$true),
-        @('Unload',$false), @('Reload',$true), @('Budget',$true), @('Collapse',$false), @('Expand',$true), @('Viewport',$true)
+        @('Unload',$false), @('Reload',$true), @('Budget',$true), @('Collapse',$false), @('Expand',$true), @('Viewport',$true),
+        @('Presenter',$true), @('PresenterUpdate',$true), @('PresenterReplace',$false), @('PresenterRemove',$false), @('PresenterRestore',$true)
     )) {
         $stage = [string]$entry[0]
         winapp ui invoke "Preview.$stage" -w $hwnd --json | Out-File (Join-Path $OutputDirectory "$stage-invoke.json")
