@@ -1,5 +1,29 @@
 # WinUI shell navigation and preferences
 
+## Controller delivery ownership
+
+The platform adapter may sample a visible overlay's controller while another
+application is foreground. Sampling does not authorize navigation or actions.
+`PlatformInputPump` delivers ordinary controller frames only while visible and
+foreground, and stops an in-progress drain when ownership is lost. Guide keeps
+its independent platform event path. Reacquiring foreground primes the existing
+native tracker before delivery, so a held control from another application is
+not replayed as a new overlay press. Foreground is process-wide to include native
+popups and the existing owned peer window; the shell still selects the input scope.
+
+`--trace-controller-input` enables bounded adapter navigation and XAML key/focus
+observations in the existing asynchronous controller diagnostic stream. It records
+key kinds and automation identities, not entered text or widget labels. This is a
+diagnostic option, not an additional input reader or action queue. The initial
+physical trace showed background navigation but did not capture duplicate gamepad
+key routing; the reported duplicate movement still needs physical confirmation.
+
+The managed platform-client suite passes 30 tests including background admission,
+foreground reacquisition, hidden-window ownership and explicit reopen boundaries.
+Physical controller behavior and the native routing regression remain separate gates.
+
+## Tray and widget interaction
+
 The shell distinguishes browsing a widget in the tray from entering its controls.
 Native tray focus selects a visible widget preview. It retains tray focus through
 worker publications; pointer, accessibility or controller activation explicitly

@@ -11,10 +11,13 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     private readonly DispatcherQueueTimer navigationTimer;
     private readonly DispatcherQueueTimer guideTimer;
     private readonly nint ownedWindow;
+    private readonly ControllerInputOwnership inputOwnership = new();
     private readonly PlatformInputDiagnostics diagnostics = new(PlatformInputDiagnostics.DefaultPath);
     private OverlayPlatformSession? session;
     private volatile bool closed;
     private bool visible;
+    private int navigationTraceRemaining = Environment.GetCommandLineArgs().Contains("--trace-controller-input") ? 256 : 0;
+    internal void TraceInput(string message) => diagnostics.Write(message);
     public event Action<ControllerFrame>? FrameReceived;
     public event Action? ToggleRequested;
     public event Action<Exception>? Failed;
@@ -61,10 +64,13 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     {
         if (closed || session is null) return;
         visible = value;
-        session.SetWindowState(value, IsForegroundProcess());
+        var foreground = IsForegroundProcess();
+        session.SetWindowState(value, foreground);
+        inputOwnership.Reset();
+        var ownership = inputOwnership.Update(value, foreground);
         if (value)
         {
-            session.PrimeController(IsForegroundProcess(), Now);
+            if (ownership.Prime) session.PrimeController(true, Now);
             navigationTimer.Start();
         }
         else navigationTimer.Stop();
@@ -91,12 +97,22 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
         if (session is null || !visible) return;
         var foreground = IsForegroundProcess();
         session.SetWindowState(true, foreground);
+        var ownership = inputOwnership.Update(true, foreground);
+        // Foreground restoration is a fresh input boundary. Prime held state so
+        // input used in another application cannot become a new overlay press.
+        if (ownership.Prime) session.PrimeController(true, Now);
         session.RetryPendingNotifications();
         for (var count = 0; count < 16; ++count)
         {
             var frame = session.ReadController(foreground, Now);
-            FrameReceived?.Invoke(frame);
-            if (closed) return;
+            if (navigationTraceRemaining > 0 && (frame.DpadNavigation.Phase != NavigationPhase.None || frame.StickNavigation.Phase != NavigationPhase.None))
+            {
+                --navigationTraceRemaining;
+                diagnostics.Write($"Adapter navigation delivered={ownership.Deliver} dpad={frame.DpadNavigation.Direction}/{frame.DpadNavigation.Phase} stick={frame.StickNavigation.Direction}/{frame.StickNavigation.Phase} path={frame.ReadPath} buttons={frame.State.Buttons:X4} pending={frame.RemainingFrames}");
+            }
+            if (ownership.Deliver) FrameReceived?.Invoke(frame);
+            if (closed || !visible) return;
+            if (ownership.Deliver && !IsForegroundProcess()) { inputOwnership.Reset(); return; }
             if (frame.RemainingFrames == 0) break;
         }
     }

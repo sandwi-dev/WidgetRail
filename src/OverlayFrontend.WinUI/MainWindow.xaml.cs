@@ -8,6 +8,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly Microsoft.UI.System.ThemeSettings themeSettings;
     private readonly Input.PlatformInputPump? input;
+    private readonly Input.ControllerInputTrace? controllerTrace;
     private readonly Validation.ControllerReplayScenario? replay;
     private bool closingAfterCleanup;
     private bool cleanupStarted;
@@ -143,6 +144,8 @@ public sealed partial class MainWindow : Window
         else RootFrame.Navigate(validateExternalSurface ? typeof(Validation.ExternalSurfacePage) :
             validateCollection ? typeof(Validation.CollectionValidationPage) :
             validateGridView ? typeof(Validation.GridViewValidationPage) : typeof(MainPage));
+        if (input is not null && Environment.GetCommandLineArgs().Contains("--trace-controller-input"))
+            controllerTrace = new(ShellRoot, input.TraceInput);
         AppWindow.Closing += (sender, args) =>
         {
             if (closingAfterCleanup || RootFrame.Content is not IAsyncDisposable resource) return;
@@ -168,6 +171,7 @@ public sealed partial class MainWindow : Window
         {
             themeSettings.Changed -= SystemThemeChanged;
             RetireOverlaySizing();
+            controllerTrace?.Dispose();
             input?.Dispose();
             replay?.Dispose();
             (RootFrame.Content as Validation.ExternalSurfacePage)?.Retire();
