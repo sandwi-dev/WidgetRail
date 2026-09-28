@@ -50,7 +50,11 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
             Check(FocusedId == "Widget.picker.Option.third", "popup boundary consumes navigation");
             Apply();
             Check(presenter.HasTransientControl, "unchanged snapshot preserves open menu");
-            presenter.ActivateFocused();
+            Check(await presenter.HandleControllerButtonAsync(ControllerButton.Y) && actions.Count == 0,
+                "popup captures parent shortcut before worker dispatch");
+            await presenter.HandleControllerButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
+            Check(actions.Count == 0, "release does not commit popup");
+            await presenter.HandleControllerButtonAsync(ControllerButton.A);
             await WaitAsync(() => actions.Count == 1);
             Check(actions[0].Action.ActionId == "choose.third" && actions[0].Action.SourceElementId == "picker" &&
                 actions[0].Action.InputScopeId == "page" && actions[0].Authority.SnapshotSequence == sequence,
@@ -62,7 +66,7 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
             await WaitAsync(() => actions.Count == 2);
             Check(actions[1].Action.ActionId == "choose.first", "selected option remains invokable");
             await OpenAsync();
-            Check(presenter.DismissTransientControl(), "back dismisses popup");
+            Check(await presenter.HandleControllerButtonAsync(ControllerButton.B), "back dismisses popup before parent input");
             await Task.Delay(150);
             Check(actions.Count == 2 && !presenter.DismissTransientControl(), "dismissal never commits or consumes a second back");
 

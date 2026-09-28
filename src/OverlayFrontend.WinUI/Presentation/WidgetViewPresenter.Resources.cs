@@ -50,12 +50,6 @@ internal sealed partial class WidgetViewPresenter
         return null;
     }
 
-    internal bool InvokeIndexedShortcut(ControllerButton button)
-    {
-        CancelGroupEntry();
-        return FindIndexedCollection()?.InvokeFocused(button) == true;
-    }
-
     private void UpdateImage(Binding binding, Image image, ViewNode node)
     {
         image.Stretch = node.ImageFit switch { ImageFit.Contain => Stretch.Uniform, ImageFit.Cover => Stretch.UniformToFill, _ => Stretch.Fill };

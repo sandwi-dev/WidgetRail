@@ -56,3 +56,19 @@ This is control correctness coverage, not production widget performance,
 physical controller acceptance, high-contrast visual acceptance, or complete
 popup feature parity. The real worker action transport and indexed-fragment
 popup routing still need integrated evidence.
+
+## Integrated validation and input entry
+
+The integration host exposes --validate-select. The native probe passes 17 checks,
+including popup precedence and release suppression through HandleControllerButtonAsync.
+Two initially invalid raw fixtures were corrected (missing selected accessibility value,
+and initial focus still naming the removed picker). No validator was relaxed.
+
+HandleControllerButtonAsync is the common normalized-button entry for ordinary widget
+shortcuts and indexed row input. Open popups consume buttons before either path; B closes
+the popup before a parent/modal action can run. Navigation uses MoveFocus. This does not
+read controllers or create another worker action queue. The real bridge/worker probe
+passes release suppression, ordinary shortcut entry and indexed ancestor dispatch while
+retaining the focused row. Evidence: artifacts/winui-surfaces/input-route-result.json.
+
+Production shell wiring, full popup icons and context menus remain separate work.

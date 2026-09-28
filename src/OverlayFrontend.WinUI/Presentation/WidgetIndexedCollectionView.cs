@@ -145,22 +145,22 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         if (args.ClickedItem is IndexedItem<WidgetIndexedRow> { Value: { } row }) _ = InvokeAsync(row, ControllerButton.A);
     }
     internal bool ActivateFocused() => InvokeFocused(ControllerButton.A);
-    internal bool InvokeFocused(ControllerButton button)
+    internal bool InvokeFocused(ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed)
     {
         if (view?.XamlRoot is null) return false;
         for (var focused = FocusManager.GetFocusedElement(view.XamlRoot) as DependencyObject;
              focused is not null && !ReferenceEquals(focused, view); focused = VisualTreeHelper.GetParent(focused))
             if (focused is SelectorItem container && containers.TryGetValue(container, out var item))
             {
-                if (item.Slot.Value is { } row) _ = InvokeAsync(row, button);
+                if (item.Slot.Value is { } row) _ = InvokeAsync(row, button, phase);
                 return true;
             }
         return false;
     }
-    private async Task InvokeAsync(WidgetIndexedRow row, ControllerButton button)
+    private async Task InvokeAsync(WidgetIndexedRow row, ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed)
     {
         if (disposed || !row.Lease.IsCurrent || source is null) return;
-        try { await row.Lease.AdmitInputAsync(source.Frame.Authority, row.Item.Key, button,
+        try { await row.Lease.AdmitInputAsync(source.Frame.Authority, row.Item.Key, button, phase,
             sequence: ++sequence, monotonicTimestampMicroseconds: Environment.TickCount64 * 1000); }
         catch (WidgetPresentationSessionException) when (!row.Lease.IsCurrent) { }
         catch (Exception error) { failed(error); }

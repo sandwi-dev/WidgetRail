@@ -32,6 +32,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
     private string logicalFocus = "not-run";
     private string groupedFocus = "not-run";
     private string surfaces = "not-run";
+    private string inputRoute = "not-run";
     private bool retired;
 
     public IndexedWidgetValidationPage(string pipe)
@@ -48,7 +49,12 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         var diagnostics = new Grid();
         diagnostics.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
         diagnostics.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        diagnostics.Children.Add(status); diagnostics.Children.Add(probe); Grid.SetColumn(probe, 1);
+        diagnostics.Children.Add(status);
+        var inputProbe = new Button { Content = "Check input route" };
+        AutomationProperties.SetAutomationId(inputProbe, "IndexedWidget.InputProbe");
+        inputProbe.Click += (_, _) => _ = ProbeInputRouteAsync();
+        var probes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { probe, inputProbe } };
+        diagnostics.Children.Add(probes); Grid.SetColumn(probes, 1);
         layout.Children.Add(diagnostics); layout.Children.Add(presenter);
         Content = layout;
         presenter.Failed = error => { failure = error.Message; Observe(); };
@@ -73,7 +79,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
                     break;
                 case VirtualKey.F6: Observe(); break;
                 case VirtualKey.F7: presenter.ActivateFocused(); break;
-                case VirtualKey.F8: presenter.InvokeIndexedShortcut(ControllerButton.X); break;
+                case VirtualKey.F8: _ = presenter.HandleControllerButtonAsync(ControllerButton.X, origin: ControllerInputOrigin.AccessibilityAutomation); break;
                 case VirtualKey.F9: presenter.MoveFocus(FocusNavigationDirection.Down); break;
                 case VirtualKey.F10: _ = ProbeNavigationAsync(); break;
                 case VirtualKey.F11: _ = RefreshContentAsync(); break;
@@ -329,6 +335,39 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         }
     }
 
+    private async Task ProbeInputRouteAsync()
+    {
+        if (inputRoute == "pending") return;
+        inputRoute = "pending"; Observe();
+        try
+        {
+            var parent = Descendants(presenter).OfType<Button>().Single(button => AutomationProperties.GetAutomationId(button) == "Widget.parent");
+            parent.Focus(FocusState.Keyboard);
+            var before = FindNode(session!.GetState("indexed-owned")!.LastGood!.Snapshot.Root, "calls")?.Text;
+            await presenter.HandleControllerButtonAsync(ControllerButton.LeftBumper, ControllerEventPhase.Released,
+                ControllerInputOrigin.AccessibilityAutomation, lifetime.Token);
+            await Task.Delay(100, lifetime.Token);
+            Check(FindNode(session.GetState("indexed-owned")!.LastGood!.Snapshot.Root, "calls")?.Text == before, "release invoked a press-only shortcut");
+            Check(await presenter.HandleControllerButtonAsync(ControllerButton.LeftBumper, origin: ControllerInputOrigin.AccessibilityAutomation,
+                cancellationToken: lifetime.Token), "ordinary shortcut was not admitted");
+            await Until(() => FocusId() == "Widget.items.Item.75");
+            await presenter.HandleControllerButtonAsync(ControllerButton.X, origin: ControllerInputOrigin.AccessibilityAutomation,
+                cancellationToken: lifetime.Token);
+            await Until(() => FindNode(session.GetState("indexed-owned")!.LastGood!.Snapshot.Root, "status")?.Text == "parent");
+            Check(FocusId() == "Widget.items.Item.75", "indexed ancestor shortcut moved focus");
+            inputRoute = "passed:3";
+        }
+        catch (Exception error) { inputRoute = "failed:" + error.Message; }
+        Observe();
+        string? FocusId() => FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused ? AutomationProperties.GetAutomationId(focused) : null;
+        static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+        async Task Until(Func<bool> condition)
+        {
+            var deadline = Environment.TickCount64 + 5000;
+            while (!condition()) { if (Environment.TickCount64 > deadline) throw new TimeoutException("Input route did not settle"); await Task.Delay(20, lifetime.Token); }
+        }
+    }
+
     private static ViewNode? FindNode(ViewNode? root, string id)
     {
         if (root is null || root.Id == id) return root;
@@ -355,7 +394,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
             calls = FindNode(frame?.Snapshot.Root, "calls")?.Text,
             columns = view?.ItemsPanelRoot is ItemsWrapGrid wrap ? wrap.MaximumRowsOrColumns : 1,
             revision = FindNode(frame?.Snapshot.Root, "items")?.IndexedCollection?.ContentRevision,
-            navigation, logicalFocus, groupedFocus, surfaces,
+            navigation, logicalFocus, groupedFocus, surfaces, inputRoute,
             groupCount = FindNode(frame?.Snapshot.Root, "items")?.IndexedGroups?.Count ?? 0,
         });
     }
