@@ -771,15 +771,15 @@ public sealed partial class YouTubeVideoWidget
         var query = _model.Value.Search.ActiveQuery;
         var page = await _application.SearchAsync(query, cursor?.Value, pageSize, cancellationToken)
             .ConfigureAwait(false);
+        // The provider exposes opaque forward continuations, not stable absolute
+        // positions. It filters invalid/duplicate results, and totalResults can
+        // change between calls. RetainedCount also stops growing after eviction.
+        // Let the cursor resource own its local traversal coordinates; neither
+        // value is authority for a finite indexed query or global scroll extent.
         return new WidgetCursorPage<YouTubeSearchItem>(
             page.Items,
             null,
-            page.NextPageToken is null ? null : new WidgetCollectionCursor(page.NextPageToken))
-        {
-            FirstItemIndex = direction == WidgetCursorDirection.After
-                ? _searchResults.Snapshot.Items.Count : 0,
-            TotalItemCount = page.TotalResults,
-        };
+            page.NextPageToken is null ? null : new WidgetCollectionCursor(page.NextPageToken));
     }
 
     private static WidgetResourceError MapSearchError(Exception exception) => exception switch
