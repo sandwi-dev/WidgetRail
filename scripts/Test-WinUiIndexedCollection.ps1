@@ -60,6 +60,25 @@ try {
     $reloaded=Observe '05-reloaded'
     Check 'evicted data reloads with stable logical position' ($reloaded.loads -gt $returned.loads -and $reloaded.focus -eq 600000 -and $reloaded.loaded -and $reloaded.y -ge -1 -and $reloaded.y+$reloaded.height -le $reloaded.viewport+1)
     Check 'deep traversal retains bounded data and containers' ($reloaded.enumerations -eq 0 -and $reloaded.peak -le 160 -and $reloaded.realized -lt 100 -and $reloaded.failures -eq 0)
+    Check 'evicted pages release their asynchronous data owners' ($reloaded.released -gt 0 -and $reloaded.acquired-$reloaded.released -le 5 -and $reloaded.duplicateReleases -eq 0)
+    Key F10
+    $deadline=[DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $refreshed=Observe '06-refreshed'
+        if($refreshed.detail -eq 'Details for row 600000; revision 1' -and $refreshed.released -gt $reloaded.released){break}
+        Start-Sleep -Milliseconds 50
+    } while([DateTime]::UtcNow -lt $deadline)
+    Check 'content revision updates the existing native row' ($refreshed.revision -eq 1 -and $refreshed.detail -eq 'Details for row 600000; revision 1')
+    Check 'content replacement preserves native focus and viewport' ($refreshed.focus -eq $reloaded.focus -and [Math]::Abs($refreshed.y-$reloaded.y) -le 1 -and [Math]::Abs($refreshed.offset-$reloaded.offset) -le 1)
+    Check 'content replacement releases obsolete data owners exactly once' ($refreshed.released -gt $reloaded.released -and $refreshed.duplicateReleases -eq 0 -and $refreshed.failures -eq 0)
+    Key F11
+    $deadline=[DateTime]::UtcNow.AddSeconds(12)
+    do {
+        $ownership=Observe '07-ownership'
+        if($ownership.lifetimeResult -ne 'pending'){break}
+        Start-Sleep -Milliseconds 50
+    } while([DateTime]::UtcNow -lt $deadline)
+    Check 'real dispatcher ownership and cancellation scenarios pass' ($ownership.lifetimeResult -eq 'passed:7')
     Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'indexed.png')) | Out-Null
     Ui @('invoke','Shell.Close') | Out-Null
 } finally {

@@ -7,9 +7,10 @@ using WidgetRail.WidgetUi.State.Collections;
 namespace WidgetRail.OverlayFrontend.WinUI.Collections;
 
 internal sealed record IndexedQueryIdentity(CollectionAuthority Authority, long Generation);
-internal readonly record struct IndexedRangeRequest(IndexedQueryIdentity Query, long RequestId, int StartIndex, int Count);
+internal readonly record struct IndexedRangeRequest(IndexedQueryIdentity Query, long RequestId, int StartIndex, int Count,
+    long ContentRevision = 0);
 internal sealed record IndexedRangeResult<T>(IndexedQueryIdentity Query, long RequestId, int StartIndex,
-    IReadOnlyList<KeyedCollectionItem<T>> Items) where T : notnull;
+    IReadOnlyList<KeyedCollectionItem<T>> Items, long ContentRevision = 0, IAsyncDisposable? Lifetime = null) where T : notnull;
 
 /// <summary>
 /// One immutable-count query and one native items control's demand. Cache eviction
@@ -33,6 +34,10 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
     private readonly Dictionary<int, Fetch> fetching = [];
     private readonly HashSet<Fetch> ownedFetches = [];
     private readonly HashSet<int> failedPages = [];
+    private readonly Dictionary<int, IndexedRangeResult<T>> pages = [];
+    private readonly object releaseGate = new();
+    private readonly HashSet<Task> releases = [];
+    private Exception? releaseFailure;
     private readonly int pageSize;
     private readonly int concurrency;
     private HashSet<int> demandedPages = [];
@@ -43,6 +48,7 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
     private long requestId;
     public int Count { get; }
     public IndexedQueryIdentity Query { get; }
+    public long ContentRevision { get; private set; }
     public int RangeNotifications { get; private set; }
     public int IndexReads { get; private set; }
     public int EnumerationCalls { get; private set; }
@@ -51,11 +57,12 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
     public int CompletedLoads { get; private set; }
     public int CancelledLoads { get; private set; }
     public int FailedLoads { get; private set; }
+    public int PendingReleases { get { lock (releaseGate) return releases.Count; } }
     public event EventHandler? StateChanged;
 
     public IndexedItemsSource(IndexedQueryIdentity query, int count, DispatcherQueue dispatcher,
         Func<IndexedRangeRequest, CancellationToken, Task<IndexedRangeResult<T>>> readRange,
-        int pageSize = 32, int concurrency = 4)
+        int pageSize = 32, int concurrency = 4, long contentRevision = 0)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(count);
         ArgumentNullException.ThrowIfNull(query);
@@ -64,11 +71,26 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         ArgumentException.ThrowIfNullOrWhiteSpace(query.Authority.WidgetInstanceId);
         ArgumentException.ThrowIfNullOrWhiteSpace(query.Authority.CollectionId);
         ArgumentOutOfRangeException.ThrowIfNegative(query.Generation);
+        ArgumentOutOfRangeException.ThrowIfNegative(contentRevision);
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(readRange);
         if (pageSize is < 1 or > 256 || concurrency is < 1 or > 8) throw new ArgumentOutOfRangeException(nameof(pageSize));
         if (!dispatcher.HasThreadAccess) throw new InvalidOperationException("Create items sources on their WinUI dispatcher.");
         Query = query; Count = count; this.dispatcher = dispatcher; this.readRange = readRange; this.pageSize = pageSize; this.concurrency = concurrency;
+        ContentRevision = contentRevision;
+    }
+
+    /// <summary>Refresh payloads without replacing logical slots, focus or scroll position.</summary>
+    public void RefreshContent(long revision)
+    {
+        CheckAccess();
+        if (revision < ContentRevision) throw new ArgumentOutOfRangeException(nameof(revision));
+        if (revision == ContentRevision) return;
+        ContentRevision = revision;
+        foreach (var fetch in fetching.Values) { fetch.Cancellation.Cancel(); ++CancelledLoads; }
+        fetching.Clear();
+        failedPages.Clear();
+        QueuePump();
     }
 
     [System.Diagnostics.CodeAnalysis.AllowNull]
@@ -126,6 +148,12 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
 
     private void Pump()
     {
+        foreach (var page in pages.Keys.ToArray())
+            if (!demandedPages.Contains(page))
+            {
+                Release(pages[page].Lifetime);
+                pages.Remove(page);
+            }
         foreach (var index in slots.Keys.ToArray())
             if (!demandedPages.Contains(index / pageSize)) slots.Remove(index);
         failedPages.RemoveWhere(page => !demandedPages.Contains(page));
@@ -138,11 +166,13 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
             }
         foreach (var page in demandOrder)
         {
-            if (ownedFetches.Count >= concurrency) break;
+            // Slow release cannot create an unbounded backlog of owned ranges.
+            if (ownedFetches.Count + PendingReleases >= concurrency) break;
             var start = page * pageSize;
             var length = Math.Min(pageSize, Count - start);
-            if (fetching.ContainsKey(page) || failedPages.Contains(page) || Enumerable.Range(start, length).All(index => slots.TryGetValue(index, out var slot) && slot.HasValue)) continue;
-            var fetch = new Fetch(new(Query, ++requestId, start, length));
+            if (fetching.ContainsKey(page) || failedPages.Contains(page) ||
+                pages.TryGetValue(page, out var loaded) && loaded.ContentRevision == ContentRevision) continue;
+            var fetch = new Fetch(new(Query, ++requestId, start, length, ContentRevision));
             fetching.Add(page, fetch);
             ownedFetches.Add(fetch);
             fetch.Task = FetchAsync(page, fetch);
@@ -161,6 +191,7 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         }
         catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var retained = false;
         if (dispatcher.TryEnqueue(() =>
         {
             try
@@ -170,7 +201,14 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
                     fetching.Remove(page);
                     if (failure is null && !fetch.Cancellation.IsCancellationRequested)
                     {
-                        try { Admit(fetch.Request, items!); ++CompletedLoads; }
+                        try
+                        {
+                            Admit(fetch.Request, items!);
+                            if (pages.Remove(page, out var previous)) Release(previous.Lifetime);
+                            pages.Add(page, items!);
+                            retained = true;
+                            ++CompletedLoads;
+                        }
                         catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
                     }
                     if (failure is not null && !fetch.Cancellation.IsCancellationRequested)
@@ -184,18 +222,27 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
             }
             finally
             {
+                if (!retained) Release(items?.Lifetime);
                 ownedFetches.Remove(fetch);
                 fetch.Cancellation.Dispose();
                 QueuePump();
                 completion.TrySetResult();
             }
         })) await completion.Task.ConfigureAwait(false);
-        else fetch.Cancellation.Dispose();
+        else
+        {
+            fetch.Cancellation.Dispose();
+            // Even after dispatcher shutdown, a delivered worker range has an
+            // explicit owner. The fetch task drains it before it can finish.
+            if (items?.Lifetime is { } lifetime)
+                await ReleaseUndeliveredAsync(lifetime).ConfigureAwait(false);
+        }
     }
 
     private void Admit(IndexedRangeRequest request, IndexedRangeResult<T> result)
     {
-        if (result is null || result.Query != Query || result.RequestId != request.RequestId || result.StartIndex != request.StartIndex)
+        if (result is null || result.Query != Query || result.RequestId != request.RequestId || result.StartIndex != request.StartIndex ||
+            result.ContentRevision != request.ContentRevision || request.ContentRevision != ContentRevision)
             throw new InvalidDataException("Indexed range returned different query or request authority.");
         if (result.Items is null || result.Items.Count != request.Count) throw new InvalidDataException("Indexed range returned a different count.");
         var copy = result.Items.ToArray();
@@ -243,11 +290,43 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         if (disposed) return;
         CheckAccess(); disposed = true;
         foreach (var fetch in ownedFetches) fetch.Cancellation.Cancel();
+        foreach (var page in pages.Values) Release(page.Lifetime);
+        pages.Clear();
         slots.Clear(); demandedPages.Clear(); demandOrder = []; failedPages.Clear(); fetching.Clear();
     }
     public ValueTask DisposeAsync()
     {
         Dispose();
-        return new(disposal ??= Task.WhenAll(ownedFetches.Select(fetch => fetch.Task).ToArray()));
+        return new(disposal ??= DrainAsync(ownedFetches.Select(fetch => fetch.Task).ToArray()));
+    }
+
+    private void Release(IAsyncDisposable? lifetime)
+    {
+        if (lifetime is null) return;
+        // Dispose may start pipe I/O; never run even its synchronous prefix on UI.
+        var task = Task.Run(() => ReleaseUndeliveredAsync(lifetime));
+        lock (releaseGate) releases.Add(task);
+        _ = task.ContinueWith(completed =>
+        {
+            lock (releaseGate) releases.Remove(completed);
+            dispatcher.TryEnqueue(() => { if (!disposed) QueuePump(); });
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    private async Task ReleaseUndeliveredAsync(IAsyncDisposable lifetime)
+    {
+        try { await lifetime.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        { lock (releaseGate) releaseFailure ??= error; }
+    }
+
+    private async Task DrainAsync(Task[] fetches)
+    {
+        await Task.WhenAll(fetches).ConfigureAwait(false);
+        Task[] pending;
+        lock (releaseGate) pending = releases.ToArray();
+        await Task.WhenAll(pending).ConfigureAwait(false);
+        lock (releaseGate)
+            if (releaseFailure is not null) throw new InvalidOperationException("An indexed range could not be released.", releaseFailure);
     }
 }

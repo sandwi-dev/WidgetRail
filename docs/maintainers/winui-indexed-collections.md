@@ -282,3 +282,24 @@ and item values. Each input must name the current worker snapshot after trusted
 origin/current binding validation, so retained data neither preserves obsolete
 page shortcuts nor prevents new page shortcuts from working. The bridge integration
 must perform that origin/current check before forwarding the worker sequence.
+
+### Native page ownership and content refresh
+
+`IndexedItemsSource` accepts an asynchronous lifetime with each range result.
+The source releases it on page eviction, successful replacement, rejected or
+cancelled delivery, and disposal. Release work runs outside the UI dispatcher;
+pending releases also count against preparation concurrency so slow cleanup
+cannot accumulate an unbounded queue of remote owners. Disposal drains actual
+fetches and releases, including a late result from a provider ignoring cancellation.
+
+`RefreshContent` advances only the content revision. Logical count and position,
+slot objects, native containers, focus and scroll offsets remain unchanged.
+Existing payload stays visible until a validated replacement arrives. The new
+result must match both its request and current revision, and keys cannot change at
+an already retained position. Changed membership/order still requires a new query.
+
+The native million-row check now also refreshes deep content and verifies exact
+focus/viewport preservation. Seven real-dispatcher ownership checks cover pending
+refresh, late cancellation, invalid replies and disposal; asynchronous owners are
+released exactly once. This validates the native data-source lifecycle, not yet a
+production widget's row templates, actions, artwork or performance.
