@@ -48,7 +48,7 @@ are untouched. Migration is active and incomplete.
   into the parent tree and exceeding its style budget. They remain display-only;
   live replacement retires their bindings. The fresh real package starts without
   Retry, and both its empty-state and saved-state transport probes pass.
-- Latest integrated managed gates: 157 Playnite tests, 135 session tests, 24 shell
+- Latest integrated managed gates: 157 Playnite tests, 159 session tests, 24 shell
   tests, 35 style tests. Package-icon transport is admitted by exact inventory/hash
   and bounded independently. OriginalColor Icon/Button/Select rendering is integrated
   with native icon checks and a 7-check/45-symbol glyph regression. ThemeTint now
@@ -84,12 +84,39 @@ are untouched. Migration is active and incomplete.
   performance/memory/accessibility validation and packaging.
 - Embedded-media document admission and ordered playback observations are integrated.
   Compatible snapshots retain document ownership; retirement is permanent and cancels
-  pending work. The full integrated session suite passes all 135 tests. Native browser
-  presentation is being validated separately; this is not production media acceptance.
+  pending work. The native WebView2 adapter is integrated; its lane passes 60 native
+  checks, including trusted activation, actual silent audio playback, parked updates,
+  strict requests/messages, retirement and native modal layering. Production shell
+  ownership and real provider playback remain unfinished.
 - Task-window activation is wired through the existing host effect, with native
   identity and age checks before and after hiding. See
   [task-window activation](winui-task-window-activation.md); full Task Switcher
   physical acceptance still awaits window-preview rendering.
+- Ordinary actions now retain their exact displayed frame across Interactive
+  acknowledgment. The session compares original/current semantic bindings; no input
+  is replayed or retargeted. Buttons, Select, text, slider and context-action call
+  sites use this contract. All 159 session and 24 shell tests pass; native integration
+  checks are queued behind the section-motion lane's exclusive UI deployment.
+- Indexed rows now support broker-owned app-library icons without widget callbacks.
+  Exact row lease, widget identity and broker registration guard resolution. Widget-owned
+  images still require a captured resolver. All 138 SDK and 17 indexed bridge tests
+  pass. Games & Apps adoption is underway separately.
+
+## Active implementation lanes
+
+- Section content/header/navigation-selection transitions: native compositor wiring
+  and production-widget validation. Dedicated outgoing presentation lifetime must
+  never retain action authority.
+- Embedded media: bounded shell ownership, native viewport placement and parking,
+  visibility/foreground/modal policy and connected validation.
+- Games & Apps: captured indexed Library/Running queries while retaining Catalog's
+  explicit provider paging, persisted authority and domain revalidation.
+
+After these checkpoints, remaining feature coverage includes Spotify and YouTube
+video collection adoption, WindowPreview, pinned/fullscreen projections, radial
+tray and shell appearance/backdrop behavior, remaining depth/background/dialog-exit
+motion, and full physical/performance/accessibility/package validation. The installed
+native product is still the usable product; this branch is not feature-complete.
 
 ## Checkpoint history
 
