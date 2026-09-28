@@ -21,7 +21,11 @@ internal sealed partial class OverlayShellPage
 
     internal void Receive(ControllerFrame frame)
     {
+        if (frame.Connected == 0) { trayHold.Reset(); shellOwnedReleases.Clear(); }
         if (retired || !visible || switching && interactive || frame.Connected == 0) { rightStick.Reset(); return; }
+        if (trayHold.Capturing && (frame.State.Buttons & 0x8000) == 0 && (frame.ReleasedButtons & 0x8000) == 0)
+        { trayHold.Reset(); shellOwnedReleases.Remove(ControllerButton.Y); }
+        _ = RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, !reordering, Environment.TickCount64));
         surface?.SetControllerFamily(frame.LastInputFamily);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
@@ -36,7 +40,7 @@ internal sealed partial class OverlayShellPage
         {
             if (IsMediaFullscreen) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = fullscreenView });
             else if (interactive) surface?.MoveFocus(next);
-            else FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
+            else if (!NavigateTray(next)) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
         }
         if (interactive && !IsMediaFullscreen && surface is { } current)
         {
@@ -57,20 +61,19 @@ internal sealed partial class OverlayShellPage
 
     private async Task RouteButtonAsync(ControllerButton button, ControllerEventPhase phase)
     {
+        if (phase == ControllerEventPhase.Released && shellOwnedReleases.Remove(button))
+        {
+            if (button == ControllerButton.Y)
+                await RunTrayHoldAsync(trayHold.Release(TrayGestureIdentity, !reordering, Environment.TickCount64));
+            return;
+        }
         if (retired || switching && interactive || !visible) return;
         try
         {
             if (RouteFullscreenButton(button, phase)) return;
             if (!interactive)
             {
-                if (phase != ControllerEventPhase.Pressed) return;
-                if (button == ControllerButton.B) HideRequested?.Invoke();
-                else if (button == ControllerButton.A)
-                {
-                    // Focus is the activation target; ListView selection does not
-                    // necessarily follow XY controller focus.
-                    if (FocusedTrayWidget() is { } descriptor) await SelectAsync(descriptor.Id);
-                }
+                await RouteTrayButtonAsync(button, phase);
                 return;
             }
             if (surface is null) return;

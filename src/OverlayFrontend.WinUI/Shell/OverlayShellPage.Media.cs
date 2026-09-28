@@ -17,7 +17,7 @@ internal sealed partial class OverlayShellPage
 
     private void InitializeFullscreenView()
     {
-        Grid.SetRowSpan(fullscreenView, 3);
+        Grid.SetRowSpan(fullscreenView, 4);
         ((Grid)Content).Children.Add(fullscreenView);
         fullscreenView.ExitRequested += () => mediaOwner?.ExitFullscreen();
         fullscreenView.CommandRequested += command => mediaOwner?.DispatchFullscreen(command);

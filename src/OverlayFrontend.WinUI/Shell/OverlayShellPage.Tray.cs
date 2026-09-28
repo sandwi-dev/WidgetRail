@@ -50,6 +50,7 @@ internal sealed partial class OverlayShellPage
         if (switching && interactive) return;
         SetInteractive(false);
         if (FocusedTrayWidget() is not { } descriptor) return;
+        if (descriptor.Id != requestedWidget) { trayHold.Cancel(); FinishTrayReorder(); CloseTrayMenu(false); }
         Tray.SelectedItem = descriptor;
         if (descriptor.Id != requestedWidget) _ = SelectAsync(descriptor.Id, enterWidget: false);
     }

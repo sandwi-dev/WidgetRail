@@ -10,7 +10,14 @@ $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $results = [Collections.Generic.List[object]]::new()
 function Ui([string[]]$Arguments) {
-    $raw = winapp ui @Arguments -a $AppPid --json
+    $target = @('-a', $AppPid)
+    if ($Arguments[0] -eq 'screenshot') {
+        $windows = winapp ui list-windows -a $AppPid --json | ConvertFrom-Json
+        $main = @($windows | Where-Object title -Like 'WidgetRail*WinUI frontend')
+        if ($main.Count -ne 1) { throw 'Could not identify the owned shell window.' }
+        $target = @('-w', $main[0].hwnd)
+    }
+    $raw = winapp ui @Arguments @target --json
     if ($LASTEXITCODE -ne 0) { throw "UI operation failed: $raw" }
     $value = ($raw -join "`n") | ConvertFrom-Json
     if ($Arguments[0] -eq 'wait-for' -and -not $value.found) { throw 'UI target did not appear.' }

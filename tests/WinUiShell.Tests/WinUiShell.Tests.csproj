@@ -10,6 +10,7 @@
     <ProjectReference Include="..\..\src\PlatformSettings\PlatformSettings.csproj" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\InteractionAdmission.cs" Link="InteractionAdmission.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ShellPreferences.cs" Link="ShellPreferences.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\TrayHoldGesture.cs" Link="TrayHoldGesture.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\FrontendArguments.cs" Link="FrontendArguments.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\OverlayShellOptions.cs" Link="OverlayShellOptions.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\RightStickScroll.cs" Link="RightStickScroll.cs" />

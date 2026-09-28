@@ -53,7 +53,10 @@ try {
         $null = Ui @('wait-for','Overlay.Status','--value','Playnite Library','-t','20000')
         $null = Ui @('invoke','Widget.playnite-library.destinations.compact-b718f1354f7247312eca086d')
         $null = ReadyRow "$collection.Item.0"
-        $null = Ui @('scroll',"$collection.Items",'--to','bottom')
+        # Take explicit native navigation ownership; End cancels any pending
+        # authored group entry just like user keyboard navigation does.
+        $null = Ui @('focus',"$collection.Item.0")
+        $null = Ui @('send-keys','end','--via','send-input')
         Start-Sleep -Milliseconds 800
         $tree = Ui @('inspect',"$collection.Items",'--interactive','--depth','3','--hide-offscreen')
         $rows = @($tree.windows.elements | Where-Object {

@@ -54,6 +54,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         preferencesStore = new(options.SettingsRoot);
         interactionAdmission = new(transitions);
         InitializeComponent();
+        InitializeTrayCommands();
+        UpdateTrayHelp();
         InitializeFullscreenView();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged += SystemAnimationsChanged;
         Tray.ItemsSource = catalogItems;
@@ -128,7 +130,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             {
                 if (existing.position != index) catalogItems.Move(existing.position, index);
                 // Keep native tray containers and focus for unchanged descriptors.
-                if (catalogItems[index].Name != next.Name || catalogItems[index].RuntimeGeneration != next.RuntimeGeneration ||
+                if (catalogItems[index].Name != next.Name || catalogItems[index].InstanceId != next.InstanceId ||
+                    !catalogItems[index].QuickActions.SequenceEqual(next.QuickActions) || catalogItems[index].RuntimeGeneration != next.RuntimeGeneration ||
                     catalogItems[index].PresentationGeneration != next.PresentationGeneration || catalogItems[index].InstanceId != next.InstanceId ||
                     catalogItems[index].PackageContentDigest != next.PackageContentDigest || catalogItems[index].Icon != next.Icon ||
                     catalogItems[index].PackageIcon != next.PackageIcon || !catalogItems[index].IconAssets.SequenceEqual(next.IconAssets)) catalogItems[index] = next;
@@ -136,23 +139,27 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         }
         while (catalogItems.Count > ordered.Length) catalogItems.RemoveAt(catalogItems.Count - 1);
         Tray.SelectedItem = catalogItems.FirstOrDefault(widget => widget.Id == selected);
+        if (trayMenu is { } menu && !TrayOwnerCurrent(menu.Owner, menu.Selection)) CloseTrayMenu(false);
         ReconcileMediaHostState();
         UpdateDiagnostics();
     }
 
     private async void TrayItemClicked(object sender, ItemClickEventArgs args)
     {
+        if (reordering) { FinishTrayReorder(); return; }
         if (args.ClickedItem is BridgeWidgetDescriptor descriptor) await SelectAsync(descriptor.Id);
     }
 
     private async Task SelectAsync(string id, bool enterWidget = true)
     {
         if (retired || owner is null) return;
+        ResetTrayInteraction();
         interactionAdmission.Invalidate();
         requestedWidget = id;
         var version = ++selectionVersion;
         switching = true;
         interactive = enterWidget;
+        UpdateTrayHelp();
         surface?.SetAutomaticFocusEnabled(false);
         ReconcilePreviewVisibility();
         ReconcileMediaHostState();
@@ -372,6 +379,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (interactive == value || retired) return;
         if (!value) interactionAdmission.Invalidate();
         interactive = value;
+        if (value) ResetTrayInteraction();
+        UpdateTrayHelp();
         surface?.SetAutomaticFocusEnabled(visible && value && foreground && !switching);
         ReconcileMediaHostState();
         UpdateDiagnostics();
@@ -383,6 +392,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (foreground == value || retired) return;
         interactionAdmission.Invalidate();
         foreground = value;
+        if (!value) ResetTrayInteraction();
         surface?.SetAutomaticFocusEnabled(visible && interactive && value && !switching);
         ReconcileMediaHostState();
         _ = ReconcileLifecycleAsync(restore: false);
@@ -440,6 +450,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     internal void ResetInputPresentation()
     {
+        ResetTrayInteraction();
         rightStick.Reset();
         surface?.ResetPressedStyles();
         surface?.DismissTransientControl();
@@ -535,6 +546,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         interactionAdmission.Invalidate();
         retired = true;
+        ResetTrayInteraction();
         ClearTrayFocus();
         ReconcilePreviewVisibility();
         ReconcileMediaHostState();

@@ -21,6 +21,8 @@ validation. It is not yet a complete replacement for the native overlay.
   suspension. The five-check real deep-scroll/modal return gate passes. Radial
   presentation and lightweight state restoration after cache eviction remain. See
   [shell navigation](winui-shell-navigation.md).
+  Tray reorder/hold-restart and native command menus are integrated; five native
+  command and four rapid-browse checks pass. See [tray commands](winui-tray-commands.md).
 - **Native UI:** standard layouts, responsive branches, text, buttons, action/poster
   surfaces, icons, prompts, progress, text entry/controller keyboard, Select, sliders,
   context menus and widget-local modals are mapped. The same themed declaration path
@@ -62,7 +64,10 @@ validation. It is not yet a complete replacement for the native overlay.
 - **Sizing:** declared surface hints, per-display interface/text zoom and existing
   display identity/placement policy are integrated. Native sizing checks pass 13 cases;
   real Playnite was checked at Windows 125% DPI/interface 75%. Full mixed-monitor,
-  theme/backdrop and final shell-chrome coverage remain.
+  themed/solid/transparent surface overrides and desktop backdrop opacity now use
+  native windows and exact per-widget/accessibility policy. The lane passes 15
+  native pixel/lifecycle checks; production appearance/Guide/mixed-monitor and
+  final shell-chrome coverage remain.
 - **Media:** sealed document admission, native WebView2, trusted activation, ordered
   playback observations, durable shell ownership, four-controller capacity, parking
   and persistent error/recovery are integrated. Hidden presenters detach their
@@ -88,8 +93,8 @@ validation. It is not yet a complete replacement for the native overlay.
   integrated. Ordinary pinned context/text and scoped artwork now use explicit
   version-1 private bridge/worker requests. Pinned windows and compact-media transfer
   remain. See [pinned authority](winui-pinned-session.md).
-- **Managed gates:** latest relevant integrated suites pass 232 presentation-session,
-  29 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 73 Spotify and 50 YouTube
+- **Managed gates:** latest relevant integrated suites pass 233 presentation-session,
+  36 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 73 Spotify and 50 YouTube
   checks. The latest integrated collection gates pass 16 indexed plus one discovered
   SDK scenario and 17 indexed plus one real-worker discovered bridge scenario;
   the prior complete SDK checkpoint passed 138. Counts identify their recorded checkpoint;

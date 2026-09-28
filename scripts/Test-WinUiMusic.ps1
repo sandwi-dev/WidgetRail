@@ -7,7 +7,14 @@ $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $results=[System.Collections.Generic.List[object]]::new()
 function Ui([string[]]$Arguments) {
-    $raw=& winapp ui @Arguments -a $AppPid --json 2>&1
+    $target = @('-a', $AppPid)
+    if ($Arguments[0] -eq 'screenshot') {
+        $windows = winapp ui list-windows -a $AppPid --json | ConvertFrom-Json
+        $main = @($windows | Where-Object title -Like 'WidgetRail*WinUI frontend')
+        if ($main.Count -ne 1) { throw 'Could not identify the owned shell window.' }
+        $target = @('-w', $main[0].hwnd)
+    }
+    $raw=& winapp ui @Arguments @target --json 2>&1
     if($LASTEXITCODE -ne 0){throw ($raw -join "`n")}
     $result=($raw -join "`n") | ConvertFrom-Json
     if($Arguments[0] -eq 'wait-for' -and -not $result.found){throw "UI wait timed out: $($Arguments[1])"}
