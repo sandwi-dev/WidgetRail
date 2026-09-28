@@ -129,10 +129,16 @@ internal sealed partial class WidgetIndexedCollectionView
     private void FinishNavigation(object? sender, object args)
     {
         if (pendingIndex is not { } index || view is null || disposed) return;
+        if (source?.Items[index] is not Collections.IndexedItem<Collections.WidgetIndexedRow> slot || slot.Failed)
+        { CancelNavigation(); return; }
+        // Retained pixels can describe the prior content revision (for example
+        // disabled Visible-state rows while Interactive-state rows are loading).
+        // They are not current navigation availability. Wait for the requested
+        // row lease rather than skipping every old disabled item to the far end.
+        if (slot.Value is not { } row || !row.Lease.IsCurrent) return;
         if (entering)
         {
             if (pendingEntry is { } queryTarget && !MatchesQuery(queryTarget)) { CancelNavigation(); return; }
-            if (source!.Items[index] is not Collections.IndexedItem<Collections.WidgetIndexedRow> slot || slot.Key is null) return;
             // An index is a location, not identity. Never silently focus another
             // occurrence when a stale/incorrect key was supplied by an author.
             if (pendingEntry is { } entry && slot.Key != entry.ItemKey) { CancelNavigation(); return; }

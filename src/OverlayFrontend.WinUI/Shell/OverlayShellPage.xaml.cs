@@ -39,6 +39,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private bool catalogDirty;
     private bool layoutCaptureQueued;
     private long visibleSince = Environment.TickCount64;
+    private readonly Queue<object> focusDiagnostics = new();
     private readonly System.Collections.ObjectModel.ObservableCollection<BridgeWidgetDescriptor> catalogItems = [];
     internal event Action? HideRequested;
     internal event Action<WidgetPresentationHostEffect>? TaskWindowActivationRequested;
@@ -54,8 +55,15 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged += SystemAnimationsChanged;
         Tray.ItemsSource = catalogItems;
         Loaded += (_, _) => startup ??= StartAsync();
-        Tray.GotFocus += (_, _) => SetInteractive(false);
-        WidgetHost.GotFocus += (_, _) => SetInteractive(true);
+        Tray.GotFocus += (_, _) =>
+        {
+            RecordFocusTransfer("tray");
+            // Native ListView activation may focus its item after ItemClick has
+            // already begun an asynchronous widget entry. That late event is part
+            // of the same activation, not a request to return to tray ownership.
+            if (!switching) SetInteractive(false);
+        };
+        WidgetHost.GotFocus += (_, _) => { RecordFocusTransfer("widget"); SetInteractive(true); };
         Tray.ContainerContentChanging += (_, args) =>
         {
             if (args.Item is BridgeWidgetDescriptor item)
@@ -448,7 +456,17 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private void UpdateDiagnostics() => AutomationProperties.SetHelpText(Status,
         System.Text.Json.JsonSerializer.Serialize(new { activeWidget, publication, visible, interactive,
-            foreground, sizing = SizingDiagnostics, catalogCount = catalogItems.Count, bridgePid = owner?.ProcessId }));
+            foreground, sizing = SizingDiagnostics, catalogCount = catalogItems.Count, bridgePid = owner?.ProcessId,
+            focusTransfers = focusDiagnostics.ToArray() }));
+
+    private void RecordFocusTransfer(string destination)
+    {
+        if (options.LayoutDiagnosticsPath is null) return;
+        focusDiagnostics.Enqueue(new { destination, switching, applying = surface?.IsApplyingPresentation == true,
+            publication, interactive });
+        while (focusDiagnostics.Count > 8) focusDiagnostics.Dequeue();
+        UpdateDiagnostics();
+    }
 
     public ValueTask DisposeAsync() => new(disposal ??= StopAsync());
     private async Task StopAsync()

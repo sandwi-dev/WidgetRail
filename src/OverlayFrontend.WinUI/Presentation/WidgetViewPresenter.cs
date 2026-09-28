@@ -34,6 +34,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private readonly Dictionary<string, WidgetElementIdentity> remembered = new(StringComparer.Ordinal);
     private WidgetPresentationFrame? frame;
     private bool applying;
+    internal bool IsApplyingPresentation => applying;
     private bool needsEntry;
     private bool focusQueued;
     private bool restoreNativeFocus;
