@@ -358,8 +358,13 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             var horizontal = node.ScrollAxis == ScrollAxis.Horizontal;
             scroll.HorizontalScrollMode = horizontal ? ScrollMode.Enabled : ScrollMode.Disabled;
             scroll.VerticalScrollMode = horizontal ? ScrollMode.Disabled : ScrollMode.Enabled;
-            scroll.HorizontalScrollBarVisibility = horizontal && node.ShowScrollbar != false ? ScrollBarVisibility.Auto : ScrollBarVisibility.Hidden;
-            scroll.VerticalScrollBarVisibility = !horizontal && node.ShowScrollbar != false ? ScrollBarVisibility.Auto : ScrollBarVisibility.Hidden;
+            // Hidden suppresses a bar but still permits unbounded measurement
+            // and focus-driven offsets on that axis. Disable the inactive axis
+            // so native Grid stars/text wrapping receive a finite viewport.
+            scroll.HorizontalScrollBarVisibility = !horizontal ? ScrollBarVisibility.Disabled :
+                node.ShowScrollbar != false ? ScrollBarVisibility.Auto : ScrollBarVisibility.Hidden;
+            scroll.VerticalScrollBarVisibility = horizontal ? ScrollBarVisibility.Disabled :
+                node.ShowScrollbar != false ? ScrollBarVisibility.Auto : ScrollBarVisibility.Hidden;
             ((StackPanel)binding.Children!).Orientation = horizontal ? Orientation.Horizontal : Orientation.Vertical;
         }
         if (element is Slider slider) UpdateSlider(slider, node);

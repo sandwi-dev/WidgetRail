@@ -15,6 +15,7 @@ namespace WidgetRail.OverlayFrontend.WinUI;
 /// </summary>
 public partial class App : Application
 {
+    internal static string? ValidationFixturePath { get; private set; }
     /// <summary>
     /// The main application window. Use <c>App.Window</c> from any class that needs
     /// the window reference (for dialogs, pickers, interop, etc.).
@@ -53,6 +54,7 @@ public partial class App : Application
         var arguments = Shell.FrontendArguments.Parse(args.Arguments, Environment.GetCommandLineArgs().Skip(1));
         if (arguments.Contains("--trace-layout")) DebugSettings.LayoutCycleTracingLevel = LayoutCycleTracingLevel.High;
         var widgetConfiguration = Shell.FrontendArguments.Value(arguments, "--widget-config");
+        ValidationFixturePath = Shell.FrontendArguments.Value(arguments, "--playnite-layout-fixture");
         var main = new MainWindow(arguments.Contains("--validate-external-surface"), arguments.Contains("--validate-controller"),
             arguments.Contains("--replay-controller"), arguments.Contains("--validate-collection"), widgetConfiguration,
             arguments.Contains("--validate-gridview"), arguments.Contains("--validate-controls"), arguments.Contains("--validate-indexed"), arguments.Contains("--validate-focus-policy"),
