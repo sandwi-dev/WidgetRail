@@ -101,6 +101,24 @@ ordering remains stable after favorite mutation until refresh.
 
 ## Actions and details
 
+The production action core now accepts `PlayniteLibraryGameTarget`: an immutable
+selected item plus a logical-owner validity callback and optional cursor anchor
+operation. Existing cursor entry points capture this target once; delayed launch
+work no longer resolves the source control ID again. Indexed callbacks can supply
+the exact captured row with query validity instead of retaining its visual/cache.
+Shared favorite, hide, category and completion handlers use that selected identity.
+Launch still resolves that exact saved ID through the application service and checks
+current installation/capability and owner validity before launch or publication.
+
+Details opened from a captured target keep that target as their availability and
+mutation owner, so an off-window poster does not disable its modal. Refresh keeps
+the same owner; closing or switching the parent page releases it. Query retirement
+must make its validity callback false. Existing cursor Home behavior remains intact.
+The main Browse lifecycle/source cutover and typed exact return request are still
+pending; this action checkpoint does not claim that production Browse uses indexed
+data. All 142 widget tests pass, including exact out-of-window action identity,
+captured-modal completion/retirement, and retirement during launch revalidation.
+
 Reuse shared `PlayniteLibraryGameOptions.Create`, launch revalidation, capability
 checks, cancellation, operation generations and existing details behavior. Current
 handlers resolve SourceElementId through retained cursor windows; extract an

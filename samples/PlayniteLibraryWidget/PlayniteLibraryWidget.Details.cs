@@ -183,11 +183,11 @@ public sealed partial class PlayniteLibraryWidget
         if (name.StartsWith("completion.", StringComparison.Ordinal))
         {
             if (state.OrganizationBusy || state.DetailsExtras.OperationBusy || state.LaunchingSavedId is not null ||
-                ResolveActionSource(PlayniteLibraryDetailsPresentation.PlayId) is not { } source) return true;
+                CaptureActionTarget(PlayniteLibraryDetailsPresentation.PlayId) is not { } target) return true;
             var selected = state.DetailsExtras.CompletionStatuses?.FirstOrDefault(value =>
                 PlayniteLibraryDetailsPresentation.CompletionAction(state.DetailsGeneration, value) == action.ActionId);
             if (selected is null) return true;
-            var completion = await SetCompletionStatusAsync(source, selected, token).ConfigureAwait(false);
+            var completion = await SetCompletionStatusAsync(target, selected, token).ConfigureAwait(false);
             var message = _model.Value.Status;
             UpdateDetails(state.DetailsGeneration, value => value with
             {
