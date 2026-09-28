@@ -47,6 +47,11 @@ clipped inside it. Pinned/fullscreen endpoint transfer remains separate work.
 Failed surfaces stay retired. Retrying uses explicit widget/session recovery;
 ordinary compatible snapshots must not recreate a failed adapter and replay its
 already consumed command. A single admitted document must have one active surface.
+The owner retains each media failure independently of ordinary widget updates.
+The production shell shows a sanitized message and its existing Retry action;
+Retry restarts the widget through the session, retiring the failed document before
+new admission. Capacity and admission failures use the same visible status policy.
+Diagnostic strings from browser/provider content are never used as UI messages.
 
 ## Security and lifecycle
 

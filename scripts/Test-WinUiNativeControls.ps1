@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '../artifacts/winui-native-controls'),
+    [ValidateSet('select','text-entry','slider','context-menu','embedded-media')][string[]]$Fixture,
     [switch]$IncludeMedia
 )
 $ErrorActionPreference = 'Stop'
@@ -15,7 +16,8 @@ $cases = @(
     @{ Flag='--validate-slider'; File='slider-controls-result.json' },
     @{ Flag='--validate-context-menu'; File='context-menu-result.json' }
 )
-if ($IncludeMedia) { $cases += @{ Flag='--validate-embedded-media'; File='embedded-media-result.json'; Media=$true } }
+if ($IncludeMedia -or $Fixture -contains 'embedded-media') { $cases += @{ Flag='--validate-embedded-media'; File='embedded-media-result.json'; Media=$true } }
+if ($Fixture) { $cases = @($cases | Where-Object { $Fixture -contains ($_.Flag -replace '^--validate-', '') }) }
 $summary = [Collections.Generic.List[object]]::new()
 # Requires an analyzer-built x64 Debug frontend and exclusive package deployment.
 # Every fixture is host-owned; none creates a physical controller reader.

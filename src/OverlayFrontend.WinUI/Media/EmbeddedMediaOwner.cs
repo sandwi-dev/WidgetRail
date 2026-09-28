@@ -33,6 +33,7 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
     private readonly Dictionary<string, Entry> entries = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Viewport> viewports = new(StringComparer.Ordinal);
     private readonly HashSet<Task> retirements = [];
+    private readonly Dictionary<string, string> failures = new(StringComparer.Ordinal);
     private string? activeWidget;
     private bool visible;
     private bool inputEnabled;
@@ -42,6 +43,8 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
     private Task? disposal;
     internal Action<string, string>? Diagnostic { get; set; }
     internal Action<string>? BackRequested { get; set; }
+    internal Action<string>? FailureChanged { get; set; }
+    internal string? GetFailure(string widgetId) => failures.GetValueOrDefault(widgetId);
     internal int ResidentCount => entries.Count;
     internal int BrowserCreationCount { get; private set; }
     internal void Refresh() => Reconcile();
@@ -106,6 +109,9 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
             do
             {
                 reconcileAgain = false;
+                foreach (var id in failures.Keys.ToArray())
+                    if (!entries.ContainsKey(id) && session.GetState(id)?.LastGood?.Snapshot.EmbeddedMediaSession is null)
+                        SetFailure(id, null);
                 foreach (var entry in entries.Values.ToArray())
                 {
                     var state = session.GetState(entry.WidgetId);
@@ -114,6 +120,7 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
                     { Retire(entry); continue; }
                     if (entry.Surface is { } surface)
                     {
+                        SetFailure(entry.WidgetId, surface.FailureCode);
                         Place(entry, MatchingViewport(entry.WidgetId));
                         surface.Refresh();
                     }
@@ -123,7 +130,9 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
                 {
                     if (!entries.TryGetValue(active, out var entry))
                     {
-                        if (entries.Count + retirements.Count >= MaximumResidentSessions) { Diagnostic?.Invoke(active, "media-session-capacity"); continue; }
+                        if (entries.Count + retirements.Count >= MaximumResidentSessions)
+                        { SetFailure(active, "media-session-capacity"); continue; }
+                        SetFailure(active, null);
                         entries.Add(active, entry = new(active));
                     }
                     if (entry.Document is null && !entry.IsResolving && entry.AttemptSequence != frame.Authority.SnapshotSequence)
@@ -176,6 +185,7 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
             if (retired || !entries.TryGetValue(entry.WidgetId, out var current) || !ReferenceEquals(current, entry) ||
                 session.GetEmbeddedMediaState(document) is null) return;
             entry.Document = document;
+            SetFailure(entry.WidgetId, null);
             entry.Surface = new(session, document);
             entry.Surface.InputAuthority = () => CanAcceptInput(entry.WidgetId);
             ++BrowserCreationCount;
@@ -186,7 +196,11 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
         }
         catch (OperationCanceledException) when (retired || entry.Lifetime.IsCancellationRequested) { }
         catch (Exception error) when (error is not (OutOfMemoryException or StackOverflowException or AccessViolationException))
-        { if (!retired && !entry.Lifetime.IsCancellationRequested) Diagnostic?.Invoke(entry.WidgetId, "media-document-admission-failed"); }
+        {
+            if (!retired && !entry.Lifetime.IsCancellationRequested &&
+                error is not WidgetPresentationSessionException { Code: "presentation_stale" or "snapshot_stale" or "embedded_media_stale" })
+                SetFailure(entry.WidgetId, "media-document-admission-failed");
+        }
         finally
         {
             entry.IsResolving = false;
@@ -210,6 +224,7 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
     private void Retire(Entry entry)
     {
         if (!entries.Remove(entry.WidgetId)) return;
+        SetFailure(entry.WidgetId, null);
         entry.Lifetime.Cancel();
         if (entry.Surface is { } surface)
         {
@@ -243,6 +258,14 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
         if (!dispatcher.HasThreadAccess) throw new InvalidOperationException("Media owner requires its native dispatcher.");
     }
 
+    private void SetFailure(string widgetId, string? code)
+    {
+        if (failures.GetValueOrDefault(widgetId) == code) return;
+        if (code is null) failures.Remove(widgetId);
+        else { failures[widgetId] = code; Diagnostic?.Invoke(widgetId, code); }
+        FailureChanged?.Invoke(widgetId);
+    }
+
     public ValueTask DisposeAsync() => new(disposal ??= DisposeCoreAsync());
     private async Task DisposeCoreAsync()
     {
@@ -254,6 +277,7 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
         viewports.Clear();
         foreach (var entry in entries.Values.ToArray()) Retire(entry);
         await Task.WhenAll(retirements.ToArray());
+        failures.Clear();
         parking.Children.Clear();
     }
 }

@@ -164,8 +164,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 if (retired || version != selectionVersion) return;
                 if (visible) surface!.Apply(next);
                 UpdateSurfaceHints(next.Snapshot.Surface);
-                Retry.Visibility = Visibility.Collapsed;
-                Status.Text = next.Descriptor.Name;
+                ShowPresentationStatus(next.Descriptor.Name);
                 Tray.SelectedItem = Tray.Items.Cast<BridgeWidgetDescriptor>().FirstOrDefault(widget => widget.Id == id);
                 if (visible) surface!.Enter(restoreNativeFocus: true);
                 UpdateDiagnostics();
@@ -204,7 +203,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         publication = state.PublicationRevision;
         if (state.Failure is { } failure) { Status.Text = $"{failure.Message} ({failure.Code})"; Retry.Visibility = Visibility.Visible; return; }
         if (state.LastGood is not { } next || surface is null) return;
-        try { surface.Apply(next); UpdateSurfaceHints(next.Snapshot.Surface); Status.Text = next.Descriptor.Name; Retry.Visibility = Visibility.Collapsed; }
+        try { surface.Apply(next); UpdateSurfaceHints(next.Snapshot.Surface); ShowPresentationStatus(next.Descriptor.Name); }
         catch (Exception error) { ReportFailure(error); }
         if (!layoutCaptureQueued && options.LayoutDiagnosticsPath is { } diagnosticPath)
         {

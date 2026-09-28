@@ -128,6 +128,32 @@ internal sealed partial class EmbeddedMediaValidationPage
         Check(ViewSnapshotValidator.Validate(invalidModal).Any(error => error.Code == "unsupported_modal_surface"),
             "widget-local modal plus embedded media remains rejected by the unchanged SDK contract");
 
+        // A prohibited top-level navigation is canceled by the native adapter and
+        // faults this exact document. No external request is admitted by its policy.
+        var failureNotifications = 0;
+        mediaOwner.FailureChanged = _ => ++failureNotifications;
+#pragma warning disable WUI4001 // EmbeddedMediaSurface owns EnsureCoreWebView2Async; IsReady was awaited above.
+        initialBrowser.CoreWebView2.Navigate("https://wrail-forbidden.invalid/");
+#pragma warning restore WUI4001
+        await Until(() => mediaOwner.GetFailure(Descriptor.Id) is not null);
+        var failureCode = mediaOwner.GetFailure(Descriptor.Id);
+        Check(failureCode == "media-navigation-failed" && !mediaOwner.IsReady(Descriptor.Id),
+            "native browser failure becomes persistent owner error state instead of a silent blank viewport");
+        ownerPresenter.Apply(await SnapshotAsync());
+        mediaOwner.Refresh();
+        Check(mediaOwner.GetFailure(Descriptor.Id) == failureCode && mediaOwner.BrowserCreationCount == creations && failureNotifications == 1,
+            "ordinary publications retain media failure without browser recreation or repeated error notification");
+        declaration = null;
+        ownerPresenter.Apply(await SnapshotAsync());
+        await Until(() => mediaOwner.ResidentCount == 0);
+        Check(mediaOwner.GetFailure(Descriptor.Id) is null, "document retirement clears only its owned media error");
+        declaration = definition with { Id = "owner-player", PendingCommand = null };
+        ownerPresenter.Apply(await SnapshotAsync());
+        await Until(() => mediaOwner.IsReady(Descriptor.Id));
+        creations = mediaOwner.BrowserCreationCount;
+        Check(mediaOwner.GetFailure(Descriptor.Id) is null && !ReferenceEquals(initialBrowser, OwnerBrowser()),
+            "explicit document recovery creates one fresh browser without replaying a consumed playback command");
+
         // Four actual native controllers may remain parked; a fifth never evicts audio.
         declaration = definition with { Id = "owner-player", PendingCommand = null };
         foreach (var descriptor in FixtureDescriptors().Skip(1))
