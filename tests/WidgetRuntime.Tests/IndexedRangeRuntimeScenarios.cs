@@ -203,7 +203,8 @@ internal sealed class IndexedRangeProbeWidget : Widget
     {
         Source = CreateIndexedCollection<int,int>("source",0,100,new()
         {
-            ReadRange = async (_,start,count,token) =>
+            OnAction = (_, _, _, _) => ValueTask.CompletedTask,
+        ReadRange = async (_,start,count,token) =>
             {
                 if (Interlocked.Increment(ref ProviderStarts) == 4) FourStarted.TrySetResult();
                 Started.TrySetResult();

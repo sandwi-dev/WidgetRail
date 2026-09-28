@@ -233,6 +233,7 @@ internal sealed class IndexedBridgeProbeWidget : Widget
     {
         source=CreateIndexedCollection<int,int>("source",0,100,new()
         {
+            OnAction = (_, _, _, _) => ValueTask.CompletedTask,
             ReadRange=async (_,start,count,token)=>{await release.Task.WaitAsync(token);return Enumerable.Range(start,count).ToArray();},
             ItemKey=item=>new("item."+item), RenderItem=(_,item,context)=>UI.Button("Item "+item,"item.action",context.Id("root")),
         });

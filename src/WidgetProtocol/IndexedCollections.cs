@@ -89,7 +89,7 @@ public static class IndexedCollectionContract
         if (errors.Count != 0) throw new ProtocolValidationException(errors);
     }
 
-    private static (ViewNode Node, string Scope, ViewSnapshot Projection) Resolve(ViewSnapshot parent, IndexedCollectionRangeRequest request)
+    internal static (ViewNode Node, string Scope, ViewSnapshot Projection) Resolve(ViewSnapshot parent, IndexedCollectionRangeRequest request)
     {
         ArgumentNullException.ThrowIfNull(parent);
         var parentErrors = ViewSnapshotValidator.Validate(parent);

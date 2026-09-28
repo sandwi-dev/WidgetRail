@@ -28,7 +28,8 @@ public abstract partial class Widget
 
     private sealed record QueuedAction(
         WidgetActionEvent Action,
-        WidgetCapabilityGestureContext? GestureContext);
+        WidgetCapabilityGestureContext? GestureContext,
+        WidgetActionExecutionBinding? Execution);
 
     private readonly object _actionQueueLock = new();
     private ActionQueueState? _actionQueue;
@@ -63,7 +64,8 @@ public abstract partial class Widget
     /// </summary>
     internal WidgetOperationAdmission AdmitAction(
         WidgetActionEvent action,
-        WidgetCapabilityGestureContext? gestureContext = null)
+        WidgetCapabilityGestureContext? gestureContext = null,
+        WidgetActionExecutionBinding? execution = null)
     {
         ArgumentNullException.ThrowIfNull(action);
         if (!IsActive)
@@ -97,8 +99,8 @@ public abstract partial class Widget
 
                 if (action.Phase == ControllerEventPhase.Repeated &&
                     ((queue.Active is { } active &&
-                      IsSameDiscreteAction(active.Action, action)) ||
-                     HasPendingDiscreteAction(queue, action)))
+                      IsSameDiscreteAction(active.Action, action) && Equals(active.Execution?.Identity, execution?.Identity)) ||
+                     HasPendingDiscreteAction(queue, action, execution)))
                 {
                     // A held action owns at most one active or pending
                     // invocation. Due ticks while it is still owned coalesce
@@ -108,17 +110,17 @@ public abstract partial class Widget
                     admission = WidgetOperationAdmission.Joined;
                 }
                 else if (action.RequestedValue is not null && queue.Pending.Last is { } tail &&
-                    CanCoalesceSliderChange(tail.Value.Action, action))
+                    CanCoalesceSliderChange(tail.Value.Action, action) && Equals(tail.Value.Execution?.Identity, execution?.Identity))
                 {
                     replacedAction = tail.Value.Action;
-                    tail.Value = new(action, gestureContext);
+                    tail.Value = new(action, gestureContext, execution);
                     admission = WidgetOperationAdmission.Replaced;
                 }
                 else if (queue.Pending.Count >= ActionQueueCapacity)
                     admission = WidgetOperationAdmission.RejectedCapacity;
                 else
                 {
-                    queue.Pending.AddLast(new QueuedAction(action, gestureContext));
+                    queue.Pending.AddLast(new QueuedAction(action, gestureContext, execution));
                     queue.Available.Release();
                     admission = WidgetOperationAdmission.Enqueued;
                 }
@@ -148,10 +150,10 @@ public abstract partial class Widget
 
     private static bool HasPendingDiscreteAction(
         ActionQueueState queue,
-        WidgetActionEvent action)
+        WidgetActionEvent action, WidgetActionExecutionBinding? execution)
     {
         for (var node = queue.Pending.First; node is not null; node = node.Next)
-            if (IsSameDiscreteAction(node.Value.Action, action)) return true;
+            if (IsSameDiscreteAction(node.Value.Action, action) && Equals(node.Value.Execution?.Identity, execution?.Identity)) return true;
         return false;
     }
 
@@ -192,7 +194,11 @@ public abstract partial class Widget
                 {
                     using (WidgetCapabilityInvocationContext.Enter(queued.GestureContext))
                     using (WidgetActionInvocationContext.Enter(actionInvocation))
-                        await OnActionAsync(queued.Action, queue.Lifetime).ConfigureAwait(false);
+                    {
+                        if (queued.Execution is { } execution)
+                            await execution.Invoke(queued.Action, queue.Lifetime).ConfigureAwait(false);
+                        else await OnActionAsync(queued.Action, queue.Lifetime).ConfigureAwait(false);
+                    }
                     await actionInvocation.Seal().WaitAsync(queue.Lifetime).ConfigureAwait(false);
                     outcome = WidgetActionExecutionOutcome.Succeeded;
                 }

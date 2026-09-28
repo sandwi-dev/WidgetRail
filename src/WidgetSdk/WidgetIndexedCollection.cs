@@ -9,6 +9,10 @@ public sealed record WidgetIndexedCollectionOptions<TQuery, TItem> where TQuery 
     public required Func<TItem, WidgetCollectionItemKey> ItemKey { get; init; }
     /// <summary>Pure item declaration, evaluated only for demanded rows using the captured query.</summary>
     public required Func<TQuery, TItem, WidgetIndexedItemContext, WidgetElement> RenderItem { get; init; }
+    /// <summary>Handles a local row action using the immutable query/item captured for that row.</summary>
+    public required Func<TQuery, TItem, WidgetActionEvent, CancellationToken, ValueTask> OnAction { get; init; }
+    /// <summary>Resolves opaque artwork declared by this row; HTTPS images remain host-owned.</summary>
+    public Func<TQuery, TItem, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>>? ResolveArtwork { get; init; }
     public TimeSpan ReadTimeout { get; init; } = TimeSpan.FromSeconds(10);
 }
 
@@ -30,7 +34,7 @@ public sealed class WidgetIndexedItemContext
 internal interface IWidgetIndexedCollection
 {
     IndexedCollectionDescriptor Descriptor { get; }
-    ValueTask<IReadOnlyList<IndexedCollectionItem>> ReadAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken);
+    ValueTask<WidgetIndexedRead> ReadAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -57,6 +61,7 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
         ArgumentNullException.ThrowIfNull(options.ReadRange);
         ArgumentNullException.ThrowIfNull(options.ItemKey);
         ArgumentNullException.ThrowIfNull(options.RenderItem);
+        ArgumentNullException.ThrowIfNull(options.OnAction);
         ArgumentOutOfRangeException.ThrowIfNegative(count);
         if (options.ReadTimeout < TimeSpan.FromMilliseconds(100) || options.ReadTimeout > TimeSpan.FromSeconds(30))
             throw new ArgumentOutOfRangeException(nameof(options.ReadTimeout));
@@ -105,7 +110,7 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
         finally { query.Lifetime.Dispose(); }
     }
 
-    async ValueTask<IReadOnlyList<IndexedCollectionItem>> IWidgetIndexedCollection.ReadAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken)
+    async ValueTask<WidgetIndexedRead> IWidgetIndexedCollection.ReadAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken)
     {
         IndexedCollectionContract.ValidateRequest(request);
         Query captured;
@@ -143,7 +148,7 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
         if (values is null || values.Count != request.Count) throw new InvalidOperationException("An indexed reader must return exactly the requested range.");
         var copy = new TItem[request.Count];
         for (var index = 0; index < copy.Length; ++index) copy[index] = values[index];
-        var result = new IndexedCollectionItem[copy.Length];
+        var result = new WidgetIndexedItemBinding[copy.Length];
         var keys = new HashSet<string>(StringComparer.Ordinal);
         var nodeCount = 0;
         for (var index = 0; index < copy.Length; ++index)
@@ -165,13 +170,17 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
                 node.VisibleWhen is not (null or ResponsiveVisibility.Always) ||
                 node.CollectionItemKey is { } declared && declared != key.Value)
                 throw new InvalidOperationException("Indexed item roots must be buttons/action surfaces with matching occurrence keys.");
-            result[index] = new(key.Value, WidgetDeclarationSnapshot.Freeze(node with { CollectionItemKey = key.Value }, 1, ref nodeCount));
+            var declaration = new IndexedCollectionItem(key.Value,
+                WidgetDeclarationSnapshot.Freeze(node with { CollectionItemKey = key.Value }, 1, ref nodeCount));
+            result[index] = new(declaration,
+                (action, token) => options.OnAction(captured.Value, item, action, token),
+                options.ResolveArtwork is { } resolver ? (handle, token) => resolver(captured.Value, item, handle, token) : null);
         }
         cancellationToken.ThrowIfCancellationRequested();
         widgetLifetime.ThrowIfCancellationRequested();
         lock (gate)
             if (!ReferenceEquals(current, captured)) throw new InvalidOperationException("The indexed query changed before publication.");
-        return Array.AsReadOnly(result);
+        return new(Array.AsReadOnly(result), nodeCount);
     }
 }
 
@@ -226,7 +235,8 @@ public abstract partial class Widget
     protected WidgetIndexedCollection<TQuery, TItem> CreateIndexedCollection<TQuery, TItem>(string sourceId, TQuery initialQuery,
         int count, WidgetIndexedCollectionOptions<TQuery, TItem> options) where TQuery : notnull where TItem : notnull
     {
-        var source = new WidgetIndexedCollection<TQuery, TItem>(sourceId, initialQuery, count, options, Invalidate, WidgetLifetimeToken);
+        var source = new WidgetIndexedCollection<TQuery, TItem>(sourceId, initialQuery, count, options,
+            () => { RetireIndexedLeases(); Invalidate(); }, WidgetLifetimeToken);
         lock (indexedSourcesGate)
             if (!indexedSources.TryAdd(sourceId, source)) throw new ArgumentException("Indexed source IDs must be unique within a widget.", nameof(sourceId));
         return source;
@@ -239,7 +249,8 @@ public abstract partial class Widget
         IWidgetIndexedCollection source;
         lock (indexedSourcesGate)
             source = indexedSources.GetValueOrDefault(request.Source.SourceId) ?? throw new InvalidOperationException("Indexed source is not registered.");
-        var items = await source.ReadAsync(request, cancellationToken).ConfigureAwait(false);
+        var read = await source.ReadAsync(request, cancellationToken).ConfigureAwait(false);
+        var items = Array.AsReadOnly(read.Items.Select(item => item.Declaration).ToArray());
         var result = new IndexedCollectionRange(parent.WidgetInstanceId, request.CollectionId, request.Source,
             scope, request.StartIndex, request.DemandId, items, request.PinnedLayoutId);
         parent = Volatile.Read(ref _latestSnapshot) ?? throw new InvalidOperationException("Parent presentation retired during range loading.");

@@ -427,6 +427,7 @@ public abstract partial class Widget
         try
         {
             if (LifecycleState == WidgetLifecycleState.Destroying) return;
+            ClearIndexedLeases();
 
             var stateLifetime = Interlocked.Exchange(ref _stateLifetime, null);
             var activeLifetime = Interlocked.Exchange(ref _activeLifetime, null);
@@ -575,6 +576,7 @@ public abstract partial class Widget
     {
         var snapshot = Render().CreateSnapshot(widgetInstanceId, sequence);
         Volatile.Write(ref _latestSnapshot, snapshot);
+        RetireIndexedLeases();
         return snapshot;
     }
 
@@ -598,6 +600,7 @@ public abstract partial class Widget
             transactionKind,
             recoveryOriginSequence);
         Volatile.Write(ref _latestSnapshot, publication.Snapshot);
+        RetireIndexedLeases();
         return publication;
     }
 

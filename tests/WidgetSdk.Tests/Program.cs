@@ -8,6 +8,12 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Indexed leases reclaim cancelled acquisition and bound real artwork work", WidgetIndexedLeaseTests.CancellationBudgets),
+    ("Indexed leases retain captured actions through release and query replacement", WidgetIndexedLeaseTests.CapturedActions),
+    ("Indexed leases resolve row and parent shortcut ownership", WidgetIndexedLeaseTests.LogicalOwnership),
+    ("Indexed leases keep repeat identity across recycling but not query replacement", WidgetIndexedLeaseTests.RepeatIdentity),
+    ("Indexed leases separate modal input pinned projections and retained artwork", WidgetIndexedLeaseTests.ModalPinnedAndArtwork),
+    ("Indexed leases bound retention and reclaim retired queries", WidgetIndexedLeaseTests.RetentionBounds),
     ("Indexed collections declare lazy versioned exact-count sources", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.Declarations)),
     ("Indexed collections validate parent scope and pinned authority", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.Authority)),
     ("Indexed collections retire stale queries and content revisions", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.QueryLifetime)),

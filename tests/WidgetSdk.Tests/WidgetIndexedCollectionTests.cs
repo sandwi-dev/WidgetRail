@@ -291,6 +291,7 @@ internal static class WidgetIndexedCollectionTests
         Func<string, int, int, CancellationToken, ValueTask<IReadOnlyList<Item>>>? read = null,
         Func<string, Item, WidgetIndexedItemContext, WidgetElement>? render = null) => new()
     {
+        OnAction = (_, _, _, _) => ValueTask.CompletedTask,
         ReadRange = read ?? ((q, start, count, token) => ValueTask.FromResult<IReadOnlyList<Item>>(Items(start, count))),
         ItemKey = item => new(item.Key), RenderItem = render ?? Button,
     };

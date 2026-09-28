@@ -196,7 +196,7 @@ artwork authority; bounded semantic leases and native item-template integration
 remain required before production widget adoption.
 
 
-### Remaining indexed item semantics
+### Indexed item semantics and remaining integration
 
 Production adoption needs a typed item action callback using the captured immutable
 query/item, with ordinary local action names rather than positions encoded in IDs.
@@ -223,3 +223,46 @@ presentation/artwork. Pinned projection ownership must remain distinct. Resolve
 opaque artwork through declared handles and an optional captured item resolver;
 HTTPS images continue to use host network policy. None of this action/artwork
 admission is implied by the currently implemented read-only range transport.
+
+
+### Implemented worker-side semantic leases
+
+The migration SDK now requires `OnAction(query, item, action, token)` alongside
+`ReadRange`, `ItemKey` and `RenderItem`. Use local row action names such as `open`
+or `favorite`; the callback receives the exact captured query/item rather than
+looking up a possibly replaced item by index. Ordinary page/collection shortcuts
+continue to invoke `Widget.OnActionAsync`. `ResolveArtwork(query, item, handle,
+token)` is optional, but required when a leased row or its focus presentation
+declares opaque artwork handles. HTTPS image loading remains a host responsibility.
+
+Internal lease acquisition retains frozen row declarations, immutable captured
+values/delegates, and only the input-owner path from the parent (not another full
+parent tree). Each lease has a fresh opaque ID. Pending acquisition and retained
+data share limits of 32 ranges, 1024 items and 32768 nodes; pending reads reserve
+their worst-case node budget before loading and transfer that reservation atomically
+at publication. Duplicate demand identity is rejected. Release, query/content
+retirement, parent removal/scope change and widget destruction reclaim leases.
+Routine parent revisions and modal opening preserve unchanged parent data.
+
+Input admission compares captured and current logical bindings, respects nested
+input scopes, checks exact menu options and owner availability, and invokes either
+the captured item callback or ordinary parent handler. Collection-disabled/busy
+state blocks row commands while unrelated page shortcuts remain available. The
+existing serial queue owns execution, diagnostics, capability/invocation context,
+capacity and active-lifetime cancellation. A captured queued action survives data
+lease release without retargeting. Repeat identity follows source/query/item and
+projection, surviving rerealization but never joining a replacement query's action.
+
+Captured artwork resolution validates item/handle ownership before and after the
+read. It accepts retained parent artwork during modal interaction and rejects late
+results after release. Four actual artwork operations may run concurrently; a
+cancelled caller does not free its slot while an uncooperative provider still runs.
+The resolver has a ten-second ceiling, also bounded by caller/widget cancellation.
+
+Six new SDK scenario groups exercise these semantics; all 134 SDK checks and 14
+API compatibility tests pass. Existing six indexed-runtime and five indexed-bridge
+checks still pass after updating their source declarations for the required action
+callback. **Lease acquisition, item invocation and item-artwork requests are not
+wired through runtime/bridge/session IPC yet.** Existing range transport remains
+read-only. Complete explicit lease delivery/release and cancellation ownership
+before enabling interactive native row templates or converting production widgets.

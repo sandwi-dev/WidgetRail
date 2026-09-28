@@ -418,3 +418,28 @@ clears old memories. Fifteen real WinUI focus-policy checks and all sixteen prio
 presenter checks pass; analyzer builds pass. Test windows were closed. These tests
 exercise native UI and synthetic navigation, not physical controller acceptance or
 realized lazy-row focus, which remain outstanding.
+
+
+## Captured item semantics in the SDK
+
+The indexed source options now require a typed captured-item `OnAction` callback
+and optionally supply a captured artwork resolver. Internal semantic leases retain
+bounded frozen rows and a compact parent input-owner path. Shared logical binding
+resolution preserves row versus ancestor shortcuts, menu option availability,
+nested scopes, pinned ownership and modal input suppression. Typed item execution
+uses the existing serial action queue with query-aware repeat identity; no second
+queue was added. Already-admitted actions retain their original values when visual
+or data leases retire. Artwork lookup remains separately bounded and rejects late
+retired results without discarding valid parent artwork merely because a modal is
+active.
+
+Validation: 134/134 SDK checks, 14/14 API compatibility checks, 6/6 indexed-runtime
+and 5/5 indexed-bridge regressions. The first runtime invocation used `dotnet` with
+the DLL, which made its self-spawning fixture attempt to launch dotnet as a worker;
+rerunning the built test executable passed. This was an invocation correction,
+not a production-code fix. No candidate was installed/launched in this pass.
+
+The semantic lease API is currently internal to the worker SDK. Runtime, bridge
+and session delivery/release/interaction routes plus native item templates and
+first-party widget conversion remain incomplete. Existing range data still grants
+no remote row action/artwork authority. The migration remains active and unmerged.
