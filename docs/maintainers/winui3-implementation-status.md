@@ -586,8 +586,10 @@ press. The user confirmed activation/navigation/A/hiding, then reported that the
 focus cue disappeared after Alt+Tab. Foreground acquisition now leaves control
 focus to each frontend: the legacy host focuses its HWND, while WinUI explicitly
 reasserts Keyboard focus on its existing leaf. Controller replay passes with
-HasKeyboardFocus true on the retained Second button. Physical confirmation of the
-focus cue is pending in the relaunched test. Earlier controller
+HasKeyboardFocus true on the retained Second button. The user then physically
+confirmed that the focus highlight and input both work after Alt+Tab/Guide.
+This closes the validation-shell activation/focus defect, not production controller
+integration for all widget surfaces. Earlier controller
 replay passed cold entry, navigation, one action per press, hide/show and retained
 focus. Bounded asynchronous diagnostics preserve native Guide delivery and actual
 foreground/visibility; activation is never inferred from a show request alone.
