@@ -449,6 +449,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         Task[] indexed;
         lock (_gate)
         {
+            _packageIcons.Clear(); _packageIconBytes = 0;
             RetireIndexedRangesLocked();
             indexed = _indexedDemands.Values.Select(item => item.Done.Task)
                 .Concat(_indexedArtworkDemands.Values.Select(item => item.Done.Task))

@@ -65,3 +65,13 @@ A stale frame/scope/lease throws and must be consumed. Once a declaration claims
 input, a null `AdmitInputAsync` result must also be consumed: null can indicate a
 worker publication racing IPC, not just an absent binding. Never infer host Back
 from a null admission result or retry it against a newer frame.
+
+## Package icons
+
+`ResolvePackageIconAsync(target, assetId)` resolves manifest-inventory SVG through
+its existing bridge endpoint. The session sends descriptor generation, package
+content digest, source hash and normalized hash, verifies echoed identity, byte
+count and SHA-256, then returns a private copy. Paths, URIs and widget SVG are
+never accepted. Catalog replacement invalidates both in-flight results and cache
+lookups. Cache retention is capped at 128 entries/2 MiB; pending demand at 16 and
+active package exchanges at four. Cancellation/timeout never publishes late bytes.
