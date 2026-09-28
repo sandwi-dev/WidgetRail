@@ -125,3 +125,30 @@ children in the production snapshot. Styling checks use the installed widget WRS
 and platform theme for both the parent and an actual deep range. Launch and
 running-add regressions route acquired leases against mocked host services; no
 real applications or user curation state are changed by those tests.
+
+## Spotify: complete queue versus cursor windows
+
+[SpotifyIndexedQueue.cs](../../samples/SpotifyWidget/SpotifyIndexedQueue.cs)
+indexes the complete bounded queue observation returned by the provider. Its
+loader explicitly has no adjacent cursors. Repeated songs keep the existing
+occurrence keys, while range rendering uses the logical index to distinguish
+"Next track" from "Play from here". The first row of a deep range is not the
+head of the queue. Rows declare no links to unrealized neighboring element IDs;
+the page enters the collection ID and WinUI owns logical navigation/memory.
+
+The immutable query captures the entire returned queue and active generation.
+An action checks the exact current observation and route after command admission,
+then executes the captured occurrence and suffix. This preserves Spotify's
+existing behavior: first occurrence uses Next without replacing context; later
+occurrences start the bounded captured suffix, including repeated URIs. HTTPS
+artwork remains host-owned. Pinned Up Next keeps its existing two inline rows.
+
+Spotify playlist library, playlist details and Search still use cursor resources.
+Their retained pages can be evicted, filtered pages can be sparse, and remote
+totals can change between requests. None of those retained windows is advertised
+as a complete indexed source. Migrating them requires either a separately frozen
+complete result or a first-class continuation-aware collection contract with
+unknown extent, growth and exact occurrence/action identity. Do not infer random
+access from an offset-shaped continuation or use the current retained count as
+the remote query count. This checkpoint does not make those cursor routes ready
+for a frontend that only accepts indexed collections.

@@ -57,6 +57,8 @@ public sealed class SpotifyWidget : Widget
         SpotifyAuthorizationState.Disconnected;
     private SpotifyPlaybackSummary? _playback;
     private readonly WidgetCursorResource<SpotifyMediaCollectionItem> _queue;
+    private readonly WidgetIndexedCollection<SpotifyQueueQuery, SpotifyMediaCollectionItem> _indexedQueue;
+    private SpotifyQueueQuery? _queueQuery;
     private readonly WidgetCursorResource<SpotifyPlaylistCollectionItem> _playlists;
     private readonly WidgetCursorResource<SpotifyMediaCollectionItem> _playlistItems;
     private readonly SpotifyMediaOccurrencePolicy _queueOccurrences =
@@ -145,6 +147,8 @@ public sealed class SpotifyWidget : Widget
                 },
             });
         _toastExpiry = CreateTimedMutation(WidgetOperationLifetime.Active, _timeProvider);
+        _indexedQueue = CreateIndexedCollection<SpotifyQueueQuery, SpotifyMediaCollectionItem>(
+            "spotify.queue.indexed", new(0, []), 0, SpotifyIndexedQueue.Options(HandleIndexedQueueActionAsync));
         _search = CreateSearchResource();
         _compactPinnedLayout = CreatePinnedLayoutHandle(
             SpotifyPresentation.CompactPinnedLayoutId,
@@ -1138,7 +1142,7 @@ public sealed class SpotifyWidget : Widget
                         _playlistItems,
                         "spotify.playlist.items",
                         "spotify.playlist.detail.scroll"));
-            return new(
+            return SpotifyIndexedQueue.Prepare(new(
                 new(++_presentationCaptureSequence, playlists.Snapshot.Revision,
                     detail?.Items.Snapshot.Revision ?? 0,
                     detail?.Selection.Key.Generation),
@@ -1162,7 +1166,8 @@ public sealed class SpotifyWidget : Widget
                 _pageError,
                 new SpotifySearchPresentation(_searchQuery, _searchKind,
                     SpotifyCursorPresentation<SpotifySearchCollectionItem>.Capture(
-                        _search, "spotify.search", "spotify.search.scroll")), _actionToast);
+                        _search, "spotify.search", "spotify.search.scroll")), _actionToast),
+                _activeGeneration, _indexedQueue, ref _queueQuery);
         }
     }
 
@@ -1640,6 +1645,26 @@ public sealed class SpotifyWidget : Widget
         }
     }
 
+    private async ValueTask HandleIndexedQueueActionAsync(SpotifyQueueQuery query, SpotifyMediaCollectionItem item,
+        WidgetActionEvent action, CancellationToken cancellationToken)
+    {
+        if (action.ActionId != "spotify.queue.play." + item.Key.Value || !item.Value.IsPlayable) return;
+        // Recheck inside command serialization, then execute the captured exact
+        // occurrence and suffix. Never reinterpret an index in the current queue.
+        await RunCommandOperationAsync(async token =>
+        {
+            int index;
+            lock (_gate)
+            {
+                if (LifecycleState != WidgetLifecycleState.Interactive || _activeGeneration != query.Generation ||
+                    _navigation.Value.Route != SpotifyRoute.Queue || !_queue.Snapshot.Items.SequenceEqual(query.Items)) return;
+                index = query.Items.ToList().FindIndex(candidate => candidate.Key == item.Key);
+                if (index < 0) return;
+            }
+            await PlayQueueOccurrenceAsync(query.Items, index, token).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task PlayQueueItemAsync(
         WidgetCollectionItemKey key,
         CancellationToken cancellationToken)
@@ -1647,6 +1672,13 @@ public sealed class SpotifyWidget : Widget
         var items = _queue.Snapshot.Items;
         var index = items.ToList().FindIndex(candidate => candidate.Key == key);
         if (index < 0 || !items[index].Value.IsPlayable) return;
+        await PlayQueueOccurrenceAsync(items, index, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task PlayQueueOccurrenceAsync(IReadOnlyList<SpotifyMediaCollectionItem> items, int index,
+        CancellationToken cancellationToken)
+    {
+        var key = items[index].Key;
         _queue.SelectAnchor(key, invalidate: false);
         if (index == 0)
         {

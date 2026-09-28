@@ -78,4 +78,7 @@ internal sealed record SpotifyPresentationState(
     bool PageLoading,
     string? PageError,
     SpotifySearchPresentation? Search = null,
-    ToastElement? ActionToast = null);
+    ToastElement? ActionToast = null)
+{
+    internal IndexedCollectionElement? IndexedQueue { get; init; }
+}

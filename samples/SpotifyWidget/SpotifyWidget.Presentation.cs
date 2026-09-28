@@ -445,7 +445,7 @@ internal static class SpotifyPresentation
                 playlistDetail, presentation.Devices, presentation.LocalPlayback,
                 presentation.LocalPlaybackBusy, presentation.LocalPlaybackFeedback,
                 presentation.PageLoading,
-                presentation.PageError, "shared");
+                presentation.PageError, "shared", presentation.IndexedQueue);
         var contentEntry = PageEntryFocusId(presentation, destination);
         var pageGroup = UI.Stack(SpotifyRouteActionPolicy.FocusGroupId(route.Route), page)
             .RememberChildFocus(contentEntry)
@@ -569,8 +569,11 @@ internal static class SpotifyPresentation
         {
             var queue = presentation.Queue;
             if (queue.Items.Count != 0)
+            {
+                if (presentation.IndexedQueue is not null) return "spotify.queue.scroll";
                 return SpotifyCollectionIdentity.FocusId(
                     "spotify.queue.item", mode, queue.Items[0].Key);
+            }
             if (queue.Status is WidgetPagedResourceStatus.Loading or
                 WidgetPagedResourceStatus.NotLoaded)
                 return "spotify.page.loading.shared.action";
@@ -847,10 +850,10 @@ internal static class SpotifyPresentation
         string? localPlaybackFeedback,
         bool loading,
         string? error,
-        string mode) =>
+        string mode, IndexedCollectionElement? indexedQueue = null) =>
         destination switch
         {
-            SpotifyDestination.Queue => QueuePage(queue, loading, error, mode),
+            SpotifyDestination.Queue => QueuePage(queue, loading, error, mode, indexedQueue),
             SpotifyDestination.Playlists => PlaylistsPage(playlists, playlistDetail, mode),
             SpotifyDestination.Devices => DevicesPage(devices, localPlayback,
                 localPlaybackBusy, localPlaybackFeedback, loading, error, mode),
@@ -859,7 +862,7 @@ internal static class SpotifyPresentation
 
     private static WidgetElement QueuePage(
         WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> queue,
-        bool loading, string? error, string mode)
+        bool loading, string? error, string mode, IndexedCollectionElement? indexedQueue = null)
     {
         if (queue.Items.Count == 0 && queue.Status is (
                 WidgetPagedResourceStatus.Loading or
@@ -874,7 +877,7 @@ internal static class SpotifyPresentation
                 $"spotify.queue.empty.{mode}",
                 new ComponentAction("Refresh", "spotify.page.retry", WidgetGlyph.Refresh),
                 WidgetGlyph.Next).Classes("spotify-page");
-        var rows = queue.Items.Select((item, index) => QueueRow(
+        var rows = indexedQueue is not null ? [] : queue.Items.Select((item, index) => QueueRow(
                 item,
                 mode,
                 index == 0
@@ -886,7 +889,7 @@ internal static class SpotifyPresentation
                     : SpotifyCollectionIdentity.FocusId(
                         "spotify.queue.item", mode, queue.Items[index + 1].Key)))
             .ToArray();
-        var scroll = UI.CollectionList("spotify.queue.scroll", 82, items: rows)
+        WidgetElement scroll = indexedQueue is not null ? indexedQueue : UI.CollectionList("spotify.queue.scroll", 82, items: rows)
             .Classes("spotify-page-scroll") with
         { CollectionAnchorKey = queue.Anchor?.Value };
         var content = new List<WidgetElement>
@@ -1132,6 +1135,17 @@ internal static class SpotifyPresentation
         .Disabled(!item.IsPlayable)
         .PersistFocusAs(focusPersistenceId)
         .Classes("spotify-media-row");
+
+    internal static WidgetElement IndexedQueueRow(SpotifyMediaCollectionItem item, bool first)
+    {
+        var row = MediaRow(item.Value, $"spotify.queue.play.{item.Key.Value}",
+            SpotifyCollectionIdentity.FocusId("spotify.queue.item", "shared", item.Key),
+            SpotifyCollectionIdentity.FocusId("spotify.queue.persist", "shared", item.Key),
+            first ? "Next track" : "Play from here");
+        // Native lazy collection owns neighbors; item fragments never point at
+        // unrealized siblings or confuse the first row of a range with queue head.
+        return row with { AccessibilityLabel = (first ? "Next track: " : "Play from here: ") + item.Value.Title };
+    }
 
     private static WidgetElement QueueRow(
         SpotifyMediaCollectionItem item,

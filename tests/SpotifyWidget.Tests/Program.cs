@@ -21,6 +21,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Playlist reopen reuses pages while explicit refresh fetches again", PlaylistCacheNavigation),
     ("Playlist route publication never mixes list focus with detail content", PlaylistRoutePublication),
     ("Queue selection preserves suffix and skips first item without replacing context", QueuePlaybackPreservesTail),
+    ("Indexed queue retains stable queries and rejects replaced observation actions", IndexedQueueAuthority),
     ("Track menu adds once without changing X or fetching collections", TrackMenuRequestBudget),
     ("Play here follow-up reads stop after the bounded settlement budget", LocalStartSettlementBudget),
     ("Play here reconciles stale idle playback without waiting for idle poll", LocalStartReconcilesIdle),
@@ -52,7 +53,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Collection pages load lazily and remain cached", LazyPageLoading),
     ("Typed pinned Up Next demand survives lifecycle and transport",
         TypedPinnedUpNextDemandSurvivesLifecycleAndTransport),
-    ("Queue traverses every bounded occurrence without wrapping", QueueTraversesContinuously),
+    ("Queue realizes deep bounded occurrences with native navigation authority", QueueTraversesContinuously),
     ("Playlist pages load automatically in bounded cached windows", MaximumPlaylistPageContract),
     ("Controller prefetch preserves focus before subsequent 12/12/5 navigation", ControllerPlaylistPrefetchRoundTrip),
     ("Continuous playlist detail resets on refresh and preserves one header edge", ContinuousPlaylistDetailAnchorAndHeader),
@@ -717,12 +718,12 @@ static async Task LazyPageLoading()
 
     await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
     Assert.Equal(1, harness.QueueCalls);
-    var queueSnapshot = widget.RenderSnapshot("spotify.queue", 1);
+    var queueRows = await ReadQueueRows(widget);
     var queueRow = QueueFocus("wide", "spotify:track:next");
-    Assert.NotNull(Find(queueSnapshot.Root, queueRow));
-    Assert.Equal("Next track \u00b7 3:21", Find(queueSnapshot.Root,
+    Assert.NotNull(Find(queueRows[0], queueRow));
+    Assert.Equal("Next track \u00b7 3:21", Find(queueRows[0],
         queueRow + ".state").Text);
-    Assert.True(!ContainsId(queueSnapshot.Root,
+    Assert.True(!ContainsId(queueRows[0],
         queueRow + ".metadata"),
         "Queue item rendered a redundant fourth text row.");
     await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.playlists"));
@@ -820,33 +821,33 @@ static async Task QueueTraversesContinuously()
     var snapshot = widget.RenderSnapshot("spotify.queue.continuous", 1);
     Assert.Equal(CollectionLayoutKind.List, Find(snapshot.Root, "spotify.queue.scroll").CollectionLayout!.Kind);
     WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Queue", snapshot);
-    var rows = Find(snapshot.Root, "spotify.queue.scroll").Children.ToArray();
+    Assert.Equal(0, Find(snapshot.Root, "spotify.queue.scroll").Children.Count);
+    Assert.Equal(50, Find(snapshot.Root, "spotify.queue.scroll").IndexedCollection!.Count);
+    Assert.Equal("spotify.queue.scroll", Find(snapshot.Root, "spotify.queue.scroll").Id);
+    var rows = await ReadQueueRows(widget);
     Assert.Equal(50, rows.Length);
     Assert.Equal(50, rows.Select(row => row.Id).Distinct(StringComparer.Ordinal).Count());
     Assert.Equal(50, rows.Select(row => row.CollectionItemKey)
         .Distinct(StringComparer.Ordinal).Count());
-    var replay = ControllerReplay.Run(snapshot, new InputReplay
+    Assert.True(rows.All(row => row.Focus is null || row.Focus.Up is null && row.Focus.Down is null),
+        "Indexed rows must not point to unrealized siblings; native traversal owns navigation.");
+    using (var indexed = WidgetTestHost.CreateIndexedCollectionHost(widget, "spotify.deep"))
+    using (var deep = await indexed.AcquireAsync("spotify.queue.scroll", 49, 1))
     {
-        InitialFocusId = rows[0].Id,
-        Events = Enumerable.Repeat(
-            new ReplayInputEvent { Button = ControllerButton.DPadDown }, 50).ToArray(),
-    });
-    Assert.True(replay[^1].FocusAfter == rows[^1].Id,
-        $"Terminal Queue Down moved to row {Array.FindIndex(rows, row => row.Id == replay[^1].FocusAfter)}.");
-    Assert.True(replay[^2].FocusAfter == rows[^1].Id,
-        $"The final in-range Queue Down reached row {Array.FindIndex(rows, row => row.Id == replay[^2].FocusAfter)}.");
-    var reverse = ControllerReplay.Run(snapshot, new InputReplay
-    {
-        InitialFocusId = rows[^1].Id,
-        Events = Enumerable.Repeat(
-            new ReplayInputEvent { Button = ControllerButton.DPadUp }, 49).ToArray(),
-    });
-    Assert.Equal(rows[0].Id, reverse[^1].FocusAfter);
+        Assert.Equal(rows[^1].Id, deep.Range.Items[0].Root.Id);
+        Assert.True(deep.Range.Items[0].Root.AccessibilityLabel!.StartsWith("Play from here:"),
+            "First row of a demanded range was confused with the first queue occurrence.");
+        var parsed = WrssParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "styles", "default.wrss")), "styles/default.wrss");
+        var theme = WrssThemeCompiler.Compile([parsed.Document]).Theme;
+        var styles = WidgetRail.WidgetBridge.BridgeRenderStyleResolver.ResolveRange(deep.Range, theme);
+        Assert.Equal("82px", styles[rows[^1].Id].Base["min-height"].Text);
+        Assert.True(styles[rows[^1].Id].Focused.ContainsKey("background"), "Demanded rows lost authored focused background styling.");
+    }
 
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
     var reactivated = widget.RenderSnapshot("spotify.queue.reactivated", 2);
-    Assert.Equal(50, Find(reactivated.Root, "spotify.queue.scroll").Children.Count);
+    Assert.Equal(50, Find(reactivated.Root, "spotify.queue.scroll").IndexedCollection!.Count);
     Assert.Equal(1, harness.QueueCalls);
     await StopAsync(widget);
 }
@@ -876,6 +877,72 @@ static async Task PlaylistDetailBack()
     Assert.True(!list.Root.Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.B),
         "Playlist root unexpectedly consumed B instead of returning to the tray.");
     await StopAsync(widget);
+}
+
+static async Task IndexedQueueAuthority()
+{
+    var harness = SpotifyHarness.Ready();
+    var first = harness.Queue.Items[0];
+    harness.Queue = harness.Queue with { Items = [first, first with { Uri = "spotify:track:later", Title = "Later" }] };
+    var widget = await StartAsync(harness);
+    try
+    {
+        await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+        await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.queue"));
+        await WaitUntil(() => harness.QueueCalls == 1);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+        using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "spotify.indexed-authority");
+        var original = Find(host.CurrentSnapshot.Root, "spotify.queue.scroll").IndexedCollection!;
+        Assert.Equal(0, ViewSnapshotValidator.Validate(host.CurrentSnapshot).Count);
+        using var old = await host.AcquireAsync("spotify.queue.scroll", 1, 1);
+        var key = old.Range.Items[0].Key;
+        Assert.Equal("Play from here: Later", old.Range.Items[0].Root.AccessibilityLabel);
+        Assert.Equal(original, Find(host.PublishSnapshot().Root, "spotify.queue.scroll").IndexedCollection);
+
+        harness.Queue = harness.Queue with { Items = [first, harness.Queue.Items[1] with { Title = "Updated later" }] };
+        await widget.OnActionAsync(new("spotify.page.retry", "spotify.page.retry"));
+        await WaitUntil(() => harness.QueueCalls == 2);
+        var changed = Find(host.PublishSnapshot().Root, "spotify.queue.scroll").IndexedCollection!;
+        Assert.Equal(original.QueryGeneration, changed.QueryGeneration);
+        Assert.True(changed.ContentRevision > original.ContentRevision, "Metadata refresh must update content, not reorder the query.");
+        Assert.Equal<WidgetOperationAdmission?>(null, old.RouteAction(key, ControllerButton.A));
+        using var updated = await host.AcquireAsync("spotify.queue.scroll", 1, 1);
+        Assert.Equal(key, updated.Range.Items[0].Key);
+        Assert.Equal("Play from here: Updated later", updated.Range.Items[0].Root.AccessibilityLabel);
+
+        harness.Queue = harness.Queue with { Items = harness.Queue.Items.Reverse().ToArray() };
+        await widget.OnActionAsync(new("spotify.page.retry", "spotify.page.retry"));
+        await WaitUntil(() => harness.QueueCalls == 3);
+        var reordered = Find(host.PublishSnapshot().Root, "spotify.queue.scroll").IndexedCollection!;
+        Assert.True(reordered.QueryGeneration > changed.QueryGeneration, "Membership/order must publish a new query.");
+        Assert.Equal<WidgetOperationAdmission?>(null, updated.RouteAction(key, ControllerButton.A));
+        using var current = await host.AcquireAsync("spotify.queue.scroll", 0, 2);
+        Assert.Equal(key, current.Range.Items[0].Key);
+        Assert.Equal("Next track: Updated later", current.Range.Items[0].Root.AccessibilityLabel);
+
+        await widget.OnActionAsync(new("spotify.nav.devices", "spotify.nav.devices"));
+        host.PublishSnapshot();
+        Assert.Equal<WidgetOperationAdmission?>(null, current.RouteAction(key, ControllerButton.A));
+        Assert.Equal(0, harness.StartedPlayback.Count);
+        await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.queue"));
+        var restored = host.PublishSnapshot();
+        Assert.Equal(reordered, Find(restored.Root, "spotify.queue.scroll").IndexedCollection);
+        Assert.True(WidgetFocusTargetLookup.Resolve(widget.Render().Root, "spotify.queue.scroll", restored.ActiveInputScopeId).IsEnabled,
+            "Section return must enter the indexed collection, not an unrealized row ID.");
+        using var canceled = new CancellationTokenSource(); canceled.Cancel();
+        var rejected = false;
+        try { using var ignored = await host.AcquireAsync("spotify.queue.scroll", 0, 1, cancellationToken: canceled.Token); }
+        catch (OperationCanceledException) { rejected = true; }
+        Assert.True(rejected, "Canceled range demand was accepted.");
+
+        harness.Queue = harness.Queue with { Items = [] };
+        await widget.OnActionAsync(new("spotify.page.retry", "spotify.page.retry"));
+        await WaitUntil(() => harness.QueueCalls == 4);
+        var empty = host.PublishSnapshot();
+        Assert.True(!ContainsId(empty.Root, "spotify.queue.scroll") && ContainsId(empty.Root, "spotify.queue.empty.shared"),
+            "Empty queue should keep its existing actionable empty state.");
+    }
+    finally { await StopAsync(widget); }
 }
 
 static async Task PlaylistDetailFailureRetry()
@@ -1644,18 +1711,20 @@ static async Task DuplicateQueueOccurrencesRouteExactly()
     await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.wide.queue"));
     await WaitUntil(() => harness.QueueCalls >= 1);
 
-    var snapshot = widget.RenderSnapshot("spotify.queue.duplicates", 1);
-    var rows = Find(snapshot.Root, "spotify.queue.scroll").Children.ToArray();
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    using var indexed = WidgetTestHost.CreateIndexedCollectionHost(widget, "spotify.queue.duplicates");
+    using var lease = await indexed.AcquireAsync("spotify.queue.scroll", 0, 3);
+    var rows = lease.Range.Items.Select(item => item.Root).ToArray();
     Assert.Equal(3, rows.Length);
     Assert.Equal(3, rows.Select(row => row.CollectionItemKey).Distinct().Count());
     Assert.Equal(3, rows.Select(row => row.Id).Distinct().Count());
     Assert.Equal(3, rows.Select(row => row.ActionId).Distinct().Count());
     var selected = rows[2];
-    await widget.OnActionAsync(new(selected.ActionId!, selected.Id));
+    Assert.Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued,
+        lease.RouteAction(lease.Range.Items[2].Key, ControllerButton.A));
+    await WaitUntil(() => harness.StartedPlayback.Count == 1);
     Assert.Equal(repeatedUri, harness.StartedPlayback.Single().ItemUris!.Single());
-    Assert.Equal(rows[0].CollectionItemKey,
-        Find(widget.RenderSnapshot("spotify.queue.selected-duplicate", 2).Root,
-            "spotify.queue.scroll").CollectionAnchorKey);
+    Assert.Equal(0, Find(indexed.CurrentSnapshot.Root, "spotify.queue.scroll").Children.Count);
     await StopAsync(widget);
 }
 
@@ -2216,11 +2285,11 @@ static async Task LocalQueueSettlement()
         Item = harness.Playback.Item! with { Uri = next.Uri, Title = next.Title },
     }));
     Assert.Equal(2, harness.QueueCalls);
-    Assert.True(!ContainsAction(widget.RenderSnapshot("lagging", 1).Root, QueuePlay(following.Uri)),
+    Assert.True(!(await ReadQueueRows(widget)).Any(row => ContainsAction(row, QueuePlay(following.Uri))),
         "The retry should still be waiting for cloud settlement.");
-    await WaitUntil(() => ContainsAction(widget.RenderSnapshot("settled", 2).Root, QueuePlay(following.Uri)));
+    await WaitForQueueAction(widget, QueuePlay(following.Uri));
     Assert.Equal(3, harness.QueueCalls);
-    Assert.True(!ContainsAction(widget.RenderSnapshot("settled", 3).Root, QueuePlay(next.Uri)),
+    Assert.True(!(await ReadQueueRows(widget)).Any(row => ContainsAction(row, QueuePlay(next.Uri))),
         "The playing track remained in the old queue after settlement.");
     await StopAsync(widget);
 }
@@ -2242,7 +2311,7 @@ static async Task LocalQueueSettlementBounded()
     await WaitUntil(() => ContainsId(widget.RenderSnapshot("unsettled", 1).Root,
         "spotify.queue.refresh-warning.shared"));
     Assert.Equal(4, harness.QueueCalls);
-    Assert.True(ContainsAction(widget.RenderSnapshot("retained", 2).Root, QueuePlay(next.Uri)),
+    Assert.True((await ReadQueueRows(widget)).Any(row => ContainsAction(row, QueuePlay(next.Uri))),
         "A failed refresh should preserve the last loaded list with a warning.");
     // A manual retry can recover; this is not a permanent queue error.
     harness.Queue = harness.Queue with { CurrentlyPlaying = next, Items = [] };
@@ -3108,13 +3177,21 @@ static async Task QueuePlaybackPreservesTail()
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     await widget.OnActionAsync(new("spotify.nav.queue", "spotify.nav.queue"));
     await WaitUntil(() => harness.QueueCalls == 1);
-    var rows = Find(widget.RenderSnapshot("queue-tail", 1).Root, "spotify.queue.scroll").Children;
-    await widget.OnActionAsync(new(rows[1].ActionId!, rows[1].Id));
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+    using var indexed = WidgetTestHost.CreateIndexedCollectionHost(widget, "queue-tail");
+    using var lease = await indexed.AcquireAsync("spotify.queue.scroll", 0, 3);
+    var rows = lease.Range.Items.Select(item => item.Root).ToArray();
+    Assert.Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, lease.RouteAction(lease.Range.Items[1].Key, ControllerButton.A));
+    await WaitUntil(() => harness.StartedPlayback.Count == 1);
     Assert.SequenceEqual(new[] { "spotify:track:second", original.Uri }, harness.StartedPlayback.Single().ItemUris!);
     Assert.Equal<string?>(null, harness.StartedPlayback.Single().ContextUri);
-    rows = Find(widget.RenderSnapshot("queue-tail", 2).Root, "spotify.queue.scroll").Children;
+    await WaitUntil(() => harness.QueueCalls > 1);
+    indexed.PublishSnapshot();
+    using var current = await indexed.AcquireAsync("spotify.queue.scroll", 0, 3);
+    rows = current.Range.Items.Select(item => item.Root).ToArray();
     Assert.Equal(QueuePlay(original.Uri), rows[0].ActionId);
-    await widget.OnActionAsync(new(rows[0].ActionId!, rows[0].Id));
+    Assert.Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, current.RouteAction(current.Range.Items[0].Key, ControllerButton.A));
+    await WaitUntil(() => harness.Commands.Any(command => command.Operation == SpotifyPlaybackOperation.Next));
     Assert.Equal(SpotifyPlaybackOperation.Next, harness.Commands.Last().Operation);
     Assert.Equal(1, harness.StartedPlayback.Count);
     await StopAsync(widget);
@@ -3484,6 +3561,32 @@ static ViewNode[] CollectionRows(ViewNode node)
     }
     Visit(node);
     return rows.ToArray();
+}
+
+// Inspect demanded fragments separately. The production parent stays an empty-child
+// IndexedCollection; these helpers never manufacture a fake inline snapshot.
+static async Task<ViewNode[]> ReadQueueRows(SpotifyWidget widget)
+{
+    using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "spotify.queue.fragments");
+    if (!ContainsId(host.CurrentSnapshot.Root, "spotify.queue.scroll")) return [];
+    var count = Find(host.CurrentSnapshot.Root, "spotify.queue.scroll").IndexedCollection!.Count;
+    var rows = new List<ViewNode>();
+    for (var start = 0; start < count; start += 64)
+    {
+        using var lease = await host.AcquireAsync("spotify.queue.scroll", start, Math.Min(64, count - start));
+        rows.AddRange(lease.Range.Items.Select(item => item.Root));
+    }
+    return rows.ToArray();
+}
+
+static async Task WaitForQueueAction(SpotifyWidget widget, string action)
+{
+    for (var attempt = 0; attempt < 500; ++attempt)
+    {
+        if ((await ReadQueueRows(widget)).Any(row => ContainsAction(row, action))) return;
+        await Task.Delay(10);
+    }
+    throw new InvalidOperationException("Expected indexed queue action did not appear.");
 }
 
 static int CountId(ViewNode node, string id) =>
