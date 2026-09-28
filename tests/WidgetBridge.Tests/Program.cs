@@ -41,6 +41,11 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Indexed bridge server wire orders cancellation and publishes ranges", BridgeIndexedRangeScenarios.ServerWireOrdersCancellationAndPublishesRanges),
+    ("Indexed bridge real worker reads cancel and retire boundedly", BridgeIndexedRangeScenarios.RealWorkerReadDoesNotBlockAndRetires),
+    ("Indexed bridge reads preserve serial work and exact cancellation", BridgeIndexedRangeScenarios.SlowReadsPreserveSerialWork),
+    ("Indexed bridge query and worker retirement preserve ownership", BridgeIndexedRangeScenarios.QueryAndWorkerRetirementAreExact),
+    ("Indexed bridge admission and dispatcher stay bounded", BridgeIndexedRangeScenarios.AdmissionAndDispatcherAreBounded),
     ("Widget modal main and pinned inputs have separate authority", BridgeClientRegistryScenarios.ModalSeparatesMainAndPinnedAuthority),
     ("Window previews publish themed render styles for every protocol role", WindowPreviewScenarios.ThemedRenderRoles),
     ("Window previews require current manifest consent instance and snapshot authority", WindowPreviewScenarios.Authority),
@@ -292,7 +297,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
     var instance = RequiredValue(arguments, "--widget-instance");
     return await WidgetWorkerBootstrap.RunAsync(
         arguments,
-        _ => string.Equals(instance, "virtual.instance", StringComparison.Ordinal)
+        _ => string.Equals(instance, "indexed-real.instance", StringComparison.Ordinal)
+            ? new IndexedBridgeProbeWidget()
+            : string.Equals(instance, "virtual.instance", StringComparison.Ordinal)
             ? new VirtualCollectionBridgeWidget()
             : string.Equals(instance, "background-surface-test.instance", StringComparison.Ordinal)
                 ? new BackgroundSurfaceBridgeFixtureWidget()

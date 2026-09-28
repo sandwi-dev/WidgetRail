@@ -7,7 +7,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.WidgetPresentationSession;
 
-public sealed class WidgetPresentationSession : IAsyncDisposable
+public sealed partial class WidgetPresentationSession : IAsyncDisposable
 {
     private readonly BridgePresentationTransport _transport;
     private readonly WidgetPresentationSessionOptions _options;
@@ -202,6 +202,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
     {
         ValidatePresentationLifecycle(state);
         var sessionGeneration = ValidateTarget(target);
+        var lifecycleVersion = BeginIndexedLifecycle(target, state);
         var response = await RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
             new BridgeWidgetLifecycleRequest(
@@ -215,7 +216,9 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                     RecoveryOriginSequence: 0)),
             BridgeMessageTypes.Snapshot,
             cancellationToken).ConfigureAwait(false);
-        return PublishSnapshot(target.Descriptor, sessionGeneration, response.Payload);
+        var frame = PublishSnapshot(target.Descriptor, sessionGeneration, response.Payload);
+        CompleteIndexedLifecycle(target, sessionGeneration, lifecycleVersion, state);
+        return frame;
     }
 
     public async Task SetLifecycleAsync(
@@ -224,12 +227,14 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ValidatePresentationLifecycle(state);
-        _ = ValidateTarget(target);
+        var lifecycleGeneration = ValidateTarget(target);
+        var lifecycleVersion = BeginIndexedLifecycle(target, state);
         await RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
             new BridgeWidgetLifecycleRequest(target.Descriptor.Id, state),
             BridgeMessageTypes.Acknowledged,
             cancellationToken).ConfigureAwait(false);
+        CompleteIndexedLifecycle(target, lifecycleGeneration, lifecycleVersion, state);
         if (state == WidgetLifecycleState.Background)
         {
             lock (_gate)
@@ -428,6 +433,9 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
         _lifetime.Cancel();
+        Task[] indexed;
+        lock (_gate) indexed = _indexedDemands.Values.Select(item => item.Done.Task).ToArray();
+        await Task.WhenAll(indexed).ConfigureAwait(false);
         await _transport.DisposeAsync().ConfigureAwait(false);
         Task[] refreshes;
         lock (_gate) refreshes = _refreshes.Values.ToArray();
@@ -1055,12 +1063,14 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
     {
         var committed = state with { PublicationRevision = NextPublicationRevisionLocked() };
         _states[state.WidgetId] = committed;
+        RetireIndexedRangesLocked(state.WidgetId, committed.LastGood?.Authority);
         if (publish) _statePublications.Enqueue(committed);
         return committed;
     }
 
     private bool RetireStateLocked(string widgetId)
     {
+        RetireIndexedRangesLocked(widgetId);
         if (!_states.Remove(widgetId)) return false;
         var retired = new WidgetPresentationState(widgetId, null, null, 0)
         {
@@ -1206,6 +1216,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         {
             if (_terminalFailure is not null) return;
             _terminalFailure = exception;
+            RetireIndexedRangesLocked();
             artwork = _artwork.Values.ToArray();
             _artwork.Clear();
         }

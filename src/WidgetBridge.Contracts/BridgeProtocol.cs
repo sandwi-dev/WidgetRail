@@ -27,6 +27,9 @@ internal static class BridgeMessageTypes
     public const string AppearanceChanged = "platform-appearance-changed";
     public const string CatalogChanged = "widget-catalog-changed";
     public const string GetSnapshot = "get-snapshot";
+    public const string ReadIndexedRange = "read-indexed-range";
+    public const string IndexedRange = "indexed-range";
+    public const string CancelIndexedRange = "cancel-indexed-range";
     public const string ResolveArtwork = "resolve-artwork";
     public const string Artwork = "artwork";
     public const string ResolvePackageIcon = "resolve-package-icon";
@@ -357,3 +360,10 @@ internal sealed class BridgeProtectedWifiSecret : IDisposable
 
 public sealed class BridgeProtocolException(string message, Exception? innerException = null)
     : Exception(message, innerException);
+
+internal sealed record BridgeIndexedRangeRequest(
+    string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
+    IndexedCollectionRangeRequest Range);
+internal sealed record BridgeIndexedRangeResponse(
+    string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration,
+    IndexedCollectionRange Range);

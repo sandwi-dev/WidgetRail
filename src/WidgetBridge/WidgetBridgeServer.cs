@@ -401,6 +401,20 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 _appearance.CreatePayload(),
                 cancellationToken).ConfigureAwait(false);
             break;
+        case BridgeMessageTypes.ReadIndexedRange:
+        {
+            var rangeRequest = BridgeJson.FromElement<BridgeIndexedRangeRequest>(request.Payload);
+            using var range = await _registry.ReadIndexedRangeAsync(rangeRequest, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.IndexedRange, request.RequestId, range.Value, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.CancelIndexedRange:
+        {
+            var rangeRequest = BridgeJson.FromElement<BridgeIndexedRangeRequest>(request.Payload);
+            var cancelled = await _registry.CancelIndexedRangeAsync(rangeRequest).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { cancelled }, cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.GetSnapshot:
         {
             var snapshotRequest = BridgeJson.FromElement<BridgePresentationRequest>(request.Payload);

@@ -13,6 +13,9 @@ public sealed record WidgetPresentationSessionOptions
     public int MaximumPendingArtworkRequests { get; init; } = 32;
     /// <summary>Bounds local artwork demand, including admission and completion. Does not cancel server-side decoding.</summary>
     public TimeSpan ArtworkTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public int MaximumPendingIndexedRanges { get; init; } = 4;
+    /// <summary>Provider range budget; independent of ordinary action/IPC timeouts.</summary>
+    public TimeSpan IndexedRangeTimeout { get; init; } = TimeSpan.FromSeconds(35);
     public int MaximumRetainedDiagnostics { get; init; } = 64;
 
     internal void Validate()
@@ -29,6 +32,10 @@ public sealed record WidgetPresentationSessionOptions
             throw new ArgumentOutOfRangeException(nameof(MaximumPendingArtworkRequests));
         if (ArtworkTimeout < TimeSpan.FromMilliseconds(100) || ArtworkTimeout > TimeSpan.FromMinutes(2))
             throw new ArgumentOutOfRangeException(nameof(ArtworkTimeout));
+        if (MaximumPendingIndexedRanges is < 1 or > 16)
+            throw new ArgumentOutOfRangeException(nameof(MaximumPendingIndexedRanges));
+        if (IndexedRangeTimeout < TimeSpan.FromMilliseconds(100) || IndexedRangeTimeout > TimeSpan.FromMinutes(2))
+            throw new ArgumentOutOfRangeException(nameof(IndexedRangeTimeout));
         if (MaximumRetainedDiagnostics is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(MaximumRetainedDiagnostics));
     }

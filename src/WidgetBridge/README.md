@@ -422,3 +422,28 @@ changes. Reload/list remains lazy. This integration is still not a marketplace
 or publisher-trust guarantee: production needs package signatures/revocation,
 CPU quotas, disk/profile quotas and cleanup, and a broker security audit/history
 surface.
+
+## Indexed collection range transport
+
+The private `read-indexed-range` / `indexed-range` exchange carries a widget ID,
+instance ID, runtime generation, presentation generation, and the SDK indexed
+range request/result. `cancel-indexed-range` uses the exact same request identity
+and acknowledges whether that captured demand was found. Receiving a range does
+not grant item action, controller, or artwork authority.
+
+Read/cancel requests bypass per-widget FIFO tails. Cancellation waits only for a
+matching earlier read handler to register its demand, so immediately cancelling
+a just-written read cannot race its asynchronous dispatch. Eight global read
+slots leave dispatcher capacity for ordinary work; each widget admits at most
+four reads. The registry checks the current parent/query and worker start ordinal
+before and after the read. It briefly takes OperationGate to inspect/publish
+state, but does not hold it during provider I/O.
+
+Reads require an already-published running worker. The runtime's exact-start
+internal overload never starts or recovers a worker. A registration publication
+lease keeps that captured client alive until its actual read has drained. Query
+replacement, presentation-generation change, worker retirement, and session
+cancellation cancel captured demand. Production IBridgeWidgetClient range reads
+must preserve WidgetProcessClient's bounded cancellation/terminal-session
+contract; the registry does not abandon client calls or dispose their resources
+under a still-running trusted implementation.

@@ -12,6 +12,8 @@ internal enum BridgeRequestKind
     ApplicationControl,
     WindowPreviewPermissions,
     GetSnapshot,
+    ReadIndexedRange,
+    CancelIndexedRange,
     ResolveArtwork,
     ResolvePackageIcon,
     ResolveEmbeddedMedia,
@@ -40,12 +42,16 @@ internal readonly record struct BridgeRequestKey
 
     internal BridgeRequestKind Kind { get; }
     internal string? WidgetId { get; }
+    internal BridgeIndexedRangeRequest? IndexedRange { get; private init; }
+    internal bool IsIndependent => Kind is BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.CancelIndexedRange;
     internal bool IsKnown => Kind is not (BridgeRequestKind.Malformed or
         BridgeRequestKind.Unknown);
 
     internal static BridgeRequestKey Global(BridgeRequestKind kind)
     {
         if (kind is BridgeRequestKind.GetSnapshot or
+            BridgeRequestKind.ReadIndexedRange or
+            BridgeRequestKind.CancelIndexedRange or
             BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.ResolvePackageIcon or
             BridgeRequestKind.ResolveEmbeddedMedia or
@@ -63,6 +69,8 @@ internal readonly record struct BridgeRequestKey
     internal static BridgeRequestKey Widget(BridgeRequestKind kind, string? widgetId)
     {
         if (kind is not (BridgeRequestKind.GetSnapshot or
+            BridgeRequestKind.ReadIndexedRange or
+            BridgeRequestKind.CancelIndexedRange or
             BridgeRequestKind.ResolveArtwork or
             BridgeRequestKind.ResolvePackageIcon or
             BridgeRequestKind.ResolveEmbeddedMedia or
@@ -78,6 +86,9 @@ internal readonly record struct BridgeRequestKey
             throw new BridgeProtocolException("Bridge request widget ID is invalid.");
         return new BridgeRequestKey(kind, widgetId);
     }
+
+    internal static BridgeRequestKey Indexed(BridgeRequestKind kind, BridgeIndexedRangeRequest request) =>
+        Widget(kind, request.WidgetId) with { IndexedRange = request };
 
     private static bool IsIdentifier(string? value) =>
         value is { Length: > 0 and <= 128 } &&
@@ -121,6 +132,8 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.ControllerControl => ControllerControl(request.Payload),
                 BridgeMessageTypes.WindowPreviewPermissions => WindowPreviewPermissions(request.Payload),
                 BridgeMessageTypes.ApplicationControl => BridgeRequestKey.Global(BridgeRequestKind.ApplicationControl),
+                BridgeMessageTypes.ReadIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.ReadIndexedRange),
+                BridgeMessageTypes.CancelIndexedRange => IndexedRange(request.Payload, BridgeRequestKind.CancelIndexedRange),
                 BridgeMessageTypes.GetSnapshot => Widget(
                     BridgeJson.FromElement<BridgePresentationRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),
@@ -180,6 +193,13 @@ internal static class BridgeRequestClassifier
 
     private static BridgeRequestKey Widget(string widgetId, BridgeRequestKind kind) =>
         BridgeRequestKey.Widget(kind, widgetId);
+
+    private static BridgeRequestKey IndexedRange(JsonElement payload, BridgeRequestKind kind)
+    {
+        var request = BridgeJson.FromElement<BridgeIndexedRangeRequest>(payload);
+        BridgeIndexedRangeValidation.Validate(request);
+        return BridgeRequestKey.Indexed(kind, request);
+    }
 
     private static BridgeRequestKey Artwork(JsonElement payload)
     {

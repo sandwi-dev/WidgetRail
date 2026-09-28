@@ -87,8 +87,15 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
         T payload,
         CancellationToken cancellationToken) => RequestCoreAsync(type, payload, cancellationToken, stopping: false);
 
+    internal async Task<BridgeEnvelope> RequestWithWriteCompletionAsync<T>(string type, T payload,
+        TaskCompletionSource written)
+    {
+        try { return await RequestCoreAsync(type, payload, CancellationToken.None, stopping: false, written).ConfigureAwait(false); }
+        catch (Exception error) { written.TrySetException(error); throw; }
+    }
+
     private async Task<BridgeEnvelope> RequestCoreAsync<T>(
-        string type, T payload, CancellationToken cancellationToken, bool stopping)
+        string type, T payload, CancellationToken cancellationToken, bool stopping, TaskCompletionSource? written = null)
     {
         lock (_gate)
         {
@@ -96,7 +103,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
             ThrowIfTerminalLocked();
             ++_activeRequests;
         }
-        try { return await SendRequestAsync(type, payload, cancellationToken).ConfigureAwait(false); }
+        try { return await SendRequestAsync(type, payload, cancellationToken, written).ConfigureAwait(false); }
         finally
         {
             lock (_gate)
@@ -105,7 +112,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
     }
 
     private async Task<BridgeEnvelope> SendRequestAsync<T>(
-        string type, T payload, CancellationToken cancellationToken)
+        string type, T payload, CancellationToken cancellationToken, TaskCompletionSource? written)
     {
         using var admission = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         await _pendingCapacity.WaitAsync(admission.Token).ConfigureAwait(false);
@@ -142,6 +149,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
                     RequestId = requestId,
                     Payload = BridgeJson.ToElement(payload),
                 }, _lifetime.Token).ConfigureAwait(false);
+                written?.TrySetResult();
             }
             finally
             {

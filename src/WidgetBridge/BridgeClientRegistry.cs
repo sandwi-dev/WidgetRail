@@ -263,6 +263,11 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
         new(
             transactionKind, baseSequence, recoveryOriginSequence,
             await GetSnapshotAsync(cancellationToken).ConfigureAwait(false), null);
+    // Implementations must use the exact already-running worker, never start/recover,
+    // and own bounded cancellation/drain before returning. The registry retains a
+    // publication lease until this operation actually ends; no abandoned WaitAsync.
+    Task<IndexedCollectionRange> ReadIndexedRangeAsync(IndexedCollectionRangeRequest request, int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        Task.FromException<IndexedCollectionRange>(new NotSupportedException("Indexed ranges are unavailable."));
     Task SetLifecycleStateAsync(WidgetLifecycleState state, CancellationToken cancellationToken);
     Task<bool> TryRestoreLifecycleStateAsync(
         WidgetLifecycleState state,
@@ -333,6 +338,8 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         client.GetPresentationAsync(
             capabilities, presentationGeneration, baseSequence,
             transactionKind, recoveryOriginSequence, cancellationToken);
+    public Task<IndexedCollectionRange> ReadIndexedRangeAsync(IndexedCollectionRangeRequest request, int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        client.ReadIndexedRangeAsync(request, expectedStartOrdinal, cancellationToken);
     public Task SetLifecycleStateAsync(
         WidgetLifecycleState state,
         CancellationToken cancellationToken) =>
@@ -365,7 +372,7 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
     public ValueTask DisposeAsync() => client.DisposeAsync();
 }
 
-internal sealed class BridgeClientRegistry : IAsyncDisposable
+internal sealed partial class BridgeClientRegistry : IAsyncDisposable
 {
     private static readonly TimeSpan OperationDeadline = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan RetireDeadline = TimeSpan.FromSeconds(3);
@@ -557,7 +564,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                         "Worker returned a presentation for a different transaction kind.");
                 DemandPackageIconAuthority(
                     registration.Configured, presentation.Snapshot);
-                registration.CommitCachedSnapshot(presentation.Snapshot);
+                CommitIndexedAwareSnapshot(registration, presentation.Snapshot);
                 ScheduleIdleUnload(registration, sessionCancellation);
             }
             return AdmitPublication(
@@ -811,7 +818,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     presentation.Update));
             // The bridge-visible lifecycle, retained base, and publication token
             // become observable together only after worker presentation succeeds.
-            registration.CommitCachedSnapshot(presentation.Snapshot);
+            CommitIndexedAwareSnapshot(registration, presentation.Snapshot);
             registration.HostLifecycle = state;
             return publication;
         }
@@ -1220,6 +1227,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                         StringComparison.Ordinal))
                 {
                     pair.Value.Configured = configured;
+                    CancelInvalidIndexedReadsLocked(pair.Value);
                     continue;
                 }
                 if (ReserveRetirementLocked(pair.Value, restartReserved: false))
@@ -1637,6 +1645,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         ClientRegistration registration,
         bool restartReserved)
     {
+        CancelIndexedReadsLocked(registration);
         registration.BeginRetirementLocked();
         if (restartReserved) registration.RestartReserved = true;
         if (registration.RetirementStarted) return false;

@@ -16,8 +16,16 @@ public sealed partial class WidgetProcessClient
     /// Reads declarative items without granting action authority. Query, scope and
     /// generation must still match the currently published parent when the reply arrives.
     /// </summary>
-    public async Task<IndexedCollectionRange> ReadIndexedRangeAsync(
-        IndexedCollectionRangeRequest request, CancellationToken cancellationToken = default)
+    public Task<IndexedCollectionRange> ReadIndexedRangeAsync(
+        IndexedCollectionRangeRequest request, CancellationToken cancellationToken = default) =>
+        ReadIndexedRangeCoreAsync(request, null, cancellationToken);
+
+    internal Task<IndexedCollectionRange> ReadIndexedRangeAsync(
+        IndexedCollectionRangeRequest request, int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        ReadIndexedRangeCoreAsync(request, expectedStartOrdinal, cancellationToken);
+
+    private async Task<IndexedCollectionRange> ReadIndexedRangeCoreAsync(
+        IndexedCollectionRangeRequest request, int? expectedStartOrdinal, CancellationToken cancellationToken)
     {
         IndexedCollectionContract.ValidateRequest(request);
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -35,8 +43,16 @@ public sealed partial class WidgetProcessClient
         var completed = false;
         try
         {
-            await EnsureConnectedAsync(demand.Token).ConfigureAwait(false);
-            session = Volatile.Read(ref _session) ?? throw new IOException("Widget pipe disconnected.");
+            if (expectedStartOrdinal is null) await EnsureConnectedAsync(demand.Token).ConfigureAwait(false);
+            await _lifecycleGate.WaitAsync(demand.Token).ConfigureAwait(false);
+            try
+            {
+                session = Volatile.Read(ref _session) ?? throw new IOException("Widget pipe disconnected.");
+                if (!session.IsRunning || _stopping || _disposed ||
+                    expectedStartOrdinal is { } expected && (expected <= 0 || Starts != expected))
+                    throw new InvalidOperationException("The expected indexed worker session is no longer running.");
+            }
+            finally { _lifecycleGate.Release(); }
             var parent = Volatile.Read(ref _materializedSnapshot) ?? throw new InvalidOperationException("No parent presentation is available.");
             _ = IndexedCollectionContract.ResolveScope(parent, request);
             pending = session.PendingRequests.Register(MessageTypes.ReadIndexedRange);
@@ -64,7 +80,8 @@ public sealed partial class WidgetProcessClient
             { throw new TimeoutException("The indexed range response timed out."); }
             completed = true;
             demand.Token.ThrowIfCancellationRequested();
-            if (!ReferenceEquals(Volatile.Read(ref _session), session) || session.IsTerminal)
+            if (!ReferenceEquals(Volatile.Read(ref _session), session) || session.IsTerminal ||
+                expectedStartOrdinal is { } expectedOrdinal && Starts != expectedOrdinal)
                 throw new OperationCanceledException("The indexed range session retired.");
             if (response.Type != MessageTypes.IndexedRange) throw new WidgetProtocolViolationException("The worker returned an unexpected indexed range response.");
             var result = RuntimeJson.FromElement<IndexedCollectionRange>(response.Payload);

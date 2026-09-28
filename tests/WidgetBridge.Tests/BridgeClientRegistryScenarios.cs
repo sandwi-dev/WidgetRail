@@ -2619,6 +2619,9 @@ internal sealed class RegistryTestClient(
     internal List<WidgetActionEvent> ActionEvents { get; } = [];
     internal List<EmbeddedMediaPlaybackEvent> EmbeddedMediaPlaybackEvents { get; } = [];
     internal Func<long, ViewSnapshot>? SnapshotFactory { get; set; }
+    internal Func<IndexedCollectionRangeRequest, CancellationToken, Task<IndexedCollectionRange>>? IndexedReader { get; set; }
+    public Task<IndexedCollectionRange> ReadIndexedRangeAsync(IndexedCollectionRangeRequest request, int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        IndexedReader is { } read ? read(request, cancellationToken) : Task.FromException<IndexedCollectionRange>(new NotSupportedException());
     internal Func<string, WidgetEncodedArtwork?>? ArtworkResolver { get; set; }
     internal List<string> ArtworkRequests { get; } = [];
     public Task<WidgetEncodedArtwork?> ResolveArtworkAsync(

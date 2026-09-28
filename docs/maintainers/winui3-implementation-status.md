@@ -389,3 +389,32 @@ query-lifetime/device-enumeration check before this executable; that result rema
 separate and uncorrected. Evidence is in `artifacts/winui-controller/`. The platform
 artifact was rebuilt and copied by the subsequent WinUI build. Physical Guide
 reopen/navigation/A acceptance remains pending; no validation window was launched.
+
+
+## Bridge/session indexed demand and native focus policy
+
+The bridge now routes indexed reads and exact cancellation independently from its
+ordinary per-widget FIFO. It bounds reads to eight total/four per widget, captures
+an already-running worker ordinal without startup/recovery, releases the operation
+gate during provider work and holds a publication lease through actual completion.
+Cancellation waits for read admission, eliminating cancel-before-registration.
+Five new bridge scenarios pass, including real bridge-pipe-to-worker traffic;
+eleven existing focused dispatcher/retirement/session regressions also pass.
+
+The presentation-session API owns demand identity, timeout, capacity and exact
+frame/projection cancellation. Its forty-seven tests pass. New coverage includes
+out-of-order replies, replacement authority, hidden surfaces, disposal, preserved
+data across unrelated snapshots and modal opening, and stale-frame cancellation
+that cannot affect a replacement frame. Callers still own surface lifetime tokens.
+The result remains data only: no row action/artwork lease or native item template
+has been enabled yet. This connection is not production-widget acceptance.
+
+The shared WinUI presenter now maps authored neighbors (including group targets)
+to native XYFocus properties. Native directional entry honors remembered/default
+group children, and searches stay within the active scope. One-shot group requests
+can wait for data, are not replayed on ordinary updates, and retire on newer user
+navigation, activation, pointer input or explicit withdrawal. Worker replacement
+clears old memories. Fifteen real WinUI focus-policy checks and all sixteen prior
+presenter checks pass; analyzer builds pass. Test windows were closed. These tests
+exercise native UI and synthetic navigation, not physical controller acceptance or
+realized lazy-row focus, which remain outstanding.

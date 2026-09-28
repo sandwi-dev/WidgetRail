@@ -160,7 +160,7 @@ ordinary page. The source descriptor is captured when that declaration is built.
   parent's scope and presentation-surface ownership.
 - Each source permits four actual provider tasks. Cancellation/timeout releases
   the caller, but an uncooperative provider continues occupying its slot until it
-  actually finishes. The default read timeout is ten seconds (100 ms–30 seconds).
+  actually finishes. The default read timeout is ten seconds (100 ms-30 seconds).
   Widget/process lifetime remains the final boundary for uncooperative author code.
 
 This is migration infrastructure, not a production-ready widget switch. The
@@ -169,3 +169,57 @@ service demand, bounded row-action/artwork leases, native template presentation,
 error/retry UI, and production widget adoption must be connected before these
 overloads can replace an existing shipped collection. A range response by itself
 is not authority to invoke row actions through the existing parent-only route.
+
+## Bridge and presentation-session demand path
+
+`WidgetPresentationSession.ReadIndexedRangeAsync` now sends the source/range with
+host-owned unique demand identity and the exact widget instance, runtime and
+presentation generation. The bridge admits only an already-running worker and
+revalidates its start ordinal, query and projection before and after loading.
+Reads bypass the ordinary widget request FIFO and release its operation gate
+across provider work. They are bounded to eight bridge-wide and four per widget;
+cancellation and ordinary actions retain transport capacity.
+
+Cancellation is ordered after read-frame completion and the bridge's read
+admission boundary, so it cannot arrive before the matching request is registered.
+Original response correlation stays alive through terminal cancellation. Query or
+worker retirement cancels captured work; the registration's publication lease
+prevents disposal during its actual read. The trusted worker-client adapter owns
+bounded cancellation/drain and never starts or recovers a replacement worker for
+an old range. The bridge verifies this with real process-backed pipe traffic.
+
+A pending data range survives unrelated parent snapshot revisions and opening a
+modal over its unchanged parent. Its source/query/content revision, parent scope,
+projection and worker identity must still match. Session closure, query replacement
+or explicit surface retirement cancels it. Range data does not grant input or
+artwork authority; bounded semantic leases and native item-template integration
+remain required before production widget adoption.
+
+
+### Remaining indexed item semantics
+
+Production adoption needs a typed item action callback using the captured immutable
+query/item, with ordinary local action names rather than positions encoded in IDs.
+YouTube's current handlers resolve `item.<index>` against its current page/queue;
+that must change deliberately so an already-admitted action cannot target a new
+item occupying that position. Queue-position commands also need queue revision
+validation or an explicit captured playback context.
+
+Use bounded worker semantic leases for frozen row declarations and captured item
+values. A realized XAML container is not that lease: cached/focused rows, open menus
+and retained presentation can outlive container recycling. Separate data retention,
+current interaction eligibility, artwork demand and an already-admitted operation.
+Extend the existing serial action queue with a captured execution binding and
+identity-aware repeat/coalescing; do not create an item-specific action queue.
+Admitted actions retain their captured item until terminal completion under the
+existing active lifetime, independently of ordinary visual eviction.
+
+A shared logical input-path resolver must append the leased row path to its real
+parent scope/collection path. Apply existing nearest-owner shortcut rules so row
+actions use the captured item callback while page/collection actions continue to
+invoke the parent handler. Validate exact context-menu option and opener ownership.
+Modal scope changes disable background input without discarding valid parent
+presentation/artwork. Pinned projection ownership must remain distinct. Resolve
+opaque artwork through declared handles and an optional captured item resolver;
+HTTPS images continue to use host network policy. None of this action/artwork
+admission is implied by the currently implemented read-only range transport.
