@@ -8,8 +8,7 @@ internal sealed record OverlayShellOptions(string InstallationRoot, string Setti
 {
     internal static OverlayShellOptions Load(string path)
     {
-        var options = JsonSerializer.Deserialize<OverlayShellOptions>(File.ReadAllText(path),
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        var options = JsonSerializer.Deserialize(File.ReadAllText(path), ShellJsonContext.CaseInsensitive.OverlayShellOptions)
             ?? throw new InvalidDataException("Overlay shell options are missing.");
         foreach (var root in new[] { options.InstallationRoot, options.SettingsRoot, options.InstalledCatalogRoot })
             if (string.IsNullOrWhiteSpace(root) || !Path.IsPathFullyQualified(root))

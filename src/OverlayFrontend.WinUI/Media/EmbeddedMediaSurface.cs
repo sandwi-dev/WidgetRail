@@ -308,7 +308,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
         // browser input operation is host-only; widgets cannot choose methods or payloads.
         var currentCore = core;
         var x = observed.X + observed.Width / 2; var y = observed.Y + observed.Height / 2;
-        await currentCore.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type = "mousePressed", x, y, button = "left", buttons = 1, clickCount = 1 }));
+        await currentCore.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", PointerMessage("mousePressed", x, y, 1));
         if (!Current()) return; // Closing the controller also releases browser input.
         if (!AcceptsInput || transport.PendingCommandId != observed.CommandId)
         {
@@ -317,8 +317,14 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
             CancelActivation();
             return;
         }
-        await currentCore.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(new { type = "mouseReleased", x, y, button = "left", buttons = 0, clickCount = 1 }));
+        await currentCore.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", PointerMessage("mouseReleased", x, y, 0));
     }
+
+    private static string PointerMessage(string type, double x, double y, int buttons) =>
+        new System.Text.Json.Nodes.JsonObject
+        {
+            ["type"] = type, ["x"] = x, ["y"] = y, ["button"] = "left", ["buttons"] = buttons, ["clickCount"] = 1,
+        }.ToJsonString();
 
     private void CancelActivation()
     {

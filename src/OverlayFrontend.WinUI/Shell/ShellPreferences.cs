@@ -58,7 +58,7 @@ internal sealed class ShellPreferencesStore(string settingsRoot)
             var read = await reader.ReadBlockAsync(buffer.AsMemory(), cancellationToken);
             if (read == buffer.Length) return ShellPreferences.Empty;
             var content = new string(buffer, 0, read);
-            var value = source == path ? JsonSerializer.Deserialize<ShellPreferences>(content) : Legacy(content);
+            var value = source == path ? JsonSerializer.Deserialize(content, ShellJsonContext.Default.ShellPreferences) : Legacy(content);
             return Valid(value) ? value! with { Order = value!.Order.ToArray() } : ShellPreferences.Empty;
         }
         catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException or FormatException or OverflowException)
@@ -76,7 +76,7 @@ internal sealed class ShellPreferencesStore(string settingsRoot)
         {
             if (requested != Interlocked.Read(ref revision)) return;
             Directory.CreateDirectory(settingsRoot);
-            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(value), cancellationToken);
+            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(value, ShellJsonContext.Default.ShellPreferences), cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (requested == Interlocked.Read(ref revision)) File.Move(temporary, path, overwrite: true);
         }

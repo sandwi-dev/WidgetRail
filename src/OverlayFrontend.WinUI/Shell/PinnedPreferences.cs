@@ -27,7 +27,7 @@ internal sealed class PinnedPreferencesStore(string settingsRoot)
             var bytes = new byte[MaximumBytes + 1];
             var count = await input.ReadAtLeastAsync(bytes, bytes.Length, throwOnEndOfStream: false, cancellationToken);
             if (count > MaximumBytes) return PinnedPreferences.Empty;
-            var value = JsonSerializer.Deserialize<PinnedPreferences>(bytes.AsSpan(0, count));
+            var value = JsonSerializer.Deserialize(bytes.AsSpan(0, count), ShellJsonContext.Default.PinnedPreferences);
             return value?.IsValid == true ? Freeze(value) : PinnedPreferences.Empty;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
@@ -38,7 +38,7 @@ internal sealed class PinnedPreferencesStore(string settingsRoot)
     {
         if (!value.IsValid) throw new ArgumentException("Invalid pinned preferences.", nameof(value));
         value = Freeze(value);
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, ShellJsonContext.Default.PinnedPreferences);
         if (bytes.Length > MaximumBytes) throw new ArgumentException("Pinned preferences exceed their storage bound.", nameof(value));
         var request = Interlocked.Increment(ref revision);
         await writes.WaitAsync(cancellationToken);

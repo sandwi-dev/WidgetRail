@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Media;
@@ -123,7 +124,7 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
     private string Encode(string command, EmbeddedMediaPlaybackCommand? playback, string? hostMediaKey = null, double? hostPosition = null)
     {
         pending = new(++nextCommand, command, playback) { HostMediaKey = hostMediaKey };
-        var body = new Dictionary<string, object?>
+        var body = new JsonObject
         {
             ["command"] = command,
             ["environmentGeneration"] = generation,
@@ -148,7 +149,7 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
             body["mediaKey"] = hostMediaKey;
             if (hostPosition is { } position) body["positionSeconds"] = position;
         }
-        return JsonSerializer.Serialize(body);
+        return body.ToJsonString();
     }
 
     public bool TryAccept(string json, out EmbeddedMediaObservation? observation)
