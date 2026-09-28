@@ -32,6 +32,7 @@ internal sealed partial class WidgetViewPresenter
             // release/repeat events from a previously pressed button.
             return true;
         }
+        if (HandleSliderButton(button, phase)) return true;
         if (phase == ControllerEventPhase.Pressed && OpenContextMenu(button)) return true;
         if (button == ControllerButton.A)
         {

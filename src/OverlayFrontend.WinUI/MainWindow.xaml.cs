@@ -15,7 +15,7 @@ public sealed partial class MainWindow : Window
     public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
         bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false, bool validateIndexed = false, bool validateFocusPolicy = false,
         string? indexedValidationPipe = null, bool validateGrouped = false, bool validateGroupedFlat = false, bool validateGroupedAdapted = false, bool validateSurfaces = false, bool validateSelect = false, bool validateMotion = false, bool validateModals = false, bool validateGlyphs = false, bool validateStyles = false, bool validateTextEntry = false, bool validateContextMenu = false,
-        string? shellConfiguration = null, bool shellNoController = false)
+        string? shellConfiguration = null, bool shellNoController = false, bool validateSlider = false)
     {
         InitializeComponent();
         themeSettings = Microsoft.UI.System.ThemeSettings.CreateForWindowId(AppWindow.Id);
@@ -60,6 +60,7 @@ public sealed partial class MainWindow : Window
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
+        else if (validateSlider) RootFrame.Content = new Validation.SliderControlValidationPage();
         else if (validateContextMenu) RootFrame.Content = new Validation.ContextMenuControlValidationPage();
         else if (shellConfiguration is not null)
         {

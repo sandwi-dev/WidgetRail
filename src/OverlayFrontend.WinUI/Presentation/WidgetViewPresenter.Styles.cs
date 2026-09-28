@@ -34,6 +34,8 @@ internal sealed partial class WidgetViewPresenter
     }
     internal void ResetPressedStyles()
     {
+        adjustingSlider = null;
+        sliderBackPending = false;
         controllerPressedStyle = null;
         foreach (var adapter in nativeStyles.Values) adapter.SetControllerPressed(false);
         foreach (var binding in bindings.Values)

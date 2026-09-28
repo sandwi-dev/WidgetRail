@@ -203,3 +203,19 @@ modal precedence and scroll/focus retention; its output is
 `indexed-context-menu-result.json`. These are correctness checks, not production
 widget performance measurements. Slider and live media/window-preview controls
 remain separate migration work.
+
+## Native sliders
+
+SDK Slider and Scrubber declarations use native `Slider`, including native
+pointer, keyboard and UIA range-value behavior. Controller Left/Right applies
+`SliderMath` against the minimum-anchored step grid, consumes endpoint movement,
+and sends bounded absolute `RequestedValue` through ordinary action authority.
+Programmatic snapshot/range changes never echo actions. Direct sliders can also
+have an authored A action; Up/Down remains normal focus navigation.
+
+`ActivateToAdjust` remains a controller policy: A enters, Left/Right adjusts,
+and A/B exits without firing an activation or parent Back action. Repeats and
+release do not replay the exit. Scope replacement, focus departure and host
+hide reset adjustment. Widgets still own the authoritative value; the frontend
+owns native interaction only. Native `--validate-slider` covers these lifetimes,
+endpoint quantization and disjoint range changes with a synthetic action sink.

@@ -152,6 +152,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         }
         finally { applying = false; }
         ValidateTransientControl();
+        ValidateSliderAdjustment();
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
         QueueSurfaceUpdate();
     }
@@ -197,7 +198,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (applying || !IsLoaded || frame is null) return false;
         CancelGroupEntry();
         if (textEntryPopup is { } edit) { edit.Dialog.MoveFocus(direction); return true; }
-        if (MoveContextFocus(direction) || MoveSelectFocus(direction)) return true;
+        if (MoveContextFocus(direction) || MoveSelectFocus(direction) || MoveSlider(direction)) return true;
         if (FindIndexedCollection()?.MoveFocus(direction) == true) return true;
         var scope = bindings.Values.FirstOrDefault(binding => declarations[binding.Identity.Id].Node.InputScopeId == frame.Authority.ActiveInputScopeId)
             ?? (bindings.GetValueOrDefault(frame.Snapshot.Root.Id)?.Identity.Scope == frame.Authority.ActiveInputScopeId
@@ -209,7 +210,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         if (applying || disposed || presentationOnly) return;
         CancelGroupEntry();
-        if (ActivateContextMenu() || ActivateTextEntry() || ActivateSelect()) return;
+        if (ActivateContextMenu() || ActivateTextEntry() || ActivateSelect() || HandleSliderButton(ControllerButton.A, ControllerEventPhase.Pressed)) return;
+        if (FocusedBinding() is { Identity.Kind: ViewNodeKind.Slider } slider && Eligible(slider))
+        { _ = InvokeAsync(slider.Identity, slider.Token); return; }
         if (FindIndexedCollection()?.ActivateFocused() == true) return;
         if (!applying && FocusedBinding() is { Element: Button { Command: { } command } button } binding
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
@@ -316,6 +319,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 element = presentationOnly ? new TextBlock { TextWrapping = TextWrapping.Wrap } :
                     new Button { Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
                 break;
+            case ViewNodeKind.Slider: element = presentationOnly ? new TextBlock() : CreateSlider(declaration.Identity, token); break;
             case ViewNodeKind.Image: element = new Image(); break;
             case ViewNodeKind.Text: element = new TextBlock { TextWrapping = TextWrapping.Wrap }; break;
             case ViewNodeKind.Progress: element = new ProgressBar(); break;
@@ -358,6 +362,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             scroll.VerticalScrollBarVisibility = !horizontal && node.ShowScrollbar != false ? ScrollBarVisibility.Auto : ScrollBarVisibility.Hidden;
             ((StackPanel)binding.Children!).Orientation = horizontal ? Orientation.Horizontal : Orientation.Vertical;
         }
+        if (element is Slider slider) UpdateSlider(slider, node);
         if (element is ProgressBar progress)
         {
             progress.Minimum = node.Minimum ?? 0;
@@ -381,7 +386,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 || node.CollectionAnchorKey is not null || node.CollectionGeneration is not null || node.CollectionResetGeneration is not null
                 || node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null
                 || node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll or ViewNodeKind.Button or ViewNodeKind.ActionSurface
-                    or ViewNodeKind.ModalLayer or ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
+                    or ViewNodeKind.Slider or ViewNodeKind.ModalLayer or ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
                     or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ControllerGlyph or ViewNodeKind.Icon))
                 throw new NotSupportedException($"WinUI presentation for {node.Kind} with these declarations is not implemented.");
             var scope = node.InputScopeId ?? inheritedScope;
