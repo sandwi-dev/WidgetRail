@@ -41,7 +41,12 @@ internal static class BridgeIndexedEndToEndScenarios
         Check(await lease.ResolveArtworkAsync("item.7", "cover", deadline.Token) is { ContentType: WidgetArtworkContentType.Png },
             "Row artwork did not cross both process protocols.");
 
-        await Invoke(ControllerButton.A, "row:0:7:open");
+        var displayed = frame;
+        frame = await session.RefreshAsync(frame.Authority, deadline.Token);
+        Check(lease.IsCurrent && frame.Authority.SnapshotSequence > displayed.Authority.SnapshotSequence,
+            "The test did not create receive-thread publication ahead of the displayed frame.");
+        Check(lease.ClaimsInput(displayed, "item.7", ControllerButton.A), "The unchanged displayed action lost ownership.");
+        await Invoke(ControllerButton.A, "row:0:7:open", displayed);
         await Invoke(ControllerButton.X, "parent");
         Check(lease.IsCurrent, "Unrelated page updates retired row semantics.");
         await Invoke(ControllerButton.Y, "row:0:7:replace");
@@ -55,14 +60,14 @@ internal static class BridgeIndexedEndToEndScenarios
         await serving.WaitAsync(TimeSpan.FromSeconds(5));
         Check(!replacement.IsCurrent, "Session shutdown retained remote row ownership.");
 
-        async Task Invoke(ControllerButton button, string expected)
+        async Task Invoke(ControllerButton button, string expected, WidgetPresentationFrame? displayedOrigin = null)
         {
             var invalidated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             EventHandler<WidgetPresentationInvalidatedEventArgs> handler = (_, _) => invalidated.TrySetResult();
             session.Invalidated += handler;
             try
             {
-                Check(await lease.AdmitInputAsync(frame.Authority, "item.7", button, cancellationToken: deadline.Token) == WidgetOperationAdmission.Enqueued,
+                Check(await lease.AdmitInputAsync(displayedOrigin ?? frame, "item.7", button, cancellationToken: deadline.Token) == WidgetOperationAdmission.Enqueued,
                     "Indexed input did not enter the existing worker queue.");
                 await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(3));
                 frame = await session.RefreshAsync(frame.Authority, deadline.Token);

@@ -26,12 +26,20 @@ those rows, their open popup, or their presentation/artwork contribution. XAML
 container recycling does not by itself dispose a semantic lease. The ordinary
 `ReadIndexedRangeAsync` remains a data-only read with no action/artwork authority.
 
-Use `lease.AdmitInputAsync(originFrame.Authority, itemKey, button, ...)` for row
-activation, shortcuts and context selection. The origin must be the exact frame
-admitted by this presentation session; no method substitutes the latest sequence
-for a stale caller. The bridge additionally compares retained origin and current
-binding before the worker's serial action queue admits the command. Admission is
-not execution completion, and cancellation does not retract a sent command.
+Native indexed rows use `lease.ClaimsInput(originFrame, itemKey, button, ...)`
+and `lease.AdmitInputAsync(originFrame, itemKey, button, ...)`, retaining the exact
+`WidgetPresentationFrame` published by this session. A receive-thread update can
+be newer than the frame still displayed by WinUI. These overloads permit that
+normal delay only while the lease/query, current scope and exact input binding
+remain unchanged. Weak frame provenance rejects fabricated copies without
+retaining another history of full trees. The original displayed sequence crosses
+the wire unchanged; there is no frontend retry, rebase or action replay.
+
+The older authority-only overload remains strict to the session's current frame.
+The bridge independently compares its bounded retained origin with current
+binding before the worker's serial queue admits the command. Origins outside
+that bridge history are rejected. Admission is not execution completion, and
+cancellation does not retract a sent command.
 
 `lease.ResolveArtworkAsync(itemKey, handle)` authorizes only artwork declared by
 that row, including focused background and presentation fragments. Requests have

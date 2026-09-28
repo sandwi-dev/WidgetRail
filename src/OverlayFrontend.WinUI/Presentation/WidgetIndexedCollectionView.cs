@@ -236,15 +236,15 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         if (!row.Lease.IsCurrent) return true;
         try
         {
-            var authority = source.Frame.Authority;
-            if (!row.Lease.ClaimsInput(authority, row.Item.Key, button, phase)) return false;
-            await row.Lease.AdmitInputAsync(authority, row.Item.Key, button, phase,
+            var displayed = source.Frame;
+            if (!row.Lease.ClaimsInput(displayed, row.Item.Key, button, phase)) return false;
+            await row.Lease.AdmitInputAsync(displayed, row.Item.Key, button, phase,
                 sequence: ++sequence, monotonicTimestampMicroseconds: Environment.TickCount64 * 1000);
             // A null reply also denotes a worker publication racing IPC. It must
             // remain consumed for an input that the displayed declaration owns.
             return true;
         }
-        catch (WidgetPresentationSessionException error) when (!row.Lease.IsCurrent || error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale") { return true; }
+        catch (WidgetPresentationSessionException error) when (!row.Lease.IsCurrent || error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale" or "indexed_input_stale") { return true; }
         catch (Exception error) { failed(error); return true; }
     }
     public async ValueTask DisposeAsync()

@@ -134,7 +134,7 @@ public sealed partial class WidgetPresentationSession
 
     internal async Task<WidgetOperationAdmission?> AdmitIndexedInputAsync(WidgetPresentationIndexedLease lease,
         WidgetPresentationAuthority origin, IndexedCollectionInputRequest input, IndexedCollectionInputContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, WidgetPresentationFrame? displayed = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         IndexedCollectionInputContract.ValidateInput(input);
@@ -142,7 +142,14 @@ public sealed partial class WidgetPresentationSession
         lock (_gate)
         {
             DemandIndexedLeaseLocked(lease);
-            _ = ValidateAuthority(origin); // Exact presented frame; never substitute the latest frame.
+            if (displayed is null) _ = ValidateAuthority(origin);
+            else
+            {
+                var owners = ValidateDisplayedIndexedInputLocked(lease, displayed);
+                var item = lease.Range.Items.SingleOrDefault(item => item.Key == input.Item.ItemKey)
+                    ?? throw new WidgetPresentationSessionException("indexed_input_stale", "The indexed input item is outside its lease.");
+                DemandSameIndexedBinding(owners.Origin, owners.Current, item.Root, input);
+            }
             if (!SameIndexedOwner(origin, lease.Authority) || input.Item.LeaseId != lease.LeaseId ||
                 !lease.Range.Items.Any(item => item.Key == input.Item.ItemKey))
                 throw new WidgetPresentationSessionException("indexed_input_stale", "Indexed input does not belong to this owner.");

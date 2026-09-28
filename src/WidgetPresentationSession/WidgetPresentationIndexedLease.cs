@@ -36,6 +36,25 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
         ControllerEventPhase phase = ControllerEventPhase.Pressed) => owner.IndexedInputIsClaimed(this, origin, itemKey, button, phase);
 
     /// <summary>
+    /// Uses the exact session-published frame currently displayed by the native
+    /// UI. Unrelated newer publications are allowed only while query, scope and
+    /// input binding remain current. No sequence is substituted or replayed.
+    /// </summary>
+    public bool ClaimsInput(WidgetPresentationFrame displayed, string itemKey, ControllerButton button,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed) => owner.DisplayedIndexedInputIsClaimed(this, displayed, itemKey, button, phase);
+
+    public Task<WidgetOperationAdmission?> AdmitInputAsync(WidgetPresentationFrame displayed,
+        string itemKey, ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        string? contextActionOwnerId = null, string? contextActionId = null,
+        long sequence = 0, long monotonicTimestampMicroseconds = 0, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(displayed);
+        return owner.AdmitIndexedInputAsync(this, displayed.Authority,
+            new(new(LeaseId, itemKey), button, phase, contextActionOwnerId, contextActionId),
+            new(ScopeId, displayed.Authority.SnapshotSequence, sequence, monotonicTimestampMicroseconds), cancellationToken, displayed);
+    }
+
+    /// <summary>
     /// Pass the exact frame displayed when input originated. Stale frames are never
     /// silently rebased. Cancellation stops waiting; a sent action may be admitted.
     /// </summary>

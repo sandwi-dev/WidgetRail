@@ -282,14 +282,16 @@ public sealed partial class IndexedRangeSessionTests
     {
         await session.ListWidgetsAsync(); return await session.EstablishPresentationAsync(session.GetTarget(Descriptor.Id), WidgetLifecycleState.Visible);
     }
-    private static async Task SnapshotReplyAsync(BridgeFrameChannel channel, long id, long sequence, IndexedCollectionDescriptor source, bool openModal = false)
+    private static async Task SnapshotReplyAsync(BridgeFrameChannel channel, long id, long sequence, IndexedCollectionDescriptor source,
+        bool openModal = false, bool collectionDisabled = false, string? backShortcut = null)
     {
         var snapshot = new ViewSnapshot
         {
             ProtocolVersion = ProtocolConstants.IndexedCollectionVersion, Sequence = sequence, WidgetInstanceId = Descriptor.InstanceId,
-            ActiveInputScopeId = "root", InitialFocusId = "refresh", Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack, Children =
+            ActiveInputScopeId = "root", InitialFocusId = "refresh", Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack,
+                Shortcuts = backShortcut is null ? [] : [new(ControllerButton.B, backShortcut)], Children =
             [new ViewNode { Id = "refresh", Kind = ViewNodeKind.Button, Text = "Refresh", ActionId = "refresh" },
-             new ViewNode { Id = "list", Kind = ViewNodeKind.IndexedCollection, IndexedCollection = source, AccessibilityLabel = "Games",
+             new ViewNode { Id = "list", Kind = ViewNodeKind.IndexedCollection, IndexedCollection = source, AccessibilityLabel = "Games", IsDisabled = collectionDisabled,
                 ScrollAxis = ScrollAxis.Vertical, CollectionLayout = new() { Kind = CollectionLayoutKind.List, EstimatedItemExtent = 60 } }] },
         };
         if (openModal) snapshot = snapshot with

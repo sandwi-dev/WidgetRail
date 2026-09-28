@@ -8,6 +8,86 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 public sealed partial class IndexedRangeSessionTests
 {
     [TestMethod]
+    public async Task DisplayedIndexedActivationSurvivesAnUnrelatedPublicationBeforeUiDelivery()
+    {
+        Exception? failure = null;
+        long? deliveredOrigin = null;
+        await RunAsync(async channel =>
+        {
+            await LeaseReplyAsync(channel, await ReadAsync(channel));
+            var refresh = await ReadAsync(channel);
+            await SnapshotReplyAsync(channel, refresh.RequestId, 2, Source);
+            var next = await ReadAsync(channel);
+            if (next.Type == BridgeMessageTypes.IndexedInput)
+            {
+                deliveredOrigin = BridgeJson.FromElement<BridgeIndexedInputRequest>(next.Payload).Context.SnapshotSequence;
+                await ReplyAsync(channel, next.RequestId, BridgeMessageTypes.Acknowledged, new { admission = "enqueued" });
+                next = await ReadAsync(channel);
+            }
+            await ReleaseReplyAsync(channel, next);
+        }, async (session, displayed) =>
+        {
+            await using var lease = await session.AcquireIndexedRangeAsync(displayed.Authority, "list", Source, 0, 1);
+            _ = await session.RefreshAsync(displayed.Authority);
+            Assert.IsTrue(lease.IsCurrent, "An unrelated parent publication must retain item data.");
+            // Deliberately keep the UI's displayed frame while the session has
+            // already published the next snapshot on its receive thread.
+            try
+            {
+                Assert.IsTrue(lease.ClaimsInput(displayed, "key-0", ControllerButton.A));
+                Assert.AreEqual(WidgetOperationAdmission.Enqueued, await lease.AdmitInputAsync(displayed, "key-0", ControllerButton.A));
+            }
+            catch (Exception error) { failure = error; }
+        });
+        Assert.IsNull(failure, $"The displayed unchanged action was dropped: {failure}");
+        Assert.AreEqual(1L, deliveredOrigin, "The original displayed sequence must cross the wire without rebasing.");
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DisplayedIndexedInputRejectsDisabledCollectionOrChangedShortcut(bool changedShortcut)
+    {
+        await RunAsync(async channel =>
+        {
+            await LeaseReplyAsync(channel, await ReadAsync(channel));
+            var refresh = await ReadAsync(channel);
+            await SnapshotReplyAsync(channel, refresh.RequestId, 2, Source,
+                collectionDisabled: !changedShortcut, backShortcut: changedShortcut ? "new.back" : null);
+            // No input frame can cross the wire after the semantic guard fails.
+            await ReleaseReplyAsync(channel, await ReadAsync(channel));
+        }, async (session, displayed) =>
+        {
+            await using var lease = await session.AcquireIndexedRangeAsync(displayed.Authority, "list", Source, 0, 1);
+            _ = await session.RefreshAsync(displayed.Authority);
+            Assert.IsTrue(lease.IsCurrent);
+            var button = changedShortcut ? ControllerButton.B : ControllerButton.A;
+            var claims = Assert.ThrowsExactly<WidgetPresentationSessionException>(() => lease.ClaimsInput(displayed, "key-0", button));
+            Assert.AreEqual("indexed_input_stale", claims.Code);
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(displayed, "key-0", button));
+        });
+    }
+
+    [TestMethod]
+    public async Task DisplayedIndexedInputRequiresAnOriginalSessionPublishedFrame()
+    {
+        await RunAsync(async channel =>
+        {
+            await LeaseReplyAsync(channel, await ReadAsync(channel));
+            await ReleaseReplyAsync(channel, await ReadAsync(channel));
+        }, async (session, displayed) =>
+        {
+            await using var lease = await session.AcquireIndexedRangeAsync(displayed.Authority, "list", Source, 0, 1);
+            // Equal value does not establish origin provenance. Native callers
+            // retain the admitted frame; they cannot invent a future/old frame.
+            var copy = displayed with { };
+            Assert.ThrowsExactly<WidgetPresentationSessionException>(() => lease.ClaimsInput(copy, "key-0", ControllerButton.A));
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(copy, "key-0", ControllerButton.A));
+            Assert.ThrowsExactly<WidgetPresentationSessionException>(() => lease.ClaimsInput(displayed, "missing-key", ControllerButton.A));
+        });
+    }
+
+    [TestMethod]
     public async Task DisplayedInputClaimsDoNotTreatStaleNullAdmissionAsUnbound()
     {
         await RunAsync(async channel =>
@@ -106,6 +186,12 @@ public sealed partial class IndexedRangeSessionTests
             await using var lease = await session.AcquireIndexedRangeAsync(frame.Authority, "list", Source, 0, 1, pinned ? "host.full-widget" : null);
             var modal = await session.RefreshAsync(frame.Authority);
             Assert.IsTrue(lease.IsCurrent);
+            if (pinned) Assert.IsTrue(lease.ClaimsInput(frame, "key-0", ControllerButton.A));
+            else
+            {
+                Assert.ThrowsExactly<WidgetPresentationSessionException>(() => lease.ClaimsInput(frame, "key-0", ControllerButton.A));
+                await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(frame, "key-0", ControllerButton.A));
+            }
             if (pinned) Assert.AreEqual(WidgetOperationAdmission.Enqueued, await lease.AdmitInputAsync(modal.Authority, "key-0", ControllerButton.A));
             else await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(modal.Authority, "key-0", ControllerButton.A));
             Assert.IsNull(await lease.ResolveArtworkAsync("key-0", "cover"));
@@ -128,6 +214,7 @@ public sealed partial class IndexedRangeSessionTests
             Assert.IsFalse(lease.IsCurrent);
             await lease.DisposeAsync().AsTask().WaitAsync(Limit);
             await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(frame.Authority, "key-0", ControllerButton.A));
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(frame, "key-0", ControllerButton.A));
         });
     }
 

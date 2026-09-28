@@ -1091,6 +1091,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         bool publish)
     {
         var committed = state with { PublicationRevision = NextPublicationRevisionLocked() };
+        if (state.LastGood is { } inputFrame) _publishedInputFrames.GetValue(inputFrame, _ => PublishedInputFrameMarker);
         _states[state.WidgetId] = committed;
         RetireIndexedRangesLocked(state.WidgetId, committed.LastGood?.Authority);
         if (publish) _statePublications.Enqueue(committed);
