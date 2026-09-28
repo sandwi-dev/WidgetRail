@@ -5,6 +5,12 @@ Home recommendations in square artwork grids under YouTube Music’s section hea
 Search, your Library, a local Queue, and a compact pinned player.
 **Mixed for you** appears first when available.
 Collections scroll continuously as you browse.
+
+On the WinUI migration branch, each returned service page is an exact-count
+indexed collection. Home uses grouped native grids; lists request only needed
+rows. This does not add remote continuation beyond the service's bounded result.
+Row actions retain captured occurrences, including repeated songs; playback ticks
+do not replace the query. See [indexed authoring](../../docs/developers/indexed-collections.md).
 Switching tabs or Library filters remembers your highlighted item while the widget
 is running. Use **Refresh** to reload a collection from the beginning.
 **YTMDesktop is not required.**

@@ -80,6 +80,19 @@ public sealed class MusicService : IMusicService
         return result.Deserialize<MusicPage>(JsonProcess.Json) ?? throw new IOException("The music page is unavailable.");
     }
 
+    public async Task SelectQueueItemAsync(IReadOnlyList<MusicItem> expectedQueue, int index, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            // A captured occurrence cannot become a different song if shuffle,
+            // insertion or account changes replace the queue before execution.
+            if (!ReferenceEquals(_state.Queue, expectedQueue) || index < 0 || index >= expectedQueue.Count) return;
+            _state = _state with { Index = index };
+        }
+        await SelectAsync(token).ConfigureAwait(false);
+    }
+
     public async Task RadioAsync(MusicItem song, CancellationToken token)
     {
         var radio = await BrowseAsync("radio", song.Id, token).ConfigureAwait(false);
@@ -251,12 +264,12 @@ public sealed class MusicService : IMusicService
 
     public async Task CommandAsync(string command, double? value, CancellationToken token)
     {
-        if (command is "next" or "previous" or "ended" or "queue")
+        if (command is "next" or "previous" or "ended")
         {
             lock (_gate)
             {
                 var index = command == "previous" ? Math.Max(0, _state.Index - 1) :
-                    command == "queue" ? (int)(value ?? -1) : MusicQueue.Next(_state.Queue.Count, _state.Index, _state.Repeat, command == "ended");
+                    MusicQueue.Next(_state.Queue.Count, _state.Index, _state.Repeat, command == "ended");
                 if (index < 0 || index >= _state.Queue.Count) return;
                 _state = _state with { Index = index };
             }

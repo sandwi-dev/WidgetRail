@@ -12,6 +12,11 @@ are untouched. Migration is active and incomplete.
   package/provider probe loads 36 Home and 178 Library items, retrieves cover bytes,
   and opens/dismisses details. A startup invalidation-before-first-snapshot race
   was reproduced, tested and fixed; no diagnostic polling is required.
+- YouTube Music now projects its bounded service snapshots as indexed grouped
+  Home grids and lists, with captured row actions, deep return targets, retained
+  section queries and exact queue selection. All 28 standalone tests pass,
+  including duplicate occurrences and stale-query rejection. Native real-package
+  validation is pending; this is not a playback/performance acceptance claim.
 - Native modal, Select, TextEntry/controller keyboard, context menus and sliders
   are integrated. Scoped input and exact indexed action ownership remain enforced.
 - Responsive branches, static grids, basic poster layering and ordinary styles
