@@ -3,6 +3,9 @@ namespace WidgetRail.WidgetProtocol;
 /// <summary>Exact indexed query identity. Payload eviction never changes Count.</summary>
 public sealed record IndexedCollectionDescriptor(string SourceId, long QueryGeneration, long ContentRevision, int Count);
 
+/// <summary>One contiguous display-only heading and item run in an existing flat indexed query.</summary>
+public sealed record IndexedCollectionGroup(string Key, string Header, int Count);
+
 /// <summary>A logical occurrence in an immutable query; content refresh does not change its identity.</summary>
 public sealed record IndexedCollectionFocusTarget(string CollectionId, string SourceId, long QueryGeneration, string ItemKey, int Index);
 
@@ -19,6 +22,7 @@ public sealed record IndexedCollectionRange(
 
 public static class IndexedCollectionLimits
 {
+    public const int MaximumGroups = 256;
     public const int MaximumRangeItems = 64;
     public const int MaximumRangeNodes = ProtocolConstants.MaximumNodeCount;
 }
@@ -29,6 +33,32 @@ public static class IndexedCollectionLimits
 /// </summary>
 public static class IndexedCollectionContract
 {
+    /// <summary>Groups partition one vertical flat source; they do not create scopes or data sources.</summary>
+    public static void ValidateGroups(IReadOnlyList<IndexedCollectionGroup> groups,
+        IndexedCollectionDescriptor source, ScrollAxis axis)
+    {
+        ArgumentNullException.ThrowIfNull(groups);
+        ValidateDescriptor(source);
+        if (axis != ScrollAxis.Vertical)
+            throw new ArgumentException("Indexed grouping requires a vertical collection.", nameof(axis));
+        if (groups.Count > IndexedCollectionLimits.MaximumGroups)
+            throw new ArgumentOutOfRangeException(nameof(groups), "Indexed grouping exceeds its group limit.");
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        long count = 0;
+        foreach (var group in groups)
+        {
+            ArgumentNullException.ThrowIfNull(group);
+            RequireId(group.Key);
+            if (!keys.Add(group.Key)) throw new ArgumentException("Indexed group keys must be unique.", nameof(groups));
+            if (string.IsNullOrWhiteSpace(group.Header) || group.Header.Length > ProtocolConstants.MaximumStringLength || group.Header.Any(char.IsControl))
+                throw new ArgumentException("Indexed group headings must be nonempty bounded visible text.", nameof(groups));
+            ArgumentOutOfRangeException.ThrowIfNegative(group.Count);
+            count += group.Count;
+        }
+        if (count != source.Count)
+            throw new ArgumentException("Indexed group counts must partition the exact flat query count.", nameof(groups));
+    }
+
     public static void ValidateFocusTarget(IndexedCollectionFocusTarget target, string collectionId, IndexedCollectionDescriptor source)
     {
         ValidateFocusTargetShape(target, collectionId);

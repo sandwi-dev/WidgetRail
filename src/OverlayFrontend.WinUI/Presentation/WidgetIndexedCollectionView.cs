@@ -52,6 +52,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         {
             CancelNavigation();
             RetireViewRows();
+            DetachItems();
             DetachContainers();
             if (view is not null) { view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; view.LosingFocus -= OnLosingFocus; }
             view = layout.Kind == CollectionLayoutKind.AdaptiveGrid ? new GridView() : new ListView();
@@ -72,17 +73,16 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         if (source is null || !source.CanUpdate(frame, declaration))
         {
             CancelNavigation();
-            view.ItemsSource = null;
+            DetachItems();
             DetachContainers();
             if (source is not null) RetireSource(source);
             source = new(session, frame, declaration, DispatcherQueue) { Failed = failed };
-            view.ItemsSource = source.Items;
         }
         else
         {
             source.Update(frame, declaration);
-            if (!ReferenceEquals(view.ItemsSource, source.Items)) view.ItemsSource = source.Items;
         }
+        ApplyGroups(declaration.IndexedGroups);
         AutomationProperties.SetAutomationId(view, "Widget." + declaration.Id + ".Items");
         AutomationProperties.SetName(view, declaration.AccessibilityLabel ?? declaration.Id);
         var active = scope == frame.Authority.ActiveInputScopeId;
@@ -160,6 +160,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         disposed = true;
         CancelNavigation();
         RetireViewRows();
+        DetachItems();
         if (view is not null) { view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; view.LosingFocus -= OnLosingFocus; }
         DetachContainers(); Content = null;
         if (source is not null) RetireSource(source);

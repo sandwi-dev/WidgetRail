@@ -895,6 +895,16 @@ public static class ViewSnapshotValidator
             }
             else if (node.IndexedCollection is not null)
                 Add(path, "indexed_collection_not_allowed", "Indexed source metadata applies only to an IndexedCollection node.");
+            if (node.IndexedGroups is { } indexedGroups)
+            {
+                if (node.Kind != ViewNodeKind.IndexedCollection || node.IndexedCollection is null || node.ScrollAxis is null)
+                    Add(path, "indexed_groups_not_allowed", "Indexed grouping applies only to a vertical indexed collection.");
+                else
+                {
+                    try { IndexedCollectionContract.ValidateGroups(indexedGroups, node.IndexedCollection, node.ScrollAxis.Value); }
+                    catch (ArgumentException) { Add(path, "invalid_indexed_groups", "Indexed groups require unique safe keys, bounded headings and a complete vertical query partition."); }
+                }
+            }
             if (node.CollectionLayout is { } collectionLayout)
             {
                 if (node.Kind is not (ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection) || !Enum.IsDefined(collectionLayout.Kind))
@@ -1581,7 +1591,7 @@ public static class ViewSnapshotValidator
                     node.InputScopeId is not null || node.InitialChildFocusId is not null ||
                     node.UsesFocusedDescendantArtwork is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
-                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null ||
+                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null || node.IndexedGroups is not null ||
                     node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
                     (node.Shortcuts?.Count ?? 0) != 0)
                     Add(path, "focus_presentation_surface_property_not_allowed",
@@ -1725,7 +1735,7 @@ public static class ViewSnapshotValidator
                     node.UsesFocusedDescendantArtwork is not null || node.RetainLastPresentation is not null || node.FocusPresentation is not null ||
                     node.DefaultFocusPresentation is not null || node.Transition is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
-                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null ||
+                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null || node.IndexedGroups is not null ||
                     node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
                     (node.Shortcuts?.Count ?? 0) != 0)
                 {
@@ -1778,6 +1788,8 @@ public static class ViewSnapshotValidator
                     StringLength(node.InitialChildFocusId) +
                     StringLength(node.ScrollNearStartActionId) + StringLength(node.ScrollNearEndActionId) +
                     StringLength(node.IndexedCollection?.SourceId) + StringLength(node.CollectionAnchorKey) + StringLength(node.CollectionItemKey) +
+                    (node.IndexedGroups?.Take(IndexedCollectionLimits.MaximumGroups).Sum(group =>
+                        StringLength(group?.Key) + StringLength(group?.Header)) ?? 0) +
                     StringLength(node.Focus?.Up) + StringLength(node.Focus?.Down) +
                     StringLength(node.Focus?.Left) + StringLength(node.Focus?.Right) +
                     (node.StyleClasses?.Sum(StringLength) ?? 0) +

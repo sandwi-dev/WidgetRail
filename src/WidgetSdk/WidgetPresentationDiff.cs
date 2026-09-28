@@ -292,7 +292,8 @@ internal static class WidgetPresentationDiff
         ViewNode current,
         List<PresentationUpdateOperation> operations)
     {
-        if (previous.Kind != current.Kind)
+        if (previous.Kind != current.Kind || previous.IndexedCollection != current.IndexedCollection ||
+            !SameJson(previous.IndexedGroups, current.IndexedGroups))
         {
             operations.Add(new()
             {

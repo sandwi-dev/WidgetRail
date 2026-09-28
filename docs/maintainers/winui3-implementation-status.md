@@ -616,3 +616,28 @@ This is correctness evidence; real widget artwork and controller performance
 remain unproven. See `winui-grouped-collections-assessment.md` and
 `artifacts/winui-grouped/checkpoint/`. Public grouped declarations, production
 row/header templates and first-party adoption remain next work.
+
+## Grouped declarations connected to worker rows
+
+Protocol 62 and the SDK's `.Grouped(...)` now describe bounded contiguous groups
+over one flat indexed query. The production collection presenter uses compiled
+header templates, native observable group slices and the proven range adapter.
+List and grid mode share the same leases; partial/empty groups preserve meaningful
+controller targets. Header text changes retain view/focus/offset. SDK structural
+updates now transport both group metadata and indexed source descriptor changes
+atomically; the prior differ omitted descriptor changes.
+
+Validation: 15 indexed SDK checks, 15 indexed bridge checks, 14 SDK compatibility
+checks and 17 real-worker native UI checks pass. Native tests include seven grouped
+focus/header cases and sixty list moves across group headers. Analyzer build is
+clean; API baseline and protocol header are regenerated. Evidence:
+`artifacts/winui-grouped/worker-checkpoint-ui/`, `sdk-groups-tests.log`,
+`bridge-tests.log`, `compatibility-tests.log`. An earlier run observed an unexpected
+viewport enlargement before grouped tests and failed its size assertion; a targeted
+window/layout inspection and fresh full run did not reproduce it. That failed run
+is retained under `worker-ui/`; it is not classified as a proven grouping defect.
+
+The public group metadata and production row/header integration are complete for
+this contract, but widget conversion and full theme/animation/overlay parity remain
+outstanding. The new Playnite captured-service query path is undergoing its own
+tests and has not replaced the installed widget's cursor UI.

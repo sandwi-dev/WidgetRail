@@ -82,6 +82,8 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private readonly WidgetIndexedCollection<int, int> source;
     private string status = "initial";
     private bool grid;
+    private bool grouped;
+    private int headerRevision;
     private long calls;
     private long focusRequest;
     private FocusGroupEntryRequest? entry;
@@ -114,8 +116,8 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     }
     public override WidgetView Render() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
         UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"),
-        UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid")),
-        (grid ? UI.CollectionGrid("items", source, 180, 100, "Items", 5) : UI.CollectionList("items", source, 64, "Items"))
+        UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid"), UI.Button("Toggle groups", "groups", "groups")),
+        Collection()
             .Shortcut(ControllerButton.X, "parent"))
         .Shortcut(ControllerButton.LeftBumper, actionId: "focus-exact")
         .Shortcut(ControllerButton.RightBumper, actionId: "focus-default")
@@ -123,6 +125,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         .Shortcut(ControllerButton.RightTrigger, actionId: "focus-stale")
         .Shortcut(ControllerButton.Menu, actionId: "focus-delayed")
         .Shortcut(ControllerButton.RightStick, actionId: "focus-disabled")
+        .Shortcut(ControllerButton.LeftStick, actionId: "group-label")
         .Shortcut(ControllerButton.B, actionId: "focus-clear"), "items") { FocusGroupEntryRequest = entry };
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
@@ -130,6 +133,8 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         Volatile.Write(ref status, action.ActionId);
         if (action.ActionId == "content") source.UpdateContent(1);
         if (action.ActionId == "grid") grid = !grid;
+        if (action.ActionId == "groups") { grouped = !grouped; grid = true; source.UpdateContent(0); }
+        if (action.ActionId == "group-label") ++headerRevision;
         if (action.ActionId == "focus-exact") entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
         if (action.ActionId == "focus-default") entry = source.Enter("items", ++focusRequest);
         if (action.ActionId == "focus-wrong") entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("wrong-key"), 80));
@@ -150,5 +155,11 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             entry = source.Enter("items", ++focusRequest);
         }
         Invalidate(); return ValueTask.CompletedTask;
+    }
+    private IndexedCollectionElement Collection()
+    {
+        var element = grid ? UI.CollectionGrid("items", source, 180, 100, "Items", 5) : UI.CollectionList("items", source, 64, "Items");
+        return grouped ? element.Grouped(new("first", $"Section A {headerRevision}", 5), new("empty", "Empty section", 0),
+            new("second", $"Section B {headerRevision}", 7), new("third", $"Section C {headerRevision}", 88)) : element;
     }
 }

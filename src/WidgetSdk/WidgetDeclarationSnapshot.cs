@@ -10,6 +10,8 @@ internal static class WidgetDeclarationSnapshot
         ArgumentNullException.ThrowIfNull(node);
         if (node.Children is null || node.StyleClasses is null || node.Shortcuts is null || node.ContextActions is null || node.SelectOptions is null)
             throw new ArgumentException("Declaration collections cannot be null.");
+        if (node.IndexedGroups is { Count: > IndexedCollectionLimits.MaximumGroups })
+            throw new ArgumentException("Declaration exceeds the indexed group bound.");
         if (node.Children.Count > ProtocolConstants.MaximumNodeCount - count)
             throw new ArgumentException("Declaration exceeds the protocol tree bound.");
         if (depth > ProtocolConstants.MaximumTreeDepth || ++count > ProtocolConstants.MaximumNodeCount)
@@ -24,6 +26,7 @@ internal static class WidgetDeclarationSnapshot
             Shortcuts = Array.AsReadOnly(node.Shortcuts.ToArray()),
             ContextActions = Array.AsReadOnly(node.ContextActions.ToArray()),
             SelectOptions = Array.AsReadOnly(node.SelectOptions.ToArray()),
+            IndexedGroups = node.IndexedGroups is { } groups ? Array.AsReadOnly(groups.ToArray()) : null,
             FocusPresentation = node.FocusPresentation is { } focus ? Freeze(focus, depth + 1, ref count) : null,
             DefaultFocusPresentation = node.DefaultFocusPresentation is { } fallback ? Freeze(fallback, depth + 1, ref count) : null,
         };

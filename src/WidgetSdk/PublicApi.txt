@@ -589,6 +589,7 @@ method WidgetRail.WidgetSdk.ImageElement.ToString() -> string
 method WidgetRail.WidgetSdk.IndexedCollectionElement.Equals(WidgetRail.WidgetSdk.ContainerElement? other) -> bool
 method WidgetRail.WidgetSdk.IndexedCollectionElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.IndexedCollectionElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.IndexedCollectionElement.Grouped(params WidgetRail.WidgetProtocol.IndexedCollectionGroup[] groups) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method WidgetRail.WidgetSdk.IndexedCollectionElement.ToString() -> string
 method WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.<Clone>$() -> WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest
 method WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.Deconstruct(out string AppId) -> void
@@ -2241,6 +2242,7 @@ property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.Wi
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ActionSurfaceElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ButtonElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ContainerElement.Shortcuts { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.IndexedCollectionGroup>? WidgetRail.WidgetSdk.IndexedCollectionElement.Groups { get; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.PinnedPresentationLayout>? WidgetRail.WidgetSdk.WidgetView.PinnedLayouts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetContextAction> WidgetRail.WidgetSdk.ActionSurfaceElement.ContextActions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetContextAction> WidgetRail.WidgetSdk.ContainerElement.ContextActions { get; set; }

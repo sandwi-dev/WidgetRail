@@ -376,6 +376,8 @@ public sealed record ViewNode
 {
     /// <summary>Protocol-v60 exact indexed source; items are delivered separately on demand.</summary>
     public IndexedCollectionDescriptor? IndexedCollection { get; init; }
+    /// <summary>Display-only contiguous groups over the existing flat query; null means ungrouped.</summary>
+    public IReadOnlyList<IndexedCollectionGroup>? IndexedGroups { get; init; }
     /// <summary>Optional host-owned, coordinated section motion.</summary>
     public WidgetTransition? Transition { get; init; }
     public required string Id { get; init; }

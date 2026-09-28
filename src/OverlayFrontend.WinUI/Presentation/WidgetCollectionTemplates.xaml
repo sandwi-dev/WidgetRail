@@ -7,7 +7,10 @@
     <DataTemplate x:Key="WidgetIndexedRowTemplate" x:DataType="collections:IndexedItem">
         <local:WidgetIndexedRowView Row="{x:Bind Content, Mode=OneWay}" />
     </DataTemplate>
+    <DataTemplate x:Key="WidgetIndexedGroupHeaderTemplate" x:DataType="collections:WidgetIndexedGroup">
+        <TextBlock Text="{x:Bind Header, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}" Margin="8,12,8,8" />
+    </DataTemplate>
     <ItemsPanelTemplate x:Key="WidgetIndexedVerticalPanel"><ItemsStackPanel Orientation="Vertical" /></ItemsPanelTemplate>
     <ItemsPanelTemplate x:Key="WidgetIndexedHorizontalPanel"><ItemsStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-    <ItemsPanelTemplate x:Key="WidgetIndexedGridPanel"><ItemsWrapGrid Orientation="Horizontal" /></ItemsPanelTemplate>
+    <ItemsPanelTemplate x:Key="WidgetIndexedGridPanel"><ItemsWrapGrid Orientation="Horizontal" GroupHeaderPlacement="Top" /></ItemsPanelTemplate>
 </ResourceDictionary>

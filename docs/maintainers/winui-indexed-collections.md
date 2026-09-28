@@ -410,3 +410,35 @@ the actual serial action queue and returns admission, not action completion;
 an explicit input context for stale-snapshot or scope rejection. Disposing the
 helper cancels pending acquisitions/releases its leases, without destroying the
 widget or cancelling actions already admitted to the normal widget lifetime.
+
+### Grouped native collections
+
+Protocol 62 supports display-only group headings on vertical indexed lists and
+grids. The query still contains one flat ordered sequence:
+
+```csharp
+UI.CollectionGrid("home.items", source, 130, 170, "Home", maximumColumns: 4)
+    .Grouped(new("recommended", "Recommended", 12),
+             new("albums", "Albums", 8));
+```
+
+The group counts must total `source.Descriptor.Count`. Group keys are unique
+occurrence IDs; repeated heading text does not imply the same group. At most 256
+groups are accepted. Empty groups are permitted and hidden. Group declarations
+are copied when authored and when retained. They add no input scope, action owner,
+row key, provider request or focus index. All row actions and exact focus targets
+continue to use flat query indices.
+
+WinUI receives observable slices over that single source through its native
+CollectionViewSource and a range-forwarding ICollectionView adapter. The standard
+grouping wrapper alone does not forward IItemsRangeInfo. Native ListView/GridView
+still own headers, layout, realization and scrolling. The shared controller adapter
+accounts for each group's row origin and partial final row when choosing a logical
+target; empty groups never become focus stops. Header text updates retain the view,
+focused item and scroll position. Membership/order changes still publish a new
+query; changing only display grouping preserves the underlying semantic leases.
+
+This first header contract supplies text using the shared WinUI heading template.
+Full theme/pseudo-state integration remains outstanding; arbitrary interactive
+header trees are not implicitly supported by this contract. Real widget Home
+adoption must verify its existing heading appearance and actions separately.

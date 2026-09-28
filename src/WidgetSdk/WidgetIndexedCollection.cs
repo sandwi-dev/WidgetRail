@@ -227,9 +227,25 @@ public sealed record IndexedCollectionElement : ContainerElement
     public CollectionLayout Layout { get; }
     public ScrollAxis Axis { get; }
     public string AccessibilityLabel { get; }
+    public IReadOnlyList<IndexedCollectionGroup>? Groups { get; private init; }
+    /// <summary>
+    /// Adds display-only headings over contiguous portions of this vertical flat query.
+    /// Counts must partition Source.Count exactly; zero-count groups are hidden by the host.
+    /// Keys identify section occurrences, including repeated titles. Row identity, actions,
+    /// focus scopes and source requests remain those of the original flat collection.
+    /// </summary>
+    public IndexedCollectionElement Grouped(params IndexedCollectionGroup[] groups)
+    {
+        ArgumentNullException.ThrowIfNull(groups);
+        if (groups.Length > IndexedCollectionLimits.MaximumGroups)
+            throw new ArgumentOutOfRangeException(nameof(groups));
+        var frozen = Array.AsReadOnly(groups.ToArray());
+        IndexedCollectionContract.ValidateGroups(frozen, Source, Axis);
+        return this with { Groups = frozen };
+    }
     internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.IndexedCollection) with
     {
-        IndexedCollection = Source, CollectionLayout = Layout, ScrollAxis = Axis, AccessibilityLabel = AccessibilityLabel,
+        IndexedCollection = Source, IndexedGroups = Groups, CollectionLayout = Layout, ScrollAxis = Axis, AccessibilityLabel = AccessibilityLabel,
     };
 }
 

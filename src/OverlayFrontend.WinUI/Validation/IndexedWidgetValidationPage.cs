@@ -29,6 +29,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
     private string? failure;
     private string navigation = "pending";
     private string logicalFocus = "not-run";
+    private string groupedFocus = "not-run";
     private bool retired;
 
     public IndexedWidgetValidationPage(string pipe)
@@ -52,6 +53,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         {
             switch (args.Key)
             {
+                case VirtualKey.F1: _ = ProbeGroupedFocusAsync(); break;
                 case VirtualKey.F2: _ = ProbeLogicalFocusAsync(); break;
                 case VirtualKey.F5: if (View() is { } list) list.ScrollIntoView(list.Items[70], ScrollIntoViewAlignment.Leading); break;
                 case VirtualKey.F4: _ = ProbeNavigationAsync(burst: true); break;
@@ -193,6 +195,51 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
             await Until(() => publication > previous);
         }
     }
+
+    private async Task ProbeGroupedFocusAsync()
+    {
+        groupedFocus = "pending";
+        Observe();
+        try
+        {
+            if (View() is not GridView view || view.ItemsPanelRoot is not ItemsWrapGrid { MaximumRowsOrColumns: 3 })
+                throw new InvalidOperationException("Grouped probe requires its three-column grid fixture.");
+            foreach (var (start, direction, expected) in new[]
+            {
+                (2, NavigationDirection.Down, 4), // final partial row in first group
+                (4, NavigationDirection.Down, 6), // same column across empty group
+                (6, NavigationDirection.Up, 4),
+                (5, NavigationDirection.Up, 3),
+                (11, NavigationDirection.Down, 12),
+                (12, NavigationDirection.Up, 11),
+            })
+            {
+                var samples = await NativeIndexedFocusProbe.RunAsync(view,
+                    frame => presenter.MoveFocus(frame.DpadNavigation.Direction == NavigationDirection.Up
+                        ? FocusNavigationDirection.Up : FocusNavigationDirection.Down), start, 1, 150, lifetime.Token, direction);
+                if (samples[^1].FocusedIndex != expected) throw new InvalidOperationException($"Grouped move from {start}: expected {expected}, got {samples[^1].FocusedIndex}.");
+            }
+            var previousSource = view.ItemsSource;
+            var scroll = Descendants(view).OfType<ScrollViewer>().First();
+            var offset = scroll.VerticalOffset;
+            var focused = FocusManager.GetFocusedElement(XamlRoot);
+            var frame = session!.GetState("indexed-owned")!.LastGood!;
+            var revision = publication;
+            await session.SendActionAsync(frame.Authority, new("group-label", "root", InputScopeId: "root"), lifetime.Token);
+            var deadline = Environment.TickCount64 + 5000;
+            while (publication == revision)
+            {
+                if (Environment.TickCount64 > deadline) throw new TimeoutException("Header change was not published.");
+                await Task.Delay(20, lifetime.Token);
+            }
+            await Task.Delay(150, lifetime.Token);
+            if (!ReferenceEquals(previousSource, view.ItemsSource) || !ReferenceEquals(focused, FocusManager.GetFocusedElement(XamlRoot)) ||
+                Math.Abs(offset - scroll.VerticalOffset) > 1) throw new InvalidOperationException("Header text update replaced focus/source or moved viewport.");
+            groupedFocus = "passed:7";
+        }
+        catch (Exception error) { groupedFocus = "failed:" + error.Message; }
+        Observe();
+    }
     private void Observe()
     {
         if (retired) return;
@@ -213,7 +260,8 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
             calls = frame?.Snapshot.Root.Children.Single(node => node.Id == "calls").Text,
             columns = view?.ItemsPanelRoot is ItemsWrapGrid wrap ? wrap.MaximumRowsOrColumns : 1,
             revision = frame?.Snapshot.Root.Children.Single(node => node.Id == "items").IndexedCollection?.ContentRevision,
-            navigation, logicalFocus,
+            navigation, logicalFocus, groupedFocus,
+            groupCount = frame?.Snapshot.Root.Children.Single(node => node.Id == "items").IndexedGroups?.Count ?? 0,
         });
     }
     private static IEnumerable<DependencyObject> Descendants(DependencyObject root)

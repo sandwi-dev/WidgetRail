@@ -68,6 +68,19 @@ try {
     Key F2
     $entry=Until '09-logical-focus' {param($v) $v.logicalFocus -ne 'pending'} 20
     Check 'logical entry verifies keys and preserves one-shot focus lifecycle' ($entry.logicalFocus -eq 'passed:10')
+    Ui @('invoke','Widget.groups') | Out-Null
+    $grouped=Until '10-grouped' {param($v) $v.groupCount -eq 4 -and $v.control -eq 'GridView'}
+    Ui @('wait-for','Widget.items.Item.0','-p','Name','--value','Item 0','-t','5000') | Out-Null
+    Check 'grouped worker rows retain exact flat count and native columns' ($grouped.count -eq 100 -and $grouped.columns -eq 3)
+    Key F1
+    $groupedNavigation=Until '11-grouped-navigation' {param($v) $v.groupedFocus -ne 'pending'} 12
+    Check 'grouped controller navigation handles partial and empty sections with stable header updates' ($groupedNavigation.groupedFocus -eq 'passed:7')
+    Ui @('invoke','Widget.grid') | Out-Null
+    $groupedList=Until '12-grouped-list' {param($v) $v.groupCount -eq 4 -and $v.control -eq 'ListView' -and $v.realized -gt 0}
+    Check 'same grouped contract supports native vertical list' ($groupedList.count -eq 100 -and $groupedList.realized -lt 50)
+    Key F10
+    $groupedListMoves=Until '13-grouped-list-navigation' {param($v) $v.navigation -ne 'pending'} 12
+    Check 'grouped list traverses section headers without lost controller steps' ($groupedListMoves.navigation -eq 'last:60;stalled:0')
     Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'indexed-widget.png')) | Out-Null
 } finally {
     $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory 'results.json')
