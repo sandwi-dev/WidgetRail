@@ -78,6 +78,22 @@ public sealed class BindingTests
     }
 
     [TestMethod]
+    public void ForegroundAcquisitionReportsConfirmedOwnershipAndNativeErrors()
+    {
+        var api = new FakeNative();
+        using var session = new OverlayPlatformSession(api, new QueuedDispatcher(), () => { });
+        Assert.IsFalse(session.AcquireForeground());
+        api.ForegroundAcquired = 1;
+        Assert.IsTrue(session.AcquireForeground());
+        api.AcquisitionStatus = PlatformStatus.InvalidArgument;
+        var error = Assert.Throws<PlatformException>(() => session.AcquireForeground());
+        Assert.AreEqual(PlatformStatus.InvalidArgument, error.Status);
+        session.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => session.AcquireForeground());
+        Assert.AreEqual(3, api.AcquisitionCalls);
+    }
+
+    [TestMethod]
     public void InitializeFailureDestroysAndCancelsQueuedCallbacks()
     {
         var api = new FakeNative { InitStatus = PlatformStatus.ControllerIsolationUnavailable, SignalDuringInitialize = true };
@@ -265,7 +281,7 @@ internal sealed class QueuedDispatcher : IPlatformDispatcher
 internal sealed unsafe class FakeNative : IOverlayPlatformNative
 {
     private PlatformCreateOptions options;
-    public uint Version { get; set; } = 4;
+    public uint Version { get; set; } = PlatformAbi.Version;
     public PlatformStatus InitStatus { get; set; }
     public PlatformStatus CreateStatus { get; set; }
     public nint CreatedHandle { get; set; } = 123;
@@ -281,11 +297,14 @@ internal sealed unsafe class FakeNative : IOverlayPlatformNative
     public nuint Foreground { get; private set; }
     public Action? DuringRead { get; set; }
     public Action? DuringDestroy { get; set; }
+    public uint ForegroundAcquired { get; set; }
+    public PlatformStatus AcquisitionStatus { get; set; }
+    public int AcquisitionCalls { get; private set; }
     public uint GetAbiVersion() => Version;
     public PlatformStatus Create(in PlatformCreateOptions value, out nint handle)
     {
         Assert.AreEqual(32U, value.StructSize);
-        Assert.AreEqual(4U, value.AbiVersion);
+        Assert.AreEqual(PlatformAbi.Version, value.AbiVersion);
         options = value; CreateCalls++; handle = CreatedHandle; return CreateStatus;
     }
     public PlatformStatus Initialize(nint handle) { InitializeCalls++; if (SignalDuringInitialize) Signal(); return InitStatus; }
@@ -297,27 +316,29 @@ internal sealed unsafe class FakeNative : IOverlayPlatformNative
     public PlatformStatus PrepareVisible(nint handle) => PlatformStatus.Ok;
     public PlatformStatus DrainEvent(nint handle, ulong now, ref PlatformEvent value, out uint present)
     {
-        Assert.AreEqual(32U, value.StructSize); Assert.AreEqual(4U, value.AbiVersion);
+        Assert.AreEqual(32U, value.StructSize); Assert.AreEqual(PlatformAbi.Version, value.AbiVersion);
         present = 0; return PlatformStatus.Ok;
     }
     public PlatformStatus PollLegacyGuide(nint handle, ulong now, ref PlatformEvent value, out uint present) => DrainEvent(handle, now, ref value, out present);
     public PlatformStatus PrimeController(nint handle, uint foreground, ulong now) { LastNow = now; LastForeground = foreground; return PlatformStatus.Ok; }
     public PlatformStatus ReadController(nint handle, uint foreground, ulong now, ref ControllerFrame frame)
     {
-        Assert.AreEqual(84U, frame.StructSize); Assert.AreEqual(4U, frame.AbiVersion);
+        Assert.AreEqual(84U, frame.StructSize); Assert.AreEqual(PlatformAbi.Version, frame.AbiVersion);
         DuringRead?.Invoke();
         LastNow = now; LastForeground = foreground;
         frame.Connected = 1; frame.RemainingFrames = 3; frame.LastInputFamily = ControllerFamily.PlayStation;
         return PlatformStatus.Ok;
     }
     public PlatformStatus SetOwnedWindows(nint handle, nuint overlay, nuint backdrop) { OwnedWindows = (overlay, backdrop); return PlatformStatus.Ok; }
+    public PlatformStatus AcquireForeground(nint handle, out uint confirmed)
+    { AcquisitionCalls++; confirmed = ForegroundAcquired; return AcquisitionStatus; }
     public uint ObserveForegroundTarget(nint handle, nuint candidate, uint valid) { if (valid != 0) Foreground = candidate; return valid; }
     public nuint RememberedForegroundTarget(nint handle) => Foreground;
     public nuint ResolveForegroundTarget(nint handle, nuint fallback, uint valid) => valid != 0 ? Foreground : fallback;
     public PlatformStatus ComputePlacement(in PlacementInput input, ref Placement output, out uint present)
     {
-        Assert.AreEqual(48U, input.StructSize); Assert.AreEqual(4U, input.AbiVersion);
-        Assert.AreEqual(24U, output.StructSize); Assert.AreEqual(4U, output.AbiVersion);
+        Assert.AreEqual(48U, input.StructSize); Assert.AreEqual(PlatformAbi.Version, input.AbiVersion);
+        Assert.AreEqual(24U, output.StructSize); Assert.AreEqual(PlatformAbi.Version, output.AbiVersion);
         output.Width = 100; present = 1; return PlatformStatus.Ok;
     }
     public NativeShortcutSource NativeShortcutButtons(nint handle, out ushort buttons) { buttons = 48; return NativeShortcutSource.Shared; }

@@ -4,7 +4,7 @@ namespace WidgetRail.OverlayPlatformClient;
 
 public static class PlatformAbi
 {
-    public const uint Version = 4;
+    public const uint Version = 5;
 }
 
 public enum PlatformStatus : uint

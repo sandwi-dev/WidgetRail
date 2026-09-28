@@ -5,7 +5,7 @@ build or physical controller validation is claimed by this document.
 
 ## Boundary and ownership
 
-Use `src/OverlayPlatformInterop/OverlayPlatformInterop.h`, ABI **4**, as the native
+Use `src/OverlayPlatformInterop/OverlayPlatformInterop.h`, ABI **5**, as the native
 boundary. It owns the ordinary controller reader, backend/device selection,
 Guide callback and debounce, neutral priming, repeat calculation, optional
 isolation routing, and foreground-target memory. It does not own HWNDs or XAML.
@@ -44,7 +44,7 @@ not inferred C# signatures:
 - Every versioned input/output struct needs its initialized `structSize` and
   `abiVersion`. Functions inspect output headers **before** writing results, so
   pass initialized structs by `ref`, not zero-initializing `out` marshalling.
-- Verify `GetAbiVersion() == 4` before creating a session. On x64, native static
+- Verify `GetAbiVersion() == 5` before creating a session. On x64, native static
   asserts specify: event 32 bytes, raw state 12, navigation event 8, controller
   frame 84, placement input 48, placement output 24, create options 32. Check
   field offsets too: controller state 20, stick navigation 60, family 80,
@@ -122,6 +122,14 @@ still require actual foreground ownership deliberately.
 
 ### Visible events and frames
 
+ABI 5 adds `AcquireForeground` for the overlay HWND registered by
+`SetOwnedWindows`. Invoke it on that window's UI thread after showing it. This
+is the native host's direct activation plus one bounded `AttachThreadInput`
+fallback, now shared with WinUI. It reports actual foreground process ownership.
+Foreign, missing and wrong-thread HWNDs are rejected; hidden windows and an OS
+activation denial return unconfirmed. It does not initialize input or retry on
+a timer. A visible window behind another app is not proof of foreground ownership.
+
 - `ReadController` produces button/trigger edges and separate D-pad/stick
   navigation events. Preserve native priming, device-family hints and repeat
   phases. Do not compute a second independent set of button edges in C#.
@@ -166,7 +174,7 @@ callback to leave. Dispatcher delegates already queued must become no-ops.
 
 ## Important ABI gap: View + Menu
 
-Do not assume ABI v4 contains the complete open-shortcut recognizer.
+Do not assume ABI v5 contains the complete open-shortcut recognizer.
 `NativeShortcutButtons` returns only a supplemental DualSense sample or the
 authoritative isolated sample. The current `OverlayHost/ControllerOpenShortcut.cpp`
 separately owns a GameInput device observer and enumerates XInput/GameInput sources

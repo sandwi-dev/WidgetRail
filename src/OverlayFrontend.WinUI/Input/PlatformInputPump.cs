@@ -10,16 +10,21 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     private readonly DispatcherQueue dispatcher;
     private readonly DispatcherQueueTimer navigationTimer;
     private readonly DispatcherQueueTimer guideTimer;
+    private readonly nint ownedWindow;
+    private readonly PlatformInputDiagnostics diagnostics = new(PlatformInputDiagnostics.DefaultPath);
     private OverlayPlatformSession? session;
     private volatile bool closed;
     private bool visible;
     public event Action<ControllerFrame>? FrameReceived;
     public event Action? ToggleRequested;
     public event Action<Exception>? Failed;
+    internal bool IsForeground => IsForegroundProcess();
 
     public PlatformInputPump(DispatcherQueue dispatcher, nint hwnd, IOverlayPlatformNative? backend = null)
     {
         this.dispatcher = dispatcher;
+        ownedWindow = hwnd;
+        diagnostics.Write($"Input owner created pid={Environment.ProcessId} hwnd={hwnd} backend={backend?.GetType().Name ?? nameof(OverlayPlatformNative)}");
         navigationTimer = dispatcher.CreateTimer();
         navigationTimer.Interval = TimeSpan.FromMilliseconds(15);
         navigationTimer.Tick += (_, _) => Guard(Read);
@@ -31,7 +36,8 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
         });
         try
         {
-            session = new(backend ?? new OverlayPlatformNative(), this, () => Guard(Drain));
+            session = new(backend ?? new OverlayPlatformNative(), this, () => Guard(Drain),
+                message => diagnostics.Write($"Native: {message}"));
             session.SetOwnedWindows((nuint)hwnd);
             UpdateGuidePolling();
         }
@@ -54,9 +60,21 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
             navigationTimer.Start();
         }
         else navigationTimer.Stop();
+        RecordWindowState("SetVisible");
     }
 
-    public void PrepareShow() => session?.PrepareVisible();
+    public void PrepareShow()
+    {
+        RecordWindowState("PrepareShow");
+        session?.PrepareVisible();
+    }
+
+    public bool AcquireForeground()
+    {
+        var confirmed = session?.AcquireForeground() == true;
+        RecordWindowState($"Foreground acquisition confirmed={confirmed}");
+        return confirmed;
+    }
 
     private void Read()
     {
@@ -87,13 +105,22 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
 
     private void Handle(PlatformEvent value)
     {
-        if (value.Kind == PlatformEventKind.GuideToggleRequested) ToggleRequested?.Invoke();
+        if (value.Kind == PlatformEventKind.GuideToggleRequested)
+        {
+            RecordWindowState($"Guide accepted source={value.GuideSource} timestamp={value.TimestampMilliseconds}");
+            ToggleRequested?.Invoke();
+            RecordWindowState("Guide handler completed");
+        }
         if (value.Kind == PlatformEventKind.LegacyGuidePollingChanged) UpdateGuidePolling();
+        if (value.Kind is PlatformEventKind.VisibilityChanged or PlatformEventKind.FocusChanged)
+            diagnostics.Write($"Native window state event={value.Kind} value={value.Value}");
     }
 
     private void UpdateGuidePolling()
     {
-        if (session?.RequiresLegacyGuidePolling == true) guideTimer.Start();
+        var required = session?.RequiresLegacyGuidePolling == true;
+        diagnostics.Write($"Legacy Guide polling required={required}");
+        if (required) guideTimer.Start();
         else guideTimer.Stop();
     }
 
@@ -101,7 +128,18 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     {
         if (closed) return;
         try { action(); }
-        catch (Exception error) { Dispose(); Failed?.Invoke(error); }
+        catch (Exception error)
+        {
+            diagnostics.Write($"Input failed: {error}");
+            Dispose();
+            Failed?.Invoke(error);
+        }
+    }
+
+    private void RecordWindowState(string reason)
+    {
+        GetWindowThreadProcessId(GetForegroundWindow(), out var foregroundProcess);
+        diagnostics.Write($"{reason}; requestedVisible={visible} windowVisible={IsWindowVisible(ownedWindow) != 0} foregroundPid={foregroundProcess}");
     }
 
     private static ulong Now => (ulong)Environment.TickCount64;
@@ -117,14 +155,19 @@ internal sealed partial class PlatformInputPump : IDisposable, IPlatformDispatch
     [LibraryImport("user32.dll")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial uint GetWindowThreadProcessId(nint hwnd, out uint process);
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial int IsWindowVisible(nint hwnd);
 
     public void Dispose()
     {
         if (closed) return;
+        RecordWindowState("Input owner disposing");
         closed = true;
         navigationTimer.Stop();
         guideTimer.Stop();
         session?.Dispose();
         session = null;
+        diagnostics.Dispose();
     }
 }

@@ -23,7 +23,8 @@ Inspect its screenshots independently. This does not prove video playback,
 provider policies, widget-local dialog positioning, clipping or pinning.
 
 `--validate-controller` initializes the existing native input session and exposes
-three test commands. Guide toggles the validation window; native directional
+three test commands. Guide hides a foreground validation window and brings a
+hidden/inactive window forward through the shared native activation adapter; native directional
 frames request WinUI focus traversal; A invokes the same command as clicking the
 focused test button. This validation page is NOT the production shortcut router.
 View+Menu's additional native observer, widget scopes, analog scrolling, slider
@@ -38,6 +39,14 @@ reader or widget IPC is introduced in the frame handler.
 The development page logs connection/read-path status at most four times a second
 in a UI label, rather than mutating UI on every read. Shutdown disposes the platform
 session and closes WebView2. Keep physical acceptance separate from these fixtures.
+
+Controller diagnostics are written asynchronously to
+`%LOCALAPPDATA%\WidgetRail\WinUI\diagnostics\controller.log` (plus one bounded
+`.previous` segment). The log records native registration/device/Guide messages,
+accepted Guide source, requested and actual window visibility, foreground process
+identity, failure and disposal. It does not log ordinary controller frames. Use
+these boundaries to distinguish missing native events from activation failure;
+a connected-controller label alone does not prove Guide delivery or foreground ownership.
 
 Controller replay: launch with `--replay-controller`. It uses a deterministic
 IOverlayPlatformNative test backend rather than hardware, but passes frames through
@@ -100,9 +109,10 @@ collection implementation or describe a bounded realized count as scroll correct
 source. `scripts/Test-WinUiIndexedCollection.ps1` checks native range callbacks,
 bounded realization/data, reversal while a buffer page is held, unchanged viewport
 on its completion, and eviction/reload without deleting positions. It closes the
-window after success. This adapter is not connected to worker collection requests
-yet; see [the collection contract](../../docs/maintainers/winui-indexed-collections.md)
-for provider capabilities, SDK/service work and unresolved cursor behavior.
+window after success. Real worker leases and item templates are exercised separately
+by `--indexed-validation-pipe` and `Test-WinUiIndexedWidget.ps1`; see
+[the collection contract](../../docs/maintainers/winui-indexed-collections.md)
+for provider capabilities, SDK/service work and remaining adoption requirements.
 
 
 `--validate-focus-policy` exercises the shared presenter's declarative focus policy
@@ -115,5 +125,7 @@ for ready content, and cannot replay on routine updates; withdrawal or subsequen
 user navigation/activation/pointer input retires a deferred request. New worker
 ownership clears remembered groups. This is focus policy over WinUI's target
 selection, not a custom geometry/navigation renderer. Run
-`scripts/Test-WinUiFocusPolicy.ps1`; it uses no controller hardware. Real lazy-item
-focus integration and physical controller acceptance remain separate work.
+`scripts/Test-WinUiFocusPolicy.ps1`; it uses no controller hardware. The indexed
+widget probe separately validates initial/exact/remembered entry, native neighbor
+entry, wrong/stale targets, disabled items and cancellation during delayed reads.
+Physical controller acceptance remains separate from these automated checks.

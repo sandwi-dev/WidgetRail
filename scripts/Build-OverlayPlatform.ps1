@@ -14,7 +14,8 @@ param(
     [ValidateSet('x64')]
     [string]$Architecture = 'x64',
     [string]$OutputDirectory,
-    [switch]$NoRestore
+    [switch]$NoRestore,
+    [switch]$TestForeground
 )
 
 $ErrorActionPreference = 'Stop'
@@ -118,6 +119,18 @@ try {
     $imports = & $dumpbin /nologo /dependents (Join-Path $OutputDirectory 'OverlayPlatformInterop.dll')
     if ($LASTEXITCODE -ne 0) { throw 'Dependency inspection failed.' }
     $imports | Set-Content -LiteralPath (Join-Path $logDirectory 'dependencies.txt') -Encoding utf8
+    if ($TestForeground) {
+        $testArguments = @('/nologo', '/MT', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-',
+            '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') + $includeArguments + @(
+            (Join-Path $repositoryRoot 'tests\OverlayPlatformInterop.Tests\ForegroundAcquisitionTests.cpp'),
+            "/Fo:$objectDirectory\ForegroundAcquisitionTests.obj", "/Fe:$OutputDirectory\ForegroundAcquisitionTests.exe",
+            '/link', "/LIBPATH:$OutputDirectory"
+        ) + $libraryArguments + @('OverlayPlatformInterop.lib', 'user32.lib')
+        & $compiler @testArguments
+        if ($LASTEXITCODE -ne 0) { throw "Foreground boundary test build failed with exit code $LASTEXITCODE." }
+        & (Join-Path $OutputDirectory 'ForegroundAcquisitionTests.exe')
+        if ($LASTEXITCODE -ne 0) { throw "Foreground boundary test failed with exit code $LASTEXITCODE." }
+    }
 } finally {
     $env:PATH = $originalPath
 }
@@ -130,4 +143,4 @@ Copy-Item -LiteralPath (Join-Path $gameInputDirectory 'redist\GameInputRedist.ms
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'THIRD_PARTY_NOTICES.md') -Destination $OutputDirectory -Force
 Write-Output "Built platform-only DLL: $(Join-Path $OutputDirectory 'OverlayPlatformInterop.dll')"
 Write-Output "Export and dependency inspection: $logDirectory"
-Write-Output 'No hardware runtime initialization, host build, launch, or driver installation was performed.'
+Write-Output 'No hardware runtime initialization, host build/launch, or driver installation was performed.'

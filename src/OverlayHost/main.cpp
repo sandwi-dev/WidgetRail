@@ -11254,39 +11254,10 @@ private:
     [[nodiscard]] bool AcquireOverlayForegroundInput() {
         if (!window_ || !IsWindow(window_) || !IsWindowVisible(window_)) return false;
 
-        HWND foreground = GetForegroundWindow();
-        DWORD foregroundProcess = 0;
-        const DWORD foregroundThread = foreground
-            ? GetWindowThreadProcessId(foreground, &foregroundProcess)
-            : 0;
-        const DWORD overlayThread = GetCurrentThreadId();
-        const auto plan = widgetrail::input::PlanForegroundAcquisition(
-            foregroundProcess == GetCurrentProcessId(), overlayThread, foregroundThread);
-
-        if (plan.attemptDirect) {
-            (void)SetForegroundWindow(window_);
-            (void)SetActiveWindow(window_);
-            (void)SetFocus(window_);
-        }
-
-        if (!IsOverlayProcessForeground() && plan.attachForegroundThread) {
-            // A Guide callback is delivered asynchronously and does not itself
-            // grant the UI thread foreground rights. Join the current
-            // foreground queue for one bounded activation attempt, then detach
-            // immediately. This does not bypass Windows' foreground lock when
-            // the OS declines the request.
-            const BOOL attached = AttachThreadInput(
-                overlayThread, foregroundThread, TRUE);
-            if (attached) {
-                (void)BringWindowToTop(window_);
-                (void)SetForegroundWindow(window_);
-                (void)SetActiveWindow(window_);
-                (void)SetFocus(window_);
-                (void)AttachThreadInput(overlayThread, foregroundThread, FALSE);
-            }
-        }
-
-        const bool confirmed = IsOverlayProcessForeground();
+        std::uint32_t acquired{};
+        const bool confirmed = platform_ &&
+            WidgetRailOverlayPlatformAcquireForeground(platform_, &acquired) == WidgetRailOverlayPlatformStatus::Ok &&
+            acquired != WRAIL_OVERLAY_PLATFORM_FALSE;
         if (foregroundAcquisitionFeedback_.CompleteAttempt(confirmed))
             InvalidateRect(window_, nullptr, FALSE);
         if (!lastForegroundOwnership_ || *lastForegroundOwnership_ != confirmed) {

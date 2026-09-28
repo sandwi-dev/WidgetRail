@@ -553,3 +553,43 @@ requests, modals, popups, media, pinned surfaces and production-shell integratio
 are not proven. Production YouTube/Playnite sources still need conversion and
 physical/performance validation. The collection document records concrete YouTube
 playback and SDK contract requirements discovered in this pass.
+
+## Logical collection entry and public author testing
+
+Protocol 61 extends the existing one-shot group entry with an exact indexed query
+occurrence. The host waits for native realization and verifies the loaded item key;
+stale generations and wrong keys cannot focus another row. Initial collection focus,
+explicit native neighbors and remembered entry focus native item containers. A
+bounded identity-only history survives removed page controls. Row and parent actions
+receive worker-generated logical focus metadata. Public indexed author test helpers
+exercise real SDK acquisition, queued actions, cancellation and artwork paths.
+
+Validation: 14 indexed SDK tests, 15 indexed bridge tests, 13 native widget checks
+(including a ten-case logical-focus sequence with deliberately delayed row data),
+and 15 existing native focus-policy checks pass. The WinUI analyzer build is clean.
+Protocol header and SDK API baseline are regenerated; 14 SDK compatibility tests
+pass. Native evidence is under `artifacts/winui-indexed/focus-disabled-final-ui/`
+and `focus-policy-regression/`. One fixture initially used reserved View for a
+test command; changing that fixture to RightStick restored valid worker startup.
+
+Physical review confirmed navigation after Guide reopen but found a Guide problem
+after Alt+Tab. The window remained alive and visible behind another application.
+The validation shell now hides only while it owns foreground; otherwise Guide
+requests show/activation. Live logs proved Guide delivery while both Activate and
+a direct foreground request failed to reacquire the visible window. The native
+host's existing bounded foreground acquisition is now shared through platform
+ABI 5, with same-process/thread HWND validation and actual ownership confirmation.
+Thirteen native ownership checks and nineteen managed tests pass. The WinUI caller
+uses that adapter. A live physical Guide trace now confirms reactivation from a
+visible background window to the WinUI process, then successful hiding on the next
+press. User confirmation of navigation/A remains pending. Earlier controller
+replay passed cold entry, navigation, one action per press, hide/show and retained
+focus. Bounded asynchronous diagnostics preserve native Guide delivery and actual
+foreground/visibility; activation is never inferred from a show request alone.
+Evidence: `artifacts/winui-controller/shared-activation-physical.log`. The legacy
+host now calls the same adapter but was not rebuilt during this checkpoint; the
+installed native product remains unchanged.
+
+Full migration remains incomplete. Grouped collections, production widget adoption,
+complete styling/themes, modal/popup integration, media/pinned surfaces, global
+animations and the production shell still require implementation and validation.

@@ -137,6 +137,7 @@ struct WidgetRailOverlayPlatformHandle final {
     widgetrail::isolation::ControllerIsolationHostSession controllerIsolation;
     widgetrail::isolation::DualSenseHidReader dualSense;
     widgetrail::ForegroundTargetTracker foregroundTarget;
+    HWND overlayWindow{};
     std::optional<widgetrail::input::ControllerReadPath> lastReadPath;
     std::optional<bool> lastForegroundExclusive;
     widgetrail::platform::ControllerActivitySelection controllerSelection;
@@ -1082,6 +1083,54 @@ WidgetRailOverlayPlatformSetOwnedWindows(
             : WidgetRailOverlayPlatformStatus::InvalidArgument;
     }
     handle->foregroundTarget.SetOwnedWindows(overlay, backdrop);
+    handle->overlayWindow = reinterpret_cast<HWND>(overlay);
+    return WidgetRailOverlayPlatformStatus::Ok;
+}
+
+WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformAcquireForeground(
+    WidgetRailOverlayPlatformHandle* handle,
+    std::uint32_t* confirmed) noexcept {
+    if (!confirmed) return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    *confirmed = WRAIL_OVERLAY_PLATFORM_FALSE;
+    if (!handle) return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    if (handle->shutDown) return WidgetRailOverlayPlatformStatus::ShutDown;
+
+    const HWND window = handle->overlayWindow;
+    DWORD ownerProcess{};
+    const DWORD ownerThread = window ? GetWindowThreadProcessId(window, &ownerProcess) : 0;
+    const DWORD currentThread = GetCurrentThreadId();
+    const DWORD currentProcess = GetCurrentProcessId();
+    if (!window || !IsWindow(window) || ownerProcess != currentProcess || ownerThread != currentThread)
+        return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    if (!IsWindowVisible(window)) return WidgetRailOverlayPlatformStatus::Ok;
+
+    const auto isForeground = [currentProcess]() noexcept {
+        DWORD process{};
+        (void)GetWindowThreadProcessId(GetForegroundWindow(), &process);
+        return process == currentProcess;
+    };
+    DWORD foregroundProcess{};
+    const DWORD foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), &foregroundProcess);
+    const auto plan = widgetrail::input::PlanForegroundAcquisition(
+        foregroundProcess == currentProcess, currentThread, foregroundThread);
+    if (plan.attemptDirect) {
+        (void)SetForegroundWindow(window);
+        (void)SetActiveWindow(window);
+        (void)SetFocus(window);
+    }
+    // The Guide callback does not itself grant foreground rights. Reuse the
+    // native host's single bounded queue-attachment fallback, never a retry loop.
+    // Every successful attachment is detached before returning to the caller.
+    if (!isForeground() && plan.attachForegroundThread &&
+        AttachThreadInput(currentThread, foregroundThread, TRUE)) {
+        (void)BringWindowToTop(window);
+        (void)SetForegroundWindow(window);
+        (void)SetActiveWindow(window);
+        (void)SetFocus(window);
+        (void)AttachThreadInput(currentThread, foregroundThread, FALSE);
+    }
+    *confirmed = ToAbiBoolean(isForeground());
     return WidgetRailOverlayPlatformStatus::Ok;
 }
 

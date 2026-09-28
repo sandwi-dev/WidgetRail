@@ -26,6 +26,7 @@ public sealed partial class OverlayPlatformNative : IOverlayPlatformNative
     public PlatformStatus PrimeController(nint handle, uint foregroundConfirmed, ulong nowMilliseconds) => NativePrimeController(handle, foregroundConfirmed, nowMilliseconds);
     public PlatformStatus ReadController(nint handle, uint foregroundConfirmed, ulong nowMilliseconds, ref ControllerFrame frame) => NativeReadController(handle, foregroundConfirmed, nowMilliseconds, ref frame);
     public PlatformStatus SetOwnedWindows(nint handle, nuint overlay, nuint backdrop) => NativeSetOwnedWindows(handle, overlay, backdrop);
+    public PlatformStatus AcquireForeground(nint handle, out uint confirmed) => NativeAcquireForeground(handle, out confirmed);
     public uint ObserveForegroundTarget(nint handle, nuint candidate, uint candidateIsValid) => NativeObserveForegroundTarget(handle, candidate, candidateIsValid);
     public nuint RememberedForegroundTarget(nint handle) => NativeRememberedForegroundTarget(handle);
     public nuint ResolveForegroundTarget(nint handle, nuint fallback, uint rememberedTargetIsValid) => NativeResolveForegroundTarget(handle, fallback, rememberedTargetIsValid);
@@ -101,6 +102,11 @@ public sealed partial class OverlayPlatformNative : IOverlayPlatformNative
     [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
     [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
     private static partial PlatformStatus NativeSetOwnedWindows(nint handle, nuint overlay, nuint backdrop);
+
+    [LibraryImport("OverlayPlatformInterop.dll", EntryPoint = "WidgetRailOverlayPlatformAcquireForeground")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial PlatformStatus NativeAcquireForeground(nint handle, out uint confirmed);
 
     [LibraryImport("OverlayPlatformInterop.dll", EntryPoint = "WidgetRailOverlayPlatformObserveForegroundTarget")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]

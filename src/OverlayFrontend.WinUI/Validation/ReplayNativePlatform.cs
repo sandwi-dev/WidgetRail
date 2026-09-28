@@ -49,6 +49,8 @@ internal sealed class ReplayNativePlatform : IOverlayPlatformNative
         return PlatformStatus.Ok;
     }
     public PlatformStatus SetOwnedWindows(nint handle, nuint overlay, nuint backdrop) => PlatformStatus.Ok;
+    public PlatformStatus AcquireForeground(nint handle, out uint confirmed)
+    { confirmed = 1; return PlatformStatus.Ok; }
     public uint ObserveForegroundTarget(nint handle, nuint candidate, uint candidateIsValid) => 0;
     public nuint RememberedForegroundTarget(nint handle) => 0;
     public nuint ResolveForegroundTarget(nint handle, nuint fallback, uint rememberedTargetIsValid) => fallback;

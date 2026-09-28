@@ -41,8 +41,15 @@ public sealed partial class MainWindow : Window
                 input.Failed += page.ReportFailure;
                 input.ToggleRequested += () =>
                 {
-                    if (AppWindow.IsVisible) { input.SetVisible(false); AppWindow.Hide(); }
-                    else { input.PrepareShow(); AppWindow.Show(); Activate(); StartInput(); }
+                    if (AppWindow.IsVisible && input.IsForeground) { input.SetVisible(false); AppWindow.Hide(); }
+                    else
+                    {
+                        input.PrepareShow();
+                        AppWindow.Show();
+                        Activate();
+                        input.AcquireForeground();
+                        StartInput();
+                    }
                 };
                 input.PrepareShow();
             }

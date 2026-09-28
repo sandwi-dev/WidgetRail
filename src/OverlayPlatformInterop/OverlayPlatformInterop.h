@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <type_traits>
 
-inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 4;
+inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 5;
 inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_FALSE = 0;
 inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_TRUE = 1;
 
@@ -255,6 +255,15 @@ WidgetRailOverlayPlatformSetOwnedWindows(
     WidgetRailOverlayPlatformHandle* handle,
     std::uintptr_t overlay,
     std::uintptr_t backdrop) noexcept;
+
+// One show-time acquisition attempt for the registered overlay HWND. Call only
+// from that HWND's UI thread. An invalid/foreign/thread-mismatched HWND is rejected;
+// a hidden window or Windows declining activation returns Ok with confirmed=false.
+// Like SetOwnedWindows, this does not require controller initialization.
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformAcquireForeground(
+    WidgetRailOverlayPlatformHandle* handle,
+    std::uint32_t* confirmed) noexcept;
 
 WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformObserveForegroundTarget(

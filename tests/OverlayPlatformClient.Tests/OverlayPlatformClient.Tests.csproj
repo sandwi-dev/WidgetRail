@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\OverlayPlatformClient\OverlayPlatformClient.csproj" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\PlatformInputDiagnostics.cs" Link="PlatformInputDiagnostics.cs" />
   </ItemGroup>
 </Project>

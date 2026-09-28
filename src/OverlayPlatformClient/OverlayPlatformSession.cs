@@ -82,6 +82,16 @@ public sealed class OverlayPlatformSession : IDisposable
 
     public void SetOwnedWindows(nuint overlay, nuint backdrop = 0) => Invoke(h =>
         Check(native.SetOwnedWindows(h, overlay, backdrop), "SetOwnedWindows"));
+    /// <summary>
+    /// Makes one foreground acquisition attempt for the registered overlay window.
+    /// Call on its owning UI thread after showing it. False means Windows did not
+    /// confirm foreground ownership; no persistent activation retry is scheduled.
+    /// </summary>
+    public bool AcquireForeground() => Invoke(h =>
+    {
+        Check(native.AcquireForeground(h, out var confirmed), "AcquireForeground");
+        return confirmed != 0;
+    });
     public bool ObserveForegroundTarget(nuint candidate, bool valid) => Invoke(h =>
         native.ObserveForegroundTarget(h, candidate, Flag(valid)) != 0);
     public nuint RememberedForegroundTarget => Invoke(native.RememberedForegroundTarget);

@@ -20,6 +20,7 @@ public interface IOverlayPlatformNative
     PlatformStatus PrimeController(nint handle, uint foregroundConfirmed, ulong nowMilliseconds);
     PlatformStatus ReadController(nint handle, uint foregroundConfirmed, ulong nowMilliseconds, ref ControllerFrame frame);
     PlatformStatus SetOwnedWindows(nint handle, nuint overlay, nuint backdrop);
+    PlatformStatus AcquireForeground(nint handle, out uint confirmed);
     uint ObserveForegroundTarget(nint handle, nuint candidate, uint candidateIsValid);
     nuint RememberedForegroundTarget(nint handle);
     nuint ResolveForegroundTarget(nint handle, nuint fallback, uint rememberedTargetIsValid);
