@@ -11,7 +11,6 @@ using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using Windows.UI;
 using Windows.UI.Text;
-using Windows.UI.ViewManagement;
 using IconElement = Microsoft.UI.Xaml.Controls.IconElement;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
@@ -25,6 +24,7 @@ internal sealed partial class WidgetViewPresenter
     private (bool Focused, bool Pressed)? indexedRootInteraction;
 
     internal static void SetHighContrastStyleOverride(bool? value) => NativeComputedStyleAdapter.SetHighContrastOverride(value);
+    internal static void SetSystemHighContrast(bool value) => NativeComputedStyleAdapter.SetSystemHighContrast(value);
     internal void UseIndexedContainerStyles() => indexedRootStyleOnContainer = true;
     internal void SetIndexedRootInteraction(bool focused, bool pressed)
     {
@@ -85,11 +85,15 @@ internal sealed partial class WidgetViewPresenter
 /// <summary>One computed-state adapter; absent properties relinquish local ownership.</summary>
 internal sealed class NativeComputedStyleAdapter : IDisposable
 {
-    private static readonly AccessibilitySettings accessibility = new();
+    private static int systemHighContrast;
     private static int highContrastOverride = -1;
     private static readonly ConditionalWeakTable<FrameworkElement, NativeComputedStyleAdapter> owners = new();
     private static event Action? EnvironmentChanged;
-    static NativeComputedStyleAdapter() => accessibility.HighContrastChanged += (_, _) => EnvironmentChanged?.Invoke();
+    internal static void SetSystemHighContrast(bool value)
+    {
+        var next = value ? 1 : 0;
+        if (Interlocked.Exchange(ref systemHighContrast, next) != next) EnvironmentChanged?.Invoke();
+    }
     internal static void SetHighContrastOverride(bool? value)
     { Volatile.Write(ref highContrastOverride, value is null ? -1 : value.Value ? 1 : 0); EnvironmentChanged?.Invoke(); }
     internal static NativeComputedStyleAdapter? For(FrameworkElement element) => owners.TryGetValue(element, out var adapter) ? adapter : null;
@@ -177,7 +181,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         if (lastInteraction != (focused, pressed))
         { lastInteraction = (focused, pressed); InteractionChanged?.Invoke(focused, pressed); }
         var style = pressed ? styles?.Pressed : focused ? styles?.Focused : styles?.Base;
-        var contrast = Volatile.Read(ref highContrastOverride) is var contrastOverride && (contrastOverride < 0 ? accessibility.HighContrast : contrastOverride != 0);
+        var contrast = Volatile.Read(ref highContrastOverride) is var contrastOverride && (contrastOverride < 0 ? Volatile.Read(ref systemHighContrast) != 0 : contrastOverride != 0);
         var fontSize = Number(style, "font-size", true) is { } font ? Math.Clamp(font, 1, 512) : (double?)null;
         if (element is TextBlock text)
         {
@@ -277,7 +281,12 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         if (background is null && foreground is null && border is null) { RestoreResources(); return; }
         if (resources is null)
         {
-            priorResources = element.Resources; resources = new(); resources.MergedDictionaries.Add(priorResources); element.Resources = resources;
+            priorResources = element.Resources;
+            resources = new();
+            // A native ResourceDictionary may have only one parent. Detach the
+            // existing dictionary before nesting it, retaining its live resources.
+            element.Resources = resources;
+            resources.MergedDictionaries.Add(priorResources);
         }
         var prefix = element is GridViewItem ? "GridViewItem" : element is ListViewItem ? "ListViewItem" : "Button";
         foreach (var (name, brush) in new[] { ("Background", background), ("Foreground", foreground), ("BorderBrush", border) })
@@ -291,8 +300,10 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private void RestoreResources()
     {
         if (resources is null) return;
-        if (ReferenceEquals(element.Resources, resources)) element.Resources = priorResources!;
-        resources.MergedDictionaries.Clear(); resources = null; priorResources = null;
+        var ownsResources = ReferenceEquals(element.Resources, resources);
+        resources.MergedDictionaries.Clear();
+        if (ownsResources) element.Resources = priorResources!;
+        resources = null; priorResources = null;
     }
 
     private SolidColorBrush? Brush(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, string property, bool contrast, bool background)

@@ -6,6 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI;
 
 public sealed partial class MainWindow : Window
 {
+    private readonly Microsoft.UI.System.ThemeSettings themeSettings;
     private readonly Input.PlatformInputPump? input;
     private readonly Validation.ControllerReplayScenario? replay;
     private bool closingAfterCleanup;
@@ -13,9 +14,12 @@ public sealed partial class MainWindow : Window
 
     public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
         bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false, bool validateIndexed = false, bool validateFocusPolicy = false,
-        string? indexedValidationPipe = null, bool validateGrouped = false, bool validateGroupedFlat = false, bool validateGroupedAdapted = false, bool validateSurfaces = false, bool validateSelect = false, bool validateMotion = false, bool validateModals = false, bool validateGlyphs = false)
+        string? indexedValidationPipe = null, bool validateGrouped = false, bool validateGroupedFlat = false, bool validateGroupedAdapted = false, bool validateSurfaces = false, bool validateSelect = false, bool validateMotion = false, bool validateModals = false, bool validateGlyphs = false, bool validateStyles = false)
     {
         InitializeComponent();
+        themeSettings = Microsoft.UI.System.ThemeSettings.CreateForWindowId(AppWindow.Id);
+        Presentation.WidgetViewPresenter.SetSystemHighContrast(themeSettings.HighContrast);
+        themeSettings.Changed += SystemThemeChanged;
         ExtendsContentIntoTitleBar = true;
         SystemBackdrop = new WinUIEx.TransparentTintBackdrop();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
@@ -41,7 +45,7 @@ public sealed partial class MainWindow : Window
                 input.Failed += page.ReportFailure;
                 input.ToggleRequested += () =>
                 {
-                    if (AppWindow.IsVisible && input.IsForeground) { input.SetVisible(false); AppWindow.Hide(); }
+                    if (AppWindow.IsVisible && input.IsForeground) { page.ResetInputPresentation(); input.SetVisible(false); AppWindow.Hide(); }
                     else
                     {
                         input.PrepareShow();
@@ -55,6 +59,7 @@ public sealed partial class MainWindow : Window
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
+        else if (validateStyles) RootFrame.Content = new Validation.WidgetStylesValidationPage();
         else if (validateGlyphs) RootFrame.Content = new Validation.GlyphValidationPage();
         else if (validateModals) RootFrame.Content = new Validation.ModalValidationPage();
         else if (validateMotion) RootFrame.Content = new Validation.WidgetMotionValidationPage();
@@ -85,9 +90,11 @@ public sealed partial class MainWindow : Window
         {
             if (args.WindowActivationState != WindowActivationState.Deactivated)
                 (RootFrame.Content as Validation.ControllerValidationPage)?.QueueEntryFocus();
+            else (RootFrame.Content as Validation.ControllerValidationPage)?.ResetInputPresentation();
         };
         Closed += (_, _) =>
         {
+            themeSettings.Changed -= SystemThemeChanged;
             input?.Dispose();
             replay?.Dispose();
             (RootFrame.Content as Validation.ExternalSurfacePage)?.Retire();
@@ -101,6 +108,9 @@ public sealed partial class MainWindow : Window
     }
 
     public void StartReplay() => replay?.Start();
+
+    private void SystemThemeChanged(Microsoft.UI.System.ThemeSettings sender, object args) =>
+        Presentation.WidgetViewPresenter.SetSystemHighContrast(sender.HighContrast);
 
     private async void CloseClicked(object sender, RoutedEventArgs e) => await CloseWithCleanupAsync();
 

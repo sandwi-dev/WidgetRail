@@ -58,7 +58,7 @@ public partial class App : Application
             arguments.Contains("--replay-controller"), arguments.Contains("--validate-collection"), widgetConfiguration,
             arguments.Contains("--validate-gridview"), arguments.Contains("--validate-controls"), arguments.Contains("--validate-indexed"), arguments.Contains("--validate-focus-policy"),
             arguments.FirstOrDefault(value => value.StartsWith("--indexed-validation-pipe=", StringComparison.Ordinal))?["--indexed-validation-pipe=".Length..],
-            arguments.Contains("--validate-grouped"), arguments.Contains("--validate-grouped-flat"), arguments.Contains("--validate-grouped-adapted"), arguments.Contains("--validate-surfaces"), arguments.Contains("--validate-select"), arguments.Contains("--validate-motion"), arguments.Contains("--validate-modals"), arguments.Contains("--validate-glyphs"));
+            arguments.Contains("--validate-grouped"), arguments.Contains("--validate-grouped-flat"), arguments.Contains("--validate-grouped-adapted"), arguments.Contains("--validate-surfaces"), arguments.Contains("--validate-select"), arguments.Contains("--validate-motion"), arguments.Contains("--validate-modals"), arguments.Contains("--validate-glyphs"), arguments.Contains("--validate-styles"));
         Window = main;
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         Window.Activate();

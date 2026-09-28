@@ -59,8 +59,8 @@ body does not apply that opacity to the separate modal scrim.
 
 ## Contrast and validation
 
-OS High Contrast changes update adapters through one shared AccessibilitySettings
-observer. Host settings can supply `SetHighContrastStyleOverride(true/false/null)`;
+OS High Contrast changes update adapters through the window's WinUI
+`Microsoft.UI.System.ThemeSettings` observer. Host settings can supply `SetHighContrastStyleOverride(true/false/null)`;
 null follows Windows. Explicit painted colors use the system Window/WindowText
 palette (GrayText for disabled controls), with a paired black/white fallback when
 those resources are unavailable. Explicit opacity becomes opaque. Transparent/absent
@@ -72,3 +72,16 @@ held-state preservation, removal, native resource wrapping/restoration, contrast
 modal ThemeResource restoration and later theme changes, indexed root isolation,
 glyph font preservation and owner retirement. It changes no OS setting and starts
 no controller owner. Root owns routing/deployment and the native runtime slot.
+
+Integrated native validation passes 24 checks. Desktop execution exposed two API
+ownership defects that the analyzer did not catch: AccessibilitySettings event
+subscription requires a UWP window, and a ResourceDictionary cannot have two parents.
+The host now uses the documented Win32 ThemeSettings API, and detaches/restores resource
+dictionaries in ownership order. The opacity check uses floating-point tolerance;
+native WinUI exposes 0.8 as 0.800000011920929. Evidence is in
+artifacts/winui-surfaces/styles-precision-native-result.json.
+
+Reference: https://learn.microsoft.com/windows/windows-app-sdk/api/winrt/microsoft.ui.system.themesettings
+No OS contrast preference was changed during validation; actual theme switching remains
+part of production acceptance. These checks cover the implemented subset, not complete
+WRSS geometry, depth or animation parity.

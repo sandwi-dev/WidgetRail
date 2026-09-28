@@ -51,6 +51,11 @@ internal sealed class ControllerValidationPage : Page
     public void SetReplayStatus(string value) => replay.Text = value;
 
     public void QueueEntryFocus() => presenter.Enter(restoreNativeFocus: true);
+    public void ResetInputPresentation()
+    {
+        presenter.ResetPressedStyles();
+        presenter.DismissTransientControl();
+    }
 
     public void Receive(ControllerFrame frame)
     {
@@ -73,7 +78,10 @@ internal sealed class ControllerValidationPage : Page
         };
         if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None)
             presenter.MoveFocus(next);
-        if ((frame.PressedButtons & 0x1000) != 0) presenter.ActivateFocused();
+        if ((frame.PressedButtons & 0x1000) != 0)
+            _ = presenter.HandleControllerButtonAsync(ControllerButton.A);
+        if ((frame.ReleasedButtons & 0x1000) != 0)
+            _ = presenter.HandleControllerButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
     }
 
     public void ReportFailure(Exception error) => status.Text = $"Native input failed: {error.Message}";

@@ -14,7 +14,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 /// <summary>Autonomous native style checks; no controller owner, launch or OS-theme changes.</summary>
 internal sealed class WidgetStylesValidationPage : Page, IAsyncDisposable
 {
-    private readonly TextBlock status = new() { Text = "Style checks pending", TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock status = new() { Text = "Style checks pending", TextWrapping = TextWrapping.Wrap,
+        MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly StackPanel host = new() { Spacing = 10 };
     private readonly WidgetViewPresenter presenter = new();
     private readonly Button outside = new() { Content = "Outside widget" };
@@ -50,7 +51,8 @@ internal sealed class WidgetStylesValidationPage : Page, IAsyncDisposable
         await Wait(() => button.FocusState == FocusState.Unfocused && ColorOf(button.Background) == Color.FromArgb(255, 16, 32, 48));
         Check(root.Padding == new Thickness(8, 2, 4, 6) && root.CornerRadius == new CornerRadius(7), "panel padding and corner radius use native properties");
         Check(root.BorderThickness == new Thickness(1, 3, 1, 1) && ColorOf(root.BorderBrush) == Color.FromArgb(255, 68, 85, 102), "uniform border color and per-edge widths apply");
-        Check(ColorOf(root.Background) == Color.FromArgb(68, 17, 34, 51) && root.Opacity == .8, "CSS RGBA order and subtree opacity remain distinct");
+        Check(ColorOf(root.Background) == Color.FromArgb(68, 17, 34, 51) && Near(root.Opacity, .8),
+            $"CSS RGBA order and subtree opacity remain distinct (color={ColorOf(root.Background)}, opacity={root.Opacity:R})");
         Check(ColorOf(text.Foreground) == Color.FromArgb(128, 255, 0, 0) && text.FontSize == 20 && text.FontWeight.Weight == 700 &&
             text.FontFamily.Source == "Consolas" && text.CharacterSpacing == 100 && text.TextAlignment == TextAlignment.Right,
             "text color typography and em letter spacing apply");
@@ -72,7 +74,7 @@ internal sealed class WidgetStylesValidationPage : Page, IAsyncDisposable
         await Wait(() => root.Opacity == 1);
         Check(ColorOf(root.Background).A == 255 && ColorOf(button.Foreground) != ColorOf(button.Background), "high contrast uses opaque system colors with readable foreground");
         WidgetViewPresenter.SetHighContrastStyleOverride(false);
-        await Wait(() => root.Opacity == .8);
+        await Wait(() => Near(root.Opacity, .8));
         Check(ColorOf(root.Background) == Color.FromArgb(68, 17, 34, 51), "leaving high contrast restores authored colors");
         Apply(new Dictionary<string, BridgeNodeRenderStyles>());
         Check(ReferenceEquals(root.ReadLocalValue(Panel.BackgroundProperty), DependencyProperty.UnsetValue) &&
@@ -152,7 +154,7 @@ internal sealed class WidgetStylesValidationPage : Page, IAsyncDisposable
         adapter.Update(rowStyles);
         try
         {
-            Check(container.Opacity == .6 && ((FrameworkElement)fragment.Content).Opacity == 1,
+            Check(Near(container.Opacity, .6) && ((FrameworkElement)fragment.Content).Opacity == 1,
                 "indexed container owns root opacity once; row fragment owns only root typography");
             container.Focus(FocusState.Programmatic);
             await Wait(() => ColorOf(container.Foreground) == Color.FromArgb(255, 255, 238, 0));
@@ -207,6 +209,7 @@ internal sealed class WidgetStylesValidationPage : Page, IAsyncDisposable
         return null;
     }
     private static Color ColorOf(Brush? brush) => brush is SolidColorBrush solid ? solid.Color : default;
+    private static bool Near(double actual, double expected) => Math.Abs(actual - expected) < 0.000001;
     private void Check(bool value, string message)
     { if (!value) throw new InvalidOperationException(message); checks.Add(message); }
     private static async Task Wait(Func<bool> predicate)
