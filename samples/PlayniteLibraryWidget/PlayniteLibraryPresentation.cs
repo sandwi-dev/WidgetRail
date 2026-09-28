@@ -801,12 +801,12 @@ internal static class PlayniteLibraryPresentation
     {
         if (state.BrowseRetained) return "Updating games…";
         var snapshot = state.Collection;
-        if (snapshot.Items.Count == 0 && snapshot.Status is
+        var count = state.MatchingGameCount ?? snapshot.Items.Count;
+        if (count == 0 && snapshot.Status is
             WidgetPagedResourceStatus.NotLoaded or WidgetPagedResourceStatus.Loading or WidgetPagedResourceStatus.Refreshing)
             return "Loading games…";
-        if (snapshot.Items.Count == 0 && snapshot.Status == WidgetPagedResourceStatus.Error)
+        if (count == 0 && snapshot.Status == WidgetPagedResourceStatus.Error)
             return "Games could not be loaded";
-        var count = state.MatchingGameCount ?? snapshot.Items.Count;
         var label = $"{count} {(count == 1 ? "game" : "games")}";
         if (state.MatchingGameCount is null && (snapshot.HasBefore || snapshot.HasAfter))
             label += " loaded";

@@ -149,11 +149,14 @@ internal static class PlayniteLibraryOrganizationPolicy
 
     internal static PlayniteLibraryPrivateState ProjectPage(
         PlayniteLibraryPrivateState state,
-        IReadOnlyList<PlayniteLibraryItem> items)
+        IReadOnlyList<PlayniteLibraryItem> items) => ProjectDisplay(state, items.Select(Display).ToArray());
+
+    internal static PlayniteLibraryPrivateState ProjectDisplay(
+        PlayniteLibraryPrivateState state, IReadOnlyList<PlayniteLibraryDisplayItem> items)
     {
         state = Normalize(state);
         var referenced = ReferencedSavedIds(state).ToHashSet(StringComparer.Ordinal);
-        var result = items.Select(Display).ToList();
+        var result = items.ToList();
         var present = result.Select(item => item.SavedId).ToHashSet(StringComparer.Ordinal);
         foreach (var item in state.Items)
             if (referenced.Contains(item.SavedId) && present.Add(item.SavedId))

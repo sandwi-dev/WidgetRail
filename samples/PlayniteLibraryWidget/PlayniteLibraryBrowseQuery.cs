@@ -10,6 +10,10 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 /// </summary>
 internal sealed class PlayniteLibraryBrowseQuery
 {
+    internal static PlayniteLibraryBrowseQuery Empty { get; } = new(new(new(false),
+        new(PlayniteLibraryQueryScope.Library), [], PlayniteLibraryAuthorityProjection.Empty,
+        [], "empty", 0, false, _ => throw new InvalidOperationException("The empty query has no rows."),
+        (_, _, _) => ValueTask.FromResult<WidgetEncodedArtwork?>(null)), PlayniteLibraryPrivateState.Empty, false);
     private sealed record Entry(int ProviderIndex, string SavedId, WidgetCollectionItemKey Key,
         string Title, string Source, bool Favorite, bool Preferred, int GroupSize);
     private readonly PlayniteLibraryCapturedQuery source;
@@ -58,6 +62,15 @@ internal sealed class PlayniteLibraryBrowseQuery
     internal IReadOnlyList<PlayniteLibraryCategory> Categories { get; }
     internal bool TryGetIndex(WidgetCollectionItemKey key, out int index) => indices.TryGetValue(key, out index);
     internal WidgetCollectionItemKey KeyAt(int index) => entries[index].Key;
+    internal bool SameMembership(PlayniteLibraryBrowseQuery other) =>
+        Count == other.Count && entries.Select(entry => entry.Key).SequenceEqual(other.entries.Select(entry => entry.Key));
+    internal bool SameProjection(PlayniteLibraryBrowseQuery other) => ReferenceEquals(source, other.source) &&
+        entries.SequenceEqual(other.entries) && Categories.Count == other.Categories.Count &&
+        Categories.Zip(other.Categories).All(pair => pair.First.Id == pair.Second.Id &&
+            pair.First.Name == pair.Second.Name && pair.First.SavedIds.SequenceEqual(pair.Second.SavedIds));
+
+    internal PlayniteLibraryBrowseItem? Find(WidgetCollectionItemKey key) =>
+        TryGetIndex(key, out var index) ? ReadRange(index, 1)[0] : null;
 
     internal IReadOnlyList<PlayniteLibraryBrowseItem> ReadRange(int start, int count, CancellationToken token = default)
     {

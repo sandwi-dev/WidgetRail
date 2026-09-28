@@ -12,9 +12,11 @@ internal sealed class PlayniteLibraryBrowseContent
 {
     internal PlayniteLibraryBrowseContent(PlayniteLibraryBrowseQuery query,
         bool actionsEnabled = true, string? launchingSavedId = null,
-        IReadOnlyDictionary<string, PlayniteLibraryLaunchState>? launchStates = null)
+        IReadOnlyDictionary<string, PlayniteLibraryLaunchState>? launchStates = null,
+        object? queryOwner = null)
     {
         Query = query ?? throw new ArgumentNullException(nameof(query));
+        QueryOwner = queryOwner ?? query;
         ActionsEnabled = actionsEnabled;
         LaunchingSavedId = launchingSavedId;
         LaunchStates = new ReadOnlyDictionary<string, PlayniteLibraryLaunchState>(
@@ -23,6 +25,7 @@ internal sealed class PlayniteLibraryBrowseContent
     }
 
     internal PlayniteLibraryBrowseQuery Query { get; }
+    internal object QueryOwner { get; }
     internal bool ActionsEnabled { get; }
     internal string? LaunchingSavedId { get; }
     internal IReadOnlyDictionary<string, PlayniteLibraryLaunchState> LaunchStates { get; }

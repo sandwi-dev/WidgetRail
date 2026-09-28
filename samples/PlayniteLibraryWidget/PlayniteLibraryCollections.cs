@@ -133,7 +133,12 @@ internal static class PlayniteLibrarySourceCatalog
         WidgetCursorDirection? direction,
         IReadOnlyList<PlayniteLibraryItem> items,
         IReadOnlyList<WidgetAppLibrarySource> observations,
-        bool completeCatalog)
+        bool completeCatalog) => ReconcileSources(persisted, requested, direction,
+            items.Select(item => item.Presentation.Source.DisplayName).ToArray(), observations, completeCatalog);
+
+    internal static string[] ReconcileSources(IReadOnlyList<string> persisted,
+        PlayniteLibraryCollectionState requested, WidgetCursorDirection? direction,
+        IReadOnlyList<string> itemSources, IReadOnlyList<WidgetAppLibrarySource> observations, bool completeCatalog)
     {
         var sources = Normalize(persisted).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (direction is null && requested.Selection.Kind ==
@@ -141,15 +146,14 @@ internal static class PlayniteLibrarySourceCatalog
             string.IsNullOrWhiteSpace(requested.Query.SearchText))
         {
             var authoritative = (completeCatalog
-                    ? items.Select(item => item.Value.Presentation.Source.DisplayName)
+                    ? itemSources
                     : observations.Select(source => source.DisplayName))
                 .Where(source => !string.IsNullOrWhiteSpace(source))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             sources.RemoveWhere(source => !authoritative.Contains(source));
         }
         foreach (var source in observations.Select(observation => observation.DisplayName)
-                 .Concat(items.Select(item =>
-                     item.Value.Presentation.Source.DisplayName))
+                 .Concat(itemSources)
                  .Where(source => !string.IsNullOrWhiteSpace(source)))
         {
             if (sources.Count >= PlayniteLibraryPrivateState.MaximumProvenSources &&

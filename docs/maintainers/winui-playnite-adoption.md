@@ -1,7 +1,8 @@
 # Playnite indexed adoption boundary
 
-2026-09-27 source review. The installed native widget is unchanged; this is the
-implementation direction for its WinUI adoption, not a completed conversion.
+2026-09-28 implementation checkpoint. Browse now uses the indexed SDK source in
+the production widget. Home still uses its existing cursor rail. This does not yet
+claim native UI acceptance, complete WinUI styling, or measured performance parity.
 
 ## Implemented service checkpoint
 
@@ -26,7 +27,7 @@ All 28 PackageRuntimeTests pass, including nine capture/lifetime tests. Evidence
 `artifacts/winui-playnite-capture-retirement-tests.log` and the matching binlogs in
 `artifacts/winui-playnite/`. The first test run's cancellation assertion was too
 specific about exception subtype and was corrected to test OperationCanceledException.
-The existing widget still uses its cursor UI; production indexed adoption is next.
+The production Browse route consumes this capture; Home retains its cursor behavior.
 
 ## Implemented Browse projection and presentation checkpoint
 
@@ -51,28 +52,53 @@ owns its viewport; there is no outer scroll region, cursor anchor or eager first
 page on this path. Entry uses the source's typed logical focus request. Empty
 indexed membership never falls back to stale cursor items supplied in status state.
 
-This is a presentation/SDK integration checkpoint, **not the production route
-cutover**. The main widget still calls the cursor presentation overload. Its query
-loading, live authority publication, refresh/mutation behavior and modal/launch
-handlers must be converted together: they currently test retained cursor membership
-and sometimes re-resolve actions by `SourceElementId`. No runtime feature gate or
-silent cursor fallback was added. A physically testable Playnite candidate is not
-claimed from this checkpoint.
+The production `PlayniteLibraryWidget` now calls this indexed overload. Its Browse
+cursor, retained-item declaration cache, cursor paging dispatch and cursor reload
+retirement operation have been removed. The SDK source is the only item owner;
+`IndexedBrowseStatus` is a status-only adapter for the shared Home/Browse page,
+with no rows, cursors or second cache. Render-facing Browse publication belongs to
+the existing `WidgetModel<PlayniteLibraryRenderState>`.
 
-Validation: all 139 `PlayniteLibraryWidget.Tests` pass, including four final-membership
-and five indexed presentation/author-host tests. A 10,000-game query produces no
-poster declarations before range demand. Tests exercise deep actual poster/options
-trees, captured A/context actions after queued query replacement, parent RS search,
-artwork ownership/release, logical return across content refresh, invalidation after
-query replacement, and empty-result behavior. They are correctness evidence, not
-WinUI frame-time or physical-controller acceptance. The suite's legacy renderer
-fixture source links and reflection queue call were updated for the existing Bridge
-contract split and SDK binding argument.
+`Operations.RunLatest` owns capture/refresh cancellation. The widget gate fences
+source generation, exact membership, authority and page state against rendering.
+A superseded or cancelled capture cannot publish a source. Unchanged membership
+and query semantics use a content revision, preserving logical item identity;
+search, sort, category or membership changes publish a new query. Failed refresh
+keeps usable last-good data for the same semantic query. A failed new filter retires
+the prior source, so old games cannot be presented as matching the failed query. A cancelled semantic change retries after reactivation,
+rather than mistaking retained old results for the newly selected query.
 
-Command: `dotnet test --project tests/PlayniteLibraryWidget.Tests/PlayniteLibraryWidget.Tests.csproj`
-with a unique binary log under `artifacts/winui-playnite/` (139 passed, 0 failed,
-0 skipped). New author tests use the public indexed test host and actual serial
-input/artwork paths; they do not call the captured row handler directly.
+Captured rows supply exact game targets to the common production handlers. Modal
+availability follows the logical query owner, not native realization or retained
+range leases. Close publishes the original `FocusedCollectionItem` through
+`source.Enter`; it is valid only for the current query and that close request ID.
+A later RS search request cannot replay the consumed modal return. Modal refresh
+preserves the same parent owner. Row artwork uses captured source callbacks,
+independently of the old Home/Details artwork pin registry.
+
+Warm display metadata and source observations are persisted using lightweight
+captured game records, without projecting artwork or visual trees. Organization
+updates reproject the captured query; unchanged projection is a no-op. Membership
+changes replace the logical owner, while favorite/category presentation changes
+with stable membership retain it. Launch still revalidates the exact saved game
+against the application service and rejects a retired owner before launch/results.
+
+Validation: 149 widget tests pass and all 28 application `PackageRuntimeTests` pass.
+Tests cover exact membership, production Browse declarations without inline
+posters, public SDK range/action/artwork paths, deep item 80 modal entry and exact
+return, parent scope rejection, later RS search, favorite content revision,
+superseded uncooperative capture, cancellation/reopen, retained refresh failure,
+and queued old-game actions after query replacement. Existing cursor assertions
+were migrated to explicit logical-query or SDK range assertions; Home cursor
+coverage remains intact. One queued-action test initially raced with the expected
+busy-content binding retirement; it now admits the burst before busy publication.
+
+Commands use `dotnet test --project` with unique binary logs under
+`artifacts/winui-playnite/`. No native window, installed package or controller was
+launched by this workstream. Remaining delivery gates are integration with the
+WinUI shell/modal controls, native rendering/input checks, real Bridge data and
+performance measurements. Home's separate horizontal indexed conversion remains
+outstanding.
 
 ## Reuse existing service behavior
 
@@ -114,15 +140,13 @@ Details opened from a captured target keep that target as their availability and
 mutation owner, so an off-window poster does not disable its modal. Refresh keeps
 the same owner; closing or switching the parent page releases it. Query retirement
 must make its validity callback false. Existing cursor Home behavior remains intact.
-The main Browse lifecycle/source cutover and typed exact return request are still
-pending; this action checkpoint does not claim that production Browse uses indexed
-data. All 142 widget tests pass, including exact out-of-window action identity,
-captured-modal completion/retirement, and retirement during launch revalidation.
+Production Browse now supplies these targets and typed exact return requests.
+Tests include out-of-window action identity, captured-modal completion/retirement,
+and retirement during launch revalidation.
 
 Reuse shared `PlayniteLibraryGameOptions.Create`, launch revalidation, capability
-checks, cancellation, operation generations and existing details behavior. Current
-handlers resolve SourceElementId through retained cursor windows; extract an
-exact-game action path for captured indexed row actions instead. A queued admitted
+checks, cancellation, operation generations and existing details behavior. Home entry points still validate their cursor selection once; indexed actions
+use the captured exact-game path. A queued admitted
 action must never select a game from whatever page happens to be current later.
 
 Capture `WidgetActionEvent.FocusedCollectionItem` when opening Details and retain it
@@ -140,9 +164,9 @@ game/role/revision authority for indexed artwork callbacks instead, sharing the
 bounded byte cache without relying on the old cursor's pin set. Preserve same-game
 background-to-cover fallback and reject unknown or malformed handles.
 
-Current `ResolveArtworkAsync` holds the catalog gate over network I/O. Separate
-immutable catalog publication from bounded artwork work so range/query admission
-does not wait for image downloads. Preserve cancellation and cache synchronization.
+Captured artwork work is separate from catalog publication, with bounded provider
+concurrency and cancellation. Browse does not register all captured images in the
+legacy cursor artwork registry.
 
 ## Native presentation
 
