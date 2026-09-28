@@ -22,6 +22,9 @@ internal sealed partial class WidgetViewPresenter
             var origin = element.TransformToVisual(this).TransformPoint(new(0, 0));
             var image = element as Image;
             var scroll = element as ScrollViewer;
+            var indexed = (element as WidgetIndexedCollectionView)?.NativeView;
+            var itemsPanel = indexed?.ItemsPanelRoot as ItemsWrapGrid;
+            var itemsScroll = indexed is null ? null : FindScroll(indexed);
             return new
             {
                 id = binding.Identity.Id, parent = node.ParentId, kind = node.Node.Kind.ToString(), nativeType = element.GetType().Name,
@@ -38,6 +41,12 @@ internal sealed partial class WidgetViewPresenter
                     decodedHeight = (image.Source as BitmapSource)?.PixelHeight, fit = image.Stretch.ToString() },
                 scroll = scroll is null ? null : new { scroll.ViewportWidth, scroll.ViewportHeight, scroll.ExtentWidth, scroll.ExtentHeight,
                     scroll.HorizontalOffset, scroll.VerticalOffset },
+                indexed = indexed is null ? null : new { indexed.ActualWidth, indexed.Padding,
+                    viewport = itemsScroll?.ViewportWidth, panelWidth = itemsPanel?.ActualWidth,
+                    itemWidth = itemsPanel?.ItemWidth, columns = itemsPanel?.MaximumRowsOrColumns,
+                    realized = Enumerable.Range(0, Math.Min(indexed.Items.Count, 10)).Select(index =>
+                        indexed.ContainerFromIndex(index) is FrameworkElement item ? new { index,
+                            item.ActualWidth, item.Margin, slot = LayoutInformation.GetLayoutSlot(item) } : null).ToArray() },
                 style = frame?.RenderStyles.GetValueOrDefault(binding.Identity.Id)?.Base.Where(pair => properties.Contains(pair.Key))
                     .ToDictionary(pair => pair.Key, pair => pair.Value.Text),
             };
