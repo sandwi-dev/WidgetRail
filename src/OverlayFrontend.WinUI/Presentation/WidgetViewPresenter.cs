@@ -34,6 +34,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private Binding? pendingRestore;
     private long actionSequence;
     private readonly bool presentationOnly;
+    private readonly double nativeBaseFontSize;
     public PresentationSession? Session { get; set; }
     public Func<WidgetActionRequest, Task>? DispatchActionAsync { get; set; }
 
@@ -48,6 +49,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     public WidgetViewPresenter(bool presentationOnly = false)
     {
         this.presentationOnly = presentationOnly;
+        nativeBaseFontSize = FontSize;
         WidgetControllerPrompts.Changed += ControllerPromptsChanged;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;

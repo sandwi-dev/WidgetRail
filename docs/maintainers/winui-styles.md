@@ -7,11 +7,19 @@ Selected/disabled/busy selectors are already incorporated by the bridge resolver
 
 The current mapping covers native foreground/background, uniform border brush,
 per-edge border widths, corner radius, padding, opacity, font size/family/weight,
-text alignment and character spacing. Box lengths are currently px/DIP or unitless;
-character spacing additionally supports em. Relative box units, separate edge
-colors, outline styling, depth, transform/scale, text transforms and rich typography
-remain outside this bounded mapping. No shadow or scale animator is introduced.
+text alignment and character spacing. Character spacing additionally supports em.
+Box geometry, viewport units and full cross-axis percentage sizes are handled by
+the layout adapter described in `winui-layout.md`. Separate edge colors, outline
+styling, depth, other transforms, text transforms and rich typography remain outside
+this bounded mapping. No shadow animator is introduced.
 FontIcon receives foreground and font size while retaining its glyph-specific font.
+
+The newer control-scale adapter maps existing WRSS scale states to native composition;
+see `winui-motion.md`. Explicit authored font sizes now multiply the host's effective
+TextScale, with fresh values derived from the style map rather than the previous native
+font size. Font metrics trigger native reflow instead of scaling text as a bitmap.
+The root presenter also establishes a scaled inherited default. Host display policy
+continues to own selecting the effective TextScale and InterfaceScale.
 
 ## State and reset ownership
 
@@ -56,6 +64,11 @@ values. Clearing a computed override therefore restores a live theme reference,
 not a captured brush from an earlier theme. Background alpha affects the brush
 only; explicit node opacity affects that node's subtree once. Styling a dialog
 body does not apply that opacity to the separate modal scrim.
+
+Modal-layer WRSS styles target that actual scrim Border. Painting the layer Grid's
+background would put the authored veil beneath the retained parent and leave the
+visible scrim on an unrelated native default, making the dialog appear too transparent.
+The dialog panel keeps its separately authored brush alpha.
 
 ## Contrast and validation
 

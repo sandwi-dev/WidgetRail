@@ -114,3 +114,33 @@ The connected dialog checkpoint passes 24 native modal checks (including actual
 opening batch completion, same-key update non-replay and reduced motion), and the
 18 native motion foundation regressions still pass. These checks do not establish
 production-widget smoothness or full transition integration.
+
+## Control scale integration
+
+`WidgetControlScaleMotion` connects the existing WRSS `scale`, `transition-duration`
+and `transition-easing` properties to the shared native style owner. Ordinary controls
+and indexed SelectorItem containers use the same Base/Focused/Pressed resolution;
+indexed fragments keep their typography-only root and cannot apply scale twice.
+The WinUI Gallery's supported `UIElement.StartAnimation` path animates Scale on the
+compositor. Native layout dimensions, action ownership and focus identity remain
+unchanged. No managed animation tick or replacement paint layer is introduced.
+
+Global Full/System/Reduced motion and widget animation speed remain authoritative.
+Reduced motion commits the authored state scale immediately. A theme snapshot with
+the same target does not restart motion; retargeting samples the compositor's displayed
+StartingValue. Linear, cubic ease-out and smoothstep ease-in-out preserve the previous
+WRSS curves. WRSS spring remains its normalized, bounded critically damped response,
+submitted as 24 native keyframe segments; it does not acquire an unbounded settle tail.
+
+The owner restores the original native Scale, CenterPoint and ScaleTransition when
+styles disappear or the control retires. A real unload clears the displayed scale;
+queued stale Unloaded events do not retire a control that is already loaded again.
+Resize and policy changes settle active motion. Viewport clipping of enlarged first/
+last collection items still requires actual widget validation; native motion completion
+alone is not visual acceptance.
+
+This does not complete section transitions, focus-decoration integration, depth or
+dialog exits. Section transitions still need outgoing presentation lifetime ownership;
+focus decoration needs its own layer alongside the semantic control so its Fade/Settle
+channel cannot transform text or compete with this authored control scale. Surface
+shading and shadow declarations remain unmapped in the current native style adapter.

@@ -9,6 +9,8 @@ using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.OverlayFrontend.WinUI.Motion;
+using WidgetRail.PlatformSettings;
 using Windows.UI;
 using Windows.UI.Text;
 using IconElement = Microsoft.UI.Xaml.Controls.IconElement;
@@ -49,6 +51,7 @@ internal sealed partial class WidgetViewPresenter
         {
             WidgetPresentationSurface surface => surface.StylePanel,
             WidgetIndexedCollectionView collection => collection.NativeView,
+            WidgetModalLayer layer => (FrameworkElement)layer.Chrome,
             _ => binding.Element,
         };
         if (nativeStyles.TryGetValue(binding, out var previous) && !ReferenceEquals(previous.Target, target))
@@ -88,6 +91,20 @@ internal sealed partial class WidgetViewPresenter
 /// <summary>One computed-state adapter; absent properties relinquish local ownership.</summary>
 internal sealed class NativeComputedStyleAdapter : IDisposable
 {
+    private static WidgetMotionOptions motionOptions = WidgetMotionOptions.From(AppearanceSettings.Default, true);
+    private static double textScale = 1;
+    internal static void SetTextScale(double value)
+    {
+        value = double.IsFinite(value) ? Math.Clamp(value, AppearanceSettings.MinimumTextScale, AppearanceSettings.MaximumTextScale) : 1;
+        if (value == textScale) return;
+        textScale = value; EnvironmentChanged?.Invoke();
+    }
+    internal static void SetMotionPolicy(AppearanceSettings appearance, bool animationsEnabled)
+    {
+        var next = WidgetMotionOptions.From(appearance, animationsEnabled);
+        if (next == motionOptions) return;
+        motionOptions = next; EnvironmentChanged?.Invoke();
+    }
     private static int systemHighContrast;
     private static int highContrastOverride = -1;
     private static readonly ConditionalWeakTable<FrameworkElement, NativeComputedStyleAdapter> owners = new();
@@ -113,6 +130,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private ResourceDictionary? priorResources;
     private ResourceDictionary? resources;
     private bool typographyOnly;
+    private WidgetControlScaleMotion? scaleMotion;
+    internal WidgetControlScaleMotion? ScaleMotion => scaleMotion;
     private (bool Focused, bool Pressed)? interactionOverride;
     private (bool Focused, bool Pressed)? lastInteraction;
     internal event Action<bool, bool>? InteractionChanged;
@@ -185,7 +204,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         { lastInteraction = (focused, pressed); InteractionChanged?.Invoke(focused, pressed); }
         var style = pressed ? styles?.Pressed : focused ? styles?.Focused : styles?.Base;
         var contrast = Volatile.Read(ref highContrastOverride) is var contrastOverride && (contrastOverride < 0 ? Volatile.Read(ref systemHighContrast) != 0 : contrastOverride != 0);
-        var fontSize = Number(style, "font-size", true) is { } font ? Math.Clamp(font, 1, 512) : (double?)null;
+        var fontSize = Number(style, "font-size", true) is { } font ? Math.Clamp(font, 1, 512) * textScale : (double?)null;
         if (element is TextBlock text)
         {
             Put(TextBlock.ForegroundProperty, Brush(style, "color", contrast, false));
@@ -219,9 +238,17 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         }
         if (typographyOnly)
         {
+            scaleMotion?.Dispose(); scaleMotion = null;
             RestoreSurfaces();
             return;
         }
+        if (interactive && (styles?.Base.ContainsKey("scale") == true || styles?.Focused.ContainsKey("scale") == true || styles?.Pressed.ContainsKey("scale") == true))
+        {
+            scaleMotion ??= new(element);
+            scaleMotion.Apply((float)(Number(style, "scale") ?? 1), Number(style, "transition-duration") ?? 0,
+                style?.GetValueOrDefault("transition-easing")?.Text, motionOptions);
+        }
+        else { scaleMotion?.Dispose(); scaleMotion = null; }
         var opacity = Number(style, "opacity");
         Put(UIElement.OpacityProperty, opacity is null ? null : contrast ? 1d : Math.Clamp(opacity.Value, 0, 1));
         var background = Brush(style, "background", contrast, true);
@@ -408,6 +435,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     public void Dispose()
     {
         if (disposed) return;
+        scaleMotion?.Dispose(); scaleMotion = null;
         foreach (var property in originals.Keys.ToArray()) Put(property, null);
         RestoreResources();
         if (interactive) { element.GotFocus -= Changed; element.LostFocus -= Changed; }

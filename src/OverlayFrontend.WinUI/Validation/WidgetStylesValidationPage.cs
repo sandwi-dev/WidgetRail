@@ -114,6 +114,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
             "removed controls retire their shared style owner");
         await ResponsiveAndPostersAsync();
         await NativeGridMeasureAsync();
+        await NativeScaleAsync();
         if (App.ValidationFixturePath is { } fixture) await PlayniteProductionLayoutAsync(fixture);
     }
 

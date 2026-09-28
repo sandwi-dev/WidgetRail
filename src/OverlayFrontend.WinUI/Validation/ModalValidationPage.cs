@@ -62,6 +62,8 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             await Until(() => FocusedId == "Widget.play" && Find(modal) is { ActualWidth: > 0 });
             var panel = (WidgetModalPanel)Find(modal)!;
             var modalLayer = AncestorLayer(panel);
+            Check(((Border)modalLayer.Chrome).Background is SolidColorBrush { Color.A: 163, Color.R: 12, Color.G: 24, Color.B: 36 } &&
+                modalLayer.Background is null, "authored modal veil paints the scrim above the parent instead of beneath it");
             await Until(() => modalLayer.OpeningMotion is not null);
             var opening = modalLayer.OpeningMotion!;
             Check(await opening.WaitAsync(TimeSpan.FromSeconds(2)) == WidgetMotionOutcome.Completed,
@@ -163,9 +165,12 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
         var snapshot = view.CreateSnapshot("modal.instance", ++sequence);
         var descriptor = new BridgeWidgetDescriptor { Id = "modal", Name = "Modal validation", InstanceId = snapshot.WidgetInstanceId,
             RuntimeGeneration = $"runtime-{owner}", PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };
+        var style = new Dictionary<string, BridgeComputedStyleValue> { ["background"] = new() { Kind = WrssValueKind.Color, Text = "rgba(12, 24, 36, 0.64)" } };
+        var styles = modal is null ? new Dictionary<string, BridgeNodeRenderStyles>() : new Dictionary<string, BridgeNodeRenderStyles>
+            { [snapshot.Root.Id] = new() { Base = style, Focused = style, Pressed = style } };
         presenter.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, owner,
             snapshot.WidgetInstanceId, sequence, snapshot.ActiveInputScopeId), descriptor, snapshot,
-            new Dictionary<string, BridgeNodeRenderStyles>()));
+            styles));
     }
 
     private void CheckLocalBounds(FrameworkElement panel, string name)
