@@ -132,3 +132,40 @@ Discovered cursors should retain logical positions and release heavy payload
 where possible. True insertion before an unknown origin still requires a proven
 anchor policy. This remains required migration work, rather than an excuse to label
 opaque cursors as indexed queries or silently drop their behavior.
+
+
+## Indexed SDK contract implemented on the migration branch
+
+Protocol 60 adds an `IndexedCollection` node containing a source descriptor and
+list/grid layout, with no inline item trees. Authors register one
+`WidgetIndexedCollection<TQuery,TItem>` through `CreateIndexedCollection`, then
+use the indexed overload of `UI.CollectionList` or `UI.CollectionGrid` in their
+ordinary page. The source descriptor is captured when that declaration is built.
+
+- `ReadRange(query, start, count, token)` returns exactly the requested entries.
+  Count and ordering must be truthful for the immutable query snapshot, including
+  count zero. Reads may run concurrently and must observe cancellation.
+- `ItemKey` identifies an occurrence, including repeated songs. `RenderItem` is
+  pure and uses captured query/item values. It returns one always-present Button
+  or ActionSurface with ordinary presentation content and metadata.
+- `WidgetIndexedItemContext.Id(name)` produces IDs scoped to source, collection
+  placement and occurrence key; position changes do not rename a logical item.
+- `PublishQuery` replaces membership/order/count and retires old reads.
+  `UpdateContent` advances a content revision while preserving every key's index.
+  Both invalidate the widget; old descriptors cannot serve a new query revision.
+- Only requested items are rendered. Mutable lists in returned declarations are
+  copied before retention/publication. Ranges are bounded to 64 items and 2048
+  nodes, and validated against the actual main or pinned parent projection.
+  Row focus/presentation metadata cannot invent a separate page or bypass the
+  parent's scope and presentation-surface ownership.
+- Each source permits four actual provider tasks. Cancellation/timeout releases
+  the caller, but an uncooperative provider continues occupying its slot until it
+  actually finishes. The default read timeout is ten seconds (100 ms–30 seconds).
+  Widget/process lifetime remains the final boundary for uncooperative author code.
+
+This is migration infrastructure, not a production-ready widget switch. The
+shared frontend still rejects unsupported collection declarations. End-to-end
+service demand, bounded row-action/artwork leases, native template presentation,
+error/retry UI, and production widget adoption must be connected before these
+overloads can replace an existing shipped collection. A range response by itself
+is not authority to invoke row actions through the existing parent-only route.

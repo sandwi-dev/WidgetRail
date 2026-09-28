@@ -24,6 +24,9 @@ internal static class MessageTypes
     public const string Hello = "hello";
     public const string HelloAccepted = "hello-accepted";
     public const string Render = "render";
+    public const string ReadIndexedRange = "read-indexed-range";
+    public const string IndexedRange = "indexed-range";
+    public const string CancelIndexedRange = "cancel-indexed-range";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
     public const string Snapshot = "snapshot";
     public const string PresentationUpdate = "presentation-update";

@@ -144,6 +144,9 @@ internal sealed class ProtocolVersionRequirements
                     "$.focusGroupEntryRequest",
                     $"Deferred focus-group entry requires protocol version {ProtocolConstants.DeferredFocusGroupEntryVersion} or later.");
 
+            if (node.Kind == ViewNodeKind.IndexedCollection || node.IndexedCollection is not null)
+                Add("indexed-collection", ProtocolConstants.IndexedCollectionVersion, path,
+                    "Indexed collection sources require protocol version 60 or later.");
             if (node.VisibleWhen is not null)
                 Add(
                     "responsive-visibility",

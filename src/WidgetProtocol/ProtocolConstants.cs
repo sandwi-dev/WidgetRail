@@ -21,7 +21,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 59;
+    public const int CurrentVersion = 60;
+    public const int IndexedCollectionVersion = 60;
     public const int CollectionLayoutVersion = 59;
     public const int WidgetTransitionVersion = 58;
     public const int MaximumWidgetTransitionGroups = 7;

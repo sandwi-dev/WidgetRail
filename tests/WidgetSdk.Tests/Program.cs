@@ -8,6 +8,12 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Indexed collections declare lazy versioned exact-count sources", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.Declarations)),
+    ("Indexed collections validate parent scope and pinned authority", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.Authority)),
+    ("Indexed collections retire stale queries and content revisions", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.QueryLifetime)),
+    ("Indexed collections validate demanded item counts and keys", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.ProviderValidation)),
+    ("Indexed collections freeze output and reject hostile range trees", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.ImmutableAndHostileRanges)),
+    ("Indexed collections bound provider concurrency timeout and cancellation", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedCollectionTests.TimeoutAndConcurrency)),
     ("Collections declare bounded realization and logical item contracts", CollectionLayoutTests.Run),
     ("Collection items reuse immutable keyed declarations atomically", WidgetCollectionItemsTests.Run),
     ("Widget transitions preserve scopes and coordinate navigation", WidgetTransitionTests.Run),

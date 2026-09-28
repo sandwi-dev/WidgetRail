@@ -26,6 +26,7 @@ public enum ViewNodeKind
     WindowPreview,
     ControllerGlyph,
     ModalLayer,
+    IndexedCollection,
 }
 
 /// <summary>One bounded option in a host-owned anchored Select popup.</summary>
@@ -373,6 +374,8 @@ public sealed record VirtualCollectionWindow
 /// <summary>A renderer-neutral node. Properties that do not apply to Kind must be null.</summary>
 public sealed record ViewNode
 {
+    /// <summary>Protocol-v60 exact indexed source; items are delivered separately on demand.</summary>
+    public IndexedCollectionDescriptor? IndexedCollection { get; init; }
     /// <summary>Optional host-owned, coordinated section motion.</summary>
     public WidgetTransition? Transition { get; init; }
     public required string Id { get; init; }
@@ -544,7 +547,7 @@ public sealed record ViewNode
     [JsonIgnore]
     public bool IsFocusable => Kind is
         ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or
-        ViewNodeKind.TextEntry or ViewNodeKind.Select;
+        ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.IndexedCollection;
 }
 
 public sealed record ViewSnapshot

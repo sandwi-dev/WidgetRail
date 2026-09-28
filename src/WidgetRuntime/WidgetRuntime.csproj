@@ -9,6 +9,7 @@
     <Compile Remove="RuntimeProtocol.cs" />
     <Compile Remove="WidgetWorkerNotificationLane.cs" />
     <Compile Remove="WidgetWorkerServer.cs" />
+    <Compile Remove="WidgetIndexedRangeLane.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\PlatformBroker\PlatformBroker.csproj" />

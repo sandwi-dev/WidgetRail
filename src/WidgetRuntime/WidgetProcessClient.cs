@@ -13,7 +13,7 @@ namespace WidgetRail.WidgetRuntime;
 /// Host-side lifecycle and IPC client. Constructing it is inert; the worker is
 /// launched only when the first render or action request is made.
 /// </summary>
-public sealed class WidgetProcessClient : IAsyncDisposable
+public sealed partial class WidgetProcessClient : IAsyncDisposable
 {
     // A dormant reservation is not broker authority. It exists only long
     // enough for bounded serial widget work to reach its exact capability call.

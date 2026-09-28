@@ -99,6 +99,32 @@ source-reference excerpt) and `artifacts/winui-state/` (focused tests/binlog).
 
 ### Physical controller feedback and activation correction
 
+Follow-up source audit found a separate confirmed input-starvation defect: the
+WinUI pump publishes window state each poll, while the native setter reset its
+edge tracker on every unfocused publication. Each background-visible read then
+only primed, producing no A/navigation edge despite a connected visible lease.
+The setter now applies a shared tracker transition operation: actual hide or
+focus loss retires history; unchanged visible/unfocused state preserves it.
+The pump can continue publishing current ownership without a duplicate managed
+state cache. Isolation close/selection behavior is unchanged.
+
+The focused production-DLL executable passes 119 checks, including an actual
+exported-setter regression and deterministic A/D-pad/stick press/repeat/release
+checks. The identical executable against the previous DLL fails specifically at
+`repeated background state must not re-prime the production input tracker`.
+Evidence: `artifacts/winui-controller/idempotent-state-*.log`. The requested full
+`-PlatformInteropTestsOnly` selector stopped first at the preexisting
+`GameInputQueryRuntimeTests` device-enumeration/runtime-identity check; that gate
+is reported separately, not waived or repaired. The focused executable was then
+compiled/run directly against the newly built production DLL.
+
+The replay fake does not model native window-state resets, so its earlier pass
+could not catch this defect. Foreground activation/restore policy and duplicate
+WinUI/native physical gamepad delivery remain separate unaccepted gates. No
+additional physical check was requested while the user was away. The corrected
+DLL is in `src/OverlayHost/out/Release`; rebuild the WinUI platform artifact
+before the next candidate launch.
+
 User reported: Guide hide/show works, but native navigation/A required clicking a
 button first. This is a failed controller-native startup gate, not acceptance.
 No further physical checks are requested while the user is away.
@@ -321,3 +347,45 @@ All 34 session tests pass, including seven new demand/race/timeout cases. Server
 decoding still lacks per-demand cancellation; already-sent transport requests remain
 bounded/correlated until reply or shutdown. This distinction is intentional and
 documented, not a claim that local cancellation stops provider work.
+
+
+## Worker-side indexed declaration foundation
+
+The migration SDK now registers immutable exact-count queries and renders only
+requested bounded ranges. Protocol 60 declarations carry no inline items. Shared
+range validation resolves the actual main/pinned parent and validates its source,
+scope, occurrence keys, response correlation, presentation ownership and bounds.
+Normal parent snapshots still reject inline indexed payloads. Item declaration
+lists are frozen with the same helper used by retained collection declarations;
+source/collection/key-scoped IDs distinguish independent placements.
+
+The SDK limits actual provider tasks to four per source, including cancelled or
+timed-out tasks until they terminate. Query/content changes retire old readers;
+late content and cancelled rendering cannot publish. The public API baseline is
+updated. The 128-check SDK console suite passes, including six new indexed groups.
+This is not an end-to-end production collection: bridge/session demand, row
+leases and actions, native templates, and widget adoption remain outstanding.
+
+
+### Concurrent range transport and controller correction
+
+Worker/process-client range reads now have a separate four-request lane, explicit
+exact-demand cancellation and bounded teardown. Slow range reads leave the serial
+input/render/lifecycle path available. Original response correlation survives
+cancellation until its terminal reply drains; cancellation never targets a
+replacement worker. Both worker trust tiers share this implementation. Six new
+runtime scenarios and nine existing focused regressions pass. SDK API compatibility
+passes all fourteen tests; generated protocol parity passes 140 constants. Bridge
+and WinUI analyzer builds pass without warnings/errors. No indexed row action or
+artwork authority is enabled by this transport alone.
+
+The visible-but-unfocused controller defect has an isolated regression: the WinUI
+pump publishes window state each poll, but the native setter previously reset input
+tracking on every unfocused publication. The setter now retires tracking only on a
+real hide or focus-loss transition. The production DLL passes 119 focused ABI/policy
+checks; the same executable against the prior DLL fails the repeated-background-
+state regression. The broader native selector stopped at the existing GameInput
+query-lifetime/device-enumeration check before this executable; that result remains
+separate and uncorrected. Evidence is in `artifacts/winui-controller/`. The platform
+artifact was rebuilt and copied by the subsequent WinUI build. Physical Guide
+reopen/navigation/A acceptance remains pending; no validation window was launched.

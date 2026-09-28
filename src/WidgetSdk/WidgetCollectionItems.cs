@@ -71,7 +71,7 @@ public sealed class WidgetCollectionItems<TItem> where TItem : notnull
                             (node.CollectionItemKey is { } declaredKey && declaredKey != key))
                             throw new ArgumentException("Collection factories must produce one always-present button or action surface with the selected key.", nameof(items));
                         var count = 0;
-                        node = Freeze(node with { CollectionItemKey = key }, 1, ref count);
+                        node = WidgetDeclarationSnapshot.Freeze(node with { CollectionItemKey = key }, 1, ref count);
                         entry = new Entry(inputs[index], new CapturedElement(element, node));
                     }
                     next.Add(key, entry);
@@ -92,25 +92,6 @@ public sealed class WidgetCollectionItems<TItem> where TItem : notnull
             if (_capturing) throw new InvalidOperationException("Collection factories cannot clear their cache.");
             _entries = new(StringComparer.Ordinal);
         }
-    }
-
-    private static ViewNode Freeze(ViewNode node, int depth, ref int count)
-    {
-        if (depth > ProtocolConstants.MaximumTreeDepth || ++count > ProtocolConstants.MaximumNodeCount)
-            throw new ArgumentException("Collection item declaration exceeds the protocol tree bound.");
-        var children = new ViewNode[node.Children.Count];
-        for (var index = 0; index < children.Length; index++)
-            children[index] = Freeze(node.Children[index], depth + 1, ref count);
-        return node with
-        {
-            Children = Array.AsReadOnly(children),
-            StyleClasses = Array.AsReadOnly(node.StyleClasses.ToArray()),
-            Shortcuts = Array.AsReadOnly(node.Shortcuts.ToArray()),
-            ContextActions = Array.AsReadOnly(node.ContextActions.ToArray()),
-            SelectOptions = Array.AsReadOnly(node.SelectOptions.ToArray()),
-            FocusPresentation = node.FocusPresentation is { } focus ? Freeze(focus, depth + 1, ref count) : null,
-            DefaultFocusPresentation = node.DefaultFocusPresentation is { } fallback ? Freeze(fallback, depth + 1, ref count) : null,
-        };
     }
 
     private sealed record CapturedElement : WidgetElement

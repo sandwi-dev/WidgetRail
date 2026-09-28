@@ -238,3 +238,33 @@ binds the companion to the exact started PID before either server accepts a
 client. PID checks are additive to the main runtime hello and broker nonce plus
 package/publisher/instance authentication; they do not replace protocol
 identity validation.
+
+## Indexed range reads
+
+`WidgetProcessClient.ReadIndexedRangeAsync` reads bounded declarative item ranges
+against the current parent collection descriptor. It grants no indexed-row input
+or action authority. The runtime uses additive `read-indexed-range`,
+`indexed-range`, and `cancel-indexed-range` messages; the existing version-2
+handshake and ordinary action/render messages are unchanged.
+
+At most four range demands are admitted per worker and per process client.
+Reads run independently of the serial input, render and lifecycle request queue.
+The SDK separately retains its actual provider-operation slots until those
+operations terminate, even when a provider ignores cancellation. Rejected reads
+and stale query results do not mutate the parent presentation.
+
+`CancelIndexedRangeAsync` signals an exact active local request and returns false
+for a missing/completed request. Await the original read task to observe its
+terminal cancellation. Its owner finishes any in-progress frame, sends explicit
+cancellation to the captured session, and retains both request correlations until
+the replies drain. It never starts or targets a replacement worker for cancellation.
+Demand cancellation does not interrupt frame bytes; session/transport deadlines
+remain responsible for broken pipes. Range replies have a 35-second ceiling,
+covering the SDK's maximum 30-second provider deadline, independently of ordinary
+input/render request deadlines. Cancellation acknowledgement/drain and worker
+read-lane teardown each have a two-second bound; an unresponsive cancellation
+boundary retires the session.
+
+Stop closes range admission and cancels/drains admitted read tasks before its
+acknowledgement and widget destruction. Both sandboxed and full-trust bootstraps
+compile the same read lane from WidgetApplicationRuntime.
