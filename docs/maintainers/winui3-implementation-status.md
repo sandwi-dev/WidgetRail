@@ -798,3 +798,17 @@ fonts. Its 26 native checks also pass on the integration branch. Details and rem
 physical/production/theme validation are in winui-text-entry.md. These are correctness
 fixtures, not production-widget performance or full migration acceptance. Main and
 the installed native product remain untouched.
+
+## Playnite Home indexed adoption, 2026-09-28
+
+Home now uses captured indexed membership and demanded row rendering, with no Home
+cursor/load-page path. It preserves the manual/title-match prefix, provider ordering,
+unavailable saved entries, captured action/artwork ownership, and exact deep-item modal
+return. Same-membership updates retain logical query identity; refresh explicitly
+retires obsolete launch evidence. Author notes and migration-specific tests are updated.
+
+All 155 Playnite widget tests pass on the integration branch (zero failures/skips).
+Evidence: artifacts/winui-surfaces/home-integrated-tests.log and its unique build log.
+This does not validate the actual Home rail's WinUI rendering or performance; production
+presentation support and shell integration remain outstanding. No sample was installed
+over the native frontend, and no changes were merged into main.
