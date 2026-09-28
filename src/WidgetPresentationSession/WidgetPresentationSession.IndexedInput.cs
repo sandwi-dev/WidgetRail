@@ -15,6 +15,7 @@ public sealed partial class WidgetPresentationSession
         WidgetPresentationIndexedLease lease, WidgetPresentationFrame origin)
     {
         DemandIndexedLeaseLocked(lease);
+        DemandPinnedIndexedInputLocked(lease);
         ThrowIfTerminalLocked();
         if (!_publishedInputFrames.TryGetValue(origin, out _) || !SameIndexedOwner(origin.Authority, lease.Authority) ||
             _states.GetValueOrDefault(origin.Authority.WidgetId)?.LastGood is not { } current ||

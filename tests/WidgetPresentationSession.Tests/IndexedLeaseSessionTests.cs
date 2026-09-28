@@ -168,6 +168,12 @@ public sealed partial class IndexedRangeSessionTests
     {
         await RunAsync(async channel =>
         {
+            if (pinned)
+            {
+                var selection = await ReadAsync(channel);
+                Assert.AreEqual(BridgeMessageTypes.ControllerInput, selection.Type);
+                await ReplyAsync(channel, selection.RequestId, BridgeMessageTypes.ControllerInputResult, new { handled = true });
+            }
             await LeaseReplyAsync(channel, await ReadAsync(channel), artwork: true);
             var refresh = await ReadAsync(channel);
             await SnapshotReplyAsync(channel, refresh.RequestId, 2, Source, openModal: true);
@@ -183,6 +189,7 @@ public sealed partial class IndexedRangeSessionTests
             await ReleaseReplyAsync(channel, await ReadAsync(channel));
         }, async (session, frame) =>
         {
+            if (pinned) await session.SelectPinnedLayoutAsync(session.ResolvePinnedProjection(frame, "host.full-widget"));
             await using var lease = await session.AcquireIndexedRangeAsync(frame.Authority, "list", Source, 0, 1, pinned ? "host.full-widget" : null);
             var modal = await session.RefreshAsync(frame.Authority);
             Assert.IsTrue(lease.IsCurrent);
@@ -214,6 +221,53 @@ public sealed partial class IndexedRangeSessionTests
             Assert.IsFalse(lease.IsCurrent);
             await lease.DisposeAsync().AsTask().WaitAsync(Limit);
             await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(frame.Authority, "key-0", ControllerButton.A));
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(frame, "key-0", ControllerButton.A));
+        });
+    }
+
+    [TestMethod]
+    public async Task PinnedIndexedContextActionsRequireSelectionAndDeselectRetiresTheirLease()
+    {
+        await RunAsync(async channel =>
+        {
+            var acquire = await ReadAsync(channel); var request = AcquireRequest(acquire); var range = Range(request.Range);
+            range = range with { Items = range.Items.Select(item => item with { Root = item.Root with
+            {
+                Kind = ViewNodeKind.ActionSurface, Text = null, AccessibilityLabel = "Item",
+                ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal, ContextMenuButton = ControllerButton.X,
+                ContextActions = [new("row.options", "Options")],
+                Children = [new() { Id = item.Root.Id + ".label", Kind = ViewNodeKind.Text, Text = "Item" }],
+            } }).ToArray() };
+            await ReplyAsync(channel, acquire.RequestId, BridgeMessageTypes.IndexedLease,
+                new BridgeIndexedLeaseResponse(request.WidgetId, request.InstanceId, request.RuntimeGeneration,
+                    request.PresentationGeneration, new(Guid.NewGuid().ToString("N"), range), EmptyRangeStyles(range)));
+            var selected = await ReadAsync(channel); Assert.AreEqual(BridgeMessageTypes.ControllerInput, selected.Type);
+            await ReplyAsync(channel, selected.RequestId, BridgeMessageTypes.ControllerInputResult, new { handled = true });
+            var action = await ReadAsync(channel); Assert.AreEqual(BridgeMessageTypes.IndexedInput, action.Type);
+            var input = BridgeJson.FromElement<BridgeIndexedInputRequest>(action.Payload);
+            Assert.AreEqual("row.options", input.Input.ContextActionId);
+            Assert.AreEqual("item-0", input.Input.ContextActionOwnerId);
+            await ReplyAsync(channel, action.RequestId, BridgeMessageTypes.Acknowledged, new { admission = "enqueued" });
+            for (var count = 0; count < 2; ++count)
+            {
+                var next = await ReadAsync(channel);
+                if (next.Type == BridgeMessageTypes.ReleaseIndexedLease) await ReleaseReplyAsync(channel, next);
+                else
+                {
+                    Assert.AreEqual(BridgeMessageTypes.ControllerInput, next.Type);
+                    Assert.IsFalse(BridgeJson.FromElement<BridgeControllerInputRequest>(next.Payload).Input.IsPinnedLayoutSelected);
+                    await ReplyAsync(channel, next.RequestId, BridgeMessageTypes.ControllerInputResult, new { handled = true });
+                }
+            }
+        }, async (session, frame) =>
+        {
+            await using var lease = await session.AcquireIndexedRangeAsync(frame.Authority, "list", Source, 0, 1, "host.full-widget");
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(frame, "key-0", ControllerButton.A));
+            var selected = await session.SelectPinnedLayoutAsync(session.ResolvePinnedProjection(frame, "host.full-widget"));
+            Assert.AreEqual(WidgetOperationAdmission.Enqueued, await lease.AdmitInputAsync(frame, "key-0", ControllerButton.A,
+                contextActionOwnerId: "item-0", contextActionId: "row.options"));
+            await session.ClearPinnedSelectionAsync(selected, frame);
+            Assert.IsFalse(lease.IsCurrent);
             await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => lease.AdmitInputAsync(frame, "key-0", ControllerButton.A));
         });
     }

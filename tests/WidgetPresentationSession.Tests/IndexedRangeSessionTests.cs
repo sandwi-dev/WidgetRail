@@ -16,6 +16,7 @@ public sealed partial class IndexedRangeSessionTests
     {
         Id = "indexed", Name = "Indexed", InstanceId = "indexed.instance", Icon = WidgetGlyph.Connection,
         RuntimeGeneration = new string('a', 32), PresentationGeneration = new string('b', 32), PackageContentDigest = new string('e', 64),
+        PinningSupported = true, FullWidgetPinningSupported = true,
     };
 
     [TestMethod]

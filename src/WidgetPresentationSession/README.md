@@ -83,3 +83,12 @@ count and SHA-256, then returns a private copy. Paths, URIs and widget SVG are
 never accepted. Catalog replacement invalidates both in-flight results and cache
 lookups. Cache retention is capped at 128 entries/2 MiB; pending demand at 16 and
 active package exchanges at four. Cancellation/timeout never publishes late bytes.
+
+## Pinned projections
+
+Use `ResolvePinnedProjection` and a `WidgetPinnedSelection` for pinned surfaces;
+never fabricate an ordinary frame from a pinned root. Selection and the genuine
+displayed origin are required for both ordinary pinned controls and indexed row
+input. See [pinned session authority](../../docs/maintainers/winui-pinned-session.md)
+for API flow, lifecycle rules, full-widget demand semantics and the bounded
+unsupported ordinary text/context/cursor routes.

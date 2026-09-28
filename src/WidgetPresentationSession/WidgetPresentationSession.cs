@@ -328,6 +328,9 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
+        if (input.Context is ControllerInputContext.PinnedSurface or ControllerInputContext.PinnedLayoutSelection ||
+            input.PinnedLayoutId is not null || input.IsPinnedLayoutSelected is not null)
+            throw PinnedStale("Pinned input requires the pinned projection and selection API.");
         _ = ValidateAuthority(authority);
         if (input.SnapshotSequence != authority.SnapshotSequence)
             throw Stale("snapshot_stale", authority.WidgetId,
@@ -453,6 +456,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             RetireIndexedRangesLocked();
             RetireMediaDocumentLocked();
             RetireWindowPreviewsLocked();
+            RetirePinnedProjectionsLocked();
             indexed = _indexedDemands.Values.Select(item => item.Done.Task)
                 .Concat(_indexedArtworkDemands.Values.Select(item => item.Done.Task))
                 .Concat(_indexedLeaseRetirements).ToArray();
@@ -1097,6 +1101,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         _states[state.WidgetId] = committed;
         ReconcileMediaDocumentLocked(committed);
         ReconcileWindowPreviewsLocked(committed);
+        ReconcilePinnedProjectionsLocked(committed);
         RetireIndexedRangesLocked(state.WidgetId, committed.LastGood?.Authority);
         if (publish) _statePublications.Enqueue(committed);
         return committed;
@@ -1107,6 +1112,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         RetireIndexedRangesLocked(widgetId);
         RetireMediaDocumentLocked(widgetId);
         RetireWindowPreviewsLocked(widgetId);
+        RetirePinnedProjectionsLocked(widgetId);
         if (!_states.Remove(widgetId)) return false;
         var retired = new WidgetPresentationState(widgetId, null, null, 0)
         {
@@ -1255,6 +1261,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             RetireIndexedRangesLocked();
             RetireMediaDocumentLocked();
             RetireWindowPreviewsLocked();
+            RetirePinnedProjectionsLocked();
             artwork = _artwork.Values.ToArray();
             _artwork.Clear();
         }

@@ -118,6 +118,7 @@ public sealed partial class WidgetPresentationSession
         lock (_gate)
         {
             DemandIndexedLeaseLocked(lease);
+            DemandPinnedIndexedInputLocked(lease);
             _ = ValidateAuthority(origin);
             if (!SameIndexedOwner(origin, lease.Authority))
                 throw new WidgetPresentationSessionException("indexed_input_stale", "Indexed input does not belong to this owner.");
@@ -139,31 +140,40 @@ public sealed partial class WidgetPresentationSession
         cancellationToken.ThrowIfCancellationRequested();
         IndexedCollectionInputContract.ValidateInput(input);
         IndexedCollectionInputContract.ValidateContext(context);
-        lock (_gate)
+        var pinnedDispatch = lease.Request.Range.PinnedLayoutId is not null;
+        if (pinnedDispatch) await _pinnedDispatch.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var exchangeOwnsDispatch = false;
+        try
         {
-            DemandIndexedLeaseLocked(lease);
-            if (displayed is null) _ = ValidateAuthority(origin);
-            else
+            lock (_gate)
             {
-                var owners = ValidateDisplayedIndexedInputLocked(lease, displayed);
-                var item = lease.Range.Items.SingleOrDefault(item => item.Key == input.Item.ItemKey)
-                    ?? throw new WidgetPresentationSessionException("indexed_input_stale", "The indexed input item is outside its lease.");
-                DemandSameIndexedBinding(owners.Origin, owners.Current, item.Root, input);
+                DemandIndexedLeaseLocked(lease);
+                DemandPinnedIndexedInputLocked(lease);
+                if (displayed is null) _ = ValidateAuthority(origin);
+                else
+                {
+                    var owners = ValidateDisplayedIndexedInputLocked(lease, displayed);
+                    var item = lease.Range.Items.SingleOrDefault(item => item.Key == input.Item.ItemKey)
+                        ?? throw new WidgetPresentationSessionException("indexed_input_stale", "The indexed input item is outside its lease.");
+                    DemandSameIndexedBinding(owners.Origin, owners.Current, item.Root, input);
+                }
+                if (!SameIndexedOwner(origin, lease.Authority) || input.Item.LeaseId != lease.LeaseId ||
+                    !lease.Range.Items.Any(item => item.Key == input.Item.ItemKey))
+                    throw new WidgetPresentationSessionException("indexed_input_stale", "Indexed input does not belong to this owner.");
+                var snapshot = _states[origin.WidgetId].LastGood!.Snapshot;
+                var activeScope = IndexedCollectionContract.ResolveActiveInputScope(snapshot, lease.Request.Range);
+                if (activeScope != lease.ScopeId)
+                    throw new WidgetPresentationSessionException("input_scope_stale", "The indexed row is outside the active projection scope.");
+                if (_indexedInputExchanges >= Widget.ActionQueueCapacity)
+                    throw new WidgetPresentationSessionException("indexed_input_saturated", "Indexed input admission is full.");
+                ++_indexedInputExchanges;
             }
-            if (!SameIndexedOwner(origin, lease.Authority) || input.Item.LeaseId != lease.LeaseId ||
-                !lease.Range.Items.Any(item => item.Key == input.Item.ItemKey))
-                throw new WidgetPresentationSessionException("indexed_input_stale", "Indexed input does not belong to this owner.");
-            var snapshot = _states[origin.WidgetId].LastGood!.Snapshot;
-            var activeScope = IndexedCollectionContract.ResolveActiveInputScope(snapshot, lease.Request.Range);
-            if (activeScope != lease.ScopeId)
-                throw new WidgetPresentationSessionException("input_scope_stale", "The indexed row is outside the active projection scope.");
-            if (_indexedInputExchanges >= Widget.ActionQueueCapacity)
-                throw new WidgetPresentationSessionException("indexed_input_saturated", "Indexed input admission is full.");
-            ++_indexedInputExchanges;
+            var exchange = ExchangeAsync();
+            exchangeOwnsDispatch = true;
+            ObserveIndexedReply(exchange);
+            return await exchange.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
-        var exchange = ExchangeAsync();
-        ObserveIndexedReply(exchange);
-        return await exchange.WaitAsync(cancellationToken).ConfigureAwait(false);
+        finally { if (pinnedDispatch && !exchangeOwnsDispatch) _pinnedDispatch.Release(); }
 
         async Task<WidgetOperationAdmission?> ExchangeAsync()
         {
@@ -188,7 +198,11 @@ public sealed partial class WidgetPresentationSession
                     throw new BridgeProtocolException("WidgetBridge returned an invalid indexed input admission.");
                 return admission;
             }
-            finally { lock (_gate) --_indexedInputExchanges; }
+            finally
+            {
+                lock (_gate) --_indexedInputExchanges;
+                if (pinnedDispatch) _pinnedDispatch.Release();
+            }
         }
     }
 

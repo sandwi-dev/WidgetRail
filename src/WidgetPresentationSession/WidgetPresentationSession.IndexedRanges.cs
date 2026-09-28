@@ -45,12 +45,22 @@ public sealed partial class WidgetPresentationSession
         _ = await ReadIndexedCoreAsync(authority, collectionId, source, source.Count, 0, null, false, cancellationToken,
             retry ? IndexedCollectionRequestKind.Retry : IndexedCollectionRequestKind.Continue).ConfigureAwait(false);
 
+    /// <summary>Continues the declared pinned projection's worker-private discovered prefix.</summary>
+    public async Task ContinuePinnedDiscoveredCollectionAsync(WidgetPinnedSelection selection, WidgetPinnedProjection projection,
+        string collectionId, IndexedCollectionDescriptor source, bool retry = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(selection); ArgumentNullException.ThrowIfNull(projection);
+        lock (_gate) _ = DemandPinnedInputLocked(selection, projection);
+        _ = await ReadIndexedCoreAsync(projection.Frame.Authority, collectionId, source, source.Count, 0, projection.LayoutId, false,
+            cancellationToken, retry ? IndexedCollectionRequestKind.Retry : IndexedCollectionRequestKind.Continue, selection).ConfigureAwait(false);
+    }
+
     private sealed record IndexedReadResult(IndexedCollectionRange Range, WidgetPresentationIndexedLease? Lease);
 
     private async Task<IndexedReadResult> ReadIndexedCoreAsync(
         WidgetPresentationAuthority authority, string collectionId, IndexedCollectionDescriptor source,
         int startIndex, int count, string? pinnedLayoutId, bool acquire, CancellationToken cancellationToken,
-        IndexedCollectionRequestKind kind = IndexedCollectionRequestKind.Range)
+        IndexedCollectionRequestKind kind = IndexedCollectionRequestKind.Range, WidgetPinnedSelection? pinnedSelection = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var range = new IndexedCollectionRangeRequest(collectionId, source, startIndex, count,
@@ -61,6 +71,8 @@ public sealed partial class WidgetPresentationSession
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _ = ValidateAuthority(authority);
+            if (pinnedSelection is not null && (!IsPinnedSelectionCurrent(pinnedSelection) || pinnedSelection.LayoutId != pinnedLayoutId))
+                throw PinnedStale("The pinned continuation demand retired before admission.");
             if (_indexedHiddenWidgets.Contains(authority.WidgetId))
                 throw new WidgetPresentationSessionException("indexed_surface_hidden", "The indexed surface is not active.");
             var scopeId = IndexedCollectionContract.ResolveScope(_states[authority.WidgetId].LastGood!.Snapshot, range);
@@ -257,6 +269,7 @@ public sealed partial class WidgetPresentationSession
             _indexedLifecycleVersions[target.Descriptor.Id] = version;
             if (state == WidgetRail.WidgetSdk.WidgetLifecycleState.Background)
             {
+                if (_pinnedSelections.Remove(target.Descriptor.Id, out var selected)) selected.Active = false;
                 _indexedHiddenWidgets.Add(target.Descriptor.Id);
                 RetireIndexedRangesLocked(target.Descriptor.Id);
             }
