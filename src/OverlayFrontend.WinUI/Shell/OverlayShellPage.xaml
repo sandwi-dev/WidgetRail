@@ -34,7 +34,8 @@
             </ListView.ItemsPanel>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="bridge:BridgeWidgetDescriptor">
-                    <TextBlock Text="{x:Bind Name}" Margin="8" />
+                    <ContentControl Margin="8" IsTabStop="False" IsHitTestVisible="False"
+                                    Loaded="TrayItemContentLoaded" />
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>

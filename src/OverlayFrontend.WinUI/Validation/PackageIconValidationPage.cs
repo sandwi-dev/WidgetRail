@@ -26,6 +26,7 @@ internal sealed class PackageIconValidationPage : Page, IAsyncDisposable
     private string tintAsset = "red";
     private bool removed;
     private Task? running;
+    private IDisposable? catalogPreview;
     public PackageIconValidationPage()
     {
         AutomationProperties.SetAutomationId(status, "PackageIcon.Status");
@@ -154,6 +155,7 @@ internal sealed class PackageIconValidationPage : Page, IAsyncDisposable
             await Until(() => Find("Widget.icon") is WidgetPackageIconView { Content: ImageIcon });
             await Until(() => tintView.ActualHeight <= tintView.FontSize + 1);
             Check(true, "removing explicit icon size restores intrinsic bounds without retaining old child size");
+            catalogPreview = await CatalogIconValidation.RunAsync((StackPanel)Content, Check);
             status.Text = $"Passed {checks.Count} package icon checks"; Write(new { result = "passed", checks });
         }
         catch (Exception error) { status.Text = "Package icon validation failed: " + error.Message; Write(new { result = "failed", checks, error = error.ToString() }); }
@@ -226,5 +228,5 @@ internal sealed class PackageIconValidationPage : Page, IAsyncDisposable
         var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "diagnostics");
         Directory.CreateDirectory(path); File.WriteAllText(Path.Combine(path, "package-icon-result.json"), JsonSerializer.Serialize(value));
     }
-    public ValueTask DisposeAsync() => presenter.DisposeAsync();
+    public ValueTask DisposeAsync() { catalogPreview?.Dispose(); return presenter.DisposeAsync(); }
 }

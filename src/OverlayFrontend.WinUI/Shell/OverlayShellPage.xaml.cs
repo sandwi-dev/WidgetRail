@@ -66,6 +66,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             {
                 AutomationProperties.SetAutomationId(args.ItemContainer, "Overlay.Widget." + item.Id);
                 AutomationProperties.SetName(args.ItemContainer, item.Name);
+                ToolTipService.SetToolTip(args.ItemContainer, item.Name);
             }
         };
     }
@@ -128,7 +129,9 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 if (existing.position != index) catalogItems.Move(existing.position, index);
                 // Keep native tray containers and focus for unchanged descriptors.
                 if (catalogItems[index].Name != next.Name || catalogItems[index].RuntimeGeneration != next.RuntimeGeneration ||
-                    catalogItems[index].PresentationGeneration != next.PresentationGeneration) catalogItems[index] = next;
+                    catalogItems[index].PresentationGeneration != next.PresentationGeneration || catalogItems[index].InstanceId != next.InstanceId ||
+                    catalogItems[index].PackageContentDigest != next.PackageContentDigest || catalogItems[index].Icon != next.Icon ||
+                    catalogItems[index].PackageIcon != next.PackageIcon || !catalogItems[index].IconAssets.SequenceEqual(next.IconAssets)) catalogItems[index] = next;
             }
         }
         while (catalogItems.Count > ordered.Length) catalogItems.RemoveAt(catalogItems.Count - 1);

@@ -254,6 +254,21 @@ replacement/cancellation and bounded size upgrades. Existing session/bridge test
 cover exact manifest authority independently. `--probe-svg-raster` records the
 native capture variants that established the preparation path.
 
+The shell tray uses `WidgetCatalogItemContent` inside the ordinary native
+`ListViewItem` template. The reusable content supplies a 24-DIP icon and optional
+label; it creates no focus target, controller reader or selection behavior. The
+containing control owns the accessible name and tooltip. A future radial item can
+hide the label and retain the same icon/content lifetime.
+
+Catalog package icons resolve through `WidgetPresentationSession` with the
+captured widget/instance/runtime/presentation/package identity and admitted asset
+metadata. Unrelated catalog revisions may retry only that same identity. Item
+recycling and unload cancel demand; late results cannot paint into another item.
+Unchanged descriptors keep their native content, while icon-affecting catalog
+changes update it. Theme tint and original color reuse the existing package-icon
+pipeline and its semantic fallback. The package-icon fixture also exercises
+recycled identity, unloaded/reloaded demand and native item focus/selection.
+
 The optional `--validate-package-icons --probe-svg-mask` probe compares a simple
 SVG alpha mask, a PNG alpha mask and a direct solid compositor visual in one
 window. On the installed WinUI runtime, the SVG source painted but its mask target
