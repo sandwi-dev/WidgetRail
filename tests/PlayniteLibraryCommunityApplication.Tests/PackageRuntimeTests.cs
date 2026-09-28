@@ -9,7 +9,7 @@ using WidgetRail.WidgetSdk;
 namespace PlayniteLibraryCommunityApplication.Tests;
 
 [TestClass]
-public sealed class PackageRuntimeTests
+public sealed partial class PackageRuntimeTests
 {
     [TestMethod]
     public async Task HomeCursorKeepsMembershipAndOrderWhenFavoriteChangesBetweenPages()
@@ -1137,6 +1137,8 @@ public sealed class PackageRuntimeTests
         internal bool FailQueries { get; set; }
         internal bool FailResolve { get; set; }
         internal bool FailCategoryLists { get; set; }
+        internal Func<ValueTask>? DisposeHandler { get; set; }
+        internal Func<string, CancellationToken, ValueTask<PlayniteBridgeGame?>>? GameResolveHandler { get; set; }
         internal string? CreatedCategoryResponseName { get; set; }
         internal IReadOnlyList<string>? CategoryMutationResponseCategories { get; set; }
         internal bool MalformedSecondPage { get; set; }
@@ -1175,6 +1177,7 @@ public sealed class PackageRuntimeTests
             ResolveCalls++;
             LastResolvedId = gameId;
             if (FailResolve) throw new PlayniteBridgeTransportException(false);
+            if (GameResolveHandler is not null) return GameResolveHandler(gameId, cancellationToken);
             return ValueTask.FromResult(Games.SingleOrDefault(game => game.Id == gameId));
         }
 
@@ -1264,7 +1267,7 @@ public sealed class PackageRuntimeTests
             ValueTask.FromResult<IReadOnlyList<PlayniteBridgeNamedItem>>(
                 [new(GuidFrom(20_002), "Completed")]);
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync() => DisposeHandler?.Invoke() ?? ValueTask.CompletedTask;
 
         private ValueTask<PlayniteBridgeGame?> Mutate(
             string gameId, Func<PlayniteBridgeGame, PlayniteBridgeGame> mutation,

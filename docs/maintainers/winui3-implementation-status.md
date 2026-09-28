@@ -641,3 +641,19 @@ The public group metadata and production row/header integration are complete for
 this contract, but widget conversion and full theme/animation/overlay parity remain
 outstanding. The new Playnite captured-service query path is undergoing its own
 tests and has not replaced the installed widget's cursor UI.
+
+## Playnite captured application queries
+
+The application service now captures immutable ordered query values and exposes
+bounded random-range projection with captured artwork authorization. Projection
+does not populate the old retained-cursor artwork registry. Catalog admission and
+four-slot artwork work are independent, sharing the existing bounded byte cache.
+Disposal cancels/drains these lanes and rejects late legacy projection. The existing
+Bridge integration, query rules and cursor UI are preserved while conversion proceeds.
+
+All 28 PackageRuntimeTests pass, including nine new tests for random access,
+immutable values, authority, eviction, independent refresh, concurrency,
+cancellation and retirement. Evidence: `artifacts/winui-playnite-capture-retirement-tests.log`.
+This is service correctness evidence, not WinUI Playnite appearance/performance.
+Next: final widget projection, captured actions and logical modal return targets,
+then complete presenter support and actual overlay integration.

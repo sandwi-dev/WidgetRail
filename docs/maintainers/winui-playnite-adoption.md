@@ -3,6 +3,31 @@
 2026-09-27 source review. The installed native widget is unchanged; this is the
 implementation direction for its WinUI adoption, not a completed conversion.
 
+## Implemented service checkpoint
+
+`CaptureQueryAsync` now returns `PlayniteLibraryCapturedQuery` with immutable
+ordered games, nested metadata, authority, source observations, stale status,
+catalog revision and retrieval time. `ReadRange` projects 1–64 exact positions
+without registering thousands of artwork handles. Count is exact for the service
+query; the widget must still compute its final title/fixed-row/filter membership.
+
+Captured artwork validates the row/query/game/role/revision and uses the existing
+byte-bounded cache independently of the old cursor registry. Four provider calls
+may run concurrently without holding the catalog gate. There is no historical
+Bridge image endpoint: an uncached request retrieves the captured game's current
+image, never another game's pixels, and cannot promise historic artwork content.
+
+The service cancels/drains catalog and artwork work during disposal, including
+late cancellation-ignoring providers and client-disposal failure. Legacy
+mutation/details operations retain caller lifetimes; late projection/registration
+rejects the retired service rather than claiming those operations were drained.
+
+All 28 PackageRuntimeTests pass, including nine capture/lifetime tests. Evidence:
+`artifacts/winui-playnite-capture-retirement-tests.log` and the matching binlogs in
+`artifacts/winui-playnite/`. The first test run's cancellation assertion was too
+specific about exception subtype and was corrected to test OperationCanceledException.
+The existing widget still uses its cursor UI; production indexed adoption is next.
+
 ## Reuse existing service behavior
 
 `Application/PlayniteLibraryApplicationService.cs` already fetches the entire

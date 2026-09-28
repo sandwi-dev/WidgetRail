@@ -32,6 +32,11 @@ internal sealed partial class PlayniteLibraryApplicationService(
         new(artworkCacheBytes);
     private readonly Queue<string> _artworkOrder = [];
     private readonly object _artworkGate = new();
+    private readonly SemaphoreSlim _artworkWork = new(4, 4);
+    private readonly CancellationTokenSource _lifetime = new();
+    private volatile bool _disposed;
+    private readonly object _disposeGate = new();
+    private Task? _disposeTask;
     private HashSet<string> _pinnedArtwork = new(StringComparer.Ordinal);
     private Catalog? _lastGood;
     // One active traversal per bounded query scope keeps Home independent of
@@ -111,33 +116,16 @@ internal sealed partial class PlayniteLibraryApplicationService(
         if (!Enum.IsDefined(context.Scope)) throw new ArgumentOutOfRangeException(nameof(context));
         if (limit is < 1 or > WidgetAppLibraryService.MaximumPageSize)
             throw new ArgumentOutOfRangeException(nameof(limit));
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        cancellationToken = lifetime.Token;
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var stale = false;
-            Catalog catalog;
-            try
-            {
-                var mutationRevision = Interlocked.Read(ref _catalogMutationRevision);
-                var lastGood = _lastGood;
-                if (refresh || lastGood is null ||
-                    Interlocked.Read(ref _lastGoodMutationRevision) != mutationRevision)
-                {
-                    catalog = await FetchCatalogAsync(cancellationToken).ConfigureAwait(false);
-                    _lastGood = catalog;
-                    Interlocked.Exchange(ref _lastGoodMutationRevision, mutationRevision);
-                }
-                else
-                {
-                    catalog = lastGood;
-                }
-            }
-            catch (Exception exception) when (CanRetain(exception, cancellationToken) &&
-                                               _lastGood is not null)
-            {
-                catalog = _lastGood;
-                stale = true;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var (catalog, stale) = await LoadCatalogLockedAsync(refresh, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
 
             Traversal traversal;
             int offset;
@@ -165,20 +153,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
             var after = offset + pageItems.Length >= traversal.Items.Length
                 ? null
                 : Cursor(traversal, offset + pageItems.Length);
-            var sourceHealth = stale
-                ? WidgetAppLibrarySourceHealth.Degraded
-                : WidgetAppLibrarySourceHealth.Healthy;
-            var sources = catalog.Games.Select(game => game.Source)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-                .Take(PlayniteLibraryPrivateState.MaximumProvenSources)
-                .Select(value => new WidgetAppLibrarySource(
-                    SourceId(value), value, sourceHealth, catalog.Sequence,
-                    stale ? "stale_last_good" : "connected")
-                {
-                    AccountState = WidgetAppLibrarySourceAccountState.NotApplicable,
-                    LastSuccessfulRefreshAtUnixMilliseconds = catalog.RetrievedAt,
-                }).ToArray();
+            var sources = ProjectSources(catalog, stale);
             var page = new WidgetAppLibraryPage(
                 pageItems, before, after, catalog.Revision) { Sources = sources };
             return new(page, ProjectAuthority(catalog.Games, catalog.Categories), stale)
@@ -258,24 +233,38 @@ internal sealed partial class PlayniteLibraryApplicationService(
         catch (Exception exception) { throw Safe(exception); }
     }
 
-    public async ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(
+    public ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(
         WidgetArtworkHandle handle,
         CancellationToken cancellationToken)
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        ArtworkRegistration? registration;
+        lock (_artworkGate) _artwork.TryGetValue(handle.Value, out registration);
+        if (registration is null)
+        {
+            _artworkDiagnostics.Record("authority", "unknown-handle", 1, "unknown");
+            return ValueTask.FromResult<WidgetEncodedArtwork?>(null);
+        }
+        return ResolveArtworkCoreAsync(handle, registration, captured: false, cancellationToken);
+    }
+
+    private async ValueTask<WidgetEncodedArtwork?> ResolveArtworkCoreAsync(WidgetArtworkHandle handle,
+        ArtworkRegistration registration, bool captured, CancellationToken cancellationToken)
+    {
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        var token = lifetime.Token;
+        await _artworkWork.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            ArtworkRegistration? registration;
-            lock (_artworkGate)
-                _artwork.TryGetValue(handle.Value, out registration);
-            if (registration is null)
-            {
-                _artworkDiagnostics.Record("authority", "unknown-handle", 1, "unknown");
-                return null;
-            }
+            token.ThrowIfCancellationRequested();
             WidgetEncodedArtwork? cached;
             lock (_artworkGate)
+            {
+                if (!captured && (!_artwork.TryGetValue(handle.Value, out var current) || !ReferenceEquals(current, registration)))
+                    return null;
                 _artworkContent.TryGet(handle.Value, out cached);
+            }
             if (cached is not null)
             {
                 _artworkDiagnostics.RecordMemory(new(
@@ -287,8 +276,9 @@ internal sealed partial class PlayniteLibraryApplicationService(
             _artworkDiagnostics.RecordMemory(new(
                 PlayniteArtworkMemoryEventKind.Miss, Role(registration.Kind)));
             var result = await _client.ResolveArtworkAsync(
-                    registration.GameId, registration.Kind, cancellationToken)
+                    registration.GameId, registration.Kind, token)
                 .ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
             var backgroundNotFound = false;
             if (result.Artwork is null && registration.Kind == PlayniteBridgeArtworkKind.Background &&
                 result.Code == "not-found")
@@ -302,12 +292,13 @@ internal sealed partial class PlayniteLibraryApplicationService(
                     PlayniteArtworkRole.Background));
                 result = await _client.ResolveArtworkAsync(
                         registration.GameId, PlayniteBridgeArtworkKind.Cover,
-                        cancellationToken)
+                        token)
                     .ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
             }
             if (backgroundNotFound && result.Artwork is null && result.Code == "not-found")
             {
-                CacheArtworkIfCurrent(handle.Value, registration, NeutralArtwork);
+                CacheArtworkIfCurrent(handle.Value, registration, NeutralArtwork, captured);
                 _artworkDiagnostics.Record("resolve", "not-found-neutral", 1, "tiny");
                 return NeutralArtwork;
             }
@@ -316,10 +307,10 @@ internal sealed partial class PlayniteLibraryApplicationService(
                 _artworkDiagnostics.Record("resolve", result.Code, 1, result.SizeClass);
                 return null;
             }
-            CacheArtworkIfCurrent(handle.Value, registration, result.Artwork);
+            CacheArtworkIfCurrent(handle.Value, registration, result.Artwork, captured);
             return result.Artwork;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             throw;
         }
@@ -329,7 +320,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
                 "unknown");
             return null;
         }
-        finally { _gate.Release(); }
+        finally { _artworkWork.Release(); }
     }
 
     private static bool IsArtworkFailure(Exception exception) => exception is
@@ -450,17 +441,39 @@ internal sealed partial class PlayniteLibraryApplicationService(
         CancellationToken cancellationToken) =>
         _state.WriteAsync(state, expectedRevision, cancellationToken);
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        await _client.DisposeAsync().ConfigureAwait(false);
-        lock (_artworkGate)
+        lock (_disposeGate) return new(_disposeTask ??= DisposeCoreAsync());
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        _disposed = true;
+        try { await _lifetime.CancelAsync().ConfigureAwait(false); }
+        finally
         {
-            _artwork.Clear();
-            _artworkContent.Clear();
-            _artworkOrder.Clear();
-            _pinnedArtwork.Clear();
+            try { await _client.DisposeAsync().ConfigureAwait(false); }
+            finally
+            {
+                // Catalog and artwork waiters use _lifetime and are cancelled.
+                // Drain those operations, including providers ignoring cancellation,
+                // even if client disposal failed. Legacy mutation/details calls
+                // still use their caller lifetime; projection/registration rejects
+                // late replies instead of claiming those operations were drained.
+                for (var i = 0; i < 4; ++i) await _artworkWork.WaitAsync().ConfigureAwait(false);
+                await _gate.WaitAsync().ConfigureAwait(false);
+                lock (_artworkGate)
+                {
+                    _artwork.Clear();
+                    _artworkContent.Clear();
+                    _artworkOrder.Clear();
+                    _pinnedArtwork.Clear();
+                }
+                _gate.Dispose();
+                _artworkWork.Dispose();
+                _lifetime.Dispose();
+            }
         }
-        _gate.Dispose();
     }
 
     private async ValueTask<WidgetAppLibraryItem?> MutateAsync(
@@ -568,10 +581,11 @@ internal sealed partial class PlayniteLibraryApplicationService(
         };
     }
 
-    private WidgetAppLibraryItem Project(PlayniteBridgeGame game, bool stale)
+    private WidgetAppLibraryItem Project(PlayniteBridgeGame game, bool stale, bool registerArtwork = true, long? retrievedAt = null)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var revision = GameRevision(game);
-        var artwork = RegisterArtwork(game, revision);
+        var artwork = ArtworkFor(game, revision, registerArtwork);
         var installed = game.IsInstalled && !stale;
         var availability = stale
             ? new WidgetAppLibraryAvailability(
@@ -594,35 +608,35 @@ internal sealed partial class PlayniteLibraryApplicationService(
                 revision,
                 new WidgetAppLibraryMetadataAttribution(
                     "Playnite Bridge", revision, game.Source,
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))
+                    (retrievedAt ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())))
             {
                 Version = game.Version,
                 LastPlayedAtUnixMilliseconds = game.LastActivityUnixMilliseconds,
                 PlaytimeMinutes = game.PlaytimeSeconds / 60,
-                Categories = categories,
+                Categories = categories.AsReadOnly(),
                 Description = game.Description,
             },
-            new WidgetAppLibraryCapabilitySet(installed
+            new WidgetAppLibraryCapabilitySet(Array.AsReadOnly<WidgetAppLibraryAction>(installed
                 ? [WidgetAppLibraryAction.Launch]
-                : []),
+                : [])),
             ActiveOperation: null));
     }
 
-    private WidgetAppLibraryArtworkSet RegisterArtwork(
+    private WidgetAppLibraryArtworkSet ArtworkFor(
         PlayniteBridgeGame game,
-        string gameRevision)
+        string gameRevision, bool register)
     {
         var revision = ContentId("artwork-revision", game.Id, gameRevision);
-        var cover = RegisterArtwork(game.Id, revision, PlayniteBridgeArtworkKind.Cover);
-        var background = RegisterArtwork(game.Id, revision, PlayniteBridgeArtworkKind.Background);
-        return new([
+        var cover = register ? RegisterArtwork(game.Id, revision, PlayniteBridgeArtworkKind.Cover) : ArtworkHandle(game.Id, revision, PlayniteBridgeArtworkKind.Cover);
+        var background = register ? RegisterArtwork(game.Id, revision, PlayniteBridgeArtworkKind.Background) : ArtworkHandle(game.Id, revision, PlayniteBridgeArtworkKind.Background);
+        return new(Array.AsReadOnly<WidgetAppLibraryArtwork>([
             new(WidgetAppLibraryArtworkRole.Tile, cover, revision,
                 WidgetAppLibraryArtworkFallback.Game),
             new(WidgetAppLibraryArtworkRole.Cover, cover, revision,
                 WidgetAppLibraryArtworkFallback.Game),
             new(WidgetAppLibraryArtworkRole.Hero, background, revision,
                 WidgetAppLibraryArtworkFallback.Game),
-        ]);
+        ]));
     }
 
     private string RegisterArtwork(
@@ -630,10 +644,11 @@ internal sealed partial class PlayniteLibraryApplicationService(
         string revision,
         PlayniteBridgeArtworkKind kind)
     {
-        var handle = ContentId("artwork-handle", gameId, revision, kind.ToString());
+        var handle = ArtworkHandle(gameId, revision, kind);
         var memoryEvents = new List<PlayniteArtworkMemoryEvent>();
         lock (_artworkGate)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (!_artwork.ContainsKey(handle))
             {
                 _artwork.Add(handle, new(gameId, revision, kind));
@@ -694,13 +709,13 @@ internal sealed partial class PlayniteLibraryApplicationService(
     private void CacheArtworkIfCurrent(
         string handle,
         ArtworkRegistration registration,
-        WidgetEncodedArtwork artwork)
+        WidgetEncodedArtwork artwork, bool captured = false)
     {
         var memoryEvents = new List<PlayniteArtworkMemoryEvent>();
         lock (_artworkGate)
         {
-            if (_artwork.TryGetValue(handle, out var current) &&
-                ReferenceEquals(current, registration))
+            if (!_disposed && (captured || _artwork.TryGetValue(handle, out var current) &&
+                ReferenceEquals(current, registration)))
             {
                 var stored = _artworkContent.Store(handle, artwork);
                 if (stored.Stored)

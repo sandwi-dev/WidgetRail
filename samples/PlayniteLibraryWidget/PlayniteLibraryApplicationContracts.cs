@@ -36,6 +36,9 @@ internal sealed record PlayniteLibraryQueryResult(
 internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
 {
     bool OwnsArtworkContent { get; }
+    ValueTask<PlayniteLibraryCapturedQuery> CaptureQueryAsync(WidgetAppLibraryQuery query,
+        PlayniteLibraryQueryContext context, bool refresh, CancellationToken token) =>
+        ValueTask.FromException<PlayniteLibraryCapturedQuery>(new NotSupportedException("This application service does not support captured queries."));
     async ValueTask<PlayniteGameDetails?> GetGameDetailsAsync(string gameId, CancellationToken token)
     {
         var items = await ResolveSavedAsync([gameId], token).ConfigureAwait(false);
