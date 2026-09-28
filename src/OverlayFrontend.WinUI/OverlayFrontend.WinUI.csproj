@@ -15,7 +15,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableWidgetValidation Condition="'$(EnableWidgetValidation)' == '' and '$(Configuration)' == 'Debug'">true</EnableWidgetValidation>
+    <EnableWidgetValidation Condition="'$(EnableWidgetValidation)' == ''">false</EnableWidgetValidation>
   </PropertyGroup>
+  <ItemGroup Condition="'$(EnableWidgetValidation)' != 'true'">
+    <Compile Remove="Validation\**\*.cs;MainPage.xaml.cs;Presentation\WidgetViewPresenter.FocusDiagnostics.cs" />
+    <Page Remove="Validation\**\*.xaml;MainPage.xaml" />
+  </ItemGroup>
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
@@ -35,7 +41,7 @@
     <Content Include="..\..\assets\fonts\promptfont\NOTICE.txt" Link="licenses\PromptFont-NOTICE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="..\WidgetSdk\EmbeddedMediaAdapterRuntime.js" LogicalName="WidgetRail.MediaValidation.AdapterRuntime.js" />
+    <EmbeddedResource Include="..\WidgetSdk\EmbeddedMediaAdapterRuntime.js" LogicalName="WidgetRail.MediaValidation.AdapterRuntime.js" Condition="'$(EnableWidgetValidation)' == 'true'" />
     <Manifest Include="$(ApplicationManifest)" />
     <ProjectReference Include="..\OverlayPlatformClient\OverlayPlatformClient.csproj" />
     <ProjectReference Include="..\WidgetUi.State\WidgetUi.State.csproj" />

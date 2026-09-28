@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Automation;
@@ -40,7 +41,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private bool layoutCaptureQueued;
     private bool retrying;
     private long visibleSince = Environment.TickCount64;
-    private readonly Queue<object> focusDiagnostics = new();
+    private readonly Queue<JsonObject> focusDiagnostics = new();
     private readonly System.Collections.ObjectModel.ObservableCollection<BridgeWidgetDescriptor> catalogItems = [];
     internal event Action? HideRequested;
     internal event Action<WidgetPresentationHostEffect>? TaskWindowActivationRequested;
@@ -552,13 +553,16 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private void UpdateDiagnostics()
     {
-        var json = System.Text.Json.JsonSerializer.Serialize(new { activeWidget, publication, visible, interactive,
-            foreground, switching, sizing = SizingDiagnostics, catalogCount = catalogItems.Count, bridgePid = owner?.ProcessId,
-            retainedSurfaceCount = retainedSurfaces.Count,
-            presentationMemoryCount = presentationMemory.Count, memoryRestoreCount,
-            pinnedWidget = pinned?.Selection.WidgetId, pinnedLayout = pinned?.Selection.LayoutId, pinnedInput = PinnedInputActive,
-            pinnedSelectionCurrent = pinned?.Selection.IsCurrent,
-            focusTransfers = focusDiagnostics.ToArray() });
+        var json = new JsonObject
+        {
+            ["activeWidget"] = activeWidget, ["publication"] = publication, ["visible"] = visible, ["interactive"] = interactive,
+            ["foreground"] = foreground, ["switching"] = switching, ["sizing"] = SizingDiagnostics?.DeepClone(),
+            ["catalogCount"] = catalogItems.Count, ["bridgePid"] = owner?.ProcessId, ["retainedSurfaceCount"] = retainedSurfaces.Count,
+            ["presentationMemoryCount"] = presentationMemory.Count, ["memoryRestoreCount"] = memoryRestoreCount,
+            ["pinnedWidget"] = pinned?.Selection.WidgetId, ["pinnedLayout"] = pinned?.Selection.LayoutId, ["pinnedInput"] = PinnedInputActive,
+            ["pinnedSelectionCurrent"] = pinned?.Selection.IsCurrent,
+            ["focusTransfers"] = new JsonArray(focusDiagnostics.Select(value => value.DeepClone()).ToArray()),
+        }.ToJsonString();
         AutomationProperties.SetHelpText(Status, json);
         AutomationProperties.SetHelpText(ProductionRoot, json);
         if (pinned is { } current && options.LayoutDiagnosticsPath is not null)
@@ -570,8 +574,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private void RecordFocusTransfer(string destination)
     {
         if (options.LayoutDiagnosticsPath is null) return;
-        focusDiagnostics.Enqueue(new { destination, switching, applying = surface?.IsApplyingPresentation == true,
-            publication, interactive });
+        focusDiagnostics.Enqueue(new JsonObject { ["destination"] = destination, ["switching"] = switching,
+            ["applying"] = surface?.IsApplyingPresentation == true, ["publication"] = publication, ["interactive"] = interactive });
         while (focusDiagnostics.Count > 8) focusDiagnostics.Dequeue();
         UpdateDiagnostics();
     }

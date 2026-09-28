@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WindowsDisplayProvider;
@@ -15,10 +17,13 @@ internal sealed partial class OverlayShellPage
     internal event Action? SizingChanged;
     internal double ContentWidth => WidgetHost.ActualWidth;
     internal double ContentHeight => WidgetHost.ActualHeight;
-    internal object? SizingDiagnostics { get; private set; }
+    internal JsonObject? SizingDiagnostics { get; private set; }
     internal void RecordSizing(SurfaceExtent available, SurfaceExtent chrome, SurfaceExtent resolved)
     {
-        SizingDiagnostics = new { available, chrome, resolved, hints = SurfaceHints, scale = Appearance.InterfaceScale, display = activeDisplayId };
+        SizingDiagnostics = new JsonObject { ["available"] = Extent(available), ["chrome"] = Extent(chrome),
+            ["resolved"] = Extent(resolved), ["hints"] = JsonSerializer.SerializeToNode(SurfaceHints, ShellJsonContext.Default.WidgetSurfaceHints),
+            ["scale"] = Appearance.InterfaceScale, ["display"] = activeDisplayId };
+        static JsonObject Extent(SurfaceExtent value) => new() { ["Width"] = value.Width, ["Height"] = value.Height };
         UpdateDiagnostics();
     }
 

@@ -18,14 +18,34 @@ checked for that false feature switch. The native frontend analyzer build passes
 without warnings. Evidence: `artifacts/winui-release-probe/` and unique binlogs.
 This does not yet prove a successful trimmed publish or native browser playback.
 
+The frontend now compiles its validation entrypoints/pages only when
+`EnableWidgetValidation=true` (the Debug default). Release defaults to false and
+also excludes the gallery and embedded validation adapter resource. A metadata
+inspection of the Release assembly confirms the absence of validation/gallery
+types. The production window uses the same activation/lifecycle setup; optional
+partial hooks retain controller replay and fixture activation in validation builds.
+Launch arguments are parsed once and passed to the selected route.
+
+Shell and explicit layout diagnostics now emit native JSON values rather than
+reflecting anonymous objects, preserving existing field names and nonfinite layout
+sentinels. The next Release publish passed frontend compilation and reached the
+linker. It then exposed reflection serialization in the shared settings store,
+Bridge framing, presentation-session admission and snapshot codec, plus Windows
+SDK/WinRT assembly warnings. Those dependency findings remain unresolved; trimming
+was not disabled and warnings were not suppressed. Debug still builds analyzer-clean.
+
+Evidence: `shipping-types.json`, `split-debug.log`, `explicit-debug.log` and
+`explicit-diagnostics.log` under the same probe directory. Native routing and
+diagnostic-shape checks after this entrypoint split are still pending the shared
+deployment slot.
+
 Still required:
 
-- Separate validation pages/fixture entrypoints from the normal shipping build.
-  Keep an explicit validation build so native correctness probes remain available.
-- Give production shell/layout diagnostics explicit serialization. New switch
-  diagnostics must likewise avoid reflection; keep expensive tree/file capture
+- Complete explicit serialization through the shared dependency graph and inspect
+  the full Windows SDK/WinRT linker warnings before choosing a correction.
+- Keep new switch diagnostics reflection-free, and keep expensive tree/file capture
   opt-in and outside ordinary frame work.
-- Rerun the actual trimmed publish and resolve any subsequent dependency findings.
+- Rerun the actual trimmed publish and resolve subsequent dependency findings.
 - Verify a Release production shell against its matching Bridge/workers, including
   settings round trips, media commands, artwork, menus and lifecycle cleanup.
 - Complete installer bootstrap, runtime provisioning and rollback qualification.
