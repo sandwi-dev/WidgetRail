@@ -50,7 +50,11 @@ internal sealed partial class WidgetViewPresenter
             FocusedBinding() is { } binding && Eligible(binding) ? binding.Identity.Id : null,
             ++actionSequence, Environment.TickCount64 * 1000, authority.ActiveInputScopeId,
             authority.SnapshotSequence, Origin: origin);
-        try { return await session.SendControllerInputAsync(authority, input, cancellationToken); }
+        try
+        {
+            if (!await AdmitInteractionAsync(authority, cancellationToken) || !IsInteractionCurrent(authority)) return true;
+            return await session.SendControllerInputAsync(authority, input, cancellationToken);
+        }
         // A newer publication can retire the displayed input while it crosses IPC.
         // Drop it rather than replaying it against a different scope or game.
         catch (WidgetPresentationSessionException error) when

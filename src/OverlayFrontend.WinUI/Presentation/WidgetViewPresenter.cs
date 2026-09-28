@@ -37,6 +37,12 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private readonly double nativeBaseFontSize;
     public PresentationSession? Session { get; set; }
     public Func<WidgetActionRequest, Task>? DispatchActionAsync { get; set; }
+    public Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
+    internal bool IsInteractionCurrent(WidgetPresentationAuthority authority) => !disposed && !applying &&
+        !presentationOnly && frame is not null && SameOwner(authority, frame.Authority) &&
+        authority.ActiveInputScopeId == frame.Authority.ActiveInputScopeId;
+    private Task<bool> AdmitInteractionAsync(WidgetPresentationAuthority authority, CancellationToken cancellationToken = default) =>
+        EnsureInteractionAsync?.Invoke(authority, cancellationToken) ?? Task.FromResult(IsInteractionCurrent(authority));
 
     /// <summary>Explicit page/window entry. Ordinary data updates do not call this.</summary>
     public void Enter(bool restoreNativeFocus = false)
@@ -293,7 +299,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.IndexedCollection:
                 if (Session is null) throw new InvalidOperationException("Indexed widgets require a presentation session.");
                 element = new WidgetIndexedCollectionView(Session, ReportFailure)
-                { FocusRemembered = item => RememberCollectionFocus(declaration.Identity, item), PresentationChanged = QueueSurfaceUpdate, ContextChanged = ValidateTransientControl };
+                { EnsureInteractionAsync = AdmitInteractionAsync, FocusRemembered = item => RememberCollectionFocus(declaration.Identity, item), PresentationChanged = QueueSurfaceUpdate, ContextChanged = ValidateTransientControl };
                 break;
             case ViewNodeKind.BackgroundSurface:
             case ViewNodeKind.FocusPresentationSurface:

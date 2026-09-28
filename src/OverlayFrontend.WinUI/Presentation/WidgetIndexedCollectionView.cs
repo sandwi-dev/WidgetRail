@@ -28,6 +28,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private long sequence;
     internal ListViewBase NativeView => view ?? throw new InvalidOperationException("Collection is not initialized.");
     internal Action? PresentationChanged { get; set; }
+    internal Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
     internal bool Owns(WidgetIndexedRows owner) => ReferenceEquals(owner, source);
     internal WidgetIndexedRow? FocusedRow() => source is not null && FocusedIndex() is { } index
         ? ((IndexedItem<WidgetIndexedRow>)source.Items[index]).Value : null;
@@ -236,10 +237,16 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         if (!row.Lease.IsCurrent) return true;
         try
         {
-            var displayed = source.Frame;
+            var capturedSource = source;
+            var displayed = capturedSource.Frame;
             if (!row.Lease.ClaimsInput(displayed, row.Item.Key, button, phase)) return false;
+            var inputSequence = ++sequence;
+            var timestamp = Environment.TickCount64 * 1000;
+            if (EnsureInteractionAsync is { } admit && !await admit(displayed.Authority, CancellationToken.None)) return true;
+            if (disposed || !CanReceiveInput || !ReferenceEquals(source, capturedSource) ||
+                !row.Lease.IsCurrent || !row.Lease.ClaimsInput(displayed, row.Item.Key, button, phase)) return true;
             await row.Lease.AdmitInputAsync(displayed, row.Item.Key, button, phase,
-                sequence: ++sequence, monotonicTimestampMicroseconds: Environment.TickCount64 * 1000);
+                sequence: inputSequence, monotonicTimestampMicroseconds: timestamp);
             // A null reply also denotes a worker publication racing IPC. It must
             // remain consumed for an input that the displayed declaration owns.
             return true;

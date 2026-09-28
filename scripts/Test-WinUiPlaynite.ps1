@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory)][int]$AppPid,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [ValidateSet('Home', 'Library')][string]$Page = 'Home',
+    [switch]$TrayReentry,
     [switch]$CloseAfter
 )
 $ErrorActionPreference = 'Stop'
@@ -49,6 +50,14 @@ try {
         $null = Ui @('screenshot', '--capture-screen', '-o', (Join-Path $OutputDirectory "$Page.png"))
     }
     Check 'Poster activation opens details and focuses Play or Install without activating it' {
+        if ($TrayReentry) {
+            $null = Ui @('focus', 'Overlay.Widget.widgetrail.samples.playnite-library')
+            $ownership = Ui @('get-property', 'Overlay.Status', '-p', 'HelpText')
+            $ownership | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'tray-ownership.json')
+            if (($ownership.properties.HelpText | ConvertFrom-Json).interactive -ne $false) {
+                throw 'Tray did not own interaction before the single poster invocation.'
+            }
+        }
         Ui @('get-focused') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'before-activation-focus.json')
         Ui @('get-property', 'Overlay.Status', '-p', 'HelpText') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'before-activation-state.json')
         $null = Ui @('invoke', "$collection.Item.0")

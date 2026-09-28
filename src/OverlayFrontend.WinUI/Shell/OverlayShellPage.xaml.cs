@@ -20,6 +20,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private readonly OverlayShellOptions options;
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim transitions = new(1, 1);
+    private readonly InteractionAdmission interactionAdmission;
     private readonly Windows.UI.ViewManagement.UISettings systemUi = new();
     private OwnedBridgeProcess? owner;
     private WidgetViewPresenter? surface;
@@ -47,6 +48,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal OverlayShellPage(OverlayShellOptions options)
     {
         this.options = options;
+        interactionAdmission = new(transitions);
         InitializeComponent();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged += SystemAnimationsChanged;
         Tray.ItemsSource = catalogItems;
@@ -128,6 +130,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private async Task SelectAsync(string id)
     {
         if (retired || owner is null) return;
+        interactionAdmission.Invalidate();
         requestedWidget = id;
         var version = ++selectionVersion;
         switching = true;
@@ -147,7 +150,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     WidgetHost.Content = null;
                     activeWidget = id;
                     publication = 0;
-                    surface = new() { Session = owner.Session, DispatchActionAsync = InvokeAsync, Failed = ReportFailure };
+                    surface = new() { Session = owner.Session, DispatchActionAsync = InvokeAsync, EnsureInteractionAsync = EnsureInteractionAsync, Failed = ReportFailure };
                     surface.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
                     WidgetHost.Content = surface;
                 }
@@ -288,6 +291,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal void SetVisible(bool value)
     {
         if (retired || visible == value) return;
+        interactionAdmission.Invalidate();
         visible = value;
         ResetInputPresentation();
         if (value) visibleSince = Environment.TickCount64;
@@ -298,6 +302,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private void SetInteractive(bool value)
     {
         if (interactive == value || retired) return;
+        if (!value) interactionAdmission.Invalidate();
         interactive = value;
         UpdateDiagnostics();
         _ = ReconcileLifecycleAsync(restore: false);
@@ -306,6 +311,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal void SetForeground(bool value)
     {
         if (foreground == value || retired) return;
+        interactionAdmission.Invalidate();
         foreground = value;
         _ = ReconcileLifecycleAsync(restore: false);
     }
@@ -357,10 +363,40 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         surface?.DismissTransientControl();
     }
 
+    private async Task<bool> EnsureInteractionAsync(WidgetPresentationAuthority authority, CancellationToken cancellationToken)
+    {
+        var capturedSurface = surface;
+        var capturedOwner = owner;
+        var capturedSelection = selectionVersion;
+        if (capturedSurface is null || capturedOwner is null || !Current()) return false;
+        // UIA Invoke does not necessarily move native focus. Explicit widget input
+        // is an interaction intent, but never implies foreground/visibility authority.
+        var target = capturedOwner.Session.GetTarget(authority.WidgetId);
+        if (target.Descriptor.RuntimeGeneration != authority.RuntimeGeneration ||
+            target.Descriptor.PresentationGeneration != authority.PresentationGeneration ||
+            target.Descriptor.InstanceId != authority.WidgetInstanceId) return false;
+        interactive = true;
+        UpdateDiagnostics();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
+        var ownership = (capturedSurface, authority.RuntimeGeneration, authority.PresentationGeneration,
+            authority.SessionGeneration, authority.WidgetInstanceId);
+        return await interactionAdmission.EnsureAsync(ownership, Current,
+            token => capturedOwner.Session.SetLifecycleAsync(target, WidgetLifecycleState.Interactive, token), cancellation.Token);
+
+        bool Current() => !retired && visible && foreground && !switching &&
+            capturedSelection == selectionVersion && ReferenceEquals(surface, capturedSurface) &&
+            ReferenceEquals(owner, capturedOwner) && activeWidget == authority.WidgetId &&
+            capturedSurface.IsInteractionCurrent(authority);
+    }
+
     private async Task InvokeAsync(WidgetActionRequest request)
     {
         if (retired || !visible || switching || owner is null || request.Authority.WidgetId != activeWidget) return;
-        try { await owner.Session.SendActionAsync(request.Authority, request.Action, lifetime.Token); }
+        try
+        {
+            if (await EnsureInteractionAsync(request.Authority, lifetime.Token))
+                await owner.Session.SendActionAsync(request.Authority, request.Action, lifetime.Token);
+        }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { ReportFailure(error); }
     }
@@ -372,7 +408,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             try
             {
                 await transitions.WaitAsync(lifetime.Token);
-                try { await owner.Session.RestartAsync(owner.Session.GetTarget(id), lifetime.Token); }
+                try { interactionAdmission.Invalidate(); await owner.Session.RestartAsync(owner.Session.GetTarget(id), lifetime.Token); }
                 finally { transitions.Release(); }
                 await SelectAsync(id);
             }
@@ -396,6 +432,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     public ValueTask DisposeAsync() => new(disposal ??= StopAsync());
     private async Task StopAsync()
     {
+        interactionAdmission.Invalidate();
         retired = true;
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged -= SystemAnimationsChanged;
         lifetime.Cancel();

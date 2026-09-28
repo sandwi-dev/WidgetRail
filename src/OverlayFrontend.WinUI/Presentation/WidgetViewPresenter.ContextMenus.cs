@@ -167,17 +167,20 @@ internal sealed partial class WidgetViewPresenter
             index < 0 || index >= popup.Items.Count || !popup.Items[index].IsEnabled) return;
         var action = popup.Declaration.ContextActions[index];
         var authority = frame!.Authority;
+        var inputSequence = ++actionSequence;
+        var timestamp = Environment.TickCount64 * 1000;
         popup.Invoking = true;
         DismissContextMenu();
         try
         {
+            if (!await AdmitInteractionAsync(authority) || !ContextIsCurrent(popup)) return;
             if (popup.Row is { } row)
                 await row.Lease.AdmitInputAsync(authority, row.Item.Key, popup.Trigger,
                     contextActionOwnerId: popup.Declaration.Id, contextActionId: action.ActionId,
-                    sequence: ++actionSequence, monotonicTimestampMicroseconds: Environment.TickCount64 * 1000);
+                    sequence: inputSequence, monotonicTimestampMicroseconds: timestamp);
             else if (DispatchActionAsync is not null)
                 await DispatchActionAsync(new(authority, new WidgetActionEvent(action.ActionId, popup.Declaration.Id,
-                    popup.Trigger, Sequence: ++actionSequence, MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000,
+                    popup.Trigger, Sequence: inputSequence, MonotonicTimestampMicroseconds: timestamp,
                     InputScopeId: authority.ActiveInputScopeId) { FocusedElementId = popup.FocusedId }));
         }
         catch (WidgetPresentationSessionException error) when (error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale" || popup.Row?.Lease.IsCurrent == false) { }
