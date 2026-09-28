@@ -23,7 +23,9 @@ validation. It is not yet a complete replacement for the native overlay.
   surfaces, icons, prompts, progress, text entry/controller keyboard, Select, sliders,
   context menus and widget-local modals are mapped. The same themed declaration path
   renders native indexed item fragments. OriginalColor and ThemeTint package icons
-  retain exact admitted package authority. Shadow and edge-depth styling are incomplete.
+  retain exact admitted package authority. Button/panel/modal depth is integrated,
+  with native button hover/pressed/disabled states preserved. Collection-container
+  depth remains an active follow-up using native masks and shared visual ownership.
 - **Collections:** the exact-count SDK/range/lease contract, native ListView/GridView
   virtualization, grouped lists, logical focus entry, background/summary retention and
   captured actions are integrated. Playnite Home/Library, YouTube Music's finite
@@ -50,7 +52,8 @@ validation. It is not yet a complete replacement for the native overlay.
   share compositor motion; focus decorations and focused/pressed scale remain native
   presentation transforms. Background artwork crossfades retain bounded decoded
   images. Global animation settings, text scale, bold text, contrast and reduced
-  transparency apply after authored styles. Native style/motion checks pass 98 cases;
+  transparency apply after authored styles. The reviewed depth checkpoint passes
+  126 native style checks, 36 modal checks and the 20-check indexed sequence;
   background/presentation checks pass 27. Physical animation quality remains separate.
 - **Sizing:** declared surface hints, per-display interface/text zoom and existing
   display identity/placement policy are integrated. Native sizing checks pass 13 cases;
@@ -102,14 +105,14 @@ installed native candidate are untouched; fixture passes are not migration accep
   broader projection inventory and real Task Switcher workflows remain.
 - Continuation collections: SDK/wire lifecycle and YouTube Discover are integrated;
   Spotify's library/detail/Search adoption is active. Its indexed Queue remains intact.
-- Depth styling: authored shadows and per-edge borders through native composition.
+- Depth styling: button/panel/modal depth integrated; native collection masks pending.
 - Pinned authority: independent projections and exact-layout action admission.
 - Root integration: combined production regression checks and remaining shell behavior.
 
-After these checkpoints, remaining feature coverage includes Spotify and YouTube
-video collection adoption, WindowPreview, pinned/fullscreen projections, radial
-tray and shell appearance/backdrop behavior, remaining depth/background/dialog-exit
-motion, and full physical/performance/accessibility/package validation. The installed
+After these checkpoints, remaining feature coverage includes Spotify collection
+adoption, broader WindowPreview projections, pinned/fullscreen integration, radial
+tray and complete shell appearance/backdrop behavior, collection depth, and full
+physical/performance/accessibility/package validation. The installed
 native product is still the usable product; this branch is not feature-complete.
 
 ## Checkpoint history
