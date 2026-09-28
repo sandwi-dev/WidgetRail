@@ -70,7 +70,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
             {
                 Type = BridgeMessageTypes.Hello,
                 RequestId = helloId,
-                Payload = BridgeJson.ToElement(new BridgeHello(options.ClientName)),
+                Payload = BridgeJson.ToElement(new BridgeHello(options.ClientName, options.WindowPreviews)),
             }, deadline.Token).ConfigureAwait(false);
             var hello = await channel.ReadAsync(deadline.Token).ConfigureAwait(false);
             if (hello.RequestId != helloId || hello.Type != BridgeMessageTypes.HelloAccepted ||

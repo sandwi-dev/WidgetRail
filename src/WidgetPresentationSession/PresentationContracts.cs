@@ -7,6 +7,8 @@ namespace WidgetRail.WidgetPresentationSession;
 public sealed record WidgetPresentationSessionOptions
 {
     public string ClientName { get; init; } = "ManagedPresentationHost";
+    /// <summary>Opt in only when the frontend implements permission renewal and native capture retirement.</summary>
+    public bool WindowPreviews { get; init; }
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
     public int MaximumMessageBytes { get; init; } = BridgeProtocol.DefaultMaximumMessageBytes;
     public int MaximumPendingRequests { get; init; } = 32;
@@ -70,7 +72,12 @@ public sealed record WidgetPresentationFrame(
     WidgetPresentationAuthority Authority,
     BridgeWidgetDescriptor Descriptor,
     ViewSnapshot Snapshot,
-    IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles);
+    IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles)
+{
+    /// <summary>Host-only candidate identities. Capture additionally requires a current permission grant.</summary>
+    public IReadOnlyDictionary<string, WidgetHostWindowTarget> WindowPreviews { get; init; } =
+        new System.Collections.ObjectModel.ReadOnlyDictionary<string, WidgetHostWindowTarget>(new Dictionary<string, WidgetHostWindowTarget>());
+}
 
 public sealed record WidgetPresentationFailure(
     string WidgetId,

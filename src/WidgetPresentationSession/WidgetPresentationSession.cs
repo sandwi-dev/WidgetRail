@@ -452,6 +452,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             _packageIcons.Clear(); _packageIconBytes = 0;
             RetireIndexedRangesLocked();
             RetireMediaDocumentLocked();
+            RetireWindowPreviewsLocked();
             indexed = _indexedDemands.Values.Select(item => item.Done.Task)
                 .Concat(_indexedArtworkDemands.Values.Select(item => item.Done.Task))
                 .Concat(_indexedLeaseRetirements).ToArray();
@@ -1024,9 +1025,9 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         long sessionGeneration,
         JsonElement payload)
     {
-        RequireObjectProperties(
-            payload, "widgetId", "transactionKind", "baseSequence",
-            "recoveryOriginSequence", "snapshot", "renderStyles");
+        RequireAllowedProperties(payload, new HashSet<string>(["widgetId", "transactionKind", "baseSequence",
+            "recoveryOriginSequence", "snapshot", "renderStyles", "windowPreviews"], StringComparer.Ordinal),
+            "widgetId", "transactionKind", "baseSequence", "recoveryOriginSequence", "snapshot", "renderStyles");
         if (!string.Equals(ReadString(payload, "widgetId"), descriptor.Id, StringComparison.Ordinal))
             throw new BridgeProtocolException("WidgetBridge returned a snapshot for another widget.");
         if (!string.Equals(
@@ -1057,7 +1058,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             authority,
             descriptor,
             snapshot,
-            frozenStyles);
+            frozenStyles) { WindowPreviews = ReadWindowPreviewInventory(payload, snapshot) };
         WidgetPresentationState committed;
         var startPublications = false;
         lock (_gate)
@@ -1095,6 +1096,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         if (state.LastGood is { } inputFrame) _publishedInputFrames.GetValue(inputFrame, _ => PublishedInputFrameMarker);
         _states[state.WidgetId] = committed;
         ReconcileMediaDocumentLocked(committed);
+        ReconcileWindowPreviewsLocked(committed);
         RetireIndexedRangesLocked(state.WidgetId, committed.LastGood?.Authority);
         if (publish) _statePublications.Enqueue(committed);
         return committed;
@@ -1104,6 +1106,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         RetireIndexedRangesLocked(widgetId);
         RetireMediaDocumentLocked(widgetId);
+        RetireWindowPreviewsLocked(widgetId);
         if (!_states.Remove(widgetId)) return false;
         var retired = new WidgetPresentationState(widgetId, null, null, 0)
         {
@@ -1251,6 +1254,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             _terminalFailure = exception;
             RetireIndexedRangesLocked();
             RetireMediaDocumentLocked();
+            RetireWindowPreviewsLocked();
             artwork = _artwork.Values.ToArray();
             _artwork.Clear();
         }
