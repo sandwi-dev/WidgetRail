@@ -61,6 +61,7 @@ internal sealed class ControllerValidationPage : Page
             status.Text = $"Native frames: {frames}; connected: {frame.Connected != 0}; path: {frame.ReadPath}; focus: {FocusedId}";
         }
         if (frame.Connected == 0) return;
+        presenter.SetControllerFamily(frame.LastInputFamily);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
         {

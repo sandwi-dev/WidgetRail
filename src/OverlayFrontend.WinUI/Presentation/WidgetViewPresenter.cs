@@ -48,6 +48,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     public WidgetViewPresenter(bool presentationOnly = false)
     {
         this.presentationOnly = presentationOnly;
+        WidgetControllerPrompts.Changed += ControllerPromptsChanged;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
         IsTabStop = false;
@@ -269,6 +270,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.ModalLayer:
                 element = children = new WidgetModalLayer();
                 break;
+            case ViewNodeKind.ControllerGlyph:
+            case ViewNodeKind.Icon:
+                element = new FontIcon();
+                break;
             case ViewNodeKind.IndexedCollection:
                 if (Session is null) throw new InvalidOperationException("Indexed widgets require a presentation session.");
                 element = new WidgetIndexedCollectionView(Session, ReportFailure)
@@ -318,6 +323,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (element is Grid layout && element is not WidgetModalLayer) UpdateLayout(layout, node);
         ApplySizeAndTypography(element, node);
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
+        if (element is FontIcon icon) WidgetGlyphs.Apply(icon, node, playStationPrompts);
         if (element is TextBlock text) text.Text = node.Text ?? string.Empty;
         if (element is Control control)
         {
@@ -371,7 +377,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 || node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null
                 || node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Button or ViewNodeKind.ActionSurface
                     or ViewNodeKind.ModalLayer or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
-                    or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface))
+                    or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ControllerGlyph or ViewNodeKind.Icon))
                 throw new NotSupportedException($"WinUI presentation for {node.Kind} with these declarations is not implemented.");
             var scope = node.InputScopeId ?? inheritedScope;
             var path = node.CollectionItemKey is { } key ? itemPath + key.Length + ":" + key : itemPath;

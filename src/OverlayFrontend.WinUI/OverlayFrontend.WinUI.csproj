@@ -26,6 +26,13 @@
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\AppIcon.ico" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <Content Include="..\..\assets\fonts\kenney\kenney_input_xbox_series.ttf" Link="Assets\Fonts\kenney_input_xbox_series.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\fonts\kenney\kenney_input_playstation_series.ttf" Link="Assets\Fonts\kenney_input_playstation_series.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\fonts\promptfont\promptfont.ttf" Link="Assets\Fonts\promptfont.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\fonts\kenney\LICENSE.txt" Link="licenses\Kenney.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\fonts\kenney\NOTICE.txt" Link="licenses\Kenney-NOTICE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\fonts\promptfont\LICENSE.txt" Link="licenses\PromptFont.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\fonts\promptfont\NOTICE.txt" Link="licenses\PromptFont-NOTICE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />

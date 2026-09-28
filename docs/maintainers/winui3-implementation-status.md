@@ -699,3 +699,18 @@ This checkpoint implements basic selection, retention and layout. Full WRSS styl
 depth, animation and production-widget adoption remain incomplete. Test windows closed.
 Parallel work continues in separate Playnite, shared-controls and styling/motion
 worktrees; changes integrate only into codex/winui3-frontend, never main.
+
+## Native glyph adapter checkpoint
+
+ControllerGlyph and semantic Icon declarations now use native FontIcon controls.
+Controller prompts reuse the existing Kenney Xbox/PlayStation fonts and PromptFont
+Guide fallback, with their licenses packaged; no system font registration or new
+controller reader is introduced. Host family changes update existing presenters,
+including realized fragments, without changing worker snapshots. Unknown input
+family retains the last observed family. Semantic icons use Segoe Fluent Icons;
+package SVG transport/presentation and final themed glyph sizing remain outstanding.
+
+Seven native glyph checks pass across all 45 declared controller/semantic symbols,
+including family changes, accessible labels, fallback font selection and noninteractive
+behavior. Packaged font rendering was inspected in artifacts/winui-surfaces/glyphs-fixed.png.
+The unstyled validation gallery is not production-theme acceptance.

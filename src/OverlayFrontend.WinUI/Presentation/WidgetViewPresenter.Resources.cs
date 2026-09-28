@@ -106,6 +106,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed) return;
         disposed = true;
+        WidgetControllerPrompts.Changed -= ControllerPromptsChanged;
         DismissTransientControl();
         ClearSurfaceState();
         foreach (var binding in bindings.Values) Retire(binding);
