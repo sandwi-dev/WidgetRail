@@ -69,8 +69,7 @@ internal sealed partial class WidgetIndexedCollectionView
         var current = pendingIndex ?? FocusedIndex();
         if (current is null) return false;
         var grid = view.ItemsPanelRoot as ItemsWrapGrid;
-        var columns = grid is null || grid.ItemWidth <= 0 || double.IsNaN(grid.ItemWidth) ? 1 :
-            Math.Max(1, (int)Math.Round(view.ActualWidth / grid.ItemWidth));
+        var columns = grid is null ? 1 : Math.Max(1, grid.MaximumRowsOrColumns);
         int target;
         if (groups is not null)
         {

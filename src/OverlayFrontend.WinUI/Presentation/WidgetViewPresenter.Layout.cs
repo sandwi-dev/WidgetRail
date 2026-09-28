@@ -89,12 +89,13 @@ internal sealed partial class WidgetViewPresenter
             var element = bindings[child.Id].Element;
             var alignment = ComputedStyle(node, "align")?.Text;
             if (horizontal)
-                element.VerticalAlignment = alignment switch { "start" => VerticalAlignment.Top, "center" => VerticalAlignment.Center,
+                element.VerticalAlignment = FillsAxis(child, "height") ? VerticalAlignment.Stretch : alignment switch { "start" => VerticalAlignment.Top, "center" => VerticalAlignment.Center,
                     "end" => VerticalAlignment.Bottom, _ => VerticalAlignment.Stretch };
             else
-                element.HorizontalAlignment = alignment switch { "start" => HorizontalAlignment.Left, "center" => HorizontalAlignment.Center,
+                element.HorizontalAlignment = FillsAxis(child, "width") ? HorizontalAlignment.Stretch : alignment switch { "start" => HorizontalAlignment.Left, "center" => HorizontalAlignment.Center,
                     "end" => HorizontalAlignment.Right, _ => HorizontalAlignment.Stretch };
         }
     }
+    private bool FillsAxis(ViewNode node, string property) => ComputedStyle(node, property) is { Unit: "%", Number: 100 };
     private static bool NeedsConstrainedViewport(ViewNode node) => node.Kind is ViewNodeKind.IndexedCollection or ViewNodeKind.Scroll or ViewNodeKind.ModalLayer || node.Children.Any(NeedsConstrainedViewport);
 }

@@ -121,11 +121,32 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
 
     private void UpdateGridWidth()
     {
-        if (view?.ItemsPanelRoot is not ItemsWrapGrid grid || source?.Declaration.CollectionLayout is not { } layout || view.ActualWidth <= 0) return;
-        var minimum = layout.MinimumColumnWidth ?? 160;
-        var columns = Math.Clamp((int)(view.ActualWidth / minimum), 1, layout.MaximumColumns ?? int.MaxValue);
-        grid.MaximumRowsOrColumns = columns;
-        grid.ItemWidth = Math.Floor(view.ActualWidth / columns);
+        if (view is not null && source?.Declaration.CollectionLayout is { } layout)
+            UpdateGridWidth(view, layout.MinimumColumnWidth ?? 160, layout.MaximumColumns ?? int.MaxValue);
+    }
+    internal static void UpdateGridWidth(ListViewBase view, double minimum, int maximum)
+    {
+        if (view.ItemsPanelRoot is not ItemsWrapGrid grid) return;
+        var scroller = FindNativeScroll(view);
+        if (scroller is null || scroller.ViewportWidth <= 0) return;
+        // The native viewport owns available space. GridView.ActualWidth can be
+        // shrink-wrapped to its items; using it here feeds item padding back into
+        // each layout pass and ratchets the desired width until WinUI fails.
+        // ItemsPresenter applies the authored padding inside that viewport.
+        var inset = view.Padding.Left + view.Padding.Right;
+        var available = Math.Max(0, scroller.ViewportWidth - inset);
+        if (available <= 0) return;
+        var columns = Math.Clamp((int)(available / minimum), 1, maximum);
+        var width = Math.Floor(available / columns);
+        if (grid.MaximumRowsOrColumns != columns) grid.MaximumRowsOrColumns = columns;
+        if (!grid.ItemWidth.Equals(width)) grid.ItemWidth = width;
+    }
+    private static ScrollViewer? FindNativeScroll(DependencyObject element)
+    {
+        if (element is ScrollViewer scroll) return scroll;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); ++index)
+            if (FindNativeScroll(VisualTreeHelper.GetChild(element, index)) is { } found) return found;
+        return null;
     }
 
     private void ContainerChanged(ListViewBase sender, ContainerContentChangingEventArgs args)
