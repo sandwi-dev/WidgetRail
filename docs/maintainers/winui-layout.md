@@ -44,3 +44,24 @@ active-scope viewport fallback, and applies native bounded ChangeView without an
 extra animation queue or focus move. Popups consume the request. Input normalization,
 deadzone, sensitivity and cadence remain in the shell adapter. Native checks settle
 asynchronous focus reveal before asserting an independent analog scroll operation.
+
+## Real Playnite geometry regression
+
+WinUI `ScrollMode.Disabled` alone does not constrain measurement when the scrollbar
+visibility is `Hidden`. The inactive axis must use `ScrollBarVisibility.Disabled`.
+The real details page exposed a 2844-DIP horizontal content extent in a 710.4-DIP
+viewport, followed by a focus-reveal offset of 965.89 DIPs. The decoded poster was
+present but outside the viewport. Both ordinary and indexed scroll owners now
+disable their inactive scrollbar axis. Loading estimates apply only to placeholders
+on the scrolling axis; horizontal native containers fit their content instead of
+stretching the focus box to the complete viewport height.
+
+`PlayniteLibraryNativeLayoutFixtureTests` exports the production details presenter
+with a long synthetic description and compiled platform/package styles when
+`WRAIL_PLAYNITE_LAYOUT_OUTPUT` names an output directory. Launch the existing native
+style validation mode with `--playnite-layout-fixture=<absolute renderer.json path>`
+to include this fixture. That run passes 40 checks, including constrained horizontal
+extent, decoded poster placement after focus reveal, all navigation tabs and narrow
+resize wrapping. Artwork uses a known opaque test image; game text is synthetic.
+The fixture supplements actual real-widget captures; it does not establish Home
+rail geometry or the separate Library layout-cycle correction.
