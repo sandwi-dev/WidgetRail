@@ -22,7 +22,7 @@ internal sealed partial class OverlayShellPage
     private void RestoreTrayFocus(object? sender, object args)
     {
         if (pendingTrayFocus is not { } pending) return;
-        if (retired || !visible || interactive || pending.Selection != selectionVersion || !Tray.Items.Contains(pending.Item))
+        if (retired || !visible || interactive || PinnedInputActive || pending.Selection != selectionVersion || !Tray.Items.Contains(pending.Item))
         { ClearTrayFocus(); return; }
         if (Tray.ContainerFromItem(pending.Item) is Control { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } target &&
             target.Focus(FocusState.Keyboard)) ClearTrayFocus();

@@ -39,6 +39,8 @@ internal sealed partial class OverlayShellPage
             { MoveTrayWidget(args.Key == Windows.System.VirtualKey.Left ? -1 : 1); args.Handled = true; }
             else if (reordering && args.Key is Windows.System.VirtualKey.Escape or Windows.System.VirtualKey.Enter)
             { FinishTrayReorder(); args.Handled = true; }
+            else if (args.Key == Windows.System.VirtualKey.Escape && trayMenu is null)
+            { HideRequested?.Invoke(); args.Handled = true; }
         };
     }
 
@@ -171,6 +173,7 @@ internal sealed partial class OverlayShellPage
             foreach (var action in descriptor.QuickActions)
                 Add(action.Label, "Quick." + action.Id, () => InvokeTrayQuickActionAsync(descriptor, action, selection));
             if (menu.Items.Count != 0) menu.Flyout.Items.Add(new MenuFlyoutSeparator());
+            AddPinnedCommands(descriptor, Add);
             Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; });
             Add("Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection));
             menu.Flyout.Opened += (_, _) =>

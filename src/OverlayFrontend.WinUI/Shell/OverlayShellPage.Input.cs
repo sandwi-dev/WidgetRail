@@ -27,6 +27,9 @@ internal sealed partial class OverlayShellPage
         { trayHold.Reset(); shellOwnedReleases.Remove(ControllerButton.Y); }
         _ = RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, !reordering, Environment.TickCount64));
         surface?.SetControllerFamily(frame.LastInputFamily);
+        pinned?.Presenter.SetControllerFamily(frame.LastInputFamily);
+        if (pinned is not null && (frame.State.Buttons & 0x300) == 0x300 && (frame.PressedButtons & 0x4000) != 0)
+        { shellOwnedReleases.Add(ControllerButton.X); _ = UnpinAsync(save: true); return; }
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
         {
@@ -38,11 +41,12 @@ internal sealed partial class OverlayShellPage
         };
         if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None)
         {
-            if (IsMediaFullscreen) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = fullscreenView });
+            if (PinnedInputActive) pinned!.Presenter.MoveFocus(next);
+            else if (IsMediaFullscreen) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = fullscreenView });
             else if (interactive) surface?.MoveFocus(next);
             else if (!NavigateTray(next)) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
         }
-        if (interactive && !IsMediaFullscreen && surface is { } current)
+        if ((PinnedInputActive ? pinned!.Presenter : interactive && !IsMediaFullscreen ? surface : null) is { } current)
         {
             var delta = rightStick.Sample(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
             if (delta.X != 0 || delta.Y != 0) current.ScrollBy(delta.X, delta.Y);
@@ -70,6 +74,23 @@ internal sealed partial class OverlayShellPage
         if (retired || switching && interactive || !visible) return;
         try
         {
+            if (pinned is { } pin && !IsMediaFullscreen)
+            {
+                if (button == ControllerButton.View && phase == ControllerEventPhase.Pressed)
+                {
+                    shellOwnedReleases.Add(button);
+                    if (PinnedInputActive) ExitPinnedInteraction(restoreMain: true);
+                    else await EnterPinnedAsync();
+                    return;
+                }
+                if (PinnedInputActive)
+                {
+                    var accepted = await pin.Presenter.HandleControllerButtonAsync(button, phase, cancellationToken: lifetime.Token);
+                    if (!accepted && button == ControllerButton.B && phase == ControllerEventPhase.Pressed && ReferenceEquals(pinned, pin))
+                    { shellOwnedReleases.Add(button); ExitPinnedInteraction(restoreMain: true); }
+                    return;
+                }
+            }
             if (RouteFullscreenButton(button, phase)) return;
             if (!interactive)
             {

@@ -19,6 +19,7 @@ internal sealed partial class OverlayShellPage
             var palette = await owner.Session.ReadShellStylesAsync(lifetime.Token);
             if (retired || version != paletteVersion) return;
             ShellPalette = palette;
+            if (pinned is { } current) ApplyPinnedAppearance(current);
             SurfaceAppearanceChanged?.Invoke();
         }
         catch (OperationCanceledException) when (retired) { }

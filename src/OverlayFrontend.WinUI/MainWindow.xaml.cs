@@ -84,6 +84,7 @@ public sealed partial class MainWindow : Window
             ShellLayout.RowSpacing = 12;
             InitializeShellAppearance(page);
             page.HideRequested += HideOverlay;
+            page.ReturnFromPinnedRequested += () => { Activate(); input?.AcquireForeground(); page.QueueEntryFocus(); };
             var taskActivation = new WidgetRail.OverlayPlatformClient.TaskWindowActivation(
                 new WidgetRail.OverlayPlatformClient.WindowsTaskWindowActivation());
             page.TaskWindowActivationRequested += effect => page.ActivateTaskWindow(effect, taskActivation, HideOverlay);

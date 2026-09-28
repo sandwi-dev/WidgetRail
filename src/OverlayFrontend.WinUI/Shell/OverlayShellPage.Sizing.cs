@@ -48,6 +48,7 @@ internal sealed partial class OverlayShellPage
         var scale = DisplayScalePolicy.Resolve(savedAppearance, activeDisplayId);
         Appearance = savedAppearance with { InterfaceScale = scale.InterfaceScale, TextScale = scale.TextScale };
         surface?.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
+        if (pinned is { } current) ApplyPinnedAppearance(current);
         AppearanceLoaded?.Invoke(Appearance);
     }
 

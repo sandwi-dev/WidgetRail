@@ -14,9 +14,18 @@ internal sealed class PinnedWidgetWindow : IDisposable
     private readonly Window window;
     private WindowMessageMonitor? messages;
     private readonly Grid content = new();
+    private readonly Border surfaceBackground = new();
+    private readonly PinnedWindowRoot automationRoot = new();
+    private readonly OverlayScaleRoot scaleRoot = new();
+    private readonly Microsoft.UI.System.ThemeSettings theme;
     private bool disposed;
     internal event Action? CloseRequested;
     internal event Action<bool>? ForegroundChanged;
+    internal event Action? ThemeChanged;
+    internal Border SurfaceBackground => surfaceBackground;
+    internal FrameworkElement AutomationRoot => automationRoot;
+    internal bool SystemHighContrast => theme.HighContrast;
+    internal double InterfaceScale { get => scaleRoot.InterfaceScale; set => scaleRoot.InterfaceScale = value; }
     internal bool Interactive { get; private set; }
     internal bool IsVisible => !disposed && window.AppWindow.IsVisible;
     internal nint Handle { get; }
@@ -28,9 +37,16 @@ internal sealed class PinnedWidgetWindow : IDisposable
 
     internal PinnedWidgetWindow(string name)
     {
+        AutomationProperties.SetAutomationId(automationRoot, "Overlay.PinnedContent");
+        AutomationProperties.SetName(automationRoot, "Pinned widget — " + name);
+        scaleRoot.Children.Add(content);
+        surfaceBackground.Child = scaleRoot;
+        automationRoot.Children.Add(surfaceBackground);
         window = new Window { Title = "WidgetRail pinned — " + name, ExtendsContentIntoTitleBar = true,
-            SystemBackdrop = new TransparentTintBackdrop(), Content = content };
+            SystemBackdrop = new TransparentTintBackdrop(), Content = automationRoot };
         Handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        theme = Microsoft.UI.System.ThemeSettings.CreateForWindowId(window.AppWindow.Id);
+        theme.Changed += OnThemeChanged;
         try
         {
             window.AppWindow.IsShownInSwitchers = false;
@@ -58,6 +74,7 @@ internal sealed class PinnedWidgetWindow : IDisposable
         catch
         {
             disposed = true;
+            theme.Changed -= OnThemeChanged;
             messages?.Dispose();
             window.Close();
             throw;
@@ -109,17 +126,29 @@ internal sealed class PinnedWidgetWindow : IDisposable
         OpacityPercent = Math.Clamp(percent, 30, 100);
         window.SetWindowOpacity((byte)Math.Round(OpacityPercent * 255d / 100));
     }
+    private sealed class PinnedWindowRoot : Grid
+    {
+        protected override AutomationPeer OnCreateAutomationPeer() => new RootPeer(this);
+        private sealed class RootPeer(PinnedWindowRoot owner) : FrameworkElementAutomationPeer(owner)
+        {
+            protected override string GetClassNameCore() => nameof(PinnedWindowRoot);
+            protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Pane;
+            protected override bool IsControlElementCore() => true;
+        }
+    }
     private void DemandAlive()
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         if (!content.DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Pinned windows require their XAML dispatcher.");
     }
+    private void OnThemeChanged(Microsoft.UI.System.ThemeSettings sender, object args) => ThemeChanged?.Invoke();
     public void Dispose()
     {
         if (disposed) return;
         DemandAlive();
         SetInteraction(false); window.AppWindow.Hide();
         disposed = true;
+        theme.Changed -= OnThemeChanged;
         messages?.Dispose(); messages = null;
         content.Children.Clear(); Child = null;
         window.Close();

@@ -39,7 +39,7 @@ Evidence: `artifacts/winui-shell/pinned-window-pixels` and unique analyzer/test
 binlogs. The fixture is `--validate-pinned-window`; the batch driver is
 `scripts/Test-WinUiPinnedWindow.ps1`.
 
-This foundation is not wired to the production Pin command yet. Remaining work:
+The production Pin command now uses this foundation; see [production coordination](winui-production-pinning.md). Earlier fixture evidence above covers the window primitive. Remaining work:
 genuine-projection presenter integration, shared lifecycle arbitration while the
 overlay hides or selects another widget, controller ownership/activation, layout
 selection, move/resize/opacity controls, real monitor discovery/persistence wiring,
