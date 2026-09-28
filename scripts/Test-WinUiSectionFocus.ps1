@@ -9,7 +9,7 @@ function Ui([string[]]$Arguments) {
     if ($Arguments[0] -eq 'wait-for' -and -not $value.found) { throw "Missing UI: $($Arguments[1])" }
     return $value
 }
-function State { return (Ui @('get-property','Overlay.Status','-p','HelpText')).properties.HelpText | ConvertFrom-Json }
+function State { return (Ui @('get-property','Overlay.Shell','-p','HelpText')).properties.HelpText | ConvertFrom-Json }
 function Ready([string]$Id) {
     $null = Ui @('wait-for',$Id,'-t','10000')
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
@@ -83,6 +83,8 @@ try {
     throw
 } finally {
     $results | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $OutputDirectory 'results.json')
-    if ($CloseAfter) { $null=Ui @('invoke','Shell.Close') }
+    if ($CloseAfter -and (Get-Process -Id $AppPid -ErrorAction SilentlyContinue)) {
+        & (Join-Path $PSScriptRoot 'Close-WinUiTestShell.ps1') -AppPid $AppPid
+    }
 }
 "Passed $($results.Count) real-widget focus checks."

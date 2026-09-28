@@ -79,9 +79,11 @@ pixels were inspected. Evidence: `artifacts/winui-theme-refresh/native-05`.
 Follow-up native regressions cover reorder followed by a same-sequence theme
 before dispatcher yield, user focus supersession on either side of that theme,
 geometry-changing styles, failed provider pages across a global theme switch,
-and later semantic retries. These follow-up native gates remain pending deployment
-slot coordination; the associated declaration-admission tests pass in the managed
-session suite.
+and later semantic retries. On the combined integration build all 169 native style
+checks (including five new focus/appearance checks) and all 15 retained-theme checks
+pass. The associated declaration-admission tests also pass in the 242-test managed
+session suite. Combined evidence: `artifacts/winui-shell/appearance-native-styles.json`
+and `appearance-failed-pages-01/result.json`; analyzer and provider builds are clean.
 
 The initial native attempt exposed the presenter's old same-sequence rejection;
 the fixture also needed an explicit theme-dependent color and authored focus

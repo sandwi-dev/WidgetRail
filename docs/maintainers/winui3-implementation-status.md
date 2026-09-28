@@ -996,3 +996,24 @@ Physical follow-up: the user reported "Finished—single steps now" on candidate
 duplicate cause was not captured. The next shared work covers production shell
 geometry, contextual guide, passive system status and theme refresh. Pin follow-ups
 remain deferred. No change is merged into main.
+
+## Combined production shell follow-up, 2026-09-28
+
+Production geometry now uses one work-area shell with stationary guide/rail bands,
+native icon-only rail items, conditional recovery chrome and the actual XAML
+viewport for DPI sizing. Passive clock/date/connectivity status is attached to
+visibility, fullscreen, narrow-layout and disposal lifetimes. Its wrapper stays
+transparent and never participates in controller focus.
+
+The section-to-tray defect was corrected by capturing focus and beginning the
+publication transaction before outgoing controls are detached. The real Playnite
+regression passes 13 Home/Library, Categories and explicit tray-entry checks on
+the combined shell. The two appearance follow-ups preserve pending structural
+focus restoration and avoid retrying failed data pages on a style-only update.
+
+Combined evidence under `artifacts/winui-shell`: 82 native geometry checks,
+63 managed shell tests, 12 native status checks, 169 native style checks and
+15 real Bridge/worker theme checks pass; analyzer builds are clean. These are
+automated correctness checks. Contextual guide recovery/menu validation and
+physical acceptance of the combined shell remain separate, as do performance,
+memory, accessibility, packaging and the deferred pinned-window work.

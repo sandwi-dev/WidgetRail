@@ -44,3 +44,9 @@ Evidence: `artifacts/focus-domain/native-normalized/results.json`,
 original failed behavior was observed before the correction. Physical retest of
 the correction remains separate. This isolated branch is based on `f1f5557e`, so
 it does not bundle the later production-shell/theme work or deferred pin changes.
+
+Combined-shell follow-up: the driver now reads the stable `Overlay.Shell` root
+and uses PID-verified normal window closure. All 13 checks pass again with the
+production geometry, semantic guide and passive status integrated, using a newly
+published matching Bridge. Evidence: `artifacts/winui-shell/section-combined-01`.
+Physical retest remains pending; no game launches or metadata edits were performed.
