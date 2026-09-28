@@ -130,7 +130,13 @@ internal sealed partial class WidgetViewPresenter
         {
             if (!ReferenceEquals(activeTransition, commit)) return;
             foreach (var section in commit.Sections)
-                if (!bindings.TryGetValue(section.IncomingId, out var binding) || Bounds(binding.LayoutElement) is null) return;
+                if (!bindings.TryGetValue(section.IncomingId, out var binding) || Bounds(binding.LayoutElement) is null)
+                {
+                    // This publication's native layout has completed. An empty
+                    // target is valid and must not retain the old page waiting
+                    // indefinitely for a later publication to give it a size.
+                    SettleTransitions(); return;
+                }
             LayoutUpdated -= commit.LayoutReady; commit.LayoutReady = null;
             try
             {

@@ -70,13 +70,17 @@ internal sealed partial class WidgetStylesValidationPage
             Render("f", 5);
             Check(page.OutgoingTransitionCount == 0, "reduced motion replaces sections without retaining outgoing controls");
             page.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Full }, true);
+            Render("zero", 6, zeroContent: true);
+            page.UpdateLayout();
+            await Task.Delay(100);
+            Check(page.OutgoingTransitionCount == 0, "zero-size incoming content terminates pending section retention after native layout");
             Render("g", 6);
             await page.DisposeAsync();
             Check(page.OutgoingTransitionCount == 0, "presenter disposal cancels pending section motion and releases outgoing content");
         }
         finally { host.Children.Remove(page); await page.DisposeAsync(); }
 
-        void Render(string key, int order)
+        void Render(string key, int order, bool zeroContent = false)
         {
             var root = new ViewNode { Id = "transition.root", Kind = ViewNodeKind.Stack, Children = [
                 new() { Id = "transition.tabs", Kind = ViewNodeKind.Row, Children = [
@@ -89,6 +93,7 @@ internal sealed partial class WidgetStylesValidationPage
                 new() { Id = "transition.content", Kind = ViewNodeKind.Stack, Transition = new("section", key, order), Children = [
                     new() { Id = "transition.entry", Kind = ViewNodeKind.Button, Text = "Current " + key, ActionId = "activate" }] }] };
             var styles = new Dictionary<string, BridgeNodeRenderStyles>();
+            if (zeroContent) styles["transition.content"] = Compute("stack { height: 0px; }", "transition.content", "stack");
             foreach (var (id, selected) in new[] { ("transition.tab-a", order % 2 == 0), ("transition.tab-b", order % 2 != 0) })
                 styles[id] = Compute($"button {{ width: 120px; height: 44px; color: #ffffff; background: {(selected ? "#224466" : "transparent")}; corner-radius: 6px; }}", id, "button");
             page.Apply(CreateFrame(root, styles));
