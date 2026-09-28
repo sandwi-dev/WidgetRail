@@ -29,8 +29,8 @@ saved-order bound. Complete discovery removes genuinely absent entries.
 An explicit `InitialWidgetId` in a test configuration overrides saved startup
 selection. Without it, a saved reopen enters the last widget; a fresh profile
 starts with its tray owning input. In-memory hide/reopen retains the current
-interaction domain. Ordering controls, full radial presentation, quick actions,
-and bounded retention of inactive widget presentations are subsequent shell work;
+interaction domain. Ordering controls, full radial presentation and quick actions
+are subsequent shell work;
 this checkpoint does not claim that the temporary shell chrome has feature parity.
 
 Validation at the initial navigation checkpoint:
@@ -51,4 +51,36 @@ Validation at the initial navigation checkpoint:
   (`music-integrated-replay`). Neither sequence launches media or a game.
 
 None of these checks establishes complete production controller acceptance,
-inactive-page scroll retention, radial behavior, or pinned-window interaction.
+radial behavior, or pinned-window interaction.
+
+## Inactive widget retention
+
+The shell retains up to three native widget presenters, including the current
+widget, in a stable Grid. Leaving a widget suspends its presentation demand before
+sending Background, then collapses its presenter. Return establishes the current
+worker frame, applies it while suspended, shows the existing native controls and
+reacquires demanded leases. Tray preview still cannot claim widget focus. Explicit
+entry restores the remembered item using its current lease.
+
+The least recently selected presenter is disposed before creating a fourth one.
+Runtime, instance, presentation or package replacement invalidates a cached
+presenter. A complete catalog removes absent widgets; incomplete discovery does
+not evict unseen identities. Closing the shell drains every retained presenter.
+Evicted widgets currently rebuild their native view; lightweight viewport/focus
+restoration across eviction remains to be implemented for complete return parity.
+
+The real-package retention regression passed five checks at Playnite item 169:
+leave for Music, return with tray ownership, restore exact game focus and physical
+bounds, open details through fresh authority, and retain the modal across another
+switch. Before/after bounds were identical (x2075, y621, 187x278). Screenshots show
+the same poster grid and returned details artwork. Evidence:
+`artifacts/winui-shell/retention-production-final`. Earlier attempts exposed test
+harness issues: the UIA tree is under `windows`, and unfocused tiles have different
+bounds because of authored focus scale. The final check compares settled focused
+states and captures the explicit main HWND instead of including tooltip windows.
+
+Media suspension is separately validated: Unbind releases placement without
+terminally retiring its native viewport. The presenter owns terminal retirement;
+resume reattaches the same durable browser without resource readmission. All 101
+native media checks pass (`artifacts/winui-shell/retention-media`). These checks do
+not establish physical controller/performance or cache-eviction acceptance.

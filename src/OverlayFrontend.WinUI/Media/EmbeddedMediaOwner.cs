@@ -90,7 +90,9 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         foreach (var (id, bound) in viewports.ToArray())
             if (ReferenceEquals(bound.Element, viewport)) viewports.Remove(id);
         viewport.PlacementChanged = null;
-        viewport.Retire();
+        // The owner releases placement, not the presenter's native control.
+        // A retained presenter can bind this same viewport after suspension.
+        // Terminal control retirement belongs to RetireMediaViewport.
         Reconcile();
     }
 

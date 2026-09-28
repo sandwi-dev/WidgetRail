@@ -32,16 +32,4 @@ internal sealed partial class OverlayShellPage
 
     private void ReconcilePreviewVisibility() => previewRenderer?.SetVisible(visible && !retired && !switching);
 
-    private async Task DisposeWidgetSurfaceAsync()
-    {
-        previewRenderer?.SetVisible(false);
-        try { if (surface is not null) await surface.DisposeAsync(); }
-        finally
-        {
-            surface = null;
-            var renderer = previewRenderer;
-            previewRenderer = null;
-            if (renderer is not null) await renderer.DisposeAsync();
-        }
-    }
 }

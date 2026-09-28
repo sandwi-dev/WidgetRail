@@ -17,7 +17,9 @@ validation. It is not yet a complete replacement for the native overlay.
   Tray focus now previews widgets without transferring focus into them; explicit
   activation enters them. Saved order/reopen state uses the explicit profile.
   Native focus-policy checks pass 19 cases and real tray browsing passes four;
-  radial presentation and inactive-widget view retention remain. See
+  native views now retain three recent widgets with explicit hidden-demand
+  suspension. The five-check real deep-scroll/modal return gate passes. Radial
+  presentation and lightweight state restoration after cache eviction remain. See
   [shell navigation](winui-shell-navigation.md).
 - **Native UI:** standard layouts, responsive branches, text, buttons, action/poster
   surfaces, icons, prompts, progress, text entry/controller keyboard, Select, sliders,
@@ -63,9 +65,10 @@ validation. It is not yet a complete replacement for the native overlay.
   theme/backdrop and final shell-chrome coverage remain.
 - **Media:** sealed document admission, native WebView2, trusted activation, ordered
   playback observations, durable shell ownership, four-controller capacity, parking
-  and persistent error/recovery are integrated. Host fullscreen moves the same browser
+  and persistent error/recovery are integrated. Hidden presenters detach their
+  viewport without terminal retirement. Host fullscreen moves the same browser
   into an aspect-fit native view with controller guide controls, then returns or parks
-  it on B/View/hide/deactivation/capability loss. The native media fixture passes 99
+  it on B/View/hide/deactivation/capability loss. The native media fixture passes 101
   checks with inspected screenshots. Real-provider fullscreen and production shell
   routing/placement still need joint verification. Pinned transfer is unfinished.
   See [fullscreen media](winui-fullscreen-media.md).
@@ -82,9 +85,10 @@ validation. It is not yet a complete replacement for the native overlay.
   remains. Indexed/pinned/focus-fragment capture needs separate admitted inventory.
 - **Pinned authority:** genuine-frame projections, independent scopes, selected-layout
   lifetimes, controller/Select/slider input, indexed actions and continuation are
-  integrated. Ordinary pinned context/text and scoped artwork remain, along with
-  pinned windows and compact-media transfer. See [pinned authority](winui-pinned-session.md).
-- **Managed gates:** latest relevant integrated suites pass 223 presentation-session,
+  integrated. Ordinary pinned context/text and scoped artwork now use explicit
+  version-1 private bridge/worker requests. Pinned windows and compact-media transfer
+  remain. See [pinned authority](winui-pinned-session.md).
+- **Managed gates:** latest relevant integrated suites pass 232 presentation-session,
   29 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 73 Spotify and 50 YouTube
   checks. The latest integrated collection gates pass 16 indexed plus one discovered
   SDK scenario and 17 indexed plus one real-worker discovered bridge scenario;
@@ -112,12 +116,13 @@ installed native candidate are untouched; fixture passes are not migration accep
   discovered-prefix metadata cap remains a deliberate open product requirement.
 - Depth styling: button/panel/modal and native collection masks integrated.
 - Pinned authority: independent projections and exact-layout action admission.
-- Root integration: inactive widget suspension/resumption and bounded native view
-  retention are in progress; this is not yet a passed deep-scroll return gate.
+- Root integration: inactive widget suspension/resumption and three-view retention
+  pass the real Playnite/Music deep-scroll return and modal test. Appearance and
+  complete shell behavior remain in progress.
 
-After these checkpoints, remaining feature coverage includes Spotify collection
-adoption, broader WindowPreview projections, pinned/fullscreen integration, radial
-tray and complete shell appearance/backdrop behavior, collection depth, and full
+After these checkpoints, remaining feature coverage includes provider reachability
+beyond discovered limits, broader WindowPreview projections, pinned/fullscreen
+integration, radial tray and complete shell appearance/backdrop behavior, and full
 physical/performance/accessibility/package validation. The installed
 native product is still the usable product; this branch is not feature-complete.
 

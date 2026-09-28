@@ -87,6 +87,15 @@ internal sealed partial class EmbeddedMediaValidationPage
         await Until(() => events.Any(value => value.SessionId == "owner-player" && value.CommandSequence == 3));
         Check(ReferenceEquals(initialBrowser, OwnerBrowser()) && mediaOwner.BrowserCreationCount == creations && resolveCount == resolutions,
             "compatible command snapshots preserve the native browser and sealed resource admission");
+        mediaOwner.SetHostState(Descriptor.Id, false, false);
+        await ownerPresenter.SetPresentationActiveAsync(false);
+        Check(!slot.Retired && !slot.AcceptsInput && mediaOwner.IsParked(Descriptor.Id),
+            "presenter suspension detaches placement without terminally retiring the native media viewport");
+        await ownerPresenter.SetPresentationActiveAsync(true);
+        mediaOwner.SetHostState(Descriptor.Id, true, true);
+        await Until(() => slot.SurfaceHost.Children.Contains(initialBrowser));
+        Check(ReferenceEquals(initialBrowser, OwnerBrowser()) && mediaOwner.BrowserCreationCount == creations && resolveCount == resolutions,
+            "presenter resume reattaches the same viewport and browser without resource readmission");
         await RunFullscreenOwnerChecksAsync();
         ++treeRevision;
         ownerPresenter.Apply(await SnapshotAsync());
