@@ -83,17 +83,21 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private string status = "initial";
     private bool grid;
     private long calls;
+    private long focusRequest;
+    private FocusGroupEntryRequest? entry;
     internal IndexedOwnedBridgeProbeWidget()
     {
         source = CreateIndexedCollection<int, int>("owned", 0, 100, new()
         {
-            ReadRange = async (_, start, count, token) =>
+            ReadRange = async (query, start, count, token) =>
             {
-                await Task.Delay(80, token);
+                await Task.Delay(query == 99 ? 500 : 80, token);
                 return Enumerable.Range(start, count).ToArray();
             },
             ItemKey = item => new("item." + item),
-            RenderItem = (_, item, context) => UI.ActionSurface("open", context.Id("row"), $"Item {item}",
+            RenderItem = (query, item, context) => query == 98 && item < 2
+                ? UI.Button($"Disabled {item}", "open", context.Id("row")).Disabled()
+                : UI.ActionSurface("open", context.Id("row"), $"Item {item}",
                 ActionSurfaceOrientation.Horizontal, UI.Artwork(new("cover"), context.Id("cover"), "Cover"),
                 UI.Text($"Item {item}", context.Id("title"))).Shortcut(ControllerButton.Y, actionId: "replace"),
             OnAction = (query, item, action, _) =>
@@ -110,15 +114,41 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     }
     public override WidgetView Render() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
         UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"),
-        UI.Row("toolbar", UI.Button("Parent", "parent", "parent"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid")),
+        UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid")),
         (grid ? UI.CollectionGrid("items", source, 180, 100, "Items", 5) : UI.CollectionList("items", source, 64, "Items"))
-            .Shortcut(ControllerButton.X, "parent")), "parent");
+            .Shortcut(ControllerButton.X, "parent"))
+        .Shortcut(ControllerButton.LeftBumper, actionId: "focus-exact")
+        .Shortcut(ControllerButton.RightBumper, actionId: "focus-default")
+        .Shortcut(ControllerButton.LeftTrigger, actionId: "focus-wrong")
+        .Shortcut(ControllerButton.RightTrigger, actionId: "focus-stale")
+        .Shortcut(ControllerButton.Menu, actionId: "focus-delayed")
+        .Shortcut(ControllerButton.RightStick, actionId: "focus-disabled")
+        .Shortcut(ControllerButton.B, actionId: "focus-clear"), "items") { FocusGroupEntryRequest = entry };
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref calls);
         Volatile.Write(ref status, action.ActionId);
         if (action.ActionId == "content") source.UpdateContent(1);
         if (action.ActionId == "grid") grid = !grid;
+        if (action.ActionId == "focus-exact") entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+        if (action.ActionId == "focus-default") entry = source.Enter("items", ++focusRequest);
+        if (action.ActionId == "focus-wrong") entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("wrong-key"), 80));
+        if (action.ActionId == "focus-stale")
+        {
+            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+            source.PublishQuery(3, 100);
+        }
+        if (action.ActionId == "focus-clear") entry = null;
+        if (action.ActionId == "focus-delayed")
+        {
+            source.PublishQuery(99, 100);
+            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+        }
+        if (action.ActionId == "focus-disabled")
+        {
+            source.PublishQuery(98, 100);
+            entry = source.Enter("items", ++focusRequest);
+        }
         Invalidate(); return ValueTask.CompletedTask;
     }
 }

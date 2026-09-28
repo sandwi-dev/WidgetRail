@@ -349,10 +349,10 @@ a row must not substitute the current section or just the realized window.
 Queue selection needs explicit queue identity/revision and occurrence IDs,
 validated atomically in `MusicService`; duplicate tracks are distinct occurrences.
 
-Before converting all sections, add typed logical collection entry/return focus
-targets, grouped header/grid declarations for Home's single scrolling surface,
-and public `WidgetTestHost` indexed helpers. Current static focus IDs cannot refer
-to undeclared lazy children. Keep author tests exercising real captured handlers
+Typed logical collection entry/return focus and public indexed author helpers are
+now available (below). Grouped header/grid declarations for Home's single scrolling
+surface still need native validation. Static focus IDs cannot refer to undeclared
+lazy children. Keep author tests exercising real captured handlers
 and the existing action queue. The relevant first-party suite is
 `tests/YtMusicStandalone.Tests`, and it needs to retain playback, mixed result,
 queue mutation, section return, account reset and stale search assertions.
@@ -377,3 +377,36 @@ focus/viewport preservation. Seven real-dispatcher ownership checks cover pendin
 refresh, late cancellation, invalid replies and disposal; asynchronous owners are
 released exactly once. This validates the native data-source lifecycle, not yet a
 production widget's row templates, actions, artwork or performance.
+
+### Logical focus and author tests
+
+An indexed collection is itself a focus group. Use `source.Enter(collectionId,
+requestId)` to enter its remembered/default item. For an exact occurrence, pass
+`source.FocusTarget(collectionId, key, index)` as the optional third argument.
+Assign the result to the existing `WidgetView.FocusGroupEntryRequest`; increment
+its ID for each new intent. This uses the existing one-shot request mechanism.
+
+`WidgetActionEvent.FocusedCollectionItem` carries the worker-validated occurrence
+for both captured row actions and parent shortcuts. Authors can save it for a
+return request without parsing generated element IDs. It is never accepted from
+ordinary serialized action data. Its identity comprises collection, source, query
+generation, item key and index. A content refresh preserves identity; membership
+or ordering changes require a new query and invalidate the old target.
+
+The SDK rejects newly authored targets from another query. A consumed request may
+remain in subsequent snapshots while the query changes; protocol validation allows
+that structurally valid stale request and the host ignores it. Native collection
+entry verifies the loaded key before focusing, uses WinUI realization/scrolling,
+and cancels pending intent on withdrawal, query retirement or superseding input.
+Ordinary updates neither replay entry nor cancel a still-current request.
+Lightweight remembered occurrence identities are bounded to 64 collections/queries
+per presenter; no native controls or semantic leases are retained for that history.
+
+For author tests, attach `WidgetTestHost.CreateIndexedCollectionHost` to an already
+initialized widget. The helper publishes explicit monotonically increasing
+snapshots and owns disposable `AcquireAsync` range leases. `RouteAction` exercises
+the actual serial action queue and returns admission, not action completion;
+`ResolveArtworkAsync` exercises actual opaque-artwork validation. Tests can supply
+an explicit input context for stale-snapshot or scope rejection. Disposing the
+helper cancels pending acquisitions/releases its leases, without destroying the
+widget or cancelling actions already admitted to the normal widget lifetime.

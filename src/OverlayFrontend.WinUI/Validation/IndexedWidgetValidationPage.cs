@@ -28,6 +28,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
     private long publication;
     private string? failure;
     private string navigation = "pending";
+    private string logicalFocus = "not-run";
     private bool retired;
 
     public IndexedWidgetValidationPage(string pipe)
@@ -51,6 +52,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         {
             switch (args.Key)
             {
+                case VirtualKey.F2: _ = ProbeLogicalFocusAsync(); break;
                 case VirtualKey.F5: if (View() is { } list) list.ScrollIntoView(list.Items[70], ScrollIntoViewAlignment.Leading); break;
                 case VirtualKey.F4: _ = ProbeNavigationAsync(burst: true); break;
                 case VirtualKey.F3:
@@ -123,6 +125,74 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         catch (Exception error) { navigation = "failed:" + error.Message; }
         Observe();
     }
+
+    private async Task ProbeLogicalFocusAsync()
+    {
+        logicalFocus = "pending";
+        try
+        {
+            Parent();
+            await Send("focus-exact");
+            await Until(() => FocusId() == "Widget.items.Item.75");
+            Parent();
+            await Send("content", "content");
+            await Task.Delay(300, lifetime.Token);
+            Check(FocusId() == "Widget.parent", "consumed request replayed on content update");
+            await Send("focus-default");
+            await Until(() => FocusId() == "Widget.items.Item.75");
+            Parent();
+            presenter.MoveFocus(FocusNavigationDirection.Down);
+            await Until(() => FocusId() == "Widget.items.Item.75");
+            Parent();
+            await Send("focus-wrong");
+            await Task.Delay(500, lifetime.Token);
+            Check(FocusId() == "Widget.parent", "wrong key moved focus");
+            await Send("focus-stale");
+            await Task.Delay(500, lifetime.Token);
+            Check(FocusId() == "Widget.parent", "stale query moved focus");
+            await Send("focus-default");
+            await Until(() => FocusId() == "Widget.items.Item.0");
+            Parent();
+            await Send("focus-delayed");
+            await Until(() => Descendants(presenter).OfType<WidgetIndexedCollectionView>().Single().IsEntryPending);
+            presenter.MoveFocus(FocusNavigationDirection.Left);
+            Parent();
+            await Task.Delay(500, lifetime.Token);
+            Check(FocusId() == "Widget.parent", "superseded request stole focus");
+            await Send("focus-delayed");
+            await Until(() => Descendants(presenter).OfType<WidgetIndexedCollectionView>().Single().IsEntryPending);
+            await Send("focus-clear");
+            Parent();
+            await Task.Delay(300, lifetime.Token);
+            Check(FocusId() == "Widget.parent", "withdrawn request stole focus");
+            await Send("focus-disabled");
+            await Until(() => FocusId() == "Widget.items.Item.2");
+            logicalFocus = "passed:10";
+        }
+        catch (Exception error) { logicalFocus = "failed:" + error.Message; }
+        Observe();
+
+        string FocusId() => XamlRoot is null || FocusManager.GetFocusedElement(XamlRoot) is not DependencyObject current
+            ? "" : AutomationProperties.GetAutomationId(current);
+        void Parent() => Descendants(presenter).OfType<Button>().First(button => AutomationProperties.GetAutomationId(button) == "Widget.parent").Focus(FocusState.Keyboard);
+        static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+        async Task Until(Func<bool> ready)
+        {
+            var deadline = Environment.TickCount64 + 5000;
+            while (!ready())
+            {
+                if (Environment.TickCount64 > deadline) throw new TimeoutException("Logical focus did not settle: " + FocusId());
+                await Task.Delay(20, lifetime.Token);
+            }
+        }
+        async Task Send(string action, string owner = "root")
+        {
+            var frame = session!.GetState("indexed-owned")!.LastGood!;
+            var previous = publication;
+            await session.SendActionAsync(frame.Authority, new(action, owner, InputScopeId: "root"), lifetime.Token);
+            await Until(() => publication > previous);
+        }
+    }
     private void Observe()
     {
         if (retired) return;
@@ -143,7 +213,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
             calls = frame?.Snapshot.Root.Children.Single(node => node.Id == "calls").Text,
             columns = view?.ItemsPanelRoot is ItemsWrapGrid wrap ? wrap.MaximumRowsOrColumns : 1,
             revision = frame?.Snapshot.Root.Children.Single(node => node.Id == "items").IndexedCollection?.ContentRevision,
-            navigation,
+            navigation, logicalFocus,
         });
     }
     private static IEnumerable<DependencyObject> Descendants(DependencyObject root)

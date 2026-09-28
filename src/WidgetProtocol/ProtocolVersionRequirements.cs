@@ -34,6 +34,10 @@ internal sealed class ProtocolVersionRequirements
                 $"Focus-group entry requests require protocol version {ProtocolConstants.FocusGroupEntryRequestVersion} or later.");
         }
 
+        if (snapshot.FocusGroupEntryRequest?.IndexedItem is not null)
+            Add("indexed-focus-target", ProtocolConstants.IndexedCollectionFocusVersion, "$.focusGroupEntryRequest.indexedItem",
+                "Logical indexed focus targets require protocol version 61 or later.");
+
         if (snapshot.Surface is not null)
         {
             Add(
@@ -147,6 +151,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.Kind == ViewNodeKind.IndexedCollection || node.IndexedCollection is not null)
                 Add("indexed-collection", ProtocolConstants.IndexedCollectionVersion, path,
                     "Indexed collection sources require protocol version 60 or later.");
+            if (node.Kind == ViewNodeKind.IndexedCollection && snapshot.FocusGroupEntryRequest?.GroupId == node.Id)
+                Add("indexed-focus-entry", ProtocolConstants.IndexedCollectionFocusVersion, "$.focusGroupEntryRequest",
+                    "Indexed collection entry requires protocol version 61 or later.");
             if (node.VisibleWhen is not null)
                 Add(
                     "responsive-visibility",

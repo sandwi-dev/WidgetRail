@@ -3,6 +3,9 @@ namespace WidgetRail.WidgetProtocol;
 /// <summary>Exact indexed query identity. Payload eviction never changes Count.</summary>
 public sealed record IndexedCollectionDescriptor(string SourceId, long QueryGeneration, long ContentRevision, int Count);
 
+/// <summary>A logical occurrence in an immutable query; content refresh does not change its identity.</summary>
+public sealed record IndexedCollectionFocusTarget(string CollectionId, string SourceId, long QueryGeneration, string ItemKey, int Index);
+
 public sealed record IndexedCollectionRangeRequest(
     string CollectionId, IndexedCollectionDescriptor Source, int StartIndex, int Count,
     string DemandId, string? PinnedLayoutId = null);
@@ -26,6 +29,23 @@ public static class IndexedCollectionLimits
 /// </summary>
 public static class IndexedCollectionContract
 {
+    public static void ValidateFocusTarget(IndexedCollectionFocusTarget target, string collectionId, IndexedCollectionDescriptor source)
+    {
+        ValidateFocusTargetShape(target, collectionId);
+        ValidateDescriptor(source);
+        if (target.CollectionId != collectionId || target.SourceId != source.SourceId || target.QueryGeneration != source.QueryGeneration ||
+            target.Index < 0 || target.Index >= source.Count)
+            throw new ArgumentException("Indexed focus target does not belong to the declared collection query.", nameof(target));
+    }
+
+    internal static void ValidateFocusTargetShape(IndexedCollectionFocusTarget target, string collectionId)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        RequireId(target.CollectionId); RequireId(target.SourceId); RequireId(target.ItemKey);
+        if (target.CollectionId != collectionId || target.QueryGeneration < 0 || target.Index < 0)
+            throw new ArgumentException("Indexed focus target identity is invalid.", nameof(target));
+    }
+
     public static void ValidateDescriptor(IndexedCollectionDescriptor source)
     {
         ArgumentNullException.ThrowIfNull(source);

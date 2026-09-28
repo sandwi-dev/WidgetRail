@@ -111,7 +111,12 @@ public abstract partial class Widget
             if (current is null) return null;
             action = new WidgetActionEvent(current.ActionId, current.OwnerId, input.Button, input.Phase,
                 correlation.Sequence, correlation.MonotonicTimestampMicroseconds, InputScopeId: lease.Lease.Range.ScopeId)
-                { FocusedElementId = item.Declaration.Root.Id };
+                {
+                    FocusedElementId = item.Declaration.Root.Id,
+                    FocusedCollectionItem = new(lease.Request.CollectionId, lease.Request.Source.SourceId,
+                        lease.Request.Source.QueryGeneration, item.Declaration.Key,
+                        lease.Request.StartIndex + lease.Read.Items.TakeWhile(candidate => candidate.Declaration.Key != item.Declaration.Key).Count()),
+                };
             binding = current.IsItem ? new WidgetActionExecutionBinding(
                 new IndexedActionIdentity(lease.Request.Source.SourceId, lease.Request.Source.QueryGeneration,
                     lease.Request.CollectionId, lease.Request.PinnedLayoutId, item.Declaration.Key), item.Invoke) : null;

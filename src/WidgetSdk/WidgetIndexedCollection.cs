@@ -71,6 +71,24 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
 
     public IndexedCollectionDescriptor Descriptor { get { lock (gate) return current.Descriptor; } }
 
+    /// <summary>Creates a logical target without realizing a row. The host checks its occurrence key before focusing.</summary>
+    public IndexedCollectionFocusTarget FocusTarget(string collectionId, WidgetCollectionItemKey key, int index)
+    {
+        var source = Descriptor;
+        var target = new IndexedCollectionFocusTarget(collectionId, source.SourceId, source.QueryGeneration, key.Value, index);
+        IndexedCollectionContract.ValidateFocusTarget(target, collectionId, source);
+        return target;
+    }
+
+    /// <summary>Requests remembered/default collection entry, or an exact item in the current query.</summary>
+    public FocusGroupEntryRequest Enter(string collectionId, long requestId, IndexedCollectionFocusTarget? item = null)
+    {
+        StableIdentifier.Validate(collectionId, nameof(collectionId));
+        if (requestId is <= 0 or > ProtocolConstants.MaximumFocusGroupEntryRequestId) throw new ArgumentOutOfRangeException(nameof(requestId));
+        if (item is not null) IndexedCollectionContract.ValidateFocusTarget(item, collectionId, Descriptor);
+        return new() { RequestId = requestId, GroupId = collectionId, IndexedItem = item };
+    }
+
     public void PublishQuery(TQuery query, int count)
     {
         ArgumentNullException.ThrowIfNull(query);

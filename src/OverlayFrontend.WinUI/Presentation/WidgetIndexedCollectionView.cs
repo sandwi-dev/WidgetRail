@@ -33,6 +33,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
         SizeChanged += (_, _) => UpdateGridWidth();
+        GotFocus += (_, _) => RememberItemFocus();
         AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelNavigation()), true);
         AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {
@@ -120,7 +121,8 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         container.IsEnabled = slot.Value?.Item.Root is not { IsDisabled: true } and not { IsBusy: true };
         AutomationProperties.SetAutomationId(container, "Widget." + (source?.Declaration.Id ?? "collection") + ".Item." + slot.Index);
         AutomationProperties.SetName(container, slot.Value?.Item.Root.AccessibilityLabel ?? slot.Value?.Item.Root.Text ?? $"Loading item {slot.Index + 1}");
-        if (!container.IsEnabled && pendingIndex == slot.Index) FinishNavigation(null, null!);
+        if (pendingIndex == slot.Index) FinishNavigation(null, null!);
+        if (FocusedIndex() == slot.Index) RememberItemFocus();
     }
     private void DetachContainers()
     {

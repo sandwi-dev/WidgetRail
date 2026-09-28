@@ -38,6 +38,39 @@ internal static class WidgetIndexedCollectionTests
         await WidgetTestHost.DestroyAsync(widget);
     }
 
+    public static async Task LogicalFocus()
+    {
+        var widget = new Fixture(Options(), 100_000);
+        var snapshot = widget.RenderSnapshot("indexed-widget", 1);
+        var target = widget.Source.FocusTarget("collection", new("key-75000"), 75000);
+        var request = widget.Source.Enter("collection", 1, target);
+        var focused = snapshot with { ProtocolVersion = ProtocolConstants.IndexedCollectionFocusVersion, FocusGroupEntryRequest = request };
+        Equal(0, ViewSnapshotValidator.Validate(focused).Count, "exact indexed entry");
+        Equal(request, SnapshotJson.Deserialize(SnapshotJson.Serialize(focused)).FocusGroupEntryRequest, "focus round trip");
+        True(ViewSnapshotValidator.Validate(focused with { ProtocolVersion = 60 }).Count > 0, "older hosts reject logical focus");
+        Equal(0, ViewSnapshotValidator.Validate(focused with { FocusGroupEntryRequest = widget.Source.Enter("collection", 2) }).Count,
+            "remembered/default indexed entry");
+        Throws<ArgumentException>(() => widget.Source.Enter("collection", 2, target with { CollectionId = "other" }));
+        Throws<ArgumentException>(() => widget.Source.Enter("collection", 2, target with { SourceId = "other" }));
+        Throws<ArgumentException>(() => widget.Source.FocusTarget("collection", new("outside"), 100000));
+        Throws<ArgumentOutOfRangeException>(() => widget.Source.Enter("collection", 0));
+        widget.Source.UpdateContent("refreshed");
+        Equal(request, widget.Source.Enter("collection", 1, target), "content revision preserves logical identity");
+        widget.Source.PublishQuery("new-query", 5);
+        Throws<ArgumentException>(() => widget.Source.Enter("collection", 3, target));
+        var replaced = widget.RenderSnapshot("indexed-widget", 2) with
+        { ProtocolVersion = ProtocolConstants.IndexedCollectionFocusVersion, FocusGroupEntryRequest = request };
+        Equal(0, ViewSnapshotValidator.Validate(replaced).Count, "previously consumed request can remain on a new query");
+        True(ViewSnapshotValidator.Validate(focused with { FocusGroupEntryRequest = request with
+            { IndexedItem = target with { Index = -1 } } }).Count > 0, "malformed target rejected");
+        True(ViewSnapshotValidator.Validate(focused with { FocusGroupEntryRequest = request with { GroupId = "missing" } }).Count > 0,
+            "unknown group rejected without throwing");
+        var action = new WidgetActionEvent("open", "row") { FocusedCollectionItem = target };
+        var json = System.Text.Json.JsonSerializer.Serialize(action);
+        True(!json.Contains("FocusedCollectionItem", StringComparison.OrdinalIgnoreCase), "logical metadata cannot be supplied by ordinary action JSON");
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
     public static async Task Authority()
     {
         var widget = new Fixture(Options());

@@ -53,7 +53,14 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         Loaded += (_, _) => QueueEntryFocus();
         GotFocus += (_, _) => RememberFocus();
         GettingFocus += OnGettingFocus;
-        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => pendingGroupEntry = null), true);
+        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelGroupEntry()), true);
+        AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
+        {
+            if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or Windows.System.VirtualKey.Left or
+                Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Tab or Windows.System.VirtualKey.Home or
+                Windows.System.VirtualKey.End or Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown or
+                Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space or Windows.System.VirtualKey.Escape) CancelGroupEntry();
+        }), true);
     }
 
     public void Apply(WidgetPresentationFrame next) => ApplyCore(next, next.Snapshot.Root,
@@ -152,8 +159,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         {
             pendingRestore = null;
             if (bindings.TryGetValue(restore.Identity.Id, out var retained) && ReferenceEquals(retained, restore) && Eligible(restore)
-                && !ReferenceEquals(FocusedBinding(), restore) && restore.Element is Control restoredControl)
-                restoredControl.Focus(FocusState.Keyboard);
+                && !ReferenceEquals(FocusedBinding(), restore)) FocusBinding(restore);
         }
         if (!needsEntry) return;
         var scope = frame.Authority.ActiveInputScopeId;
@@ -163,13 +169,13 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (target is null && frame.Snapshot.InitialFocusId is { } initial && bindings.TryGetValue(initial, out var initialBinding)
             && Eligible(initialBinding)) target = initialBinding;
         target ??= bindings.Values.FirstOrDefault(Eligible);
-        if (target?.Element is Control control && control.Focus(FocusState.Keyboard)) needsEntry = false;
+        if (target is not null && FocusBinding(target)) needsEntry = false;
     }
 
     public bool MoveFocus(FocusNavigationDirection direction)
     {
         if (applying || !IsLoaded || frame is null) return false;
-        pendingGroupEntry = null;
+        CancelGroupEntry();
         if (FindIndexedCollection()?.MoveFocus(direction) == true) return true;
         var scope = bindings.Values.FirstOrDefault(binding => declarations[binding.Identity.Id].Node.InputScopeId == frame.Authority.ActiveInputScopeId)
             ?? (bindings.GetValueOrDefault(frame.Snapshot.Root.Id)?.Identity.Scope == frame.Authority.ActiveInputScopeId
@@ -180,7 +186,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     public void ActivateFocused()
     {
         if (applying || disposed || presentationOnly) return;
-        pendingGroupEntry = null;
+        CancelGroupEntry();
         if (FindIndexedCollection()?.ActivateFocused() == true) return;
         if (!applying && FocusedBinding() is { Element: Button { Command: { } command } button } binding
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
@@ -219,6 +225,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (applying || frame is null || DispatchActionAsync is null || !bindings.TryGetValue(identity.Id, out var binding)
             || binding.Identity != identity || !ReferenceEquals(binding.Token, token) || !Eligible(binding)
             || declarations[identity.Id].Node.ActionId is not { } action) return;
+        CancelGroupEntry();
         var authority = frame.Authority;
         try
         {
@@ -244,7 +251,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 break;
             case ViewNodeKind.IndexedCollection:
                 if (Session is null) throw new InvalidOperationException("Indexed widgets require a presentation session.");
-                element = new WidgetIndexedCollectionView(Session, ReportFailure);
+                element = new WidgetIndexedCollectionView(Session, ReportFailure)
+                { FocusRemembered = item => RememberCollectionFocus(declaration.Identity, item) };
                 break;
             case ViewNodeKind.Scroll:
                 children = new StackPanel { Spacing = 12 };

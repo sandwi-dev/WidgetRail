@@ -33,8 +33,10 @@ internal static class WidgetIndexedLeaseTests
         var lease = await widget.Acquire();
         Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, widget.Send(lease, ControllerButton.Y));
         Equal("initial:key-0:row-y", await widget.Next());
+        Equal(new IndexedCollectionFocusTarget("collection", "source", 1, "key-0", 0), widget.LastFocus);
         Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, widget.Send(lease, ControllerButton.RightTrigger));
         Equal("parent:next", await widget.Next());
+        Equal(new IndexedCollectionFocusTarget("collection", "source", 1, "key-0", 0), widget.LastFocus);
         var root = lease.Range.Items[0].Root.Id;
         Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, widget.Send(lease, ControllerButton.A, owner: root, action: "favorite"));
         Equal("initial:key-0:favorite", await widget.Next());
@@ -65,7 +67,13 @@ internal static class WidgetIndexedLeaseTests
         var scoped = await widget.Acquire();
         Equal("collection-scope", scoped.Range.ScopeId);
         Equal<WidgetOperationAdmission?>(null, widget.Send(scoped, ControllerButton.LeftTrigger));
-
+        widget.SeparateCollectionScope = false;
+        widget.Source.PublishQuery(new("offset"), 12); widget.Publish();
+        var offset = await widget.AcquireIndexedRangeAsync(new("collection", widget.Source.Descriptor, 7, 2, "offset-demand"), default);
+        Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, widget.AdmitIndexedInput(
+            new(new(offset.LeaseId, "key-8"), ControllerButton.A), new("scope", widget.PublishedSequence)));
+        Equal("offset:key-8:open", await widget.Next());
+        Equal(new IndexedCollectionFocusTarget("collection", "source", widget.Source.Descriptor.QueryGeneration, "key-8", 8), widget.LastFocus);
     }
 
     public static async Task RepeatIdentity()
@@ -167,6 +175,7 @@ internal static class WidgetIndexedLeaseTests
         internal TaskCompletionSource? HoldRows;
         internal string ParentAction = "next";
         internal bool Modal, Pinned, CollectionBusy, SeparateCollectionScope;
+        internal IndexedCollectionFocusTarget? LastFocus;
         private long sequence;
         internal long PublishedSequence => sequence;
         internal Func<Query, Item, WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>> Artwork = (_, _, _, _) => ValueTask.FromResult<WidgetEncodedArtwork?>(Png);
@@ -188,6 +197,7 @@ internal static class WidgetIndexedLeaseTests
                 }),
                 OnAction = async (query, item, action, token) =>
                 {
+                    LastFocus = action.FocusedCollectionItem;
                     if (HoldRows is { } hold) { RowEntered.TrySetResult(); await hold.Task.WaitAsync(token); }
                     await events.Writer.WriteAsync($"{query.Name}:{item.Key}:{action.ActionId}", token);
                 },
@@ -205,6 +215,7 @@ internal static class WidgetIndexedLeaseTests
         internal Task<string> Next() => events.Reader.ReadAsync().AsTask().WaitAsync(Limit);
         public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
         {
+            LastFocus = action.FocusedCollectionItem;
             if (action.ActionId == "block") { BlockEntered.SetResult(); await BlockRelease.Task.WaitAsync(cancellationToken); return; }
             await events.Writer.WriteAsync("parent:" + action.ActionId, cancellationToken);
         }

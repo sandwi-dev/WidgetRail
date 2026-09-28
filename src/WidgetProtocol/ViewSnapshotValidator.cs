@@ -214,7 +214,7 @@ public static class ViewSnapshotValidator
                         ProtocolValidationIdentifierKind.ElementReference,
                         ProtocolValidationIdentifierState.Missing, groupId);
                 else if (group.Node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or
-                             ViewNodeKind.Scroll or ViewNodeKind.Grid))
+                             ViewNodeKind.Scroll or ViewNodeKind.Grid or ViewNodeKind.IndexedCollection))
                     AddIdentifier("$.focusGroupEntryRequest.groupId", "invalid_focus_group",
                         "Focus-group entry must name a child-owning layout container.",
                         ProtocolValidationIdentifierKind.ElementReference,
@@ -232,6 +232,17 @@ public static class ViewSnapshotValidator
                         "Focus-group entry must belong to the active input scope.",
                         ProtocolValidationIdentifierKind.ElementReference,
                         ProtocolValidationIdentifierState.OutsideActiveScope, groupId);
+                if (groupEntry.IndexedItem is { } item)
+                {
+                    if (group.Node?.Kind != ViewNodeKind.IndexedCollection)
+                        Add("$.focusGroupEntryRequest.indexedItem", "invalid_indexed_focus_target", "An indexed focus target requires an indexed collection group.");
+                    try { IndexedCollectionContract.ValidateFocusTargetShape(item, groupId); }
+                    catch (ArgumentException)
+                    { Add("$.focusGroupEntryRequest.indexedItem", "invalid_indexed_focus_target", "Indexed focus target identity is invalid."); }
+                    // A consumed request may remain declared while its source
+                    // publishes a newer query. Hosts ignore stale generations;
+                    // that must not invalidate the new parent presentation.
+                }
             }
         }
 

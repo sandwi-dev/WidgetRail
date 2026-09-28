@@ -595,6 +595,8 @@ public sealed record FocusGroupEntryRequest
 {
     public required long RequestId { get; init; }
     public required string GroupId { get; init; }
+    /// <summary>Optional exact lazy occurrence; otherwise enter the group's remembered/default child.</summary>
+    public IndexedCollectionFocusTarget? IndexedItem { get; init; }
 }
 
 public enum EmbeddedMediaCommand

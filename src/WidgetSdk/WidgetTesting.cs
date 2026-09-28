@@ -336,6 +336,17 @@ public sealed class WidgetTestPrivateState
 public static class WidgetTestHost
 {
     /// <summary>
+    /// Attaches a deterministic indexed-collection host to an already initialized
+    /// widget. The caller remains responsible for its lifecycle and action effects.
+    /// </summary>
+    public static WidgetIndexedCollectionTestHost CreateIndexedCollectionHost(
+        Widget widget, string widgetInstanceId, long initialSequence = 1)
+    {
+        ArgumentNullException.ThrowIfNull(widget);
+        return new(widget, widgetInstanceId, initialSequence);
+    }
+
+    /// <summary>
     /// Attaches services and returns the widget for fluent test setup. A second
     /// attachment, or attachment after lifecycle creation, always fails.
     /// </summary>

@@ -8,17 +8,24 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     private sealed record GroupMemory(WidgetElementIdentity Group, WidgetElementIdentity Child);
-    private sealed record GroupEntry(long RequestId, WidgetElementIdentity Group);
+    private sealed record GroupEntry(long RequestId, WidgetElementIdentity Group, IndexedCollectionFocusTarget? IndexedItem);
+    private sealed record CollectionMemoryKey(WidgetElementIdentity Identity, string SourceId, long QueryGeneration);
+    private readonly OrderedDictionary<CollectionMemoryKey, IndexedCollectionFocusTarget> collectionMemory = [];
     private readonly Dictionary<string, GroupMemory> groupMemory = new(StringComparer.Ordinal);
     private GroupEntry? pendingGroupEntry;
     private long lastGroupRequest;
+    private long? declaredGroupRequest;
+    private long entryIntentVersion;
     private bool redirectingGroupFocus;
 
     private void ResetGroupFocus()
     {
         groupMemory.Clear();
+        collectionMemory.Clear();
         pendingGroupEntry = null;
         lastGroupRequest = 0;
+        declaredGroupRequest = null;
+        ++entryIntentVersion;
     }
 
     private void UpdateFocusPolicy(ViewSnapshot snapshot)
@@ -33,18 +40,50 @@ internal sealed partial class WidgetViewPresenter
         UpdateNativeNeighbors();
         if (snapshot.FocusGroupEntryRequest is not { } request)
         {
-            pendingGroupEntry = null;
+            if (declaredGroupRequest is not null) CancelGroupEntry();
+            declaredGroupRequest = null;
             return;
         }
+        declaredGroupRequest = request.RequestId;
         if (request.RequestId > lastGroupRequest)
         {
+            CancelGroupEntry();
             lastGroupRequest = request.RequestId;
             pendingGroupEntry = bindings.TryGetValue(request.GroupId, out var group)
-                ? new(request.RequestId, group.Identity) : null;
+                ? new(request.RequestId, group.Identity, request.IndexedItem) : null;
         }
         if (pendingGroupEntry is { } entry &&
             (!bindings.TryGetValue(entry.Group.Id, out var current) || current.Identity != entry.Group ||
              current.Identity.Scope != snapshot.ActiveInputScopeId)) pendingGroupEntry = null;
+    }
+
+    private void CancelGroupEntry()
+    {
+        ++entryIntentVersion;
+        pendingGroupEntry = null;
+        foreach (var binding in bindings.Values)
+            if (binding.Element is WidgetIndexedCollectionView collection) collection.CancelEntry();
+    }
+
+    private void RememberCollectionFocus(WidgetElementIdentity identity, IndexedCollectionFocusTarget item)
+    {
+        var key = new CollectionMemoryKey(identity, item.SourceId, item.QueryGeneration);
+        // Retain only lightweight identities across page removal, with a bounded
+        // least-recently-focused history; never retain item leases or controls.
+        collectionMemory.Remove(key);
+        collectionMemory[key] = item;
+        if (collectionMemory.Count > 64) collectionMemory.Remove(collectionMemory.Keys.First());
+    }
+
+    private bool FocusBinding(Binding binding)
+    {
+        if (binding.Element is WidgetIndexedCollectionView collection)
+        {
+            var query = declarations[binding.Identity.Id].Node.IndexedCollection!;
+            collectionMemory.TryGetValue(new(binding.Identity, query.SourceId, query.QueryGeneration), out var target);
+            return collection.Enter(target, allowFallback: true);
+        }
+        return binding.Element is Control control && control.Focus(FocusState.Keyboard);
     }
 
     private void UpdateNativeNeighbors()
@@ -100,8 +139,15 @@ internal sealed partial class WidgetViewPresenter
     private bool TryRestoreGroupEntry()
     {
         if (pendingGroupEntry is not { } entry || !bindings.TryGetValue(entry.Group.Id, out var group) ||
-            group.Identity != entry.Group || GroupTarget(group) is not { Element: Control target }) return false;
-        if (!target.Focus(FocusState.Keyboard)) return false;
+            group.Identity != entry.Group) return false;
+        if (group.Element is WidgetIndexedCollectionView collection)
+        {
+            if (entry.IndexedItem is { } item) collection.Enter(item);
+            else FocusBinding(group);
+            // Even a stale exact target is consumed. It must not fall through
+            // to unrelated initial focus or replay on a later content update.
+        }
+        else if (GroupTarget(group) is not { } target || !FocusBinding(target)) return false;
         pendingGroupEntry = null;
         needsEntry = false;
         pendingRestore = null;
@@ -110,14 +156,26 @@ internal sealed partial class WidgetViewPresenter
 
     private void OnGettingFocus(UIElement sender, GettingFocusEventArgs args)
     {
-        if (!applying && !redirectingGroupFocus && args.Direction != FocusNavigationDirection.None) pendingGroupEntry = null;
+        if (!applying && !redirectingGroupFocus && args.Direction != FocusNavigationDirection.None) CancelGroupEntry();
         // Pointer focus and explicit programmatic focus retain their exact target.
         // WinUI finds spatial candidates; group policy only chooses the declared
         // remembered/default child when a directional move enters that group.
-        if (applying || redirectingGroupFocus || args.Direction is not (FocusNavigationDirection.Up or
-            FocusNavigationDirection.Down or FocusNavigationDirection.Left or FocusNavigationDirection.Right) ||
+        if (applying || redirectingGroupFocus || args.Direction == FocusNavigationDirection.None ||
             FindBinding(args.NewFocusedElement) is not { } incoming || !Eligible(incoming)) return;
         var outgoing = FindBinding(args.OldFocusedElement);
+        if (incoming.Element is WidgetIndexedCollectionView && !ReferenceEquals(incoming, outgoing))
+        {
+            // The native neighbor points to the collection. Enter its logical
+            // child after this focus transaction so realization can complete.
+            args.TryCancel();
+            var intent = entryIntentVersion;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!disposed && intent == entryIntentVersion && bindings.TryGetValue(incoming.Identity.Id, out var current) &&
+                    ReferenceEquals(current, incoming) && Eligible(current)) FocusBinding(current);
+            });
+            return;
+        }
         var path = new List<Declaration>();
         for (var declaration = declarations.GetValueOrDefault(incoming.Identity.Id); declaration is not null;
              declaration = declaration.ParentId is { } parent ? declarations.GetValueOrDefault(parent) : null)

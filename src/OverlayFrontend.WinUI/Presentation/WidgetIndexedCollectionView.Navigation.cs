@@ -13,10 +13,46 @@ internal sealed partial class WidgetIndexedCollectionView
     private int? pendingIndex;
     private bool navigationQueued;
     private FocusNavigationDirection pendingDirection;
+    private IndexedCollectionFocusTarget? pendingEntry;
+    private bool entering;
+    private bool allowEntryFallback;
+    internal bool IsEntryPending => entering;
+    internal Action<IndexedCollectionFocusTarget>? FocusRemembered { get; set; }
+
+    internal bool Enter(IndexedCollectionFocusTarget? target = null, bool allowFallback = false)
+    {
+        if (disposed || source is null || view is null || !view.IsEnabled || source.Items.Count == 0) return false;
+        if (target is not null && !MatchesQuery(target)) return false;
+        CancelNavigation();
+        entering = true;
+        allowEntryFallback = allowFallback || target is null;
+        pendingEntry = target;
+        pendingIndex = target?.Index ?? 0;
+        QueueNavigation();
+        return true;
+    }
+
+    private bool MatchesQuery(IndexedCollectionFocusTarget target) => source?.Declaration is { IndexedCollection: { } query } node &&
+        target.CollectionId == node.Id && target.SourceId == query.SourceId && target.QueryGeneration == query.QueryGeneration &&
+        target.Index >= 0 && target.Index < query.Count;
+
+    internal void CancelEntry()
+    {
+        if (entering) CancelNavigation();
+    }
+
+    private void RememberItemFocus()
+    {
+        if (source is null || FocusedIndex() is not { } index ||
+            source.Items[index] is not Collections.IndexedItem<Collections.WidgetIndexedRow> { Key: { } key }) return;
+        var query = source.Declaration.IndexedCollection!;
+        FocusRemembered?.Invoke(new(source.Declaration.Id, query.SourceId, query.QueryGeneration, key, index));
+    }
 
     internal bool MoveFocus(FocusNavigationDirection direction)
     {
         if (view is null || source is null || !view.IsEnabled || view.Items.Count == 0) return false;
+        CancelEntry();
         var current = pendingIndex ?? FocusedIndex();
         if (current is null) return false;
         var grid = view.ItemsPanelRoot as ItemsWrapGrid;
@@ -36,6 +72,13 @@ internal sealed partial class WidgetIndexedCollectionView
         if (target < 0 || target >= view.Items.Count) return pendingIndex is not null;
         pendingIndex = target;
         pendingDirection = direction;
+        QueueNavigation();
+        return true;
+    }
+
+    private void QueueNavigation()
+    {
+        if (view is null) return;
         view.LayoutUpdated -= FinishNavigation;
         view.LayoutUpdated += FinishNavigation;
         if (!navigationQueued)
@@ -51,7 +94,6 @@ internal sealed partial class WidgetIndexedCollectionView
                 FinishNavigation(null, null!);
             });
         }
-        return true;
     }
 
     private int? FocusedIndex()
@@ -65,10 +107,26 @@ internal sealed partial class WidgetIndexedCollectionView
     private void FinishNavigation(object? sender, object args)
     {
         if (pendingIndex is not { } index || view is null || disposed) return;
+        if (entering)
+        {
+            if (pendingEntry is { } queryTarget && !MatchesQuery(queryTarget)) { CancelNavigation(); return; }
+            if (source!.Items[index] is not Collections.IndexedItem<Collections.WidgetIndexedRow> slot || slot.Key is null) return;
+            // An index is a location, not identity. Never silently focus another
+            // occurrence when a stale/incorrect key was supplied by an author.
+            if (pendingEntry is { } entry && slot.Key != entry.ItemKey) { CancelNavigation(); return; }
+        }
         if (view.ContainerFromIndex(index) is not Control { IsLoaded: true } target) return;
         if (!target.IsEnabled)
         {
-            if (!MoveFocus(pendingDirection)) CancelNavigation();
+            if (entering && allowEntryFallback)
+            {
+                var next = pendingEntry is not null ? 0 : index + 1;
+                pendingEntry = null;
+                if (next >= view.Items.Count) { CancelNavigation(); return; }
+                pendingIndex = next;
+                QueueNavigation();
+            }
+            else if (entering || !MoveFocus(pendingDirection) || pendingIndex == index) CancelNavigation();
         }
         else if (target.Focus(FocusState.Keyboard)) CancelNavigation();
     }
@@ -76,6 +134,8 @@ internal sealed partial class WidgetIndexedCollectionView
     private void CancelNavigation()
     {
         pendingIndex = null;
+        pendingEntry = null;
+        entering = false;
         if (view is not null) view.LayoutUpdated -= FinishNavigation;
     }
 

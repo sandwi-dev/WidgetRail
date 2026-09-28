@@ -28,6 +28,8 @@ function Until([string]$Name,[scriptblock]$Condition,[int]$Seconds=8) {
 }
 try {
     Ui @('wait-for','Widget.items.Item.0','-p','Name','--value','Item 0','-t','5000') | Out-Null
+    $initial=Until '00-initial-entry' {param($v) $v.focus -eq 'Widget.items.Item.0'}
+    Check 'initial collection focus enters a native item' ($initial.focus -eq 'Widget.items.Item.0')
     Ui @('focus','Widget.items.Item.0') | Out-Null
     $first=Until '01-ready' {param($v) $v.images -gt 0}
     Check 'real worker rows use a constrained virtualized native list' ($first.count -eq 100 -and $first.realized -lt 40 -and $first.height -lt 600 -and $first.height -gt 100)
@@ -63,6 +65,9 @@ try {
     Key F10
     $gridNavigation=Until '08-grid-navigation' {param($v) $v.navigation -ne 'pending'} 12
     Check 'grid controller navigation retains the column across native realization' ($gridNavigation.navigation -eq ('last:'+[Math]::Min(99,12*$grid.columns)+';stalled:0'))
+    Key F2
+    $entry=Until '09-logical-focus' {param($v) $v.logicalFocus -ne 'pending'} 20
+    Check 'logical entry verifies keys and preserves one-shot focus lifecycle' ($entry.logicalFocus -eq 'passed:10')
     Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'indexed-widget.png')) | Out-Null
 } finally {
     $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory 'results.json')
