@@ -7,6 +7,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ShellJsonContext.cs" Link="ShellJsonContext.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Media\EmbeddedMediaTransport.cs" Link="EmbeddedMediaTransport.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\RadialChooserPolicy.cs" Link="RadialChooserPolicy.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ControllerGuideModel.cs" Link="ControllerGuideModel.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ShellStatusSnapshot.cs" Link="ShellStatusSnapshot.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ProductionShellGeometry.cs" Link="ProductionShellGeometry.cs" />

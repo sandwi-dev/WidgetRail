@@ -143,7 +143,7 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
         catch (Exception error) { Result.Text = "Failed: " + error.Message; Write(new { result = "failed", checks, error = error.ToString(), width = Host.ActualWidth, guideHeight = guide.ActualHeight, guideDesired = guide.DesiredSize.Height }); }
     }
 
-    private static IReadOnlyDictionary<string, BridgeNodeRenderStyles> Palette(string selected)
+    internal static IReadOnlyDictionary<string, BridgeNodeRenderStyles> Palette(string selected)
     {
         string Read(string resource) { using var stream = typeof(AppearanceSettings).Assembly.GetManifestResourceStream(resource)!; using var reader = new StreamReader(stream); return reader.ReadToEnd(); }
         var baseline = WrssParser.Parse(Read("WidgetRail.PlatformSettings.Themes.builtin-default.wrss"), "default.wrss").Document;
@@ -151,7 +151,7 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
         var theme = WrssThemeCompiler.Compile([new WrssThemeLayer(0, [baseline]), new WrssThemeLayer(100, [overlay])]).Theme
             ?? throw new InvalidOperationException("The built-in shell fixture theme did not compile.");
         var result = new Dictionary<string, BridgeNodeRenderStyles>();
-        foreach (var key in new[] { "tray", "tray-item", "tray-item:selected", "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status" })
+        foreach (var key in new[] { "panel", "canvas", "tray", "tray-item", "tray-item:selected", "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status" })
         {
             var parts = key.Split(':');
             var states = parts.Skip(1).Select(value => Enum.Parse<WrssPseudoState>(value, ignoreCase: true)).ToHashSet();

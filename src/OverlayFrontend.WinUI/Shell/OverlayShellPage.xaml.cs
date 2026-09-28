@@ -59,6 +59,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         InitializeComponent();
         InitializeSystemStatus(startService);
         InitializeTrayCommands();
+        InitializeRadialChooser();
         UpdateTrayHelp();
         InitializeFullscreenView();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged += SystemAnimationsChanged;
@@ -425,6 +426,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         ResetTrayInteraction();
         rightStick.Reset();
+        radialInput.Reset();
         surface?.ResetPressedStyles();
         surface?.DismissTransientControl();
     }
@@ -452,7 +454,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (admitted) capturedSurface.SetAutomaticFocusEnabled(MainFocusEnabled);
         return admitted;
 
-        bool Current() => !retired && visible && foreground && !switching && !PinnedInteractionRequested &&
+        bool Current() => !retired && visible && foreground && !switching && !RadialOpen && !PinnedInteractionRequested &&
             capturedSelection == selectionVersion && ReferenceEquals(surface, capturedSurface) &&
             ReferenceEquals(owner, capturedOwner) && activeWidget == authority.WidgetId &&
             capturedSurface.IsInteractionCurrent(authority);

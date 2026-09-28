@@ -21,7 +21,7 @@ internal sealed partial class OverlayShellPage
 
     internal void Receive(ControllerFrame frame)
     {
-        if (frame.Connected == 0) { trayHold.Reset(); shellOwnedReleases.Clear(); }
+        if (frame.Connected == 0) { trayHold.Reset(); shellOwnedReleases.Clear(); radialInput.Reset(); }
         if (retired || !visible || switching && interactive || frame.Connected == 0) { rightStick.Reset(); return; }
         if (trayHold.Capturing && (frame.State.Buttons & 0x8000) == 0 && (frame.ReleasedButtons & 0x8000) == 0)
         { trayHold.Reset(); shellOwnedReleases.Remove(ControllerButton.Y); }
@@ -29,6 +29,7 @@ internal sealed partial class OverlayShellPage
         Presentation.WidgetControllerPrompts.Set(frame.LastInputFamily);
         if (pinned is not null && (frame.State.Buttons & 0x300) == 0x300 && (frame.PressedButtons & 0x4000) != 0)
         { shellOwnedReleases.Add(ControllerButton.X); _ = UnpinAsync(save: true); return; }
+        var radialNavigation = ReceiveRadialNavigation(frame);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
         {
@@ -38,7 +39,7 @@ internal sealed partial class OverlayShellPage
             NavigationDirection.Down => FocusNavigationDirection.Down,
             _ => FocusNavigationDirection.None,
         };
-        if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None)
+        if (!radialNavigation && direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None)
         {
             if (PinnedInputActive) pinned!.Presenter.MoveFocus(next);
             else if (IsMediaFullscreen) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = fullscreenView });
@@ -46,7 +47,7 @@ internal sealed partial class OverlayShellPage
             else if (interactive) surface?.MoveFocus(next);
             else if (!NavigateTray(next)) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
         }
-        if ((PinnedInputActive ? pinned!.Presenter : interactive && !IsMediaFullscreen ? surface : null) is { } current)
+        if (radialInput.AllowScroll && (PinnedInputActive ? pinned!.Presenter : interactive && !IsMediaFullscreen ? surface : null) is { } current)
         {
             var delta = rightStick.Sample(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
             if (delta.X != 0 || delta.Y != 0) current.ScrollBy(delta.X, delta.Y);
@@ -102,7 +103,7 @@ internal sealed partial class OverlayShellPage
                 if (phase == ControllerEventPhase.Pressed && button == ControllerButton.A && Retry.Visibility == Visibility.Visible)
                 { shellOwnedReleases.Add(button); await RetryPresentationAsync(); }
                 else if (phase == ControllerEventPhase.Pressed && button == ControllerButton.B)
-                { shellOwnedReleases.Add(button); SetInteractive(false); FocusTray(); }
+                { shellOwnedReleases.Add(button); PrepareRadialBackEntry(); SetInteractive(false); FocusTray(); }
                 return;
             }
             if (surface is null) return;
@@ -112,6 +113,7 @@ internal sealed partial class OverlayShellPage
             if (!handled && button == ControllerButton.B && phase == ControllerEventPhase.Pressed &&
                 !retired && visible && version == selectionVersion && ReferenceEquals(target, surface))
             {
+                PrepareRadialBackEntry();
                 SetInteractive(false);
                 ResetInputPresentation();
                 FocusTray();

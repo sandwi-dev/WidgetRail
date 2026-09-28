@@ -32,7 +32,8 @@ internal sealed partial class OverlayShellPage
     {
         chromeStyles?.Update(ShellPalette, Appearance, systemUi.AnimationsEnabled);
         RefreshSystemStatusAppearance();
+        RefreshRadialChooser();
     }
 
-    internal void DisposeShellChrome() { chromeStyles?.Dispose(); chromeStyles = null; trayGuide.Dispose(); }
+    internal void DisposeShellChrome() { chromeStyles?.Dispose(); chromeStyles = null; trayGuide.Dispose(); radialView?.Dispose(); }
 }

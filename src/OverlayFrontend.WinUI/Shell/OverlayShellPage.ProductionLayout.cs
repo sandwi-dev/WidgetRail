@@ -38,6 +38,7 @@ internal sealed partial class OverlayShellPage
         { OverlayPosition.BottomLeft => HorizontalAlignment.Left, OverlayPosition.BottomRight => HorizontalAlignment.Right, _ => HorizontalAlignment.Center };
         WidgetSurface.HorizontalAlignment = StatusChrome.HorizontalAlignment = TrayHelp.HorizontalAlignment = RailRegion.HorizontalAlignment = alignment;
         ConfigureRail(available.Width);
+        RefreshRadialChooser();
         RecordSizing(viewport, new(48 / zoom, ProductionShellGeometry.ReservedHeight + 38 / zoom), resolved);
     }
 
@@ -96,15 +97,15 @@ internal sealed partial class OverlayShellPage
 
     private void UpdateRailOverflow()
     {
-        TrayPrevious.IsEnabled = trayScroll?.HorizontalOffset > .5;
-        TrayNext.IsEnabled = trayScroll is { } scroll && scroll.HorizontalOffset < scroll.ScrollableWidth - .5;
+        TrayPrevious.IsEnabled = !RadialOpen && trayScroll?.HorizontalOffset > .5;
+        TrayNext.IsEnabled = !RadialOpen && trayScroll is { } scroll && scroll.HorizontalOffset < scroll.ScrollableWidth - .5;
     }
 
     private void TrayPreviousClicked(object sender, RoutedEventArgs args) => PageTray(-1);
     private void TrayNextClicked(object sender, RoutedEventArgs args) => PageTray(1);
     private void PageTray(int direction)
     {
-        if (retired || !visible || catalogItems.Count == 0) return;
+        if (retired || !visible || RadialOpen || catalogItems.Count == 0) return;
         var index = Math.Max(0, Tray.SelectedIndex);
         var next = Math.Clamp(index + direction * Math.Max(1, railGeometry.VisibleCount), 0, catalogItems.Count - 1);
         SetInteractive(false);
@@ -116,7 +117,7 @@ internal sealed partial class OverlayShellPage
         if (IsMediaFullscreen || args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse &&
             !args.GetCurrentPoint(ProductionRoot).Properties.IsLeftButtonPressed) return;
         for (var node = args.OriginalSource as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
-            if (ReferenceEquals(node, WidgetSurface) || node is Presentation.WidgetViewPresenter || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, TrayHelp) || ReferenceEquals(node, StatusChrome)) return;
+            if (ReferenceEquals(node, WidgetSurface) || node is Presentation.WidgetViewPresenter || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, TrayHelp) || ReferenceEquals(node, StatusChrome) || ReferenceEquals(node, radialView)) return;
         args.Handled = true;
         HideRequested?.Invoke();
     }

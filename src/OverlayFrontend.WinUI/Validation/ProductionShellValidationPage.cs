@@ -94,6 +94,15 @@ internal sealed class ProductionShellValidationPage : Page, IAsyncDisposable
         Check(Find("Overlay.Recovery")?.Visibility == Visibility.Visible &&
             ((TextBlock)Find("Overlay.Status")!).Text != "internal detail", "failures use conditional bounded recovery instead of raw exception chrome");
         checks.AddRange(await shell.ValidateRecoveryGuideFixtureAsync());
+        var radialScaleArgument = Environment.GetCommandLineArgs().FirstOrDefault(value => value.StartsWith("--radial-fixture-scale=", StringComparison.Ordinal));
+        if (radialScaleArgument is not null && double.TryParse(radialScaleArgument.Split('=')[1], System.Globalization.CultureInfo.InvariantCulture, out var radialScale) && radialScale is >= .5 and <= 2)
+        {
+            scale.InterfaceScale = radialScale; scale.UpdateLayout();
+            var textArgument = Environment.GetCommandLineArgs().FirstOrDefault(value => value.StartsWith("--radial-fixture-text-scale=", StringComparison.Ordinal));
+            var textScale = textArgument is not null && double.TryParse(textArgument.Split('=')[1], System.Globalization.CultureInfo.InvariantCulture, out var requestedText) ? Math.Clamp(requestedText, 1, 2) : 1;
+            shell.ConfigureRadialFixtureScale(radialScale, new(scale.ActualWidth / radialScale, scale.ActualHeight / radialScale), textScale);
+        }
+        checks.AddRange(await shell.ValidateRadialFixtureAsync());
         Rect Bounds(FrameworkElement element) => element.TransformToVisual(shell).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
     }
     private FrameworkElement? Find(string id) => Descendants(shell).OfType<FrameworkElement>().FirstOrDefault(e => AutomationProperties.GetAutomationId(e) == id);

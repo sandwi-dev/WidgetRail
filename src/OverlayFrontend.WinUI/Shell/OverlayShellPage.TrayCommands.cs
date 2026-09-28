@@ -83,8 +83,11 @@ internal sealed partial class OverlayShellPage
     }
     private void UpdateTrayHelp()
     {
-        trayGuide.SetWidgetHints(ControllerGuideModel.ResolveShellHints(interactive, RecoveryVisible,
-            Retry.Visibility == Visibility.Visible, trayMenu is not null, () => surface?.CaptureControllerGuide() ?? []));
+        RefreshRadialChooser();
+        var hints = ControllerGuideModel.ResolveShellHints(interactive, RecoveryVisible,
+            Retry.Visibility == Visibility.Visible, trayMenu is not null, () => surface?.CaptureControllerGuide() ?? []);
+        if (RadialOpen && trayMenu is null && !reordering) hints = RadialGuideHints();
+        trayGuide.SetWidgetHints(hints);
         trayGuide.SetState(reordering, interactive);
         AutomationProperties.SetHelpText(Tray, trayGuide.HelpText);
         // Keep the native layout slot stable when focus enters/leaves the tray.
@@ -170,7 +173,7 @@ internal sealed partial class OverlayShellPage
             FinishTrayReorder(); trayHold.Cancel();
             if (requestedWidget != descriptor.Id || interactive) await SelectAsync(descriptor.Id, enterWidget: false);
             var selection = selectionVersion;
-            if (!TrayOwnerCurrent(descriptor, selection) || Tray.ContainerFromItem(descriptor) is not Control anchor) return;
+            if (!TrayOwnerCurrent(descriptor, selection) || (RadialOpen ? radialView?.ContextAnchor(descriptor.Id) : Tray.ContainerFromItem(descriptor)) is not Control anchor) return;
             var menu = new TrayMenu(descriptor, selection, new MenuFlyout { Placement = FlyoutPlacementMode.Top }, anchor, []);
             Input.GamepadKeyBoundary.ObserveFlyout(menu.Flyout, anchor);
             trayMenu = menu;
@@ -233,6 +236,7 @@ internal sealed partial class OverlayShellPage
             menu.Items[menu.FocusIndex].Focus(FocusState.Keyboard);
             return true;
         }
+        if (RadialOpen) { StepRadialSelection(direction); return true; }
         if (!reordering)
         {
             if (direction == FocusNavigationDirection.Up && FocusedTrayWidget() is { } widget)
@@ -262,7 +266,7 @@ internal sealed partial class OverlayShellPage
             if (button is ControllerButton.A or ControllerButton.B) FinishTrayReorder();
             return;
         }
-        if (button == ControllerButton.B) HideRequested?.Invoke();
+        if (button == ControllerButton.B) { if (!ReturnFromRadial()) HideRequested?.Invoke(); }
         else if (FocusedTrayWidget() is { } widget)
         {
             if (button == ControllerButton.A) await SelectAsync(widget.Id);

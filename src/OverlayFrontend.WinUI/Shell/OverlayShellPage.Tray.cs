@@ -13,6 +13,7 @@ internal sealed partial class OverlayShellPage
 
     private void RequestTrayFocus(object item)
     {
+        if (FocusRadialWidget(item)) { ClearTrayFocus(); return; }
         pendingTrayFocus = (item, selectionVersion);
         Tray.LayoutUpdated -= RestoreTrayFocus;
         Tray.LayoutUpdated += RestoreTrayFocus;
@@ -37,6 +38,7 @@ internal sealed partial class OverlayShellPage
 
     private BridgeWidgetDescriptor? FocusedTrayWidget()
     {
+        if (RadialSelectedWidget() is { } radialItem) return radialItem;
         for (var element = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
              element is not null && !ReferenceEquals(element, Tray); element = VisualTreeHelper.GetParent(element))
             if (element is ListViewItem item && Tray.ItemFromContainer(item) is BridgeWidgetDescriptor descriptor) return descriptor;
