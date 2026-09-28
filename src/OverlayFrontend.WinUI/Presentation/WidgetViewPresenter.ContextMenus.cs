@@ -14,7 +14,7 @@ internal sealed partial class WidgetViewPresenter
     private sealed record ContextSource(string Id, string? ActionId, string? CollectionItemKey,
         ControllerButton? ContextMenuButton, IReadOnlyList<WidgetContextAction> ContextActions);
     private sealed record ContextPopup(Binding Owner, ContextSource Declaration, WidgetPresentationAuthority Authority,
-        ControllerButton Trigger, Control? ReturnFocus, FrameworkElement Anchor, MenuFlyout Flyout,
+        ControllerButton Trigger, string? FocusedId, Control? ReturnFocus, FrameworkElement Anchor, MenuFlyout Flyout,
         IReadOnlyList<MenuFlyoutItem> Items, WidgetIndexedRow? Row, IDisposable? Retention)
     {
         internal bool Closed;
@@ -76,7 +76,7 @@ internal sealed partial class WidgetViewPresenter
             return item;
         }).ToArray();
         var source = new ContextSource(node.Id, node.ActionId, node.CollectionItemKey, node.ContextMenuButton, node.ContextActions.ToArray());
-        var popup = new ContextPopup(owner, source, frame!.Authority, trigger,
+        var popup = new ContextPopup(owner, source, frame!.Authority, trigger, FocusedBinding()?.Identity.Id,
             FocusManager.GetFocusedElement(XamlRoot) as Control, anchor, flyout, items, row, retention);
         contextPopup = popup;
         contextFocusIndex = Array.FindIndex(items, item => item.IsEnabled);
@@ -178,7 +178,7 @@ internal sealed partial class WidgetViewPresenter
             else if (DispatchActionAsync is not null)
                 await DispatchActionAsync(new(authority, new WidgetActionEvent(action.ActionId, popup.Declaration.Id,
                     popup.Trigger, Sequence: ++actionSequence, MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000,
-                    InputScopeId: authority.ActiveInputScopeId) { FocusedElementId = popup.Owner.Identity.Id }));
+                    InputScopeId: authority.ActiveInputScopeId) { FocusedElementId = popup.FocusedId }));
         }
         catch (WidgetPresentationSessionException error) when (error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale" || popup.Row?.Lease.IsCurrent == false) { }
         catch (OperationCanceledException) when (disposed) { }
