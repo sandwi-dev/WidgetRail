@@ -30,8 +30,8 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
     public ModalValidationPage()
     {
         AutomationProperties.SetAutomationId(status, "Modal.Result");
-        widget = new Border { Width = 760, Height = 480, Child = presenter,
-            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new(20, 50, 0, 20) };
+        widget = new Border { Width = 600, Height = 250, Child = presenter,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new(20, 40, 0, 0) };
         Content = new Grid { Children = { status, widget } };
         presenter.Failed = error => failure = error;
         presenter.DispatchActionAsync = request => { actions.Add(request); return Task.CompletedTask; };
@@ -95,11 +95,11 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             Check(presenter.DismissTransientControl() && Find(modal) is not null, "Select dismisses before its owning modal");
             await Task.Delay(150);
 
-            widget.Width = 330; widget.Height = 300;
-            await Until(() => panel.ActualWidth < 330 && panel.ActualHeight < 300);
+            widget.Width = 330; widget.Height = 180;
+            await Until(() => panel.ActualWidth < 330 && panel.ActualHeight < 180);
             CheckLocalBounds(panel, "dialog reclamps on small widget resize");
-            widget.Width = 760; widget.Height = 480;
-            await Until(() => panel.ActualWidth > 600 && panel.ActualHeight > 400);
+            widget.Width = 600; widget.Height = 250;
+            await Until(() => panel.ActualWidth > 500 && panel.ActualHeight > 200);
             CheckLocalBounds(panel, "dialog expands again without stale small bounds");
 
             ((Button)Find("second")!).Focus(FocusState.Keyboard);

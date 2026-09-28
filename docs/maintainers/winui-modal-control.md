@@ -57,3 +57,11 @@ the coordinated package slot. Real worker modal transport, indexed parent
 collections, hardware controller behavior, high contrast, physical DPI scaling,
 animations and production Playnite details remain integration checks, not claims
 made by this fixture.
+
+Integrated validation: --validate-modals passes 21 native checks. Screenshot review
+also exposed an oversized test widget and an unsuitable translucent default panel
+brush; the fixture now fits the validation window and the default panel uses the
+native solid surface resource. Authored opacity/themes still require full style mapping.
+Parent geometry/scroll, focus isolation, popup precedence, resize, retained commands
+and owner replacement are covered. Evidence: artifacts/winui-surfaces/modal-controls-fixed-result.json
+and modal-screen-fixed.png. This is not yet a real Playnite/indexed-parent acceptance.
