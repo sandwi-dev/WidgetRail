@@ -50,7 +50,7 @@ internal sealed partial class IndexedWidgetValidationPage
             Check(memory.IndexedViewports.Count == 1 && memory.IndexedViewports[0].Index > 50, "deep semantic anchor captured");
             var originalBounds = AnchorBounds(view, memory.IndexedViewports.Single().Index);
             await Inspect("Inspect original memory viewport");
-            await Recreate(memory);
+            await Recreate(memory, previewFirst: true);
             await Until(() => !presenter.HasPendingMemoryRestore && FocusId() == "Widget.items.Item.70");
             Check(FocusId() == "Widget.items.Item.70", "consumed author focus request does not replay after recreation");
             var nextView = View()!;
@@ -107,7 +107,7 @@ internal sealed partial class IndexedWidgetValidationPage
         }
         finally { mementoRunning = false; }
 
-        async Task Recreate(WidgetPresentationMemento state, bool cancel = false, bool resized = false)
+        async Task Recreate(WidgetPresentationMemento state, bool cancel = false, bool resized = false, bool previewFirst = false)
         {
             var old = presenter;
             result.Text = "Recreating: suspending old view";
@@ -128,6 +128,24 @@ internal sealed partial class IndexedWidgetValidationPage
             await Until(() => presenter.IsLoaded && Descendants(presenter).OfType<Button>().Any(x => x.ActualWidth > 0 && AutomationProperties.GetAutomationId(x) == "Widget.parent"));
             Check(presenter.RestorePresentationState(state), "matching owner admits bounded memory");
             await presenter.SetPresentationActiveAsync(true);
+            if (previewFirst)
+            {
+                // Tray previews restore scroll before any focus entry. Entry used
+                // to mask a missing grid measurement-item demand in this test.
+                await Until(() => !presenter.HasPendingMemoryRestore);
+                var preview = View()!;
+                var restored = presenter.CapturePresentationState()!.IndexedViewports.Single();
+                var expected = state.IndexedViewports.Single();
+                Check(restored.Key == expected.Key && Math.Abs(restored.ClippedFraction - expected.ClippedFraction) < .04,
+                    "deep preview restores semantic viewport before focus entry");
+                if (preview is GridView)
+                {
+                    var previewSource = (IndexedItemsSource<WidgetIndexedRow>)preview.ItemsSource;
+                    Check(((IndexedItem<WidgetIndexedRow>)previewSource[0]).Value is { Lease.IsCurrent: true } &&
+                        previewSource.RetainedIndices <= IndexedItemsSource<WidgetIndexedRow>.MaximumRetainedIndices,
+                        "native grid measurement item remains current within the source retention budget");
+                }
+            }
             presenter.SetAutomaticFocusEnabled(true);
             if (cancel)
             {
@@ -164,12 +182,14 @@ internal sealed partial class IndexedWidgetValidationPage
                         Enumerable.Range(request.StartIndex, request.Count).Select(index => new KeyedCollectionItem<string>($"item.{index}", $"{index}")).ToArray(), request.ContentRevision));
                 });
             await initialSource.SetPresentationActiveAsync(false);
+            using var measure = initialSource.Retain(0);
             initialSource.RangesChanged(new(32, 4), []);
             await Task.Delay(30);
             Check(reads == 0, "new inactive source records first viewport without fetching");
             await initialSource.SetPresentationActiveAsync(true);
-            await Until(() => initialSource.CompletedLoads == 1);
+            await Until(() => initialSource.CompletedLoads == 2);
             Check(((IndexedItem<string>)initialSource[32]).Value == "32", "resume serves recorded first native viewport without another range callback");
+            Check(measure.Slot.Value == "0", "measurement retention does not replace the inactive source's first native viewport demand");
         }
     }
 }

@@ -108,8 +108,11 @@ try {
         # physical tile bounds while browsing its unfocused preview in the tray.
         Start-Sleep -Milliseconds 500
         $after = ReadyRow $rowId
-        if ([Math]::Abs($after.y - $before.y) -gt 3) { throw "Viewport moved: before=$($before.y), after=$($after.y)." }
         @{before=$before; after=$after} | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'retained-row.json')
+        Screenshot 'returned-focused.png'
+        if ([Math]::Abs($after.y - $before.y) -gt 3) { throw "Viewport moved: before=$($before.y), after=$($after.y)." }
+        if ([Math]::Abs($after.x - $before.x) -gt 3 -or [Math]::Abs($after.width - $before.width) -gt 3 -or
+            [Math]::Abs($after.height - $before.height) -gt 3) { throw 'Restoration changed the same focused tile geometry.' }
         $null = Ui @('invoke',$rowId)
         $null = Ui @('wait-for','Widget.playnite-library.details.play','-p','HasKeyboardFocus','--value','True','-t','10000')
     }

@@ -15,6 +15,7 @@ internal sealed partial class WidgetIndexedCollectionView
 
     private void DetachItems()
     {
+        measurementRetention?.Dispose(); measurementRetention = null;
         if (view is not null) view.ItemsSource = null;
         groupedView?.Dispose();
         groupedView = null;

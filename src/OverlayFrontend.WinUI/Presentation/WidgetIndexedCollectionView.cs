@@ -19,6 +19,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private readonly Dictionary<SelectorItem, (IndexedItem<WidgetIndexedRow> Slot, PropertyChangedEventHandler Changed)> containers = [];
     private readonly HashSet<Task> retiring = [];
     private WidgetIndexedRows? source;
+    private IndexedItemsSource<WidgetIndexedRow>.Retention? measurementRetention;
     private ListViewBase? view;
     private CollectionLayoutKind? layoutKind;
     private ScrollAxis? axis;
@@ -141,6 +142,12 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             source.Update(binding, declaration);
         }
         ApplyGroups(declaration.IndexedGroups);
+        // ItemsWrapGrid measures its uniform cells from item zero even when its
+        // native range excludes that offscreen measurement container. Keep that
+        // one logical item current; otherwise deep recreation freezes the whole
+        // grid at the placeholder estimate instead of the authored cell height.
+        if (layout.Kind == CollectionLayoutKind.AdaptiveGrid && source.Items.Count > 0)
+            measurementRetention ??= source.Items.Retain(0);
         AutomationProperties.SetAutomationId(view, "Widget." + declaration.Id + ".Items");
         AutomationProperties.SetName(view, declaration.AccessibilityLabel ?? declaration.Id);
         inputActive = binding.IsCurrent && scope == binding.Scope;

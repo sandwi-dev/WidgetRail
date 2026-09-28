@@ -8,18 +8,31 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetIndexedCollectionView
 {
-    private sealed class ViewportRetention(IndexedItemsSource<WidgetIndexedRow>.Retention retention, ScrollViewer? scroll, Action changed) : IDisposable
+    private sealed class ViewportRetention(IndexedItemsSource<WidgetIndexedRow>.Retention retention,
+        IndexedItem<WidgetIndexedRow>? measurement, ScrollViewer? scroll, Action changed) : IDisposable
     {
-        internal void Subscribe() { retention.Slot.PropertyChanged += Changed; if (scroll is not null) scroll.ViewChanged += ViewChanged; }
+        internal void Subscribe()
+        {
+            retention.Slot.PropertyChanged += Changed;
+            if (measurement is not null && !ReferenceEquals(measurement, retention.Slot)) measurement.PropertyChanged += Changed;
+            if (scroll is not null) scroll.ViewChanged += ViewChanged;
+        }
         private void Changed(object? sender, System.ComponentModel.PropertyChangedEventArgs args) => changed();
         private void ViewChanged(object? sender, ScrollViewerViewChangedEventArgs args) => changed();
-        public void Dispose() { retention.Slot.PropertyChanged -= Changed; if (scroll is not null) scroll.ViewChanged -= ViewChanged; retention.Dispose(); }
+        public void Dispose()
+        {
+            retention.Slot.PropertyChanged -= Changed;
+            if (measurement is not null && !ReferenceEquals(measurement, retention.Slot)) measurement.PropertyChanged -= Changed;
+            if (scroll is not null) scroll.ViewChanged -= ViewChanged;
+            retention.Dispose();
+        }
     }
     internal IDisposable? RetainViewport(IndexedViewportMemento memory, Action changed)
     {
         if (source is null || source.Declaration.IndexedCollection is not { } query || query.SourceId != memory.Source ||
             query.QueryGeneration != memory.Query || memory.Index < 0 || memory.Index >= query.Count) return null;
-        var retention = new ViewportRetention(source.Items.Retain(memory.Index), view is null ? null : FindNativeScroll(view), changed);
+        var retention = new ViewportRetention(source.Items.Retain(memory.Index), measurementRetention?.Slot,
+            view is null ? null : FindNativeScroll(view), changed);
         retention.Subscribe(); return retention;
     }
     internal IndexedViewportMemento? CaptureViewport(WidgetElementIdentity identity)
@@ -51,6 +64,7 @@ internal sealed partial class WidgetIndexedCollectionView
             layoutKind != memory.Layout || axis != memory.Axis || memory.Index < 0 || memory.Index >= query.Count) return true;
         if (!presentationActive || !view.IsLoaded || IsEntryPending || FindNativeScroll(view) is not { } scroll ||
             scroll.ViewportWidth <= 0 || scroll.ViewportHeight <= 0) return false;
+        if (measurementRetention is { Slot.Failed: false } measure && measure.Slot.Value?.Lease.IsCurrent != true) return false;
         var slot = (IndexedItem<WidgetIndexedRow>)source.Items[memory.Index];
         if (slot.Failed) return true;
         if (slot.Value is not { Lease.IsCurrent: true }) return false;

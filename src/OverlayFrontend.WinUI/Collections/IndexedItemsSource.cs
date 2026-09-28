@@ -221,7 +221,9 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         CheckAccess();
         // Preserve existing demand through collapsed layout, but a newly created
         // inactive source still needs its first native viewport for later resume.
-        if (!active && demandOrder.Count != 0) return;
+        // Independent retention (such as a grid's measurement item) is not proof
+        // that the native viewport has reported its demand.
+        if (!active && RangeNotifications != 0) return;
         ++RangeNotifications;
         var visible = new List<int>();
         var tracked = new List<int>();
