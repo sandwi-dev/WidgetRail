@@ -21,7 +21,7 @@ internal sealed class WidgetPosterPanel : Grid
         // A rail measures its children with unbounded width. Its item contract or
         // authored width normally constrains it; the SDK poster default is 150 DIPs.
         var width = double.IsFinite(availableSize.Width) ? availableSize.Width : 150;
-        var height = double.IsFinite(availableSize.Height) ? availableSize.Height : width / AspectRatio;
+        var height = Math.Min(availableSize.Height, width / AspectRatio);
         base.MeasureOverride(new(width, height));
         return new(width, height);
     }

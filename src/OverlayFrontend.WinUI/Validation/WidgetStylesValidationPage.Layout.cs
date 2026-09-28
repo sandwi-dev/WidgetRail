@@ -71,6 +71,23 @@ internal sealed partial class WidgetStylesValidationPage
         await Wait(() => Find<WidgetResponsiveGrid>("Widget.grid")?.ColumnDefinitions.Count == 2);
         Check(Grid.GetRow(cell) == 2 && Grid.GetColumn(cell) == 0 && cell.FocusState == FocusState.Keyboard,
             "native grid reflow retains the focused control without a snapshot or a custom focus layout");
+        var scrollRows = Enumerable.Range(0, 30).Select(index => new ViewNode { Id = "scroll.row" + index,
+            Kind = ViewNodeKind.Button, Text = "Row " + index, ActionId = "scroll.row" + index }).ToArray();
+        presenter.Apply(CreateFrame(new() { Id = "scroll", Kind = ViewNodeKind.Scroll, ScrollAxis = ScrollAxis.Vertical,
+            Children = scrollRows }, new Dictionary<string, BridgeNodeRenderStyles> { ["scroll"] = Compute("#scroll { height: 180px; }", "scroll", "scroll") }));
+        await Wait(() => Find<ScrollViewer>("Widget.scroll")?.ScrollableHeight > 300);
+        var scroller = Find<ScrollViewer>("Widget.scroll")!;
+        var first = Find<Button>("Widget.scroll.row0")!;
+        first.Focus(FocusState.Keyboard);
+        // Native focus reveal is asynchronous; finish it before exercising the
+        // independent analog operation, as production input does across frames.
+        await Task.Delay(150);
+        Check(presenter.ScrollBy(0, 120), "normalized analog movement finds the focused native scroll owner");
+        await Wait(() => scroller.VerticalOffset > 100);
+        Check(first.FocusState == FocusState.Keyboard, "analog scrolling preserves focus without navigation or animation queues");
+        presenter.ScrollBy(0, -100000);
+        await Wait(() => scroller.VerticalOffset == 0);
+        Check(!presenter.ScrollBy(double.NaN, 1), "native analog scroll clamps boundaries and rejects nonfinite movement");
         presenter.Width = double.NaN; presenter.Height = double.NaN;
     }
 }
