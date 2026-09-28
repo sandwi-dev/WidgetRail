@@ -69,6 +69,16 @@ direct run succeeded. Preserve `production-warm/library-smoke/results.json` as t
 failed evidence. Activation timing remains under investigation; do not present the
 earlier successful manual sequence as a completed repeatability gate.
 
+After displayed-frame admission and artwork corrections, the integrated debug
+run passes Library/details and no stale-artwork overlay error is logged. A second
+fresh run still misses activation with tray focus. Explicitly focusing the tray
+then invoking poster 0 reproduces it: the trace records `Enqueued`, while
+`DetailsOpen` requires Interactive and the shell's asynchronous lifecycle update
+has not completed before execution. See `production-warm/activation-followup.md`
+and `logs/tray-admission-live.log`. The input fix's deterministic regression remains
+valid; full native repeatability awaits ordered lifecycle admission. All probe
+windows were closed. No Play/Install or game metadata action was invoked.
+
 For explicit geometry diagnosis, add `LayoutDiagnosticsPath` to shell-options.json
 with an absolute output path in an existing directory. The shell coalesces captures
 after publications and writes control geometry/style metadata without text, image

@@ -48,11 +48,16 @@ are untouched. Migration is active and incomplete.
   regression reproduced rejection of a displayed frame after a newer unrelated
   publication. The correction retains exact frame provenance and checks unchanged
   binding/scope/query through the existing Bridge, with no frontend input rebasing.
-  Real Library repeatability still needs rechecking after this integration.
+  An integrated run passes, but a second lifecycle defect is now reproduced:
+  invoke a Library poster immediately after focusing the tray, and admission can
+  reach the worker before its Interactive transition. It returns Enqueued while
+  DetailsOpen's lifecycle guard ignores execution. Host lifecycle/input ordering
+  is the next correction; do not weaken the widget guard or replay admitted input.
 - Pending ordinary artwork now renews on snapshot replacement while decoded pixels
   remain retained. A native regression fails against the old loader at replacement
   demand, and all 13 surface checks pass with the correction. Stale artwork admission
-  no longer becomes an overlay error. Real-package integrated confirmation remains.
+  no longer becomes an overlay error. The integrated real-package debug run opens
+  details with artwork and no corresponding stale-artwork overlay error.
   Native fixture gates and real screenshots are recorded below and in
   [Playnite validation](winui-playnite-validation.md); fixture results are not
   production-widget performance acceptance.
