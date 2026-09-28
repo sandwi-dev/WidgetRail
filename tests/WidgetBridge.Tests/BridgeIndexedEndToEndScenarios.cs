@@ -75,6 +75,80 @@ internal static class BridgeIndexedEndToEndScenarios
 
     private static void Check(bool condition, string message)
     { if (!condition) throw new InvalidOperationException(message); }
+
+    internal static async Task RealWorkerModalDataAndInputScopes()
+    {
+        var configured = new ConfiguredWidget
+        {
+            Id = "indexed-owned", Name = "Indexed modal", InstanceId = "indexed-owned.instance",
+            PackageId = "dev.indexed", PublisherId = "dev", WorkerExecutable = Environment.ProcessPath!,
+            WorkerFingerprint = new('a', 64), CatalogFingerprint = new('a', 64),
+        };
+        var pipe = "indexed-modal-" + Guid.NewGuid().ToString("N");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await using var server = new WidgetBridgeServer(pipe, new([configured]));
+        var serving = server.RunAsync(TimeSpan.FromSeconds(3), deadline.Token);
+        await using var session = await WidgetPresentationSession.ConnectAsync(pipe, cancellationToken: deadline.Token);
+        await session.ListWidgetsAsync(deadline.Token);
+        var frame = await session.EstablishPresentationAsync(session.GetTarget(configured.Id), WidgetLifecycleState.Interactive, deadline.Token);
+        await Change(() => session.SendActionAsync(frame.Authority, new("modal-mode", "root", InputScopeId: "root"), deadline.Token));
+        var descriptor = Find(frame.Snapshot.Root, "items").IndexedCollection!;
+        await using var lease = await session.AcquireIndexedRangeAsync(frame.Authority, "items", descriptor, 75, 1, cancellationToken: deadline.Token);
+        await Change(() => lease.AdmitInputAsync(frame.Authority, "item.75", ControllerButton.A, cancellationToken: deadline.Token));
+        Check(frame.Snapshot.Root.Kind == ViewNodeKind.ModalLayer && frame.Authority.ActiveInputScopeId.StartsWith("details.75.", StringComparison.Ordinal),
+            "Captured deep row did not open its own modal scope.");
+        Check(lease.IsCurrent && await lease.ResolveArtworkAsync("item.75", "background", deadline.Token) is not null,
+            "Modal scope retired unchanged parent data or artwork authority.");
+        try
+        {
+            await lease.AdmitInputAsync(frame.Authority, "item.75", ControllerButton.A, cancellationToken: deadline.Token);
+            throw new InvalidOperationException("Inactive parent row action was admitted.");
+        }
+        catch (WidgetPresentationSessionException error) when (error.Code == "input_scope_stale") { }
+        await Change(() => session.SendActionAsync(frame.Authority,
+            new("modal-play", "modal-play", InputScopeId: frame.Authority.ActiveInputScopeId), deadline.Token));
+        Check(Find(frame.Snapshot.Root, "status").Text == "modal-play", "Modal command did not reach worker.");
+        await Change(() => session.SendControllerInputAsync(frame.Authority, new(ControllerButton.B, ControllerEventPhase.Pressed,
+            ControllerInputContext.OpenWidget, "modal-play", 1, 1, frame.Authority.ActiveInputScopeId,
+            frame.Authority.SnapshotSequence), deadline.Token));
+        Check(frame.Snapshot.Root.Kind != ViewNodeKind.ModalLayer && Find(frame.Snapshot.Root, "status").Text == "modal-dismiss" && lease.IsCurrent,
+            "Modal B did not dismiss exactly its scope while preserving the parent.");
+        await Change(() => lease.AdmitInputAsync(frame.Authority, "item.75", ControllerButton.A, cancellationToken: deadline.Token));
+        await Change(() => session.SendActionAsync(frame.Authority,
+            new("modal-replace", "modal-replace", InputScopeId: frame.Authority.ActiveInputScopeId), deadline.Token));
+        Check(!lease.IsCurrent && frame.Snapshot.Root.Kind == ViewNodeKind.ModalLayer,
+            "Parent query replacement must retire old row data without closing the modal.");
+        await session.DisposeAsync();
+        await serving.WaitAsync(TimeSpan.FromSeconds(5));
+
+        async Task Change(Func<Task> change)
+        {
+            var priorSequence = frame.Authority.SnapshotSequence;
+            var invalidated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            EventHandler<WidgetPresentationInvalidatedEventArgs> handler = (_, _) => invalidated.TrySetResult();
+            session.Invalidated += handler;
+            try
+            {
+                await change();
+                await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(4));
+                // Let the session's own invalidation consumer publish. Issuing a
+                // second explicit Refresh races it and manufactures stale test
+                // authority unrelated to modal data/input semantics.
+                var stable = 0;
+                while (stable < 2)
+                {
+                    await Task.Delay(20, deadline.Token);
+                    var latest = session.GetState(configured.Id)!.LastGood!;
+                    stable = latest.Authority.SnapshotSequence > priorSequence && latest.Authority == frame.Authority ? stable + 1 : 0;
+                    frame = latest;
+                }
+            }
+            finally { session.Invalidated -= handler; }
+        }
+        static ViewNode Find(ViewNode root, string id) => FindOptional(root, id) ?? throw new InvalidOperationException("Missing " + id);
+        static ViewNode? FindOptional(ViewNode root, string id) => root.Id == id ? root :
+            root.Children.Select(child => FindOptional(child, id)).FirstOrDefault(node => node is not null);
+    }
 }
 
 internal sealed class IndexedOwnedBridgeProbeWidget : Widget
@@ -86,6 +160,10 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private int headerRevision;
     private bool repartitioned;
     private bool surfaces;
+    private bool modalMode;
+    private int? modalItem;
+    private long modalOpening;
+    private int modalRevision;
     private readonly TaskCompletionSource releaseBackground = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private string backgroundState = "idle";
     private long calls;
@@ -115,6 +193,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
                 Interlocked.Increment(ref calls);
                 Volatile.Write(ref status, $"row:{query}:{item}:{action.ActionId}");
                 if (action.ActionId == "replace") source!.PublishQuery(query + 1, 100);
+                if (modalMode && action.ActionId == "open") { modalItem = item; ++modalOpening; modalRevision = 0; entry = null; }
                 Invalidate();
                 return ValueTask.CompletedTask;
             },
@@ -137,7 +216,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             },
         });
     }
-    public override WidgetView Render() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
+    private WidgetView RenderParent() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
         UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"), UI.Text(Volatile.Read(ref backgroundState), "background-state"),
         UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid"), UI.Button("Toggle groups", "groups", "groups"), UI.Button("Surfaces", "surfaces", "surfaces")),
         Collection())
@@ -150,12 +229,33 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         .Shortcut(ControllerButton.LeftStick, actionId: "group-label")
         .Shortcut(ControllerButton.X, actionId: "group-partition")
         .Shortcut(ControllerButton.B, actionId: "focus-clear"), "items") { FocusGroupEntryRequest = entry };
+    public override WidgetView Render()
+    {
+        var parent = RenderParent();
+        if (modalItem is not { } item) return parent;
+        return parent.WithModal(new($"details.{item}.{modalOpening}", $"Item {item} details revision {modalRevision}",
+            UI.Stack("modal.content",
+                UI.Button("Play", "modal-play", "modal-play"),
+                UI.Button("Update details", "modal-update", "modal-update"),
+                UI.Button("Replace parent query", "modal-replace", "modal-replace"),
+                UI.Text($"Item {item}; revision {modalRevision}", "modal-status")),
+            "modal-play", "modal-dismiss"));
+    }
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref calls);
         Volatile.Write(ref status, action.ActionId);
         if (action.ActionId == "parent" && surfaces) releaseBackground.TrySetResult();
         if (action.ActionId == "content") source.UpdateContent(surfaces ? 101 : 1);
+        if (action.ActionId == "modal-mode")
+        {
+            modalMode = true; surfaces = true; grid = grouped = false; modalItem = null;
+            source.PublishQuery(200, 100);
+            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+        }
+        if (action.ActionId == "modal-dismiss") modalItem = null;
+        if (action.ActionId == "modal-update") { ++modalRevision; source.UpdateContent(201); }
+        if (action.ActionId == "modal-replace") source.PublishQuery(210, 100);
         if (action.ActionId == "grid") grid = !grid;
         if (action.ActionId == "groups") { grouped = !grouped; grid = true; source.UpdateContent(0); }
         if (action.ActionId == "surfaces") { surfaces = !surfaces; source.PublishQuery(surfaces ? 100 : 0, 100); }

@@ -33,6 +33,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
     private string groupedFocus = "not-run";
     private string surfaces = "not-run";
     private string inputRoute = "not-run";
+    private string modalResult = "not-run";
     private bool retired;
 
     public IndexedWidgetValidationPage(string pipe)
@@ -53,7 +54,10 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         var inputProbe = new Button { Content = "Check input route" };
         AutomationProperties.SetAutomationId(inputProbe, "IndexedWidget.InputProbe");
         inputProbe.Click += (_, _) => _ = ProbeInputRouteAsync();
-        var probes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { probe, inputProbe } };
+        var modalProbe = new Button { Content = "Check indexed modal" };
+        AutomationProperties.SetAutomationId(modalProbe, "IndexedWidget.ModalProbe");
+        modalProbe.Click += (_, _) => _ = ProbeModalAsync();
+        var probes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { probe, inputProbe, modalProbe } };
         diagnostics.Children.Add(probes); Grid.SetColumn(probes, 1);
         layout.Children.Add(diagnostics); layout.Children.Add(presenter);
         Content = layout;
@@ -374,6 +378,14 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
         foreach (var child in root.Children) if (FindNode(child, id) is { } found) return found;
         return null;
     }
+    private async Task ProbeModalAsync()
+    {
+        if (modalResult == "pending" || session is null) return;
+        modalResult = "pending"; Observe();
+        var result = await IndexedModalValidation.RunAsync(presenter, session, lifetime.Token);
+        modalResult = result.ResultCode == "passed" ? $"passed:{result.Checks.Count}" : "failed:" + result.Error;
+        Observe();
+    }
     private void Observe()
     {
         if (retired) return;
@@ -394,7 +406,7 @@ internal sealed class IndexedWidgetValidationPage : Page, IAsyncDisposable
             calls = FindNode(frame?.Snapshot.Root, "calls")?.Text,
             columns = view?.ItemsPanelRoot is ItemsWrapGrid wrap ? wrap.MaximumRowsOrColumns : 1,
             revision = FindNode(frame?.Snapshot.Root, "items")?.IndexedCollection?.ContentRevision,
-            navigation, logicalFocus, groupedFocus, surfaces, inputRoute,
+            navigation, logicalFocus, groupedFocus, surfaces, inputRoute, modalResult,
             groupCount = FindNode(frame?.Snapshot.Root, "items")?.IndexedGroups?.Count ?? 0,
         });
     }

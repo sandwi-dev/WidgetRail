@@ -65,3 +65,31 @@ native solid surface resource. Authored opacity/themes still require full style 
 Parent geometry/scroll, focus isolation, popup precedence, resize, retained commands
 and owner replacement are covered. Evidence: artifacts/winui-surfaces/modal-controls-fixed-result.json
 and modal-screen-fixed.png. This is not yet a real Playnite/indexed-parent acceptance.
+
+## Indexed-parent real-worker regression
+
+`IndexedModalValidation` extends the native real-worker fixture with a modal
+opened by row 75, after logical entry and retained artwork are ready. Invoke
+`IndexedWidget.ModalProbe` on the `--indexed-validation-pipe=<pipe>` page. It runs
+without desktop key injection or controller ownership, and writes
+`%LOCALAPPDATA%/WidgetRail/WinUI/diagnostics/indexed-modal-result.json`.
+
+The probe captures native collection/source/container identity, parent offset,
+row coordinates, semantic lease and retained presentation. It exercises row A,
+modal A/B, inactive parent navigation and direct lease input rejection, live
+content refresh, three additional open/update/close cycles, a smaller viewport
+with 1.15 presentation scale, and parent-query replacement while a modal remains
+open. Replacement must retire the former row lease/presentation and return to a
+valid new-query focus target. The transform case is not monitor-DPI coverage.
+
+A headless session-to-bridge-to-real-worker test also covers the distinction
+between retained parent data/artwork and inactive input, modal B scoping, and
+query retirement. The indexed bridge suite passes 16/16 with this new case.
+An early version of that test issued an extra explicit Refresh concurrently with
+the session's automatic invalidation consumer; it was corrected to wait for that
+consumer's settled publication instead of manufacturing stale test authority.
+
+Both the native analyzer build and bridge fixture build pass with zero warnings
+or errors. Native indexed-modal probe execution remains pending coordinated
+deployment. These checks are lifecycle/input correctness evidence, not Playnite
+performance or physical controller acceptance.

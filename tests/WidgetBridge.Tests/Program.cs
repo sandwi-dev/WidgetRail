@@ -51,6 +51,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Indexed styles match parent cascade and focus fragments", BridgeIndexedStyleScenarios.RangeStylesMatchSnapshotCascadeAndFragments),
     ("Indexed lease wire contracts and strict classification", BridgeIndexedLeaseWireScenarios.ContractsAndClassification),
     ("Indexed lease session through bridge to real worker", BridgeIndexedEndToEndScenarios.SessionToRealWorker),
+    ("Indexed modal data lifetime and input scopes through real worker", BridgeIndexedEndToEndScenarios.RealWorkerModalDataAndInputScopes),
     ("Indexed lease registry real worker semantic round trip", BridgeIndexedLeaseRegistryScenarios.RealWorkerLeaseRoundTrip),
     ("Indexed lease registry separates data lifetime and input authority", BridgeIndexedLeaseRegistryScenarios.DataLifetimeAndInputAuthorityAreSeparate),
     ("Indexed lease registry duplicates and cancellation preserve ownership", BridgeIndexedLeaseRegistryScenarios.DuplicateAndCancellationPreserveOwnership),
