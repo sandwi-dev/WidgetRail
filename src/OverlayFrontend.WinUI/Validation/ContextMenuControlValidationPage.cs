@@ -102,6 +102,11 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
             ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
             await WaitAsync(() => actions.Count == 2);
             Check(actions[1].Action.ActionId == "play.changed", "native menu invoke dispatches once before popup closes");
+            await OpenAsync(ControllerButton.Menu, "poster", "hint");
+            await presenter.HandleControllerButtonAsync(ControllerButton.A);
+            await WaitAsync(() => actions.Count == 3);
+            Check(actions[2].Action.SourceElementId == "hint" && actions[2].Action.FocusedElementId == "poster",
+                "scoped menu retains focused opener separately from nonfocusable command owner");
             await OpenAsync(ControllerButton.X, "poster", "poster");
             await presenter.DisposeAsync();
             Check(!presenter.HasTransientControl, "disposal revokes popup");
