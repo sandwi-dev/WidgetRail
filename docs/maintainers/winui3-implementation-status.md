@@ -1033,3 +1033,24 @@ Evidence: `artifacts/winui-shell/combined-eviction-01`. Use the isolated config 
 profile lacks the fourth widget and cannot establish forced eviction. Do not call
 this checkpoint physically ready or relax the viewport assertion while these
 investigations remain open.
+
+Both defects are now corrected. The padding correction passes 171 native style
+and 21 retained-theme checks. The grid's native measurement item remains demanded
+within the existing bounded collection lifetime, so recreation does not settle at
+a placeholder-derived row height. Preview-before-focus recreation passes 22 list
+and 23 grid checks. After integration, the real four-widget Playnite eviction and
+modal-return sequence passes all five checks with unchanged focused tile geometry
+(`artifacts/winui-shell/eviction-integrated-02`). Analyzer build is clean.
+
+The first combined replay attempt used no-controller mode while Task Manager kept
+foreground ownership; UIA correctly refused focus transfer. It is recorded as a
+test setup failure, not a new widget-navigation defect. Repeating with the ordinary
+production activation adapter acquired foreground and completed the eviction
+sequence without any physical controller action. Resource-observation scope and
+limitations are documented in `winui-performance-observation.md`.
+
+The current priority is complete first-frame widget switching: the old shell hid
+outgoing content before incoming content was laid out. Readiness/commit separation
+and the remaining radial chooser are being implemented in independent lanes.
+Visual quality, real switching latency, memory, accessibility and packaging remain
+qualification requirements; these correctness checks do not finish the migration.
