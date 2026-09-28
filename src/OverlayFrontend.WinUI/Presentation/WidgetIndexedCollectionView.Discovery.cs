@@ -50,9 +50,10 @@ internal sealed partial class WidgetIndexedCollectionView
     {
         // The native ListView/Button templates have their own default foreground;
         // use the collection's resolved widget/theme foreground for host chrome.
-        if (discoveryStatus is not null) discoveryStatus.Foreground = Foreground;
-        if (discoveryRetry is not null) discoveryRetry.Foreground = Foreground;
-        if (discoveryLoading is not null) discoveryLoading.Foreground = Foreground;
+        var foreground = view?.Foreground ?? Foreground;
+        if (discoveryStatus is not null) discoveryStatus.Foreground = foreground;
+        if (discoveryRetry is not null) discoveryRetry.Foreground = foreground;
+        if (discoveryLoading is not null) discoveryLoading.Foreground = foreground;
     }
 
     private void RetryDiscovery()

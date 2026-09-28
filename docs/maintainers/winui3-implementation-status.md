@@ -24,8 +24,13 @@ validation. It is not yet a complete replacement for the native overlay.
   captured actions are integrated. Playnite Home/Library, YouTube Music's finite
   service snapshots, Games & Apps Library/Running and Spotify Queue use it. Games &
   Apps Catalog retains explicit paging. General opaque continuations are a separate
-  active lane; Spotify playlist/detail/Search and populated YouTube Discover are not
-  yet complete native migrations. See [author contracts](../developers/indexed-collections.md).
+  integrated contract: workers retain opaque tokens and publish an append-only
+  discovered prefix to native incremental loading. YouTube video Discover/Search
+  now uses it. Spotify playlist/detail/Search adoption remains active. The combined
+  continuation fixture passes 36 native assertions, including empty/duplicate
+  pages, bounded automatic demand, Retry, held-tail/reverse input, retained
+  viewport/action identities and native list/grid footer replacement. See
+  [author contracts](../developers/indexed-collections.md).
 - **Real widget validation:** isolated packages pass six Playnite Library/tray/details
   checks, five YouTube Music Home/Library/return checks, and six Games & Apps browse
   checks. Screenshots show actual provider artwork and resolved production styles.
@@ -66,11 +71,13 @@ validation. It is not yet a complete replacement for the native overlay.
   uses the shared native identity/foreground policy; full Task Switcher acceptance
   remains. Indexed/pinned/focus-fragment capture needs separate admitted inventory.
 - **Managed gates:** latest relevant integrated suites pass 189 presentation-session,
-  24 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 83 Spotify, 49 YouTube,
-  138 SDK and 17 indexed bridge checks. Counts identify their recorded checkpoint;
+  24 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 83 Spotify and 50 YouTube
+  checks. The latest integrated collection gates pass 16 indexed plus one discovered
+  SDK scenario and 17 indexed plus one real-worker discovered bridge scenario;
+  the prior complete SDK checkpoint passed 138. Counts identify their recorded checkpoint;
   affected suites must run again after later contract changes. Analyzer builds are clean.
 
-Remaining product work includes continuation-source integration/adoption, preview
+Remaining product work includes remaining continuation-source adoption, preview
 coverage beyond ordinary roots, pinned projections/media ownership, radial tray and complete shell
 appearance/backdrop behavior, remaining styling, real-provider workflows, full
 controller/performance/memory/accessibility validation and packaging. Main and the
@@ -80,9 +87,8 @@ installed native candidate are untouched; fixture passes are not migration accep
 
 - Window previews: ordinary production wiring and controlled pixel validation complete;
   broader projection inventory and real Task Switcher workflows remain.
-- Continuation collections: explicit discovered-prefix SDK/wire lifecycle, native
-  incremental loading and YouTube Discover adoption. Spotify's other cursor routes
-  follow after this contract is proven; its indexed Queue is already integrated.
+- Continuation collections: SDK/wire lifecycle and YouTube Discover are integrated;
+  Spotify's library/detail/Search adoption is active. Its indexed Queue remains intact.
 - Depth styling: authored shadows and per-edge borders through native composition.
 - Pinned authority: independent projections and exact-layout action admission.
 - Root integration: combined production regression checks and remaining shell behavior.

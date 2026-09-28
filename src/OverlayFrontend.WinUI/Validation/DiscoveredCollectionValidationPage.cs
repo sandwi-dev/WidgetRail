@@ -47,6 +47,13 @@ internal sealed class DiscoveredCollectionValidationPage(string pipe) : Page, IA
             await session.EstablishPresentationAsync(session.GetTarget("discovered"), WidgetLifecycleState.Interactive, lifetime.Token);
             await Until(() => Native()?.ItemsSource is IndexedItemsSource<WidgetIndexedRow> { Count: >= 16 });
             var view = Native()!;
+            var footerInk = new SolidColorBrush(Microsoft.UI.Colors.Coral);
+            view.Foreground = footerInk;
+            var footer = (StackPanel)view.Footer;
+            Check(footer.Children.OfType<TextBlock>().All(item => ReferenceEquals(item.Foreground, footerInk)) &&
+                footer.Children.OfType<Control>().All(item => ReferenceEquals(item.Foreground, footerInk)),
+                "discovery footer follows the styled native collection foreground");
+            view.ClearValue(Control.ForegroundProperty);
             var items = (IndexedItemsSource<WidgetIndexedRow>)view.ItemsSource;
             items.CollectionChanged += CollectionChanged;
             Check(items is Microsoft.UI.Xaml.Data.ISupportIncrementalLoading, "native ItemsSource implements platform incremental loading");
@@ -148,8 +155,23 @@ internal sealed class DiscoveredCollectionValidationPage(string pipe) : Page, IA
             await Until(() => SessionFrame().Snapshot.Root.Children.Single(node => node.Id == "items").IndexedCollection!.Discovery!.Revision > pausedRevision &&
                 Descendants(presenter).OfType<Button>().Any(button => Equals(button.Content, "Load more") && button.Visibility == Visibility.Visible));
             Check(ReferenceEquals(paused, Native()!.ItemsSource) && paused.Count == 0, "explicit Load more resumes a bounded empty-page burst on the same source");
+            var oldFooter = Native()!.Footer;
+            await Send("layout");
+            await Until(() => Native() is GridView grid && ReferenceEquals(grid.Footer, oldFooter));
+            Check(ReferenceEquals(paused, Native()!.ItemsSource), "list-to-grid layout replacement retains the query and transfers its footer");
+            await Send("layout");
+            await Until(() => Native() is ListView list && ReferenceEquals(list.Footer, oldFooter));
+            Check(ReferenceEquals(paused, Native()!.ItemsSource), "grid-to-list layout replacement transfers the same native footer without double parenting");
+            await Until(() => oldFooter is FrameworkElement { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } &&
+                Descendants(Native()!).Contains((DependencyObject)oldFooter));
+            var footerBounds = ((FrameworkElement)oldFooter).TransformToVisual(presenter).TransformBounds(
+                new(0, 0, ((FrameworkElement)oldFooter).ActualWidth, ((FrameworkElement)oldFooter).ActualHeight));
+            Check(footerBounds.Top >= 0 && footerBounds.Bottom <= presenter.ActualHeight + 1,
+                "empty-source footer is realized inside the viewport after native layout replacement");
             status.Text = "Discovered collection checks passed: " + checks.Count;
-            Write(new { passed = true, checks, failures, notifications, count = 96 });
+            Write(new { passed = true, checks, failures, notifications, count = 96, footerBounds,
+                foreground = (Native()!.Foreground as SolidColorBrush)?.Color.ToString(),
+                style = SessionFrame().RenderStyles.GetValueOrDefault("items")?.Base.GetValueOrDefault("color")?.Text });
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error)

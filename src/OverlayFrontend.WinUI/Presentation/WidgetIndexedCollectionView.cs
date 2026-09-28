@@ -26,7 +26,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private bool inputActive;
     private bool CanReceiveInput => inputActive && view?.IsEnabled == true;
     private long sequence;
-    private readonly long discoveryForegroundToken;
+    private long discoveryForegroundToken;
     internal ListViewBase NativeView => view ?? throw new InvalidOperationException("Collection is not initialized.");
     internal Action? PresentationChanged { get; set; }
     internal Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
@@ -41,7 +41,6 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         IsTabStop = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
-        discoveryForegroundToken = RegisterPropertyChangedCallback(ForegroundProperty, (_, _) => UpdateDiscoveryForeground());
         SizeChanged += (_, _) => UpdateGridWidth();
         GotFocus += (_, _) => { ValidatePendingActivation(); RememberItemFocus(); };
         LostFocus += (_, _) => ValidatePendingActivation();
@@ -69,8 +68,14 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             RetireViewRows();
             DetachItems();
             DetachContainers();
-            if (view is not null) { view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; view.LosingFocus -= OnLosingFocus; }
+            if (view is not null)
+            {
+                view.UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
+                view.Footer = null;
+                view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; view.LosingFocus -= OnLosingFocus;
+            }
             view = layout.Kind == CollectionLayoutKind.AdaptiveGrid ? new GridView() : new ListView();
+            discoveryForegroundToken = view.RegisterPropertyChangedCallback(ForegroundProperty, (_, _) => UpdateDiscoveryForeground());
             layoutKind = layout.Kind; axis = declaration.ScrollAxis;
             view.SelectionMode = ListViewSelectionMode.None;
             view.IsItemClickEnabled = true;
@@ -278,12 +283,12 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     {
         if (disposed) return;
         disposed = true;
-        UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
+        view?.UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
         CancelPendingActivation();
         CancelNavigation();
         RetireViewRows();
         DetachItems();
-        if (view is not null) { view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; view.LosingFocus -= OnLosingFocus; }
+        if (view is not null) { view.Footer = null; view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; view.LosingFocus -= OnLosingFocus; }
         DetachContainers(); Content = null;
         if (source is not null) RetireSource(source);
         await Task.WhenAll(retiring.ToArray());

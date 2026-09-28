@@ -14,7 +14,7 @@ internal static class DiscoveredBridgeScenarios
     };
     internal static async Task ServeAsync(string pipe)
     {
-        var theme = WrssThemeCompiler.Compile([WrssParser.Parse(".fixture-root { height: 100%; min-height: 0px; gap: 8px; color: #111111; } .fixture-list { flex-grow: 1; min-height: 0px; width: 100%; } .fixture-row { min-height: 72px; padding: 8px; gap: 8px; background: #d9e8f8; color: #111111; flex-shrink: 0; } .fixture-toolbar { flex-shrink: 0; gap: 8px; } image { width: 48px; height: 48px; } text { font-size: 16px; color: #111111; } button { min-height: 32px; padding: 6px; color: #111111; }", "discovered-validation.wrss").Document]);
+        var theme = WrssThemeCompiler.Compile([WrssParser.Parse(".fixture-root { background: #ffffff; height: 100%; min-height: 0px; gap: 8px; color: #111111; } .fixture-list { color: #111111; flex-grow: 1; min-height: 0px; width: 100%; } .fixture-row { min-height: 72px; padding: 8px; gap: 8px; background: #d9e8f8; color: #111111; flex-shrink: 0; } .fixture-toolbar { flex-shrink: 0; gap: 8px; } image { width: 48px; height: 48px; } text { font-size: 16px; color: #111111; } button { min-height: 32px; padding: 6px; color: #111111; }", "discovered-validation.wrss").Document]);
         if (!theme.IsValid) throw new InvalidOperationException("Discovered validation styles are invalid.");
         await using var server = new WidgetBridgeServer(pipe, new([Configuration with { CompiledTheme = theme.Theme }]));
         await server.RunAsync(TimeSpan.FromSeconds(60), CancellationToken.None);
@@ -95,6 +95,7 @@ internal sealed class DiscoveredBridgeWidget : Widget
     private bool delayNext;
     private bool duplicateGap;
     private bool emptyPages;
+    private bool grid;
     private string status = "ready";
     private static readonly WidgetEncodedArtwork Artwork = new(WidgetArtworkContentType.Png,
         Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq1sAAAAASUVORK5CYII="));
@@ -126,8 +127,9 @@ internal sealed class DiscoveredBridgeWidget : Widget
     public override WidgetView Render() => new(UI.Stack("root", UI.Text(status, "status"),
         UI.Row("commands", UI.Button("Replace query", "replace", "replace"), UI.Button("Fail next load", "fail-next", "fail-next"),
             UI.Button("Delay next load", "delay-next", "delay-next"), UI.Button("Duplicate gap", "duplicate-gap", "duplicate-gap"),
-            UI.Button("Empty pages", "empty-pages", "empty-pages")).Classes("fixture-toolbar"),
-        UI.CollectionList("items", source, 72, "Discovered results").Classes("fixture-list")).Classes("fixture-root"), "items")
+            UI.Button("Empty pages", "empty-pages", "empty-pages"), UI.Button("Layout", "layout", "layout")).Classes("fixture-toolbar"),
+        (grid ? UI.CollectionGrid("items", source, 160, 72, "Discovered results") :
+            UI.CollectionList("items", source, 72, "Discovered results")).Classes("fixture-list")).Classes("fixture-root"), "items")
         { FocusGroupEntryRequest = source.Enter("items", query + 1) };
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
@@ -138,6 +140,7 @@ internal sealed class DiscoveredBridgeWidget : Widget
         }
         if (action.ActionId == "fail-next") { failNext = true; status = "fail-next"; }
         if (action.ActionId == "delay-next") { delayNext = true; status = "delay-next"; }
+        if (action.ActionId == "layout") grid = !grid;
         Invalidate(); return ValueTask.CompletedTask;
     }
 }
