@@ -16,6 +16,8 @@ public sealed record WidgetPresentationSessionOptions
     public int MaximumPendingIndexedRanges { get; init; } = 4;
     /// <summary>Provider range budget; independent of ordinary action/IPC timeouts.</summary>
     public TimeSpan IndexedRangeTimeout { get; init; } = TimeSpan.FromSeconds(35);
+    /// <summary>Bounds media bundle/event waits independently of artwork decoding.</summary>
+    public TimeSpan EmbeddedMediaTimeout { get; init; } = TimeSpan.FromSeconds(15);
     public int MaximumRetainedDiagnostics { get; init; } = 64;
 
     internal void Validate()
@@ -36,6 +38,8 @@ public sealed record WidgetPresentationSessionOptions
             throw new ArgumentOutOfRangeException(nameof(MaximumPendingIndexedRanges));
         if (IndexedRangeTimeout < TimeSpan.FromMilliseconds(100) || IndexedRangeTimeout > TimeSpan.FromMinutes(2))
             throw new ArgumentOutOfRangeException(nameof(IndexedRangeTimeout));
+        if (EmbeddedMediaTimeout < TimeSpan.FromMilliseconds(100) || EmbeddedMediaTimeout > TimeSpan.FromMinutes(2))
+            throw new ArgumentOutOfRangeException(nameof(EmbeddedMediaTimeout));
         if (MaximumRetainedDiagnostics is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(MaximumRetainedDiagnostics));
     }

@@ -451,6 +451,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         {
             _packageIcons.Clear(); _packageIconBytes = 0;
             RetireIndexedRangesLocked();
+            RetireMediaDocumentLocked();
             indexed = _indexedDemands.Values.Select(item => item.Done.Task)
                 .Concat(_indexedArtworkDemands.Values.Select(item => item.Done.Task))
                 .Concat(_indexedLeaseRetirements).ToArray();
@@ -1093,6 +1094,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         var committed = state with { PublicationRevision = NextPublicationRevisionLocked() };
         if (state.LastGood is { } inputFrame) _publishedInputFrames.GetValue(inputFrame, _ => PublishedInputFrameMarker);
         _states[state.WidgetId] = committed;
+        ReconcileMediaDocumentLocked(committed);
         RetireIndexedRangesLocked(state.WidgetId, committed.LastGood?.Authority);
         if (publish) _statePublications.Enqueue(committed);
         return committed;
@@ -1101,6 +1103,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     private bool RetireStateLocked(string widgetId)
     {
         RetireIndexedRangesLocked(widgetId);
+        RetireMediaDocumentLocked(widgetId);
         if (!_states.Remove(widgetId)) return false;
         var retired = new WidgetPresentationState(widgetId, null, null, 0)
         {
@@ -1247,6 +1250,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             if (_terminalFailure is not null) return;
             _terminalFailure = exception;
             RetireIndexedRangesLocked();
+            RetireMediaDocumentLocked();
             artwork = _artwork.Values.ToArray();
             _artwork.Clear();
         }
