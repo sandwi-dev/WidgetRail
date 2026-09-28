@@ -5,147 +5,73 @@ are untouched. Migration is active and incomplete.
 
 ## Current summary
 
-- Real catalog/lifecycle shell is integrated. It reuses OwnedBridgeProcess and the
-  accepted native controller/activation adapter. Automated shell runs use
-  `--shell-no-controller`; production controller acceptance is still outstanding.
-- Both Playnite Home and Browse use captured indexed queries. The isolated real
-  package/provider probe loads 36 Home and 178 Library items, retrieves cover bytes,
-  and opens/dismisses details. A startup invalidation-before-first-snapshot race
-  was reproduced, tested and fixed; no diagnostic polling is required.
-- YouTube Music now projects its bounded service snapshots as indexed grouped
-  Home grids and lists, with captured row actions, deep return targets, retained
-  section queries and exact queue selection. All 28 standalone tests pass,
-  including duplicate occurrences and stale-query rejection. Five real-package
-  native checks pass, including square grouped posters and Library navigation;
-  see [music validation](winui-ytmusic-validation.md). This does not establish
-  playback, physical controller or performance acceptance.
-- Native modal, Select, TextEntry/controller keyboard, context menus and sliders
-  are integrated. Scoped input and exact indexed action ownership remain enforced.
-- Responsive branches, static grids, basic poster layering and ordinary styles
-  are mapped. Native scroll routing and global-policy dialog entrances are wired.
-  Focused/pressed scale uses native presentation animation; effective TextScale
-  reaches typography. The modal veil now paints above its retained parent.
-  Authored focus outlines now use compositor Fade/Settle; native gradients provide
-  cached surface shading. Indexed box dimensions/margins have one native owner,
-  including viewport-unit refresh on resize. The integrated native style checks
-  pass; actual Playnite and music geometry checks pass in the presentation lane.
-  Saved Bold Text, Contrast and Reduced Transparency preferences are now applied
-  after styles. Section/content/header/selection declarations now run on native
-  composition layers; the integrated fixture passes 98 style/motion checks and
-  actual Playnite and music section switches. Decoded background artwork uses a
-  bounded native crossfade governed by global motion/contrast policy; 27 native
-  surface/artwork checks pass. Shadows and complete styling remain incomplete.
-- Authored surface sizing and per-display interface zoom are integrated, reusing
-  existing display identity/settings and platform placement. Sixteen shell tests,
-  13 native sizing checks and real Playnite at Windows 125% DPI/interface 75% pass.
-  Physical mixed-monitor and full controller acceptance remain outstanding.
-- Real Home and details render. A production long-description regression corrected
-  inactive scroll axes: details now keeps the poster and all navigation tabs in
-  view. Home focus bounds now fit poster content rather than the full rail height.
-- The real Library layout-cycle crash is corrected by using native viewport width
-  and honoring explicit full-width alignment. Home, Library and both details pages
-  now render real artwork in the integrated shell. Adaptive cells are allocated in
-  physical pixels so native rounding at 125% DPI no longer wraps six columns into
-  five. A real Library Down move now goes from item 0 to item 6. The native style
-  fixture passes 42 checks, including the production fractional-width case.
-- Saved Home placeholders now use bounded indexed publications instead of expanding
-  into the parent tree and exceeding its style budget. They remain display-only;
-  live replacement retires their bindings. The fresh real package starts without
-  Retry, and both its empty-state and saved-state transport probes pass.
-- Latest integrated managed gates: 157 Playnite tests, 189 session tests, 24 shell
-  tests, 35 style tests. Package-icon transport is admitted by exact inventory/hash
-  and bounded independently. OriginalColor Icon/Button/Select rendering is integrated
-  with native icon checks and a 7-check/45-symbol glyph regression. ThemeTint now
-  uses WinUI SVG rasterization and compositor alpha masks, with a bounded shared
-  cache. Its lane passes 24 checks including actual alpha, theme change and eviction.
-- Repeatable real-package smoke: Home startup/row/details/focus/shutdown passes all
-  five checks. Library startup/navigation/row passes, but one unfocused UIA poster
-  invocation did not open details; a separate immediate run succeeded. A deterministic
-  regression reproduced rejection of a displayed frame after a newer unrelated
-  publication. The correction retains exact frame provenance and checks unchanged
-  binding/scope/query through the existing Bridge, with no frontend input rebasing.
-  An integrated run passes, but a second lifecycle defect is now reproduced:
-  invoke a Library poster immediately after focusing the tray, and admission can
-  reach the worker before its Interactive transition. It returns Enqueued while
-  DetailsOpen's lifecycle guard ignored execution. The host now awaits acknowledged
-  Interactive state before sending captured input. The real tray-to-poster check
-  passes six assertions, including one invocation and Play/Install focus; no worker
-  guard was weakened and no admitted input is replayed.
-- Pending ordinary artwork now renews on snapshot replacement while decoded pixels
-  remain retained. A native regression fails against the old loader at replacement
-  demand, and all 13 surface checks pass with the correction. Stale artwork admission
-  no longer becomes an overlay error. The integrated real-package debug run opens
-  details with artwork and no corresponding stale-artwork overlay error.
-- Real music startup exposed Auto-sized loading indicators in unbounded measurement;
-  native intrinsic sizes now survive style projection. Authored poster aspect ratios
-  are mapped. Root/container sizing and enlarged-card clipping corrections are
-  integrated; the presentation lane verified native row positions and screenshots.
-  Native fixture gates and real screenshots are recorded below and in
-  [Playnite validation](winui-playnite-validation.md); fixture results are not
-  production-widget performance acceptance.
-- Remaining product work includes special media/capture/pinned surfaces, remaining
-  widget adoption, complete tray/chrome behavior, actual controller,
-  performance/memory/accessibility validation and packaging.
-- Embedded-media document admission and ordered playback observations are integrated.
-  Compatible snapshots retain document ownership; retirement is permanent and cancels
-  pending work. The native WebView2 adapter is integrated; its lane passes 60 native
-  checks, including trusted activation, actual silent audio playback, parked updates,
-  strict requests/messages, retirement and native modal layering. Production shell
-  ownership is integrated: four bounded retained controllers, native viewport
-  placement, parking, pending-Play interruption and persistent sanitized failure
-  reporting. Host fullscreen now retains the same browser, uses aspect-fit native
-  layout and controller guide controls, and returns on B/View/hide/capability loss.
-  The integrated fixture passes 99 checks, including explicit document recovery
-  and native fullscreen transfer/playback. Real provider fullscreen and physical
-  shell acceptance remain; pinned transfer is not implemented. See
-  [fullscreen media](winui-fullscreen-media.md).
-- Task-window activation is wired through the existing host effect, with native
-  identity and age checks before and after hiding. See
-  [task-window activation](winui-task-window-activation.md); full Task Switcher
-  physical acceptance still awaits window-preview rendering.
-- Ordinary actions now retain their exact displayed frame across Interactive
-  acknowledgment. The session compares original/current semantic bindings; no input
-  is replayed or retargeted. Buttons, Select, text, slider and context-action call
-  sites use this contract. All 159 session and 24 shell tests pass. The integrated
-  native pass completes 19 Select, 26 TextEntry, 21 slider and 38 context-menu checks,
-  including exact-frame retention across a pending popup action acknowledgment.
-- Indexed rows now support broker-owned app-library icons without widget callbacks.
-  Exact row lease, widget identity and broker registration guard resolution. Widget-owned
-  images still require a captured resolver. All 138 SDK and 17 indexed bridge tests
-  pass. Games & Apps Library/Running now use captured indexed queries; Catalog
-  retains explicit paging. All 92 widget tests and six actual provider/native
-  checks pass, including broker artwork and exact tray-to-item focus restoration.
-  See [Games & Apps validation](winui-games-apps-validation.md).
-- Window-preview admission is implemented but not enabled in the production shell.
-  Exact displayed frame, native target identity, target epochs, permissions and
-  retirement are covered by 17 session checks. The GPU renderer is in progress;
-  see [preview ownership](winui-window-previews.md).
-- Spotify Queue now publishes a complete captured indexed observation, preserving
-  duplicate occurrences and suffix actions. Its lane passes 83 tests and a deep
-  style-range check. Playlist/detail/Search remain cursor sources pending a truthful
-  continuation-aware source contract; they are not complete WinUI migrations.
-- The layout integration passes 98 native style checks, six real Playnite checks
-  and five real YouTube Music checks. The broader indexed regression passes list,
-  grid, grouped, deep/reversal and input cases, but the scaled modal dismissal
-  viewport assertion is now corrected by retaining the mounted parent instead of
-  reparenting it through the modal. Modal exits pass 36 checks, and the isolated
-  real-worker modal test passes all 25 cases including scaled dismissal. The full
-  indexed sequence now passes 20/20 on two reviewed runs. A native initial-focus
-  attempt could occur before its target was ready; exact-binding Loaded/LayoutUpdated
-  readiness now retries entry without input replay or viewport writes. Initial test
-  timing errors were also corrected without weakening viewport assertions. Evidence:
-  `artifacts/winui-layout-regression/` and the modal lane's `entry-handoff.md`.
+This branch has a functional WinUI widget frontend and isolated real-package
+validation. It is not yet a complete replacement for the native overlay.
 
-- Combined section/input/media-adapter build passes the analyzer with zero warnings
-  and errors. Its real Playnite Library/tray/details pass completes all six checks;
-  real YouTube Music Home/Library/return completes all five. Screenshots confirm
-  actual artwork and scoped details. The media adapter also passes all 60 checks
-  on this integrated build. Owned windows were closed; no games/music were launched
-  in real widget tests. Evidence: artifacts/winui-input/native-confirmed/,
-  playnite-integrated/ and music-integrated/. The initial batch runner misread the
-  media fixture's result schema; its preserved failure was a harness error, and the
-  corrected runner completed all five fixtures. This is functional validation,
-  not sustained-scroll performance or physical controller acceptance.
+- **Host and input:** catalog discovery, worker lifecycle, displayed-frame action
+  admission and the accepted shared controller/activation adapter are integrated.
+  Ordinary and indexed inputs retain their captured identity across asynchronous
+  activation; stale input is consumed without replay or rebasing. Guide/foreground
+  behavior was physically accepted in the controller harness. The complete production
+  shell still needs physical acceptance; automated runs use `--shell-no-controller`.
+- **Native UI:** standard layouts, responsive branches, text, buttons, action/poster
+  surfaces, icons, prompts, progress, text entry/controller keyboard, Select, sliders,
+  context menus and widget-local modals are mapped. The same themed declaration path
+  renders native indexed item fragments. OriginalColor and ThemeTint package icons
+  retain exact admitted package authority. Shadow and edge-depth styling are incomplete.
+- **Collections:** the exact-count SDK/range/lease contract, native ListView/GridView
+  virtualization, grouped lists, logical focus entry, background/summary retention and
+  captured actions are integrated. Playnite Home/Library, YouTube Music's finite
+  service snapshots, Games & Apps Library/Running and Spotify Queue use it. Games &
+  Apps Catalog retains explicit paging. General opaque continuations are a separate
+  active lane; Spotify playlist/detail/Search and populated YouTube Discover are not
+  yet complete native migrations. See [author contracts](../developers/indexed-collections.md).
+- **Real widget validation:** isolated packages pass six Playnite Library/tray/details
+  checks, five YouTube Music Home/Library/return checks, and six Games & Apps browse
+  checks. Screenshots show actual provider artwork and resolved production styles.
+  These checks do not launch apps/games or establish real-provider playback,
+  sustained-scroll performance or physical controller acceptance.
+- **Modal correctness:** the parent remains mounted while dialog chrome opens/closes.
+  No forced scroll-offset restoration is used. Exact-binding native readiness events
+  fix initial focus arriving before the target can accept it. The reviewed modal lane
+  passes 36 modal checks, 25 real-worker indexed-modal checks and the full 20-check
+  indexed sequence twice. Closing content loses input/automation authority immediately.
+- **Motion and accessibility preferences:** sections, headers and selection surfaces
+  share compositor motion; focus decorations and focused/pressed scale remain native
+  presentation transforms. Background artwork crossfades retain bounded decoded
+  images. Global animation settings, text scale, bold text, contrast and reduced
+  transparency apply after authored styles. Native style/motion checks pass 98 cases;
+  background/presentation checks pass 27. Physical animation quality remains separate.
+- **Sizing:** declared surface hints, per-display interface/text zoom and existing
+  display identity/placement policy are integrated. Native sizing checks pass 13 cases;
+  real Playnite was checked at Windows 125% DPI/interface 75%. Full mixed-monitor,
+  theme/backdrop and final shell-chrome coverage remain.
+- **Media:** sealed document admission, native WebView2, trusted activation, ordered
+  playback observations, durable shell ownership, four-controller capacity, parking
+  and persistent error/recovery are integrated. Host fullscreen moves the same browser
+  into an aspect-fit native view with controller guide controls, then returns or parks
+  it on B/View/hide/deactivation/capability loss. The native media fixture passes 99
+  checks with inspected screenshots. Real-provider fullscreen and production shell
+  routing/placement still need joint verification. Pinned transfer is unfinished.
+  See [fullscreen media](winui-fullscreen-media.md).
+- **Window previews:** session target/permission admission is integrated but production
+  capture is not enabled. The separate GPU-renderer lane passes 15 native policy checks
+  and root's 19-stage pixel run, including expiry while the dispatcher is blocked.
+  Imported swapchains are opaque: safety blanking is black during a UI stall, with the
+  authored fallback restored after dispatch resumes. Transparent DrawingSurface output
+  was rejected because it retained expired pixels while blocked. Renderer integration
+  and an idle-work review remain. Task-window activation already uses the shared native
+  identity/foreground policy; full Task Switcher acceptance awaits preview integration.
+- **Managed gates:** latest relevant integrated suites pass 189 presentation-session,
+  24 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 83 Spotify, 49 YouTube,
+  138 SDK and 17 indexed bridge checks. Counts identify their recorded checkpoint;
+  affected suites must run again after later contract changes. Analyzer builds are clean.
+
+Remaining product work includes continuation-source integration/adoption, preview
+integration, pinned projections/media ownership, radial tray and complete shell
+appearance/backdrop behavior, remaining styling, real-provider workflows, full
+controller/performance/memory/accessibility validation and packaging. Main and the
+installed native candidate are untouched; fixture passes are not migration acceptance.
 
 ## Active implementation lanes
 
