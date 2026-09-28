@@ -113,6 +113,10 @@ internal static class IndexedModalValidation
             view.ScrollIntoView(view.Items[75], ScrollIntoViewAlignment.Default);
             await Until(() => view.ContainerFromIndex(75) is Control { IsLoaded: true });
             ((Control)view.ContainerFromIndex(75)).Focus(FocusState.Keyboard);
+            // The row may already be realized. That does not mean the explicit
+            // ScrollIntoView/focus reveal above has finished moving its viewport.
+            // Measure the modal's effect only after that setup movement settles.
+            await SettleViewport(scroll);
             var smallOffset = scroll.VerticalOffset;
             await Button(ControllerButton.A);
             await Until(() => InModal() && FocusId() == "Widget.modal-play");
@@ -120,7 +124,7 @@ internal static class IndexedModalValidation
             var panelBounds = Bounds(panel, presenter);
             Check(panelBounds.X >= 15 && panelBounds.Y >= 15 && panelBounds.Right <= presenter.ActualWidth - 15 &&
                 panelBounds.Bottom <= presenter.ActualHeight - 15 && Near(scroll.VerticalOffset, smallOffset),
-                "scaled smaller viewport keeps modal inside widget and parent offset unchanged");
+                $"scaled smaller viewport keeps modal inside widget and parent offset unchanged [panel={panelBounds}; widget={presenter.ActualWidth}x{presenter.ActualHeight}; oldOffset={smallOffset}; offset={scroll.VerticalOffset}]");
             await Button(ControllerButton.B);
             await Until(() => !InModal() && FocusId() == "Widget.items.Item.75");
             Check(Near(scroll.VerticalOffset, smallOffset), "scaled modal dismissal preserves indexed viewport");
@@ -179,6 +183,20 @@ internal static class IndexedModalValidation
             {
                 if (Environment.TickCount64 > deadline) throw new TimeoutException($"Indexed modal did not settle: focus={FocusId()}, status={Node("status")?.Text}, summary={Summary()}, calls={Calls()}");
                 await Task.Delay(20, cancellationToken);
+            }
+        }
+        async Task SettleViewport(ScrollViewer scroll)
+        {
+            var stable = 0;
+            var previous = (scroll.VerticalOffset, scroll.ViewportHeight);
+            var deadline = Environment.TickCount64 + 3000;
+            while (stable < 4)
+            {
+                await Task.Delay(20, cancellationToken);
+                var current = (scroll.VerticalOffset, scroll.ViewportHeight);
+                stable = current == previous ? stable + 1 : 0;
+                previous = current;
+                if (Environment.TickCount64 > deadline) throw new TimeoutException("Native setup viewport did not settle before modal opening");
             }
         }
         void Check(bool condition, string name)

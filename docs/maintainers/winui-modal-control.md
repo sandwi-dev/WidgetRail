@@ -93,3 +93,21 @@ Both the native analyzer build and bridge fixture build pass with zero warnings
 or errors. Native indexed-modal probe execution remains pending coordinated
 deployment. These checks are lifecycle/input correctness evidence, not Playnite
 performance or physical controller acceptance.
+
+### Native execution follow-up
+
+The real-worker native modal probe now passes all 24 checks in two consecutive
+runs, including new-query reset on the second run. Its smaller-viewport setup
+previously captured VerticalOffset immediately after ScrollIntoView/Focus while
+that native reveal was still moving: the observed setup offset was 4734.4 and
+settled offset 4764. The probe now waits for its explicit setup movement to
+settle before recording the baseline. The original modal containment and exact
+parent-offset assertions are unchanged.
+
+An earlier integration run reported a no-op on the first A. That failure did not
+reproduce in four local probe starts (two before and two after the viewport-test
+correction). Temporary input tracing showed active/enabled collection input,
+a current row lease and the exact same source/container slot on the first A.
+No production input correction is claimed from those runs. The original
+observation remains unresolved rather than being attributed to the viewport
+fixture race. Temporary input tracing was removed.
