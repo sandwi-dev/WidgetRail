@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
 using WidgetRail.WidgetPresentationSession;
 
@@ -14,6 +16,8 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
     private WidgetViewPresenter? presenter;
     private readonly HashSet<Task> retiring = [];
     private bool disposed;
+    private NativeComputedStyleAdapter? containerStyle;
+    private SelectorItem? styleContainer;
     public WidgetIndexedRowView()
     {
         IsTabStop = false;
@@ -26,6 +30,7 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
         if (disposed) return;
         if (Row is not WidgetIndexedRow row) { Retire(); return; }
         presenter ??= new(presentationOnly: true);
+        presenter.UseIndexedContainerStyles();
         presenter.Failed = row.Owner.Failed;
         presenter.ArtworkGeneration = row.Lease.LeaseId;
         presenter.ResolveArtworkAsync = async (handle, token) =>
@@ -35,9 +40,25 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
         };
         presenter.ApplyFragment(row.Owner.Frame with { RenderStyles = row.Lease.RenderStyles }, row.Item.Root, row.Lease.Range.ScopeId);
         Content = presenter;
+        SelectorItem? container = null;
+        for (var current = VisualTreeHelper.GetParent(this); current is not null; current = VisualTreeHelper.GetParent(current))
+            if (current is SelectorItem item) { container = item; break; }
+        if (!ReferenceEquals(container, styleContainer))
+        {
+            containerStyle?.Dispose(); containerStyle = null; styleContainer = container;
+            if (container is not null)
+            {
+                containerStyle = new(container);
+                containerStyle.InteractionChanged += (focused, pressed) => presenter?.SetIndexedRootInteraction(focused, pressed);
+            }
+        }
+        containerStyle?.Update(row.Lease.RenderStyles.GetValueOrDefault(row.Item.Root.Id));
+        if (containerStyle is not null)
+            presenter.SetIndexedRootInteraction(containerStyle.Interaction.Focused, containerStyle.Interaction.Pressed);
     }
     private void Retire()
     {
+        containerStyle?.Dispose(); containerStyle = null; styleContainer = null;
         var previous = presenter;
         presenter = null;
         Content = null;

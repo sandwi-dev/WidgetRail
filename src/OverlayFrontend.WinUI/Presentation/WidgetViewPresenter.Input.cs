@@ -19,6 +19,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Route widget input on its WinUI dispatcher.");
         if (disposed || applying || presentationOnly || frame is null) return false;
+        if (button == ControllerButton.A) UpdateControllerPressedStyle(phase);
         if (HasTransientControl)
         {
             if (phase == ControllerEventPhase.Pressed)

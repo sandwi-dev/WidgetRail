@@ -70,7 +70,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     public void Apply(WidgetPresentationFrame next) => ApplyCore(next, next.Snapshot.Root,
         next.Snapshot.Root.InputScopeId ?? next.Snapshot.Root.Id);
 
-    internal void ApplyFragment(WidgetPresentationFrame parent, ViewNode root, string scope) => ApplyCore(parent, root, scope);
+    internal void ApplyFragment(WidgetPresentationFrame parent, ViewNode root, string scope)
+    { fragmentRootId = root.Id; ApplyCore(parent, root, scope); }
 
     private void ApplyCore(WidgetPresentationFrame next, ViewNode root, string rootScope)
     {
@@ -351,17 +352,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         }
         if (element is ProgressRing ring)
             ring.Width = ring.Height = node.IndicatorSize switch { LoadingIndicatorSize.Compact => 16, LoadingIndicatorSize.Large => 48, _ => 32 };
-        if (frame!.RenderStyles.TryGetValue(node.Id, out var style) && style.Base.TryGetValue("font-size", out var font)
-            && font.Number is > 0 and <= 512)
-        {
-            if (element is TextBlock label) label.FontSize = font.Number.Value;
-            if (element is Control fontControl) fontControl.FontSize = font.Number.Value;
-        }
-        else
-        {
-            if (element is TextBlock label) label.ClearValue(TextBlock.FontSizeProperty);
-            if (element is Control fontControl) fontControl.ClearValue(Control.FontSizeProperty);
-        }
+        ApplyComputedStyles(binding, node);
     }
 
     private static Dictionary<string, Declaration> Plan(ViewNode root, string rootScope)

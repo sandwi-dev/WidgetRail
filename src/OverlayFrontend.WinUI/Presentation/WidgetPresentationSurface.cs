@@ -9,6 +9,9 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed class WidgetPresentationSurface : ContentControl, IAsyncDisposable
 {
     internal Grid ContentPanel { get; } = new();
+    // Box styles paint behind the artwork, never replace the ImageBrush that
+    // owns its demand. Opacity here applies once to this surface subtree.
+    internal Grid StylePanel { get; } = new();
     private readonly Grid root = new();
     private readonly ImageBrush artwork = new() { Stretch = Stretch.UniformToFill };
     internal WidgetViewPresenter? Fragment { get; }
@@ -28,7 +31,8 @@ internal sealed class WidgetPresentationSurface : ContentControl, IAsyncDisposab
         }
         else root.Background = artwork;
         root.Children.Add(ContentPanel);
-        Content = root;
+        StylePanel.Children.Add(root);
+        Content = StylePanel;
     }
     internal void SetArtwork(ImageSource? source, ImageFit? fit)
     {
@@ -41,6 +45,6 @@ internal sealed class WidgetPresentationSurface : ContentControl, IAsyncDisposab
         artwork.ImageSource = null;
         ContentPanel.Children.Clear();
         if (Fragment is not null) await Fragment.DisposeAsync();
-        root.Children.Clear(); Content = null;
+        root.Children.Clear(); StylePanel.Children.Clear(); Content = null;
     }
 }
