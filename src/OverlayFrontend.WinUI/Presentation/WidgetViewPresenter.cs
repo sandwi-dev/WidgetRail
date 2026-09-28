@@ -53,6 +53,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         IsTabStop = false;
         XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled;
         Loaded += (_, _) => QueueEntryFocus();
+        Unloaded += (_, _) => DismissTransientControl();
         GotFocus += (_, _) => RememberFocus();
         GettingFocus += OnGettingFocus;
         AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelGroupEntry()), true);
@@ -142,6 +143,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 && !ReferenceEquals(FocusedBinding(), focused) ? focused : null;
         }
         finally { applying = false; }
+        ValidateTransientControl();
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
         QueueSurfaceUpdate();
     }
@@ -160,6 +162,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (!IsLoaded || XamlRoot is null || frame is null || applying) return;
         var reassertFocus = restoreNativeFocus;
         restoreNativeFocus = false;
+        if (TryRestoreTransientFocus()) return;
         if (TryRestoreGroupEntry()) return;
         if (reassertFocus && FocusedBinding() is { } current && Eligible(current) &&
             FocusManager.GetFocusedElement(XamlRoot) is Control leaf && leaf.Focus(FocusState.Keyboard))
@@ -185,6 +188,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         if (applying || !IsLoaded || frame is null) return false;
         CancelGroupEntry();
+        if (MoveSelectFocus(direction)) return true;
         if (FindIndexedCollection()?.MoveFocus(direction) == true) return true;
         var scope = bindings.Values.FirstOrDefault(binding => declarations[binding.Identity.Id].Node.InputScopeId == frame.Authority.ActiveInputScopeId)
             ?? (bindings.GetValueOrDefault(frame.Snapshot.Root.Id)?.Identity.Scope == frame.Authority.ActiveInputScopeId
@@ -196,6 +200,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         if (applying || disposed || presentationOnly) return;
         CancelGroupEntry();
+        if (ActivateSelect()) return;
         if (FindIndexedCollection()?.ActivateFocused() == true) return;
         if (!applying && FocusedBinding() is { Element: Button { Command: { } command } button } binding
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
@@ -281,6 +286,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 element = presentationOnly ? children : new Button { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch,
                     Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
                 break;
+            case ViewNodeKind.Select:
+                element = presentationOnly ? new TextBlock() : CreateSelect(declaration.Identity, token);
+                break;
             case ViewNodeKind.Button:
                 element = presentationOnly ? new TextBlock { TextWrapping = TextWrapping.Wrap } :
                     new Button { Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
@@ -312,7 +320,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             control.IsTabStop = node.IsFocusable && binding.Identity.Scope == frame!.Authority.ActiveInputScopeId;
             control.IsHitTestVisible = !node.IsFocusable || binding.Identity.Scope == frame!.Authority.ActiveInputScopeId;
         }
-        if (element is Button button && node.Kind == ViewNodeKind.Button) button.Content = node.Text;
+        if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) button.Content = node.Text;
         if (binding.Children is StackPanel panel && node.Kind == ViewNodeKind.ActionSurface)
             panel.Orientation = node.ActionSurfaceOrientation == ActionSurfaceOrientation.Horizontal ? Orientation.Horizontal : Orientation.Vertical;
         if (element is ScrollViewer scroll)
@@ -357,7 +365,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 || node.CollectionAnchorKey is not null || node.CollectionGeneration is not null || node.CollectionResetGeneration is not null
                 || node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null
                 || node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Button or ViewNodeKind.ActionSurface
-                    or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
+                    or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
                     or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface))
                 throw new NotSupportedException($"WinUI presentation for {node.Kind} with these declarations is not implemented.");
             var scope = node.InputScopeId ?? inheritedScope;
