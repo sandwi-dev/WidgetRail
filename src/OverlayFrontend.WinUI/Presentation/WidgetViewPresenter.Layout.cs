@@ -51,7 +51,7 @@ internal sealed partial class WidgetViewPresenter
             var spacing = NativeComputedStyleAdapter.Spacing(frame?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "gap");
             responsive.RowSpacing = spacing?.Top ?? 12;
             responsive.ColumnSpacing = spacing?.Right ?? 12;
-            responsive.Configure(children.Select(child => bindings[child.Id].Element).ToArray(),
+            responsive.Configure(children.Select(child => bindings[child.Id].LayoutElement).ToArray(),
                 node.GridMinimumColumnWidth ?? 160, node.GridMaximumColumns ?? 12);
             return;
         }
@@ -92,9 +92,9 @@ internal sealed partial class WidgetViewPresenter
         for (var index = 0; index < children.Length; ++index)
         {
             var child = children[index];
-            Grid.SetRow(bindings[child.Id].Element, horizontal ? 0 : slots[index]);
-            Grid.SetColumn(bindings[child.Id].Element, horizontal ? slots[index] : 0);
-            var element = bindings[child.Id].Element;
+            Grid.SetRow(bindings[child.Id].LayoutElement, horizontal ? 0 : slots[index]);
+            Grid.SetColumn(bindings[child.Id].LayoutElement, horizontal ? slots[index] : 0);
+            var element = bindings[child.Id].LayoutElement;
             var alignment = ComputedStyle(node, "align")?.Text;
             if (horizontal)
                 element.VerticalAlignment = FillsAxis(child, "height") ? VerticalAlignment.Stretch : alignment switch { "start" => VerticalAlignment.Top, "center" => VerticalAlignment.Center,

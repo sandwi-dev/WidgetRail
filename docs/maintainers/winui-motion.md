@@ -158,8 +158,50 @@ styles disappear, or when the child visual slot belongs to another native visual
 owner. Same-state updates do not replay motion. Resize settles to the current focus
 state; stale queued Unloaded after reparenting does not retire an already-loaded owner.
 This checkpoint animates the outline; focused background/border changes still use the
-shared native style state immediately. Coordinated focus-surface crossfades, section
-outgoing lifetime, navigation selection motion and dialog exits remain unfinished.
+shared native style state immediately. The section/navigation integration below
+adds outgoing lifetime and navigation motion. Coordinated focus-surface crossfades
+and dialog exits remain unfinished.
+
+## Section and navigation integration
+
+`WidgetViewPresenter.Transitions` now consumes the existing Content, Layout and
+Selection declarations. `WidgetMotionGroups` identifies section-key changes;
+ordinary snapshots retain their controls without replaying motion. All eligible
+section, header and selection channels start in one native composition batch using
+the existing global preset, speed and reduced-motion policy.
+
+Dedicated `WidgetMotionHost` layers separate native control geometry/style/scale
+from transition transforms. Content has a stable clip; headers translate without
+resizing glyphs. Selected navigation surfaces paint behind stationary labels and
+move/resize independently. Their native control remains the action/focus owner.
+
+On a content-key change, the outgoing realized subtree moves to a noninteractive
+paint layer. It no longer belongs to the presenter's binding table: old command
+tokens cannot dispatch against the new frame, indexed navigation is suspended,
+pointer/tab focus is removed, and an empty automation peer hides outgoing semantic
+children. Only the incoming subtree participates in layout. Completion retires
+outgoing styles, artwork demand and collection leases. There is no frame capture,
+bitmap readback or managed animation loop.
+
+At most one outgoing tree per group survives. A superseding key cancels/settles
+the previous batch before preparing the newest destination; there is no queued
+transition replay or retained mixture of old pages. This is a settle-and-replace
+interruption policy, not velocity-preserving continuation. Resize, appearance
+changes, unloaded hosts, disappearing targets and disposal settle pending motion.
+Reduced motion and None update directly without outgoing retention.
+
+Content containing a separately owned MediaViewport or WindowPreview currently
+updates directly, while eligible header/selection channels still animate. This
+preserves live-source ownership pending a composed live-surface implementation.
+Dialog exits, focus-surface crossfades and depth shadows remain separate work.
+
+Validation: 90 native style checks, including genuine declaration reconciliation,
+stale outgoing action rejection, automation exclusion, synchronized channels,
+same-key identity, rapid interruption, resizing, reduced motion and disposal.
+Actual Playnite Home/Library and YouTube Music Home/Library each completed three
+transitions with three native channels and zero outgoing trees remaining. Static
+artwork/layout screenshots were inspected. These checks establish integration and
+lifetime behavior; subjective animation quality still requires physical review.
 
 Surface-shading is now a cached native vertical LinearGradientBrush behind content.
 Its top/bottom colors use the original renderer's bounded Shade formula and preserve

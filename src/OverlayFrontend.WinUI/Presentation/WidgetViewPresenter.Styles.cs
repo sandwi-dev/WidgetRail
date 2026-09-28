@@ -58,6 +58,7 @@ internal sealed partial class WidgetViewPresenter
         { previous.Dispose(); nativeStyles.Remove(binding); }
         if (!nativeStyles.TryGetValue(binding, out var adapter))
             nativeStyles.Add(binding, adapter = new(target, node.IsFocusable));
+        adapter.SelectionSurface = binding.MotionHost?.SelectionSurface;
         adapter.Update(frame?.RenderStyles.GetValueOrDefault(node.Id),
             typographyOnly: indexedRootStyleOnContainer && node.Id == fragmentRootId,
             interaction: indexedRootStyleOnContainer && node.Id == fragmentRootId ? indexedRootInteraction : null);
@@ -140,6 +141,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private bool typographyOnly;
     private WidgetControlScaleMotion? scaleMotion;
     private WidgetFocusDecoration? focusDecoration;
+    internal Border? SelectionSurface { get; set; }
+    private static readonly SolidColorBrush transparentSurface = new(Microsoft.UI.Colors.Transparent);
     internal WidgetFocusDecoration? FocusDecoration => focusDecoration;
     internal WidgetControlScaleMotion? ScaleMotion => scaleMotion;
     private (bool Focused, bool Pressed)? interactionOverride;
@@ -282,6 +285,15 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         var padding = Spacing(style, "padding");
         var radius = Number(style, "corner-radius", true) is { } value ? new CornerRadius(value) : (CornerRadius?)null;
         var thickness = BorderWidth(style);
+        if (SelectionSurface is { } selection)
+        {
+            selection.Background = background;
+            selection.BorderBrush = border;
+            selection.BorderThickness = thickness ?? new();
+            selection.CornerRadius = radius ?? new();
+            selection.Opacity = opacity is null || contrast ? 1 : Math.Clamp(opacity.Value, 0, 1);
+            background = border = transparentSurface;
+        }
         switch (element)
         {
             case Control:

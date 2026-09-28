@@ -51,7 +51,9 @@ internal sealed partial class WidgetViewPresenter
                     .ToDictionary(pair => pair.Key, pair => pair.Value.Text),
             };
         }).ToArray();
-        File.WriteAllText(path, JsonSerializer.Serialize(new { sequence = frame?.Authority.SnapshotSequence, ActualWidth, ActualHeight, nodes },
+        File.WriteAllText(path, JsonSerializer.Serialize(new { sequence = frame?.Authority.SnapshotSequence, ActualWidth, ActualHeight,
+            motion = new { starts = transitionStarts, targets = LastTransitionTargetCount, outgoing = OutgoingTransitionCount,
+                outcome = lastTransitionOutcome?.ToString() }, nodes },
             new JsonSerializerOptions { WriteIndented = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals }));
     }
 }

@@ -180,6 +180,14 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     {
         foreach (var container in containers.Keys) NativeComputedStyleAdapter.For(container)?.RefreshBoxLayout();
     }
+    internal void SuspendForTransition()
+    {
+        inputActive = false;
+        CancelNavigation();
+        CancelPendingActivation();
+        if (view is not null) { view.IsTabStop = false; view.IsItemClickEnabled = false; }
+        foreach (var container in containers.Keys) container.IsTabStop = false;
+    }
     internal static void ConfigureContainerLayout(SelectorItem container, ScrollAxis axis, double placeholderExtent)
     {
         container.HorizontalContentAlignment = HorizontalAlignment.Stretch;

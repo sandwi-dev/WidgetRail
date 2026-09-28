@@ -32,6 +32,7 @@ internal sealed partial class WidgetViewPresenter
                 _ => true,
             };
             bindings[declaration.Node.Id].Element.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            bindings[declaration.Node.Id].LayoutElement.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -45,6 +46,7 @@ internal sealed partial class WidgetViewPresenter
         {
             var element = bindings[declaration.Node.Id].Element;
             ApplySizeAndTypography(element, declaration.Node);
+            ApplyMotionGeometry(bindings[declaration.Node.Id]);
             if (element is WidgetIndexedCollectionView collection) collection.RefreshContainerLayout();
             if (element is Grid grid && element is not (WidgetModalLayer or WidgetPosterPanel)) UpdateLayout(grid, declaration.Node);
         }

@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.OverlayFrontend.WinUI.Motion;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -25,7 +26,9 @@ internal sealed record WidgetActionRequest(WidgetPresentationFrame Displayed, Wi
 internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDisposable
 {
     private sealed record Declaration(ViewNode Node, WidgetElementIdentity Identity, string? ParentId);
-    private sealed record Binding(WidgetElementIdentity Identity, FrameworkElement Element, Panel? Children, object Token);
+    private sealed record Binding(WidgetElementIdentity Identity, FrameworkElement Element, Panel? Children, object Token,
+        WidgetMotionHost? MotionHost = null)
+    { internal FrameworkElement LayoutElement => MotionHost ?? Element; }
     private Dictionary<string, Declaration> declarations = new(StringComparer.Ordinal);
     private Dictionary<string, Binding> bindings = new(StringComparer.Ordinal);
     private readonly Dictionary<string, WidgetElementIdentity> remembered = new(StringComparer.Ordinal);
@@ -65,8 +68,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         IsTabStop = false;
         XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled;
         Loaded += (_, _) => QueueEntryFocus();
-        SizeChanged += (_, _) => RefreshResponsiveLayout();
-        Unloaded += (_, _) => DismissTransientControl();
+        SizeChanged += (_, _) => { SettleTransitions(); RefreshResponsiveLayout(); };
+        Unloaded += (_, _) => { DismissTransientControl(); if (!IsLoaded) SettleTransitions(); };
         GotFocus += (_, _) => RememberFocus();
         GettingFocus += OnGettingFocus;
         AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelGroupEntry()), true);
@@ -93,10 +96,13 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         var sameOwner = frame is { } prior && SameOwner(prior.Authority, next.Authority);
         if (!presentationOnly && sameOwner && frame!.Authority.SnapshotSequence >= next.Authority.SnapshotSequence) return;
         var plan = Plan(root, rootScope);
+        var transition = PrepareTransitions(plan, sameOwner);
         var nextBindings = new Dictionary<string, Binding>(StringComparer.Ordinal);
         foreach (var declaration in plan.Values)
-            nextBindings.Add(declaration.Node.Id, sameOwner && bindings.TryGetValue(declaration.Node.Id, out var retained)
+            nextBindings.Add(declaration.Node.Id, sameOwner && !transition.ReplacedIds.Contains(declaration.Node.Id)
+                && bindings.TryGetValue(declaration.Node.Id, out var retained)
                 && retained.Identity == declaration.Identity
+                && declarations[declaration.Node.Id].Node.Transition?.Kind == declaration.Node.Transition?.Kind
                 && declarations[declaration.Node.Id].Node.ActionSurfacePresentation == declaration.Node.ActionSurfacePresentation
                 ? retained : Create(declaration, IsModalDialog(declaration, plan)));
 
@@ -107,10 +113,14 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         {
             // Detach only changed parentage before any insert. In-place property
             // updates and adjacent insertions never clear surviving child controls.
-            if (Content is FrameworkElement previousRoot && !ReferenceEquals(previousRoot, nextBindings[root.Id].Element))
-                Content = null;
+            if (motionStage is not null)
+            {
+                if (!ReferenceEquals(motionStage.Current, nextBindings[root.Id].LayoutElement)) motionStage.SetCurrent(null);
+            }
+            else if (Content is FrameworkElement previousRoot && !ReferenceEquals(previousRoot, nextBindings[root.Id].LayoutElement)) Content = null;
             foreach (var (id, binding) in bindings)
             {
+                if (transition.Retained.Contains(binding)) continue;
                 if (!nextBindings.TryGetValue(id, out var replacement) || !ReferenceEquals(binding, replacement)) Retire(binding);
                 if (binding.Children is null) continue;
                 for (var index = binding.Children.Children.Count - 1; index >= 0; --index)
@@ -120,7 +130,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     var childId = ((FrameworkElement)child).Tag is WidgetElementIdentity identity ? identity.Id : string.Empty;
                     if (!plan.TryGetValue(childId, out var nextChild) || nextChild.ParentId != id
                         || !nextBindings.TryGetValue(id, out var nextParent) || !ReferenceEquals(nextParent, binding)
-                        || !ReferenceEquals(nextBindings[childId].Element, child))
+                        || !ReferenceEquals(nextBindings[childId].LayoutElement, child))
                         binding.Children.Children.RemoveAt(index);
                 }
             }
@@ -144,7 +154,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 if (binding.Children is { } panel)
                     for (var index = 0; index < declaration.Node.Children.Count; ++index)
                     {
-                        var child = bindings[declaration.Node.Children[index].Id].Element;
+                        var child = bindings[declaration.Node.Children[index].Id].LayoutElement;
                         if (index < panel.Children.Count && ReferenceEquals(panel.Children[index], child)) continue;
                         var oldIndex = panel.Children.IndexOf(child);
                         if (oldIndex >= 0) panel.Children.RemoveAt(oldIndex);
@@ -152,7 +162,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     }
             }
             UpdateModalGeometry();
-            Content = bindings[root.Id].Element;
+            if (motionStage is not null) { motionStage.SetCurrent(bindings[root.Id].LayoutElement); Content = motionStage; }
+            else Content = bindings[root.Id].LayoutElement;
             needsEntry = needsEntry || !sameOwner || oldScope != next.Authority.ActiveInputScopeId
                 || (focused is not null && (!bindings.TryGetValue(focused.Identity.Id, out var current)
                     || !ReferenceEquals(current, focused) || !Eligible(current)));
@@ -166,6 +177,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         ValidateSliderAdjustment();
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
         QueueSurfaceUpdate();
+        StartTransitions(transition);
     }
 
     private void QueueEntryFocus()
@@ -343,7 +355,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         }
         element.Tag = declaration.Identity;
         AutomationProperties.SetAutomationId(element, $"Widget.{node.Id}");
-        return new(declaration.Identity, element, children, token);
+        var host = node.Transition is { } transition
+            ? new WidgetMotionHost(element, transition.Kind == WidgetTransitionKind.Selection) { Tag = declaration.Identity } : null;
+        return new(declaration.Identity, element, children, token, host);
     }
 
     private void Update(Binding binding, ViewNode node)
@@ -390,6 +404,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             progress.Value = node.Value ?? 0;
         }
         ApplyComputedStyles(binding, node);
+        ApplyMotionGeometry(binding);
+        if (binding.MotionHost?.SelectionSurface is not null)
+            Canvas.SetZIndex(binding.LayoutElement, node.IsSelected is true ? -1 : 0);
     }
 
     private static Dictionary<string, Declaration> Plan(ViewNode root, string rootScope)

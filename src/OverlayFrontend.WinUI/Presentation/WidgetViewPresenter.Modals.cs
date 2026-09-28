@@ -14,7 +14,7 @@ internal sealed partial class WidgetViewPresenter
             layer.ApplyAppearance(appearance, systemAnimationsEnabled);
             var node = declarations[binding.Identity.Id].Node;
             var dialog = node.Children[1];
-            layer.Configure(bindings[node.Children[0].Id].Element, bindings[dialog.Id].Element,
+            layer.Configure(bindings[node.Children[0].Id].LayoutElement, bindings[dialog.Id].LayoutElement,
                 Length(dialog, "width") ?? 760, Length(dialog, "height") ?? 640,
                 Length(dialog, "max-width") ?? double.PositiveInfinity,
                 Length(dialog, "max-height") ?? double.PositiveInfinity);
