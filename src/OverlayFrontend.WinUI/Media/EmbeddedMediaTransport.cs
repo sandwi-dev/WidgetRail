@@ -3,6 +3,8 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Media;
 
+internal enum EmbeddedMediaHostCommand { TogglePlayback, SeekBackward, SeekForward }
+
 /// <summary>
 /// The existing SDK adapter wire protocol. Each browser document has isolated authority,
 /// strictly increasing events and at most one command in flight. This is not a script API.
@@ -58,6 +60,7 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
     private sealed record Pending(long Id, string Command, EmbeddedMediaPlaybackCommand? Playback)
     {
         public bool Armed { get; set; }
+        public string? HostMediaKey { get; init; }
     }
 
     public string Initialize()
@@ -102,9 +105,24 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
         }, null);
     }
 
-    private string Encode(string command, EmbeddedMediaPlaybackCommand? playback)
+    internal string? DispatchHost(EmbeddedMediaHostCommand command, EmbeddedMediaPlaybackEvent current, double step)
     {
-        pending = new(++nextCommand, command, playback);
+        if (!Ready || Busy || current.MediaKey != MediaKey || !double.IsFinite(step) ||
+            step is < ProtocolConstants.MinimumMediaSeekStepSeconds or > ProtocolConstants.MaximumMediaSeekStepSeconds) return null;
+        var name = command switch
+        {
+            EmbeddedMediaHostCommand.TogglePlayback => current.State == EmbeddedMediaPlaybackState.Playing ? "pause" : "arm-activate",
+            EmbeddedMediaHostCommand.SeekBackward or EmbeddedMediaHostCommand.SeekForward => "seek",
+            _ => throw new ArgumentOutOfRangeException(nameof(command)),
+        };
+        if (name == "seek" && current.DurationSeconds <= 0) return null;
+        var position = name == "seek" ? Math.Clamp(current.PositionSeconds + (command == EmbeddedMediaHostCommand.SeekBackward ? -step : step), 0, current.DurationSeconds) : (double?)null;
+        return Encode(name, null, current.MediaKey, position);
+    }
+
+    private string Encode(string command, EmbeddedMediaPlaybackCommand? playback, string? hostMediaKey = null, double? hostPosition = null)
+    {
+        pending = new(++nextCommand, command, playback) { HostMediaKey = hostMediaKey };
         var body = new Dictionary<string, object?>
         {
             ["command"] = command,
@@ -124,6 +142,11 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
             if (playback.PlaybackRate is { } rate) body["playbackRate"] = rate;
             if (playback.Muted is { } muted) body["muted"] = muted;
             if (playback.Loop is { } loop) body["loop"] = loop;
+        }
+        else if (hostMediaKey is not null)
+        {
+            body["mediaKey"] = hostMediaKey;
+            if (hostPosition is { } position) body["positionSeconds"] = position;
         }
         return JsonSerializer.Serialize(body);
     }
@@ -180,6 +203,7 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
                     rate < ProtocolConstants.MinimumEmbeddedMediaPlaybackRate || rate > ProtocolConstants.MaximumEmbeddedMediaPlaybackRate ||
                     playing != (state == EmbeddedMediaPlaybackState.Playing)) return false;
                 if (commandId == 0 && key != MediaKey || pending?.Playback is { } expected && commandId != 0 && key != expected.MediaKey) return false;
+                if (commandId != 0 && pending?.HostMediaKey is { } hostKey && key != hostKey) return false;
                 if (pending?.Playback is { } preference && commandId != 0 && error is null &&
                     (preference.Kind == EmbeddedMediaPlaybackCommandKind.SetPlaybackRate && preference.PlaybackRate != rate ||
                      preference.Kind == EmbeddedMediaPlaybackCommandKind.SetMuted && preference.Muted != isMuted ||

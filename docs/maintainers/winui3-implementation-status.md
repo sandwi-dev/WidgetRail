@@ -52,7 +52,7 @@ are untouched. Migration is active and incomplete.
   into the parent tree and exceeding its style budget. They remain display-only;
   live replacement retires their bindings. The fresh real package starts without
   Retry, and both its empty-state and saved-state transport probes pass.
-- Latest integrated managed gates: 157 Playnite tests, 176 session tests, 24 shell
+- Latest integrated managed gates: 157 Playnite tests, 189 session tests, 24 shell
   tests, 35 style tests. Package-icon transport is admitted by exact inventory/hash
   and bounded independently. OriginalColor Icon/Button/Select rendering is integrated
   with native icon checks and a 7-check/45-symbol glyph regression. ThemeTint now
@@ -93,8 +93,12 @@ are untouched. Migration is active and incomplete.
   strict requests/messages, retirement and native modal layering. Production shell
   ownership is integrated: four bounded retained controllers, native viewport
   placement, parking, pending-Play interruption and persistent sanitized failure
-  reporting. The integrated fixture now passes 79 checks, including explicit
-  document recovery. Real provider playback and pinned/fullscreen transfer remain.
+  reporting. Host fullscreen now retains the same browser, uses aspect-fit native
+  layout and controller guide controls, and returns on B/View/hide/capability loss.
+  The integrated fixture passes 99 checks, including explicit document recovery
+  and native fullscreen transfer/playback. Real provider fullscreen and physical
+  shell acceptance remain; pinned transfer is not implemented. See
+  [fullscreen media](winui-fullscreen-media.md).
 - Task-window activation is wired through the existing host effect, with native
   identity and age checks before and after hiding. See
   [task-window activation](winui-task-window-activation.md); full Task Switcher
@@ -123,9 +127,13 @@ are untouched. Migration is active and incomplete.
 - The layout integration passes 98 native style checks, six real Playnite checks
   and five real YouTube Music checks. The broader indexed regression passes list,
   grid, grouped, deep/reversal and input cases, but the scaled modal dismissal
-  viewport assertion remains open. Initial baseline scroll and modal entrance
-  timing errors in the test were corrected; the remaining close-time movement is
-  under investigation. Evidence: `artifacts/winui-layout-regression/`.
+  viewport assertion is now corrected by retaining the mounted parent instead of
+  reparenting it through the modal. Modal exits pass 36 checks, and the isolated
+  real-worker modal test passes all 25 cases including scaled dismissal. The full
+  indexed sequence still passes 19/20: a later repeated opening can leave focus on
+  the parent. That remains under investigation. Initial test timing errors were
+  also corrected without weakening viewport assertions. Evidence:
+  `artifacts/winui-layout-regression/` and the modal lane handoff.
 
 - Combined section/input/media-adapter build passes the analyzer with zero warnings
   and errors. Its real Playnite Library/tray/details pass completes all six checks;
@@ -142,11 +150,12 @@ are untouched. Migration is active and incomplete.
 
 - Window previews: native GPU-backed capture, permission renewal and target lifetime,
   with controlled helper-window validation before production wiring.
-- Spotify: collection adoption with accurate provider addressing and captured actions.
+- Continuation collections: explicit discovered-prefix SDK/wire lifecycle, native
+  incremental loading and YouTube Discover adoption. Spotify's other cursor routes
+  follow after this contract is proven; its indexed Queue is already integrated.
 - Widget-local modal exits: compositor motion with immediate scope retirement and
   safe close/reopen behavior.
-- Root integration: action-surface constrained layout, responsive/static grids and
-  regression checks across Games & Apps, Playnite and YouTube Music.
+- Root integration: fullscreen media, production integration and regression checks.
 
 After these checkpoints, remaining feature coverage includes Spotify and YouTube
 video collection adoption, WindowPreview, pinned/fullscreen projections, radial

@@ -52,6 +52,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         this.options = options;
         interactionAdmission = new(transitions);
         InitializeComponent();
+        InitializeFullscreenView();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged += SystemAnimationsChanged;
         Tray.ItemsSource = catalogItems;
         Loaded += (_, _) => startup ??= StartAsync();
@@ -211,7 +212,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         publication = state.PublicationRevision;
         if (state.Failure is { } failure) { Status.Text = $"{failure.Message} ({failure.Code})"; Retry.Visibility = Visibility.Visible; return; }
         if (state.LastGood is not { } next || surface is null) return;
-        try { surface.Apply(next); UpdateSurfaceHints(next.Snapshot.Surface); ShowPresentationStatus(next.Descriptor.Name); }
+        try
+        {
+            surface.Apply(next); UpdateSurfaceHints(next.Snapshot.Surface); ShowPresentationStatus(next.Descriptor.Name);
+            if (mediaOwner?.FullscreenState is { } fullscreen) fullscreenView.Show(fullscreen.Declaration);
+        }
         catch (Exception error) { ReportFailure(error); }
         if (!layoutCaptureQueued && options.LayoutDiagnosticsPath is { } diagnosticPath)
         {
@@ -368,7 +373,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal void QueueEntryFocus()
     {
         if (retired || !visible) return;
-        if (interactive && surface is not null) surface.Enter(restoreNativeFocus: true);
+        if (IsMediaFullscreen) fullscreenView.Enter();
+        else if (interactive && surface is not null) surface.Enter(restoreNativeFocus: true);
         else FocusTray();
     }
 
@@ -419,11 +425,15 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private async Task InvokeAsync(WidgetActionRequest request)
     {
-        if (retired || !visible || switching || owner is null || request.Authority.WidgetId != activeWidget) return;
+        if (retired || !visible || switching || IsMediaFullscreen || owner is null || request.Authority.WidgetId != activeWidget) return;
         try
         {
             if (await EnsureInteractionAsync(request.Authority, lifetime.Token))
-                await owner.Session.SendActionAsync(request.Displayed, request.Action, lifetime.Token);
+            {
+                if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EnterMediaFullscreenAction)
+                    mediaOwner?.EnterFullscreen(request.Displayed, request.Action);
+                else await owner.Session.SendActionAsync(request.Displayed, request.Action, lifetime.Token);
+            }
         }
         catch (WidgetPresentationSessionException error) when (error.Code is "ordinary_input_stale" or "snapshot_stale" or "input_scope_stale" or "presentation_stale") { }
         catch (OperationCanceledException) when (retired) { }

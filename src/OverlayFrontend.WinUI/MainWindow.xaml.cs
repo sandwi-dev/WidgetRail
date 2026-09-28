@@ -33,6 +33,11 @@ public sealed partial class MainWindow : Window
         // Initial validation window uses physical pixels. Production placement
         // will come from the existing platform adapter's monitor/DPI policy.
         AppWindow.ResizeClient(new SizeInt32(960, 640));
+        if (validateEmbeddedMedia)
+        {
+            var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
+            AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(880 * scale), (int)Math.Ceiling(680 * scale)));
+        }
         if (validateController || replayController)
         {
             var page = new Validation.ControllerValidationPage();
@@ -78,6 +83,13 @@ public sealed partial class MainWindow : Window
                 new WidgetRail.OverlayPlatformClient.WindowsTaskWindowActivation());
             page.TaskWindowActivationRequested += effect => page.ActivateTaskWindow(effect, taskActivation, HideOverlay);
             page.AppearanceLoaded += ApplyOverlayPlacement;
+            page.MediaPresentationChanged += () =>
+            {
+                ShellHeader.Visibility = page.IsMediaFullscreen ? Visibility.Collapsed : Visibility.Visible;
+                ShellLayout.RowSpacing = page.IsMediaFullscreen ? 0 : 12;
+                ShellCard.Padding = new Thickness(page.IsMediaFullscreen ? 0 : 16);
+                QueueOverlayPlacement();
+            };
             if (!shellNoController)
             {
                 try

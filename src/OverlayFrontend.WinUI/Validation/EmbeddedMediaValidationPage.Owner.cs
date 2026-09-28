@@ -26,6 +26,7 @@ internal sealed partial class EmbeddedMediaValidationPage
         Id = "layout-" + treeRevision, InputScopeId = "page", Kind = ViewNodeKind.Stack,
         Children = [new ViewNode { Id = "native.commands", Kind = ViewNodeKind.Row, Children = [
             new() { Id = "native.play", Kind = ViewNodeKind.Button, Text = "Play", ActionId = "native.play" },
+            new() { Id = "native.fullscreen", Kind = ViewNodeKind.Button, Text = "Fullscreen", ActionId = WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EnterMediaFullscreenAction },
             new() { Id = "native.options", Kind = ViewNodeKind.Select, Text = "Options", AccessibilityLabel = "Options", AccessibilityValue = "First",
                 SelectOptions = [new("first", "First", "pick.first", IsSelected: true), new("second", "Second", "pick.second")] }] },
             .. (declaration is null || parked ? Array.Empty<ViewNode>() : [new ViewNode { Id = "viewport-" + treeRevision, Kind = ViewNodeKind.MediaViewport,
@@ -86,6 +87,7 @@ internal sealed partial class EmbeddedMediaValidationPage
         await Until(() => events.Any(value => value.SessionId == "owner-player" && value.CommandSequence == 3));
         Check(ReferenceEquals(initialBrowser, OwnerBrowser()) && mediaOwner.BrowserCreationCount == creations && resolveCount == resolutions,
             "compatible command snapshots preserve the native browser and sealed resource admission");
+        await RunFullscreenOwnerChecksAsync();
         ++treeRevision;
         ownerPresenter.Apply(await SnapshotAsync());
         await Until(() => Descendants(ownerPresenter).OfType<WidgetMediaViewport>().Any(value =>

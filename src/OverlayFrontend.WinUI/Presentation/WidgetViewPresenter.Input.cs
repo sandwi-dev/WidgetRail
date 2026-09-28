@@ -54,6 +54,8 @@ internal sealed partial class WidgetViewPresenter
         try
         {
             if (!await AdmitInteractionAsync(authority, cancellationToken) || !IsInteractionCurrent(authority)) return true;
+            if (DispatchActionAsync is not null && session.ResolveEmbeddedMediaFullscreenInput(displayed, input) is { } hostAction)
+            { await DispatchActionAsync(new(displayed, hostAction)); return true; }
             return await session.SendControllerInputAsync(displayed, input, cancellationToken);
         }
         // A newer publication can retire the displayed input while it crosses IPC.

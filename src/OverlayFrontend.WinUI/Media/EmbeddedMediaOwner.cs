@@ -13,7 +13,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 /// this owner alone closes documents. Native controllers and pending admissions share
 /// the original host's four-session capacity, including parked sessions.
 /// </summary>
-internal sealed class EmbeddedMediaOwner : IAsyncDisposable
+internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
 {
     internal const int MaximumResidentSessions = 4;
     private sealed class Entry(string widgetId)
@@ -69,6 +69,7 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
         activeWidget = widgetId;
         visible = isVisible;
         inputEnabled = isVisible && acceptsInput;
+        if (!inputEnabled || fullscreen?.Document.Authority.WidgetId != widgetId) ExitFullscreen();
         Reconcile();
     }
 
@@ -109,6 +110,7 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
             do
             {
                 reconcileAgain = false;
+                if (fullscreen is not null && !session.IsMediaPresentationCurrent(fullscreen)) ExitFullscreen();
                 foreach (var id in failures.Keys.ToArray())
                     if (!entries.ContainsKey(id) && session.GetState(id)?.LastGood?.Snapshot.EmbeddedMediaSession is null)
                         SetFailure(id, null);
@@ -167,8 +169,9 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
     private static bool ContainsViewport(ViewNode node, Viewport target) =>
         node.Kind == ViewNodeKind.MediaViewport && node.Id == target.ElementId && node.MediaSessionId == target.SessionId ||
         node.Children.Any(child => ContainsViewport(child, target));
-    private bool CanAcceptInput(string widgetId) => MatchingViewport(widgetId) is { } target && inputEnabled && target.Element.AcceptsInput &&
-        session.GetState(widgetId)?.LastGood?.Authority.ActiveInputScopeId == target.Authority.ActiveInputScopeId;
+    private bool CanAcceptInput(string widgetId) => inputEnabled && (IsFullscreen(widgetId) ||
+        MatchingViewport(widgetId) is { } target && target.Element.AcceptsInput &&
+        session.GetState(widgetId)?.LastGood?.Authority.ActiveInputScopeId == target.Authority.ActiveInputScopeId);
 
     private static bool AncestorsVisible(FrameworkElement element)
     {
@@ -211,19 +214,21 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
     private void Place(Entry entry, Viewport? target)
     {
         if (entry.Surface is not { } surface) return;
-        var destination = target?.Element.SurfaceHost ?? parking;
+        var isFullscreen = IsFullscreen(entry.WidgetId);
+        var destination = isFullscreen ? fullscreenHost! : target?.Element.SurfaceHost ?? parking;
         if (!ReferenceEquals(surface.Element.Parent, destination))
         {
             surface.UpdatePresentation(false, false);
             if (surface.Element.Parent is Panel previous) previous.Children.Remove(surface.Element);
             destination.Children.Add(surface.Element);
         }
-        surface.UpdatePresentation(target is not null, target is not null && inputEnabled);
+        surface.UpdatePresentation(isFullscreen || target is not null, (isFullscreen || target is not null) && inputEnabled);
     }
 
     private void Retire(Entry entry)
     {
         if (!entries.Remove(entry.WidgetId)) return;
+        if (fullscreen?.Document.Authority.WidgetId == entry.WidgetId) ExitFullscreen();
         SetFailure(entry.WidgetId, null);
         entry.Lifetime.Cancel();
         if (entry.Surface is { } surface)
@@ -271,6 +276,7 @@ internal sealed class EmbeddedMediaOwner : IAsyncDisposable
     {
         DemandDispatcher();
         retired = true;
+        ExitFullscreen();
         session.PresentationChanged -= PresentationChanged;
         session.CatalogChanged -= CatalogChanged;
         foreach (var viewport in viewports.Values) viewport.Element.PlacementChanged = null;

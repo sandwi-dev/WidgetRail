@@ -34,10 +34,11 @@ internal sealed partial class OverlayShellPage
         };
         if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None)
         {
-            if (interactive) surface?.MoveFocus(next);
+            if (IsMediaFullscreen) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = fullscreenView });
+            else if (interactive) surface?.MoveFocus(next);
             else FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
         }
-        if (interactive && surface is { } current)
+        if (interactive && !IsMediaFullscreen && surface is { } current)
         {
             var delta = rightStick.Sample(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
             if (delta.X != 0 || delta.Y != 0) current.ScrollBy(delta.X, delta.Y);
@@ -59,6 +60,7 @@ internal sealed partial class OverlayShellPage
         if (retired || switching || !visible) return;
         try
         {
+            if (RouteFullscreenButton(button, phase)) return;
             if (!interactive)
             {
                 if (phase != ControllerEventPhase.Pressed) return;

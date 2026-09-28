@@ -199,10 +199,20 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
             Check(!transport.TryAccept(Json(candidate), out _), "reject adapter " + mutation.Key);
         }
         Check(transport.TryAccept(Json(terminal), out var observation) && observation!.Playback?.MediaKey == "song" && !transport.Busy, "valid terminal observation publishes playback and releases transport ownership");
+        var hostSeek = JsonNode.Parse(transport.DispatchHost(EmbeddedMediaHostCommand.SeekForward, observation!.Playback!, 4)!)!;
+        Check(hostSeek["command"]!.GetValue<string>() == "seek" && hostSeek["positionSeconds"]!.GetValue<double>() == 4 &&
+            hostSeek["commandSequence"] is null && transport.LastPlaybackSequence == 3,
+            "host seek honors its declared step without forging or consuming a widget playback sequence");
+        var hostTerminal = (JsonObject)terminal.DeepClone();
+        hostTerminal["eventSequence"] = 3; hostTerminal["commandId"] = transport.PendingCommandId; hostTerminal["commandSequence"] = 0;
+        hostTerminal["positionSeconds"] = 4; hostTerminal["mediaKey"] = "other";
+        Check(!transport.TryAccept(Json(hostTerminal), out _), "host playback command cannot acknowledge a different media key");
+        hostTerminal["mediaKey"] = "song";
+        Check(transport.TryAccept(Json(hostTerminal), out _) && transport.LastPlaybackSequence == 3, "host command acknowledges independently of widget command sequence");
         Check(transport.Dispatch(EmbeddedMediaCommand.Activate) is not null, "spatial activation uses the existing SDK arm-activate protocol");
-        var armed = Envelope(3, "armed", 3);
+        var armed = Envelope(4, "armed", transport.PendingCommandId);
         Check(transport.TryAccept(Json(armed), out _) && transport.Busy, "armed acknowledgement keeps command ownership until trusted input completes");
-        armed["eventSequence"] = 4;
+        armed["eventSequence"] = 5;
         Check(!transport.TryAccept(Json(armed), out _), "second armed acknowledgement cannot inject another click");
     }
 

@@ -31,13 +31,24 @@ try {
         if ($ownedPid -le 0) { throw 'Launcher did not return an owned process ID.' }
         $launch | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory "$($case.Flag.TrimStart('-'))-launch.json")
         try {
+            $ready = & winapp ui wait-for Shell.Close -a $ownedPid -t 8000 --json | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or -not $ready.found) { throw 'Native fixture window did not become ready.' }
+            $windows = & winapp ui list-windows -a $ownedPid --json | ConvertFrom-Json
+            $mainWindow = @($windows | Where-Object title -Like 'WidgetRail*WinUI frontend')
+            if ($mainWindow.Count -ne 1) { throw 'Could not identify the owned native fixture window.' }
+            $mainHwnd = $mainWindow[0].hwnd
             $resultPath = Join-Path $diagnostics $case.File
             $deadline = [DateTime]::UtcNow.AddSeconds(45)
             $result = $null
+            $capturedPhases = [Collections.Generic.HashSet[string]]::new()
             do {
                 $file = Get-Item -LiteralPath $resultPath -ErrorAction SilentlyContinue
                 if ($file -and $file.LastWriteTimeUtc -ge $started) {
                     try { $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json } catch { }
+                    if ($case.Media -and $result.phase -in @('owner-popup','owner-fullscreen') -and $capturedPhases.Add($result.phase)) {
+                        & winapp ui screenshot -w $mainHwnd --capture-screen -o (Join-Path $OutputDirectory "$($result.phase).png") --json | Out-Null
+                        if ($LASTEXITCODE -ne 0) { throw 'Could not capture native media presentation.' }
+                    }
                     if ($result.result -in @('passed', 'failed') -or
                         ($case.Media -and ($result.passed -eq $false -or $result.phase -eq 'complete'))) { break }
                 }
@@ -45,7 +56,7 @@ try {
                 Start-Sleep -Milliseconds 150
             } while ([DateTime]::UtcNow -lt $deadline)
             if ($null -ne $result) { $result | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $OutputDirectory $case.File) }
-            & winapp ui screenshot -a $ownedPid --capture-screen -o (Join-Path $OutputDirectory "$($case.Flag.TrimStart('-')).png") --json | Out-Null
+            & winapp ui screenshot -w $mainHwnd --capture-screen -o (Join-Path $OutputDirectory "$($case.Flag.TrimStart('-')).png") --json | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Could not capture native control pixels.' }
             $passed = $result.result -eq 'passed' -or ($case.Media -and $result.passed -eq $true -and $result.phase -eq 'complete')
             if (-not $passed -or @($result.checks).Count -eq 0) {

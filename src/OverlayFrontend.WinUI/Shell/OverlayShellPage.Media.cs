@@ -1,10 +1,27 @@
 using WidgetRail.OverlayFrontend.WinUI.Media;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
     private EmbeddedMediaOwner? mediaOwner;
+    private readonly MediaFullscreenView fullscreenView = new();
+    private readonly HashSet<ControllerButton> fullscreenOwnedButtons = [];
+    internal bool IsMediaFullscreen => mediaOwner?.FullscreenWidgetId is not null;
+    internal event Action? MediaPresentationChanged;
+
+    private void InitializeFullscreenView()
+    {
+        Grid.SetRowSpan(fullscreenView, 3);
+        ((Grid)Content).Children.Add(fullscreenView);
+        fullscreenView.ExitRequested += () => mediaOwner?.ExitFullscreen();
+        fullscreenView.CommandRequested += command => mediaOwner?.DispatchFullscreen(command);
+    }
 
     private void InitializeMediaOwner()
     {
@@ -21,7 +38,37 @@ internal sealed partial class OverlayShellPage
                     ShowPresentationStatus(frame.Descriptor.Name);
             },
         };
+        mediaOwner.SetFullscreenHost(fullscreenView.SurfaceHost);
+        mediaOwner.FullscreenChanged += RefreshFullscreenView;
         ReconcileMediaHostState();
+    }
+
+    private void RefreshFullscreenView()
+    {
+        var showing = mediaOwner?.FullscreenState is not null;
+        WidgetHost.IsEnabled = Tray.IsEnabled = !showing;
+        if (showing) { surface?.ResetPressedStyles(); surface?.DismissTransientControl(); fullscreenView.Show(mediaOwner!.FullscreenState!.Declaration); }
+        else fullscreenView.Hide();
+        MediaPresentationChanged?.Invoke();
+        SizingChanged?.Invoke();
+        if (!retired && visible && foreground) DispatcherQueue.TryEnqueue(() => QueueEntryFocus());
+    }
+
+    private bool RouteFullscreenButton(ControllerButton button, ControllerEventPhase phase)
+    {
+        // A B/View/A press can close this presentation. Its release still belongs
+        // to the host, never to a shortcut on the newly revealed widget or tray.
+        if (phase == ControllerEventPhase.Released && fullscreenOwnedButtons.Remove(button)) return true;
+        if (!IsMediaFullscreen) return false;
+        if (phase != ControllerEventPhase.Pressed) return true;
+        fullscreenOwnedButtons.Add(button);
+        if (button == ControllerButton.B) mediaOwner!.ExitFullscreen();
+        else if (button == ControllerButton.View) { mediaOwner!.ExitFullscreen(); SetInteractive(false); FocusTray(); }
+        else if (button == ControllerButton.X) mediaOwner!.DispatchFullscreen(EmbeddedMediaHostCommand.TogglePlayback);
+        else if (button == ControllerButton.LeftTrigger) mediaOwner!.DispatchFullscreen(EmbeddedMediaHostCommand.SeekBackward);
+        else if (button == ControllerButton.RightTrigger) mediaOwner!.DispatchFullscreen(EmbeddedMediaHostCommand.SeekForward);
+        else if (button == ControllerButton.A) fullscreenView.ActivateFocused();
+        return true;
     }
 
     private void ReconcileMediaHostState() => mediaOwner?.SetHostState(activeWidget,

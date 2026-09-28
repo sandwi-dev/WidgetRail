@@ -9,7 +9,9 @@ internal sealed partial class OverlayShellPage
     private AppearanceSettings savedAppearance = AppearanceSettings.Default;
     private string activeDisplayId = string.Empty;
     private long displayVersion;
-    internal WidgetSurfaceHints? SurfaceHints { get; private set; }
+    private WidgetSurfaceHints? authoredSurfaceHints;
+    internal WidgetSurfaceHints? SurfaceHints => IsMediaFullscreen ? new()
+    { WidthMode = WidgetSurfaceAxisMode.FillAvailable, HeightMode = WidgetSurfaceAxisMode.FillAvailable } : authoredSurfaceHints;
     internal event Action? SizingChanged;
     internal double ContentWidth => WidgetHost.ActualWidth;
     internal double ContentHeight => WidgetHost.ActualHeight;
@@ -51,8 +53,8 @@ internal sealed partial class OverlayShellPage
 
     private void UpdateSurfaceHints(WidgetSurfaceHints? hints)
     {
-        var changed = SurfaceHints != hints;
-        SurfaceHints = hints;
+        var changed = authoredSurfaceHints != hints;
+        authoredSurfaceHints = hints;
         if (changed || hints?.WidthMode == WidgetSurfaceAxisMode.Content || hints?.HeightMode == WidgetSurfaceAxisMode.Content)
             SizingChanged?.Invoke();
     }

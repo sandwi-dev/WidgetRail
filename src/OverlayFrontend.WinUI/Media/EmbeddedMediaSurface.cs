@@ -45,6 +45,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
     public FrameworkElement Element => browser;
     public bool IsRetired => retired;
     public bool IsReady => !retired && transport.Ready;
+    internal EmbeddedMediaPlaybackEvent? Playback => lastPlayback;
     public string? FailureCode { get; private set; }
     internal Func<bool>? InputAuthority { get; set; }
     private bool AcceptsInput => !retired && visible && inputEnabled && (InputAuthority?.Invoke() ?? true);
@@ -106,6 +107,15 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
         var message = transport.Dispatch(command);
         if (message is not null) Send(message);
         return true;
+    }
+
+    internal bool DispatchPresentation(EmbeddedMediaHostCommand command, MediaPresentationKind presentation)
+    {
+        if (!AcceptsInput || lastPlayback is not { } playback || session.GetEmbeddedMediaState(document) is not { } state ||
+            !state.Declaration.SupportedPresentations.Contains(presentation)) return false;
+        var message = transport.DispatchHost(command, playback, state.Declaration.MediaSeekStepSeconds ?? ProtocolConstants.DefaultMediaSeekStepSeconds);
+        if (message is not null) Send(message);
+        return true; // Busy commands are consumed once, never queued or replayed.
     }
 
     private void OnLoaded(object sender, RoutedEventArgs args)
