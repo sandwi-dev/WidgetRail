@@ -6,6 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI;
 public sealed partial class MainWindow
 {
     private Validation.ControllerReplayScenario? replay;
+    private bool validationPlatformActivation;
 
     partial void ConfigureValidation(IReadOnlyList<string> arguments, ref bool handled)
     {
@@ -114,11 +115,20 @@ public sealed partial class MainWindow
         else RootFrame.Navigate(validateExternalSurface ? typeof(Validation.ExternalSurfacePage) :
             validateCollection ? typeof(Validation.CollectionValidationPage) :
             validateGridView ? typeof(Validation.GridViewValidationPage) : typeof(MainPage));
+        if (input is null && arguments.Contains("--validation-platform-activation"))
+        {
+            // Pixel checks need the same confirmed foreground path as production.
+            // This opt-in reuses that adapter; it forwards no input to the fixture.
+            input = new(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            input.PrepareShow();
+            validationPlatformActivation = true;
+        }
         handled = true;
     }
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        validationPlatformActivation = arguments.Contains("--validation-platform-activation");
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-widget-switches") is { } switchResult)
             page.EnableSwitchValidation(switchResult);
         if (arguments.Contains("--shell-no-controller") && arguments.Contains("--replay-shell-input"))
@@ -126,7 +136,11 @@ public sealed partial class MainWindow
     }
     partial void QueueValidationEntryFocus() => (RootFrame.Content as Validation.ControllerValidationPage)?.QueueEntryFocus();
     partial void ResetValidationInput() => (RootFrame.Content as Validation.ControllerValidationPage)?.ResetInputPresentation();
-    partial void StartValidationReplay() => replay?.Start();
+    partial void StartValidationReplay()
+    {
+        if (validationPlatformActivation) input?.AcquireForeground();
+        replay?.Start();
+    }
     partial void RetireValidation()
     {
         replay?.Dispose();

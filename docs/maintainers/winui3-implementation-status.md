@@ -1054,3 +1054,41 @@ outgoing content before incoming content was laid out. Readiness/commit separati
 and the remaining radial chooser are being implemented in independent lanes.
 Visual quality, real switching latency, memory, accessibility and packaging remain
 qualification requirements; these correctness checks do not finish the migration.
+
+## Switching, artwork and Release qualification, 2026-09-28
+
+The combined branch retains outgoing widget pixels until incoming native layout
+is ready, includes the configured radial chooser, and sizes asynchronous artwork
+decodes for the current presentation. Superseded selections are cancelled; input
+admission and drawable lifetime are separate. Shared JSON metadata and updated
+stable Windows SDK projections permit a trimmed Release publish without warning
+suppression. Detailed boundaries are in `winui-widget-switch-readiness.md`,
+`winui-artwork-demand.md`, and `winui-release-readiness.md`.
+
+Combined automated evidence: 73 managed shell checks, 199 native style checks,
+21 complete-widget switching checks, and four radial scale/text cases with 101
+native assertions each and actual icon-pixel checks. The radial matrix now uses
+the real supported 50–125% interface-scale range; its earlier nominal 200% case
+was clamped and is not 200% coverage. All five real Playnite eviction/modal checks
+pass again with identical focused tile geometry before and after restoration.
+Evidence: `artifacts/winui-shell/combined-switch-01/retention/`.
+
+Context-menu behavior and screen capture pass (56 checks). Embedded-media behavior
+passes all 101 checks, including real WebView2/adapter transport. Media screen
+capture during the popup phase was refused by the foreground guard; direct window
+capture was blank and does not establish visual parity. Preserve that as an open
+pixel-qualification gate, not a rendering diagnosis. An optional Debug-only
+`--validation-platform-activation` uses the existing production adapter for native
+fixture activation; it forwards no controller input to the fixture. It requires
+exclusive adapter ownership and is excluded from shipping builds.
+
+Visual review of the actual Library also exposed centered fixed-height poster
+badges. The native regression reproduced that the poster adapter aligned inner
+content rather than the layout wrapper that owns the authored height. A shared
+poster correction now passes its reproduced regression and the full 200-check
+style suite; real Library screenshots confirm the strips sit at the bottom.
+No widget-specific style workaround was needed. The five Playnite checks pass
+in Debug, Release, and the hash-verified trimmed/ReadyToRun publish. Installer/
+bootstrap, broader Release scenarios, performance, complete accessibility, media
+pixels and deferred pinned-window qualification remain open. Nothing is merged
+to main, and all owned automated test windows have been closed.

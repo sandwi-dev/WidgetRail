@@ -2,7 +2,8 @@
 param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '../artifacts/winui-native-controls'),
     [ValidateSet('select','text-entry','slider','context-menu','embedded-media')][string[]]$Fixture,
-    [switch]$IncludeMedia
+    [switch]$IncludeMedia,
+    [switch]$UsePlatformActivation
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
@@ -20,11 +21,13 @@ if ($IncludeMedia -or $Fixture -contains 'embedded-media') { $cases += @{ Flag='
 if ($Fixture) { $cases = @($cases | Where-Object { $Fixture -contains ($_.Flag -replace '^--validate-', '') }) }
 $summary = [Collections.Generic.List[object]]::new()
 # Requires an analyzer-built x64 Debug frontend and exclusive package deployment.
-# Every fixture is host-owned; none creates a physical controller reader.
+# Fixtures are host-owned. Optional activation uses the existing native platform
+# adapter and therefore requires exclusive use of that controller adapter too.
 try {
     foreach ($case in $cases) {
         $started = [DateTime]::UtcNow
-        $raw = & winapp run $project --no-build --arch x64 -p Platform=x64 --detach --json --args $case.Flag
+        $arguments = $case.Flag + $(if ($UsePlatformActivation) { ' --validation-platform-activation' } else { '' })
+        $raw = & winapp run $project --no-build --arch x64 -p Platform=x64 --detach --json --args $arguments
         if ($LASTEXITCODE -ne 0) { throw "Failed to launch $($case.Flag): $raw" }
         $launch = ($raw -join "`n") | ConvertFrom-Json
         $ownedPid = [int]$launch.ProcessId

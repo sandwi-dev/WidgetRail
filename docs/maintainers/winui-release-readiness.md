@@ -78,3 +78,20 @@ now succeeds without suppressions or blanket assembly roots. Evidence:
 also builds with zero warnings/errors, and all 73 integrated managed shell tests
 pass. Native regression under this projection, Release launch, installer bootstrap,
 provisioning and rollback remain required. This result is not shipping acceptance.
+
+Subsequent native qualification passes 200 style checks, 21 switching checks,
+four corrected radial scale/text cases, 56 context-menu checks, and all five real
+Playnite eviction/modal checks. Embedded-media behavior passes 101 checks; its
+screen-pixel gate remains open because popup-phase capture could not establish
+foreground and direct window capture was blank.
+
+Both the ordinary Release build output and the actual trimmed/ReadyToRun publish
+pass the five real Playnite checks. The latter was launched through project-mode
+`winapp run --no-build` with `OutDir` set to the publish directory. Publish did not
+include AppxManifest.xml, so the matching generated Release manifest was copied
+into the test layout before development registration. The running AppX assembly's
+SHA-256 matched the published assembly exactly. Evidence:
+`artifacts/winui-shell/{release-runtime-01,trimmed-runtime-01}/`, including
+`trimmed-runtime-01/identity.json`. This is a tested development layout, not a
+completed installer or a distributable release. Installer bootstrap and runtime
+provisioning still need a deliberate production path.

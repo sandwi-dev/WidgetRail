@@ -71,3 +71,8 @@ requires separate monitor-aware qualification.
 `scripts/Test-WinUiRadial.ps1` verifies visible glyph pixels in every slot after
 bounded compositor readiness polling. UIA dimensions alone previously passed
 with blank icons. Physical controller acceptance remains separate.
+
+The corrected matrix passed on the combined frontend with Windows SDK projection
+10.0.26100.87: four cases, 101 native assertions each, plus all eight icon-center
+pixel checks. Both the 50% and 200%-text captures were inspected. Evidence:
+`artifacts/winui-shell/radial-supported-scale-01/`.
