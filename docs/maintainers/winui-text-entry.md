@@ -1,0 +1,63 @@
+# WinUI host-owned text entry
+
+`UI.TextEntry` and `UI.SensitiveTextEntry` retain the existing SDK contract. Widgets
+publish a bounded value/placeholder and final-value action; they never receive
+keystrokes or intermediate edits. No SDK, protocol or trust-level fork is added.
+
+The trusted presenter renders a focusable opener. Activation creates a native
+`ContentDialog` with `TextBox` or protected `PasswordBox`, plus native buttons in a
+controller keyboard. WinUI owns popup placement, scaling, clipping, native edit
+semantics, focus geometry and automation peers. This is the **host keyboard**, not
+an implementation of widget-authored details modals: those keep the separate
+widget-local modal layer. Pinned/presentation-only fragments render no editable
+control and cannot open a keyboard.
+
+- A activates a virtual key; B cancels; X removes the preceding character; Y clears.
+- LT changes letter case; RT commits; LB/RB move the edit insertion point.
+- D-pad/normalized directional movement uses native XY focus within the keyboard.
+- Physical text editing/paste uses the native editor. Printable input also works
+  while a virtual key has focus; Enter commits and Escape cancels.
+- The host has no second controller reader or raw-button queue. The existing
+  normalized input ingress routes the keyboard before widget shortcuts.
+- Prompts use the existing licensed controller fonts and update with controller
+  family. Theme follows the owning presenter. Dialog width follows its XamlRoot;
+  short windows use native vertical scrolling.
+
+An edit captures opener identity and the widget/runtime/presentation/session/scope
+owner, action, original value, input kind and maximum length. Harmless snapshots
+keep the edit and dispatch with current snapshot authority. Changing any of those
+semantic fields, removing/disabling the opener, changing scope/owner, hiding the
+host or disposing the presenter cancels without dispatch. Closing restores only a
+still-valid opener. Dismissal revokes authority and clears buffers immediately;
+a late native close cannot commit or steal focus from a newer edit. Reopening
+waits for the previous native dialog to close.
+
+Sensitive declarations start empty, use PasswordBox's protected UIA semantics,
+never permit reveal/paste and never copy intermediate values into snapshots or
+widget state. Commit transfers one bounded string and clears the editor. Cancel
+transfers nothing. Callback failures are replaced with a fixed diagnostic without
+the original exception or inner exception, because callbacks could echo a secret.
+Managed/native string allocation is not represented as guaranteed memory zeroing.
+
+## Validation
+
+Build the WinUI x64 project with the analyzer and a unique binlog. Launch packaged
+mode with `winapp run ... --no-build --arch x64 -p Platform=x64 --detach --json
+--args '--validate-text-entry'`. No physical controller owner is acquired.
+
+The autonomous page exercises native controls, focus and normalized controller
+routing, not a mock dialog. It writes pass/fail and check names only to
+`%LOCALAPPDATA%/WidgetRail/WinUI/diagnostics/text-entry-result.json`; committed
+values are never written. It covers initial/repeated opening focus, native keyboard
+navigation, family changes, max length, caret editing, commit/cancel, scope/owner
+and declaration replacement, secret cleanup, UIA password semantics and callback
+redaction. Production-widget keyboard integration, physical controller acceptance,
+full high-contrast/scaling coverage and global motion-policy integration remain
+part of migration validation, not claims established by this fixture.
+
+Validation checkpoint (2026-09-28): 26 autonomous native checks passed twice;
+x64 analyzer build passed with no warnings. The final keyboard was visually
+inspected at 125% Windows scaling with native focus on its first letter, equal
+key columns and rendered Xbox prompts. Add `--text-entry-preview` to the validation
+arguments for a persistent ordinary field for pointer/keyboard/screenshot checks.
+This preview does not acquire the physical controller adapter.

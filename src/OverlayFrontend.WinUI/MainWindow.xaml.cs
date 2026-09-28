@@ -14,7 +14,7 @@ public sealed partial class MainWindow : Window
 
     public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
         bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false, bool validateIndexed = false, bool validateFocusPolicy = false,
-        string? indexedValidationPipe = null, bool validateGrouped = false, bool validateGroupedFlat = false, bool validateGroupedAdapted = false, bool validateSurfaces = false, bool validateSelect = false, bool validateMotion = false, bool validateModals = false, bool validateGlyphs = false, bool validateStyles = false)
+        string? indexedValidationPipe = null, bool validateGrouped = false, bool validateGroupedFlat = false, bool validateGroupedAdapted = false, bool validateSurfaces = false, bool validateSelect = false, bool validateMotion = false, bool validateModals = false, bool validateGlyphs = false, bool validateStyles = false, bool validateTextEntry = false)
     {
         InitializeComponent();
         themeSettings = Microsoft.UI.System.ThemeSettings.CreateForWindowId(AppWindow.Id);
@@ -59,6 +59,7 @@ public sealed partial class MainWindow : Window
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
+        else if (validateTextEntry) RootFrame.Content = new Validation.TextEntryValidationPage();
         else if (validateStyles) RootFrame.Content = new Validation.WidgetStylesValidationPage();
         else if (validateGlyphs) RootFrame.Content = new Validation.GlyphValidationPage();
         else if (validateModals) RootFrame.Content = new Validation.ModalValidationPage();

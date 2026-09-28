@@ -192,6 +192,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         if (applying || !IsLoaded || frame is null) return false;
         CancelGroupEntry();
+        if (textEntryPopup is { } edit) { edit.Dialog.MoveFocus(direction); return true; }
         if (MoveSelectFocus(direction)) return true;
         if (FindIndexedCollection()?.MoveFocus(direction) == true) return true;
         var scope = bindings.Values.FirstOrDefault(binding => declarations[binding.Identity.Id].Node.InputScopeId == frame.Authority.ActiveInputScopeId)
@@ -204,7 +205,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         if (applying || disposed || presentationOnly) return;
         CancelGroupEntry();
-        if (ActivateSelect()) return;
+        if (ActivateTextEntry() || ActivateSelect()) return;
         if (FindIndexedCollection()?.ActivateFocused() == true) return;
         if (!applying && FocusedBinding() is { Element: Button { Command: { } command } button } binding
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
@@ -297,6 +298,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 element = presentationOnly ? children : new Button { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch,
                     Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
                 break;
+            case ViewNodeKind.TextEntry:
+                element = presentationOnly ? new TextBlock() : CreateTextEntry(declaration.Identity, token);
+                break;
             case ViewNodeKind.Select:
                 element = presentationOnly ? new TextBlock() : CreateSelect(declaration.Identity, token);
                 break;
@@ -325,7 +329,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         ApplySizeAndTypography(element, node);
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
         if (element is FontIcon icon) WidgetGlyphs.Apply(icon, node, playStationPrompts);
-        if (element is TextBlock text) text.Text = node.Text ?? string.Empty;
+        if (element is TextBlock text) text.Text = node.Kind == ViewNodeKind.TextEntry ? TextEntryLabel(node) : node.Text ?? string.Empty;
         if (element is Control control)
         {
             control.IsEnabled = node.IsDisabled != true && node.IsBusy != true;
@@ -333,6 +337,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             control.IsHitTestVisible = !node.IsFocusable || binding.Identity.Scope == frame!.Authority.ActiveInputScopeId;
         }
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) button.Content = node.Text;
+        if (element is Button entry && node.Kind == ViewNodeKind.TextEntry) entry.Content = TextEntryLabel(node);
         if (binding.Children is StackPanel panel && node.Kind == ViewNodeKind.ActionSurface)
             panel.Orientation = node.ActionSurfaceOrientation == ActionSurfaceOrientation.Horizontal ? Orientation.Horizontal : Orientation.Vertical;
         if (element is ScrollViewer scroll)
@@ -367,7 +372,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 || node.CollectionAnchorKey is not null || node.CollectionGeneration is not null || node.CollectionResetGeneration is not null
                 || node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null
                 || node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Button or ViewNodeKind.ActionSurface
-                    or ViewNodeKind.ModalLayer or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
+                    or ViewNodeKind.ModalLayer or ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
                     or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ControllerGlyph or ViewNodeKind.Icon))
                 throw new NotSupportedException($"WinUI presentation for {node.Kind} with these declarations is not implemented.");
             var scope = node.InputScopeId ?? inheritedScope;
