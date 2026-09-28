@@ -12,7 +12,7 @@ public sealed partial class MainWindow : Window
     private bool cleanupStarted;
 
     public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
-        bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false)
+        bool validateCollection = false, string? widgetConfiguration = null, bool validateGridView = false, bool validateControls = false, bool validateIndexed = false)
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
@@ -51,6 +51,8 @@ public sealed partial class MainWindow : Window
             RootFrame.Content = new Validation.BridgeWidgetValidationPage(widgetConfiguration);
         else if (validateControls)
             RootFrame.Content = new Validation.WidgetControlsValidationPage();
+        else if (validateIndexed)
+            RootFrame.Content = new Validation.IndexedCollectionValidationPage();
         else RootFrame.Navigate(validateExternalSurface ? typeof(Validation.ExternalSurfacePage) :
             validateCollection ? typeof(Validation.CollectionValidationPage) :
             validateGridView ? typeof(Validation.GridViewValidationPage) : typeof(MainPage));

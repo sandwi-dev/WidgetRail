@@ -95,3 +95,11 @@ expanding them into nonvirtualized StackPanels.
 collection anchor issue. Its script currently reports failures for prepend and
 leading eviction. It is retained as evidence; do not substitute it for the shipping
 collection implementation or describe a bounded realized count as scroll correctness.
+
+`--validate-indexed` exercises a native ListView over the internal sparse indexed
+source. `scripts/Test-WinUiIndexedCollection.ps1` checks native range callbacks,
+bounded realization/data, reversal while a buffer page is held, unchanged viewport
+on its completion, and eviction/reload without deleting positions. It closes the
+window after success. This adapter is not connected to worker collection requests
+yet; see [the collection contract](../../docs/maintainers/winui-indexed-collections.md)
+for provider capabilities, SDK/service work and unresolved cursor behavior.

@@ -277,3 +277,47 @@ collection. Evidence and six inspected screenshots are in
 `artifacts/winui-gridview/isolated-cases/`. Resolve the collection admission/data
 virtualization and anchoring contract before wiring it to Playnite. No compensating
 scroll code or unsuccessful adapter was added to the shared presenter.
+
+## Sparse indexed data and artwork demand identity
+
+`Collections/IndexedItemsSource<T>` now implements WinUI IList/IItemsRangeInfo for
+one exact-count query and one consumer. It keeps sparse stable binding slots,
+requests visible/tracked pages asynchronously with bounded concurrency, validates
+query/request/index/key identity, and releases payload without structural item
+removal. A new query replaces the source. The range reader remains trusted internal
+code that must honor cancellation and bound its work; SDK/worker range transport,
+retry UI and the production widget path are not connected yet.
+
+The new eight-check `--validate-indexed` integration run passes. Native ListView
+range callbacks were observed directly. One million logical rows used at most
+96 resident slots and 21 realized containers without enumerating the full source.
+Down/up navigation remained usable while an adjacent buffer request was held.
+Releasing it increased completed loads while preserving focus 600000, y=20 and
+scroll offset 43200172 exactly. Return traversal evicted distant payload and a
+later deep visit performed another load while Count stayed unchanged. Screenshot
+inspection and analyzer build passed. This demonstrates native data virtualization
+and admission behavior, not production-widget frame pacing or controller acceptance.
+Evidence: `artifacts/winui-indexed/authority/`.
+
+An additional native anchoring experiment did not provide a reliable cursor fix.
+An explicit AnchorRequested preference and interior ratio initially preserved a
+top item, but broader cases still displaced it after prepend. All experimental
+code was removed; `artifacts/winui-collection/anchor-selection/` retains source and
+observations. No guessed offset correction or layout retry loop was introduced.
+
+The SDK/service design direction and real provider capability analysis are in
+`winui-indexed-collections.md`. YouTube's finite browse snapshot is an indexed
+candidate. Playnite needs final display filtering normalized before advertising
+its indexed count. Spotify's unqualified live search remains discovered/cursor
+data. Arbitrary query membership changes and opaque before-origin insertion remain
+distinct unresolved cases; the indexed cache path does not claim to solve them.
+
+Artwork correlation now uses unique demand IDs with runtime/presentation authority,
+so cancellation, reordering and late same-handle replies cannot satisfy replacement
+demands. Local admission/completion has a configurable timeout and exact authority
+is rechecked around decoding. The old 512-character diagnostic-text limit no longer
+truncates/rejects normal Base64 artwork; the encoded-artwork limit applies instead.
+All 34 session tests pass, including seven new demand/race/timeout cases. Server-side
+decoding still lacks per-demand cancellation; already-sent transport requests remain
+bounded/correlated until reply or shutdown. This distinction is intentional and
+documented, not a claim that local cancellation stops provider work.
