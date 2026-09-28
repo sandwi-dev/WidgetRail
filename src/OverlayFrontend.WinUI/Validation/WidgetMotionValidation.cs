@@ -84,13 +84,16 @@ internal static class WidgetMotionValidation
                 await Task.Delay(20, token);
                 Check(focusButton.Focus(Microsoft.UI.Xaml.FocusState.Programmatic), "native control accepts focus without pointer activation");
                 var focusVisual = ElementCompositionPreview.GetElementVisual(focusMotion.Adornment.Children[0]);
+                await UntilAsync(() => focusVisual.Opacity == 1, "focus decoration entering");
                 Check(focusVisual.Opacity == 1 && !focusMotion.Adornment.IsHitTestVisible,
                     "native focus event shows only the noninteractive decoration");
                 focusMotion.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, true);
                 Check(ElementCompositionPreview.GetElementVisual(focusButton).Scale == Vector3.One &&
                     ElementCompositionPreview.GetElementVisual(focusButton).Opacity == 1,
                     "focus policy never changes control text artwork or base opacity");
-                Check(otherButton.Focus(Microsoft.UI.Xaml.FocusState.Programmatic) && focusVisual.Opacity == 0,
+                Check(otherButton.Focus(Microsoft.UI.Xaml.FocusState.Programmatic), "native control accepts focus transfer");
+                await UntilAsync(() => focusVisual.Opacity == 0, "focus decoration leaving");
+                Check(focusVisual.Opacity == 0,
                     "native focus loss clears the decoration under reduced motion");
             }
             finally { focusMotion.Dispose(); host.Children.Remove(otherButton); host.Children.Remove(focusCell); }
@@ -102,6 +105,15 @@ internal static class WidgetMotionValidation
         {
             if (!condition) throw new InvalidOperationException("Native motion check failed: " + message);
             results.Add(message);
+        }
+        async Task UntilAsync(Func<bool> condition, string name)
+        {
+            var deadline = Environment.TickCount64 + 2000;
+            while (!condition())
+            {
+                if (Environment.TickCount64 >= deadline) throw new TimeoutException(name);
+                await Task.Delay(10, token);
+            }
         }
     }
 }

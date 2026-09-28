@@ -89,3 +89,11 @@ Grounded samples: `winapp find-ui --id gallery-xamlcompinterop-1`,
 Existing behavior references: `OverlayHost/WidgetAnimationPolicy.h`,
 `WidgetInteractionMotion.h`, `WidgetProtocol/WidgetTransition.cs` and
 `winui-feature-contracts.md`.
+
+Integration validation: --validate-motion executed 18 checks on actual XAML/compositor
+objects, including all section recipes, batch completion, interruption, cross-thread
+cancellation, reduced motion, disposal and focus decoration. The initial focus probe
+incorrectly assumed GotFocus/LostFocus had run synchronously when Focus returned;
+bounded event settlement corrected that test assumption. Evidence is in
+artifacts/winui-surfaces/motion-native-final.json. This does not claim production
+section/modal integration or visually accepted animation/performance.
