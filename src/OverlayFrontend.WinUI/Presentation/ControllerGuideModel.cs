@@ -36,6 +36,18 @@ internal static class ControllerGuideModel
         return hints;
     }
 
+    // Match the shell's routing order: tray ownership precedes recovery, and
+    // interactive recovery consumes all widget input until it is dismissed.
+    // Null selects the normal/reorder tray guide; an empty list still keeps Back/Close.
+    internal static IReadOnlyList<ControllerGuideHint>? ResolveShellHints(bool interactive,
+        bool recoveryVisible, bool retryVisible, bool trayMenuOpen,
+        Func<IReadOnlyList<ControllerGuideHint>> captureWidget)
+    {
+        if (!interactive) return trayMenuOpen ? [new(ControllerPrompt.A, "Select", ControllerButton.A)] : null;
+        if (recoveryVisible) return retryVisible ? [new(ControllerPrompt.A, "Retry", ControllerButton.A)] : [];
+        return captureWidget();
+    }
+
     internal static IReadOnlyList<ControllerGuideHint> WithHost(IReadOnlyList<ControllerGuideHint> hints) =>
         [.. hints, new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true),
             new(ControllerPrompt.Guide, "Close", Required: true)];

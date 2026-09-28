@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetBridge;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
 
@@ -82,7 +83,8 @@ internal sealed partial class OverlayShellPage
     }
     private void UpdateTrayHelp()
     {
-        trayGuide.SetWidgetHints(interactive ? surface?.CaptureControllerGuide() ?? [] : null);
+        trayGuide.SetWidgetHints(ControllerGuideModel.ResolveShellHints(interactive, RecoveryVisible,
+            Retry.Visibility == Visibility.Visible, trayMenu is not null, () => surface?.CaptureControllerGuide() ?? []));
         trayGuide.SetState(reordering, interactive);
         AutomationProperties.SetHelpText(Tray, trayGuide.HelpText);
         // Keep the native layout slot stable when focus enters/leaves the tray.
@@ -187,8 +189,10 @@ internal sealed partial class OverlayShellPage
             {
                 if (!ReferenceEquals(trayMenu, menu)) return;
                 trayMenu = null;
+                UpdateTrayHelp();
                 if (TrayOwnerCurrent(descriptor, selection)) RequestTrayFocus(descriptor);
             };
+            UpdateTrayHelp();
             menu.Flyout.ShowAt(anchor);
 
             void Add(string label, string id, Func<Task> action)
@@ -214,6 +218,7 @@ internal sealed partial class OverlayShellPage
     {
         if (trayMenu is not { } menu) return;
         trayMenu = null;
+        UpdateTrayHelp();
         menu.Flyout.Hide();
         if (restoreFocus && TrayOwnerCurrent(menu.Owner, menu.Selection)) RequestTrayFocus(menu.Owner);
     }

@@ -47,6 +47,7 @@ internal sealed class ProductionShellValidationPage : Page, IAsyncDisposable
                 var hints = new WidgetSurfaceHints { Mode = mode, HeightMode = mode == WidgetSurfaceMode.Standard ? WidgetSurfaceAxisMode.FillAvailable : WidgetSurfaceAxisMode.Preferred };
                 var snapshot = new ViewSnapshot { WidgetInstanceId = catalog[0].InstanceId, Sequence = ++sequence,
                     ActiveInputScopeId = "root", Surface = hints, Root = new() { Id = "root", Kind = ViewNodeKind.Stack,
+                        Shortcuts = [new(ControllerButton.Y, "refresh", Label: "Fixture refresh")],
                         Children = [new() { Id = "text", Kind = ViewNodeKind.Text, Text = "Production widget content" }] } };
                 var frame = new WidgetPresentationFrame(new(catalog[0].Id, "runtime", "presentation", 1,
                     snapshot.WidgetInstanceId, sequence, "root"), catalog[0], snapshot, new Dictionary<string, BridgeNodeRenderStyles>());
@@ -92,6 +93,7 @@ internal sealed class ProductionShellValidationPage : Page, IAsyncDisposable
         shell.ReportFailure(new InvalidOperationException("internal detail"));
         Check(Find("Overlay.Recovery")?.Visibility == Visibility.Visible &&
             ((TextBlock)Find("Overlay.Status")!).Text != "internal detail", "failures use conditional bounded recovery instead of raw exception chrome");
+        checks.AddRange(await shell.ValidateRecoveryGuideFixtureAsync());
         Rect Bounds(FrameworkElement element) => element.TransformToVisual(shell).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
     }
     private FrameworkElement? Find(string id) => Descendants(shell).OfType<FrameworkElement>().FirstOrDefault(e => AutomationProperties.GetAutomationId(e) == id);

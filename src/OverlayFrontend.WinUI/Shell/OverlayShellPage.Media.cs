@@ -91,6 +91,7 @@ internal sealed partial class OverlayShellPage
             StatusChrome.Visibility = Visibility.Collapsed;
             Status.Text = widgetName; // diagnostic/accessibility lookup, no permanent status row
             Retry.Visibility = Visibility.Collapsed;
+            UpdateTrayHelp();
         }
         else ShowRecovery(message, true);
     }
@@ -100,6 +101,7 @@ internal sealed partial class OverlayShellPage
         Status.Text = message;
         StatusChrome.Visibility = Visibility.Visible;
         Retry.Visibility = canRetry ? Visibility.Visible : Visibility.Collapsed;
+        UpdateTrayHelp();
         if (canRetry && visible && foreground && interactive)
             DispatcherQueue.TryEnqueue(() => { if (!retired && RecoveryVisible && visible && foreground && interactive) Retry.Focus(FocusState.Keyboard); });
     }

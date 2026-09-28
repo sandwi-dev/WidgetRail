@@ -11,6 +11,32 @@ public sealed class ControllerGuideModelTests
         new() { Id = id, Kind = ViewNodeKind.Button, IsDisabled = disabled,
             Shortcuts = [new(button, "action-" + id, Label: label)] };
     [TestMethod]
+    public void ShellRecoveryOwnsHintsOnlyWhileInteractive()
+    {
+        IReadOnlyList<ControllerGuideHint> Capture() => throw new InvalidOperationException("Widget hints must not be consulted here.");
+        Assert.IsNull(ControllerGuideModel.ResolveShellHints(false, true, true, false, Capture));
+        var recovery = ControllerGuideModel.ResolveShellHints(true, true, true, false, Capture)!;
+        Assert.AreEqual("Retry", recovery.Single().Label);
+        Assert.AreEqual(ControllerButton.A, recovery.Single().Button);
+        Assert.IsEmpty(ControllerGuideModel.ResolveShellHints(true, true, false, false, Capture)!);
+        CollectionAssert.AreEqual(new[] { "Retry", "Back", "Close" }, ControllerGuideModel.WithHost(recovery).Select(h => h.Label).ToArray());
+    }
+    [TestMethod]
+    public void TrayMenuOwnsHintsBeforeBackgroundRecovery()
+    {
+        var hints = ControllerGuideModel.ResolveShellHints(false, true, true, true,
+            () => throw new InvalidOperationException("The tray menu owns input."))!;
+        CollectionAssert.AreEqual(new[] { "Select", "Back", "Close" }, ControllerGuideModel.WithHost(hints).Select(h => h.Label).ToArray());
+        Assert.AreEqual(ControllerButton.A, hints.Single().Button);
+    }
+    [TestMethod]
+    public void ClosingShellContextRestoresCurrentWidgetHints()
+    {
+        ControllerGuideHint[] widget = [new(ControllerPrompt.Y, "Refresh", ControllerButton.Y)];
+        Assert.AreSame(widget, ControllerGuideModel.ResolveShellHints(true, false, false, false, () => widget));
+        Assert.IsNull(ControllerGuideModel.ResolveShellHints(false, false, false, false, () => widget));
+    }
+    [TestMethod]
     public void NearestShortcutAndDisabledOwnershipMatchDispatcher()
     {
         var parent = Node("parent", ControllerButton.X, "Parent");

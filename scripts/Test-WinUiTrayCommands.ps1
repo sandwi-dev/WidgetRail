@@ -37,6 +37,9 @@ try {
         $null = Ui @('click',$target,'--right')
         $null = Ui @('wait-for','Overlay.TrayCommand.Reorder','-t','5000')
         $null = Ui @('wait-for','Overlay.TrayCommand.Restart','-t','3000')
+        $null = Ui @('wait-for','Overlay.Tray','-p','HelpText','--value','Select','--contains','-t','3000')
+        $help = (Ui @('get-property','Overlay.Tray','-p','HelpText')).properties.HelpText
+        if ($help -match 'Open widget|Reorder|Commands' -or $help -notmatch 'Back') { throw "Tray menu advertises unavailable actions: $help" }
         $windows = Ui @('list-windows')
         $hwnd = ($windows | Where-Object title -Like 'WidgetRail*WinUI frontend' | Select-Object -First 1).hwnd
         winapp ui screenshot -w $hwnd --capture-screen -o (Join-Path $OutputDirectory 'tray-menu.png') --json | Out-Null
@@ -65,8 +68,10 @@ try {
     Check 'Dismissal returns focus without leaving a stale command menu' {
         $null = Ui @('click',$target,'--right')
         $null = Ui @('wait-for','Overlay.TrayCommand.Reorder','-t','3000')
-        $null = Ui @('send-keys','escape','--via','send-input')
+        $null = Ui @('wait-for','Overlay.Tray','-p','HelpText','--value','Select','--contains','-t','3000')
+        $null = Ui @('invoke','Overlay.Guide.1') # Back routes B through the shared shell dispatcher
         $null = Ui @('wait-for',$target,'-p','HasKeyboardFocus','--value','True','-t','3000')
+        $null = Ui @('wait-for','Overlay.Tray','-p','HelpText','--value','Open widget','--contains','-t','3000')
     }
 } catch {
     $results.Add(@{name='Native tray commands'; passed=$false; error=$_.ToString()})

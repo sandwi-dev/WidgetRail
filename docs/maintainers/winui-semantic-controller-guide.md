@@ -28,15 +28,25 @@ Back/Close are reserved. Invisible cells remain measured to preserve height acro
 input context changes, and are removed from hit testing and the accessibility content
 view. Theme/text scaling and Xbox/PlayStation glyphs use the shared chrome roles.
 
+## Shell-owned contexts
+
+Recovery replaces widget hints only while the widget domain is interactive. It
+advertises A Retry when Retry is available, otherwise Back/Close only. While the
+tray owns input, a background recovery panel does not replace normal tray hints.
+An open tray command menu advertises Select/Back/Close and suppresses normal
+Open/Reorder/Commands hints. Both explicit dismissal and native flyout closure
+restore the appropriate guide. Guide buttons retain the existing normalized
+input dispatcher; no second action path was introduced.
+
 ## Validation
 
-Managed shell suite: 56 passed, 0 failed/skipped, including ten new tests for shortcut
-ownership, availability, indexed ancestry, normalization and measured-width admission.
-WinUI frontend builds with the Windows App SDK analyzers and no warnings.
-
-Native fixture extensions are in `--validate-shell-chrome` (whole-label fitting,
-paired actions, host controls, stable slot and native invocation) and
-`--validate-context-menu` (guide matches actual context routing, modal scope and
-unavailable-menu precedence). These additions have not been run in this lane because
-the physical candidate owns the deployment slot. Run them in the integration checkout
-and inspect screenshots before treating native appearance/interaction as verified.
+The Windows App SDK analyzer build passed with no warnings.
+Validated on the combined production-shell baseline: 66 managed shell tests,
+87 native production checks (including five recovery-guide assertions), 29
+native shell-chrome checks, 56 context-menu checks, and five production tray
+checks. Production tray testing invokes the native guide Back button through
+the shared dispatcher and verifies the ordinary tray guide returns. Native
+screenshots and JSON results are under `artifacts/guide-context` in the guide
+worktree. An initial driver attempt to focus a MenuFlyoutItem via UIA failed
+focus confirmation; the final driver preserves the existing native menu Invoke
+route and passed. No product fix was needed for that driver limitation.
