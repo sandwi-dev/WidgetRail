@@ -127,7 +127,7 @@ installed native candidate are untouched; fixture passes are not migration accep
   library/detail/Search are integrated. Provider reachability beyond the bounded
   discovered-prefix metadata cap remains a deliberate open product requirement.
 - Depth styling: button/panel/modal and native collection masks integrated.
-- Pinned authority: production coordination integrated; teardown race and independent display/scaling reconciliation underway.
+- Pinned authority: production coordination integrated. Follow-up teardown and display/scaling commits are preserved separately and deferred by user request; they are not in this candidate.
 - Root integration: inactive widget suspension/resumption and three-view retention
   pass the real Playnite/Music deep-scroll return and modal test. Appearance and
   complete shell behavior remain in progress.
@@ -969,3 +969,24 @@ actual production tray menu/reorder/dismissal checks pass with a freshly publish
 bridge runtime. The screenshot was inspected. Evidence: `artifacts/winui-shell/`
 `chrome-glyph-result.json`, `chrome-glyph-final.png`, and `tray-chrome-production/`.
 These automated results do not establish physical controller or performance acceptance.
+## Shared input and typography follow-up, 2026-09-28
+
+Priority is shared behavior across widgets. Additional pin teardown/display commits
+are deliberately deferred and remain off this integration branch.
+
+Native typography now applies line height, line caps, clipping, display casing and
+scaled character spacing through one reversible adapter, including button/select/
+text-entry labels and indexed-fragment focus states. Native validation passed 164
+style, 104 control, 36 package-icon and 16 ordinary-control checks in the isolated
+lane. The original source string survives casing/style updates and removal.
+
+The controller trace showed a visible background overlay accepting stick movement.
+The input pump now separates sampling from delivery, admits ordinary frames only
+with foreground ownership, and primes held state on reacquisition. The 30-test
+platform-client suite and native controller replay passed. The recorded physical
+trace did not show duplicate gamepad-key events; that reported symptom remains a
+physical acceptance item. The WinUI gamepad-key ownership boundary is integrated: 26 native injected-key
+checks pass, including positive no-owner controls, single semantic activation and
+movement, keyboard input, menus, selects, dialogs and retirement. The combined
+build also passed all 164 native style checks and controller replay. This validates
+the duplicate-route prevention mechanism, not the cause of the original physical symptom.
