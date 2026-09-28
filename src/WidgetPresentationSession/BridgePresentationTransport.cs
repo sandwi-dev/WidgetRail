@@ -17,6 +17,10 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
     private long _requestId;
     private Exception? _terminalFailure;
     private bool _disposed;
+    private bool _stopping;
+    private int _activeRequests;
+    private TaskCompletionSource? _requestsDrained;
+    private Task? _disposal;
 
     private BridgePresentationTransport(
         NamedPipeClientStream pipe,
@@ -78,16 +82,41 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
         _receiveLoop = ReceiveLoopAsync();
     }
 
-    internal async Task<BridgeEnvelope> RequestAsync<T>(
+    internal Task<BridgeEnvelope> RequestAsync<T>(
         string type,
         T payload,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) => RequestCoreAsync(type, payload, cancellationToken, stopping: false);
+
+    private async Task<BridgeEnvelope> RequestCoreAsync<T>(
+        string type, T payload, CancellationToken cancellationToken, bool stopping)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        await _pendingCapacity.WaitAsync(cancellationToken).ConfigureAwait(false);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed || (_stopping && !stopping), this);
+            ThrowIfTerminalLocked();
+            ++_activeRequests;
+        }
+        try { return await SendRequestAsync(type, payload, cancellationToken).ConfigureAwait(false); }
+        finally
+        {
+            lock (_gate)
+                if (--_activeRequests == 0) _requestsDrained?.TrySetResult();
+        }
+    }
+
+    private async Task<BridgeEnvelope> SendRequestAsync<T>(
+        string type, T payload, CancellationToken cancellationToken)
+    {
+        using var admission = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await _pendingCapacity.WaitAsync(admission.Token).ConfigureAwait(false);
         var requestId = Interlocked.Increment(ref _requestId);
         var completion = new TaskCompletionSource<BridgeEnvelope>(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        // A caller may cancel after its frame was sent. Keep the response slot for
+        // correlation, but observe a later terminal failure even without that caller.
+        _ = completion.Task.ContinueWith(static task => { _ = task.Exception; },
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
         try
         {
             lock (_gate)
@@ -131,41 +160,61 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (_disposed) return;
-        if (_terminalFailure is null)
+        lock (_gate)
         {
-            try
+            _stopping = true;
+            return new(_disposal ??= StopAsync());
+        }
+    }
+
+    private async Task StopAsync()
+    {
+        try
+        {
+            if (_terminalFailure is null)
             {
                 using var stop = new CancellationTokenSource(StopDeadline);
-                var response = await RequestAsync(
-                    BridgeMessageTypes.Stop,
-                    new { },
-                    stop.Token).ConfigureAwait(false);
-                if (response.Type != BridgeMessageTypes.Acknowledged)
-                    throw new BridgeProtocolException(
-                        "WidgetBridge returned an invalid stop response.");
-            }
-            catch (Exception exception) when (exception is not OutOfMemoryException)
-            {
-                Failed?.Invoke(new WidgetPresentationSessionException(
-                    "stop_incomplete", "The WidgetBridge stop handshake did not complete.", exception));
+                // The deadline must interrupt existing writers and gate waiters,
+                // not merely stop waiting for the shutdown response.
+                using var abort = stop.Token.Register(() => _lifetime.Cancel());
+                try
+                {
+                    var response = await RequestCoreAsync(BridgeMessageTypes.Stop,
+                        new { }, stop.Token, stopping: true).ConfigureAwait(false);
+                    if (response.Type != BridgeMessageTypes.Acknowledged)
+                        throw new BridgeProtocolException("WidgetBridge returned an invalid stop response.");
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    Failed?.Invoke(new WidgetPresentationSessionException(
+                        "stop_incomplete", "The WidgetBridge stop handshake did not complete.", exception));
+                }
             }
         }
-
-        _disposed = true;
-        _lifetime.Cancel();
-        await _pipe.DisposeAsync().ConfigureAwait(false);
-        if (_receiveLoop is not null)
+        finally
         {
-            try { await _receiveLoop.ConfigureAwait(false); }
-            catch (Exception exception) when (exception is not OutOfMemoryException) { }
+            _lifetime.Cancel();
+            await _pipe.DisposeAsync().ConfigureAwait(false);
+            if (_receiveLoop is not null)
+            {
+                try { await _receiveLoop.ConfigureAwait(false); }
+                catch (Exception exception) when (exception is not OutOfMemoryException) { }
+            }
+            FailTerminal(new ObjectDisposedException(nameof(BridgePresentationTransport)), notify: false);
+            Task drained;
+            lock (_gate)
+            {
+                _disposed = true;
+                drained = _activeRequests == 0 ? Task.CompletedTask :
+                    (_requestsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+            }
+            await drained.ConfigureAwait(false);
+            _lifetime.Dispose();
+            _writeGate.Dispose();
+            _pendingCapacity.Dispose();
         }
-        FailTerminal(new ObjectDisposedException(nameof(BridgePresentationTransport)), notify: false);
-        _lifetime.Dispose();
-        _writeGate.Dispose();
-        _pendingCapacity.Dispose();
     }
 
     private async Task ReceiveLoopAsync()
@@ -217,6 +266,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
             _pendingCapacity.Release();
             completion.TrySetException(failure);
         }
+        _lifetime.Cancel();
         if (notify) Failed?.Invoke(exception);
     }
 

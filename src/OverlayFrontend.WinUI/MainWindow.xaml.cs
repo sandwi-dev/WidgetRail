@@ -8,9 +8,11 @@ public sealed partial class MainWindow : Window
 {
     private readonly Input.PlatformInputPump? input;
     private readonly Validation.ControllerReplayScenario? replay;
+    private bool closingAfterCleanup;
+    private bool cleanupStarted;
 
     public MainWindow(bool validateExternalSurface = false, bool validateController = false, bool replayController = false,
-        bool validateCollection = false)
+        bool validateCollection = false, string? widgetConfiguration = null)
     {
         InitializeComponent();
         ExtendsContentIntoTitleBar = true;
@@ -45,8 +47,20 @@ public sealed partial class MainWindow : Window
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
+        else if (widgetConfiguration is not null)
+            RootFrame.Content = new Validation.BridgeWidgetValidationPage(widgetConfiguration);
         else RootFrame.Navigate(validateExternalSurface ? typeof(Validation.ExternalSurfacePage) :
             validateCollection ? typeof(Validation.CollectionValidationPage) : typeof(MainPage));
+        AppWindow.Closing += async (_, args) =>
+        {
+            if (closingAfterCleanup || RootFrame.Content is not IAsyncDisposable resource) return;
+            args.Cancel = true;
+            if (cleanupStarted) return;
+            cleanupStarted = true;
+            try { await resource.DisposeAsync(); }
+            catch (Exception error) { System.Diagnostics.Trace.TraceError("WinUI page shutdown failed: {0}", error); }
+            finally { closingAfterCleanup = true; Close(); }
+        };
         Activated += (_, args) =>
         {
             if (args.WindowActivationState != WindowActivationState.Deactivated)

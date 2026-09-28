@@ -53,3 +53,30 @@ The current prepend case retains focus identity but loses viewport visibility: t
 is an open regression, not accepted cursor behavior. The generic trusted template
 uses bounded Binding paths (Value.Title) because its data is a generic entry; no
 widget-supplied XAML, reflection path or custom layout code is loaded.
+
+## Real worker integration fixture
+
+`--widget-config=<absolute-json-path>` opts into a Clock-only round-trip fixture.
+The JSON has four explicit string properties: `InstallationRoot` (built backend
+distribution), `SettingsRoot` (isolated candidate profile), `InstalledCatalogRoot`
+(isolated installed packages), and `WidgetId` (`widgetrail.samples.clock`). Package,
+install and enable the existing Clock sample in that catalog using wrail; never
+substitute the user's default catalog/profile for this fixture.
+
+The fixture starts and owns a real WidgetBridge child and consumes its validated
+snapshot. Stack/Row/Text/Button are mapped to standard WinUI controls. Refresh
+uses current snapshot/scope authority, and subsequent publications update existing
+controls without replacing focus. Unsupported kinds/structural changes fail
+visibly; this limited validation adapter is not a shipping renderer or a supported
+SDK contract. Existing resolved font size is projected for basic readability;
+complete style/state/theme migration remains outstanding.
+
+Run `scripts/Test-WinUiBridgeWidget.ps1 -AppPid <pid>` after project-mode launch.
+It verifies initial focus before injecting any keyboard/mouse input, three actual
+worker Refresh round trips, stable control/focus identity and owned process cleanup.
+It closes the fixture and records results plus a screenshot. Inspect the screenshot
+separately. The capture sends harmless Escape after the initial-focus checks to
+wake idle desktop presentation; no hardware-controller claim follows from this.
+
+The client now depends on `WidgetBridge.Contracts`, not the backend executable.
+Shared DTO namespaces and wire shapes are unchanged; managed consumers must rebuild.

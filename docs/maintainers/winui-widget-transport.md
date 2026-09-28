@@ -18,8 +18,8 @@ WinUI frontend
 `src/WidgetPresentationSession` already implements catalog discovery, presentation
 establishment, lifecycle, action/controller admission, asynchronous refresh,
 artwork resolution and typed failure state using the existing bridge framing.
-It does not launch the bridge. Add a small frontend-owned bridge process lifetime
-component and consume this facade; do not spawn `OverlayHost.exe` or connect
+`OwnedBridgeProcess` now owns bridge launch and bounded shutdown. Consume this
+facade; do not spawn `OverlayHost.exe` or connect
 directly to a worker to bypass catalog/consent/admission.
 
 ### Important trust correction
@@ -126,7 +126,7 @@ the existing verified worker/broker process boundary.
 | Hello does not advertise `WindowPreviews` | Negotiate this when actual supported preview presentation exists; do not advertise a feature merely because transport types compile. |
 | Artwork request omits runtime/presentation generations and demand ID | Use the existing generation/demand fields; correlate completion to a unique demand, not a FIFO keyed only by widget/handle. |
 | Caller cancellation removes local pending artwork but does not cancel server-side work | Define demand withdrawal/consumer lifetime explicitly for realized items and retained presentation slots. Late completion must not satisfy a replacement demand. |
-| Entire session project references the `WidgetBridge` executable project | Extract the shared framing/DTO contracts into a service-contract library when wiring the shipping dependency graph; frontend should not transitively ship every provider to consume a few records. |
+| Shared contracts formerly resided in the `WidgetBridge` executable | Extracted to `WidgetBridge.Contracts`; the frontend client now references only protocol/SDK/style contracts. Keep executable providers behind the process boundary. |
 
 The artwork issue is concrete: `ResolveArtworkAsync` sends
 `new BridgeArtworkRequest(widgetId, artworkHandle)` and stores a pending queue

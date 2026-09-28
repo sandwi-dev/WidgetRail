@@ -111,7 +111,10 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             new { },
             BridgeMessageTypes.Widgets,
             cancellationToken).ConfigureAwait(false);
-        RequireObjectProperties(response.Payload, "revision", "widgets");
+        RequireObjectProperties(response.Payload, "revision", "isComplete", "widgets");
+        var completeness = response.Payload.GetProperty("isComplete");
+        if (completeness.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            throw new BridgeProtocolException("WidgetBridge returned invalid catalog completeness.");
         var revision = ReadInt64(response.Payload, "revision", minimum: 0);
         var widgets = response.Payload.GetProperty("widgets")
             .Deserialize<BridgeWidgetDescriptor[]>(BridgeJson.Options)
@@ -155,7 +158,7 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             foreach (var pair in byId) _descriptors.Add(pair.Key, pair.Value);
         }
         if (startPublications) DrainStatePublications();
-        return new WidgetPresentationCatalog(revision, Array.AsReadOnly(widgets));
+        return new WidgetPresentationCatalog(revision, Array.AsReadOnly(widgets)) { IsComplete = completeness.GetBoolean() };
     }
 
     public async Task<WidgetPresentationFrame> EstablishPresentationAsync(

@@ -52,8 +52,10 @@ public partial class App : Application
     {
         var arguments = args.Arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Concat(Environment.GetCommandLineArgs().Skip(1)).ToHashSet(StringComparer.Ordinal);
+        var widgetConfiguration = Environment.GetCommandLineArgs().Skip(1)
+            .FirstOrDefault(value => value.StartsWith("--widget-config=", StringComparison.Ordinal))?["--widget-config=".Length..];
         var main = new MainWindow(arguments.Contains("--validate-external-surface"), arguments.Contains("--validate-controller"),
-            arguments.Contains("--replay-controller"), arguments.Contains("--validate-collection"));
+            arguments.Contains("--replay-controller"), arguments.Contains("--validate-collection"), widgetConfiguration);
         Window = main;
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         Window.Activate();

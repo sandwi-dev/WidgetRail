@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("WidgetRuntime")]
 [assembly: InternalsVisibleTo("WidgetBridge")]
+[assembly: InternalsVisibleTo("WidgetBridge.Contracts")]
 [assembly: InternalsVisibleTo("WidgetBridge.Tests")]
 [assembly: InternalsVisibleTo("WidgetPresentationSession")]
 [assembly: InternalsVisibleTo("WidgetApplicationRuntime")]

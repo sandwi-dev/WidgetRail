@@ -1,6 +1,5 @@
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
-using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.WidgetPresentationSession;
@@ -33,7 +32,11 @@ public sealed record WidgetPresentationSessionOptions
 
 public sealed record WidgetPresentationCatalog(
     long Revision,
-    IReadOnlyList<BridgeWidgetDescriptor> Widgets);
+    IReadOnlyList<BridgeWidgetDescriptor> Widgets)
+{
+    /// <summary>False while installed package admission is still in progress.</summary>
+    public bool IsComplete { get; init; }
+}
 
 public sealed record WidgetPresentationTarget(
     long CatalogRevision,

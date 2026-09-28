@@ -155,3 +155,61 @@ Item 0 offscreen. That experimental setting was removed; it is not a fix.
 `anchor-before.json` / `anchor-after.json` retain the result. Next inspect logical
 key/index mapping and native ItemsView bring/anchor lifecycle with a repeatable
 regression, rather than accumulating unproven scroll settings.
+
+## Real bridge and installed Clock round trip
+
+`OwnedBridgeProcess` owns a random-pipe bridge child with explicit installation,
+settings and installed-catalog roots. It drains bounded diagnostics, observes
+early exit, and disposes the session before awaiting/terminating only its child.
+Startup cleanup preserves the original connection/cancellation error. Transport
+shutdown now interrupts blocked writers, write-gate and capacity waiters and
+drains active requests before disposing synchronization; concurrent disposal
+shares one task. Eighteen session tests pass, including the stalled-peer cases.
+
+The first real catalog request found an outdated client contract: the producer
+returns `isComplete` alongside revision/widgets. The facade now preserves that
+field and tests pending-to-complete discovery. A real Power initial snapshot
+(read-only, no action) succeeded and the owned bridge exited after disposal.
+
+Shared framing, catalog descriptors and style DTOs now live in
+`WidgetBridge.Contracts`. The client dependency graph includes only Contracts,
+Protocol, SDK and Styling; it no longer pulls the executable, runtime, broker,
+catalog or providers into WinUI. Wire shapes/namespaces are unchanged. Managed
+consumers need rebuilding because types moved assemblies. Nine focused bridge
+checks passed, including sandbox/full-trust managed session paths. The full-trust
+check initially lacked its required Release fixture; building it resolved setup.
+
+The Clock source was packaged and installed through wrail into the isolated
+`artifacts/winui-clock/catalog`, with a separate settings profile. A new opt-in
+WinUI fixture uses the real bridge/catalog/worker and validated declarations;
+it never loads widget code in the frontend. Ten UIA checks passed: first snapshot,
+cold focus without injected input, real generic worker process, three Refresh
+actions each advancing exactly one snapshot, stable focused control through all
+updates, and frontend/bridge/worker exit on close. The worker exit log records
+cooperative stop and exit code zero. Final screenshot was visually inspected.
+Frontend analyzer build: zero warnings/errors.
+
+This is deliberately a **Clock-only integration fixture**, supporting its four
+node kinds and basic typography, not the production renderer or theme migration.
+Unsupported structure fails visibly. The shipping adapter, controller shortcuts,
+media/artwork, scopes, modals and collection semantics remain incomplete. No
+physical controller acceptance was inferred from UIA or deterministic replay.
+
+Pixel-check caveat: while idle, both Clock and the existing shell/replay showed
+UIA state without rendered pixels. A harmless synthetic Escape restored shell
+pixels; the normal transparent Clock subsequently rendered correctly. Temporary
+opaque-window experiments were removed. This suggests idle desktop presentation
+suspension, but its cause is not proven; do not classify blank captures as a
+widget rendering defect without checking actual presentation state. The scripted
+capture sends Escape only after its no-input initial-focus assertion.
+
+Further collection investigation tried public `StartBringItemIntoView` and
+`IKeyIndexMapping` (recognized by `ItemsSourceView.HasKeyIndexMapping`). Neither
+provided correct prepend focus/viewport retention in the tested combinations.
+All unsuccessful adapters/scroll corrections were removed. Source experiments
+remain only in `artifacts/winui-collection/anchor-experiment`; no claimed fix.
+
+Evidence: `artifacts/winui-bridge/` contains build/test binlogs and real bridge
+smoke output; `artifacts/winui-clock/results.json`, `clock-verified.png` and
+`profile/overlay.log` contain the real worker/UI round-trip evidence. All changes
+remain on the isolated migration branch; no main merge, push or release.

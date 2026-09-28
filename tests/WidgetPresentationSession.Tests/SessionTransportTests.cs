@@ -9,6 +9,25 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 [TestClass]
 public sealed class SessionTransportTests
 {
+    [TestMethod]
+    public async Task CatalogPreservesPendingInstalledPackageAdmission()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            var pending = await channel.ReadAsync(CancellationToken.None);
+            await ReplyCatalogAsync(channel, pending.RequestId, 1, [Descriptor()], isComplete: false);
+            var complete = await channel.ReadAsync(CancellationToken.None);
+            await ReplyCatalogAsync(channel, complete.RequestId, 2, [Descriptor()], isComplete: true);
+            await ExpectStopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName, Options()))
+        {
+            Assert.IsFalse((await session.ListWidgetsAsync()).IsComplete);
+            Assert.IsTrue((await session.ListWidgetsAsync()).IsComplete);
+        }
+        await serverTask.WaitAsync(TestDeadline);
+    }
     private static readonly TimeSpan TestDeadline = TimeSpan.FromSeconds(5);
 
     [TestMethod]
@@ -898,7 +917,8 @@ public sealed class SessionTransportTests
         BridgeFrameChannel channel,
         long requestId,
         long revision,
-        IReadOnlyList<BridgeWidgetDescriptor> widgets)
+        IReadOnlyList<BridgeWidgetDescriptor> widgets,
+        bool isComplete = true)
     {
         await channel.WriteAsync(new BridgeEnvelope
         {
@@ -908,6 +928,7 @@ public sealed class SessionTransportTests
             {
                 revision,
                 widgets,
+                isComplete,
             }),
         }, CancellationToken.None);
     }

@@ -7,7 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
+    <ProjectReference Include="..\..\src\WidgetBridge.Contracts\WidgetBridge.Contracts.csproj" />
     <ProjectReference Include="..\..\src\WidgetPresentationSession\WidgetPresentationSession.csproj" />
   </ItemGroup>
 </Project>
