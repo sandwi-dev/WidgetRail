@@ -134,9 +134,9 @@ internal sealed partial class WindowPreviewValidationPage : Page, IAsyncDisposab
                         preview.InspectNative().Width == (uint)Math.Ceiling(310 * XamlRoot.RasterizationScale) &&
                         preview.InspectNative().Height == (uint)Math.Ceiling(170 * XamlRoot.RasterizationScale));
                     break;
-                case "Hide": renderer.SetVisible(false); await Until(() => preview.InspectNative().ActiveCount == 0); break;
+                case "Hide": renderer.SetVisible(false); await Until(() => preview.InspectNative().ActiveCount == 0); await CheckIdleAsync("hidden"); break;
                 case "Show": renderer.SetVisible(true); await Until(() => preview.InspectNative().State == 2); break;
-                case "Collapse": preview.Visibility = Visibility.Collapsed; await Until(() => preview.InspectNative().ActiveCount == 0); break;
+                case "Collapse": preview.Visibility = Visibility.Collapsed; await Until(() => preview.InspectNative().ActiveCount == 0); await CheckIdleAsync("collapsed"); break;
                 case "Expand": preview.Visibility = Visibility.Visible; await Until(() => preview.InspectNative().State == 2); break;
                 case "Expire":
                     renderer.PauseRenewalForValidation(true);
@@ -157,7 +157,7 @@ internal sealed partial class WindowPreviewValidationPage : Page, IAsyncDisposab
                     Check(SetWindowDisplayAffinity(WinRT.Interop.WindowNative.GetWindowHandle(source), 0) != 0, "owned source exclusion restored");
                     await Until(() => preview.InspectNative().State == 2); break;
                 case "Device": renderer.ResetDeviceForValidation(); await Until(() => preview.LastStats.SurfaceGeneration > before.SurfaceGeneration && preview.InspectNative().State == 2); break;
-                case "Unload": canvas.Children.Remove(preview); await Until(() => preview.InspectNative().ActiveCount == 0 && preview.InspectNative().TotalBytes == 0); break;
+                case "Unload": canvas.Children.Remove(preview); await Until(() => preview.InspectNative().ActiveCount == 0 && preview.InspectNative().TotalBytes == 0); await CheckIdleAsync("unloaded"); break;
                 case "Reload": canvas.Children.Insert(0, preview); await Until(() => preview.InspectNative().State == 2); break;
                 case "Budget":
                     // Two renderer instances share one native budget. This fixture
@@ -205,6 +205,14 @@ internal sealed partial class WindowPreviewValidationPage : Page, IAsyncDisposab
     { status.Text = "Preview failed: " + error.Message; Write(new { passed = false, checks, error = error.ToString() }); }
     private void Check(bool passed, string name)
     { if (!passed) throw new InvalidOperationException(name); checks.Add(name); }
+    private async Task CheckIdleAsync(string state)
+    {
+        await Task.Delay(100);
+        var inspections = preview!.InspectionCount;
+        await Task.Delay(300);
+        Check(!preview.IsBindingTimerRunning && inspections == preview.InspectionCount,
+            state + " preview stops UI timer and native inspection polling");
+    }
     private async Task Until(Func<bool> condition)
     {
         for (int count = 0; count < 500; ++count)

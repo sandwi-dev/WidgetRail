@@ -41,9 +41,13 @@ internal sealed class WindowPreviewSurface : Grid, IDisposable
     private nint pendingSurface;
     private bool hasPendingSurface;
     private int disposed, demanded, ownerVisible = 1, elementVisible = 1, viewportVisible;
+    private int presentationUpdateQueued;
+    private long inspectionCount;
     private Published published = new(NativePreviewStats.Empty);
     internal NativePreviewStats LastStats => Volatile.Read(ref published).Stats;
     internal Task Completion => completion;
+    internal long InspectionCount => Interlocked.Read(ref inspectionCount);
+    internal bool IsBindingTimerRunning => bindingTimer.IsEnabled;
     internal bool HasNativeCallbackRoot { get { lock (gate) return callbackRoot.IsAllocated; } }
     internal string WindowId => target.WindowId;
     internal bool HasDemand => Volatile.Read(ref demanded) != 0 && Volatile.Read(ref viewportVisible) != 0 &&
@@ -66,7 +70,7 @@ internal sealed class WindowPreviewSurface : Grid, IDisposable
         visibilityToken = RegisterPropertyChangedCallback(VisibilityProperty, (_, _) =>
         {
             Volatile.Write(ref elementVisible, Visibility == Visibility.Visible ? 1 : 0);
-            if (elementVisible == 0) Revoke(); Signal();
+            if (elementVisible == 0) Revoke(); RefreshDemandPresentation(); Signal();
         });
         bindingTimer.Tick += (_, _) => { if (XamlRoot?.RasterizationScale != rasterScale) UpdateSize(); BindPublishedSurface(); };
         completion = Task.Run(PumpAsync);
@@ -77,11 +81,10 @@ internal sealed class WindowPreviewSurface : Grid, IDisposable
         catch (SemaphoreFullException) { } // Coalesced desired state, never replayed.
     }
     private void LoadedView(object sender, RoutedEventArgs args)
-    { if (disposed != 0) return; Volatile.Write(ref demanded, 1); UpdateSize(); bindingTimer.Start(); Signal(); }
+    { if (disposed != 0) return; Volatile.Write(ref demanded, 1); RefreshDemandPresentation(); Signal(); }
     private void UnloadedView(object sender, RoutedEventArgs args)
     {
-        Volatile.Write(ref demanded, 0); bindingTimer.Stop(); Revoke();
-        BindSurface(0); Signal();
+        Volatile.Write(ref demanded, 0); Revoke(); RefreshDemandPresentation(); Signal();
     }
     private void ViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args)
     {
@@ -89,10 +92,30 @@ internal sealed class WindowPreviewSurface : Grid, IDisposable
         var visible = Math.Min(rect.Right, ActualWidth) > Math.Max(rect.Left, 0) &&
             Math.Min(rect.Bottom, ActualHeight) > Math.Max(rect.Top, 0) && Visibility == Visibility.Visible;
         Volatile.Write(ref viewportVisible, visible ? 1 : 0);
-        if (!visible) Revoke(); Signal();
+        if (!visible) Revoke(); RefreshDemandPresentation(); Signal();
     }
     internal void SetOwnerVisible(bool visible)
-    { Volatile.Write(ref ownerVisible, visible ? 1 : 0); if (!visible) Revoke(); Signal(); }
+    { Volatile.Write(ref ownerVisible, visible ? 1 : 0); if (!visible) Revoke(); RefreshDemandPresentation(); Signal(); }
+    private void RefreshDemandPresentation()
+    {
+        if (!DispatcherQueue.HasThreadAccess)
+        {
+            if (Interlocked.Exchange(ref presentationUpdateQueued, 1) == 0 &&
+                !DispatcherQueue.TryEnqueue(() => { Volatile.Write(ref presentationUpdateQueued, 0); RefreshDemandPresentation(); }))
+                Volatile.Write(ref presentationUpdateQueued, 0);
+            return;
+        }
+        if (disposed != 0) return;
+        if (HasDemand)
+        {
+            if (!bindingTimer.IsEnabled) { UpdateSize(); bindingTimer.Start(); }
+        }
+        else
+        {
+            bindingTimer.Stop();
+            BindSurface(0); PublishSurface(0);
+        }
+    }
     private void SizeChangedView(object sender, SizeChangedEventArgs args) => UpdateSize();
     private void UpdateSize()
     {
@@ -143,12 +166,22 @@ internal sealed class WindowPreviewSurface : Grid, IDisposable
         {
             while (Volatile.Read(ref disposed) == 0)
             {
-                await changed.WaitAsync(TimeSpan.FromMilliseconds(50)).ConfigureAwait(false);
+                if (slot == 0 && !HasDemand) await changed.WaitAsync().ConfigureAwait(false);
+                else await changed.WaitAsync(TimeSpan.FromMilliseconds(50)).ConfigureAwait(false);
                 if (Volatile.Read(ref disposed) != 0) break;
                 if (!HasDemand)
                 {
                     if (slot != 0 && PreviewNative.Remove(engine, slot) >= 0) { slot = 0; generation = 0; }
                     PublishSurface(0);
+                    if (slot == 0)
+                    {
+                        // No native capture remains. Keep this surface dormant
+                        // until a demand/disposal signal; no engine Inspect or UI
+                        // timer work is needed for an unrealized presentation.
+                        Volatile.Write(ref published, new(NativePreviewStats.Empty));
+                        wasLive = false;
+                        continue;
+                    }
                 }
                 else
                 {
@@ -177,6 +210,7 @@ internal sealed class WindowPreviewSurface : Grid, IDisposable
                     }
                 }
                 var stats = NativePreviewStats.Empty;
+                Interlocked.Increment(ref inspectionCount);
                 var inspected = PreviewNative.Inspect(engine, slot, ref stats);
                 if (inspected < 0) stats.Error = inspected;
                 else if (slot == 0) stats.Error = error;
@@ -249,8 +283,8 @@ internal sealed class WindowPreviewSurface : Grid, IDisposable
             Marshal.ThrowExceptionForHR(call(native, swap, &surface));
             var next = WinRT.MarshalInterface<ICompositionSurface>.FromAbi(surface);
             try { brush.Surface = next; boundSurface = next; }
-            catch { ReleaseProjection(next); throw; }
-            ReleaseProjection(previous);
+            catch { if (!ReferenceEquals(previous, next)) ReleaseProjection(next); throw; }
+            if (!ReferenceEquals(previous, next)) ReleaseProjection(previous);
         }
         finally { if (surface != 0) Marshal.Release(surface); if (native != 0) Marshal.Release(native); Marshal.Release(unknown); }
     }
