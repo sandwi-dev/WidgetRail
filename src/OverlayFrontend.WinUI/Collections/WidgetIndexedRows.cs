@@ -98,7 +98,9 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
     internal void Update(WidgetPresentationBinding binding, ViewNode collection)
     {
         if (!CanUpdate(binding, collection)) throw new InvalidOperationException("The indexed query requires a new native source.");
+        var appearanceOnly = binding.IsAppearanceUpdateOf(presentation.Binding) && ReferenceEquals(collection, presentation.Collection);
         Volatile.Write(ref presentation, new(binding, collection));
+        if (appearanceOnly) return;
         Items.RefreshContent(collection.IndexedCollection!.ContentRevision);
         Items.Append(collection.IndexedCollection.Count);
         Items.RetryFailedPages();

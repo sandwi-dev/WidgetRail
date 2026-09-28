@@ -78,6 +78,29 @@ internal sealed partial class IndexedWidgetValidationPage
             await Until(() => Descendants((Control)view.ContainerFromIndex(0)).OfType<TextBlock>()
                 .Any(text => text.Text == "Item 0" && text.Foreground is SolidColorBrush color && color.Color == revisedColor));
             Check(true, "newly realized rows use the same latest theme");
+
+            stage = "failed provider page";
+            await session.SendActionAsync(presenter.CurrentBinding!.Frame.Authority,
+                new("failure-mode", "root", InputScopeId: "root"), lifetime.Token);
+            await Until(() => View()?.ItemsSource is IndexedItemsSource<WidgetIndexedRow> failed &&
+                !ReferenceEquals(failed, source) && failed.FailedLoads > 0);
+            var failedSource = (IndexedItemsSource<WidgetIndexedRow>)View()!.ItemsSource;
+            await Task.Delay(300, lifetime.Token);
+            var failures = failedSource.FailedLoads;
+            var failedFrame = presenter.CurrentBinding!.Frame;
+            stage = "appearance must not retry failed pages";
+            await settings.UpdateAsync(value => value with { Appearance = value.Appearance with
+                { ThemeId = ThemeIdentity.BuiltInNeonCircuit, ThemeVersion = ThemeIdentity.BuiltInNeonCircuitVersion } }, lifetime.Token);
+            await Until(() => presenter.CurrentBinding!.Frame.AppearanceRevision > failedFrame.AppearanceRevision);
+            await Task.Delay(500, lifetime.Token);
+            Check(ReferenceEquals(View()!.ItemsSource, failedSource), "appearance refresh retains a failed-page query source");
+            Check(failedSource.FailedLoads == failures, "appearance refresh does not retry failed semantic provider pages");
+            Check(ReferenceEquals(presenter.CurrentBinding!.Frame.Snapshot, failedFrame.Snapshot), "failed-page appearance update keeps its exact declaration snapshot");
+            stage = "explicit semantic update can retry";
+            await session.SendActionAsync(presenter.CurrentBinding.Frame.Authority,
+                new("parent", "parent", InputScopeId: "root"), lifetime.Token);
+            await Until(() => failedSource.FailedLoads > failures);
+            Check(true, "ordinary semantic publication retains the explicit failed-page retry behavior");
             status.Text = "Passed " + checks.Count + " native theme-refresh checks";
             await Save(null);
         }

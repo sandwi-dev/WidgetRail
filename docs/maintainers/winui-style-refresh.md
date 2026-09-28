@@ -38,6 +38,16 @@ snapshot that supersedes an in-flight style request is never rolled back.
 The native presenter admits a newer AppearanceRevision at the same widget
 snapshot sequence, without replaying a consumed focus-entry request.
 
+Appearance-only frames take a dedicated visual update pass after proving the
+same immutable declaration snapshot and semantic authority. They refresh
+computed geometry, typography, decoration, native layout and surface fragments,
+without structural reconciliation or collection demand updates. This preserves
+a pending logical focus restoration when a structural reorder is immediately
+followed by a theme publication before the low-priority dispatcher restore.
+A subsequent native, keyboard or controller focus choice supersedes that restore.
+Indexed sources update their displayed binding but do not retry failed provider
+pages for appearance-only frames; ordinary semantic updates retain that behavior.
+
 Indexed leases retain their semantic range, lease identity and action/artwork
 authority. The session atomically replaces their immutable style snapshot and
 notifies retained native row views. Views detach subscriptions on retirement and
@@ -65,6 +75,13 @@ unchanged completed provider loads, row/focus-fragment colors and new realizatio
 The 11 native checks passed at 125% Windows scaling. Text and fragment colors both
 changed from `#FFE8F1FB` to `#FFEDF2F7`, with no session diagnostics; capture-screen
 pixels were inspected. Evidence: `artifacts/winui-theme-refresh/native-05`.
+
+Follow-up native regressions cover reorder followed by a same-sequence theme
+before dispatcher yield, user focus supersession on either side of that theme,
+geometry-changing styles, failed provider pages across a global theme switch,
+and later semantic retries. These follow-up native gates remain pending deployment
+slot coordination; the associated declaration-admission tests pass in the managed
+session suite.
 
 The initial native attempt exposed the presenter's old same-sequence rejection;
 the fixture also needed an explicit theme-dependent color and authored focus

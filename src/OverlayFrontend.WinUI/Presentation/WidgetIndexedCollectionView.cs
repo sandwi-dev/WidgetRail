@@ -51,6 +51,10 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private long discoveryForegroundToken;
     internal ListViewBase NativeView => view ?? throw new InvalidOperationException("Collection is not initialized.");
     internal Action? PresentationChanged { get; set; }
+    internal void RefreshAppearanceBinding(WidgetPresentationBinding binding)
+    {
+        if (source is not null) source.Update(binding, source.Declaration);
+    }
     internal Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
     internal bool Owns(WidgetIndexedRows owner) => ReferenceEquals(owner, source);
     internal WidgetIndexedRow? FocusedRow() => source is not null && FocusedIndex() is { } index

@@ -131,6 +131,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         var sameOwner = nextPresentation.SameSurface(presentation);
         if (!presentationOnly && sameOwner && (frame!.Authority.SnapshotSequence > next.Authority.SnapshotSequence ||
             frame.Authority.SnapshotSequence == next.Authority.SnapshotSequence && frame.AppearanceRevision >= next.AppearanceRevision)) return;
+        if (!presentationOnly && nextPresentation.IsAppearanceUpdateOf(presentation))
+        { ApplyAppearanceFrame(nextPresentation); return; }
         var plan = Plan(root, rootScope);
         // Transition preparation already revokes and detaches native controls.
         // Capture logical focus and enter the publication transaction before any
@@ -319,6 +321,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         if (!applying && FocusedBinding() is { } binding && Eligible(binding))
         {
+            // A new native/pointer/automation focus choice after structural
+            // reconciliation supersedes the pending low-priority restoration.
+            pendingRestore = null;
             if (waitingEntry is not null) { needsEntry = false; ClearEntryLayoutWait(); }
             remembered[binding.Identity.Scope] = binding.Identity;
             RememberGroupFocus(binding);

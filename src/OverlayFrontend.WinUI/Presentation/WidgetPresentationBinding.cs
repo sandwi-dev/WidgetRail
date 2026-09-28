@@ -42,4 +42,10 @@ internal sealed class WidgetPresentationBinding
         first.RuntimeGeneration == second.RuntimeGeneration && first.PresentationGeneration == second.PresentationGeneration &&
         first.SessionGeneration == second.SessionGeneration;
     internal bool SameInput(WidgetPresentationBinding? other) => IsCurrent && other?.IsCurrent == true && SameSurface(other) && Scope == other.Scope;
+
+    // Theme publication shares immutable declarations and action authority.
+    // Same sequence alone is insufficient: callers must not relabel data changes.
+    internal bool IsAppearanceUpdateOf(WidgetPresentationBinding? other) => other is not null && SameSurface(other) &&
+        Frame.Authority == other.Frame.Authority && ReferenceEquals(Frame.Snapshot, other.Frame.Snapshot) &&
+        Frame.AppearanceRevision > other.Frame.AppearanceRevision;
 }

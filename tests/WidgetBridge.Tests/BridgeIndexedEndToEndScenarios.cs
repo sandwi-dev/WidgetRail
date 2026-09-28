@@ -201,6 +201,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         {
             ReadRange = async (query, start, count, token) =>
             {
+                if (query == 500) throw new InvalidOperationException("Native theme fixture provider failure.");
                 if (query is >= 300 and <= 303 && Volatile.Read(ref activationReadGate) is { } gate) await gate.Task.WaitAsync(token);
                 await Task.Delay(query == 99 ? 500 : 80, token);
                 return Enumerable.Range(start, count).ToArray();
@@ -318,6 +319,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         if (action.ActionId == "grid") grid = !grid;
         if (action.ActionId == "groups") { grouped = !grouped; grid = true; source.UpdateContent(0); }
         if (action.ActionId == "surfaces") { surfaces = !surfaces; source.PublishQuery(surfaces ? 100 : 0, 100); }
+        if (action.ActionId == "failure-mode") { surfaces = true; source.PublishQuery(500, 100); }
         if (action.ActionId == "group-label") { ++headerRevision; }
         if (action.ActionId == "group-partition") { grouped = true; repartitioned = !repartitioned; }
         if (action.ActionId == "focus-exact") entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
