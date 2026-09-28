@@ -15,8 +15,10 @@ are untouched. Migration is active and incomplete.
 - YouTube Music now projects its bounded service snapshots as indexed grouped
   Home grids and lists, with captured row actions, deep return targets, retained
   section queries and exact queue selection. All 28 standalone tests pass,
-  including duplicate occurrences and stale-query rejection. Native real-package
-  validation is pending; this is not a playback/performance acceptance claim.
+  including duplicate occurrences and stale-query rejection. Five real-package
+  native checks pass, including square grouped posters and Library navigation;
+  see [music validation](winui-ytmusic-validation.md). This does not establish
+  playback, physical controller or performance acceptance.
 - Native modal, Select, TextEntry/controller keyboard, context menus and sliders
   are integrated. Scoped input and exact indexed action ownership remain enforced.
 - Responsive branches, static grids, basic poster layering and ordinary styles
@@ -42,11 +44,12 @@ are untouched. Migration is active and incomplete.
   into the parent tree and exceeding its style budget. They remain display-only;
   live replacement retires their bindings. The fresh real package starts without
   Retry, and both its empty-state and saved-state transport probes pass.
-- Latest integrated managed gates: 157 Playnite tests, 88 session tests, 16 shell
+- Latest integrated managed gates: 157 Playnite tests, 88 session tests, 24 shell
   tests, 35 style tests. Package-icon transport is admitted by exact inventory/hash
   and bounded independently. OriginalColor Icon/Button/Select rendering is integrated
-  with 15 native checks and a 7-check/45-symbol glyph regression. ThemeTint currently
-  retains the semantic fallback; native SVG alpha-mask capability work remains.
+  with native icon checks and a 7-check/45-symbol glyph regression. ThemeTint now
+  uses WinUI SVG rasterization and compositor alpha masks, with a bounded shared
+  cache. Its lane passes 24 checks including actual alpha, theme change and eviction.
 - Repeatable real-package smoke: Home startup/row/details/focus/shutdown passes all
   five checks. Library startup/navigation/row passes, but one unfocused UIA poster
   invocation did not open details; a separate immediate run succeeded. A deterministic
@@ -56,13 +59,19 @@ are untouched. Migration is active and incomplete.
   An integrated run passes, but a second lifecycle defect is now reproduced:
   invoke a Library poster immediately after focusing the tray, and admission can
   reach the worker before its Interactive transition. It returns Enqueued while
-  DetailsOpen's lifecycle guard ignores execution. Host lifecycle/input ordering
-  is the next correction; do not weaken the widget guard or replay admitted input.
+  DetailsOpen's lifecycle guard ignored execution. The host now awaits acknowledged
+  Interactive state before sending captured input. The real tray-to-poster check
+  passes six assertions, including one invocation and Play/Install focus; no worker
+  guard was weakened and no admitted input is replayed.
 - Pending ordinary artwork now renews on snapshot replacement while decoded pixels
   remain retained. A native regression fails against the old loader at replacement
   demand, and all 13 surface checks pass with the correction. Stale artwork admission
   no longer becomes an overlay error. The integrated real-package debug run opens
   details with artwork and no corresponding stale-artwork overlay error.
+- Real music startup exposed Auto-sized loading indicators in unbounded measurement;
+  native intrinsic sizes now survive style projection. Authored poster aspect ratios
+  are mapped. All 56 integrated native style checks pass. Root/container sizing and
+  enlarged-card clipping still need the presentation lane's correction.
   Native fixture gates and real screenshots are recorded below and in
   [Playnite validation](winui-playnite-validation.md); fixture results are not
   production-widget performance acceptance.
