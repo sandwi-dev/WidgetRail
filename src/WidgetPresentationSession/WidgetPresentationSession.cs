@@ -202,6 +202,18 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         ValidatePresentationLifecycle(state);
         var sessionGeneration = ValidateTarget(target);
         var lifecycleVersion = BeginIndexedLifecycle(target, state);
+        long invalidationBeforeEstablishment;
+        lock (_gate)
+        {
+            if (ValidateTarget(target) != sessionGeneration)
+                throw Stale("presentation_stale", target.Descriptor.Id, "The presentation session changed before activation.");
+            // Activation may finish async widget work before its first snapshot
+            // reaches us. Retain that notification against this catalog/session
+            // instead of dropping it because no LastGood exists yet.
+            if (!_states.TryGetValue(target.Descriptor.Id, out var pending))
+                pending = CommitStateLocked(new(target.Descriptor.Id, null, null, 0), publish: false);
+            invalidationBeforeEstablishment = pending.InvalidationRevision;
+        }
         var response = await RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
             new BridgeWidgetLifecycleRequest(
@@ -217,6 +229,8 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
         var frame = PublishSnapshot(target.Descriptor, sessionGeneration, response.Payload);
         CompleteIndexedLifecycle(target, sessionGeneration, lifecycleVersion, state);
+        if (GetState(target.Descriptor.Id)?.InvalidationRevision > invalidationBeforeEstablishment)
+            StartInvalidationRefresh(target.Descriptor.Id);
         return frame;
     }
 

@@ -10,6 +10,36 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 public sealed class SessionTransportTests
 {
     [TestMethod]
+    public async Task InvalidationBeforeFirstSnapshotRefreshesAfterEstablishment()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            var list = await channel.ReadAsync(CancellationToken.None);
+            await ReplyCatalogAsync(channel, list.RequestId, revision: 1);
+            var establish = await channel.ReadAsync(CancellationToken.None);
+            await SendInvalidationAsync(channel, revision: 3);
+            await SendInvalidationAsync(channel, revision: 5);
+            await observed.Task.WaitAsync(TestDeadline);
+            await ReplySnapshotAsync(channel, establish.RequestId, Descriptor(), sequence: 1);
+            var refresh = await channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(TestDeadline);
+            Assert.AreEqual(BridgeMessageTypes.GetSnapshot, refresh.Type);
+            await ReplySnapshotAsync(channel, refresh.RequestId, Descriptor(), sequence: 2);
+            await ExpectStopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName, Options()))
+        {
+            session.Invalidated += (_, args) => { if (args.Invalidation.Revision == 5) observed.TrySetResult(); };
+            await session.ListWidgetsAsync();
+            await session.EstablishPresentationAsync(session.GetTarget("session-widget"), WidgetLifecycleState.Interactive);
+            await WaitUntilAsync(() => session.GetState("session-widget")?.LastGood?.Authority.SnapshotSequence == 2);
+            Assert.AreEqual(5L, session.GetState("session-widget")!.InvalidationRevision);
+        }
+        await serverTask.WaitAsync(TestDeadline);
+    }
+
+    [TestMethod]
     public async Task CatalogPreservesPendingInstalledPackageAdmission()
     {
         await using var server = new ScriptedBridgeServer();
