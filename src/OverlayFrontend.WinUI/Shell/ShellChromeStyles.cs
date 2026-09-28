@@ -23,11 +23,11 @@ internal sealed class ShellChromeStyles : IDisposable
         elements.Add(element, (role, style)); style.Update(palette?.GetValueOrDefault(role));
     }
 
-    internal void Attach(ListView tray)
+    internal void Attach(ListView tray, bool paintBackground = true)
     {
         trays.Add(tray);
         tray.ContainerContentChanging += ContainerChanged;
-        Register(tray, "tray");
+        if (paintBackground) Register(tray, "tray");
     }
 
     private void ContainerChanged(ListViewBase sender, ContainerContentChangingEventArgs args)

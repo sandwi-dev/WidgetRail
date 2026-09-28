@@ -69,6 +69,8 @@ public sealed partial class MainWindow : Window
         }
         else if (validateWindowPreview) RootFrame.Content = new Validation.WindowPreviewValidationPage();
         else if (Environment.GetCommandLineArgs().Contains("--validate-shell-status")) RootFrame.Content = new Validation.ShellStatusValidationPage();
+        else if (Environment.GetCommandLineArgs().Contains("--validate-production-shell"))
+        { AppWindow.Resize(new(1600, 1100)); RootFrame.Content = new Validation.ProductionShellValidationPage(); }
         else if (Environment.GetCommandLineArgs().Contains("--validate-gamepad-boundary")) RootFrame.Content = new Validation.GamepadKeyBoundaryValidationPage();
         else if (validateEmbeddedMedia) RootFrame.Content = new Validation.EmbeddedMediaValidationPage();
         else if (validatePackageIcons) RootFrame.Content = new Validation.PackageIconValidationPage();
@@ -84,12 +86,14 @@ public sealed partial class MainWindow : Window
             var page = new Shell.OverlayShellPage(Shell.OverlayShellOptions.Load(shellConfiguration),
                 unchecked((ulong)WinRT.Interop.WindowNative.GetWindowHandle(this)));
             RootFrame.Content = page;
-            ShellCard.Style = (Style)ShellRoot.Resources["ProductionShellCardStyle"];
             if (shellNoController && Environment.GetCommandLineArgs().Contains("--replay-shell-input"))
                 page.EnableValidationInputReplay();
-            ShellCard.Margin = new Thickness(16);
-            ShellCard.Padding = new Thickness(16);
-            ShellLayout.RowSpacing = 12;
+            // Production has no validation title/card/Close row. Keep one native
+            // scale root, while fixtures retain their independent test wrapper.
+            ShellLayout.Children.Remove(RootFrame);
+            ScaleRoot.Children.Clear();
+            ScaleRoot.Children.Add(RootFrame);
+            Microsoft.UI.Xaml.Controls.Grid.SetRow(RootFrame, 0);
             InitializeShellAppearance(page);
             page.HideRequested += HideOverlay;
             page.ReturnFromPinnedRequested += () => { Activate(); input?.AcquireForeground(); page.QueueEntryFocus(); };
@@ -99,9 +103,6 @@ public sealed partial class MainWindow : Window
             page.AppearanceLoaded += ApplyOverlayPlacement;
             page.MediaPresentationChanged += () =>
             {
-                ShellHeader.Visibility = page.IsMediaFullscreen ? Visibility.Collapsed : Visibility.Visible;
-                ShellLayout.RowSpacing = page.IsMediaFullscreen ? 0 : 12;
-                ShellCard.Padding = new Thickness(page.IsMediaFullscreen ? 0 : 16);
                 QueueOverlayPlacement();
             };
             if (!shellNoController)

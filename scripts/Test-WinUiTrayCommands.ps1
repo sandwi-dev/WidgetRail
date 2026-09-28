@@ -59,7 +59,7 @@ try {
         $null = Ui @('send-keys','escape','--via','send-input')
         $null = Ui @('wait-for','Overlay.Tray','-p','HelpText','--value','Open widget','--contains','-t','3000')
         if (((Order) -join '|') -ne ($original -join '|')) { throw 'Restoring order changed other widget identities.' }
-        $state = (Ui @('get-property','Overlay.Status','-p','HelpText')).properties.HelpText | ConvertFrom-Json
+        $state = (Ui @('get-property','Overlay.Shell','-p','HelpText')).properties.HelpText | ConvertFrom-Json
         if ($state.interactive) { throw 'Reorder transferred focus into the widget.' }
     }
     Check 'Dismissal returns focus without leaving a stale command menu' {
@@ -73,6 +73,6 @@ try {
     throw
 } finally {
     $results | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'results.json')
-    if ($CloseAfter) { $null = Ui @('invoke','Shell.Close') }
+    if ($CloseAfter) { & (Join-Path $PSScriptRoot 'Close-WinUiTestShell.ps1') -AppPid $AppPid }
 }
 "Tray commands: $($results.Count) checks passed."

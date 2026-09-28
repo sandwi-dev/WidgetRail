@@ -17,7 +17,6 @@ internal sealed partial class OverlayShellPage
 
     private void InitializeFullscreenView()
     {
-        Grid.SetRowSpan(fullscreenView, 4);
         ((Grid)Content).Children.Add(fullscreenView);
         fullscreenView.ExitRequested += () => mediaOwner?.ExitFullscreen();
         fullscreenView.CommandRequested += command => mediaOwner?.DispatchFullscreen(command);
@@ -46,6 +45,7 @@ internal sealed partial class OverlayShellPage
     private void RefreshFullscreenView()
     {
         var showing = mediaOwner?.FullscreenState is not null;
+        ProductionLayout.Visibility = showing ? Visibility.Collapsed : Visibility.Visible;
         WidgetHost.IsEnabled = Tray.IsEnabled = !showing;
         if (showing) { surface?.ResetPressedStyles(); surface?.DismissTransientControl(); fullscreenView.Show(mediaOwner!.FullscreenState!.Declaration); }
         else fullscreenView.Hide();
@@ -78,13 +78,31 @@ internal sealed partial class OverlayShellPage
     {
         if (retired) return;
         var code = activeWidget is { } id ? mediaOwner?.GetFailure(id) : null;
-        Status.Text = code switch
+        var message = code switch
         {
-            null => widgetName,
+            null => null,
             "media-session-capacity" => "Four media sessions are already open. Close one before opening another.",
             "media-document-admission-failed" => "The widget's media could not be loaded. Retry to restart this widget.",
             _ => "The widget's media stopped unexpectedly. Retry to restart this widget.",
         };
-        Retry.Visibility = code is not null ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+        if (message is null)
+        {
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ProductionRoot, widgetName);
+            StatusChrome.Visibility = Visibility.Collapsed;
+            Status.Text = widgetName; // diagnostic/accessibility lookup, no permanent status row
+            Retry.Visibility = Visibility.Collapsed;
+        }
+        else ShowRecovery(message, true);
     }
+
+    private void ShowRecovery(string message, bool canRetry)
+    {
+        Status.Text = message;
+        StatusChrome.Visibility = Visibility.Visible;
+        Retry.Visibility = canRetry ? Visibility.Visible : Visibility.Collapsed;
+        if (canRetry && visible && foreground && interactive)
+            DispatcherQueue.TryEnqueue(() => { if (!retired && RecoveryVisible && visible && foreground && interactive) Retry.Focus(FocusState.Keyboard); });
+    }
+
+    private bool RecoveryVisible => StatusChrome.Visibility == Visibility.Visible;
 }

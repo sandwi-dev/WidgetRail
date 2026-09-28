@@ -18,7 +18,7 @@ function Assert-Ui([string[]]$Arguments) {
     return ($output -join "`n" | ConvertFrom-Json)
 }
 Invoke-Check 'Real catalog selected the requested widget' {
-    $null = Assert-Ui @('wait-for', 'Overlay.Status', '--value', $WidgetName, '-t', '20000')
+    $null = Assert-Ui @('wait-for', 'Overlay.Shell', '--value', $WidgetName, '-t', '20000')
 }
 Invoke-Check 'Actual catalog entry is accessible' {
     $null = Assert-Ui @('wait-for', "Overlay.Widget.$WidgetId", '-t', '3000')
@@ -29,11 +29,11 @@ if ($WidgetId -eq 'widgetrail.samples.clock') {
         if ($focus.properties.HasKeyboardFocus -ne 'True') { throw 'Clock refresh did not have initial keyboard focus.' }
     }
     Invoke-Check 'Worker action updates an admitted shell publication' {
-        $before = (Assert-Ui @('get-property', 'Overlay.Status', '--property', 'HelpText')).properties.HelpText | ConvertFrom-Json
+        $before = (Assert-Ui @('get-property', 'Overlay.Shell', '--property', 'HelpText')).properties.HelpText | ConvertFrom-Json
         $null = Assert-Ui @('invoke', 'Widget.refresh')
         $deadline = [DateTime]::UtcNow.AddSeconds(5)
         do {
-            $after = (Assert-Ui @('get-property', 'Overlay.Status', '--property', 'HelpText')).properties.HelpText | ConvertFrom-Json
+            $after = (Assert-Ui @('get-property', 'Overlay.Shell', '--property', 'HelpText')).properties.HelpText | ConvertFrom-Json
             if ($after.publication -gt $before.publication) { break }
             Start-Sleep -Milliseconds 50
         } while ([DateTime]::UtcNow -lt $deadline)
@@ -49,18 +49,21 @@ Invoke-Check 'Tray can reacquire native keyboard focus' {
 }
 Invoke-Check 'Native catalog entry reopens its real widget' {
     $null = Assert-Ui @('invoke', "Overlay.Widget.$WidgetId")
-    $null = Assert-Ui @('wait-for', 'Overlay.Status', '--value', $WidgetName, '-t', '10000')
+    $null = Assert-Ui @('wait-for', 'Overlay.Shell', '--value', $WidgetName, '-t', '10000')
 }
 Invoke-Check 'Desktop screenshot captured for separate inspection' {
-    $null = Assert-Ui @('screenshot', '--capture-screen', '-o', (Join-Path $OutputDirectory 'shell.png'))
+    $windows = Assert-Ui @('list-windows')
+    $main = @($windows | Where-Object title -EQ 'WidgetRail — WinUI frontend')
+    if ($main.Count -ne 1) { throw 'Could not identify the owned production HWND.' }
+    $null = Assert-Ui @('screenshot', '-w', $main[0].hwnd, '--capture-screen', '-o', (Join-Path $OutputDirectory 'shell.png'))
 }
 if ($CloseAfter) {
     Invoke-Check 'Owned bridge and workers exit with the frontend' {
-        $diagnostics = (Assert-Ui @('get-property', 'Overlay.Status', '--property', 'HelpText')).properties.HelpText | ConvertFrom-Json
+        $diagnostics = (Assert-Ui @('get-property', 'Overlay.Shell', '--property', 'HelpText')).properties.HelpText | ConvertFrom-Json
         $bridge = [int]$diagnostics.bridgePid
         if ($bridge -le 0) { throw 'No owned bridge PID in diagnostics.' }
         $workers = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$bridge" | Select-Object -ExpandProperty ProcessId)
-        $null = Assert-Ui @('invoke', 'Shell.Close')
+        & (Join-Path $PSScriptRoot 'Close-WinUiTestShell.ps1') -AppPid $AppPid
         $deadline = [DateTime]::UtcNow.AddSeconds(12)
         do {
             $remaining = @(Get-Process -Id (@($AppPid, $bridge) + $workers) -ErrorAction SilentlyContinue)

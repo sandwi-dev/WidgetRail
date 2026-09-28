@@ -42,6 +42,7 @@ internal sealed partial class OverlayShellPage
         {
             if (PinnedInputActive) pinned!.Presenter.MoveFocus(next);
             else if (IsMediaFullscreen) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = fullscreenView });
+            else if (interactive && RecoveryVisible) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = StatusChrome });
             else if (interactive) surface?.MoveFocus(next);
             else if (!NavigateTray(next)) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
         }
@@ -94,6 +95,14 @@ internal sealed partial class OverlayShellPage
             if (!interactive)
             {
                 await RouteTrayButtonAsync(button, phase);
+                return;
+            }
+            if (RecoveryVisible)
+            {
+                if (phase == ControllerEventPhase.Pressed && button == ControllerButton.A && Retry.Visibility == Visibility.Visible)
+                { shellOwnedReleases.Add(button); await RetryPresentationAsync(); }
+                else if (phase == ControllerEventPhase.Pressed && button == ControllerButton.B)
+                { shellOwnedReleases.Add(button); SetInteractive(false); FocusTray(); }
                 return;
             }
             if (surface is null) return;

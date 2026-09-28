@@ -28,7 +28,7 @@ function Check([string]$Name, [scriptblock]$Action) {
 function WaitState([string]$Id, [bool]$Interactive) {
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     do {
-        $state = (Ui @('get-property','Overlay.Status','-p','HelpText')).properties.HelpText | ConvertFrom-Json
+        $state = (Ui @('get-property','Overlay.Shell','-p','HelpText')).properties.HelpText | ConvertFrom-Json
         if ($state.activeWidget -eq $Id -and $state.interactive -eq $Interactive -and -not $state.switching) { return $state }
         Start-Sleep -Milliseconds 50
     } while ([DateTime]::UtcNow -lt $deadline)
@@ -54,7 +54,7 @@ function Screenshot([string]$Name) {
 # Read-only browsing and details only. Never invoke Play/Install or song actions.
 try {
     Check 'Open the real Playnite Library and scroll well beyond the initial viewport' {
-        $null = Ui @('wait-for','Overlay.Status','--value','Playnite Library','-t','20000')
+        $null = Ui @('wait-for','Overlay.Shell','--value','Playnite Library','-t','20000')
         $null = Ui @('invoke','Widget.playnite-library.destinations.compact-b718f1354f7247312eca086d')
         $null = ReadyRow "$collection.Item.0"
         # Take explicit native navigation ownership; End cancels any pending
@@ -73,7 +73,7 @@ try {
         $null = Ui @('focus',$rowId)
         Start-Sleep -Milliseconds 300
         $script:before = ReadyRow $rowId
-        $script:restoreCountBefore = ((Ui @('get-property','Overlay.Status','-p','HelpText')).properties.HelpText | ConvertFrom-Json).memoryRestoreCount
+        $script:restoreCountBefore = ((Ui @('get-property','Overlay.Shell','-p','HelpText')).properties.HelpText | ConvertFrom-Json).memoryRestoreCount
         Screenshot 'before-switch.png'
     }
     Check 'Browse other widgets while retaining tray ownership' {
@@ -101,7 +101,7 @@ try {
     Check 'Explicit reentry restores the same game focus and admits its current action' {
         $null = Ui @('invoke',"Overlay.Widget.$playnite")
         $null = WaitState $playnite $true
-        $retainedState = (Ui @('get-property','Overlay.Status','-p','HelpText')).properties.HelpText | ConvertFrom-Json
+        $retainedState = (Ui @('get-property','Overlay.Shell','-p','HelpText')).properties.HelpText | ConvertFrom-Json
         if ($retainedState.memoryRestoreCount -ne $restoreCountAfter) { throw 'Retained native presenter reapplied stale memory.' }
         $null = Ui @('wait-for',$rowId,'-p','HasKeyboardFocus','--value','True','-t','5000')
         # Compare the same focused/settled style: authored focus scale changes the
@@ -128,6 +128,6 @@ try {
     throw
 } finally {
     $results | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'results.json')
-    if ($CloseAfter) { $null = Ui @('invoke','Shell.Close') }
+    if ($CloseAfter) { & (Join-Path $PSScriptRoot 'Close-WinUiTestShell.ps1') -AppPid $AppPid }
 }
 "Widget retention: $($results.Count) checks passed."

@@ -38,7 +38,7 @@ function ReadyRow([string]$Id) {
 # playback, sign-in, account editing or search submission is performed.
 try {
     Check 'Real YouTube Music reached the native shell without Retry' {
-        $null=Ui @('wait-for','Overlay.Status','--value','YouTube Music','-t','20000')
+        $null=Ui @('wait-for','Overlay.Shell','--value','YouTube Music','-t','20000')
     }
     Check 'Home renders grouped real-service posters as authored squares' {
         $row=ReadyRow 'Widget.music.scroll.home.Item.0'
@@ -60,10 +60,10 @@ try {
     Check 'Returning Home retains the real collection' {
         $null=Ui @('invoke','Widget.music.nav.compact-4ea140588150773ce3aace78')
         $null=ReadyRow 'Widget.music.scroll.home.Item.0'
-        $null=Ui @('wait-for','Overlay.Status','--value','YouTube Music','-t','5000')
+        $null=Ui @('wait-for','Overlay.Shell','--value','YouTube Music','-t','5000')
     }
 } finally {
-    if($CloseAfter){ Check 'Close the owned test shell' {$null=Ui @('invoke','Shell.Close')} }
+    if($CloseAfter){ Check 'Close the owned test shell' {& (Join-Path $PSScriptRoot 'Close-WinUiTestShell.ps1') -AppPid $AppPid} }
     $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory 'results.json')
 }
 $results | Format-Table

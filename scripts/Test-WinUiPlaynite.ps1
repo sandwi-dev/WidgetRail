@@ -29,7 +29,7 @@ function Check([string]$Name, [scriptblock]$Action) {
         try {
             $null = Ui @('screenshot', '--capture-screen', '-o', (Join-Path $OutputDirectory 'failure.png'))
             Ui @('get-focused') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'failure-focus.json')
-            Ui @('get-property', 'Overlay.Status') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'failure-status.json')
+            Ui @('get-property', 'Overlay.Shell') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'failure-status.json')
         } catch { } # Keep the original assertion failure when the process exited.
     }
 }
@@ -37,7 +37,7 @@ function Check([string]$Name, [scriptblock]$Action) {
 # Run against a newly started production shell, not a fixture or retry-recovered view.
 try {
     Check 'Cold startup reached the real Playnite widget without Retry' {
-        $null = Ui @('wait-for', 'Overlay.Status', '--value', 'Playnite Library', '-t', '20000')
+        $null = Ui @('wait-for', 'Overlay.Shell', '--value', 'Playnite Library', '-t', '20000')
     }
     if ($Page -eq 'Library') {
         Check 'Navigate to Library' {
@@ -61,14 +61,14 @@ try {
     Check 'Poster activation opens details and focuses Play or Install without activating it' {
         if ($TrayReentry) {
             $null = Ui @('focus', 'Overlay.Widget.widgetrail.samples.playnite-library')
-            $ownership = Ui @('get-property', 'Overlay.Status', '-p', 'HelpText')
+            $ownership = Ui @('get-property', 'Overlay.Shell', '-p', 'HelpText')
             $ownership | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'tray-ownership.json')
             if (($ownership.properties.HelpText | ConvertFrom-Json).interactive -ne $false) {
                 throw 'Tray did not own interaction before the single poster invocation.'
             }
         }
         Ui @('get-focused') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'before-activation-focus.json')
-        Ui @('get-property', 'Overlay.Status', '-p', 'HelpText') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'before-activation-state.json')
+        Ui @('get-property', 'Overlay.Shell', '-p', 'HelpText') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'before-activation-state.json')
         $null = Ui @('invoke', "$collection.Item.0")
         $null = Ui @('wait-for', 'Widget.playnite-library.details.play', '-t', '10000')
         $null = Ui @('wait-for', 'Widget.playnite-library.details.play', '-p', 'HasKeyboardFocus', '--value', 'True', '-t', '5000')
@@ -77,7 +77,7 @@ try {
         $null = Ui @('screenshot', '--capture-screen', '-o', (Join-Path $OutputDirectory "$Page-details.png"))
     }
 } finally {
-    if ($CloseAfter) { Check 'Close the owned test shell' { $null = Ui @('invoke', 'Shell.Close') } }
+    if ($CloseAfter) { Check 'Close the owned test shell' { & (Join-Path $PSScriptRoot 'Close-WinUiTestShell.ps1') -AppPid $AppPid } }
     $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory 'results.json')
 }
 $results | Format-Table

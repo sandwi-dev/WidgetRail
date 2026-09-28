@@ -41,6 +41,8 @@ internal sealed partial class OverlayShellPage
             { MoveTrayWidget(args.Key == Windows.System.VirtualKey.Left ? -1 : 1); args.Handled = true; }
             else if (reordering && args.Key is Windows.System.VirtualKey.Escape or Windows.System.VirtualKey.Enter)
             { FinishTrayReorder(); args.Handled = true; }
+            else if (!reordering && trayMenu is null && args.Key == Windows.System.VirtualKey.Up && FocusedTrayWidget() is { } widget)
+            { args.Handled = true; _ = SelectAsync(widget.Id); }
             else if (args.Key == Windows.System.VirtualKey.Escape && trayMenu is null)
             { HideRequested?.Invoke(); args.Handled = true; }
         };
@@ -226,7 +228,12 @@ internal sealed partial class OverlayShellPage
             menu.Items[menu.FocusIndex].Focus(FocusState.Keyboard);
             return true;
         }
-        if (!reordering) return false;
+        if (!reordering)
+        {
+            if (direction == FocusNavigationDirection.Up && FocusedTrayWidget() is { } widget)
+            { _ = SelectAsync(widget.Id); return true; }
+            return false;
+        }
         if (direction is FocusNavigationDirection.Left or FocusNavigationDirection.Right)
             MoveTrayWidget(direction == FocusNavigationDirection.Left ? -1 : 1);
         return true;

@@ -17,7 +17,7 @@ function Check([string]$Name,[scriptblock]$Action) {
         $results.Add(@{name=$Name;status='FAIL';detail=$_.Exception.Message})
         try {
             Ui @('get-focused') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'failure-focus.json')
-            Ui @('get-property','Overlay.Status','-p','HelpText') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'failure-state.json')
+            Ui @('get-property','Overlay.Shell','-p','HelpText') | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'failure-state.json')
             $null=Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'failure.png'))
         } catch { }
         throw
@@ -27,7 +27,7 @@ function Check([string]$Name,[scriptblock]$Action) {
 # Use an isolated profile granting only library and running-app read access.
 try {
     Check 'Real bundled Games and Apps reaches enabled Library without Retry' {
-        $null=Ui @('wait-for','Overlay.Status','--value','Games & Apps','-t','15000')
+        $null=Ui @('wait-for','Overlay.Shell','--value','Games & Apps','-t','15000')
         $null=Ui @('wait-for','Widget.games.library.scroll.Item.0','-p','IsEnabled','--value','True','-t','15000')
     }
     Check 'Native Down navigation reaches the next grid row' {
@@ -41,7 +41,7 @@ try {
         $null=Ui @('invoke','Overlay.Widget.games-apps')
         $null=Ui @('wait-for','Widget.games.library.scroll.Item.3','-p','IsEnabled','--value','True','-t','5000')
         $null=Ui @('wait-for','Widget.games.library.scroll.Item.3','-p','HasKeyboardFocus','--value','True','-t','5000')
-        $state=(Ui @('get-property','Overlay.Status','-p','HelpText')).properties.HelpText | ConvertFrom-Json
+        $state=(Ui @('get-property','Overlay.Shell','-p','HelpText')).properties.HelpText | ConvertFrom-Json
         $state | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $OutputDirectory 'tray-state.json')
         if(-not $state.interactive){throw 'Tray activation lost widget interaction ownership.'}
     }
@@ -59,7 +59,7 @@ try {
         $null=Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'catalog.png'))
     }
 } finally {
-    try { if($CloseAfter){$null=Ui @('invoke','Shell.Close')} }
+    try { if($CloseAfter){& (Join-Path $PSScriptRoot 'Close-WinUiTestShell.ps1') -AppPid $AppPid} }
     finally { $results | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'results.json') }
 }
 $results | Format-Table

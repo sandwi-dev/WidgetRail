@@ -1,5 +1,11 @@
 # WinUI shell sizing checkpoint
 
+The original checkpoint below is retained as historical evidence. Production
+geometry now follows [winui-production-chrome.md](winui-production-chrome.md):
+one stationary work-area HWND, independently anchored guide/rail and bounded
+content surface, with diagnostics on `Overlay.Shell`. The widget surface and
+display-identity/scale policies described here remain in use.
+
 The initial shell used one `1200 × 860` size multiplied by the global interface
 scale. That changed the HWND extent without scaling controls, ignored authored
 surface policies and per-display settings, and always anchored on its own window.

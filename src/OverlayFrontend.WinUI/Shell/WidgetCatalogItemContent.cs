@@ -20,6 +20,16 @@ internal sealed class WidgetCatalogItemContent : ContentControl, IDisposable
     private WidgetPackageIconView? icon;
     private BridgeWidgetDescriptor? item;
     private bool disposed;
+    private double iconSize = 24;
+    internal double IconSize
+    {
+        get => iconSize;
+        set
+        {
+            iconSize = double.IsFinite(value) ? Math.Clamp(value, 1, 128) : 24;
+            if (icon is not null) { icon.Width = icon.Height = icon.FontSize = iconSize; }
+        }
+    }
 
     internal WidgetCatalogItemContent(
         Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> resolve)
@@ -52,7 +62,7 @@ internal sealed class WidgetCatalogItemContent : ContentControl, IDisposable
         if (disposed || !IsLoaded || item is not { } captured) return;
         if (icon is null)
         {
-            icon = new() { Width = 24, Height = 24, FontSize = 24 };
+            icon = new() { Width = IconSize, Height = IconSize, FontSize = IconSize };
             panel.Children.Insert(0, icon);
         }
         var asset = captured.IconAssets.FirstOrDefault(candidate => candidate.AssetId == captured.PackageIcon?.AssetId);

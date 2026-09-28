@@ -38,6 +38,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private bool catalogQueued;
     private bool catalogDirty;
     private bool layoutCaptureQueued;
+    private bool retrying;
     private long visibleSince = Environment.TickCount64;
     private readonly Queue<object> focusDiagnostics = new();
     private readonly System.Collections.ObjectModel.ObservableCollection<BridgeWidgetDescriptor> catalogItems = [];
@@ -47,7 +48,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal event Action? BridgeReady;
     internal AppearanceSettings Appearance { get; private set; } = AppearanceSettings.Default;
 
-    internal OverlayShellPage(OverlayShellOptions options, ulong hostWindow = 0)
+    internal OverlayShellPage(OverlayShellOptions options, ulong hostWindow = 0, bool startService = true)
     {
         this.options = options;
         this.hostWindow = hostWindow;
@@ -59,7 +60,12 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         InitializeFullscreenView();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged += SystemAnimationsChanged;
         Tray.ItemsSource = catalogItems;
-        Loaded += (_, _) => startup ??= StartAsync();
+        Tray.Loaded += (_, _) => AttachRailScroll();
+        catalogItems.CollectionChanged += (_, _) =>
+        {
+            if (shellViewport.Width > 0) ConfigureProductionViewport(shellViewport);
+        };
+        if (startService) Loaded += (_, _) => startup ??= StartAsync();
         Tray.GotFocus += TrayGotFocus;
         Tray.GettingFocus += TrayGettingFocus;
         WidgetHost.GotFocus += (_, _) => { RecordFocusTransfer("widget"); SetInteractive(true); };
@@ -111,7 +117,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 ?? catalogItems.FirstOrDefault();
             if (initial is not null) await SelectAsync(initial.Id,
                 enterWidget: options.InitialWidgetId is not null || preferences.ReopenWidget);
-            else Status.Text = "No installed widgets are available.";
+            else ShowRecovery("No installed widgets are available.", false);
             await RestorePinnedAsync();
         }
         catch (OperationCanceledException) when (retired) { }
@@ -233,7 +239,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         if (retired || switching || !visible || state.WidgetId != activeWidget || state.PublicationRevision <= publication) return;
         publication = state.PublicationRevision;
-        if (state.Failure is { } failure) { Status.Text = $"{failure.Message} ({failure.Code})"; Retry.Visibility = Visibility.Visible; return; }
+        if (state.Failure is { } failure) { ShowRecovery(failure.Message, true); return; }
         if (state.LastGood is not { } next || surface is null) return;
         try
         {
@@ -303,7 +309,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                             {
                                 requestedWidget = null;
                                 interactive = false;
-                                Status.Text = "The selected widget is no longer installed.";
+                                ShowRecovery("The selected widget is no longer installed.", false);
                                 FocusTray();
                             }
                         }
@@ -448,6 +454,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (retired || !visible) return;
         if (PinnedInputActive) { pinned!.Presenter.Enter(restoreNativeFocus: true); return; }
         if (IsMediaFullscreen) fullscreenView.Enter();
+        else if (interactive && RecoveryVisible && Retry.Visibility == Visibility.Visible) Retry.Focus(FocusState.Keyboard);
         else if (interactive && surface is not null) surface.Enter(restoreNativeFocus: true);
         else FocusTray();
     }
@@ -513,10 +520,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         catch (Exception error) { ReportFailure(error); }
     }
 
-    private async void RetryClicked(object sender, RoutedEventArgs args)
+    private async void RetryClicked(object sender, RoutedEventArgs args) => await RetryPresentationAsync();
+
+    private async Task RetryPresentationAsync()
     {
-        if (owner is not null && activeWidget is { } id)
+        if (!retrying && owner is not null && activeWidget is { } id)
         {
+            retrying = true;
+            Retry.IsEnabled = false;
             try
             {
                 await transitions.WaitAsync(lifetime.Token);
@@ -526,14 +537,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             }
             catch (OperationCanceledException) when (retired) { }
             catch (Exception error) { ReportFailure(error); }
+            finally { retrying = false; Retry.IsEnabled = true; }
         }
     }
 
     internal void ReportFailure(Exception error)
     {
         if (retired) return;
-        Status.Text = error.Message;
-        Retry.Visibility = owner is not null ? Visibility.Visible : Visibility.Collapsed;
+        ShowRecovery("The widget could not be displayed. Try again.", owner is not null);
         System.Diagnostics.Trace.TraceError("WinUI overlay: {0}", error);
     }
 
@@ -547,6 +558,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             pinnedSelectionCurrent = pinned?.Selection.IsCurrent,
             focusTransfers = focusDiagnostics.ToArray() });
         AutomationProperties.SetHelpText(Status, json);
+        AutomationProperties.SetHelpText(ProductionRoot, json);
         if (pinned is { } current && options.LayoutDiagnosticsPath is not null)
         {
             AutomationProperties.SetHelpText(current.Window.AutomationRoot, json);

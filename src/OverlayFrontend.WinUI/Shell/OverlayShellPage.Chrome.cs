@@ -14,18 +14,16 @@ internal sealed partial class OverlayShellPage
         trayGuide.Changed += () => Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(Tray, trayGuide.HelpText);
     }
 
-    internal void InitializeShellChrome(Grid header, TextBlock title, Button close)
+    internal void InitializeShellChrome()
     {
         chromeStyles = new();
         chromeStyles.Register(this, "body");
-        chromeStyles.Register(header, "tray");
-        chromeStyles.Register(title, "title");
-        chromeStyles.Register(close, "body");
-        chromeStyles.Register(StatusChrome, "tray");
+        chromeStyles.Register(StatusChrome, "panel");
         chromeStyles.Register(Status, "status");
         chromeStyles.Register(Retry, "body");
-        chromeStyles.Attach(Tray);
-        chromeStyles.Register(trayGuide.BackgroundSurface, "tray");
+        chromeStyles.Attach(Tray, paintBackground: false);
+        chromeStyles.Register(TrayPrevious, "tray-item");
+        chromeStyles.Register(TrayNext, "tray-item");
         foreach (var element in trayGuide.Typography) chromeStyles.Register(element, element is FontIcon ? "controller-glyph" : "hint");
         RefreshShellChrome();
     }

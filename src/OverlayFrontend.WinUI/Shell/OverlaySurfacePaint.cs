@@ -30,5 +30,7 @@ internal static class OverlaySurfacePaint
         var color = Panel(policy, styles);
         if (surface.Background is SolidColorBrush brush) brush.Color = color;
         else surface.Background = new SolidColorBrush(color);
+        surface.CornerRadius = new Microsoft.UI.Xaml.CornerRadius(Math.Clamp(
+            styles?.GetValueOrDefault("panel")?.Base.GetValueOrDefault("corner-radius")?.Number ?? 18, 0, 256));
     }
 }

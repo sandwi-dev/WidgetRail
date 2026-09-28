@@ -11,7 +11,8 @@ internal sealed partial class OverlayShellPage
     {
         var host = (ContentControl)sender;
         if (host.Content is not WidgetCatalogItemContent)
-            host.Content = new WidgetCatalogItemContent(ResolveTrayIconAsync);
+            host.Content = new WidgetCatalogItemContent(ResolveTrayIconAsync) { ShowLabel = false };
+        ((WidgetCatalogItemContent)host.Content).IconSize = RailIconSize;
         ((WidgetCatalogItemContent)host.Content).SetItem(host.DataContext as BridgeWidgetDescriptor);
     }
 

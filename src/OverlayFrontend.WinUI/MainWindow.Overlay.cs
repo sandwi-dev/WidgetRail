@@ -51,6 +51,7 @@ public sealed partial class MainWindow
         placementWindow = input?.PlacementWindow ?? WinRT.Interop.WindowNative.GetWindowHandle(this);
         page.BridgeReady += QueueDisplayRefresh;
         page.SizingChanged += QueueOverlayPlacement;
+        RootFrame.SizeChanged += (_, _) => QueueOverlayPlacement();
         page.Loaded += (_, _) =>
         {
             observedXamlRoot = ShellRoot.XamlRoot;
@@ -126,43 +127,22 @@ public sealed partial class MainWindow
         var target = placementWindow != 0 ? placementWindow : WinRT.Interop.WindowNative.GetWindowHandle(this);
         var display = DisplayArea.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(target), DisplayAreaFallback.Nearest);
         var work = display.WorkArea;
-        var dpi = GetDpiForWindow(target);
-        if (dpi == 0) dpi = 96;
-        var measuredScale = ScaleRoot.InterfaceScale;
-        // Work-area margins use monitor DIPs, not the user's UI zoom. The native
-        // placement adapter applies the same margins to the final physical HWND.
-        var pixelScale = dpi / 96d * appearance.InterfaceScale;
-        var available = new SurfaceExtent(Math.Max(1, work.Width - 48 * dpi / 96d) / pixelScale,
-            Math.Max(1, work.Height - 56 * dpi / 96d) / pixelScale);
-        // Use actual native chrome after layout, with the original shell reserve
-        // until the first native measurement exists. No widget geometry is copied.
-        var chrome = page.ContentWidth > 0 && page.ContentHeight > 0 && ScaleRoot.ActualWidth > 0
-            ? new SurfaceExtent(Math.Max(0, ScaleRoot.ActualWidth / measuredScale - page.ContentWidth),
-                Math.Max(0, ScaleRoot.ActualHeight / measuredScale - page.ContentHeight))
-            : new SurfaceExtent(72, 178);
+        // The work-area shell stays stationary across widget sizes. Native Grid
+        // owns its chrome and the content surface resolves within the space above it.
         ScaleRoot.InterfaceScale = appearance.InterfaceScale;
-        var size = OverlaySurfaceSizing.Resolve(page.SurfaceHints, available, chrome, appearance.TextScale, page.MeasureContent);
-        page.RecordSizing(available, chrome, size);
-        var request = PlacementInput.Create();
-        request.WorkLeft = work.X;
-        request.WorkTop = work.Y;
-        request.WorkRight = work.X + work.Width;
-        request.WorkBottom = work.Y + work.Height;
-        request.Dpi = dpi;
-        request.DesiredWidthDip = (float)Math.Max(1, size.Width * appearance.InterfaceScale);
-        request.DesiredHeightDip = (float)Math.Max(1, size.Height * appearance.InterfaceScale);
-        var placement = Placement.Create();
-        // ComputePlacement is a pure adapter operation and does not create a
-        // hardware reader, including --shell-no-controller automated runs.
-        var native = new OverlayPlatformNative();
-        var status = native.ComputePlacement(request, ref placement, out var present);
-        if (status != PlatformStatus.Ok || present == 0) return;
-        var inset = (int)Math.Round(24 * dpi / 96d);
-        if (appearance.OverlayPosition == OverlayPosition.BottomLeft) placement.X = Math.Min(work.X + inset, work.X + work.Width - placement.Width);
-        else if (appearance.OverlayPosition == OverlayPosition.BottomRight) placement.X = Math.Max(work.X, work.X + work.Width - placement.Width - inset);
+        var placement = new Placement { X = work.X, Y = work.Y, Width = work.Width, Height = work.Height };
         placementDisplay = display.DisplayId.Value;
         if (AppWindow.Position.X == placement.X && AppWindow.Position.Y == placement.Y &&
-            AppWindow.Size.Width == placement.Width && AppWindow.Size.Height == placement.Height) return;
+            AppWindow.Size.Width == placement.Width && AppWindow.Size.Height == placement.Height)
+        {
+            // The remembered foreground HWND chooses only the monitor. Its DPI
+            // awareness must not decide our layout scale. Wait for our own XAML
+            // viewport, including its native DPI transition on monitor changes.
+            if (ScaleRoot.ActualWidth > 0 && ScaleRoot.ActualHeight > 0)
+                page.ConfigureProductionViewport(new(ScaleRoot.ActualWidth / appearance.InterfaceScale,
+                    ScaleRoot.ActualHeight / appearance.InterfaceScale));
+            return;
+        }
         applyingPlacement = true;
         try { AppWindow.MoveAndResize(new RectInt32(placement.X, placement.Y, placement.Width, placement.Height)); }
         finally { applyingPlacement = false; }

@@ -11,15 +11,11 @@ public sealed partial class MainWindow
 {
     private OverlayDesktopBackdrop? desktopBackdrop;
     private bool backdropAvailable = true;
-    private readonly Windows.UI.ViewManagement.UISettings shellUi = new();
 
     private void InitializeShellAppearance(OverlayShellPage page)
     {
-        // The host-owned fill belongs to the widget surface. An outer opaque card
-        // would defeat a transparent declaration even with a transparent inner panel.
-        ShellCard.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        ShellCard.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        page.InitializeShellChrome(ShellHeader, ShellTitle, ShellClose);
+        // Only the widget surface owns a panel fill; production has no outer card.
+        page.InitializeShellChrome();
         desktopBackdrop = new(); desktopBackdrop.DismissRequested += HideOverlay;
         page.SurfaceAppearanceChanged += RefreshShellAppearance;
         page.AppearanceLoaded += settings => { RefreshShellAppearance(); _ = page.RefreshShellPaletteAsync(); };
@@ -38,10 +34,6 @@ public sealed partial class MainWindow
         if (cleanupStarted || desktopBackdrop is null || RootFrame.Content is not OverlayShellPage page) return;
         var policy = OverlayAppearancePolicy.Resolve(page.Appearance, page.SurfaceAppearanceWidgetId,
             page.SurfaceHints?.Appearance ?? WidgetSurfaceAppearance.Theme, themeSettings.HighContrast, backdropAvailable);
-        var shellColor = policy.HighContrast
-            ? shellUi.GetColorValue(Windows.UI.ViewManagement.UIColorType.Background)
-            : Microsoft.UI.Colors.Transparent;
-        if (ShellCard.Background is SolidColorBrush shellBrush) shellBrush.Color = shellColor;
         page.RefreshShellChrome();
         OverlaySurfacePaint.Apply(page.SurfaceBackground, policy, page.ShellPalette);
         var color = OverlaySurfacePaint.Background(page.ShellPalette, "backdrop", Microsoft.UI.Colors.Black);
