@@ -66,7 +66,9 @@ were test-driver/fixture failures, distinct from the guide-width correction foun
 by inspecting production pixels. Synthetic touch delivery was inconclusive and
 is not counted as physical pointer acceptance.
 
-The semantic guide and passive status view are separate integration lanes.
+The semantic guide and passive status view are now integrated; their contextual
+input and observation lifetimes are documented in `winui-semantic-controller-guide.md`
+and `winui-shell-status.md`.
 Radial switching, native bottom selection-marker styling and physical controller,
 mixed-monitor and live-surface acceptance remain explicitly outstanding. This
 checkpoint does not claim complete product parity and makes no pinned changes.

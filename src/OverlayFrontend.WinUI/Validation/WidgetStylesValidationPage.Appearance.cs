@@ -54,6 +54,29 @@ internal sealed partial class WidgetStylesValidationPage
         await Task.Delay(80);
         Check(c.FocusState != FocusState.Unfocused, "new native focus choice after appearance publication supersedes structural restoration");
 
+        presenter.Width = 1000;
+        presenter.Height = double.NaN;
+        var compact = new ViewNode { Id = "theme-compact", Kind = ViewNodeKind.Button, Text = "Compact",
+            ActionId = "compact", FocusPersistenceId = "theme-destination", VisibleWhen = ResponsiveVisibility.CompactOnly };
+        var expanded = compact with { Id = "theme-expanded", Text = "Expanded", ActionId = "expanded", VisibleWhen = ResponsiveVisibility.ExpandedOnly };
+        var responsive = CreateFrame(new() { Id = "theme-responsive", Kind = ViewNodeKind.Row, Children = [compact, expanded] },
+            new Dictionary<string, BridgeNodeRenderStyles> { ["theme-responsive"] = Compute("row { height: 600px; }", "theme-responsive", "row") });
+        presenter.Apply(responsive);
+        await Wait(() => presenter.ActualHeight >= 600 && Find<Button>("Widget.theme-expanded")?.Visibility == Visibility.Visible);
+        var expandedControl = Find<Button>("Widget.theme-expanded")!;
+        expandedControl.Focus(FocusState.Keyboard);
+        presenter.Apply(responsive with { AppearanceRevision = 1,
+            RenderStyles = new Dictionary<string, BridgeNodeRenderStyles> { ["theme-responsive"] = Compute("row { height: 480px; }", "theme-responsive", "row") } });
+        await Wait(() => presenter.ActualHeight < 540 && expandedControl.Visibility == Visibility.Collapsed &&
+            Find<Button>("Widget.theme-compact") is { FocusState: not FocusState.Unfocused });
+        Check(Find<Button>("Widget.theme-compact")!.FocusState == FocusState.Keyboard,
+            "geometry-only theme shrink restores the logical focus destination in the visible responsive branch");
+        presenter.Apply(responsive with { AppearanceRevision = 2 });
+        await Wait(() => presenter.ActualHeight >= 600 && expandedControl.FocusState != FocusState.Unfocused);
+        Check(ReferenceEquals(expandedControl, Find<Button>("Widget.theme-expanded")),
+            "geometry-only theme expansion restores the same native responsive destination");
+        presenter.Width = double.NaN;
+
         WidgetPresentationFrame Reordered() => CreateFrame(root with { Children = [root.Children[1], root.Children[0], root.Children[2]] }, new Dictionary<string, BridgeNodeRenderStyles>());
         static WidgetPresentationFrame Theme(WidgetPresentationFrame frame) => frame with
         {

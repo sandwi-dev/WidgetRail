@@ -85,6 +85,25 @@ pass. The associated declaration-admission tests also pass in the 242-test manag
 session suite. Combined evidence: `artifacts/winui-shell/appearance-native-styles.json`
 and `appearance-failed-pages-01/result.json`; analyzer and provider builds are clean.
 
+Adaptive grids also observe native padding changes directly. Their cell width and
+column capacity use the updated inset even when outer SizeChanged never fires.
+The callback shares the existing geometry/navigation calculation and performs no
+source publication, provider retry or new focus request. It is removed when the
+native view is replaced or disposed.
+
+The extended combined suite passes 171 native style checks and 21 retained-theme
+checks (`padding-native-styles.json` and `padding-native-05/result.json` under
+`artifacts/winui-shell`). The geometry probe tests a fixed-size grid changing from
+three to two columns, physical-pixel-aligned width, controller Down, retained focus,
+top anchor and unchanged provider loads. Native responsive shrink/expansion also
+preserves logical focus and control identity.
+
+Initial probe repairs waited for a loaded native tree, used the supported computed
+`padding` value rather than unrecognized per-edge properties, and isolated the
+host-created style map from live worker publications during geometry measurement.
+Provider/lease work remains active; subsequent semantic actions use current session
+authority. These probe failures are retained separately from the product correction.
+
 The initial native attempt exposed the presenter's old same-sequence rejection;
 the fixture also needed an explicit theme-dependent color and authored focus
 entry instead of racing raw ScrollIntoView/Focus. These checks establish the

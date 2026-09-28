@@ -49,6 +49,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     }
     private long sequence;
     private long discoveryForegroundToken;
+    private long paddingToken;
     internal ListViewBase NativeView => view ?? throw new InvalidOperationException("Collection is not initialized.");
     internal Action? PresentationChanged { get; set; }
     internal void RefreshAppearanceBinding(WidgetPresentationBinding binding)
@@ -99,11 +100,17 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             if (view is not null)
             {
                 view.UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
+                view.UnregisterPropertyChangedCallback(Control.PaddingProperty, paddingToken);
                 view.Footer = null;
                 view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; view.LosingFocus -= OnLosingFocus;
             }
             view = layout.Kind == CollectionLayoutKind.AdaptiveGrid ? new GridView() : new ListView();
             discoveryForegroundToken = view.RegisterPropertyChangedCallback(ForegroundProperty, (_, _) => UpdateDiscoveryForeground());
+            // Native ItemsPresenter places padding inside its scroll viewport.
+            // A theme/state can change that inset without changing our outer size.
+            // Recompute the same grid capacity used by layout and navigation,
+            // independently of semantic source updates and provider retry policy.
+            paddingToken = view.RegisterPropertyChangedCallback(Control.PaddingProperty, (_, _) => UpdateGridWidth());
             layoutKind = layout.Kind; axis = declaration.ScrollAxis;
             view.SelectionMode = ListViewSelectionMode.None;
             view.IsItemClickEnabled = true;
@@ -319,6 +326,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         if (disposed) return;
         disposed = true;
         view?.UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
+        view?.UnregisterPropertyChangedCallback(Control.PaddingProperty, paddingToken);
         CancelPendingActivation();
         CancelNavigation();
         RetireViewRows();
