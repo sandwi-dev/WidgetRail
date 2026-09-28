@@ -75,18 +75,29 @@ public sealed partial class MainWindow : Window
 
     private void ConfigureProduction(IReadOnlyList<string> arguments)
     {
-        var shellConfiguration = Shell.FrontendArguments.Value(arguments, "--shell-config");
-        if (shellConfiguration is null)
+        Shell.OverlayShellOptions options;
+        try
         {
-            RootFrame.Content = new Microsoft.UI.Xaml.Controls.TextBlock
+            options = Shell.OverlayLaunchConfiguration.Resolve(arguments, AppContext.BaseDirectory,
+                WidgetRail.PlatformSettings.PlatformSettingsPaths.CreateDefault().RootDirectory);
+            if (!Shell.OverlayLaunchConfiguration.HasInstallationFiles(options))
+                throw new InvalidDataException("The frontend installation is incomplete.");
+        }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException or
+            System.Text.Json.JsonException or WidgetRail.PlatformSettings.PlatformSettingsException)
+        {
+            var recovery = new Microsoft.UI.Xaml.Controls.TextBlock
             {
-                Text = "WidgetRail could not find its installation. Open it through the configured launcher or repair the installation.",
+                Text = "WidgetRail could not open its installation. Repair or reinstall WidgetRail, then try again.",
                 TextWrapping = TextWrapping.Wrap,
             };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(recovery, "Overlay.InstallationError");
+            RootFrame.Content = recovery;
+            System.Diagnostics.Trace.TraceError("WinUI launch configuration: {0}", error);
             return;
         }
         var shellNoController = arguments.Contains("--shell-no-controller");
-        var page = new Shell.OverlayShellPage(Shell.OverlayShellOptions.Load(shellConfiguration),
+        var page = new Shell.OverlayShellPage(options,
             unchecked((ulong)WinRT.Interop.WindowNative.GetWindowHandle(this)));
         RootFrame.Content = page;
         ConfigureProductionValidation(page, arguments);

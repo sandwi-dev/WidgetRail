@@ -112,9 +112,11 @@ public sealed partial class MainWindow
             RootFrame.Content = new Validation.FocusPolicyValidationPage();
         else if (validateIndexed)
             RootFrame.Content = new Validation.IndexedCollectionValidationPage();
-        else RootFrame.Navigate(validateExternalSurface ? typeof(Validation.ExternalSurfacePage) :
+        else if (validateExternalSurface || validateCollection || validateGridView || arguments.Contains("--gallery"))
+            RootFrame.Navigate(validateExternalSurface ? typeof(Validation.ExternalSurfacePage) :
             validateCollection ? typeof(Validation.CollectionValidationPage) :
             validateGridView ? typeof(Validation.GridViewValidationPage) : typeof(MainPage));
+        else return; // Debug and Release use the same production launch by default.
         if (input is null && arguments.Contains("--validation-platform-activation"))
         {
             // Pixel checks need the same confirmed foreground path as production.

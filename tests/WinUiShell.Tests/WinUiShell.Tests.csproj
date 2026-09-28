@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\OverlayLaunchConfiguration.cs" Link="OverlayLaunchConfiguration.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ShellJsonContext.cs" Link="ShellJsonContext.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Media\EmbeddedMediaTransport.cs" Link="EmbeddedMediaTransport.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\RadialChooserPolicy.cs" Link="RadialChooserPolicy.cs" />

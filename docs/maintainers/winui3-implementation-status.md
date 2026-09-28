@@ -1092,3 +1092,18 @@ in Debug, Release, and the hash-verified trimmed/ReadyToRun publish. Installer/
 bootstrap, broader Release scenarios, performance, complete accessibility, media
 pixels and deferred pinned-window qualification remain open. Nothing is merged
 to main, and all owned automated test windows have been closed.
+
+## Passive media capture and launch bootstrap
+
+The stable media pixel gate is now complete for the sealed fixture: passive,
+foreground-verified client-area captures show live media in fullscreen and the
+native dropdown above it. All 101 behavior checks pass; no production rendering
+workaround was added. See `artifacts/winui-shell/media-readonly-capture-01/`.
+
+Production launch now resolves its own payload without a shell-options file;
+Debug's gallery is explicit. Native checks verified config-free Playnite startup
+and missing-installation recovery without a Bridge child. All 78 managed shell
+checks pass. `winui-launch-bootstrap.md` records exact behavior and the remaining
+deployment/startup work, including the mutable runtime boundary required by the
+current AppContainer grants. Broader media motion/device recovery and performance
+qualification remain open.
