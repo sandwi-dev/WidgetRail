@@ -16,7 +16,14 @@ are untouched. Migration is active and incomplete.
   are integrated. Scoped input and exact indexed action ownership remain enforced.
 - Responsive branches, static grids, basic poster layering and ordinary styles
   are mapped. Native scroll routing and global-policy dialog entrances are wired.
-  Section transitions, focus motion, scale/depth and full styling remain incomplete.
+  Focused/pressed scale uses native presentation animation; effective TextScale
+  reaches typography. The modal veil now paints above its retained parent.
+  These pass 52 native style checks and 25 modal checks in their lane. Section
+  transitions, focus decoration, depth and complete styling remain incomplete.
+- Authored surface sizing and per-display interface zoom are integrated, reusing
+  existing display identity/settings and platform placement. Sixteen shell tests,
+  13 native sizing checks and real Playnite at Windows 125% DPI/interface 75% pass.
+  Physical mixed-monitor and full controller acceptance remain outstanding.
 - Real Home and details render. A production long-description regression corrected
   inactive scroll axes: details now keeps the poster and all navigation tabs in
   view. Home focus bounds now fit poster content rather than the full rail height.
@@ -30,20 +37,27 @@ are untouched. Migration is active and incomplete.
   into the parent tree and exceeding its style budget. They remain display-only;
   live replacement retires their bindings. The fresh real package starts without
   Retry, and both its empty-state and saved-state transport probes pass.
-- Latest integrated managed gates: 157 Playnite tests, 83 session tests, 10 shell
+- Latest integrated managed gates: 157 Playnite tests, 88 session tests, 16 shell
   tests, 35 style tests. Package-icon transport is admitted by exact inventory/hash
   and bounded independently. OriginalColor Icon/Button/Select rendering is integrated
   with 15 native checks and a 7-check/45-symbol glyph regression. ThemeTint currently
   retains the semantic fallback; native SVG alpha-mask capability work remains.
 - Repeatable real-package smoke: Home startup/row/details/focus/shutdown passes all
   five checks. Library startup/navigation/row passes, but one unfocused UIA poster
-  invocation did not open details; a separate immediate run succeeded. This remains
-  an unresolved activation/publication timing gate, not a clean Library acceptance.
+  invocation did not open details; a separate immediate run succeeded. A deterministic
+  regression reproduced rejection of a displayed frame after a newer unrelated
+  publication. The correction retains exact frame provenance and checks unchanged
+  binding/scope/query through the existing Bridge, with no frontend input rebasing.
+  Real Library repeatability still needs rechecking after this integration.
+- Pending ordinary artwork now renews on snapshot replacement while decoded pixels
+  remain retained. A native regression fails against the old loader at replacement
+  demand, and all 13 surface checks pass with the correction. Stale artwork admission
+  no longer becomes an overlay error. Real-package integrated confirmation remains.
   Native fixture gates and real screenshots are recorded below and in
   [Playnite validation](winui-playnite-validation.md); fixture results are not
   production-widget performance acceptance.
 - Remaining product work includes special media/capture/pinned surfaces, remaining
-  widget adoption, complete shell placement/scaling/tray behavior, actual controller,
+  widget adoption, complete tray/chrome behavior, actual controller,
   performance/memory/accessibility validation and packaging.
 
 ## Checkpoint history

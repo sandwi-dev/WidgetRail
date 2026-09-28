@@ -1,5 +1,10 @@
 # Widget SDK developer testing
 
+For the WinUI migration branch, see the [indexed collection authoring contract](../../docs/developers/indexed-collections.md).
+It defines exact-count queries, occurrence identity, captured row actions, focus
+return and publication rules. Existing cursor declarations are not automatically
+converted into indexed queries.
+
 Widgets access platform providers through the protected `HostServices` property.
 Production services are attached exactly once by `WidgetWorkerBootstrap` before
 `OnCreatedAsync`; a widget cannot replace them after creation.
