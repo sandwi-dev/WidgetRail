@@ -65,3 +65,16 @@ extent, decoded poster placement after focus reveal, all navigation tabs and nar
 resize wrapping. Artwork uses a known opaque test image; game text is synthetic.
 The fixture supplements actual real-widget captures; it does not establish Home
 rail geometry or the separate Library layout-cycle correction.
+
+The Library cycle was separate: a shrink-wrapped GridView fed its own ActualWidth
+back into item width. Native high tracing showed a fixed 1050.4-DIP measurement
+constraint while the ScrollViewer grew 956 → 962.4 → 968 → 974.4 across layout
+iterations. Full-width declarations now map to native Stretch in their cross axis;
+adaptive item width derives from native viewport space minus authored padding.
+Navigation consumes that same column count. Native default GridViewItem margins
+are removed because authored fragment margins already supply item spacing; the
+default extra two DIPs per edge otherwise caused six requested columns to wrap as
+five actual columns. New native checks inspect the realized container coordinates
+and actual Down navigation, not only MaximumRowsOrColumns. The combined native
+style/grid/production-details run passes 46 checks, including repeated sizing and
+resize. Real Library browsing remains a separate root integration check.
