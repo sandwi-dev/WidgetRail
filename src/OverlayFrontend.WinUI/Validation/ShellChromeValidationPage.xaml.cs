@@ -30,7 +30,7 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
         styles.Register(this, "body"); styles.Register(Header, "tray"); styles.Register(Title, "title");
         styles.Register(Status, "status"); styles.Register(Outside, "body"); styles.Attach(Tray);
         styles.Register(guide.BackgroundSurface, "tray");
-        foreach (var element in guide.Typography) styles.Register(element, "hint");
+        foreach (var element in guide.Typography) styles.Register(element, element is FontIcon ? "controller-glyph" : "hint");
         GuideHost.Content = guide; Tray.ItemsSource = items;
         for (var index = 0; index < 50; ++index) items.Add(new() { Id = "widget-" + index,
             Name = index switch { 0 => "Playnite Library", 1 => "YouTube Music", 2 => "Spotify", _ => "Widget " + index },
@@ -63,18 +63,21 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
             Check(ColorOf(Header.Background) == Value(neon, "tray", "background") && ColorOf(Title.Foreground) == Value(neon, "title", "color"),
                 "actual built-in Neon Circuit palette paints shell chrome and title");
             Check(guide.HelpText.Contains("A button") && guide.HelpText.Contains("Y button"), "Xbox guide uses semantic names");
+            Check(guide.Typography.OfType<FontIcon>().All(icon => icon.FontSize >= 24), "controller symbols use their glyph size, independently of hint text");
             var outline = NativeComputedStyleAdapter.For(first)?.FocusDecoration;
             Check(outline is not null, "tray authored focus outline uses existing native decoration");
             second.Focus(FocusState.Keyboard);
             await Until(() => ColorOf(second.Foreground) == Value(neon, "tray-item:focused", "color"));
             Check(first.IsSelected && !second.IsSelected, "moving focus preserves selected versus focused tray state");
+            Host.UpdateLayout();
             var savedHeight = guide.ActualHeight;
             foreach (var family in new[] { ControllerFamily.Xbox, ControllerFamily.PlayStation })
             foreach (var reorder in new[] { false, true })
             foreach (var hidden in new[] { false, true })
             {
                 WidgetControllerPrompts.Set(family); guide.SetState(reorder, hidden);
-                await Task.Delay(30);
+                Host.UpdateLayout();
+                await Task.Yield();
                 Check(Math.Abs(guide.ActualHeight - savedHeight) < .1, "guide extent remains stable across family/reorder/widget-focus state");
             }
             guide.SetState(false, false);
@@ -94,10 +97,11 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
             await Until(() => Math.Abs(Title.FontSize - titleSize * 1.5) < .1);
             Check(true, "shell typography applies global text scale once");
             Host.Width = 430;
-            await Task.Delay(80);
+            Host.UpdateLayout();
+            await Until(() => Math.Abs(Host.ActualWidth - 430) <= 1 / XamlRoot.RasterizationScale);
             var narrowHeight = guide.ActualHeight;
-            guide.SetState(true, false); await Task.Delay(40);
-            Check(Math.Abs(guide.ActualHeight - narrowHeight) < .1, "narrow scaled guide reflows but mode changes keep its measured slot");
+            guide.SetState(true, false); Host.UpdateLayout();
+            Check(Math.Abs(guide.ActualHeight - narrowHeight) < .1, $"narrow scaled guide keeps its measured slot (before={narrowHeight}, after={guide.ActualHeight})");
             styles.Update(redline, appearance with { Contrast = ContrastPreference.High, Transparency = TransparencyPreference.Reduced }, false);
             await Until(() => first.UseSystemFocusVisuals && ColorOf(Header.Background).A == 255);
             Check(NativeComputedStyleAdapter.For(first)?.FocusDecoration is null, "high contrast uses native focus and opaque chrome");
@@ -113,7 +117,7 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
             Result.Text = $"Passed {checks.Count} shell chrome checks · PlayStation hints";
             Write(new { result = "passed", checks });
         }
-        catch (Exception error) { Result.Text = "Failed: " + error.Message; Write(new { result = "failed", checks, error = error.ToString() }); }
+        catch (Exception error) { Result.Text = "Failed: " + error.Message; Write(new { result = "failed", checks, error = error.ToString(), width = Host.ActualWidth, guideHeight = guide.ActualHeight, guideDesired = guide.DesiredSize.Height }); }
     }
 
     private static IReadOnlyDictionary<string, BridgeNodeRenderStyles> Palette(string selected)
@@ -124,11 +128,11 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
         var theme = WrssThemeCompiler.Compile([new WrssThemeLayer(0, [baseline]), new WrssThemeLayer(100, [overlay])]).Theme
             ?? throw new InvalidOperationException("The built-in shell fixture theme did not compile.");
         var result = new Dictionary<string, BridgeNodeRenderStyles>();
-        foreach (var key in new[] { "tray", "tray-item", "tray-item:selected", "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "status" })
+        foreach (var key in new[] { "tray", "tray-item", "tray-item:selected", "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status" })
         {
             var parts = key.Split(':');
             var states = parts.Skip(1).Select(value => Enum.Parse<WrssPseudoState>(value, ignoreCase: true)).ToHashSet();
-            var computed = theme.Resolve(new(parts[0], "shell." + key.Replace(':', '.'), new HashSet<string>(), states));
+            var computed = theme.Resolve(new(parts[0], "shell." + key.Replace(':', '.'), new HashSet<string>(key == "controller-glyph" ? new[] { "wrail-controller-glyph" } : Array.Empty<string>()), states));
             var values = computed.Properties.ToDictionary(pair => pair.Key, pair => new BridgeComputedStyleValue
                 { Kind = pair.Value.Kind, Text = pair.Value.Text, Number = pair.Value.Number, Unit = pair.Value.Unit });
             result[key] = new() { Base = values, Focused = values, Pressed = values };

@@ -26,7 +26,7 @@ internal sealed partial class OverlayShellPage
         chromeStyles.Register(Retry, "body");
         chromeStyles.Attach(Tray);
         chromeStyles.Register(trayGuide.BackgroundSurface, "tray");
-        foreach (var element in trayGuide.Typography) chromeStyles.Register(element, "hint");
+        foreach (var element in trayGuide.Typography) chromeStyles.Register(element, element is FontIcon ? "controller-glyph" : "hint");
         RefreshShellChrome();
     }
 

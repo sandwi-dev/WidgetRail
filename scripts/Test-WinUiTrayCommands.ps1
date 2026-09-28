@@ -44,7 +44,7 @@ try {
     }
     Check 'Reorder command enters host mode and keeps the exact widget focused' {
         $null = Ui @('invoke','Overlay.TrayCommand.Reorder')
-        $null = Ui @('wait-for','Overlay.TrayHelp','--value','Reordering widgets.','--contains','-t','3000')
+        $null = Ui @('wait-for','Overlay.Tray','-p','HelpText','--value','Move widget','--contains','-t','3000')
         $null = Ui @('wait-for',$target,'-p','HasKeyboardFocus','--value','True','-t','3000')
     }
     Check 'Native keyboard movement changes order without changing selected widget identity' {
@@ -57,7 +57,7 @@ try {
     Check 'Finishing reorder retains the restored order and tray ownership' {
         $null = Ui @('send-keys',$reverse,'--via','send-input')
         $null = Ui @('send-keys','escape','--via','send-input')
-        $null = Ui @('wait-for','Overlay.TrayHelp','--value','A opens the widget.','--contains','-t','3000')
+        $null = Ui @('wait-for','Overlay.Tray','-p','HelpText','--value','Open widget','--contains','-t','3000')
         if (((Order) -join '|') -ne ($original -join '|')) { throw 'Restoring order changed other widget identities.' }
         $state = (Ui @('get-property','Overlay.Status','-p','HelpText')).properties.HelpText | ConvertFrom-Json
         if ($state.interactive) { throw 'Reorder transferred focus into the widget.' }

@@ -19,7 +19,8 @@ validation. It is not yet a complete replacement for the native overlay.
   Native focus-policy checks pass 19 cases and real tray browsing passes four;
   native views now retain three recent widgets with explicit hidden-demand
   suspension. The five-check real deep-scroll/modal return gate passes. Radial
-  presentation and lightweight state restoration after cache eviction remain. See
+  presentation remains. Lightweight state restoration is integrated with bounded semantic history;
+  real shell eviction validation awaits a running Playnite provider. See
   [shell navigation](winui-shell-navigation.md).
   Tray reorder/hold-restart and native command menus are integrated; five native
   command and four rapid-browse checks pass. See [tray commands](winui-tray-commands.md).
@@ -91,14 +92,14 @@ validation. It is not yet a complete replacement for the native overlay.
 - **Pinned authority:** genuine-frame projections, independent scopes, selected-layout
   lifetimes, controller/Select/slider input, indexed actions and continuation are
   integrated. Ordinary pinned context/text and scoped artwork now use explicit
-  version-1 private bridge/worker requests. Pinned windows and compact-media transfer
-  remain. See [pinned authority](winui-pinned-session.md).
-  A peer WinUI window/placement/preferences foundation now passes 14 native window
-  checks, including real passive/interactive mouse routing and opacity screenshots.
-  It is not yet connected to the production Pin command; see
-  [pinned window foundation](winui-pinned-window.md).
+  version-1 private bridge/worker requests. The production Pin command now owns
+  genuine projections, a peer window, shared controller/lifecycle routing and passive
+  restoration. Five production checks, a separate fresh-process restore check, 19
+  presenter checks and 14 native peer-window checks pass. Compact media transfer,
+  pin controls and display/scale reconciliation remain; see
+  [production pinning](winui-production-pinning.md).
 - **Managed gates:** latest relevant integrated suites pass 233 presentation-session,
-  40 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 73 Spotify and 50 YouTube
+  46 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 73 Spotify and 50 YouTube
   checks. The latest integrated collection gates pass 16 indexed plus one discovered
   SDK scenario and 17 indexed plus one real-worker discovered bridge scenario;
   the prior complete SDK checkpoint passed 138. Counts identify their recorded checkpoint;
@@ -113,7 +114,7 @@ validation. It is not yet a complete replacement for the native overlay.
   for its complete 10,000-record model; all five integrated sample tests pass.
 
 Remaining product work includes remaining continuation-source adoption, preview
-coverage beyond ordinary roots, pinned projections/media ownership, radial tray and complete shell
+coverage beyond ordinary roots, pin display/controls/media ownership, radial tray and complete shell
 appearance/backdrop behavior, remaining styling, real-provider workflows, full
 controller/performance/memory/accessibility validation and packaging. Main and the
 installed native candidate are untouched; fixture passes are not migration acceptance.
@@ -126,7 +127,7 @@ installed native candidate are untouched; fixture passes are not migration accep
   library/detail/Search are integrated. Provider reachability beyond the bounded
   discovered-prefix metadata cap remains a deliberate open product requirement.
 - Depth styling: button/panel/modal and native collection masks integrated.
-- Pinned authority: independent projections and exact-layout action admission.
+- Pinned authority: production coordination integrated; teardown race and independent display/scaling reconciliation underway.
 - Root integration: inactive widget suspension/resumption and three-view retention
   pass the real Playnite/Music deep-scroll return and modal test. Appearance and
   complete shell behavior remain in progress.
@@ -951,3 +952,20 @@ Evidence: artifacts/winui-surfaces/home-integrated-tests.log and its unique buil
 This does not validate the actual Home rail's WinUI rendering or performance; production
 presentation support and shell integration remain outstanding. No sample was installed
 over the native frontend, and no changes were merged into main.
+
+## Shell production checkpoint, 2026-09-28
+
+Production pins and semantic memory are integrated. Three native presenters and a
+bounded 256-entry semantic history have separate ownership and retirement rules.
+The real forced-eviction driver reached an offline Playnite Library because Playnite
+was not running, so that production restoration gate remains unverified. Presenter
+recreation fixtures and the 46-check managed shell suite passed at their checkpoints.
+
+Shell chrome now uses resolved theme roles and native tray templates. Controller
+symbols use the existing `wrail-controller-glyph` class independently from hint text.
+All 23 native chrome checks pass, including current theme/focus state, controller
+family, high contrast, text scaling and stable narrow-layout guide height. Five
+actual production tray menu/reorder/dismissal checks pass with a freshly published
+bridge runtime. The screenshot was inspected. Evidence: `artifacts/winui-shell/`
+`chrome-glyph-result.json`, `chrome-glyph-final.png`, and `tray-chrome-production/`.
+These automated results do not establish physical controller or performance acceptance.

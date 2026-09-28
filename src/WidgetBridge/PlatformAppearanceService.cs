@@ -266,6 +266,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             ("title", "title", EmptyStates()),
             ("body", "body", EmptyStates()),
             ("hint", "hint", EmptyStates()),
+            ("controller-glyph", "controller-glyph", EmptyStates()),
             ("status", "status", EmptyStates()),
         };
         var result = new SortedDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>(StringComparer.Ordinal);
@@ -275,7 +276,9 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             var resolved = theme.Resolve(new WrssElement(
                 definition.Role,
                 $"shell.{definition.Key.Replace(':', '.')}",
-                new HashSet<string>(StringComparer.Ordinal),
+                definition.Key == "controller-glyph"
+                    ? new HashSet<string>(StringComparer.Ordinal) { "wrail-controller-glyph" }
+                    : new HashSet<string>(StringComparer.Ordinal),
                 definition.States));
             if (resolved.Properties.Count > BridgeRenderStyleLimits.MaximumPropertiesPerState)
                 throw new BridgeProtocolException($"Shell style '{definition.Key}' has too many properties.");

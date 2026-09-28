@@ -44,3 +44,9 @@ theme replacement, native template retention, rapid focus movement, controller
 family semantics, invariant guide height, narrow scaled reflow, High Contrast
 and recycled containers. Actual integrated widget/tray commands remain a
 separate production-shell gate; this fixture does not invoke provider commands.
+
+The bridge resolves a `controller-glyph` role with the public
+`wrail-controller-glyph` class. Guide labels retain the `hint` role; symbols retain
+the controller font and its separately themed size. Native validation passes 23
+checks; the current production tray driver passes all five menu/reorder checks
+and reads the active semantic guide from the tray's HelpText.
