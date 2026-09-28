@@ -158,6 +158,8 @@ internal static class BridgeRequestClassifier
                     BridgeJson.FromElement<BridgePresentationRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),
                 BridgeMessageTypes.ResolveArtwork => Artwork(request.Payload),
+                BridgeMessageTypes.ResolvePinnedArtwork => PinnedArtwork(request.Payload),
+                BridgeMessageTypes.PinnedAction => PinnedAction(request.Payload),
                 BridgeMessageTypes.ResolvePackageIcon => PackageIcon(request.Payload),
                 BridgeMessageTypes.ResolveEmbeddedMedia => EmbeddedMedia(request.Payload),
                 BridgeMessageTypes.EmbeddedMediaPlaybackEvent => EmbeddedMediaEvent(request.Payload),
@@ -252,6 +254,19 @@ internal static class BridgeRequestClassifier
         var request = BridgeJson.FromElement<BridgeIndexedRangeRequest>(payload);
         BridgeIndexedRangeValidation.Validate(request);
         return BridgeRequestKey.Indexed(kind, request);
+    }
+
+    private static BridgeRequestKey PinnedAction(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgePinnedActionRequest>(payload);
+        BridgePinnedRequestValidation.Validate(request);
+        return BridgeRequestKey.Widget(BridgeRequestKind.Action, request.WidgetId);
+    }
+    private static BridgeRequestKey PinnedArtwork(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgePinnedArtworkRequest>(payload);
+        BridgePinnedRequestValidation.Validate(request);
+        return BridgeRequestKey.Widget(BridgeRequestKind.ResolveArtwork, request.WidgetId);
     }
 
     private static BridgeRequestKey Artwork(JsonElement payload)

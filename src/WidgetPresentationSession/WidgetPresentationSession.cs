@@ -377,10 +377,13 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     /// abandon only this local demand; the existing bridge has no per-demand cancellation
     /// command. Late results are discarded by ID and cannot complete a replacement demand.
     /// </summary>
-    public async Task<WidgetPresentationArtwork> ResolveArtworkAsync(
-        WidgetPresentationAuthority authority,
-        string artworkHandle,
-        CancellationToken cancellationToken = default)
+    public Task<WidgetPresentationArtwork> ResolveArtworkAsync(
+        WidgetPresentationAuthority authority, string artworkHandle, CancellationToken cancellationToken = default) =>
+        ResolveArtworkCoreAsync(authority, artworkHandle, cancellationToken);
+
+    private async Task<WidgetPresentationArtwork> ResolveArtworkCoreAsync(
+        WidgetPresentationAuthority authority, string artworkHandle, CancellationToken cancellationToken,
+        WidgetPinnedSelection? selection = null, WidgetPinnedProjection? projection = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(artworkHandle);
         cancellationToken.ThrowIfCancellationRequested();
@@ -391,16 +394,19 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            var descriptor = ValidateAuthority(authority);
-            if (!ContainsArtwork(_states[descriptor.Id].LastGood!.Snapshot.Root, artworkHandle))
-                throw new WidgetPresentationSessionException(
-                    "unknown_artwork", "The artwork handle is not declared by the current snapshot.");
+            if (selection is not null && projection is not null) DemandPinnedArtworkLocked(selection, projection, artworkHandle);
+            else
+            {
+                var descriptor = ValidateAuthority(authority);
+                if (!ContainsArtwork(_states[descriptor.Id].LastGood!.Snapshot.Root, artworkHandle))
+                    throw new WidgetPresentationSessionException("unknown_artwork", "The artwork handle is not declared by the current snapshot.");
+            }
             if (_artwork.Count >= _options.MaximumPendingArtworkRequests)
                 throw new WidgetPresentationSessionException(
                     "artwork_saturated", "The presentation artwork request queue is full.");
             demandLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
             demandLifetime.CancelAfter(_options.ArtworkTimeout);
-            _artwork.Add(demandId, new(authority, artworkHandle, demandLifetime.Token, completion));
+            _artwork.Add(demandId, new(authority, artworkHandle, demandLifetime.Token, completion, selection, projection));
         }
         var demandToken = demandLifetime.Token;
         var cancellationRegistration = demandToken.Register(() =>
@@ -416,18 +422,29 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             TaskScheduler.Default);
         try
         {
-            var admission = RequestAsync(
+            var admission = projection is null ? RequestAsync(
                 BridgeMessageTypes.ResolveArtwork,
                 new BridgeArtworkRequest(authority.WidgetId, artworkHandle,
                     authority.RuntimeGeneration, authority.PresentationGeneration, demandId),
-                BridgeMessageTypes.Acknowledged,
-                demandToken);
+                BridgeMessageTypes.Acknowledged, demandToken) : RequestAsync(
+                BridgeMessageTypes.ResolvePinnedArtwork,
+                new BridgePinnedArtworkRequest(1, authority.WidgetId, authority.WidgetInstanceId,
+                    authority.RuntimeGeneration, authority.PresentationGeneration, projection.LayoutId,
+                    authority.SnapshotSequence, projection.Snapshot.ActiveInputScopeId, artworkHandle, demandId),
+                BridgeMessageTypes.Acknowledged, demandToken);
             _ = admission.ContinueWith(static task => { _ = task.Exception; },
                 CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
             // An already-started framed pipe write cannot be retracted without
             // closing the transport. Bound the caller separately and observe its
             // eventual completion under the transport's own pending-request limit.
+            if (projection is not null)
+            {
+                await Task.WhenAny(admission, completion.Task).WaitAsync(demandToken).ConfigureAwait(false);
+                // Selection retirement can precede wire admission. Stop local
+                // waiting immediately while observing the correlated late reply.
+                if (completion.Task.IsFaulted || completion.Task.IsCanceled) return await completion.Task.ConfigureAwait(false);
+            }
             await admission.WaitAsync(demandToken).ConfigureAwait(false);
             return await completion.Task.ConfigureAwait(false);
         }
@@ -439,6 +456,10 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         {
             lock (_gate) _artwork.Remove(demandId);
             completion.TrySetCanceled();
+            // Pinned retirement may finish via the local completion before IPC
+            // admission. Cancel unsent lane waits before removing the timeout;
+            // an already-written command retains transport correlation.
+            if (projection is not null) await demandLifetime.CancelAsync().ConfigureAwait(false);
             cancellationRegistration.Dispose();
             demandLifetime.Dispose();
         }
@@ -902,7 +923,12 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             pending.Completion.TrySetCanceled();
             return false;
         }
-        try { _ = ValidateAuthority(pending.Authority); }
+        try
+        {
+            if (pending.PinnedSelection is { } selection && pending.PinnedProjection is { } projection)
+                DemandPinnedArtworkLocked(selection, projection, pending.ArtworkHandle);
+            else _ = ValidateAuthority(pending.Authority);
+        }
         catch (WidgetPresentationSessionException exception)
         {
             _artwork.Remove(demandId);

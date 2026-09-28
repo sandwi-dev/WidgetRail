@@ -1,3 +1,4 @@
+using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -53,7 +54,7 @@ public sealed partial class WidgetPresentationSession
 
     /// <summary>
     /// Routes supported pinned commits through exact-layout controller authority.
-    /// Ordinary context actions and text commits require a separate bridge contract;
+    /// Context actions and text commits use the versioned pinned action contract;
     /// they never fall back to the ordinary Action endpoint.
     /// </summary>
     public Task<bool> SendPinnedActionAsync(WidgetPinnedSelection selection, WidgetPinnedProjection projection,
@@ -70,11 +71,11 @@ public sealed partial class WidgetPresentationSession
                 throw PinnedStale("The pinned action scope changed.");
             binding = ResolveDisplayedAction(projection.Snapshot, action);
             if (binding != ResolveDisplayedAction(current, action)) throw PinnedStale("The pinned action binding changed.");
-            if (binding.Role is "context" or "text")
-                throw new WidgetPresentationSessionException("pinned_action_unsupported", "This action has no exact-layout pinned bridge route.");
             if (action.VisibleCollectionKeys is not null || action.RetainedCollectionKeys is not null || !Enum.IsDefined(origin))
                 throw PinnedStale("The pinned action payload is invalid.");
         }
+        if (binding.Role is "context" or "text")
+            return SendPinnedDeclaredActionAsync(selection, projection, action, cancellationToken);
         var button = binding.Role == "slider" ? action.ControllerButton ?? ControllerButton.DPadRight
             : binding.Role == "shortcut" ? action.ControllerButton!.Value : ControllerButton.A;
         if (binding.Role is "primary" or "select" && action.ControllerButton is { } supplied && supplied != ControllerButton.A ||
@@ -87,6 +88,38 @@ public sealed partial class WidgetPresentationSession
             action.Sequence, action.MonotonicTimestampMicroseconds, action.InputScopeId,
             projection.Frame.Authority.SnapshotSequence, action.RequestedValue, origin) { PinnedLayoutId = projection.LayoutId };
         return SendPinnedInputCoreAsync(selection, projection, input, binding.Role == "select" ? action.ActionId : null, cancellationToken);
+    }
+
+    private async Task<bool> SendPinnedDeclaredActionAsync(WidgetPinnedSelection selection, WidgetPinnedProjection projection,
+        WidgetActionEvent action, CancellationToken cancellationToken)
+    {
+        using var dispatch = await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false);
+        var input = new PinnedActionInput(PinnedActionContract.Version, projection.LayoutId, projection.Frame.Authority.SnapshotSequence, action);
+        lock (_gate)
+        {
+            var current = DemandPinnedInputLocked(selection, projection);
+            try
+            {
+                if (PinnedActionContract.Resolve(projection.Frame.Snapshot, input) !=
+                    PinnedActionContract.Resolve(_states[selection.WidgetId].LastGood!.Snapshot, input))
+                    throw PinnedStale("The pinned action binding changed.");
+                if (current.ActiveInputScopeId != action.InputScopeId) throw PinnedStale("The pinned action scope changed.");
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+            { throw PinnedStale("The pinned action origin or binding is invalid."); }
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        var authority = projection.Frame.Authority;
+        var exchange = RequestAsync(BridgeMessageTypes.PinnedAction,
+            new BridgePinnedActionRequest(authority.WidgetId, authority.WidgetInstanceId, authority.RuntimeGeneration,
+                authority.PresentationGeneration, input), BridgeMessageTypes.Acknowledged, CancellationToken.None);
+        dispatch.Track(exchange);
+        var reply = await exchange.WaitAsync(cancellationToken).ConfigureAwait(false);
+        RequireObjectProperties(reply.Payload, "admission");
+        WidgetOperationAdmission? admission;
+        try { admission = PinnedActionContract.ValidateAdmission(BridgeJson.FromElement<PinnedActionResult>(reply.Payload).Admission); }
+        catch (ArgumentException error) { throw new BridgeProtocolException("Invalid pinned action result.", error); }
+        return admission is WidgetOperationAdmission.Enqueued or WidgetOperationAdmission.Joined or WidgetOperationAdmission.Replaced;
     }
 
     private static void ValidatePinnedInputOrigin(WidgetPinnedProjection projection, ControllerInputEvent input)

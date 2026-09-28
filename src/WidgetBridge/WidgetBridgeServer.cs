@@ -493,9 +493,15 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.ResolvePinnedArtwork:
         case BridgeMessageTypes.ResolveArtwork:
         {
-            var artworkRequest = BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload);
+            var pinnedArtwork = request.Type == BridgeMessageTypes.ResolvePinnedArtwork
+                ? BridgeJson.FromElement<BridgePinnedArtworkRequest>(request.Payload) : null;
+            if (pinnedArtwork is not null) BridgePinnedRequestValidation.Validate(pinnedArtwork);
+            var artworkRequest = pinnedArtwork is null ? BridgeJson.FromElement<BridgeArtworkRequest>(request.Payload)
+                : new(pinnedArtwork.WidgetId, pinnedArtwork.ArtworkHandle, pinnedArtwork.RuntimeGeneration,
+                    pinnedArtwork.PresentationGeneration, pinnedArtwork.DemandId);
             if (!BridgeRequestKey.IsBoundedIdentifier(artworkRequest.ArtworkHandle))
                 throw new BridgeProtocolException("Artwork handle is invalid.");
             if (artworkRequest.DemandId is { } demandId &&
@@ -525,7 +531,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     cancellationToken,
                     token => ReplyAsync(
                         BridgeMessageTypes.Acknowledged,
-                        request.RequestId, new { }, token)).ConfigureAwait(false))
+                        request.RequestId, new { }, token), pinnedArtwork).ConfigureAwait(false))
                 {
                     configured = resolution.Value.Configured;
                     workerFingerprint = resolution.Value.WorkerFingerprint;
@@ -717,6 +723,15 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 .ConfigureAwait(false);
             await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
                 .ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.PinnedAction:
+        {
+            var pinnedRequest = BridgeJson.FromElement<BridgePinnedActionRequest>(request.Payload);
+            using var pinnedPublication = await _registry.AdmitPinnedActionAsync(pinnedRequest,
+                _sessionCancellation, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId,
+                new PinnedActionResult(pinnedPublication.Value), cancellationToken).ConfigureAwait(false);
             break;
         }
         case BridgeMessageTypes.Action:

@@ -290,6 +290,20 @@ public sealed partial class WidgetProcessClient : IAsyncDisposable
         return ParseActionAdmission(response.Payload);
     }
 
+    internal async Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input,
+        CancellationToken cancellationToken)
+    {
+        PinnedActionContract.Validate(input);
+        // A pinned action must never launch a replacement worker.
+        var session = Volatile.Read(ref _session);
+        if (session is null || session.IsTerminal) return null;
+        var response = await RequestConnectedAsync(session, MessageTypes.PinnedAction, input, cancellationToken).ConfigureAwait(false);
+        if (response.Type != MessageTypes.Acknowledged)
+            throw new WidgetProtocolViolationException("Expected pinned action acknowledgement.");
+        try { return PinnedActionContract.ValidateAdmission(RuntimeJson.FromElement<PinnedActionResult>(response.Payload).Admission); }
+        catch (ArgumentException error) { throw new WidgetProtocolViolationException("Invalid pinned action result.", error); }
+    }
+
     internal static WidgetActionEvent PrepareActionForWorker(WidgetActionEvent action, int? protocolVersion) =>
         protocolVersion is >= ProtocolConstants.CursorRetentionVersion
             ? action : action with { RetainedCollectionKeys = null };

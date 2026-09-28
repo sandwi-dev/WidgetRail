@@ -2726,6 +2726,14 @@ internal sealed class RegistryTestClient(
         }
     }
 
+    internal List<PinnedActionInput> PinnedActions { get; } = [];
+    public Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        PinnedActions.Add(input);
+        return Task.FromResult<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued);
+    }
+
     public Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken)

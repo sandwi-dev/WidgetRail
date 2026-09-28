@@ -192,7 +192,9 @@ internal sealed record PendingArtwork(
     WidgetPresentationAuthority Authority,
     string ArtworkHandle,
     CancellationToken CancellationToken,
-    TaskCompletionSource<WidgetPresentationArtwork> Completion);
+    TaskCompletionSource<WidgetPresentationArtwork> Completion,
+    WidgetPinnedSelection? PinnedSelection = null,
+    WidgetPinnedProjection? PinnedProjection = null);
 
 internal sealed record BridgeRequestFailure(string Code, string Message);
 

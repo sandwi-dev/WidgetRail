@@ -278,6 +278,8 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
     Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken);
+    Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken) =>
+        Task.FromException<WidgetOperationAdmission?>(new NotSupportedException("Pinned action v1 is unavailable."));
     Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
         string artworkHandle,
         CancellationToken cancellationToken) =>
@@ -358,6 +360,8 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         WidgetActionEvent action,
         CancellationToken cancellationToken) =>
         client.AdmitActionAsync(action, cancellationToken);
+    public Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken) =>
+        client.AdmitPinnedActionAsync(input, cancellationToken);
     public Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
         string artworkHandle,
         CancellationToken cancellationToken) =>
@@ -1269,7 +1273,8 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         string? expectedPresentationGeneration,
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken,
-        Func<CancellationToken, Task>? acknowledge = null)
+        Func<CancellationToken, Task>? acknowledge = null,
+        BridgePinnedArtworkRequest? pinned = null)
     {
         if (!BridgeRequestKey.IsBoundedIdentifier(artworkHandle))
             throw new BridgeProtocolException("Artwork handle is invalid.");
@@ -1288,6 +1293,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 !ContainsArtwork(snapshot, artworkHandle))
                 throw new BridgeStaleArtworkAuthorityException(
                     "Artwork authority is stale or unavailable.");
+            if (pinned is not null) DemandPinnedArtwork(registration, pinned);
             registration.CancelIdleUnload();
             // Retained pages survive idle unload, but their worker-local handles
             // cannot resolve until the new worker publishes its own snapshot.
@@ -1309,6 +1315,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 !ContainsArtwork(current, artworkHandle))
                 throw new BridgeProtocolException(
                     "Artwork authority retired during resolution.");
+            if (pinned is not null) DemandPinnedArtwork(registration, pinned);
             ScheduleIdleUnload(registration, sessionCancellation);
             return AdmitPublication(
                 registration,

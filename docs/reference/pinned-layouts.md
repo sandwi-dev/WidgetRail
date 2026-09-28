@@ -34,6 +34,26 @@ queue view should not eagerly fetch the entire queue while that layout is unused
 Selection demand is not a general permission to issue Windows operations or
 override the widget's other capability/lifecycle rules.
 
+## Controls and artwork in a pinned root
+
+Use the same declarative controls and action handlers as the main widget:
+buttons, sliders, Select options, context actions and text entries. Give the
+pinned root its own stable input scope. `OnActionAsync` receives that scope and
+the original source/action IDs; a context action keeps its Menu/X/Y opener,
+while text commits carry `CommittedText`. Keep action IDs meaningful across
+updates and respect the existing disabled/busy and maximum-text-length rules.
+
+Use `UI.Artwork` and the normal `OnResolveArtworkAsync` provider for images
+that appear only in this root, including focus artwork. Publish a new handle
+when the pixels change. The host associates each request with the selected
+layout and discards replies after that selection or declaration retires.
+
+No custom pinned transport API is needed in widget code. Rebuild packaged
+application workers with the current runtime to enable pinned context/text
+commits; older workers cannot handle that new input route. A legacy layout
+with sizing hints but no root does not provide independent ordinary input.
+Host window/media support remains a separate frontend responsibility.
+
 ## Learn from a template
 
 The `media` template contains compact and detailed layouts. The `embedded-media`

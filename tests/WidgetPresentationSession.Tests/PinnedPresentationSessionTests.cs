@@ -317,18 +317,139 @@ public sealed class PinnedPresentationSessionTests
 
     [TestMethod]
     [DataRow("text")][DataRow("context")]
-    public async Task UnsupportedOrdinaryCommitsNeverUseTheGenericActionEndpoint(string kind)
+    public async Task PinnedContextAndTextCommitsUseExactVersionedEndpoint(string kind)
     {
         var node = kind == "text"
             ? new ViewNode { Id = "shared", Kind = ViewNodeKind.TextEntry, Text = "Name", TextEntryValue = "", TextEntryPlaceholder = "", TextEntryMaximumLength = 96, ActionId = "commit" }
             : new() { Id = "shared", Kind = ViewNodeKind.Stack, ContextMenuButton = ControllerButton.X, ContextActions = [new("menu", "Option")] };
-        await Run(channel => Selection(channel, "compact", true), async (session, frame) =>
+        await Run(async channel =>
+        {
+            await Selection(channel, "compact", true);
+            var request = await Read(channel); Assert.AreEqual(BridgeMessageTypes.PinnedAction, request.Type);
+            var wire = BridgeJson.FromElement<BridgePinnedActionRequest>(request.Payload);
+            Assert.AreEqual(Descriptor.InstanceId, wire.InstanceId); Assert.AreEqual(Descriptor.RuntimeGeneration, wire.RuntimeGeneration);
+            Assert.AreEqual(Descriptor.PresentationGeneration, wire.PresentationGeneration);
+            var input = request.Payload.GetProperty("input");
+            Assert.AreEqual(1, input.GetProperty("version").GetInt32()); Assert.AreEqual(1L, input.GetProperty("snapshotSequence").GetInt64());
+            Assert.AreEqual("compact", input.GetProperty("layoutId").GetString());
+            Assert.AreEqual("compact.scope", input.GetProperty("action").GetProperty("inputScopeId").GetString());
+            Assert.AreEqual(kind == "text" ? "Value" : null, input.GetProperty("action").TryGetProperty("committedText", out var committed) ? committed.GetString() : null);
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { admission = WidgetOperationAdmission.Enqueued });
+        }, async (session, frame) =>
         {
             var projection = session.ResolvePinnedProjection(frame, "compact"); var selected = await session.SelectPinnedLayoutAsync(projection);
             var action = new WidgetActionEvent(kind == "text" ? "commit" : "menu", "shared", InputScopeId: "compact.scope")
                 { CommittedText = kind == "text" ? "Value" : null, FocusedElementId = "shared" };
-            var error = await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.SendPinnedActionAsync(selected, projection, action));
-            Assert.AreEqual("pinned_action_unsupported", error.Code);
+            Assert.IsTrue(await session.SendPinnedActionAsync(selected, projection, action));
+        }, initial: Snapshot(1, node));
+    }
+
+    [TestMethod]
+    [DataRow(null, false)][DataRow("rejectedInactive", false)][DataRow("rejectedCapacity", false)]
+    [DataRow("joined", true)][DataRow("replaced", true)]
+    public async Task PinnedActionHandlesEveryBoundedAdmissionOutcome(string? outcome, bool accepted)
+    {
+        var node = new ViewNode { Id = "shared", Kind = ViewNodeKind.Stack, ContextMenuButton = ControllerButton.X,
+            ContextActions = [new("menu", "Option")] };
+        await Run(async channel =>
+        {
+            await Selection(channel, "compact", true);
+            var request = await Read(channel); Assert.AreEqual(BridgeMessageTypes.PinnedAction, request.Type);
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged,
+                new Dictionary<string, object?> { ["admission"] = outcome });
+        }, async (session, frame) =>
+        {
+            var projection = session.ResolvePinnedProjection(frame, "compact"); var selected = await session.SelectPinnedLayoutAsync(projection);
+            Assert.AreEqual(accepted, await session.SendPinnedActionAsync(selected, projection,
+                new("menu", "shared", ControllerButton.X, InputScopeId: "compact.scope")));
+        }, initial: Snapshot(1, node));
+    }
+
+    [TestMethod]
+    public async Task CancelledPinnedActionCannotLetDeselectionOvertakeItsReply()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var node = new ViewNode { Id = "shared", Kind = ViewNodeKind.Stack, ContextMenuButton = ControllerButton.X,
+            ContextActions = [new("menu", "Option")] };
+        await Run(async channel =>
+        {
+            await Selection(channel, "compact", true);
+            var request = await Read(channel); Assert.AreEqual(BridgeMessageTypes.PinnedAction, request.Type); entered.SetResult();
+            var list = await Read(channel); Assert.AreEqual(BridgeMessageTypes.ListWidgets, list.Type);
+            await Reply(channel, list.RequestId, BridgeMessageTypes.Widgets,
+                new { revision = 1, isComplete = true, widgets = new[] { Descriptor } });
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { admission = WidgetOperationAdmission.Enqueued });
+            await Selection(channel, null, false);
+        }, async (session, frame) =>
+        {
+            var projection = session.ResolvePinnedProjection(frame, "compact"); var selected = await session.SelectPinnedLayoutAsync(projection);
+            using var cancellation = new CancellationTokenSource();
+            var action = session.SendPinnedActionAsync(selected, projection,
+                new("menu", "shared", ControllerButton.X, InputScopeId: "compact.scope"), cancellationToken: cancellation.Token);
+            await entered.Task.WaitAsync(Limit); cancellation.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => action);
+            var clearing = session.ClearPinnedSelectionAsync(selected, frame);
+            await session.ListWidgetsAsync(); await clearing;
+            Assert.IsFalse(selected.IsCurrent);
+        }, initial: Snapshot(1, node));
+    }
+
+    [TestMethod]
+    public async Task PinnedArtworkUsesItsOwnRootAndSurvivesUnrelatedMainModal()
+    {
+        const string pixels = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jq1sAAAAASUVORK5CYII=";
+        var node = new ViewNode { Id = "cover", Kind = ViewNodeKind.Image, ArtworkHandle = "pin.cover", ImageFit = ImageFit.Cover, AccessibilityLabel = "Cover" };
+        await Run(async channel =>
+        {
+            await Selection(channel, "compact", true);
+            var refresh = await Read(channel); await ReplySnapshot(channel, refresh.RequestId, Snapshot(2, node, modal: true));
+            var request = await Read(channel); Assert.AreEqual(BridgeMessageTypes.ResolvePinnedArtwork, request.Type);
+            var wire = BridgeJson.FromElement<BridgePinnedArtworkRequest>(request.Payload);
+            Assert.AreEqual("compact", wire.LayoutId); Assert.AreEqual("compact.scope", wire.InputScopeId);
+            Assert.AreEqual(1L, wire.SnapshotSequence); Assert.AreEqual(1, wire.Version);
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { });
+            await Reply(channel, 0, BridgeMessageTypes.Artwork, new { widgetId = wire.WidgetId, artworkHandle = wire.ArtworkHandle,
+                runtimeGeneration = wire.RuntimeGeneration, presentationGeneration = wire.PresentationGeneration,
+                demandId = wire.DemandId, contentType = "image/png", contentBase64 = pixels });
+        }, async (session, frame) =>
+        {
+            var projection = session.ResolvePinnedProjection(frame, "compact"); var selected = await session.SelectPinnedLayoutAsync(projection);
+            await session.RefreshAsync(frame.Authority);
+            var result = await session.ResolvePinnedArtworkAsync(selected, projection, "pin.cover");
+            CollectionAssert.AreEqual(Convert.FromBase64String(pixels), result.EncodedBytes.ToArray());
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.ResolvePinnedArtworkAsync(selected, projection, "other.cover"));
+        }, initial: Snapshot(1, node));
+    }
+
+    [TestMethod]
+    [DataRow(false)][DataRow(true)]
+    public async Task DeselectionRetiresPinnedArtworkBeforeLateBytesArrive(bool delayAdmission)
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var retired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var node = new ViewNode { Id = "cover", Kind = ViewNodeKind.Image, ArtworkHandle = "pin.cover", ImageFit = ImageFit.Cover, AccessibilityLabel = "Cover" };
+        await Run(async channel =>
+        {
+            await Selection(channel, "compact", true);
+            var request = await Read(channel);
+            var wire = BridgeJson.FromElement<BridgePinnedArtworkRequest>(request.Payload);
+            if (!delayAdmission) await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { });
+            entered.SetResult();
+            await retired.Task.WaitAsync(Limit);
+            if (delayAdmission) await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { });
+            await Selection(channel, null, false);
+            await Reply(channel, 0, BridgeMessageTypes.Artwork, new { widgetId = wire.WidgetId, artworkHandle = wire.ArtworkHandle,
+                runtimeGeneration = wire.RuntimeGeneration, presentationGeneration = wire.PresentationGeneration,
+                demandId = wire.DemandId, contentType = "", contentBase64 = "" });
+        }, async (session, frame) =>
+        {
+            var projection = session.ResolvePinnedProjection(frame, "compact"); var selected = await session.SelectPinnedLayoutAsync(projection);
+            var result = session.ResolvePinnedArtworkAsync(selected, projection, "pin.cover");
+            await entered.Task.WaitAsync(Limit);
+            var clearing = session.ClearPinnedSelectionAsync(selected, frame);
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => result);
+            retired.SetResult();
+            await clearing;
         }, initial: Snapshot(1, node));
     }
 

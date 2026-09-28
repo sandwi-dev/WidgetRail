@@ -49,6 +49,8 @@ internal static class BridgeMessageTypes
     public const string Snapshot = "snapshot";
     public const string PresentationUpdate = "presentation-update";
     public const string Action = "action";
+    public const string PinnedAction = "pinned-action-v1";
+    public const string ResolvePinnedArtwork = "resolve-pinned-artwork-v1";
     public const string QuickAction = "quick-action";
     public const string ControllerInput = "controller-input";
     public const string ConnectProtectedWifi = "connect-protected-wifi";
@@ -145,6 +147,10 @@ internal sealed record BridgePresentationEstablishment(
     WidgetRail.WidgetSdk.WidgetPresentationTransactionKind TransactionKind =
         WidgetRail.WidgetSdk.WidgetPresentationTransactionKind.OrdinaryCheckpoint,
     long RecoveryOriginSequence = 0);
+internal sealed record BridgePinnedActionRequest(string WidgetId, string InstanceId, string RuntimeGeneration,
+    string PresentationGeneration, WidgetRail.WidgetSdk.PinnedActionInput Input);
+internal sealed record BridgePinnedArtworkRequest(int Version, string WidgetId, string InstanceId, string RuntimeGeneration,
+    string PresentationGeneration, string LayoutId, long SnapshotSequence, string InputScopeId, string ArtworkHandle, string DemandId);
 internal sealed record BridgeActionRequest(string WidgetId, WidgetRail.WidgetSdk.WidgetActionEvent Action);
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 internal sealed record BridgeControllerInputRequest(

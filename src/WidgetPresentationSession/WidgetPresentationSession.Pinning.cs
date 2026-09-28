@@ -212,14 +212,17 @@ public sealed partial class WidgetPresentationSession
         _pinnedFrames.GetValue(frame, _ => new ReadOnlyDictionary<string, PinnedEpoch>(next));
         if (_pinnedSelections.TryGetValue(state.WidgetId, out var selected) &&
             !ReferenceEquals(next.GetValueOrDefault(selected.LayoutId), selected.Epoch)) selected.Active = false;
+        ReconcilePinnedArtworkLocked(state.WidgetId);
     }
     private void RetirePinnedProjectionsLocked(string? widget = null)
     {
+        RetirePinnedArtworkLocked(widget);
         if (widget is null) { _pinnedEpochs.Clear(); foreach (var item in _pinnedSelections.Values) item.Active = false; _pinnedSelections.Clear(); }
         else { _pinnedEpochs.Remove(widget); if (_pinnedSelections.Remove(widget, out var selected)) selected.Active = false; }
     }
     private void RetirePinnedIndexedLocked(string widget, string id)
     {
+        RetirePinnedArtworkLocked(widget, id);
         foreach (var lease in _indexedLeases.Values.ToArray())
             if (lease.Authority.WidgetId == widget && lease.Request.Range.PinnedLayoutId == id) RetireIndexedLeaseLocked(lease);
         foreach (var demand in _indexedDemands.Values)

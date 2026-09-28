@@ -1,10 +1,11 @@
 # Pinned presentation-session authority
 
-This is the managed host foundation for authored pinned layouts and the host's
+This is the managed host authority for authored pinned layouts and the host's
 `host.full-widget` projection. It uses the existing controller-input bridge
-contract and protocol-63 indexed continuation. It introduces no wire version,
-SDK declaration, or permission changes. A pinned window and its placement remain
-host responsibilities; this API does not create one.
+contract, protocol-63 indexed continuation, and separate version-1 pinned action
+and artwork requests. The view schema, runtime-v2 handshake and bridge-v1
+handshake are unchanged. A pinned window and its placement remain host
+responsibilities; these APIs do not create one.
 
 ## Projection, selection, and displayed origin
 
@@ -79,9 +80,26 @@ not retried as ordinary widget input or host navigation.
 `SendPinnedSelectOptionAsync` commits the captured Select option through the
 bridge's expected-option route. `SendPinnedActionAsync` maps supported pointer
 or accessibility commits to the same exact-layout controller routes: primary
-actions, sliders, declared shortcuts and Select options. Set the appropriate
-`ControllerInputOrigin`; preserve captured scope, source, phase and focus.
+actions, sliders, declared shortcuts and Select options. Context actions and
+text commits use `pinned-action-v1` through the bridge and worker. Preserve
+captured scope, source, phase, focus and the actual menu opener (Menu/X/Y);
+a container menu can be invoked while another control in the same scope has
+focus. Text commits use A or a pointer commit without a controller button.
 The ordinary frame/authority input APIs reject pinned contexts.
+
+One internal SDK resolver defines the context/text contract for the session,
+bridge and worker. The session retains genuine displayed-frame and selection
+authority. The bridge compares the origin and current binding under its operation
+gate, then supplies the current sequence to the already-running worker. The
+worker checks that exact sequence, layout, scope, source and declaration before
+admitting the captured action to its existing bounded serial queue. There is no
+generic Action fallback, including for a frozen worker that does not recognize
+`pinned-action-v1`. Such workers must be rebuilt to support these commits.
+
+These distinct request names carry an explicit version value of 1. Unknown
+versions and extra properties are rejected. No widget SDK authoring change is
+needed: existing text-entry and context-action declarations remain the source
+of authority, with their existing disabled/busy and text-length constraints.
 
 Successful responses describe bridge handling/admission, not asynchronous widget
 operation completion. Observe subsequent publications for the result.
@@ -107,24 +125,42 @@ placement policy. Setting the widget Background revokes active pinned selection;
 returning it to Visible does not restore selection implicitly. Terminal failure,
 widget retirement and disposal revoke authority as well.
 
-## Bounded follow-ups before full pinned UI parity
+## Scoped artwork
 
-These are intentionally unavailable rather than routed through ordinary Action:
+`ResolvePinnedArtworkAsync(selection, displayedProjection, handle)` admits only
+handles declared in the displayed and current selected root, including focus
+backgrounds and focus-presentation fragments. The `resolve-pinned-artwork-v1`
+bridge request carries instance/runtime/presentation, layout, scope, original
+snapshot sequence and a unique demand ID. The bridge validates this projection
+before and after the existing artwork provider resolves. Worker artwork remains
+opaque handles and encoded bytes; the host never accepts widget file paths.
+Legacy sizing-only layouts inherit the main artwork projection without gaining
+ordinary action authority.
 
-- Ordinary pinned context-menu actions and text-entry commits need a bridge
-  action contract with exact layout, scope, origin and binding authority.
-  `SendPinnedActionAsync` rejects these with `pinned_action_unsupported`.
-- Legacy pinned cursor pagination needs that exact-layout action contract too.
-  The old native host's generic Action route must not be copied into WinUI.
-  Indexed context actions and discovered continuation are already supported.
-- Ordinary artwork declared only inside an authored pinned root needs scoped
-  resolution; the existing generic artwork facade checks the main root.
-  Indexed row artwork retains its existing exact lease route.
-- The host-generated compact-media projection belongs to the media service;
-  it is not an authored or full-widget projection handled by these APIs.
+Art requests share the existing bounded artwork queue and timeout. An unrelated
+main modal or snapshot update does not discard a still-declared pinned image.
+Selection removal, scope/handle removal, replacement and Background retire the
+local demand immediately, even before its bridge admission reply. Late bytes
+cannot satisfy a replacement demand. A sent provider request is not retracted;
+it remains bounded by the existing bridge/worker timeout and its result is
+ignored after local retirement. Local retirement cancels unsent transport-lane
+waits before disposing their timeout, so abandoned demands cannot accumulate.
 
-The foundation is covered by presentation-session scripted bridge tests for
-projection provenance, independent scopes, selection lifetimes, stale bindings,
-modal updates, cancellation ordering, indexed authority and explicit unsupported
-routes. These tests do not establish pinned-window rendering or physical input
-acceptance; those belong to the WinUI shell integration.
+## Host integration and remaining boundaries
+
+The host-generated compact-media projection belongs to the media service; it is
+not an authored or full-widget projection handled by these APIs. Window placement,
+media surfaces and the WinUI presenter are separate shell integration work.
+
+Do not build a legacy pinned cursor action engine. Current widget collection
+migration uses indexed/discovered contracts; indexed context actions and
+`ContinuePinnedDiscoveredCollectionAsync` already preserve projection authority.
+Older sizing-only layouts can render inherited content and artwork but do not
+acquire ordinary pinned action authority.
+
+Validation includes scripted session tests for provenance, selection lifetimes,
+scopes, modal updates, cancellation ordering, indexed authority and delayed
+artwork; direct bridge/worker rejection tests; and a session-to-real-worker
+round trip for context actions, text commits, full-widget parent input beneath a
+modal and pinned-only artwork. These tests do not establish pinned-window
+rendering or physical input acceptance; those belong to shell integration.

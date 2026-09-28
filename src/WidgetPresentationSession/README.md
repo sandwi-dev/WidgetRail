@@ -90,5 +90,7 @@ Use `ResolvePinnedProjection` and a `WidgetPinnedSelection` for pinned surfaces;
 never fabricate an ordinary frame from a pinned root. Selection and the genuine
 displayed origin are required for both ordinary pinned controls and indexed row
 input. See [pinned session authority](../../docs/maintainers/winui-pinned-session.md)
-for API flow, lifecycle rules, full-widget demand semantics and the bounded
-unsupported ordinary text/context/cursor routes.
+for API flow, lifecycle rules, full-widget demand semantics, exact-layout
+context/text commits and scoped artwork. `ResolvePinnedArtworkAsync` authorizes
+handles declared only in a pinned root. Pinned context/text commits require a
+worker with the version-1 pinned-action route; there is no ordinary Action fallback.

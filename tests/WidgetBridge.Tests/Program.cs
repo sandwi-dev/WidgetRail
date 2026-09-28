@@ -52,6 +52,9 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Pinned action worker validates layout sequence scope text and context triggers", PinnedActionBridgeScenarios.WorkerAuthority),
+    ("Pinned actions and artwork cross session bridge and real worker", PinnedActionBridgeScenarios.EndToEnd),
+    ("Pinned action bridge rejects stale binding scope version and foreign artwork", PinnedActionBridgeScenarios.Authority),
     ("Discovered prefixes cross real worker bridge and session with retained action authority", DiscoveredBridgeScenarios.EndToEnd),
     ("Indexed styles failure releases acquired runtime semantics", BridgeIndexedLeaseRegistryScenarios.StylePreparationFailureReleasesExactRuntimeLease),
     ("Indexed styles match parent cascade and focus fragments", BridgeIndexedStyleScenarios.RangeStylesMatchSnapshotCascadeAndFragments),
@@ -321,7 +324,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
     var instance = RequiredValue(arguments, "--widget-instance");
     return await WidgetWorkerBootstrap.RunAsync(
         arguments,
-        _ => string.Equals(instance, "discovered.instance", StringComparison.Ordinal)
+        _ => string.Equals(instance, "pinned-actions.instance", StringComparison.Ordinal)
+            ? new PinnedActionBridgeWidget()
+            : string.Equals(instance, "discovered.instance", StringComparison.Ordinal)
             ? new DiscoveredBridgeWidget()
             : string.Equals(instance, "indexed-owned.instance", StringComparison.Ordinal)
             ? new IndexedOwnedBridgeProbeWidget()
