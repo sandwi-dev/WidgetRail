@@ -34,7 +34,7 @@ internal sealed partial class WidgetIndexedCollectionView
         {
             DiscoveredCollectionStatus.Loading => "Loading more results…",
             DiscoveredCollectionStatus.Failed => state.ErrorMessage ?? "More results could not be loaded.",
-            DiscoveredCollectionStatus.LimitReached => "Result limit reached. Refine or restart the search to continue.",
+            DiscoveredCollectionStatus.LimitReached => "Result limit reached.",
             _ => state.HasMore ? "More results available" : source.Items.Count == 0 ? "No results" : string.Empty,
         };
         discoveryLoading!.IsActive = state.Status == DiscoveredCollectionStatus.Loading;

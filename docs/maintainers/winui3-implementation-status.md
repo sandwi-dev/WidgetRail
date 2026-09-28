@@ -14,6 +14,11 @@ validation. It is not yet a complete replacement for the native overlay.
   activation; stale input is consumed without replay or rebasing. Guide/foreground
   behavior was physically accepted in the controller harness. The complete production
   shell still needs physical acceptance; automated runs use `--shell-no-controller`.
+  Tray focus now previews widgets without transferring focus into them; explicit
+  activation enters them. Saved order/reopen state uses the explicit profile.
+  Native focus-policy checks pass 19 cases and real tray browsing passes four;
+  radial presentation and inactive-widget view retention remain. See
+  [shell navigation](winui-shell-navigation.md).
 - **Native UI:** standard layouts, responsive branches, text, buttons, action/poster
   surfaces, icons, prompts, progress, text entry/controller keyboard, Select, sliders,
   context menus and widget-local modals are mapped. The same themed declaration path
@@ -70,12 +75,20 @@ validation. It is not yet a complete replacement for the native overlay.
   was rejected because it retained expired pixels while blocked. Task-window activation
   uses the shared native identity/foreground policy; full Task Switcher acceptance
   remains. Indexed/pinned/focus-fragment capture needs separate admitted inventory.
-- **Managed gates:** latest relevant integrated suites pass 189 presentation-session,
-  24 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 83 Spotify and 50 YouTube
+- **Pinned authority:** genuine-frame projections, independent scopes, selected-layout
+  lifetimes, controller/Select/slider input, indexed actions and continuation are
+  integrated. Ordinary pinned context/text and scoped artwork remain, along with
+  pinned windows and compact-media transfer. See [pinned authority](winui-pinned-session.md).
+- **Managed gates:** latest relevant integrated suites pass 223 presentation-session,
+  29 shell, 157 Playnite, 28 standalone music, 92 Games & Apps, 83 Spotify and 50 YouTube
   checks. The latest integrated collection gates pass 16 indexed plus one discovered
   SDK scenario and 17 indexed plus one real-worker discovered bridge scenario;
   the prior complete SDK checkpoint passed 138. Counts identify their recorded checkpoint;
   affected suites must run again after later contract changes. Analyzer builds are clean.
+  The latest Playnite native replay exposed a finite-range wire mismatch with the
+  older isolated test runtime. Default Range now omits the continuation-only field;
+  strict wire and enabled-provider-row probes pass. The native details replay after
+  this correction remains pending; earlier six-check results predate it.
 
 Remaining product work includes remaining continuation-source adoption, preview
 coverage beyond ordinary roots, pinned projections/media ownership, radial tray and complete shell

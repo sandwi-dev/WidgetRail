@@ -38,6 +38,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private bool needsEntry;
     private bool focusQueued;
     private bool restoreNativeFocus;
+    private bool automaticFocusEnabled = true;
     private Binding? pendingRestore;
     private long actionSequence;
     private readonly bool presentationOnly;
@@ -58,6 +59,23 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         this.restoreNativeFocus |= restoreNativeFocus;
         needsEntry = needsEntry || FocusedBinding() is not { } focused || !Eligible(focused);
         QueueEntryFocus();
+    }
+
+    /// <summary>Tray/background previews still update but cannot steal native focus.</summary>
+    internal void SetAutomaticFocusEnabled(bool enabled)
+    {
+        if (automaticFocusEnabled == enabled) return;
+        automaticFocusEnabled = enabled;
+        if (!enabled)
+        {
+            ClearEntryLayoutWait();
+            foreach (var binding in bindings.Values)
+                if (binding.Element is WidgetIndexedCollectionView collection) collection.CancelHostNavigation();
+            return;
+        }
+        // Pointer or UIA focus is an explicit choice; enabling host interaction
+        // must not replace it with an old pending initial-focus request.
+        if (FocusedBinding() is { } focused && Eligible(focused)) needsEntry = false;
     }
 
     public WidgetViewPresenter(bool presentationOnly = false)
@@ -195,7 +213,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
     private void QueueEntryFocus()
     {
-        if (presentationOnly) return;
+        if (presentationOnly || !automaticFocusEnabled) return;
         if (focusQueued) return;
         focusQueued = true;
         if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, RestoreFocus)) focusQueued = false;
@@ -204,7 +222,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private void RestoreFocus()
     {
         focusQueued = false;
-        if (!IsLoaded || XamlRoot is null || frame is null || applying) return;
+        if (!automaticFocusEnabled || !IsLoaded || XamlRoot is null || frame is null || applying) return;
         var reassertFocus = restoreNativeFocus;
         restoreNativeFocus = false;
         if (TryRestoreTransientFocus()) return;

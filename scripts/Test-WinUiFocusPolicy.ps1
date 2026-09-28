@@ -76,6 +76,18 @@ try {
     Key F4
     Key F3
     Assert-Focus 'user navigation cancels deferred entry even at an empty edge' 'Widget.header'
+    Key F1
+    Key F8
+    Assert-Focus 'passive preview cannot steal host tray focus on worker replacement' 'FocusPolicy.Outside'
+    Key F2
+    Key F12
+    Assert-Focus 'passive preview defers authored entry while continuing publications' 'FocusPolicy.Outside'
+    Key F1
+    Assert-Focus 'explicit host entry completes the current authored request' 'Widget.second'
+    Key F1
+    Key F8
+    Key F1
+    Assert-Focus 'host entry uses the replacement owner initial target' 'Widget.header'
     Invoke-Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'focus-policy.png')) | Out-Null
 } finally {
     $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory 'results.json')

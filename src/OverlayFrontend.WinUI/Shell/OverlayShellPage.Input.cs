@@ -21,7 +21,7 @@ internal sealed partial class OverlayShellPage
 
     internal void Receive(ControllerFrame frame)
     {
-        if (retired || !visible || switching || frame.Connected == 0) { rightStick.Reset(); return; }
+        if (retired || !visible || switching && interactive || frame.Connected == 0) { rightStick.Reset(); return; }
         surface?.SetControllerFamily(frame.LastInputFamily);
         var direction = frame.DpadNavigation.Phase != NavigationPhase.None ? frame.DpadNavigation : frame.StickNavigation;
         var next = direction.Direction switch
@@ -57,7 +57,7 @@ internal sealed partial class OverlayShellPage
 
     private async Task RouteButtonAsync(ControllerButton button, ControllerEventPhase phase)
     {
-        if (retired || switching || !visible) return;
+        if (retired || switching && interactive || !visible) return;
         try
         {
             if (RouteFullscreenButton(button, phase)) return;
@@ -69,10 +69,7 @@ internal sealed partial class OverlayShellPage
                 {
                     // Focus is the activation target; ListView selection does not
                     // necessarily follow XY controller focus.
-                    var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
-                    for (var node = focused; node is not null; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
-                        if (node is ListViewItem item && Tray.ItemFromContainer(item) is BridgeWidgetDescriptor descriptor)
-                        { await SelectAsync(descriptor.Id); break; }
+                    if (FocusedTrayWidget() is { } descriptor) await SelectAsync(descriptor.Id);
                 }
                 return;
             }

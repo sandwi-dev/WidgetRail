@@ -54,6 +54,7 @@ internal sealed partial class WidgetIndexedCollectionView
     {
         if (entering) CancelNavigation();
     }
+    internal void CancelHostNavigation() => CancelNavigation();
 
     private void RememberItemFocus()
     {

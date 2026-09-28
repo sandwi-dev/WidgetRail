@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
@@ -21,15 +22,22 @@ internal sealed class FocusPolicyValidationPage : Page
     private bool neighbors = true;
     private bool disableThird;
     private bool groupNeighbor;
+    private bool passive;
+    private readonly Button outside = new() { Content = "Host tray" };
 
     public FocusPolicyValidationPage()
     {
         AutomationProperties.SetAutomationId(status, "FocusPolicy.Status");
-        Content = new StackPanel { Spacing = 12, Children = { status, presenter } };
+        AutomationProperties.SetAutomationId(outside, "FocusPolicy.Outside");
+        Content = new StackPanel { Spacing = 12, Children = { status, outside, presenter } };
         KeyDown += (_, args) =>
         {
             switch (args.Key)
             {
+                case VirtualKey.F1:
+                    passive = !passive; presenter.SetAutomaticFocusEnabled(!passive);
+                    if (passive) outside.Focus(FocusState.Keyboard); else presenter.Enter();
+                    Apply(); break;
                 case VirtualKey.F2: ++request; Apply(); break;
                 case VirtualKey.F3: ready = !ready; Apply(); break;
                 case VirtualKey.F4: presenter.MoveFocus(FocusNavigationDirection.Down); break;
