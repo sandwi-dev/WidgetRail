@@ -1,0 +1,12 @@
+<Project Sdk="MSTest.Sdk/4.3.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PlatformSettings\PlatformSettings.csproj" />
+    <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Motion\WidgetMotionPolicy.cs" Link="WidgetMotionPolicy.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Motion\WidgetMotionGroups.cs" Link="WidgetMotionGroups.cs" />
+  </ItemGroup>
+</Project>
