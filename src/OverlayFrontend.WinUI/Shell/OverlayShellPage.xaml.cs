@@ -119,6 +119,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private void SetCatalog(WidgetPresentationCatalog catalog)
     {
+        ReconcilePresentationMemory(catalog);
         var selected = requestedWidget;
         preferences = preferences.Reconcile(catalog.Widgets.Select(widget => widget.Id), catalog.IsComplete);
         var byId = catalog.Widgets.ToDictionary(widget => widget.Id, StringComparer.Ordinal);
@@ -235,8 +236,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (state.LastGood is not { } next || surface is null) return;
         try
         {
-            surface.Apply(next); UpdateSurfaceHints(next.Snapshot.Surface); ShowPresentationStatus(next.Descriptor.Name);
-            if (retainedSurfaces.TryGetValue(state.WidgetId, out var retained)) retained.Descriptor = next.Descriptor;
+            ApplyWidgetSurfaceFrame(next); UpdateSurfaceHints(next.Snapshot.Surface); ShowPresentationStatus(next.Descriptor.Name);
             if (mediaOwner?.FullscreenState is { } fullscreen) fullscreenView.Show(fullscreen.Declaration);
         }
         catch (Exception error) { ReportFailure(error); }
@@ -541,13 +541,13 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         var json = System.Text.Json.JsonSerializer.Serialize(new { activeWidget, publication, visible, interactive,
             foreground, switching, sizing = SizingDiagnostics, catalogCount = catalogItems.Count, bridgePid = owner?.ProcessId,
             retainedSurfaceCount = retainedSurfaces.Count,
+            presentationMemoryCount = presentationMemory.Count, memoryRestoreCount,
             pinnedWidget = pinned?.Selection.WidgetId, pinnedLayout = pinned?.Selection.LayoutId, pinnedInput = PinnedInputActive,
             pinnedSelectionCurrent = pinned?.Selection.IsCurrent,
             focusTransfers = focusDiagnostics.ToArray() });
         AutomationProperties.SetHelpText(Status, json);
         if (pinned is { } current && options.LayoutDiagnosticsPath is not null)
         {
-
             AutomationProperties.SetHelpText(current.Window.AutomationRoot, json);
         }
     }

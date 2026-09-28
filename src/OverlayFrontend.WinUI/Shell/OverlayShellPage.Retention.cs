@@ -12,6 +12,8 @@ internal sealed partial class OverlayShellPage
     // or background artwork/capture demand. Eviction is deliberately bounded.
     private const int RetainedSurfaceLimit = 3;
     private readonly Dictionary<string, RetainedWidgetSurface> retainedSurfaces = new(StringComparer.Ordinal);
+    private readonly WidgetStateHistory<WidgetPresentationMemento> presentationMemory = new();
+    private long memoryRestoreCount;
     private long surfaceUse;
 
     private sealed class RetainedWidgetSurface(BridgeWidgetDescriptor descriptor,
@@ -21,17 +23,19 @@ internal sealed partial class OverlayShellPage
         internal WidgetViewPresenter Presenter { get; } = presenter;
         internal WindowPreviewRenderer? Previews { get; } = previews;
         internal long LastUse { get; set; }
+        internal bool RestoreMemoryOnFirstApply { get; set; } = true;
     }
 
     private static bool SameSurfaceOwner(BridgeWidgetDescriptor first, BridgeWidgetDescriptor second) =>
-        first.Id == second.Id && first.InstanceId == second.InstanceId &&
-        first.RuntimeGeneration == second.RuntimeGeneration &&
-        first.PresentationGeneration == second.PresentationGeneration &&
-        first.PackageContentDigest == second.PackageContentDigest;
+        StateOwner(first) == StateOwner(second);
 
     private async Task SuspendWidgetSurfaceAsync()
     {
         if (surface is null) return;
+        if (surface.IsPresentationActive && surface.IsLoaded && surface.Visibility == Visibility.Visible &&
+            activeWidget is { } id && retainedSurfaces.TryGetValue(id, out var retained) &&
+            ReferenceEquals(surface, retained.Presenter) && surface.CapturePresentationState() is { } memory)
+            presentationMemory.Remember(StateOwner(retained.Descriptor), memory);
         surface.SetAutomaticFocusEnabled(false);
         previewRenderer?.SetVisible(false);
         await surface.SetPresentationActiveAsync(false);
@@ -53,7 +57,7 @@ internal sealed partial class OverlayShellPage
             while (retainedSurfaces.Count >= RetainedSurfaceLimit)
             {
                 var oldest = retainedSurfaces.MinBy(pair => pair.Value.LastUse);
-                await RetireWidgetSurfaceAsync(oldest.Key);
+                await RetireWidgetSurfaceAsync(oldest.Key, forgetMemory: false);
             }
             var previews = CreatePreviewRenderer();
             var presenter = new WidgetViewPresenter
@@ -85,15 +89,36 @@ internal sealed partial class OverlayShellPage
     private async Task ResumeWidgetSurfaceAsync(WidgetPresentationFrame next)
     {
         if (surface is null) return;
-        surface.Apply(next);
-        if (activeWidget is { } id && retainedSurfaces.TryGetValue(id, out var retained))
-            retained.Descriptor = next.Descriptor;
+        ApplyWidgetSurfaceFrame(next);
         surface.Visibility = Visibility.Visible;
         await surface.SetPresentationActiveAsync(true);
     }
 
-    private async Task RetireWidgetSurfaceAsync(string id)
+    private void ApplyWidgetSurfaceFrame(WidgetPresentationFrame next)
     {
+        if (surface is null) return;
+        surface.Apply(next);
+        if (activeWidget is not { } id || !retainedSurfaces.TryGetValue(id, out var retained)) return;
+        if (!SameSurfaceOwner(retained.Descriptor, next.Descriptor)) presentationMemory.Remove(id);
+        retained.Descriptor = next.Descriptor;
+        if (!retained.RestoreMemoryOnFirstApply) return;
+        retained.RestoreMemoryOnFirstApply = false;
+        if (presentationMemory.TryGet(StateOwner(next.Descriptor), out var memory))
+        {
+            if (surface.RestorePresentationState(memory!)) ++memoryRestoreCount;
+            else presentationMemory.Remove(id);
+        }
+    }
+
+    private static WidgetStateOwner StateOwner(BridgeWidgetDescriptor descriptor) => new(descriptor.Id,
+        descriptor.InstanceId, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, descriptor.PackageContentDigest);
+
+    private void ReconcilePresentationMemory(WidgetPresentationCatalog catalog) =>
+        presentationMemory.Reconcile(catalog.Widgets.Select(StateOwner), catalog.IsComplete);
+
+    private async Task RetireWidgetSurfaceAsync(string id, bool forgetMemory = true)
+    {
+        if (forgetMemory) presentationMemory.Remove(id);
         if (!retainedSurfaces.Remove(id, out var retained)) return;
         retained.Presenter.SetAutomaticFocusEnabled(false);
         retained.Previews?.SetVisible(false);
@@ -112,6 +137,7 @@ internal sealed partial class OverlayShellPage
             try { await RetireWidgetSurfaceAsync(id); }
             catch (Exception error) { (errors ??= []).Add(error); }
         }
+        presentationMemory.Clear();
         if (errors is not null) throw new AggregateException(errors);
     }
 }

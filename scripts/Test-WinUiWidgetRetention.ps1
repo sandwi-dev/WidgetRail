@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][int]$AppPid,
     [Parameter(Mandatory)][string]$OutputDirectory,
+    [string[]]$EvictWithWidgetIds = @(),
     [switch]$CloseAfter
 )
 $ErrorActionPreference = 'Stop'
@@ -10,6 +11,9 @@ $results = [Collections.Generic.List[object]]::new()
 $collection = 'Widget.playnite-library.library.scroll'
 $playnite = 'widgetrail.samples.playnite-library'
 $music = 'widgetrail.samples.ytmusic'
+if ($EvictWithWidgetIds.Count -gt 0 -and
+    ($EvictWithWidgetIds.Count -lt 3 -or @($EvictWithWidgetIds | Select-Object -Unique).Count -ne $EvictWithWidgetIds.Count -or
+     $EvictWithWidgetIds -contains $playnite)) { throw 'Eviction requires at least three distinct other widgets.' }
 function Ui([string[]]$Arguments) {
     $raw = winapp ui @Arguments -a $AppPid --json
     if ($LASTEXITCODE -ne 0) { throw "UI operation failed: $raw" }
@@ -69,12 +73,16 @@ try {
         $null = Ui @('focus',$rowId)
         Start-Sleep -Milliseconds 300
         $script:before = ReadyRow $rowId
+        $script:restoreCountBefore = ((Ui @('get-property','Overlay.Status','-p','HelpText')).properties.HelpText | ConvertFrom-Json).memoryRestoreCount
         Screenshot 'before-switch.png'
     }
-    Check 'Switch to Music while retaining tray ownership' {
-        $null = Ui @('focus',"Overlay.Widget.$music")
-        $null = WaitState $music $false
-        $null = Ui @('wait-for',"Overlay.Widget.$music",'-p','HasKeyboardFocus','--value','True','-t','3000')
+    Check 'Browse other widgets while retaining tray ownership' {
+        $destinations = if ($EvictWithWidgetIds.Count -gt 0) { $EvictWithWidgetIds } else { @($music) }
+        foreach ($destination in $destinations) {
+            $null = Ui @('focus',"Overlay.Widget.$destination")
+            $null = WaitState $destination $false
+            $null = Ui @('wait-for',"Overlay.Widget.$destination",'-p','HasKeyboardFocus','--value','True','-t','3000')
+        }
     }
     Check 'Returning preview preserves the deep viewport and reacquires the same game' {
         $null = Ui @('focus',"Overlay.Widget.$playnite")
@@ -82,12 +90,19 @@ try {
         $after = ReadyRow $rowId
         if ($after.name -ne $before.name -or $after.isOffscreen) { throw 'Return changed the game identity or viewport.' }
         if ($state.retainedSurfaceCount -lt 2 -or $state.retainedSurfaceCount -gt 3) { throw 'Retained surface count is invalid.' }
+        if ($EvictWithWidgetIds.Count -gt 0 -and
+            ($state.memoryRestoreCount -le $restoreCountBefore -or $state.presentationMemoryCount -lt 1 -or $state.presentationMemoryCount -gt 256)) {
+            throw 'The test did not prove native eviction followed by bounded lightweight memory restoration.'
+        }
+        $script:restoreCountAfter = $state.memoryRestoreCount
         $null = Ui @('wait-for',"Overlay.Widget.$playnite",'-p','HasKeyboardFocus','--value','True','-t','3000')
         Screenshot 'returned-preview.png'
     }
     Check 'Explicit reentry restores the same game focus and admits its current action' {
         $null = Ui @('invoke',"Overlay.Widget.$playnite")
         $null = WaitState $playnite $true
+        $retainedState = (Ui @('get-property','Overlay.Status','-p','HelpText')).properties.HelpText | ConvertFrom-Json
+        if ($retainedState.memoryRestoreCount -ne $restoreCountAfter) { throw 'Retained native presenter reapplied stale memory.' }
         $null = Ui @('wait-for',$rowId,'-p','HasKeyboardFocus','--value','True','-t','5000')
         # Compare the same focused/settled style: authored focus scale changes the
         # physical tile bounds while browsing its unfocused preview in the tray.
