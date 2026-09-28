@@ -58,7 +58,7 @@ internal sealed class FocusPolicyValidationPage : Page
     private void Apply()
     {
         var row = new ViewNode { Id = "group", Kind = ViewNodeKind.Row, InitialChildFocusId = ready ? "second" : null,
-            Children = ready ? [
+            Children = ready ? (ViewNode[])[
                 new() { Id = "first", Kind = ViewNodeKind.Button, Text = "First", ActionId = "first", Focus = neighbors ? new FocusNeighbors(Right: "third") : null },
                 new() { Id = "second", Kind = ViewNodeKind.Button, Text = "Second", ActionId = "second" },
                 new() { Id = "third", Kind = ViewNodeKind.Button, Text = "Third", ActionId = "third", IsDisabled = disableThird },
@@ -66,9 +66,9 @@ internal sealed class FocusPolicyValidationPage : Page
         var snapshot = new ViewSnapshot { WidgetInstanceId = "focus.instance", Sequence = ++sequence,
             ActiveInputScopeId = "page", InitialFocusId = "header",
             FocusGroupEntryRequest = request == 0 ? null : new() { RequestId = request, GroupId = "group" },
-            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = [
+            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
                 new() { Id = "header", Kind = ViewNodeKind.Button, Text = "Header", ActionId = "header", Focus = ready && groupNeighbor ? new FocusNeighbors(Right: "group") : null }, row,
-                new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = [
+                new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = (ViewNode[])[
                     new() { Id = "foreign", Kind = ViewNodeKind.Button, Text = "Inactive scope", ActionId = "foreign" },
                 ] },
             ] } };

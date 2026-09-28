@@ -18,7 +18,7 @@ internal sealed partial class WidgetStylesValidationPage
         if (repository is null) throw new InvalidOperationException("Native production-style probe needs its source checkout.");
         var platform = WrssPackageLoader.Load("builtin-default.wrss", new WrssFileSourceProvider(Path.Combine(repository.FullName, "src", "PlatformSettings", "Themes")));
         var package = WrssPackageLoader.Load("default.wrss", new WrssFileSourceProvider(Path.Combine(repository.FullName, "samples", "YtMusicWidget", "styles")));
-        var compilation = WrssThemeCompiler.Compile([new WrssThemeLayer(0, platform.Documents), new WrssThemeLayer(200, package.Documents)]);
+        var compilation = WrssThemeCompiler.Compile((WrssThemeLayer[])[new WrssThemeLayer(0, platform.Documents), new WrssThemeLayer(200, package.Documents)]);
         var theme = compilation.Theme ?? throw new InvalidOperationException("YT theme fixture did not compile.");
         var node = new WidgetView(UI.Tile("Track title", "Song", "track", "track", subtitle: "Artist")
             .AddClasses("music-track")).CreateSnapshot("indexed.box", 1).Root;

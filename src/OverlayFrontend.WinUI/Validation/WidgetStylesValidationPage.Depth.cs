@@ -14,7 +14,7 @@ internal sealed partial class WidgetStylesValidationPage
     private async Task NativeDepthAsync()
     {
         await NativeDepthStatesAsync();
-        var root = new ViewNode { Id = "depth-root", Kind = ViewNodeKind.Stack, Children = [
+        var root = new ViewNode { Id = "depth-root", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
             new() { Id = "depth-button", Kind = ViewNodeKind.Button, Text = "Native depth", ActionId = "depth" }] };
         var style = Compute("""
             button { width: 280px; height: 70px; margin: 30px; background: #f0e8d0; color: #102030;

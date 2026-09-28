@@ -34,7 +34,7 @@ internal sealed partial class EmbeddedMediaValidationPage
             try { owner.EnterFullscreen(session!.GetState(Descriptor.Id)!.LastGood!, action); }
             catch (WidgetPresentationSessionException) { refused = true; }
             Check(refused && ReferenceEquals(nativeBrowser.Parent, oldParent), "fullscreen without declared capability cannot move resident media");
-            declaration = declaration with { SupportedPresentations = [MediaPresentationKind.OverlayFullscreen] };
+            declaration = declaration with { SupportedPresentations = (MediaPresentationKind[])[MediaPresentationKind.OverlayFullscreen] };
             var frame = await SnapshotAsync(); ownerPresenter!.Apply(frame);
             Check(owner.EnterFullscreen(frame, action), "genuine displayed host action admits resident fullscreen presentation");
             await Until(() => ReferenceEquals(nativeBrowser.Parent, fullscreen.SurfaceHost) && nativeBrowser.ActualWidth > 400);
@@ -83,7 +83,7 @@ internal sealed partial class EmbeddedMediaValidationPage
             await Until(() => owner.FullscreenWidgetId is null);
             Check(owner.IsReady(Descriptor.Id) && owner.BrowserCreationCount == created,
                 "capability removal exits fullscreen while preserving the admitted document and audio");
-            declaration = declaration with { SupportedPresentations = [MediaPresentationKind.OverlayFullscreen] };
+            declaration = declaration with { SupportedPresentations = (MediaPresentationKind[])[MediaPresentationKind.OverlayFullscreen] };
             frame = await SnapshotAsync(); ownerPresenter.Apply(frame);
             Check(owner.FullscreenWidgetId is null && owner.EnterFullscreen(frame, action), "returning capability does not reopen fullscreen without a fresh action");
             owner.SetHostState(Descriptor.Id, true, false);

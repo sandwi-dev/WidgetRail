@@ -59,7 +59,7 @@ internal sealed partial class WidgetStylesValidationPage
         var compact = new ViewNode { Id = "theme-compact", Kind = ViewNodeKind.Button, Text = "Compact",
             ActionId = "compact", FocusPersistenceId = "theme-destination", VisibleWhen = ResponsiveVisibility.CompactOnly };
         var expanded = compact with { Id = "theme-expanded", Text = "Expanded", ActionId = "expanded", VisibleWhen = ResponsiveVisibility.ExpandedOnly };
-        var responsive = CreateFrame(new() { Id = "theme-responsive", Kind = ViewNodeKind.Row, Children = [compact, expanded] },
+        var responsive = CreateFrame(new() { Id = "theme-responsive", Kind = ViewNodeKind.Row, Children = (ViewNode[])[compact, expanded] },
             new Dictionary<string, BridgeNodeRenderStyles> { ["theme-responsive"] = Compute("row { height: 600px; }", "theme-responsive", "row") });
         presenter.Apply(responsive);
         await Wait(() => presenter.ActualHeight >= 600 && Find<Button>("Widget.theme-expanded")?.Visibility == Visibility.Visible);
@@ -77,7 +77,7 @@ internal sealed partial class WidgetStylesValidationPage
             "geometry-only theme expansion restores the same native responsive destination");
         presenter.Width = double.NaN;
 
-        WidgetPresentationFrame Reordered() => CreateFrame(root with { Children = [root.Children[1], root.Children[0], root.Children[2]] }, new Dictionary<string, BridgeNodeRenderStyles>());
+        WidgetPresentationFrame Reordered() => CreateFrame(root with { Children = (ViewNode[])[root.Children[1], root.Children[0], root.Children[2]] }, new Dictionary<string, BridgeNodeRenderStyles>());
         static WidgetPresentationFrame Theme(WidgetPresentationFrame frame) => frame with
         {
             AppearanceRevision = frame.AppearanceRevision + 1,

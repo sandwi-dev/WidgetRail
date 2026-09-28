@@ -81,7 +81,7 @@ internal sealed class WidgetFocusMotion : IDisposable
         if (next == focused) return;
         focused = next;
         if (target is not null && motion is not null)
-            _ = motion.PlayAsync([new(target, WidgetMotionPolicy.Focus(options, size, focused))]);
+            _ = motion.PlayAsync((WidgetMotionPlayback[])[new(target, WidgetMotionPolicy.Focus(options, size, focused))]);
     }
 
     private bool OwnsFocus()

@@ -43,13 +43,13 @@ internal static class ControllerGuideModel
         bool recoveryVisible, bool retryVisible, bool trayMenuOpen,
         Func<IReadOnlyList<ControllerGuideHint>> captureWidget)
     {
-        if (!interactive) return trayMenuOpen ? [new(ControllerPrompt.A, "Select", ControllerButton.A)] : null;
-        if (recoveryVisible) return retryVisible ? [new(ControllerPrompt.A, "Retry", ControllerButton.A)] : [];
+        if (!interactive) return trayMenuOpen ? (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A)] : null;
+        if (recoveryVisible) return retryVisible ? (ControllerGuideHint[])[new(ControllerPrompt.A, "Retry", ControllerButton.A)] : [];
         return captureWidget();
     }
 
     internal static IReadOnlyList<ControllerGuideHint> WithHost(IReadOnlyList<ControllerGuideHint> hints) =>
-        [.. hints, new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true),
+        (ControllerGuideHint[])[.. hints, new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true),
             new(ControllerPrompt.Guide, "Close", Required: true)];
 
     // Native view supplies actual desired widths. Never approximate string width

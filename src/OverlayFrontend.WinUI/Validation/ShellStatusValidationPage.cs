@@ -118,7 +118,7 @@ internal sealed class ShellStatusValidationPage : Page, IAsyncDisposable
         using var stream = typeof(AppearanceSettings).Assembly.GetManifestResourceStream("WidgetRail.PlatformSettings.Themes.builtin-default.wrss")!;
         using var reader = new StreamReader(stream);
         var document = WrssParser.Parse(reader.ReadToEnd(), "default.wrss").Document;
-        var theme = WrssThemeCompiler.Compile([new WrssThemeLayer(0, [document])]).Theme!;
+        var theme = WrssThemeCompiler.Compile((WrssThemeLayer[])[new WrssThemeLayer(0, (WrssDocument[])[document])]).Theme!;
         return new[] { "tray", "tray-clock", "tray-date", "tray-status-icon" }.ToDictionary(role => role, role =>
         {
             var computed = theme.Resolve(new(role == "tray" ? "tray" : "status", "shell." + role,

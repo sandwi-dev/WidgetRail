@@ -37,30 +37,30 @@ internal static class WidgetMotionValidation
             foreach (var section in Enum.GetValues<WidgetSectionAnimation>())
             {
                 var plan = WidgetMotionPolicy.Section(options with { Section = section }, size, 1);
-                var result = await motion.PlayAsync([new(incomingTarget, plan.Incoming), new(outgoingTarget, plan.Outgoing)], token)
+                var result = await motion.PlayAsync((WidgetMotionPlayback[])[new(incomingTarget, plan.Incoming), new(outgoingTarget, plan.Outgoing)], token)
                     .WaitAsync(TimeSpan.FromSeconds(5), token);
                 Check(result == WidgetMotionOutcome.Completed && incomingVisual.Opacity == 1 && incomingVisual.Scale == Vector3.One,
                     "section " + section + " completes at its native target");
             }
             var slow = WidgetMotionPolicy.Dialog(options, true) with { Duration = TimeSpan.FromSeconds(2) };
-            var first = motion.PlayAsync([new(incomingTarget, slow)], token);
+            var first = motion.PlayAsync((WidgetMotionPlayback[])[new(incomingTarget, slow)], token);
             await Task.Delay(30, token);
-            var replacement = motion.PlayAsync([new(incomingTarget, WidgetMotionPolicy.Dialog(options, false))], token);
+            var replacement = motion.PlayAsync((WidgetMotionPlayback[])[new(incomingTarget, WidgetMotionPolicy.Dialog(options, false))], token);
             Check(await first == WidgetMotionOutcome.Superseded, "interruption retires prior completion");
             Check(await replacement.WaitAsync(TimeSpan.FromSeconds(5), token) == WidgetMotionOutcome.Completed && incomingVisual.Opacity == 0,
                 "replacement owns its final state");
             using (var cancel = CancellationTokenSource.CreateLinkedTokenSource(token))
             {
-                var pending = motion.PlayAsync([new(incomingTarget, slow)], cancel.Token);
+                var pending = motion.PlayAsync((WidgetMotionPlayback[])[new(incomingTarget, slow)], cancel.Token);
                 await Task.Run(cancel.Cancel, token);
                 Check(await pending.WaitAsync(TimeSpan.FromSeconds(5), token) == WidgetMotionOutcome.Canceled && incomingVisual.Opacity == 1,
                     "cross-thread cancellation settles on the UI owner");
             }
             var reduced = WidgetMotionPolicy.Dialog(options with { Reduced = true }, true);
-            var instant = motion.PlayAsync([new(incomingTarget, reduced)], token);
+            var instant = motion.PlayAsync((WidgetMotionPlayback[])[new(incomingTarget, reduced)], token);
             Check(instant.IsCompletedSuccessfully && await instant == WidgetMotionOutcome.Completed,
                 "reduced motion settles synchronously");
-            var disposing = motion.PlayAsync([new(incomingTarget, slow)], token);
+            var disposing = motion.PlayAsync((WidgetMotionPlayback[])[new(incomingTarget, slow)], token);
             motion.Dispose();
             Check(await disposing == WidgetMotionOutcome.Disposed, "owner disposal retires active completion");
             incomingTarget.Dispose(); outgoingTarget.Dispose();

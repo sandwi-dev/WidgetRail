@@ -65,9 +65,9 @@ internal sealed class ShellControllerGuide : ContentControl, IDisposable
         if (disposed) return;
         if (!DispatcherQueue.HasThreadAccess) { DispatcherQueue.TryEnqueue(Update); return; }
         current = widgetHints is { } hints ? ControllerGuideModel.WithHost(hints) : reordering
-            ? [new(ControllerPrompt.DPadHorizontal, "Move widget", Required: true), new(ControllerPrompt.A, "Done", ControllerButton.A),
+            ? (ControllerGuideHint[])[new(ControllerPrompt.DPadHorizontal, "Move widget", Required: true), new(ControllerPrompt.A, "Done", ControllerButton.A),
                 new(ControllerPrompt.B, "Done", ControllerButton.B, Required: true), new(ControllerPrompt.Y, "Done", ControllerButton.Y)]
-            : [new(ControllerPrompt.A, "Open widget", ControllerButton.A, Required: true),
+            : (ControllerGuideHint[])[new(ControllerPrompt.A, "Open widget", ControllerButton.A, Required: true),
                 new(ControllerPrompt.Y, "Reorder · hold to restart", ControllerButton.Y),
                 new(ControllerPrompt.Menu, "Commands", ControllerButton.Menu), new(ControllerPrompt.B, "Close", ControllerButton.B, Required: true)];
         for (var i = 0; i < cells.Count; ++i)

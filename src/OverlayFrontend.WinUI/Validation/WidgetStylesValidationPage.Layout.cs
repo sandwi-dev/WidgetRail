@@ -16,7 +16,7 @@ internal sealed partial class WidgetStylesValidationPage
         var compact = new ViewNode { Id = "compact", Kind = ViewNodeKind.Button, Text = "Compact",
             ActionId = "compact", FocusPersistenceId = "destination", VisibleWhen = ResponsiveVisibility.CompactOnly };
         var expanded = compact with { Id = "expanded", Text = "Expanded", ActionId = "expanded", VisibleWhen = ResponsiveVisibility.ExpandedOnly };
-        var root = new ViewNode { Id = "responsive", Kind = ViewNodeKind.Row, Children = [compact, expanded] };
+        var root = new ViewNode { Id = "responsive", Kind = ViewNodeKind.Row, Children = (ViewNode[])[compact, expanded] };
         presenter.Apply(CreateFrame(root, new Dictionary<string, BridgeNodeRenderStyles>()));
         await Wait(() => presenter.ActualWidth == 1000 && Find<Button>("Widget.expanded")?.Visibility == Visibility.Visible);
         var expandedControl = Find<Button>("Widget.expanded")!;
@@ -36,12 +36,12 @@ internal sealed partial class WidgetStylesValidationPage
         var art = new ViewNode { Id = "poster.artwork", Kind = ViewNodeKind.Image, ImageFit = ImageFit.Cover, AccessibilityLabel = "Cover",
             ImageSource = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLttAAAAABJRU5ErkJggg==" };
         var copy = new ViewNode { Id = "poster.scrim", Kind = ViewNodeKind.Stack,
-            Children = [new() { Id = "poster.title", Kind = ViewNodeKind.Text, Text = "Portrait title" }] };
+            Children = (ViewNode[])[new() { Id = "poster.title", Kind = ViewNodeKind.Text, Text = "Portrait title" }] };
         var poster = new ViewNode { Id = "poster", Kind = ViewNodeKind.ActionSurface, ActionId = "open",
             AccessibilityLabel = "Portrait title", ActionSurfaceOrientation = ActionSurfaceOrientation.Vertical,
-            ActionSurfacePresentation = ActionSurfacePresentation.Poster, Children = [art, copy] };
+            ActionSurfacePresentation = ActionSurfacePresentation.Poster, Children = (ViewNode[])[art, copy] };
         var styles = new Dictionary<string, BridgeNodeRenderStyles> { ["poster"] = Compute("#poster { width: 120px; height: 180px; padding: 0px; }", "poster", "actionSurface") };
-        presenter.Apply(CreateFrame(new() { Id = "poster.root", Kind = ViewNodeKind.Stack, Children = [poster] }, styles));
+        presenter.Apply(CreateFrame(new() { Id = "poster.root", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[poster] }, styles));
         await Wait(() => Find<Image>("Widget.poster.artwork")?.ActualHeight > 100);
         var panel = (WidgetPosterPanel)Find<Button>("Widget.poster")!.Content;
         var image = Find<Image>("Widget.poster.artwork")!;
@@ -54,12 +54,12 @@ internal sealed partial class WidgetStylesValidationPage
         Check(Math.Abs(copyBounds.Bottom - panel.ActualHeight) < .01 && image.Stretch == Stretch.UniformToFill,
             "poster copy is bottom aligned over native cover artwork");
         styles["poster"] = Compute("#poster { width: 120px; aspect-ratio: 1; padding: 0px; }", "poster", "actionSurface");
-        presenter.Apply(CreateFrame(new() { Id = "poster.root", Kind = ViewNodeKind.Stack, Children = [poster] }, styles));
+        presenter.Apply(CreateFrame(new() { Id = "poster.root", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[poster] }, styles));
         await Wait(() => Near(panel.ActualWidth, panel.ActualHeight));
         Check(Near(panel.AspectRatio, 1), "square authored posters use their resolved aspect ratio");
         var before = Find<Button>("Widget.poster");
         presenter.Apply(CreateFrame(new() { Id = "poster.root", Kind = ViewNodeKind.Stack,
-            Children = [poster with { ActionSurfacePresentation = ActionSurfacePresentation.Standard }] }, styles));
+            Children = (ViewNode[])[poster with { ActionSurfacePresentation = ActionSurfacePresentation.Standard }] }, styles));
         Check(!ReferenceEquals(before, Find<Button>("Widget.poster")) && Find<Button>("Widget.poster")!.Content is Panel and not WidgetPosterPanel,
             "changing presentation retires the incompatible poster layout without changing action identity");
         presenter.Width = 620;

@@ -47,8 +47,8 @@ internal sealed class ProductionShellValidationPage : Page, IAsyncDisposable
                 var hints = new WidgetSurfaceHints { Mode = mode, HeightMode = mode == WidgetSurfaceMode.Standard ? WidgetSurfaceAxisMode.FillAvailable : WidgetSurfaceAxisMode.Preferred };
                 var snapshot = new ViewSnapshot { WidgetInstanceId = catalog[0].InstanceId, Sequence = ++sequence,
                     ActiveInputScopeId = "root", Surface = hints, Root = new() { Id = "root", Kind = ViewNodeKind.Stack,
-                        Shortcuts = [new(ControllerButton.Y, "refresh", Label: "Fixture refresh")],
-                        Children = [new() { Id = "text", Kind = ViewNodeKind.Text, Text = "Production widget content" }] } };
+                        Shortcuts = (ControllerShortcut[])[new(ControllerButton.Y, "refresh", Label: "Fixture refresh")],
+                        Children = (ViewNode[])[new() { Id = "text", Kind = ViewNodeKind.Text, Text = "Production widget content" }] } };
                 var frame = new WidgetPresentationFrame(new(catalog[0].Id, "runtime", "presentation", 1,
                     snapshot.WidgetInstanceId, sequence, "root"), catalog[0], snapshot, new Dictionary<string, BridgeNodeRenderStyles>());
                 shell.ApplyLayoutFixture(frame, appearance, catalog);
@@ -95,9 +95,10 @@ internal sealed class ProductionShellValidationPage : Page, IAsyncDisposable
             ((TextBlock)Find("Overlay.Status")!).Text != "internal detail", "failures use conditional bounded recovery instead of raw exception chrome");
         checks.AddRange(await shell.ValidateRecoveryGuideFixtureAsync());
         var radialScaleArgument = Environment.GetCommandLineArgs().FirstOrDefault(value => value.StartsWith("--radial-fixture-scale=", StringComparison.Ordinal));
-        if (radialScaleArgument is not null && double.TryParse(radialScaleArgument.Split('=')[1], System.Globalization.CultureInfo.InvariantCulture, out var radialScale) && radialScale is >= .5 and <= 2)
+        if (radialScaleArgument is not null && double.TryParse(radialScaleArgument.Split('=')[1], System.Globalization.CultureInfo.InvariantCulture, out var radialScale) && radialScale is >= AppearanceSettings.MinimumInterfaceScale and <= AppearanceSettings.MaximumInterfaceScale)
         {
             scale.InterfaceScale = radialScale; scale.UpdateLayout();
+            Check(scale.InterfaceScale == radialScale, "requested radial interface scale is applied without clamping");
             var textArgument = Environment.GetCommandLineArgs().FirstOrDefault(value => value.StartsWith("--radial-fixture-text-scale=", StringComparison.Ordinal));
             var textScale = textArgument is not null && double.TryParse(textArgument.Split('=')[1], System.Globalization.CultureInfo.InvariantCulture, out var requestedText) ? Math.Clamp(requestedText, 1, 2) : 1;
             shell.ConfigureRadialFixtureScale(radialScale, new(scale.ActualWidth / radialScale, scale.ActualHeight / radialScale), textScale);

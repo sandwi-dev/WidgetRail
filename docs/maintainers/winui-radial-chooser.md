@@ -50,7 +50,7 @@ focus is redirected into the chooser while its input domain is active.
 Managed policy checks cover sector order, dead zones, page wrapping, empty/short
 pages, native repeat timing, reversal, coalescing, neutral ownership, and rail
 isolation. `--validate-production-shell` adds native chooser checks to the actual
-production shell fixture. `--radial-fixture-scale=1`, `1.25`, or `2` selects the
+production shell fixture. `--radial-fixture-scale=0.5`, `1`, or `1.25` selects the
 final radial screenshot scale; normal production settings are not changed.
 
 The production fixture checks root Back entry, unchanged underlying viewport,
@@ -60,10 +60,14 @@ Live controller-free production probing additionally exercises real package icon
 Playnite/YouTube preview switching and tray context-menu anchors. Physical controller
 acceptance and the combined switching-readiness integration remain separate gates.
 
-The final automated run passed 72 managed shell checks and all four native matrix
-cases (100 checks each): interface scales 1, 1.25 and 2, plus text scale 2 at
-interface scale 1.25. `scripts/Test-WinUiRadial.ps1` also verifies visible glyph
-pixels in every slot of the native screenshots, after bounded compositor
-readiness polling. UIA dimensions alone previously passed with blank icons.
-The 200% case intentionally constrains the wheel to the smaller remaining test
-window viewport; it verifies containment, not fullscreen physical usability.
+The isolated automated run passed 72 managed shell checks and four native matrix
+cases with actual icon-pixel validation. Review found that its nominal 200%
+interface-scale case was clamped to the supported 125% maximum. That result is
+not evidence of 200% interface-scale coverage. The corrected matrix uses 50%,
+100% and 125%, plus 200% text scale at 125% interface scale, and asserts that the
+requested scale was actually applied. Windows display DPI is independent and
+requires separate monitor-aware qualification.
+
+`scripts/Test-WinUiRadial.ps1` verifies visible glyph pixels in every slot after
+bounded compositor readiness polling. UIA dimensions alone previously passed
+with blank icons. Physical controller acceptance remains separate.

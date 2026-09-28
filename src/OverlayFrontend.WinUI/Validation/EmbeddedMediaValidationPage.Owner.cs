@@ -24,11 +24,11 @@ internal sealed partial class EmbeddedMediaValidationPage
     private ViewNode OwnerRoot() => new()
     {
         Id = "layout-" + treeRevision, InputScopeId = "page", Kind = ViewNodeKind.Stack,
-        Children = [new ViewNode { Id = "native.commands", Kind = ViewNodeKind.Row, Children = [
+        Children = (ViewNode[])[new ViewNode { Id = "native.commands", Kind = ViewNodeKind.Row, Children = (ViewNode[])[
             new() { Id = "native.play", Kind = ViewNodeKind.Button, Text = "Play", ActionId = "native.play" },
             new() { Id = "native.fullscreen", Kind = ViewNodeKind.Button, Text = "Fullscreen", ActionId = WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EnterMediaFullscreenAction },
             new() { Id = "native.options", Kind = ViewNodeKind.Select, Text = "Options", AccessibilityLabel = "Options", AccessibilityValue = "First",
-                SelectOptions = [new("first", "First", "pick.first", IsSelected: true), new("second", "Second", "pick.second")] }] },
+                SelectOptions = (WidgetSelectOption[])[new("first", "First", "pick.first", IsSelected: true), new("second", "Second", "pick.second")] }] },
             .. (declaration is null || parked ? Array.Empty<ViewNode>() : [new ViewNode { Id = "viewport-" + treeRevision, Kind = ViewNodeKind.MediaViewport,
                 MediaSessionId = declaration.Id, AccessibilityLabel = declaration.AccessibleName }])],
     };
@@ -134,7 +134,7 @@ internal sealed partial class EmbeddedMediaValidationPage
         var invalidModal = session.GetState(Descriptor.Id)!.LastGood!.Snapshot with
         {
             ActiveInputScopeId = "dialog", Root = new() { Id = "unsupported-modal", Kind = ViewNodeKind.ModalLayer,
-                Children = [OwnerRoot(), new() { Id = "dialog", InputScopeId = "dialog", Kind = ViewNodeKind.Stack }] },
+                Children = (ViewNode[])[OwnerRoot(), new() { Id = "dialog", InputScopeId = "dialog", Kind = ViewNodeKind.Stack }] },
         };
         Check(ViewSnapshotValidator.Validate(invalidModal).Any(error => error.Code == "unsupported_modal_surface"),
             "widget-local modal plus embedded media remains rejected by the unchanged SDK contract");

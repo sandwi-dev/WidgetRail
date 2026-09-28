@@ -82,15 +82,15 @@ internal sealed partial class WidgetStylesValidationPage
 
         void Render(string key, int order, bool zeroContent = false)
         {
-            var root = new ViewNode { Id = "transition.root", Kind = ViewNodeKind.Stack, Children = [
-                new() { Id = "transition.tabs", Kind = ViewNodeKind.Row, Children = [
+            var root = new ViewNode { Id = "transition.root", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
+                new() { Id = "transition.tabs", Kind = ViewNodeKind.Row, Children = (ViewNode[])[
                     new() { Id = "transition.tab-a", Kind = ViewNodeKind.Button, Text = "First", ActionId = "first", IsSelected = order % 2 == 0,
                         Transition = new("section", key, order, WidgetTransitionKind.Selection) },
                     new() { Id = "transition.tab-b", Kind = ViewNodeKind.Button, Text = "Second", ActionId = "second", IsSelected = order % 2 != 0,
                         Transition = new("section", key, order, WidgetTransitionKind.Selection) }] },
                 new() { Id = "transition.header", Kind = ViewNodeKind.Text, Text = "Section " + key,
                     Transition = new("section", key, order, WidgetTransitionKind.Layout) },
-                new() { Id = "transition.content", Kind = ViewNodeKind.Stack, Transition = new("section", key, order), Children = [
+                new() { Id = "transition.content", Kind = ViewNodeKind.Stack, Transition = new("section", key, order), Children = (ViewNode[])[
                     new() { Id = "transition.entry", Kind = ViewNodeKind.Button, Text = "Current " + key, ActionId = "activate" }] }] };
             var styles = new Dictionary<string, BridgeNodeRenderStyles>();
             if (zeroContent) styles["transition.content"] = Compute("stack { height: 0px; }", "transition.content", "stack");

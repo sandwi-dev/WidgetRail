@@ -164,12 +164,12 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
         };
         var snapshot = new ViewSnapshot { WidgetInstanceId = "select.instance", Sequence = ++sequence,
             ActiveInputScopeId = alternateScope ? "other" : "page", InitialFocusId = alternateScope ? "other.button" : removed ? "after" : "picker",
-            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = [
+            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
                 removed ? new() { Id = "replacement", Kind = ViewNodeKind.Text, Text = "Removed" } :
                     new() { Id = "picker", Kind = ViewNodeKind.Select, Text = "Choice: First", AccessibilityLabel = "Choice",
                         AccessibilityValue = "First", SelectOptions = options, IsDisabled = disabled },
                 new() { Id = "after", Kind = ViewNodeKind.Button, Text = "After", ActionId = "after" },
-                new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = [
+                new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = (ViewNode[])[
                     new() { Id = "other.button", Kind = ViewNodeKind.Button, Text = "Other scope", ActionId = "other" }] },
             ] } };
         var descriptor = new BridgeWidgetDescriptor { Id = "select", Name = "Select validation", InstanceId = snapshot.WidgetInstanceId,

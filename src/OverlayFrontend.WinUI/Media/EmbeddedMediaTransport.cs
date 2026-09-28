@@ -167,7 +167,7 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
             var hasPlayback = playbackKeys.Any(key => root.TryGetProperty(key, out _));
             var hasPreferences = preferenceKeys.Any(key => root.TryGetProperty(key, out _));
             var keys = required.Concat(hasPlayback ? playbackKeys : []).Concat(hasPreferences ? preferenceKeys : [])
-                .Concat(root.TryGetProperty("errorCode", out _) ? ["errorCode"] : []).ToHashSet(StringComparer.Ordinal);
+                .Concat(root.TryGetProperty("errorCode", out _) ? (string[])["errorCode"] : []).ToHashSet(StringComparer.Ordinal);
             if (!ExactKeys(root, keys) || hasPreferences && !hasPlayback) return false;
             foreach (var key in required.AsSpan(1, 5)) if (Integer(root, key) != generation) return false;
             var sequence = Integer(root, "eventSequence");
@@ -183,7 +183,7 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
             if (!Identifier(focus, 128)) return false;
             var playing = root.GetProperty("playing").GetBoolean();
             var bounds = root.GetProperty("bounds");
-            if (!ExactKeys(bounds, new HashSet<string>(["x", "y", "width", "height"], StringComparer.Ordinal))) return false;
+            if (!ExactKeys(bounds, new HashSet<string>((string[])["x", "y", "width", "height"], StringComparer.Ordinal))) return false;
             var x = Number(bounds, "x"); var y = Number(bounds, "y");
             var width = Number(bounds, "width"); var height = Number(bounds, "height");
             if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > 8192 || y + height > 8192) return false;

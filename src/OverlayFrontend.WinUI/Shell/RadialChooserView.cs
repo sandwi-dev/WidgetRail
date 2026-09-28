@@ -201,7 +201,7 @@ internal sealed class RadialChooserView : ContentControl, IDisposable
         if (options.Reduced) return;
         motionTarget = WidgetCompositionTarget.ForClippedDialog(wheel, new Vector2(400));
         motion = new(CompositionTarget.GetCompositorForCurrentThread(), DispatcherQueue);
-        _ = motion.PlayAsync([new(motionTarget, WidgetMotionPolicy.Dialog(options, true))]);
+        _ = motion.PlayAsync((WidgetMotionPlayback[])[new(motionTarget, WidgetMotionPolicy.Dialog(options, true))]);
     }
     private void StopMotion() { pendingMotion = null; LayoutUpdated -= MotionReady; motion?.Dispose(); motion = null; motionTarget?.Dispose(); motionTarget = null; }
     public void Dispose()

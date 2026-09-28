@@ -202,11 +202,11 @@ internal sealed class PackageIconValidationPage : Page, IAsyncDisposable
         ViewNode Icon(string id, string name, WidgetPackageIconColorMode mode, string key) => new() { Id = id, Kind = ViewNodeKind.Icon,
             Glyph = WidgetGlyph.Music, AccessibilityLabel = name, PackageIcon = new(key, mode) };
         var snapshot = new ViewSnapshot { WidgetInstanceId = "icons.instance", Sequence = ++sequence, ActiveInputScopeId = "page", InitialFocusId = "button",
-            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = [
+            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
                 removed ? new() { Id = "removed", Kind = ViewNodeKind.Text, Text = "Removed" } : Icon("icon", "Album", WidgetPackageIconColorMode.OriginalColor, asset),
                 Icon("tint", "Tint", WidgetPackageIconColorMode.ThemeTint, tintAsset),
                 new() { Id = "button", Kind = ViewNodeKind.Button, Text = "Play", ActionId = "play", Glyph = WidgetGlyph.Play, PackageIcon = new("red", WidgetPackageIconColorMode.OriginalColor) },
-                new() { Id = "picker", Kind = ViewNodeKind.Select, Text = "Choose", AccessibilityLabel = "Choose", AccessibilityValue = "Original", SelectOptions = [
+                new() { Id = "picker", Kind = ViewNodeKind.Select, Text = "Choose", AccessibilityLabel = "Choose", AccessibilityValue = "Original", SelectOptions = (WidgetSelectOption[])[
                     new("first", "Original", "choose", IsSelected: true, Glyph: WidgetGlyph.Music) { PackageIcon = new("red", WidgetPackageIconColorMode.OriginalColor) },
                     new("second", "Semantic", "choose.second", Glyph: WidgetGlyph.Play),
                     new("third", "Theme tint", "choose.third", Glyph: WidgetGlyph.Refresh) { PackageIcon = new("red", WidgetPackageIconColorMode.ThemeTint) }] }] } };

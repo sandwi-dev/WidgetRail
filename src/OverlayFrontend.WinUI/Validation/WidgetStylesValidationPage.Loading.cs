@@ -10,7 +10,7 @@ internal sealed partial class WidgetStylesValidationPage
     {
         foreach (var (size, extent) in new[] { (LoadingIndicatorSize.Compact, 16d), (LoadingIndicatorSize.Standard, 32d), (LoadingIndicatorSize.Large, 48d) })
         {
-            presenter.Apply(CreateFrame(new() { Id = "loading.root", Kind = ViewNodeKind.Row, Children = [
+            presenter.Apply(CreateFrame(new() { Id = "loading.root", Kind = ViewNodeKind.Row, Children = (ViewNode[])[
                 new() { Id = "loading.title", Kind = ViewNodeKind.Text, Text = "Loading music" },
                 new() { Id = "loading.ring", Kind = ViewNodeKind.LoadingIndicator, IndicatorSize = size, AccessibilityLabel = "Loading music" }] },
                 new Dictionary<string, BridgeNodeRenderStyles>()));

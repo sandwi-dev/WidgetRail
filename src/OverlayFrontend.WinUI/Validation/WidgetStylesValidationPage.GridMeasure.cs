@@ -15,7 +15,7 @@ internal sealed partial class WidgetStylesValidationPage
     {
         presenter.Width = 1050.4;
         var child = new ViewNode { Id = "fill", Kind = ViewNodeKind.Button, Text = "Fill", ActionId = "fill" };
-        presenter.Apply(CreateFrame(new() { Id = "aligned", Kind = ViewNodeKind.Stack, Children = [child] },
+        presenter.Apply(CreateFrame(new() { Id = "aligned", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[child] },
             new Dictionary<string, BridgeNodeRenderStyles>
             {
                 ["aligned"] = Compute("#aligned { align: center; }", "aligned", "stack"),

@@ -24,7 +24,7 @@ function Test-IconPixels([string]$Path) {
         return $true
     } finally { $bitmap.Dispose() }
 }
-foreach ($case in @(@{Scale='1';Text='1'},@{Scale='1.25';Text='1'},@{Scale='2';Text='1'},@{Scale='1.25';Text='2'})) {
+foreach ($case in @(@{Scale='1';Text='1'},@{Scale='1.25';Text='1'},@{Scale='0.5';Text='1'},@{Scale='1.25';Text='2'})) {
     $name = "scale-$($case.Scale)-text-$($case.Text)"
     $start = [DateTime]::UtcNow
     $launch = winapp run (Join-Path $root 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj') --no-build --arch x64 -p Platform=x64 --detach --json --args "--validate-production-shell --radial-fixture-scale=$($case.Scale) --radial-fixture-text-scale=$($case.Text)" | ConvertFrom-Json

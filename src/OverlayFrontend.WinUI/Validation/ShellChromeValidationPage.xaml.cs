@@ -116,7 +116,7 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
             Check(true, "recycled tray identity receives current palette and selected state");
             Host.Width = 430;
             var complete = "An authored command label that cannot fit beside the required host navigation controls";
-            guide.SetWidgetHints([new(ControllerPrompt.X, complete, ControllerButton.X),
+            guide.SetWidgetHints((ControllerGuideHint[])[new(ControllerPrompt.X, complete, ControllerButton.X),
                 new(ControllerPrompt.LeftTrigger, "Previous section", ControllerButton.LeftTrigger, Group: "triggers"),
                 new(ControllerPrompt.RightTrigger, "Next section", ControllerButton.RightTrigger, Group: "triggers"),
                 new(ControllerPrompt.Y, "Refresh", ControllerButton.Y)]);
@@ -126,7 +126,7 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
             Check(!guide.DisplayedHints.Any(hint => hint.Label == complete), "native measured fitting omits complete long labels instead of truncating");
             Check(guide.DisplayedHints.Count(hint => hint.Group == "triggers") is 0 or 2, "paired section hints fit together");
             var widgetGuideHeight = guide.ActualHeight;
-            guide.SetWidgetHints([new(ControllerPrompt.A, "Select", ControllerButton.A)]); Host.UpdateLayout();
+            guide.SetWidgetHints((ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A)]); Host.UpdateLayout();
             Check(Math.Abs(widgetGuideHeight - guide.ActualHeight) < .1, "popup and widget guides share stable native slot");
             var invoked = new List<ControllerGuideHint>();
             guide.Invoked += invoked.Add;
@@ -148,7 +148,7 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
         string Read(string resource) { using var stream = typeof(AppearanceSettings).Assembly.GetManifestResourceStream(resource)!; using var reader = new StreamReader(stream); return reader.ReadToEnd(); }
         var baseline = WrssParser.Parse(Read("WidgetRail.PlatformSettings.Themes.builtin-default.wrss"), "default.wrss").Document;
         var overlay = WrssParser.Parse(Read($"WidgetRail.PlatformSettings.Themes.{selected}.theme.wrss"), "theme.wrss").Document;
-        var theme = WrssThemeCompiler.Compile([new WrssThemeLayer(0, [baseline]), new WrssThemeLayer(100, [overlay])]).Theme
+        var theme = WrssThemeCompiler.Compile((WrssThemeLayer[])[new WrssThemeLayer(0, (WrssDocument[])[baseline]), new WrssThemeLayer(100, (WrssDocument[])[overlay])]).Theme
             ?? throw new InvalidOperationException("The built-in shell fixture theme did not compile.");
         var result = new Dictionary<string, BridgeNodeRenderStyles>();
         foreach (var key in new[] { "panel", "canvas", "tray", "tray-item", "tray-item:selected", "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status" })

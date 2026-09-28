@@ -69,13 +69,13 @@ internal sealed class WidgetControlsValidationPage : Page
     {
         var first = new ViewNode { Id = "first", Kind = ViewNodeKind.Button, Text = "First", ActionId = "first" };
         var second = new ViewNode { Id = "second", Kind = ViewNodeKind.Button, Text = "Second", ActionId = "second", IsDisabled = disableSecond };
-        var row = new ViewNode { Id = "buttons", Kind = ViewNodeKind.Row, Children = [first, second] };
-        ViewNode body = wrapped ? new() { Id = "wrapper", Kind = ViewNodeKind.Stack, Children = [row] } : row;
+        var row = new ViewNode { Id = "buttons", Kind = ViewNodeKind.Row, Children = (ViewNode[])[first, second] };
+        ViewNode body = wrapped ? new() { Id = "wrapper", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[row] } : row;
         var children = new List<ViewNode>();
         if (inserted) children.Add(new() { Id = "inserted", Kind = ViewNodeKind.Text, Text = "New information" });
         children.Add(body);
         children.Add(new() { Id = "alternate", Kind = ViewNodeKind.Stack, InputScopeId = "alternate",
-            Children = [new() { Id = "third", Kind = ViewNodeKind.Button, Text = "Other scope", ActionId = "third" }] });
+            Children = (ViewNode[])[new() { Id = "third", Kind = ViewNodeKind.Button, Text = "Other scope", ActionId = "third" }] });
         children.Add(new() { Id = "progress", Kind = ViewNodeKind.Progress, Value = 25, Maximum = 100, AccessibilityLabel = "Download progress" });
         children.Add(new() { Id = "loading", Kind = ViewNodeKind.LoadingIndicator, AccessibilityLabel = "Loading", IndicatorSize = LoadingIndicatorSize.Compact });
         var snapshot = new ViewSnapshot { WidgetInstanceId = "controls.instance", Sequence = ++sequence,

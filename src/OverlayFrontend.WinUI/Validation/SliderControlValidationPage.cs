@@ -111,9 +111,9 @@ internal sealed class SliderControlValidationPage : Page, IAsyncDisposable
             Focus = adjust ? new() { Right = "after" } : null, IsDisabled = disabled };
         var snapshot = new ViewSnapshot { WidgetInstanceId = "slider.instance", Sequence = ++sequence,
             ActiveInputScopeId = alternate ? "dialog" : "page", InitialFocusId = alternate ? "other" : "direct",
-            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = [Slider("direct", false), Slider("adjust", true),
+            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[Slider("direct", false), Slider("adjust", true),
                 new() { Id = "after", Kind = ViewNodeKind.Button, Text = "After", ActionId = "after" },
-                new() { Id = "dialog", Kind = ViewNodeKind.Stack, InputScopeId = "dialog", Children = [
+                new() { Id = "dialog", Kind = ViewNodeKind.Stack, InputScopeId = "dialog", Children = (ViewNode[])[
                     new() { Id = "other", Kind = ViewNodeKind.Button, Text = "Other", ActionId = "other" }] }] } };
         var descriptor = new BridgeWidgetDescriptor { Id = "slider", Name = "Slider validation", InstanceId = snapshot.WidgetInstanceId,
             RuntimeGeneration = "runtime", PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };

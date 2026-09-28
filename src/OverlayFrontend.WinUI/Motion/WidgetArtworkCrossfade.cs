@@ -126,7 +126,7 @@ internal sealed class WidgetArtworkCrossfade : IDisposable
         var duration = Duration(400);
         var version = ++epoch;
         ++StartedCount;
-        Playback = motion.PlayAsync([new(committedTarget, new(shown, hidden, duration)), new(incomingTarget, new(hidden, shown, duration))]);
+        Playback = motion.PlayAsync((WidgetMotionPlayback[])[new(committedTarget, new(shown, hidden, duration)), new(incomingTarget, new(hidden, shown, duration))]);
         _ = CompleteAsync(Playback, version);
     }
     private async Task CompleteAsync(Task<WidgetMotionOutcome> playback, long version)

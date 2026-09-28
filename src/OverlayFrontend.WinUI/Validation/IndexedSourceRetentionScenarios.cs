@@ -62,7 +62,7 @@ internal static class IndexedSourceRetentionScenarios
 
         // Native visible demand takes priority over explicit demand and native buffer
         // pages, but all three use the same one-provider concurrency limit.
-        source.RangesChanged(new(0, 2), [new(4, 2)]);
+        source.RangesChanged(new(0, 2), (Microsoft.UI.Xaml.Data.ItemIndexRange[])[new(4, 2)]);
         using var offscreen = source.Retain(12);
         var nativeFirst = await Next();
         Check(nativeFirst.Request.StartIndex == 0, "native visible page has first scheduling priority");

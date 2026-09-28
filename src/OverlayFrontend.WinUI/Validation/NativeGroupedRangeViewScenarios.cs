@@ -19,19 +19,19 @@ internal static class NativeGroupedRangeViewScenarios
             "native subscriptions installed once");
         Check(ReferenceEquals(wrapper.CollectionGroups, native.CollectionGroups), "native group identity preserved");
 
-        wrapper.RangesChanged(new(3, 2), [new(0, 4), new(8, 2)]);
+        wrapper.RangesChanged(new(3, 2), (ItemIndexRange[])[new(0, 4), new(8, 2)]);
         Check(ranges.Visible!.FirstIndex == 3 && ranges.Visible.Length == 2 &&
-            ranges.Tracked.Select(range => (range.FirstIndex, range.Length)).SequenceEqual([(0, 4u), (8, 2u)]),
+            ranges.Tracked.Select(range => (range.FirstIndex, range.Length)).SequenceEqual(((int, uint)[])[(0, 4u), (8, 2u)]),
             "flat demand is unchanged across groups, including an empty middle group");
         ++passed;
 
-        wrapper.RangesChanged(new(-2, uint.MaxValue), [new(int.MaxValue, uint.MaxValue), new(-1, 1), new(8, uint.MaxValue)]);
+        wrapper.RangesChanged(new(-2, uint.MaxValue), (ItemIndexRange[])[new(int.MaxValue, uint.MaxValue), new(-1, 1), new(8, uint.MaxValue)]);
         Check(ranges.Visible!.FirstIndex == 0 && ranges.Visible.Length == 10 && ranges.Tracked.Count == 1 &&
             ranges.Tracked[0].FirstIndex == 8 && ranges.Tracked[0].Length == 2, "overflow and sentinel ranges clipped");
         wrapper.RangesChanged(new(0, 0), []);
         Check(ranges.Visible!.Length == 0 && ranges.Tracked.Count == 0, "empty demand clears all retained positions");
         var calls = ranges.Calls;
-        Throws<ArgumentNullException>(() => wrapper.RangesChanged(new(0, 1), [null!]));
+        Throws<ArgumentNullException>(() => wrapper.RangesChanged(new(0, 1), (ItemIndexRange[])[null!]));
         Check(ranges.Calls == calls, "invalid input is not partly delivered");
         ++passed;
 

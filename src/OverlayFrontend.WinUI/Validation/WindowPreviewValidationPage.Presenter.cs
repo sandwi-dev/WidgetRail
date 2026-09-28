@@ -29,7 +29,7 @@ internal sealed partial class WindowPreviewValidationPage
         var target = command == "PresenterReplace" ? "wrong.pid" : "owned.preview";
         var remove = command == "PresenterRemove";
         presenterRoot = new() { Id = "root", Kind = ViewNodeKind.Stack, Children = remove ? [] :
-            [new() { Id = "presented.preview", Kind = ViewNodeKind.WindowPreview, WindowId = target,
+            (ViewNode[])[new() { Id = "presented.preview", Kind = ViewNodeKind.WindowPreview, WindowId = target,
                 PreviewAspectRatio = 1.6, ImageFit = ImageFit.Cover, AccessibilityLabel = "Owned presenter preview" }] };
         var next = await session!.EstablishPresentationAsync(session.GetTarget(Descriptor.Id), WidgetLifecycleState.Interactive);
         fixtureFrame = next;

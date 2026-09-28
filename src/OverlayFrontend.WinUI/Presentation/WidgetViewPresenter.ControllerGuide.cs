@@ -10,7 +10,7 @@ internal sealed partial class WidgetViewPresenter
     internal IReadOnlyList<ControllerGuideHint> CaptureControllerGuide()
     {
         if (disposed || applying || presentationOnly || !presentationActive || presentation is null) return [];
-        if (HasTransientControl) return [new(ControllerPrompt.A, "Select", ControllerButton.A)];
+        if (HasTransientControl) return (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A)];
         var focused = FocusedBinding();
         var path = new List<ViewNode>();
         var declaration = focused is not null && Eligible(focused) ? declarations.GetValueOrDefault(focused.Identity.Id) :

@@ -154,16 +154,16 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
     {
         ViewNode Poster(string id, ControllerButton? button) => new() { Id = id, Kind = ViewNodeKind.ActionSurface,
             ActionId = "open", AccessibilityLabel = id, ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal, ContextMenuButton = button, IsDisabled = disabled,
-            ContextActions = [ new(rebound ? "play.changed" : "play", "Play", IsDisabled: unavailableOptions), new("disabled", "Disabled", IsDisabled: true),
+            ContextActions = (WidgetContextAction[])[ new(rebound ? "play.changed" : "play", "Play", IsDisabled: unavailableOptions), new("disabled", "Disabled", IsDisabled: true),
                 new("busy", "Busy", IsBusy: true), new("remove", "Remove", WidgetContextActionStyle.Danger, IsDisabled: unavailableOptions)],
-            Children = [new() { Id = id + ".text", Kind = ViewNodeKind.Text, Text = id }] };
+            Children = (ViewNode[])[new() { Id = id + ".text", Kind = ViewNodeKind.Text, Text = id }] };
         ViewNode Hint(string id, ControllerButton button) => new() { Id = id, Kind = ViewNodeKind.Row, ContextMenuButton = button,
-            ContextActions = [new("more", "More options")], Children = [new() { Id = id + ".text", Kind = ViewNodeKind.Text, Text = id }] };
+            ContextActions = (WidgetContextAction[])[new("more", "More options")], Children = (ViewNode[])[new() { Id = id + ".text", Kind = ViewNodeKind.Text, Text = id }] };
         var nodes = new List<ViewNode> { Hint("hint", ControllerButton.Menu), Hint("xhint", ControllerButton.X),
             new() { Id = "after", Kind = ViewNodeKind.Button, Text = "After", ActionId = "after" }, Poster("default", null) };
         if (!removed) nodes.Add(Poster("poster", ControllerButton.X));
         if (ambiguous) nodes.Add(Hint("ambiguous", ControllerButton.X));
-        nodes.Add(new() { Id = "modal", Kind = ViewNodeKind.Stack, InputScopeId = "dialog", Children = [Poster("modal.button", ControllerButton.X)] });
+        nodes.Add(new() { Id = "modal", Kind = ViewNodeKind.Stack, InputScopeId = "dialog", Children = (ViewNode[])[Poster("modal.button", ControllerButton.X)] });
         var snapshot = new ViewSnapshot { WidgetInstanceId = "context.instance", Sequence = ++sequence,
             ActiveInputScopeId = modal ? "dialog" : "page", InitialFocusId = modal ? "modal.button" : "after",
             Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = nodes } };

@@ -80,7 +80,7 @@ internal sealed class WidgetFocusDecoration : IDisposable
             motion.Cancel(); target.Set(WidgetMotionPose.Identity with { Opacity = focused ? 1 : 0 });
         }
         else if (focusChanged)
-            Playback = motion.PlayAsync([new(target, WidgetMotionPolicy.Focus(options, size, focused))]);
+            Playback = motion.PlayAsync((WidgetMotionPlayback[])[new(target, WidgetMotionPolicy.Focus(options, size, focused))]);
     }
     private bool UpdateGeometry()
     {

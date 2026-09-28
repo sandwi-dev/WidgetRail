@@ -16,7 +16,7 @@ internal sealed partial class WidgetStylesValidationPage
         var rows = Enumerable.Range(0, 30).Select(index => new ViewNode { Id = "ordinary." + index,
             Kind = ViewNodeKind.Button, Text = "Row " + index, ActionId = "row" }).ToArray();
         var frame = CreateFrame(new() { Id = "memory", Kind = ViewNodeKind.Scroll, ScrollAxis = ScrollAxis.Vertical,
-            Children = [new() { Id = "memory-group", Kind = ViewNodeKind.Stack, InitialChildFocusId = "ordinary.0", Children = rows }] },
+            Children = (ViewNode[])[new() { Id = "memory-group", Kind = ViewNodeKind.Stack, InitialChildFocusId = "ordinary.0", Children = rows }] },
             new Dictionary<string, BridgeNodeRenderStyles> { ["memory"] = Compute("#memory { height: 180px; }", "memory", "scroll") });
         var first = new WidgetViewPresenter();
         var second = new WidgetViewPresenter();

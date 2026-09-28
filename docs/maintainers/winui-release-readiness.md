@@ -56,3 +56,25 @@ Release and Debug comparisons must use the same actual widget workload and norma
 motion/depth settings. The resource observer alone cannot establish smooth frames
 or complete first-frame presentation; use switch milestones plus native pixel/frame
 evidence and repeated runs.
+
+## First successful trimmed publish, 2026-09-28
+
+The shared metadata correction removed WidgetRail's trim diagnostics. The remaining
+35 IL2081 diagnostics originated in the older Windows SDK projection's generic ABI
+fallbacks. The frontend now targets Windows SDK .NET projection `10.0.26100.87`,
+the stable .NET 9/10 projection documented by the
+[C#/WinRT 2.3.1 release](https://github.com/microsoft/CsWinRT/releases/tag/2.3.1.260716.1).
+The target OS version and the Windows App SDK package remain unchanged.
+
+Its collection-expression analyzer also requires a concrete representation where
+WinRT marshalling could observe a non-mutable interface. Production call sites and
+validation fixtures now explicitly create arrays rather than relying on compiler
+generated read-only collection types. These changes do not change collection
+membership or the public widget declarations.
+
+Analyzer-enabled Release publish with trimming and detailed linker diagnostics
+now succeeds without suppressions or blanket assembly roots. Evidence:
+`artifacts/winui-release-probe/concrete-publish.log` and its unique binlog. Debug
+also builds with zero warnings/errors, and all 73 integrated managed shell tests
+pass. Native regression under this projection, Release launch, installer bootstrap,
+provisioning and rollback remain required. This result is not shipping acceptance.

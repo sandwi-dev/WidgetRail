@@ -55,7 +55,7 @@ internal sealed class WidgetDialogMotion : IDisposable
         entered = true;
         dialog.LayoutUpdated -= LayoutReady;
         CreateTargets();
-        Opening = motion!.PlayAsync([new(dialogTarget!, WidgetMotionPolicy.Dialog(options, true)),
+        Opening = motion!.PlayAsync((WidgetMotionPlayback[])[new(dialogTarget!, WidgetMotionPolicy.Dialog(options, true)),
             new(scrimTarget!, WidgetMotionPolicy.Dialog(options, true, scrim: true))]);
     }
 
@@ -71,7 +71,7 @@ internal sealed class WidgetDialogMotion : IDisposable
         if (motion is null) CreateTargets();
         // Reuse the same targets so an opening interrupted by B starts from the
         // compositor's current values rather than flashing fully open first.
-        return Closing = motion!.PlayAsync([new(dialogTarget!, WidgetMotionPolicy.Dialog(options, false)),
+        return Closing = motion!.PlayAsync((WidgetMotionPlayback[])[new(dialogTarget!, WidgetMotionPolicy.Dialog(options, false)),
             new(scrimTarget!, WidgetMotionPolicy.Dialog(options, false, scrim: true))]);
     }
 

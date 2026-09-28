@@ -13,9 +13,9 @@ internal sealed partial class WidgetStylesValidationPage
     private async Task NativeActionSurfaceMeasureAsync()
     {
         var root = new ViewNode { Id = "tile", Kind = ViewNodeKind.ActionSurface, ActionId = "open", AccessibilityLabel = "Application",
-            ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal, Children = [
+            ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal, Children = (ViewNode[])[
                 new() { Id = "mark", Kind = ViewNodeKind.Spacer },
-                new() { Id = "copy", Kind = ViewNodeKind.Stack, Children = [
+                new() { Id = "copy", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
                     new() { Id = "title", Kind = ViewNodeKind.Text,
                         Text = "A deliberately long application name that must wrap and ellipsize inside the remaining tile width" },
                     new() { Id = "subtitle", Kind = ViewNodeKind.Text, Text = "Application source" }] }] };
@@ -56,7 +56,7 @@ internal sealed partial class WidgetStylesValidationPage
         try
         {
             gridPage.Apply(CreateFrame(new() { Id = "grid", Kind = ViewNodeKind.Grid, GridMinimumColumnWidth = 160, GridMaximumColumns = 2,
-                Children = [new() { Id = "short", Kind = ViewNodeKind.Button, Text = "Short", ActionId = "short" },
+                Children = (ViewNode[])[new() { Id = "short", Kind = ViewNodeKind.Button, Text = "Short", ActionId = "short" },
                     new() { Id = "long", Kind = ViewNodeKind.Button, Text = "A longer catalog title", ActionId = "long" }] },
                 new Dictionary<string, BridgeNodeRenderStyles>()));
             await Wait(() => Within<Button>(gridPage, "Widget.short")?.ActualWidth is > 250 and < 310 &&
@@ -72,7 +72,7 @@ internal sealed partial class WidgetStylesValidationPage
         host.Children.Add(responsivePage);
         try
         {
-            responsivePage.Apply(CreateFrame(root with { Children = [root.Children[0] with { VisibleWhen = ResponsiveVisibility.ExpandedOnly }, root.Children[1]] }, styles));
+            responsivePage.Apply(CreateFrame(root with { Children = (ViewNode[])[root.Children[0] with { VisibleWhen = ResponsiveVisibility.ExpandedOnly }, root.Children[1]] }, styles));
             await Wait(() => Within<Border>(responsivePage, "Widget.mark")?.Visibility == Visibility.Visible &&
                 Within<TextBlock>(responsivePage, "Widget.title")?.ActualWidth > 0);
             var title = Within<TextBlock>(responsivePage, "Widget.title")!;

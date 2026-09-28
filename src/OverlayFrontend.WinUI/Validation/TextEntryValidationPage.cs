@@ -139,10 +139,10 @@ internal sealed class TextEntryValidationPage : Page, IAsyncDisposable
     {
         var snapshot = new ViewSnapshot { WidgetInstanceId = "text.instance", Sequence = ++sequence,
             ActiveInputScopeId = otherScope ? "other" : "page", InitialFocusId = otherScope ? "other.button" : "entry",
-            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = [
+            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
                 new() { Id = "entry", Kind = ViewNodeKind.TextEntry, AccessibilityLabel = "Text entry", TextEntryValue = value, TextEntryPlaceholder = "Enter text", TextEntryMaximumLength = 4,
                     TextEntryInputKind = sensitive ? TextEntryInputKind.Sensitive : null, ActionId = action, IsDisabled = disabled },
-                new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = [
+                new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = (ViewNode[])[
                     new() { Id = "other.button", Kind = ViewNodeKind.Button, Text = "Other", ActionId = "other" }] }
             ] } };
         var descriptor = new BridgeWidgetDescriptor { Id = "text", Name = "Text entry validation", InstanceId = snapshot.WidgetInstanceId,

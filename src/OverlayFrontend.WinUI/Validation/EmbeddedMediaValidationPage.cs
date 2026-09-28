@@ -65,8 +65,8 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
                 Id = "fixture-player", AccessibleName = "Trusted embedded player", EntryAsset = "adapter/index.html",
                 Surface = new() { PreferredWidth = 720, PreferredHeight = 360, MinimumWidth = 320, MinimumHeight = 180 }, AspectRatio = 2,
                 Resources = assets.Select(asset => new EmbeddedMediaResource { Path = asset.Key, ContentType = asset.Value.Type }).ToArray(),
-                Commands = [EmbeddedMediaCommand.Activate, EmbeddedMediaCommand.Back, EmbeddedMediaCommand.TogglePlayback],
-                AllowedFrameOrigins = ["https://www.youtube.com"], AllowedFrameDomainFamilies = ["googlevideo.com"],
+                Commands = (EmbeddedMediaCommand[])[EmbeddedMediaCommand.Activate, EmbeddedMediaCommand.Back, EmbeddedMediaCommand.TogglePlayback],
+                AllowedFrameOrigins = (string[])["https://www.youtube.com"], AllowedFrameDomainFamilies = (string[])["googlevideo.com"],
             };
             serving = ObserveServerAsync();
             status.Text = "Connecting fixture session";
@@ -276,7 +276,7 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
                     var snapshotDescriptor = FixtureDescriptors().Single(value => value.Id == snapshotWidget);
                     var snapshot = new ViewSnapshot { Sequence = ++snapshotSequence, WidgetInstanceId = snapshotDescriptor.InstanceId, ActiveInputScopeId = "page", EmbeddedMediaSession = declaration,
                         InitialFocusId = ownerChecks ? "native.play" : null,
-                        Root = ownerChecks ? OwnerRoot() : new() { Id = "page", Kind = ViewNodeKind.Stack, Children = declaration is null || parked ? [] : [new ViewNode { Id = "viewport", Kind = ViewNodeKind.MediaViewport, MediaSessionId = declaration.Id, AccessibilityLabel = declaration.AccessibleName }] } };
+                        Root = ownerChecks ? OwnerRoot() : new() { Id = "page", Kind = ViewNodeKind.Stack, Children = declaration is null || parked ? [] : (ViewNode[])[new ViewNode { Id = "viewport", Kind = ViewNodeKind.MediaViewport, MediaSessionId = declaration.Id, AccessibilityLabel = declaration.AccessibleName }] } };
                     var errors = ViewSnapshotValidator.Validate(snapshot);
                     if (errors.Count != 0) throw new InvalidOperationException(string.Join("; ", errors.Select(error => error.Message)));
                     using (var serialized = JsonDocument.Parse(SnapshotJson.Serialize(snapshot)))

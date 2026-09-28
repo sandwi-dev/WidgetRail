@@ -197,7 +197,7 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             .InputScope("parent"), InitialFocusId: "game.12", ActiveInputScopeId: "parent");
         var view = modal is null ? parent : parent.WithModal(new(modal, detailText,
             UI.Stack("details.content", UI.Button("Play", "play", "play"), UI.Button("Second", "second", "second"),
-                UI.Select("Completion", [new("none", "None", "none", true), new("done", "Done", "done")], "picker"),
+                UI.Select("Completion", (SelectOption[])[new("none", "None", "none", true), new("done", "Done", "done")], "picker"),
                 UI.Stack("long.description", Enumerable.Range(0, 60).Select(index =>
                     (WidgetElement)UI.Text($"Description line {index}", "line." + index)).ToArray())), "play", "dismiss"));
         var snapshot = view.CreateSnapshot("modal.instance", ++sequence);

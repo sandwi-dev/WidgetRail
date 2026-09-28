@@ -106,16 +106,16 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
         var items = new List<ViewNode> { Item("b", "B"), Item("slow", "Slow"), Item("missing", "No artwork"), Item("revision", "Snapshot artwork") };
         if (!removeA) items.Insert(0, Item("a", label));
         ViewNode content = new() { Id = "items", Kind = ViewNodeKind.Row, Children = items };
-        if (nested) content = new() { Id = "nested", Kind = ViewNodeKind.BackgroundSurface, Children = [content] };
+        if (nested) content = new() { Id = "nested", Kind = ViewNodeKind.BackgroundSurface, Children = (ViewNode[])[content] };
         var snapshot = new ViewSnapshot
         {
             WidgetInstanceId = "surface.instance", Sequence = ++sequence, ActiveInputScopeId = alternate ? "other-scope" : "root", InitialFocusId = alternate ? "other" : "b",
-            Root = new() { Id = "root", Kind = ViewNodeKind.Stack, Children = [
-                new() { Id = "background", Kind = ViewNodeKind.BackgroundSurface, ArtworkHandle = "fallback", ImageFit = ImageFit.Cover, UsesFocusedDescendantArtwork = true, Children = [
+            Root = new() { Id = "root", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
+                new() { Id = "background", Kind = ViewNodeKind.BackgroundSurface, ArtworkHandle = "fallback", ImageFit = ImageFit.Cover, UsesFocusedDescendantArtwork = true, Children = (ViewNode[])[
                     new() { Id = "fragment", Kind = ViewNodeKind.FocusPresentationSurface, RetainLastPresentation = retain,
-                        DefaultFocusPresentation = new() { Id = "fallback-summary", Kind = ViewNodeKind.Text, Text = "Default" }, Children = [content] }] },
+                        DefaultFocusPresentation = new() { Id = "fallback-summary", Kind = ViewNodeKind.Text, Text = "Default" }, Children = (ViewNode[])[content] }] },
                 new() { Id = "outside", Kind = ViewNodeKind.Button, Text = "Outside", ActionId = "outside" },
-                new() { Id = "other-scope", Kind = ViewNodeKind.Stack, InputScopeId = "other-scope", Children = [
+                new() { Id = "other-scope", Kind = ViewNodeKind.Stack, InputScopeId = "other-scope", Children = (ViewNode[])[
                     new() { Id = "other", Kind = ViewNodeKind.Button, Text = "Other scope", ActionId = "other" }] }] },
         };
         var descriptor = new BridgeWidgetDescriptor { Id = "surface", Name = "Surface", InstanceId = snapshot.WidgetInstanceId,
