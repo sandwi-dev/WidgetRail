@@ -35,5 +35,12 @@ rectangular; shared rounded clipping/depth/scale still needs completion.
 
 `WidgetStylesValidationPage` includes real native checks for responsive branches,
 focus continuity, static grid reflow and poster artwork/copy placement. The
-33-check checkpoint is fixture correctness, not production Playnite performance
+36-check checkpoint is fixture correctness, not production Playnite performance
 or complete WRSS compatibility.
+
+`presenter.ScrollBy(horizontalDelta, verticalDelta)` accepts finite DIP movement
+from the existing input owner. It targets the focused scroll viewport, then an
+active-scope viewport fallback, and applies native bounded ChangeView without an
+extra animation queue or focus move. Popups consume the request. Input normalization,
+deadzone, sensitivity and cadence remain in the shell adapter. Native checks settle
+asynchronous focus reveal before asserting an independent analog scroll operation.

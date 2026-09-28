@@ -57,8 +57,20 @@ Presenter integration requires explicit lifecycle hooks:
 
 This foundation deliberately does not retain old widget controls, semantic leases,
 or draw trees. The presenter must implement that ownership boundary before content
-transitions are enabled. It is not yet wired into production section/modal/focus
-presentation; applying it to a whole button would repeat the former color/text bug.
+transitions are enabled. Section transitions and focus decoration integration remain
+unfinished; applying them to a whole button would repeat the former color/text bug.
+
+`WidgetDialogMotion` now connects actual presenter dialog openings to the existing
+native recipe and one scoped batch for panel and scrim. The host calls
+`presenter.ApplyAppearance(settings.Appearance, systemAnimationsEnabled)` when policy
+changes. New panels animate once after native layout supplies bounded dimensions;
+ordinary snapshots and foreground restoration do not replay the entrance. Resize,
+policy changes and retirement settle/cancel motion. The surrounding widget-local
+modal layer retains clipping and input authority; its parent viewport does not move.
+The unclipped target factory is restricted to dialog-owned surfaces whose ancestor
+already clips them. It rejects inset recipes and does not overwrite that ancestor clip.
+Dialog dismissal remains immediate; retaining an inert outgoing surface for exit
+motion is part of the remaining transition-lifetime work.
 
 `WidgetFocusMotion(control, decoration, appearance, systemAnimationsEnabled)` is
 the concrete native-control adapter. Put its `Adornment` in the control's layout
@@ -97,3 +109,8 @@ incorrectly assumed GotFocus/LostFocus had run synchronously when Focus returned
 bounded event settlement corrected that test assumption. Evidence is in
 artifacts/winui-surfaces/motion-native-final.json. This does not claim production
 section/modal integration or visually accepted animation/performance.
+
+The connected dialog checkpoint passes 24 native modal checks (including actual
+opening batch completion, same-key update non-replay and reduced motion), and the
+18 native motion foundation regressions still pass. These checks do not establish
+production-widget smoothness or full transition integration.
