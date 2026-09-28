@@ -11,6 +11,8 @@ public sealed record WidgetPresentationSessionOptions
     public int MaximumMessageBytes { get; init; } = BridgeProtocol.DefaultMaximumMessageBytes;
     public int MaximumPendingRequests { get; init; } = 32;
     public int MaximumPendingArtworkRequests { get; init; } = 32;
+    /// <summary>Bounds local artwork demand, including admission and completion. Does not cancel server-side decoding.</summary>
+    public TimeSpan ArtworkTimeout { get; init; } = TimeSpan.FromSeconds(30);
     public int MaximumRetainedDiagnostics { get; init; } = 64;
 
     internal void Validate()
@@ -25,6 +27,8 @@ public sealed record WidgetPresentationSessionOptions
             throw new ArgumentOutOfRangeException(nameof(MaximumPendingRequests));
         if (MaximumPendingArtworkRequests is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(MaximumPendingArtworkRequests));
+        if (ArtworkTimeout < TimeSpan.FromMilliseconds(100) || ArtworkTimeout > TimeSpan.FromMinutes(2))
+            throw new ArgumentOutOfRangeException(nameof(ArtworkTimeout));
         if (MaximumRetainedDiagnostics is < 1 or > 256)
             throw new ArgumentOutOfRangeException(nameof(MaximumRetainedDiagnostics));
     }
@@ -168,6 +172,8 @@ public sealed class WidgetPresentationSessionException : Exception
 
 internal sealed record PendingArtwork(
     WidgetPresentationAuthority Authority,
+    string ArtworkHandle,
+    CancellationToken CancellationToken,
     TaskCompletionSource<WidgetPresentationArtwork> Completion);
 
 internal sealed record BridgeRequestFailure(string Code, string Message);

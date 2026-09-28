@@ -21,15 +21,13 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, Task> _refreshes = new(StringComparer.Ordinal);
     private readonly Queue<WidgetPresentationState> _statePublications = [];
-    private readonly Dictionary<(string WidgetId, string ArtworkHandle), Queue<PendingArtwork>>
-        _artwork = [];
+    private readonly Dictionary<string, PendingArtwork> _artwork = new(StringComparer.Ordinal);
     private readonly Queue<WidgetPresentationDiagnostic> _diagnostics = [];
     private long _catalogRevision = -1;
     private long _notifiedCatalogRevision = -1;
     private long _notifiedAppearanceRevision = -1;
     private long _hostEffectSequence;
     private readonly Dictionary<string, long> _hostEffectAdmissionBoundaries = new(StringComparer.Ordinal);
-    private int _pendingArtworkCount;
     private long _publicationRevision;
     private bool _publicationOwner;
     private bool _disposed;
@@ -353,47 +351,75 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         return ReadAdmission(response.Payload);
     }
 
+    /// <summary>
+    /// Resolves one demand against exact presentation authority. Cancellation and timeout
+    /// abandon only this local demand; the existing bridge has no per-demand cancellation
+    /// command. Late results are discarded by ID and cannot complete a replacement demand.
+    /// </summary>
     public async Task<WidgetPresentationArtwork> ResolveArtworkAsync(
         WidgetPresentationAuthority authority,
         string artworkHandle,
         CancellationToken cancellationToken = default)
     {
-        var descriptor = ValidateAuthority(authority);
         ArgumentException.ThrowIfNullOrWhiteSpace(artworkHandle);
-        WidgetPresentationFrame frame;
-        lock (_gate) frame = _states[descriptor.Id].LastGood!;
-        if (!ContainsArtwork(frame.Snapshot.Root, artworkHandle))
-            throw new WidgetPresentationSessionException(
-                "unknown_artwork", "The artwork handle is not declared by the current snapshot.");
-
+        cancellationToken.ThrowIfCancellationRequested();
         var completion = new TaskCompletionSource<WidgetPresentationArtwork>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var key = (authority.WidgetId, artworkHandle);
+        var demandId = Guid.NewGuid().ToString("N");
+        CancellationTokenSource demandLifetime;
         lock (_gate)
         {
-            ThrowIfTerminalLocked();
-            if (_pendingArtworkCount >= _options.MaximumPendingArtworkRequests)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var descriptor = ValidateAuthority(authority);
+            if (!ContainsArtwork(_states[descriptor.Id].LastGood!.Snapshot.Root, artworkHandle))
+                throw new WidgetPresentationSessionException(
+                    "unknown_artwork", "The artwork handle is not declared by the current snapshot.");
+            if (_artwork.Count >= _options.MaximumPendingArtworkRequests)
                 throw new WidgetPresentationSessionException(
                     "artwork_saturated", "The presentation artwork request queue is full.");
-            if (!_artwork.TryGetValue(key, out var queue))
-                _artwork.Add(key, queue = new Queue<PendingArtwork>());
-            queue.Enqueue(new PendingArtwork(authority, completion));
-            _pendingArtworkCount++;
+            demandLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+            demandLifetime.CancelAfter(_options.ArtworkTimeout);
+            _artwork.Add(demandId, new(authority, artworkHandle, demandLifetime.Token, completion));
         }
-
+        var demandToken = demandLifetime.Token;
+        var cancellationRegistration = demandToken.Register(() =>
+        {
+            lock (_gate)
+                if (_artwork.Remove(demandId, out var retired))
+                    retired.Completion.TrySetCanceled(demandToken);
+        });
+        // Completion can fail before the acknowledgement arrives. Always observe it,
+        // including when an admission failure prevents the caller from awaiting it.
+        _ = completion.Task.ContinueWith(static task => { _ = task.Exception; },
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
         try
         {
-            await RequestAsync(
+            var admission = RequestAsync(
                 BridgeMessageTypes.ResolveArtwork,
-                new BridgeArtworkRequest(authority.WidgetId, artworkHandle),
+                new BridgeArtworkRequest(authority.WidgetId, artworkHandle,
+                    authority.RuntimeGeneration, authority.PresentationGeneration, demandId),
                 BridgeMessageTypes.Acknowledged,
-                cancellationToken).ConfigureAwait(false);
-            return await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                demandToken);
+            _ = admission.ContinueWith(static task => { _ = task.Exception; },
+                CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            // An already-started framed pipe write cannot be retracted without
+            // closing the transport. Bound the caller separately and observe its
+            // eventual completion under the transport's own pending-request limit.
+            await admission.WaitAsync(demandToken).ConfigureAwait(false);
+            return await completion.Task.ConfigureAwait(false);
         }
-        catch
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
         {
-            RemovePendingArtwork(key, completion);
-            throw;
+            throw new WidgetPresentationSessionException("artwork_timeout", "The artwork demand timed out.");
+        }
+        finally
+        {
+            lock (_gate) _artwork.Remove(demandId);
+            completion.TrySetCanceled();
+            cancellationRegistration.Dispose();
+            demandLifetime.Dispose();
         }
     }
 
@@ -410,9 +436,8 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         PendingArtwork[] artwork;
         lock (_gate)
         {
-            artwork = _artwork.Values.SelectMany(queue => queue).ToArray();
+            artwork = _artwork.Values.ToArray();
             _artwork.Clear();
-            _pendingArtworkCount = 0;
         }
         var disposed = new ObjectDisposedException(nameof(WidgetPresentationSession));
         foreach (var item in artwork) item.Completion.TrySetException(disposed);
@@ -757,12 +782,42 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
 
     private void HandleArtwork(JsonElement payload)
     {
-        RequireObjectProperties(
-            payload, "widgetId", "artworkHandle", "contentType", "contentBase64");
+        RequireAllowedProperties(payload, new HashSet<string>(StringComparer.Ordinal)
+        {
+            "widgetId", "artworkHandle", "runtimeGeneration", "presentationGeneration",
+            "demandId", "contentType", "contentBase64",
+        }, "widgetId", "artworkHandle", "contentType", "contentBase64");
         var widgetId = ReadString(payload, "widgetId");
         var handle = ReadString(payload, "artworkHandle");
+        var demandId = ReadOptionalString(payload, "demandId");
+        PendingArtwork? pending;
+        lock (_gate)
+            pending = demandId is not null ? _artwork.GetValueOrDefault(demandId) : null;
+        if (pending is null)
+        {
+            // Never fall back to FIFO widget/handle matching, including for legacy
+            // replies without an ID. That would let an old demand satisfy a new one.
+            RecordDiagnostic("unmatched_artwork", "An unmatched artwork result was discarded.", widgetId);
+            return;
+        }
+        var runtime = ReadOptionalString(payload, "runtimeGeneration");
+        var presentation = ReadOptionalString(payload, "presentationGeneration");
+        if (widgetId != pending.Authority.WidgetId || handle != pending.ArtworkHandle ||
+            runtime != pending.Authority.RuntimeGeneration || presentation != pending.Authority.PresentationGeneration)
+        {
+            RecordDiagnostic("stale_artwork", "Artwork with mismatched demand authority was discarded.", widgetId);
+            return;
+        }
+        lock (_gate)
+        {
+            if (!TryAdmitArtworkCompletionLocked(demandId!, pending)) return;
+        }
         var contentTypeValue = ReadString(payload, "contentType", allowEmpty: true);
-        var encoded = ReadString(payload, "contentBase64", allowEmpty: true);
+        if (!payload.TryGetProperty("contentBase64", out var encodedValue) || encodedValue.ValueKind != JsonValueKind.String)
+            throw new BridgeProtocolException("WidgetBridge returned invalid artwork encoding.");
+        var encoded = encodedValue.GetString()!;
+        if (encoded.Length > ((ProtocolConstants.MaximumEncodedArtworkBytes + 2) / 3) * 4)
+            throw new BridgeProtocolException("WidgetBridge returned oversized artwork.");
         byte[] bytes;
         try { bytes = encoded.Length == 0 ? [] : Convert.FromBase64String(encoded); }
         catch (FormatException exception)
@@ -778,37 +833,40 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                  new WidgetEncodedArtwork(contentType.Value, bytes))))
             throw new BridgeProtocolException("WidgetBridge returned invalid artwork.");
 
-        PendingArtwork? pending = null;
+        WidgetPresentationArtwork result;
         lock (_gate)
         {
-            var key = (widgetId, handle);
-            if (_artwork.TryGetValue(key, out var queue) && queue.Count != 0)
-            {
-                pending = queue.Dequeue();
-                _pendingArtworkCount--;
-                if (queue.Count == 0) _artwork.Remove(key);
-            }
-        }
-        if (pending is null)
-        {
-            RecordDiagnostic("unmatched_artwork", "An unmatched artwork result was discarded.", widgetId);
-            return;
-        }
-        try
-        {
-            _ = ValidateAuthority(pending.Authority);
-            var result = new WidgetPresentationArtwork(
+            // Decode happened outside the state lock. Cancellation or a replacement
+            // snapshot may have retired the demand in the meantime.
+            if (!TryAdmitArtworkCompletionLocked(demandId!, pending)) return;
+            _artwork.Remove(demandId!);
+            result = new WidgetPresentationArtwork(
                 pending.Authority,
                 handle,
                 contentType ?? WidgetArtworkContentType.Png,
                 bytes);
-            pending.Completion.TrySetResult(result);
-            ArtworkResolved?.Invoke(this, new WidgetPresentationArtworkEventArgs(result));
+            if (!pending.Completion.TrySetResult(result)) return;
         }
+        ArtworkResolved?.Invoke(this, new WidgetPresentationArtworkEventArgs(result));
+    }
+
+    private bool TryAdmitArtworkCompletionLocked(string demandId, PendingArtwork pending)
+    {
+        if (!_artwork.TryGetValue(demandId, out var current) || !ReferenceEquals(current, pending)) return false;
+        if (pending.CancellationToken.IsCancellationRequested || _disposed)
+        {
+            _artwork.Remove(demandId);
+            pending.Completion.TrySetCanceled();
+            return false;
+        }
+        try { _ = ValidateAuthority(pending.Authority); }
         catch (WidgetPresentationSessionException exception)
         {
+            _artwork.Remove(demandId);
             pending.Completion.TrySetException(exception);
+            return false;
         }
+        return true;
     }
 
     private void StartInvalidationRefresh(string widgetId)
@@ -1148,9 +1206,8 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         {
             if (_terminalFailure is not null) return;
             _terminalFailure = exception;
-            artwork = _artwork.Values.SelectMany(queue => queue).ToArray();
+            artwork = _artwork.Values.ToArray();
             _artwork.Clear();
-            _pendingArtworkCount = 0;
         }
         var failure = new WidgetPresentationSessionException(
             "transport_closed", "The WidgetBridge presentation session closed.", exception);
@@ -1164,21 +1221,6 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
             throw new WidgetPresentationSessionException(
                 "transport_closed", "The WidgetBridge presentation session is closed.",
                 _terminalFailure);
-    }
-
-    private void RemovePendingArtwork(
-        (string WidgetId, string ArtworkHandle) key,
-        TaskCompletionSource<WidgetPresentationArtwork> completion)
-    {
-        lock (_gate)
-        {
-            if (!_artwork.TryGetValue(key, out var queue)) return;
-            var retained = queue.Where(item => !ReferenceEquals(item.Completion, completion)).ToArray();
-            if (retained.Length == queue.Count) return;
-            _pendingArtworkCount--;
-            if (retained.Length == 0) _artwork.Remove(key);
-            else _artwork[key] = new Queue<PendingArtwork>(retained);
-        }
     }
 
     private static WidgetOperationAdmission ReadAdmission(JsonElement payload)

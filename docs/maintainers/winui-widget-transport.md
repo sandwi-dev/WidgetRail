@@ -124,17 +124,17 @@ the existing verified worker/broker process boundary.
 | Typed `HostEffectReceived`, `CatalogChanged`, `AppearanceChanged` events are available | Wire frontend policies to them. Revalidate effect authority after UI dispatch, current visible-session timing, and native window identity before acting. Notifications alone do not fetch a catalog or appearance snapshot. |
 | No managed embedded-media/window-preview/package-icon or settings control APIs | Extend the existing managed facade with the already supported bridge request contracts as each feature is ported. Do not send raw JSON from individual controls. |
 | Hello does not advertise `WindowPreviews` | Negotiate this when actual supported preview presentation exists; do not advertise a feature merely because transport types compile. |
-| Artwork request omits runtime/presentation generations and demand ID | Use the existing generation/demand fields; correlate completion to a unique demand, not a FIFO keyed only by widget/handle. |
-| Caller cancellation removes local pending artwork but does not cancel server-side work | Define demand withdrawal/consumer lifetime explicitly for realized items and retained presentation slots. Late completion must not satisfy a replacement demand. |
+| Artwork requests now use runtime/presentation generations and unique demand IDs | Retain exact demand correlation in native image consumers. Stale/cancelled results cannot fill a replacement demand. |
+| Local cancellation/timeout retires an artwork demand; the server has no per-demand cancellation operation | Late completion is discarded by ID. Backend work may continue; real provider cancellation needs an explicit future protocol operation. |
 | Shared contracts formerly resided in the `WidgetBridge` executable | Extracted to `WidgetBridge.Contracts`; the frontend client now references only protocol/SDK/style contracts. Keep executable providers behind the process boundary. |
 
-The artwork issue is concrete: `ResolveArtworkAsync` sends
-`new BridgeArtworkRequest(widgetId, artworkHandle)` and stores a pending queue
-under `(widgetId, artworkHandle)`. `HandleArtwork` dequeues that queue and checks
-the pending authority, but does not correlate the completion to an echoed unique
-demand. An old canceled request and a replacement for the same handle need stronger
-identity. `BridgeProtocol.BridgeArtworkRequest` and the server already support
-paired runtime/presentation generations and `DemandId`; reuse that direction.
+The earlier FIFO artwork issue is corrected. `ResolveArtworkAsync` now sends paired
+generations and a unique DemandId, and matches only that echoed identity. It bounds
+local admission/completion time and rechecks current authority before and after
+decoding. The transport retains already-sent request correlation until a reply or
+shutdown; a local timeout does not retract the frame or stop server decoding.
+Artwork Base64 now uses the encoded-artwork bound rather than the short diagnostic
+text limit. The complete session suite has 34 passing tests after this change.
 
 `BridgePresentationTransport.RequestAsync` intentionally retains sent requests
 until their correlated response even if the caller stops waiting. Cancellation

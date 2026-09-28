@@ -200,6 +200,9 @@ public sealed class SessionTransportTests
                 {
                     widgetId = "session-widget",
                     artworkHandle = "app-library.test-artwork",
+                    runtimeGeneration = artwork.Payload.GetProperty("runtimeGeneration").GetString(),
+                    presentationGeneration = artwork.Payload.GetProperty("presentationGeneration").GetString(),
+                    demandId = artwork.Payload.GetProperty("demandId").GetString(),
                     contentType = "image/webp",
                     contentBase64 = Convert.ToBase64String(expectedBytes),
                 }),
