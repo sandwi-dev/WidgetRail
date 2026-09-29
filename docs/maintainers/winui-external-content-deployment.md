@@ -154,6 +154,37 @@ requires private runtime modules whenever the stage contains `dotnet/`.
 Windows App Runtime provisioning and signed identity installation remain separate
 open requirements; this test used the existing Windows App Runtime installation.
 
+### Verified offline Windows App Runtime payload
+
+`Stage-WinUiRuntimePrerequisites.ps1` takes the restored frontend assets file,
+its generated manifest and a fresh output directory. It stages the six signed
+Microsoft packages required on x64 Windows: x64/x86 Framework and DDLM, plus
+x64 Main and Singleton. It uses the actual manifests and version metadata;
+the restored `MSIX.inventory` misstates the DDLM names and Singleton version.
+For runtime 2.5.1, Singleton is 8002.5.1.0; the others are 2.5.1.0.
+
+The stager computes NuGet's signed-package content hash from the archive to tie
+it to the resolved build graph, separately verifies the raw archive SHA-512,
+verifies NuGet signatures and each MSIX's Microsoft signature, and preserves
+the complete Framework packages with embedded Main/Singleton license payloads.
+Its receipt records exact identities, architectures, versions, dependencies,
+license hashes and signer information. Framework prerequisites are ordered first.
+
+`Test-WinUiRuntimePrerequisites.ps1` independently checks the signed manifests
+against role, identity, dependency and license expectations. Receipt paths must
+remain inside the staged payload without reparse points; duplicate paths and
+identities are rejected. `Test-WinUiRuntimePrerequisitesAdversarial.ps1` covers
+substituted roles/packages, escaped paths, junctions, omitted dependencies and
+licenses, and forged NuGet cache/graph metadata. The fresh stage passes 95 checks
+and 14 adversarial cases in `runtime-prerequisites-13/` and
+`runtime-prerequisites-adversarial-14/` under the deployment evaluation artifacts.
+
+This is verified offline payload construction, not runtime provisioning. The
+official installer/deployment manager handles licensing as well as package
+installation. The receipt explicitly leaves installation, license deployment
+and clean-machine qualification false. Native ARM64 coverage is not included.
+An installer still needs that provisioning step before committing app identity.
+
 A future installer can stage a complete versioned per-user payload, verify all
 signatures and package seals, provision required runtimes, and then register the
 signed identity against that exact directory. Package identity, external-location
