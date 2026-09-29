@@ -118,6 +118,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         await NativeScaleAsync();
         await LoadingIndicatorGeometryAsync();
         await AccessibilityPreferencesAsync();
+        await HighContrastPaletteAsync();
         await NativeFocusDecorationAsync();
         await NativeSectionTransitionsAsync();
         await NativeIndexedBoxAsync();

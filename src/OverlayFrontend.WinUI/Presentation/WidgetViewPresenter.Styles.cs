@@ -127,8 +127,10 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private static event Action? EnvironmentChanged;
     internal static void SetSystemHighContrast(bool value)
     {
-        var next = value ? 1 : 0;
-        if (Interlocked.Exchange(ref systemHighContrast, next) != next) EnvironmentChanged?.Invoke();
+        Interlocked.Exchange(ref systemHighContrast, value ? 1 : 0);
+        // ThemeSettings.Changed also reports a new contrast palette while the
+        // boolean remains unchanged. Retained brushes must reread system colors.
+        EnvironmentChanged?.Invoke();
     }
     internal static void SetHighContrastOverride(bool? value)
     { Volatile.Write(ref highContrastOverride, value is null ? -1 : value.Value ? 1 : 0); EnvironmentChanged?.Invoke(); }
@@ -340,7 +342,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             selection.BorderBrush = border;
             selection.BorderThickness = thickness ?? new();
             selection.CornerRadius = radius ?? new();
-            selection.Opacity = opacity is null || contrast ? 1 : Math.Clamp(opacity.Value, 0, 1);
+            selection.Opacity = accessibility.Opacity(opacity, contrast) ?? 1;
             background = border = transparentSurface;
         }
         switch (element)

@@ -21,8 +21,9 @@ internal sealed partial class WidgetStylesValidationPage
         var invoked = 0;
         page.Failed = error => failure = error;
         page.DispatchActionAsync = _ => { ++invoked; return Task.CompletedTask; };
-        page.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Full, WidgetAnimationSpeed = .5,
-            SectionAnimation = WidgetSectionAnimation.Slide }, true);
+        var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Full, WidgetAnimationSpeed = .5,
+            SectionAnimation = WidgetSectionAnimation.Slide };
+        page.ApplyAppearance(appearance, true);
         try
         {
             Render("a", 0);
@@ -46,6 +47,16 @@ internal sealed partial class WidgetStylesValidationPage
                 "section, header and selection share one batch while selection labels keep their own stationary visual");
             Check(await page.TransitionPlayback! == WidgetMotionOutcome.Completed && page.OutgoingTransitionCount == 0,
                 "real declaration section motion completes on native layers and retires outgoing resources");
+            var selectionSurface = selectedHost.SelectionSurface!;
+            Check(Near(selectedButton.Opacity, .6) && Near(selectionSurface.Opacity, .6), "selection paint retains authored opacity");
+            page.ApplyAppearance(appearance with { Transparency = TransparencyPreference.Reduced }, true);
+            await Wait(() => Near(selectedButton.Opacity, 1));
+            Check(Near(selectionSurface.Opacity, 1) && ColorOf(selectionSurface.Background).A == 255,
+                "reduced transparency covers the retained animated selection surface");
+            page.ApplyAppearance(appearance, true);
+            await Wait(() => Near(selectedButton.Opacity, .6) && Near(selectionSurface.Opacity, .6));
+            Check(ReferenceEquals(selectedHost.SelectionSurface, selectionSurface) && selectedHost.Layer.Children.Contains(selectedButton),
+                "restoring transparency retains native selection and button identity");
             var second = Entry()!;
             var completed = page.TransitionPlayback;
             Render("b", 1);
@@ -95,7 +106,7 @@ internal sealed partial class WidgetStylesValidationPage
             var styles = new Dictionary<string, BridgeNodeRenderStyles>();
             if (zeroContent) styles["transition.content"] = Compute("stack { height: 0px; }", "transition.content", "stack");
             foreach (var (id, selected) in new[] { ("transition.tab-a", order % 2 == 0), ("transition.tab-b", order % 2 != 0) })
-                styles[id] = Compute($"button {{ width: 120px; height: 44px; color: #ffffff; background: {(selected ? "#224466" : "transparent")}; corner-radius: 6px; }}", id, "button");
+                styles[id] = Compute($"button {{ width: 120px; height: 44px; color: #ffffff; opacity: .6; background: {(selected ? "#22446680" : "transparent")}; corner-radius: 6px; }}", id, "button");
             page.Apply(CreateFrame(root, styles));
         }
         Button? Entry() => Descendants(page).OfType<Button>().FirstOrDefault(element =>

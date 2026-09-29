@@ -14,7 +14,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 public sealed class OverlayScaleRoot : Panel
 {
     public static readonly DependencyProperty InterfaceScaleProperty = DependencyProperty.Register(nameof(InterfaceScale),
-        typeof(double), typeof(OverlayScaleRoot), new PropertyMetadata(1d, (sender, _) => ((OverlayScaleRoot)sender).InvalidateMeasure()));
+        typeof(double), typeof(OverlayScaleRoot), new PropertyMetadata(1d, (sender, _) => ((OverlayScaleRoot)sender).ScaleChanged()));
     public double InterfaceScale
     {
         get => (double)GetValue(InterfaceScaleProperty);
@@ -22,6 +22,15 @@ public sealed class OverlayScaleRoot : Panel
             AppearanceSettings.MinimumInterfaceScale, AppearanceSettings.MaximumInterfaceScale) : 1d);
     }
     private readonly ScaleTransform transform = new();
+
+    private void ScaleChanged()
+    {
+        // Size observers can run before the next native layout pass. Publish the
+        // matching zoom immediately so fixed-size artwork requests current pixels
+        // even when layout will leave its unscaled dimensions unchanged.
+        transform.ScaleX = transform.ScaleY = InterfaceScale;
+        InvalidateMeasure();
+    }
 
     protected override Size MeasureOverride(Size availableSize)
     {

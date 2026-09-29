@@ -74,6 +74,8 @@ internal sealed partial class WidgetStylesValidationPage
             {
                 zoom.InterfaceScale = scale;
                 Check(zoom.InterfaceScale == scale, "artwork fixture applies a supported interface scale without clamping");
+                Check(NativeArtworkDemand.TargetPixels(image).Width >= image.ActualWidth * XamlRoot.RasterizationScale * scale * 1.12,
+                    "artwork demand sees current interface scale before another layout pass");
                 await Wait(() => complete && demand.LastDecode!.Decoded.Width >= image.ActualWidth * XamlRoot.RasterizationScale * scale * 1.12);
                 Check(demand.LastDecode!.Decoded.Width >= initialWidth,
                     $"retained or upgraded native artwork covers {scale:P1} interface scale without a new declaration");

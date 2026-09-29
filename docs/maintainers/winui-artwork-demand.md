@@ -62,3 +62,16 @@ extent rather than asserting it equals the requested Width property. Temporary
 admission tracing was removed. Evidence: `artifacts/winui-shell/artwork-root-native/`.
 
 The full native style suite also passes all 199 checks in the artwork lane. Combined-frontend and actual-widget qualification remain separate.
+
+The combined accessibility run exposed a zoom ordering race: InterfaceScale
+invalidated native measurement but left the child's ScaleTransform unchanged
+until that measurement ran. Artwork's queued size observer could run first,
+retain the lower-resolution decode, and receive no later size event for a
+fixed-size image. `OverlayScaleRoot` now publishes the matching transform in
+the scale-property callback and still invalidates layout normally.
+
+The isolated `artwork-zoom-red-01` run reproduced the stale target before another
+layout pass. Immediate-target checks at 112.5%/125%, decode upgrading, repeated
+focus/press reuse, replacement and reversal all pass in the combined 206-check
+`retained-accessibility-green-02` run. Both are under `artifacts/winui-shell/`.
+The correction neither forces synchronous layout nor redecodes on focus motion.

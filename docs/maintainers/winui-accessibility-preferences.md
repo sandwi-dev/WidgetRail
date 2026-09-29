@@ -22,3 +22,23 @@ preference checks and existing geometry/focus/shading regressions. Evidence is
 `artifacts/winui-ytmusic/accessibility-result.json`. No Windows preference was
 changed: the fixture supplies the existing test-only system contrast override.
 Actual Windows theme switching and full accessibility acceptance remain separate.
+
+System theme notifications now refresh retained brushes even when high contrast
+remains enabled: changing contrast schemes can change system colors without
+changing the boolean or ActualTheme. The native regression supplies two palettes
+through application resources and the production notification path, retains a
+shell label/widget button and verifies exact colors, control identity and focus.
+It restores its resources and does not change Windows settings. The pre-fix run
+reproduced stale retained colors.
+
+Animated selection surfaces now apply the same opacity policy as their controls.
+The native section specimen covers full/reduced/full transparency with authored
+opacity and alpha, checking restored paint and stable native identities.
+
+The combined native style suite passes 206 checks after these corrections and
+the accompanying artwork zoom correction. Reproduce with
+`scripts/Test-WinUiStyles.ps1 -OutputDirectory <fresh directory>` after the
+analyzer-enabled Debug build. Evidence:
+`artifacts/winui-shell/retained-accessibility-green-02/`. This validates native
+control properties and behavior; actual OS contrast switching remains a separate
+qualification case.
