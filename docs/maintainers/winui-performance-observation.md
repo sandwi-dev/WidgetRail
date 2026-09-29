@@ -43,3 +43,19 @@ counters and sampling cadence (`resources-selfcheck-02.json`). They validate the
 observer, not the application's performance. Qualification still needs Release
 workloads, matching native baselines, repeated cold/warm runs and bounded hidden
 resource behavior.
+
+## Trimmed Release, cold hidden startup
+
+`artifacts/winui-performance/hidden-release-09/resources.json` records 30 one-second
+samples after a fresh `--hidden` launch of the trimmed/ReadyToRun Release publish,
+with the real platform input adapter. The installation/profile were isolated;
+no widget was opened. Every sample contained exactly one process. Peak sampled
+private commit was 98.0 MiB. After the first five seconds, average private commit
+was 97.5 MiB (97.6 MiB at the first steady sample, 97.4 MiB at the last), and
+observed CPU usage was 0.0 percent of one core. No profile directory was created.
+The owned frontend then exited normally.
+
+This establishes short cold-hidden resource behavior for this machine/build.
+It is not warmed-hide retention, a 30-minute leak test, presented-frame evidence,
+or comparison against the native renderer. GPU memory remains outside this
+observer's coverage. The executable identity/hash is included in the report.

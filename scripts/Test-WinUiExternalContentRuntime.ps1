@@ -64,6 +64,18 @@ $ownedChildren=@(Get-Process -Id $bridge.ProcessId,$worker.ProcessId)
 $sandboxed=[ExternalRuntimeProbe]::IsAppContainer($worker.ProcessId)
 $identity=[ExternalRuntimeProbe]::Package($appPid)
 $result.runtime=@{pid=$appPid;package=$identity;activeWidget=$state.activeWidget;bridgePath=$bridge.ExecutablePath;workerPath=$worker.ExecutablePath;workerAppContainer=$sandboxed;defaultInstallationRoot=$probe.externalLocation}
+$privateRuntime=Join-Path $probe.externalLocation 'dotnet'
+$runtimeModules=foreach($child in $ownedChildren){
+ $clr=@($child.Modules | Where-Object ModuleName -eq 'coreclr.dll')
+ if($clr.Count -ne 1){throw 'Expected one loaded .NET runtime per owned service'}
+ [pscustomobject]@{process=$child.ProcessName;pid=$child.Id;coreclr=$clr[0].FileName}
+}
+$result.runtime.loadedRuntimes=@($runtimeModules)
+if(Test-Path -LiteralPath $privateRuntime){
+ $runtimePrefix=[IO.Path]::TrimEndingDirectorySeparator($privateRuntime)+[IO.Path]::DirectorySeparatorChar
+ if(@($runtimeModules | Where-Object {-not $_.coreclr.StartsWith($runtimePrefix,[StringComparison]::OrdinalIgnoreCase)}).Count){throw 'A service used a global runtime instead of the bundled runtime'}
+ $result.runtime.privateRuntimeVerified=$true
+}
 $result | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $output 'runtime-observation.json')
 $prefix=[IO.Path]::TrimEndingDirectorySeparator($probe.externalLocation)+[IO.Path]::DirectorySeparatorChar
 if(-not $sandboxed -or $identity -ne $package.PackageFullName -or -not $bridge.ExecutablePath.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase) -or -not $worker.ExecutablePath.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'External ownership/sandbox proof failed'}

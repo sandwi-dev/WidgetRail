@@ -1146,3 +1146,12 @@ and trimmed/ReadyToRun Release publish pass. Details and evidence are in
 Broader performance/accessibility/media recovery and deferred pinned qualification
 remain open. This checkpoint does not finish the migration; nothing is merged
 to main, and no physical checks were requested while the user was away.
+
+The subsequent deployment pass selects bundled .NET only in the Bridge child's
+environment. The real external-content probe confirms both Bridge and the
+AppContainer worker loaded the staged .NET 8.0.31 CLR; 251 managed session checks
+and the analyzer-enabled trimmed publish pass. Windows App Runtime provisioning,
+signed delivery and update/rollback remain open. A 30-second cold-hidden Release
+observation recorded one process, about 97.5 MiB steady private commit and no
+observed steady CPU usage; it does not establish warmed or scrolling performance.
+Details are in `winui-launch-bootstrap.md` and `winui-performance-observation.md`.

@@ -7,6 +7,34 @@ namespace WidgetPresentationSession.Tests;
 public sealed class BridgeProcessOptionsTests
 {
     [TestMethod]
+    public void BundledRuntimeIsSelectedOnlyInTheChildEnvironment()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "wrail-runtime-" + Guid.NewGuid().ToString("N"));
+        var runtime = Path.Combine(root, "dotnet");
+        var inherited = Environment.GetEnvironmentVariable("DOTNET_ROOT_X64");
+        Directory.CreateDirectory(runtime);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(runtime, "dotnet.exe"), []);
+            var start = new BridgeProcessOptions(root, root, root).CreateStartInfo("private-runtime");
+            Assert.AreEqual(runtime, start.Environment["DOTNET_ROOT"]);
+            Assert.AreEqual(runtime, start.Environment["DOTNET_ROOT_X64"]);
+            Assert.AreEqual("0", start.Environment["DOTNET_MULTILEVEL_LOOKUP"]);
+            Assert.AreEqual(inherited, Environment.GetEnvironmentVariable("DOTNET_ROOT_X64"));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
+    public void BrokenBundledRuntimeDoesNotSilentlySelectAGlobalRuntime()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "wrail-runtime-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "dotnet"));
+        try { Assert.ThrowsExactly<FileNotFoundException>(() => new BridgeProcessOptions(root, root, root).CreateStartInfo("broken-runtime")); }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
     public void LaunchUsesSeparateArgumentsAndExplicitProfiles()
     {
         var options = new BridgeProcessOptions(@"C:\candidate root", @"C:\isolated profile", @"C:\isolated catalog");

@@ -145,6 +145,15 @@ passes in `artifacts/winui-deployment-evaluation/runtime-driver-06/result.json`.
 
 ### Production delivery still required
 
+The private .NET service-runtime gap is now corrected and tested. A staged,
+checksum/signature-verified .NET 8.0.31 payload hosted both Bridge and the actual
+sandboxed generic worker; the runtime driver verified their loaded CLR module
+paths, not just environment settings. The frontend remained its own trimmed
+.NET 10 publish. See `private-runtime-check-08/result.json`. The driver now
+requires private runtime modules whenever the stage contains `dotnet/`.
+Windows App Runtime provisioning and signed identity installation remain separate
+open requirements; this test used the existing Windows App Runtime installation.
+
 A future installer can stage a complete versioned per-user payload, verify all
 signatures and package seals, provision required runtimes, and then register the
 signed identity against that exact directory. Package identity, external-location

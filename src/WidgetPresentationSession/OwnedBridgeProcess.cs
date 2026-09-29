@@ -24,6 +24,18 @@ public sealed record BridgeProcessOptions(string InstallationRoot, string Settin
             WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true,
         };
+        var privateRuntime = Path.Combine(root, "dotnet");
+        if (Directory.Exists(privateRuntime))
+        {
+            if (!File.Exists(Path.Combine(privateRuntime, "dotnet.exe")))
+                throw new FileNotFoundException("The bundled .NET runtime is incomplete.", Path.Combine(privateRuntime, "dotnet.exe"));
+            // The self-contained frontend and the framework-dependent services
+            // have separate runtimes. Select only the child's owned runtime;
+            // never change the frontend or the user's global environment.
+            info.Environment["DOTNET_ROOT"] = privateRuntime;
+            info.Environment["DOTNET_ROOT_X64"] = privateRuntime;
+            info.Environment["DOTNET_MULTILEVEL_LOOKUP"] = "0";
+        }
         foreach (var value in new[]
         {
             "--host-pipe", pipeName, "--catalog", Path.Combine(root, "widget-catalog.json"),

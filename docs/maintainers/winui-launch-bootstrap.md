@@ -79,3 +79,22 @@ Malformed-root recovery is also verified with `--hidden`. Evidence:
 `artifacts/winui-shell/{hidden-startup-integrated-02,process-activation-integrated-01,lifecycle-invalid-config-01}`.
 These checks do not replace physical Guide/foreground acceptance. All test
 profiles and payloads are isolated from the installed overlay.
+
+## Private service runtime
+
+When the selected installation contains `dotnet/`, `BridgeProcessOptions` selects
+it through the Bridge child's `DOTNET_ROOT`, `DOTNET_ROOT_X64` and
+`DOTNET_MULTILEVEL_LOOKUP` environment. The self-contained .NET 10 frontend and
+the user's environment are unchanged. An incomplete private runtime directory
+without `dotnet.exe` fails explicitly. Development payloads without `dotnet/`
+retain their installed-runtime behavior.
+
+The Bridge's existing sandbox runtime admission uses the runtime actually
+hosting the Bridge, then grants its AppContainer worker access to that owned
+runtime. It does not grant access to an arbitrary inherited/global runtime.
+251 session tests pass. The trimmed external-content probe verifies the loaded
+`coreclr.dll` module of both the real Bridge and its AppContainer worker under
+`external/dotnet/shared/Microsoft.NETCore.App/8.0.31/`. Source archives/hashes and
+Microsoft signatures were verified by `Get-ReleaseRuntimes.ps1`; nothing was
+installed globally. Evidence:
+`artifacts/winui-deployment-evaluation/private-runtime-check-08/result.json`.
