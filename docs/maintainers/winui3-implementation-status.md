@@ -1155,3 +1155,40 @@ signed delivery and update/rollback remain open. A 30-second cold-hidden Release
 observation recorded one process, about 97.5 MiB steady private commit and no
 observed steady CPU usage; it does not establish warmed or scrolling performance.
 Details are in `winui-launch-bootstrap.md` and `winui-performance-observation.md`.
+
+## Retained presentation, input readiness and runtime payload follow-up
+
+Preview activation now publishes its admitted frame before binding capture, and
+temporary capacity failures retry on compatible publications. Eleven native
+checks cover cold/replacement capture frames, retention, capacity recovery and
+successful suspension/teardown.
+
+Interactive widget publication now includes acknowledged input ownership before
+waiting for unrelated outgoing cleanup. That cleanup remains serialized and
+awaited; hide/foreground/selection changes still revoke admission. The new native
+worker barrier reproduced the old visible-but-inert interval. All 27 switch checks
+and 94 managed shell checks pass, including incoming actions during cleanup,
+focus preservation and supersession/hide/reopen. See the switching document for
+the exact lifecycle boundary and evidence.
+
+The shared appearance follow-up fixes retained high-contrast palette refresh,
+Reduced Transparency on animated selection surfaces, and a reproduced artwork
+zoom race that could retain undersized decodes. All 206 native style checks pass
+on the combined build. The source fixes do not add synchronous layout or polling.
+
+Offline Windows App Runtime staging now computes NuGet content hashes from the
+signed archive and verifies the complete Microsoft package/dependency/license
+matrix. It passes 95 checks and 14 adversarial cases; actual runtime/license
+installation remains unimplemented. The earlier trimmed Release warmed-hide
+observation could not obtain foreground ownership, so it produced no warmed
+performance verdict. Both attempts exited normally and removed their registrations.
+
+The current combined frontend passes analyzer-enabled trimmed/ReadyToRun Release
+publish (`artifacts/winui-release-probe/retained-ux-publish`). Its new isolated
+external-content deployment passes 17 stage checks and actual package activation,
+AppContainer Media Sessions startup, loaded private CLR path and cleanup checks
+(`artifacts/winui-deployment-evaluation/retained-ux-runtime-16/`). No test process
+or temporary probe registration remains. The migration is still in progress:
+signed installer/provisioning/update/rollback, broader performance and media/OS
+accessibility qualification, deferred pins and final physical acceptance remain.
+Main and the installed overlay were not changed.
