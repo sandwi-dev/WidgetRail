@@ -464,8 +464,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         ReconcileMediaHostState();
         UpdateDiagnostics();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
-        var ownership = (capturedSurface, authority.RuntimeGeneration, authority.PresentationGeneration,
-            authority.SessionGeneration, authority.WidgetInstanceId);
+        var ownership = InteractionOwner(capturedSurface, authority);
         var admitted = await interactionAdmission.EnsureAsync(ownership, Current,
             token => capturedOwner.Session.SetLifecycleAsync(target, WidgetLifecycleState.Interactive, token), cancellation.Token);
         if (admitted) capturedSurface.SetAutomaticFocusEnabled(MainFocusEnabled);
@@ -476,6 +475,10 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             ReferenceEquals(owner, capturedOwner) && activeWidget == authority.WidgetId &&
             capturedSurface.IsInteractionCurrent(authority);
     }
+
+    private static object InteractionOwner(WidgetViewPresenter presenter, WidgetPresentationAuthority authority) =>
+        (presenter, authority.RuntimeGeneration, authority.PresentationGeneration,
+            authority.SessionGeneration, authority.WidgetInstanceId);
 
     private async Task InvokeAsync(WidgetActionRequest request)
     {

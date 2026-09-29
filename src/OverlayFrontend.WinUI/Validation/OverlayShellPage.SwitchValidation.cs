@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
@@ -31,6 +33,67 @@ internal sealed partial class OverlayShellPage
                 if (startup is not null) await startup;
                 Check(activeWidget == "audio-mixer" && !switching, "Initial fixture commits");
                 CompositionTarget.Rendering += Observe;
+                // Acknowledgment of unrelated outgoing cleanup must not keep an
+                // already-published incoming widget inert. The worker barrier is
+                // bounded below its transport deadline and always released here.
+                var barrier = Path.Combine(options.InstallationRoot, "audio-mixer.deactivation");
+                var actionPath = Path.Combine(options.InstallationRoot, "games-apps.actions");
+                File.WriteAllText(barrier + ".arm", "interactive-switch");
+                var draining = SelectAsync("games-apps", true);
+                bool admittedWhileDraining;
+                bool actionWhileDraining;
+                bool navigatedWhileDraining;
+                try
+                {
+                    await Until(() => File.Exists(barrier + ".entered"));
+                    var incomingFrame = retainedSurfaces["games-apps"].Frame!;
+                    admittedWhileDraining = activeWidget == "games-apps" && !switching &&
+                        surface!.IsInteractionCurrent(incomingFrame.Authority) && !draining.IsCompleted;
+                    var action = InvokeAsync(new(incomingFrame,
+                        new("fixture.ready", "games-ready", InputScopeId: incomingFrame.Authority.ActiveInputScopeId)));
+                    await Task.WhenAny(action, Task.Delay(650));
+                    actionWhileDraining = action.IsCompletedSuccessfully && File.Exists(actionPath) &&
+                        !File.Exists(barrier + ".completed") && !File.Exists(barrier + ".timed-out");
+                    surface!.MoveFocus(FocusNavigationDirection.Down);
+                    await Task.Delay(30);
+                    navigatedWhileDraining = FocusId() == "Widget.games-more";
+                    observations.Add(new { phase = "outgoing-deactivation", activeWidget, switching, visible,
+                        foreground, interactive, admittedWhileDraining, actionWhileDraining, focus = FocusId() });
+                }
+                finally { File.WriteAllText(barrier + ".release", "interactive-switch"); await draining; }
+                Check(admittedWhileDraining, "Committed incoming widget admits input while outgoing cleanup is pending");
+                Check(actionWhileDraining, "Incoming action reaches its worker before unrelated outgoing cleanup completes");
+                Check(File.Exists(barrier + ".completed") && !File.Exists(barrier + ".timed-out"),
+                    "Outgoing cleanup completes under the existing bounded lifecycle serializer");
+                Check(navigatedWhileDraining && FocusId() == "Widget.games-more",
+                    "Incoming navigation survives outgoing cleanup without restoring earlier focus");
+                await SelectAsync("audio-mixer", true);
+                File.WriteAllText(barrier + ".arm", "superseded-switch");
+                var supersededCleanup = SelectAsync("games-apps", true);
+                Task? supersedingSelection = null;
+                bool revokedOnSupersession;
+                bool revokedOnHide;
+                try
+                {
+                    await Until(() => File.ReadAllText(barrier + ".entered") == "superseded-switch");
+                    // Keep wide-peer cold for the delayed-publication checks below.
+                    supersedingSelection = SelectAsync("settings", false);
+                    revokedOnSupersession = !surface!.IsInteractionCurrent(retainedSurfaces["games-apps"].Frame!.Authority);
+                    SetVisible(false);
+                    revokedOnHide = !surface.IsHitTestVisible;
+                }
+                finally
+                {
+                    File.WriteAllText(barrier + ".release", "superseded-switch");
+                    await supersededCleanup;
+                    if (supersedingSelection is not null) await supersedingSelection;
+                }
+                Check(revokedOnSupersession && revokedOnHide && !visible && !switching,
+                    "Supersession and hide revoke the committed page while old cleanup drains");
+                SetVisible(true);
+                await Until(() => !switching && activeWidget == "settings");
+                Check(surface!.IsHitTestVisible, "Reopen prepares the latest intent after interrupted cleanup");
+                await SelectAsync("audio-mixer", true);
                 var original = surface!;
                 var extent = new SurfaceExtent(WidgetSurface.Width, WidgetSurface.Height);
                 var before = await CornerPixels(original);
@@ -105,6 +168,8 @@ internal sealed partial class OverlayShellPage
                 if (!condition) throw new InvalidOperationException(name);
                 checks.Add(name);
             }
+            string? FocusId() => FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused
+                ? AutomationProperties.GetAutomationId(focused) : null;
             void Write(object result)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(resultPath))!);

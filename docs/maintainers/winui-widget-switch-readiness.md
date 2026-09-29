@@ -84,3 +84,30 @@ the control runner's `-BehaviorOnly` mode and makes no new pixel-parity claim.
 The first run's Select behavior passed but its foreground-required screenshot
 was refused; that capture failure is preserved in `popup-admission-native-01/`.
 Media qualification does not permit behavior-only mode.
+
+## Input readiness and outgoing cleanup
+
+An interactive switch now obtains the incoming worker's Interactive lifecycle
+acknowledgment before the final native layout/render opportunity. Lifecycle
+callbacks can publish declarations, so no awaited acknowledgment remains between
+that final readiness gate and visible publication. Tray-only previews keep their
+Visible lifecycle; they do not gain interaction merely by being prepared.
+
+Publication revokes/collapses the outgoing native tree and enables the incoming
+input/focus ownership in the same dispatcher operation. The outgoing asynchronous
+cleanup remains awaited under the existing lifecycle serializer. The acknowledged
+current owner can dispatch without waiting for that unrelated cleanup; it still
+checks current presentation authority, foreground, cancellation and the admission
+epoch. Hide, tray transfer, foreground change and newer selection revoke admission.
+Cleanup completion cannot restore an earlier focus position on a page the user
+has already navigated. Diagnostics include a separate `input-ready` milestone.
+
+The native switch fixture holds a real outgoing worker's deactivation callback,
+proves an incoming action reaches its worker before release, navigates to the
+second button, and verifies cleanup preserves that focus. A second held cleanup
+tests supersession/hide/reopen. All 27 native checks pass, including retained
+raster pixels, delayed/cached/evicted switches, failure and incarnation replacement;
+all 94 managed shell checks pass. Evidence:
+`artifacts/winui-shell/switch-cleanup-green-02/`. The earlier red run reproduced
+the visible-but-inert interval. These checks do not establish frame-pacing or
+physical controller acceptance.

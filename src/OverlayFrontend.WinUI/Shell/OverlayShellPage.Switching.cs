@@ -27,6 +27,7 @@ internal sealed partial class OverlayShellPage
         switchCancellation = cancellation;
         var token = cancellation.Token;
         var started = Stopwatch.GetTimestamp();
+        var inputPublished = false;
         requestedWidget = id;
         var version = ++selectionVersion;
         preparationFailure = null;
@@ -66,6 +67,17 @@ internal sealed partial class OverlayShellPage
                     incoming.Presenter.Opacity = ReferenceEquals(surface, incoming.Presenter) ? 1 : 0;
                     incoming.Presenter.Visibility = Visibility.Visible;
                     await incoming.Presenter.SetPresentationActiveAsync(true);
+                    // Admission must already be acknowledged before exposing an
+                    // interactive page. Outgoing cleanup remains serialized and
+                    // awaited, but is not part of the incoming input lifetime.
+                    await interactionAdmission.EstablishSerializedAsync(
+                        InteractionOwner(incoming.Presenter, incoming.Frame!.Authority),
+                        () => version == selectionVersion && !retired && visible && foreground && interactive &&
+                            !PinnedInteractionRequested && !RadialOpen,
+                        cancellationToken => owner.Session.SetLifecycleAsync(owner.Session.GetTarget(id),
+                            WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive, cancellationToken), token);
+                    // Lifecycle callbacks can publish a newer declaration. Its
+                    // final native layout must still precede visible publication.
                     await WidgetPresentationReadiness.WaitAsync(incoming.Presenter, token);
                     token.ThrowIfCancellationRequested();
                     Mark("layout-ready");
@@ -76,11 +88,23 @@ internal sealed partial class OverlayShellPage
                     ShowPresentationStatus(incoming.Descriptor.Name);
                     Tray.SelectedItem = Tray.Items.Cast<BridgeWidgetDescriptor>().FirstOrDefault(widget => widget.Id == id);
                     preferences = preferences with { LastWidget = id, ReopenWidget = true };
+                    Task outgoingSuspension = Task.CompletedTask;
                     if (previous is not null && !ReferenceEquals(previous, incoming))
                     {
                         previous.Previews?.SetVisible(false);
                         previous.Presenter.Visibility = Visibility.Collapsed;
-                        await previous.Presenter.SetPresentationActiveAsync(false);
+                        // Revoke the old tree while native focus fallback still
+                        // observes a switch; only the asynchronous drain remains.
+                        outgoingSuspension = previous.Presenter.SetPresentationActiveAsync(false);
+                    }
+                    preparingSurface = null;
+                    switching = false;
+                    inputPublished = true;
+                    PublishInputOwnership();
+                    Mark("input-ready");
+                    if (previous is not null && !ReferenceEquals(previous, incoming))
+                    {
+                        await outgoingSuspension;
                         if (previousId == id) await DisposeRetainedSurfaceAsync(previous);
                         else await TryBackgroundAsync(previousId!);
                     }
@@ -122,16 +146,23 @@ internal sealed partial class OverlayShellPage
             if (version == selectionVersion)
             {
                 switching = false;
-                surface?.SetPresentationInputEnabled(visible && activeWidget == requestedWidget);
-                surface?.SetAutomaticFocusEnabled(MainFocusEnabled && activeWidget == requestedWidget);
-                if (MainFocusEnabled && activeWidget == requestedWidget) surface?.Enter(restoreNativeFocus: true);
-                else if (visible && !enterWidget && activeWidget == requestedWidget) FocusTray();
+                // Cleanup completion cannot re-enter or reset a page the user
+                // has already started navigating (or deliberately left).
+                if (!inputPublished) PublishInputOwnership();
                 ReconcilePreviewVisibility();
                 ReconcileMediaHostState();
                 if (!retired && activeWidget == requestedWidget && owner?.Session.GetState(id) is { } latest) ApplyState(latest);
                 UpdateDiagnostics();
                 if (!retired) _ = ReconcileLifecycleAsync(restore: false);
             }
+        }
+        void PublishInputOwnership()
+        {
+            surface?.SetPresentationInputEnabled(visible && activeWidget == requestedWidget);
+            surface?.SetAutomaticFocusEnabled(MainFocusEnabled && activeWidget == requestedWidget);
+            if (MainFocusEnabled && activeWidget == requestedWidget) surface?.Enter(restoreNativeFocus: true);
+            else if (visible && !enterWidget && activeWidget == requestedWidget) FocusTray();
+            ReconcileMediaHostState();
         }
         void Mark(string phase) => switchDiagnostics?.Write(new System.Text.Json.Nodes.JsonObject
         {

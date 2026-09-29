@@ -45,6 +45,7 @@ internal static class Program
                         blockSnapshotRelease,
                         blockSnapshotComplete,
                         actionSignal,
+                        OptionalValue(args, "--deactivation-barrier"),
                         int.Parse(OptionalValue(args, "--initial-delay-ms") ?? "-1", CultureInfo.InvariantCulture),
                         OptionalValue(args, "--view-kind") ?? "normal"),
                     instanceId,
@@ -92,6 +93,7 @@ internal static class Program
         string? blockSnapshotRelease,
         string? blockSnapshotComplete,
         string? actionSignal,
+        string? deactivationBarrier,
         int initialDelayMilliseconds,
         string viewKind) : Widget
     {
@@ -101,6 +103,26 @@ internal static class Program
         private volatile bool _blockNextSnapshot;
         private long _blockedEpoch;
         private double _sliderValue = 50;
+
+        protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
+        {
+            if (deactivationBarrier is null || !File.Exists(deactivationBarrier + ".arm")) return;
+            var epoch = File.ReadAllText(deactivationBarrier + ".arm");
+            File.Delete(deactivationBarrier + ".arm");
+            File.WriteAllText(deactivationBarrier + ".entered", epoch);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(transitionToken);
+            deadline.CancelAfter(TimeSpan.FromMilliseconds(1800));
+            try
+            {
+                while (!File.Exists(deactivationBarrier + ".release") || File.ReadAllText(deactivationBarrier + ".release") != epoch)
+                    await Task.Delay(10, deadline.Token).ConfigureAwait(false);
+                File.WriteAllText(deactivationBarrier + ".completed", epoch);
+            }
+            catch (OperationCanceledException) when (!transitionToken.IsCancellationRequested)
+            {
+                File.WriteAllText(deactivationBarrier + ".timed-out", epoch);
+            }
+        }
 
         public override WidgetView Render()
         {
@@ -195,6 +217,7 @@ internal static class Program
             }
             if (action.ActionId == "fixture.ready")
             {
+                if (actionSignal is not null) File.AppendAllText(actionSignal, "ready\n");
                 if (TryConsumeBlockEpoch(out var epoch))
                 {
                     Interlocked.Exchange(ref _blockedEpoch, epoch);

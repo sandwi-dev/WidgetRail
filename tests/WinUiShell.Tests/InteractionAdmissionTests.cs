@@ -89,6 +89,93 @@ public sealed class InteractionAdmissionTests
     }
 
     [TestMethod]
+    public async Task AcknowledgedCurrentOwnerDoesNotWaitForUnrelatedLifecycleCleanup()
+    {
+        using var transitions = new SemaphoreSlim(1, 1);
+        var admission = new InteractionAdmission(transitions);
+        var owner = new object();
+        int calls = 0;
+        Task Establish(CancellationToken _) { calls++; return Task.CompletedTask; }
+        Assert.IsTrue(await admission.EnsureAsync(owner, () => true, Establish, default));
+        await transitions.WaitAsync();
+        var action = admission.EnsureAsync(owner, () => true, Establish, default);
+        var admittedBeforeCleanup = action.IsCompletedSuccessfully;
+        transitions.Release();
+        Assert.IsTrue(await action);
+        Assert.IsTrue(admittedBeforeCleanup);
+        Assert.AreEqual(1, calls);
+    }
+
+    [TestMethod]
+    public async Task CachedAcknowledgmentDoesNotBypassCurrentOwnerOrCancellation()
+    {
+        using var transitions = new SemaphoreSlim(1, 1);
+        var admission = new InteractionAdmission(transitions);
+        var owner = new object();
+        Assert.IsTrue(await admission.EnsureAsync(owner, () => true, _ => Task.CompletedTask, default));
+        Assert.IsFalse(await admission.EnsureAsync(owner, () => false, _ => Task.CompletedTask, default));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await admission.EnsureAsync(owner, () => true, _ => Task.CompletedTask, cancellation.Token));
+    }
+
+    [TestMethod]
+    public async Task SerializedPreparationPublishesAcknowledgmentWithoutReenteringSemaphore()
+    {
+        using var transitions = new SemaphoreSlim(0, 1);
+        var admission = new InteractionAdmission(transitions);
+        var owner = new object();
+        var acknowledgment = new TaskCompletionSource();
+        var preparation = admission.EstablishSerializedAsync(owner, () => true, _ => acknowledgment.Task, default);
+        Assert.IsFalse(preparation.IsCompleted);
+        acknowledgment.SetResult();
+        Assert.IsTrue(await preparation);
+        int duplicatePromotions = 0;
+        var action = admission.EnsureAsync(owner, () => true,
+            _ => { duplicatePromotions++; return Task.CompletedTask; }, default);
+        var readyWhileCleanupOwnsSemaphore = action.IsCompletedSuccessfully;
+        transitions.Release();
+        Assert.IsTrue(await action);
+        Assert.IsTrue(readyWhileCleanupOwnsSemaphore);
+        Assert.AreEqual(0, duplicatePromotions);
+    }
+
+    [TestMethod]
+    public async Task SupersededPreparationCannotPublishAcknowledgmentAfterAwayAndBack()
+    {
+        using var transitions = new SemaphoreSlim(0, 1);
+        var admission = new InteractionAdmission(transitions);
+        var owner = new object();
+        var acknowledgment = new TaskCompletionSource();
+        var preparation = admission.EstablishSerializedAsync(owner, () => true, _ => acknowledgment.Task, default);
+        admission.Invalidate();
+        acknowledgment.SetResult();
+        Assert.IsFalse(await preparation);
+        int promotions = 0;
+        var action = admission.EnsureAsync(owner, () => true, _ => { promotions++; return Task.CompletedTask; }, default);
+        Assert.IsFalse(action.IsCompleted);
+        transitions.Release();
+        Assert.IsTrue(await action);
+        Assert.AreEqual(1, promotions);
+    }
+
+    [TestMethod]
+    public async Task HideAfterPreparedAcknowledgmentRevokesFastPathBeforeCleanupFinishes()
+    {
+        using var transitions = new SemaphoreSlim(0, 1);
+        var admission = new InteractionAdmission(transitions);
+        var owner = new object();
+        Assert.IsTrue(await admission.EstablishSerializedAsync(owner, () => true, _ => Task.CompletedTask, default));
+        admission.Invalidate();
+        Assert.IsFalse(await admission.EnsureAsync(owner, () => false, _ => Task.CompletedTask, default));
+        var returning = admission.EnsureAsync(owner, () => true, _ => Task.CompletedTask, default);
+        Assert.IsFalse(returning.IsCompleted);
+        transitions.Release();
+        Assert.IsTrue(await returning);
+    }
+
+    [TestMethod]
     public async Task CanceledWaitNeverPromotesAndLeavesSerializerUsable()
     {
         using var transitions = new SemaphoreSlim(0, 1);

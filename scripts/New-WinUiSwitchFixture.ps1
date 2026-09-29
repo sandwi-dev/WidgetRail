@@ -37,7 +37,9 @@ $widgets = foreach ($definition in $definitions) {
         id=$definition[0]; packageId=('widgetrail.tests.'+$definition[0]); publisherId='widgetrail.tests'
         name=$definition[1]; instanceId=($definition[0]+'.default'); icon='settings'
         workerExecutable='runtime/Fixture/WidgetSwitchFixture.exe'; styleFile='runtime/Fixture/default.wrss'
-        workerArguments=@('--initial-delay-ms',[string]$definition[3],'--view-kind',$definition[2])
+        workerArguments=@('--initial-delay-ms',[string]$definition[3],'--view-kind',$definition[2],
+            '--action-signal',(Join-Path $installation ($definition[0]+'.actions')),
+            '--deactivation-barrier',(Join-Path $installation ($definition[0]+'.deactivation')))
         residencyPolicy=@{schemaVersion=1;mode='keep-alive'}; declaredCapabilities=@(); quickActions=@()
     }
 }
