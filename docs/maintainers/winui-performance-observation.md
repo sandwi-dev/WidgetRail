@@ -59,3 +59,28 @@ This establishes short cold-hidden resource behavior for this machine/build.
 It is not warmed-hide retention, a 30-minute leak test, presented-frame evidence,
 or comparison against the native renderer. GPU memory remains outside this
 observer's coverage. The executable identity/hash is included in the report.
+
+## Repeatable warmed-hide observation driver
+
+`scripts/Measure-WinUiWarmedHide.ps1` drives an already registered candidate by
+its AUMID, verifies the exact newly launched executable, and uses a fresh profile.
+It samples cold-hidden startup, native tray selection of specified real widgets,
+visible dwell, Escape from the tray to hide, and repeated reopen cycles. It
+records adjacent managed/native payload hashes as well as the apphost hash,
+shell state, resource samples and normal-shutdown/descendant checks. Supply an
+explicit build label; checkout HEAD alone does not identify an older staged build.
+
+The driver refuses to adopt an existing frontend and requires foreground
+ownership before interpreting the visible replay. It does not install or register
+packages, invoke widget content actions, or infer a memory ceiling/leak verdict.
+Visibility/foreground observations are at phase boundaries, not continuous traces.
+
+The first two integrated attempts used the earlier trimmed Release `1828ad0d`
+external-content payload and Settings/Media Sessions. Cold-hidden sampling and
+normal shutdown completed; neither reached warmed sampling because the shell
+remained foreground=false after showing Settings. The second attempt preserves
+that exact state in `artifacts/winui-performance/warmed-private-02/observation/`
+`unsettled-shell.json`. Both test registrations were removed. These attempts
+validate that an inadmissible replay fails and cleans up; they provide no warmed
+retention or scrolling-performance conclusion. Successful full-cycle validation
+of the driver remains open.
