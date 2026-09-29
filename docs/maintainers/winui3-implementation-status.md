@@ -1131,11 +1131,18 @@ The latest real Playnite replay could not obtain Windows foreground ownership;
 it is not a passing replay or evidence of smoother physical scrolling. Detailed
 paths and limits are recorded in the feature-specific maintainer documents.
 
-Offline external-content package construction passes 17 checks. Actual sparse
-identity registration/activation, sandboxed-worker admission, runtime provisioning
-and transactional update/rollback remain open. The review also identified two
-unfinished shared-control corrections: accessible current values for Select and
-TextEntry, and Unicode text-element boundaries for controller keyboard edits.
+Offline external-content package construction passes 17 checks. Subsequent
+development registration/activation now proves a real external frontend, matching
+package identity, default payload resolution and an AppContainer bundled worker.
+Both probe registrations and all owned processes were cleaned up. Signed delivery,
+clean-machine runtime provisioning and transactional update/rollback remain open.
+The shared-control review corrections are now implemented: Select/TextEntry expose
+native accessible current values, and controller editing respects Unicode text
+elements. The updated validation passes 89 managed checks, 24 native Select and
+38 native TextEntry checks, plus an external UIA value read. The analyzer build
+and trimmed/ReadyToRun Release publish pass. Details and evidence are in
+`winui-external-content-deployment.md`, `winui-select-control.md` and
+`winui-text-entry.md`.
 Broader performance/accessibility/media recovery and deferred pinned qualification
 remain open. This checkpoint does not finish the migration; nothing is merged
 to main, and no physical checks were requested while the user was away.

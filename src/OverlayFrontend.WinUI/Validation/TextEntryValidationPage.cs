@@ -51,6 +51,13 @@ internal sealed class TextEntryValidationPage : Page, IAsyncDisposable
         {
             Apply(); await Task.Delay(150);
             var revokedOpener = (Button)Find(presenter, "Widget.entry")!;
+            var peer = FrameworkElementAutomationPeer.CreatePeerForElement(revokedOpener);
+            var valueProvider = (Microsoft.UI.Xaml.Automation.Provider.IValueProvider)peer.GetPattern(PatternInterface.Value);
+            Check(valueProvider.Value == "ab" && valueProvider.IsReadOnly && peer.GetName() == "Text entry",
+                "ordinary TextEntry exposes current value separately from its label");
+            var rejectedSet = false;
+            try { valueProvider.SetValue("z"); } catch (InvalidOperationException) { rejectedSet = true; }
+            Check(rejectedSet && actions.Count == 0 && valueProvider.Value == "ab", "automation cannot bypass the explicit edit and commit session");
             revokedOpener.Focus(FocusState.Keyboard);
             var beforeRevocation = FocusedId;
             presenter.SetPresentationInputEnabled(false);
@@ -100,10 +107,29 @@ internal sealed class TextEntryValidationPage : Page, IAsyncDisposable
             await Open(); action = "replacement"; Apply(); await Closed();
             Check(actions.Count == 1, "changed action revokes editing authority");
             await Open(); value = "new"; Apply(); await Closed(); Check(actions.Count == 1, "changed authored value cancels pending edits");
+            Check(valueProvider.Value == "new", "existing automation peer reflects an authored value update");
             await Open(); disabled = true; Apply(); await Closed(); Check(actions.Count == 1, "disabled opener cancels edits");
             disabled = false; Apply(); await Open(); otherScope = true; Apply(); await Closed(); Check(actions.Count == 1, "scope switch cancels edits");
             otherScope = false; Apply(); await Open(); ++owner; Apply(); await Closed(); Check(actions.Count == 1, "runtime replacement cancels edits");
+            value = "a😀b"; Apply(); await Open();
+            await presenter.HandleControllerButtonAsync(ControllerButton.LeftBumper);
+            await presenter.HandleControllerButtonAsync(ControllerButton.LeftBumper);
+            await presenter.HandleControllerButtonAsync(ControllerButton.RightBumper);
+            await presenter.HandleControllerButtonAsync(ControllerButton.X);
+            Check(((TextBox)Editor()).Text == "ab", "native ordinary editor moves across and deletes a complete supplementary character");
+            ((TextBox)Editor()).Select(0, 1);
+            await presenter.HandleControllerButtonAsync(ControllerButton.A);
+            Check(((TextBox)Editor()).Text == "qb", "controller insertion replaces the native selected range");
+            await presenter.HandleControllerButtonAsync(ControllerButton.B); await Closed();
+            value = "ae\u0301b"; Apply(); await Open();
+            await presenter.HandleControllerButtonAsync(ControllerButton.LeftBumper);
+            await presenter.HandleControllerButtonAsync(ControllerButton.X);
+            Check(((TextBox)Editor()).Text == "ab", "native ordinary editor deletes the combining sequence as one text element");
+            await presenter.HandleControllerButtonAsync(ControllerButton.B); await Closed();
             sensitive = true; value = ""; Apply(); await Open();
+            var sensitivePeer = FrameworkElementAutomationPeer.CreatePeerForElement((FrameworkElement)Find(presenter, "Widget.entry")!);
+            Check(sensitivePeer.IsPassword() && sensitivePeer.GetPattern(PatternInterface.Value) is null,
+                "sensitive opener exposes no value provider and reports protected semantics");
             var password = (PasswordBox)Editor();
             Check(new PasswordBoxAutomationPeer(password).IsPassword(), "sensitive editor has protected UI Automation semantics");
             Check(password.PasswordRevealMode == PasswordRevealMode.Hidden && password.Password.Length == 0, "sensitive editor starts empty and cannot reveal");
@@ -116,6 +142,17 @@ internal sealed class TextEntryValidationPage : Page, IAsyncDisposable
             await Open(); password = (PasswordBox)Editor(); await presenter.HandleControllerButtonAsync(ControllerButton.A);
             presenter.DismissTransientControl(); await Closed();
             Check(password.Password.Length == 0 && actions.Count == 0, "hide/cancel clears secret without commit");
+            await Open(); password = (PasswordBox)Editor(); password.Password = "😀b";
+            await presenter.HandleControllerButtonAsync(ControllerButton.LeftBumper);
+            await presenter.HandleControllerButtonAsync(ControllerButton.LeftBumper);
+            await presenter.HandleControllerButtonAsync(ControllerButton.A);
+            Check(password.Password == "q😀b", "sensitive controller insertion preserves supplementary characters and the length bound");
+            await presenter.HandleControllerButtonAsync(ControllerButton.X);
+            await presenter.HandleControllerButtonAsync(ControllerButton.RightBumper);
+            await presenter.HandleControllerButtonAsync(ControllerButton.X);
+            Check(password.Password == "b", "sensitive caret reversal and deletion preserve whole text elements");
+            presenter.DismissTransientControl(); await Closed();
+            Check(password.Password.Length == 0 && actions.Count == 0, "Unicode sensitive edits are cleared without dispatch on cancel");
             throwOnCommit = true; await Open(); await presenter.HandleControllerButtonAsync(ControllerButton.A);
             await presenter.HandleControllerButtonAsync(ControllerButton.RightTrigger); await Closed();
             Check(failure == "Text entry commit failed.", "exception diagnostics cannot echo committed secret");

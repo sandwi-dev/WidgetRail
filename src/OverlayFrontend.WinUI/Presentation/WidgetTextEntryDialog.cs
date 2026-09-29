@@ -200,39 +200,35 @@ internal sealed class WidgetTextEntryDialog : ContentDialog
     }
     private void MoveCaret(int delta)
     {
-        if (text is not null) text.Select(Math.Clamp(text.SelectionStart + delta, 0, text.Text.Length), 0);
-        else if (password is not null) secretCaret = Math.Clamp(secretCaret + delta, 0, password.Password.Length);
+        if (text is not null) text.Select(TextEntryEditing.Move(text.Text, text.SelectionStart, text.SelectionLength, delta), 0);
+        else if (password is not null) secretCaret = TextEntryEditing.Move(password.Password, secretCaret, 0, delta);
     }
     private void Insert(string value)
     {
         if (text is not null)
         {
-            var start = text.SelectionStart;
-            if (text.Text.Length - text.SelectionLength + value.Length > maximumLength) return;
-            text.Text = text.Text.Remove(start, text.SelectionLength).Insert(start, value);
-            text.Select(start + value.Length, 0);
+            if (TextEntryEditing.Insert(text.Text, text.SelectionStart, text.SelectionLength, value, maximumLength) is not { } edit) return;
+            text.Text = edit.Value;
+            text.Select(edit.Caret, 0);
         }
-        else if (password is not null && password.Password.Length + value.Length <= maximumLength)
+        else if (password is not null)
         {
-            var caret = secretCaret;
-            password.Password = password.Password.Insert(caret, value);
-            secretCaret = caret + value.Length;
+            if (TextEntryEditing.Insert(password.Password, secretCaret, 0, value, maximumLength) is not { } edit) return;
+            password.Password = edit.Value;
+            secretCaret = edit.Caret;
         }
     }
     private void Backspace()
     {
         if (text is not null)
         {
-            var start = text.SelectionStart;
-            var count = text.SelectionLength;
-            if (count == 0 && start > 0) { --start; count = 1; }
-            if (count == 0) return;
-            text.Text = text.Text.Remove(start, count); text.Select(start, 0);
+            var edit = TextEntryEditing.Backspace(text.Text, text.SelectionStart, text.SelectionLength);
+            text.Text = edit.Value; text.Select(edit.Caret, 0);
         }
         else if (password is not null && secretCaret > 0)
         {
-            var caret = secretCaret - 1;
-            password.Password = password.Password.Remove(caret, 1); secretCaret = caret;
+            var edit = TextEntryEditing.Backspace(password.Password, secretCaret, 0);
+            password.Password = edit.Value; secretCaret = edit.Caret;
         }
     }
 }

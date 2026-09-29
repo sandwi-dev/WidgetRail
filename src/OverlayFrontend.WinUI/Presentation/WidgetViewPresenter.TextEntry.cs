@@ -18,7 +18,7 @@ internal sealed partial class WidgetViewPresenter
 
     private Button CreateTextEntry(WidgetElementIdentity identity, object token)
     {
-        var button = new Button { HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        var button = new WidgetValueButton { HorizontalContentAlignment = HorizontalAlignment.Stretch };
         button.Click += (_, _) => OpenTextEntry(identity, token);
         return button;
     }

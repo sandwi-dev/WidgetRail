@@ -72,3 +72,20 @@ passes release suppression, ordinary shortcut entry and indexed ancestor dispatc
 retaining the focused row. Evidence: artifacts/winui-surfaces/input-route-result.json.
 
 Production shell wiring, full popup icons and context menus remain separate work.
+
+## Accessible current selection
+
+The native opener button now exposes a read-only Value pattern with the selected
+label and an ExpandCollapse pattern tied to the actual popup lifetime. The
+button's accessible name remains its field label. Expand follows the same
+declaration/input gate as pointer or controller opening; Collapse cannot dismiss
+another control's popup. Revocation, native close, failure and selection commit
+publish the collapsed state, without a late old-popup callback overwriting a
+new popup's state. Value/expanded changes raise standard automation property
+events. Selection continues through the existing per-option commands; this does
+not introduce local selected-value state or a second action pipeline.
+
+All 24 native Select checks pass, including value/label separation and expanded
+state during opening and input revocation. Evidence:
+`artifacts/winui-shell/control-values-native-01/`. The normal native Button
+template and the existing resolved styles remain in use.

@@ -61,3 +61,28 @@ inspected at 125% Windows scaling with native focus on its first letter, equal
 key columns and rendered Xbox prompts. Add `--text-entry-preview` to the validation
 arguments for a persistent ordinary field for pointer/keyboard/screenshot checks.
 This preview does not acquire the physical controller adapter.
+
+## Unicode editing and accessible values
+
+Controller caret movement, insertion, selection replacement and backspace use
+`.NET StringInfo` text-element boundaries. Emoji, combining sequences, joined
+emoji and regional-indicator flags are not split into UTF-16 fragments. Native
+selection endpoints inside a text element expand to safe boundaries for deletion
+or replacement. The SDK limit remains UTF-16 length; insertion rejects overflow
+without truncating input. Ordinary and protected editors share this policy.
+
+The opener remains a native command button. Its native automation peer exposes
+the current ordinary value through a read-only Value pattern, independently of
+the accessible label. Editing still requires invoking the button and committing
+the native dialog; UIA SetValue cannot bypass that session. Authored value updates
+raise the standard value-property event. A sensitive opener reports protected
+semantics, stores no accessible value and exposes no Value pattern. Even a
+previously acquired value provider returns no value after protection is enabled.
+
+The combined checks pass 89 managed tests and 38 native text-entry assertions.
+Native coverage includes ordinary/protected Unicode edits, cancellation/secret
+clearing, current-value peers and input-revoked popup admission. An external
+WinApp UIA `get-value` reads the ordinary preview's value successfully. Evidence:
+`artifacts/winui-shell/{unicode-managed.log,control-values-native-01,control-values-uia-02}`.
+These are behavior/automation checks, not new screenshot or physical-controller
+acceptance.

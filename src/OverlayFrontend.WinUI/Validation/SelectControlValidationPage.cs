@@ -44,9 +44,15 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
             Apply();
             await Task.Delay(150);
             var revokedOpener = (Button)Find(presenter, "Widget.picker")!;
+            var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(revokedOpener);
+            var valueProvider = (Microsoft.UI.Xaml.Automation.Provider.IValueProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Value);
+            var expandProvider = (Microsoft.UI.Xaml.Automation.Provider.IExpandCollapseProvider)peer.GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.ExpandCollapse);
+            Check(valueProvider.Value == "First" && valueProvider.IsReadOnly && peer.GetName() == "Choice",
+                "Select exposes its current value separately from its accessible label");
             revokedOpener.Focus(FocusState.Keyboard);
             var beforeRevocation = FocusedId;
             presenter.SetPresentationInputEnabled(false);
+            expandProvider.Expand();
             ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(revokedOpener)
                 .GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke)).Invoke();
             await Task.Delay(150);
@@ -54,9 +60,11 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
                 "native invocation cannot open Select after outgoing presentation input is revoked");
             presenter.SetPresentationInputEnabled(true);
             await OpenAsync();
+            Check(expandProvider.ExpandCollapseState == ExpandCollapseState.Expanded, "Select automation reports its open popup");
             presenter.SetPresentationInputEnabled(false);
             await Task.Delay(150);
             Check(!presenter.HasTransientControl && actions.Count == 0, "input revocation dismisses an existing Select without action");
+            Check(expandProvider.ExpandCollapseState == ExpandCollapseState.Collapsed, "Select automation collapses when input ownership is revoked");
             presenter.SetPresentationInputEnabled(true);
             await OpenAsync();
             Check(FocusedId == "Widget.picker.Option.first", "selected option receives initial focus");

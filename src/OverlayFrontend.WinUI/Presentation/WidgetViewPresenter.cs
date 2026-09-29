@@ -444,6 +444,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (element is Media.WidgetMediaViewport viewport) UpdateMediaViewport(viewport, node, binding.Identity.Scope);
         if (element is Previews.WidgetWindowPreview preview) preview.Configure(presentationOnly || !presentationActive ? null : WindowPreviews, frame!, node);
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
+        if (element is WidgetValueButton valueButton)
+            valueButton.SetAccessibleValue(node.AccessibilityValue ?? (node.Kind == ViewNodeKind.Select
+                ? node.SelectOptions.FirstOrDefault(option => option.IsSelected)?.Label : node.TextEntryValue),
+                node.Kind == ViewNodeKind.TextEntry && node.TextEntryInputKind == TextEntryInputKind.Sensitive);
         if (element is FontIcon icon) WidgetGlyphs.Apply(icon, node, playStationPrompts);
         if (element is WidgetPackageIconView packageIcon) UpdateNativeIcon(packageIcon, node);
         if (element is TextBlock text) WidgetTextStyleAdapter.SetSource(text, node.Kind == ViewNodeKind.TextEntry ? TextEntryLabel(node) : node.Text ?? string.Empty);

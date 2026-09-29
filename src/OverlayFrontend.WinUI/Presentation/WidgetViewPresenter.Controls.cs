@@ -26,6 +26,7 @@ internal sealed partial class WidgetViewPresenter
         if (DismissTextEntry() || DismissContextMenu()) return true;
         if (selectPopup is not { } popup) return false;
         selectPopup = null;
+        ((WidgetValueButton)popup.Owner.Element).SetExpanded(false);
         NotifyControllerGuideChanged(); // revoke immediately; an exiting popup has no action authority
         popup.Flyout.Hide();
         foreach (var icon in popup.Icons) icon.Dispose();
@@ -34,7 +35,9 @@ internal sealed partial class WidgetViewPresenter
 
     private Button CreateSelect(WidgetElementIdentity identity, object token)
     {
-        var button = new Button { HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        var button = new WidgetValueButton { HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        button.ExpandRequested = () => OpenSelect(identity, token);
+        button.CollapseRequested = () => { if (selectPopup?.Owner.Element == button) DismissTransientControl(); };
         button.Click += (_, _) => OpenSelect(identity, token);
         button.Unloaded += (_, _) =>
         {
@@ -64,6 +67,7 @@ internal sealed partial class WidgetViewPresenter
         var icons = options.Select((option, index) => CreateSelectIcon(items[index], option)).OfType<WidgetNativePackageIcon>().ToArray();
         var popup = new SelectPopup(binding, presentation!, options, flyout, items, icons);
         selectPopup = popup;
+        ((WidgetValueButton)binding.Element).SetExpanded(true);
         NotifyControllerGuideChanged();
         for (var index = 0; index < items.Length; ++index)
         {
@@ -82,14 +86,16 @@ internal sealed partial class WidgetViewPresenter
         };
         flyout.Closed += (_, _) =>
         {
-            if (ReferenceEquals(selectPopup, popup)) selectPopup = null;
+            if (ReferenceEquals(selectPopup, popup))
+            { selectPopup = null; ((WidgetValueButton)popup.Owner.Element).SetExpanded(false); }
             NotifyControllerGuideChanged();
             foreach (var icon in popup.Icons) icon.Dispose();
         };
         try { flyout.ShowAt(binding.Element); }
         catch (Exception error)
         {
-            if (ReferenceEquals(selectPopup, popup)) selectPopup = null;
+            if (ReferenceEquals(selectPopup, popup))
+            { selectPopup = null; ((WidgetValueButton)popup.Owner.Element).SetExpanded(false); }
             NotifyControllerGuideChanged();
             foreach (var icon in popup.Icons) icon.Dispose();
             ReportFailure(error);
