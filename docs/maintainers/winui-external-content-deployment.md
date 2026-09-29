@@ -99,6 +99,52 @@ That native probe must verify:
 
 ## Installer direction
 
+### Subsequent native development proof
+
+WinApp 0.7 `create-debug-identity --keep-identity` successfully registered the
+isolated external-content probe in Developer Mode, without certificate creation
+or trust-store changes. Run it from the stage directory so its `.winapp/debug`
+metadata stays with the probe. Direct PowerShell `Add-AppxPackage -Register
+-ExternalLocation` returned immediate `E_INVALIDARG` on this machine, including
+with a trailing directory separator; the precise cmdlet/API difference is not
+established. The supported CLI path succeeded.
+
+The newer trimmed frontend launched through Windows' registered application
+activation API. `GetPackageFullName` verified its actual process identity and its
+loaded frontend assembly hash matched the staged publish. With no installation
+root override, Settings and the bundled Media Sessions widget both reached their
+committed native presentation. The Bridge and worker executable paths were under
+the external payload. The bundled generic worker's actual `TokenIsAppContainer`
+was true; read/execute AppContainer ACL entries were present on its runtime and
+package directories. The static, trusted Settings worker is intentionally
+job-isolated and was not used as proof of the community-widget sandbox.
+
+Evidence: `artifacts/winui-deployment-evaluation/native-current-05/`, particularly
+`runtime-result.json`, `identity-and-grants.json`, `register-cli.log` and
+`cleanup.json`. The first native probe used an older supplied publish that
+predated config-free bootstrap; its installation-recovery screen is retained in
+`native-cli-04` and is not a failure of the newer bootstrap. All owned frontend/
+worker processes exited normally and both temporary package registrations were
+removed. No installed native overlay or startup entry was replaced.
+
+This proves development identity, native XAML startup, default payload resolution
+and an actual sandboxed bundled worker under external content. It does not yet
+qualify a signed installer, clean-machine runtime provisioning, embedded media,
+all asset/font pixels, update/rollback or physical controller behavior. The probe
+used an installed Windows App Runtime and .NET 8 worker runtime.
+
+The durable regression driver is `scripts/Test-WinUiExternalContentRuntime.ps1`.
+Supply a stage receipt and a fresh output directory; the default sandboxed widget
+is `media-sessions`. It refuses existing registrations, uses the supported WinApp
+development-registration path, creates an isolated profile, activates through
+Windows, verifies process identity/assembly/worker token, then checks process exit
+and removes only its own development registration. It requires an already staged
+frontend with config-free bootstrap and the selected bundled sandboxed widget.
+It neither provisions runtimes nor changes certificate trust. The complete driver
+passes in `artifacts/winui-deployment-evaluation/runtime-driver-06/result.json`.
+
+### Production delivery still required
+
 A future installer can stage a complete versioned per-user payload, verify all
 signatures and package seals, provision required runtimes, and then register the
 signed identity against that exact directory. Package identity, external-location
