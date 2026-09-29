@@ -91,6 +91,9 @@ foreach ($relative in $catalogPaths) {
     if ([IO.Path]::IsPathRooted($relative)) { throw 'Catalog payload references must be relative for relocatable external staging.' }
     $candidate = FullPath (Join-Path $installation $relative)
     if (-not (Within $candidate $installation) -or -not (Test-Path -LiteralPath $candidate)) { throw 'Catalog payload reference is missing or escapes its installation.' }
+    if (-not (Within $candidate (Join-Path $installation 'runtime')) -and -not (Within $candidate (Join-Path $installation 'dotnet'))) {
+        throw 'This staging layout requires catalog payload references under runtime or dotnet; no referenced asset may be silently omitted.'
+    }
 }
 $dependencies = @($buildManifest.SelectNodes('/p:Package/p:Dependencies/p:PackageDependency', $ns))
 if (-not ($dependencies | Where-Object { $_.Name -like 'Microsoft.WindowsAppRuntime.*' })) { throw 'Generated manifest is missing its Windows App Runtime dependency.' }

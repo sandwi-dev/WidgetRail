@@ -26,6 +26,11 @@ reparse-point inputs, escaping catalog references, reserved payload collisions,
 unresolved manifests and reuse of the normal frontend identity. It does not build
 or publish any project.
 
+This evaluation stager copies the installation's `runtime/` and optional
+`dotnet/` trees. Catalog references outside those trees are rejected before
+staging rather than silently omitted. A future installer with another payload
+layout needs an explicit copy/ownership contract for those paths.
+
 The output contains:
 
 | Path | Purpose |
