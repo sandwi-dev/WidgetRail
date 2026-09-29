@@ -469,3 +469,21 @@ presenter and never acquire their own focus/action authority.
 This checkpoint supplies selection, native layout and image-brush presentation.
 Full WRSS surface appearance, depth and transition integration remain separate
 migration work; do not infer final visual parity from the validation probes.
+# Atomic container notification
+
+`IndexedItem` retains its individual property notifications for native bindings.
+Its internal `StateChanged` event publishes once after those notifications, and
+native container policy subscribes to that completed update. A newly admitted row
+therefore refreshes its container/context once instead of five times. Failure
+and recovery still notify immediately; recycling and disposal detach the same
+subscription. This does not change the widget protocol or defer popup validation.
+
+Validation: 83 managed shell checks pass, including coherent binding/container
+publication and failure/recovery subscription checks. The native retained-theme
+fixture passes all 21 checks with deep indexed rows, updates, focus and viewport
+retention (`artifacts/winui-shell/container-publication-theme-03/`). Its optional
+desktop screenshot was refused by the foreground guard. The real Playnite replay
+also could not acquire foreground; its invocation was correctly denied and no
+new physical-smoothness or real-replay acceptance is claimed. Preserve that
+evidence in `container-publication-native-01/` and
+`container-publication-inspect-02/`.

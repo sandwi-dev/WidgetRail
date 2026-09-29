@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Collections\IndexedItem.cs" Link="IndexedItem.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ProcessProfilePolicy.cs" Link="ProcessProfilePolicy.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\OverlayLaunchConfiguration.cs" Link="OverlayLaunchConfiguration.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ShellJsonContext.cs" Link="ShellJsonContext.cs" />

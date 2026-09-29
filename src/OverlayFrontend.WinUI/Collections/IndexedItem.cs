@@ -7,7 +7,11 @@ public abstract class IndexedItem : INotifyPropertyChanged
 {
     public abstract object? Content { get; }
     public event PropertyChangedEventHandler? PropertyChanged;
+    // Native container policy consumes one completed update, independently of
+    // the per-property notifications needed by XAML bindings.
+    internal event EventHandler? StateChanged;
     protected void Changed(string property) => PropertyChanged?.Invoke(this, new(property));
+    protected void StateUpdated() => StateChanged?.Invoke(this, EventArgs.Empty);
 }
 
 public sealed class IndexedItem<T> : IndexedItem where T : notnull
@@ -30,10 +34,12 @@ public sealed class IndexedItem<T> : IndexedItem where T : notnull
         Changed(nameof(Content));
         Changed(nameof(HasValue));
         Changed(nameof(Failed));
+        StateUpdated();
     }
     internal void SetFailed()
     {
         Failed = true;
         Changed(nameof(Failed));
+        StateUpdated();
     }
 }

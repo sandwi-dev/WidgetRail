@@ -1,5 +1,4 @@
 using PresentationSession = WidgetRail.WidgetPresentationSession.WidgetPresentationSession;
-using System.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -16,7 +15,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
 {
     private readonly PresentationSession session;
     private readonly Action<Exception> failed;
-    private readonly Dictionary<SelectorItem, (IndexedItem<WidgetIndexedRow> Slot, PropertyChangedEventHandler Changed)> containers = [];
+    private readonly Dictionary<SelectorItem, (IndexedItem<WidgetIndexedRow> Slot, EventHandler Changed)> containers = [];
     private readonly HashSet<Task> retiring = [];
     private WidgetIndexedRows? source;
     private IndexedItemsSource<WidgetIndexedRow>.Retention? measurementRetention;
@@ -214,11 +213,11 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private void ContainerChanged(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
         if (args.ItemContainer is not SelectorItem container) return;
-        if (containers.Remove(container, out var prior)) prior.Slot.PropertyChanged -= prior.Changed;
+        if (containers.Remove(container, out var prior)) prior.Slot.StateChanged -= prior.Changed;
         if (args.InRecycleQueue || args.Item is not IndexedItem<WidgetIndexedRow> slot) return;
-        PropertyChangedEventHandler changed = (_, _) => UpdateContainer(container, slot);
+        EventHandler changed = (_, _) => UpdateContainer(container, slot);
         containers.Add(container, (slot, changed));
-        slot.PropertyChanged += changed;
+        slot.StateChanged += changed;
         UpdateContainer(container, slot);
     }
     private void UpdateContainer(SelectorItem container, IndexedItem<WidgetIndexedRow> slot)
@@ -266,7 +265,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     }
     private void DetachContainers()
     {
-        foreach (var subscription in containers.Values) subscription.Slot.PropertyChanged -= subscription.Changed;
+        foreach (var subscription in containers.Values) subscription.Slot.StateChanged -= subscription.Changed;
         containers.Clear();
     }
     private void Clicked(object sender, ItemClickEventArgs args)
