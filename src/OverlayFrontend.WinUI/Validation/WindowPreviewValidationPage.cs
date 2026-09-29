@@ -92,6 +92,8 @@ internal sealed partial class WindowPreviewValidationPage : Page, IAsyncDisposab
             fixtureFrame = displayed;
             captures = new();
             renderer = captures.CreateRenderer(session, (ulong)App.WindowHandle);
+            if (Environment.GetCommandLineArgs().Contains("--validate-preview-resume"))
+            { await ValidatePresenterResumeAsync(); return; }
             renderer.Apply(displayed);
             renderer.Failed += error => serverFailure = error;
             preview = renderer.CreateSurface("owned.preview", ImageFit.Cover);

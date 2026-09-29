@@ -24,6 +24,9 @@ internal sealed partial class WidgetViewPresenter
         if (!active) RememberFocus();
         presentationActive = active;
         IsHitTestVisible = active && presentationInputEnabled;
+        // Preview controls configure against the renderer's admitted frame.
+        // Publish it before resuming bindings, including first cold activation.
+        if (active && !presentationOnly && frame is { } current) WindowPreviews?.Apply(current);
         var work = new List<Task>();
         if (!active)
         {
@@ -52,7 +55,6 @@ internal sealed partial class WidgetViewPresenter
         }
         if (active)
         {
-            if (!presentationOnly && frame is { } current) WindowPreviews?.Apply(current);
             QueueSurfaceUpdate(); QueueMediaRefresh();
         }
         else work.AddRange(retirements.ToArray());

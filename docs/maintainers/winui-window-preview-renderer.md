@@ -135,3 +135,24 @@ scaling (`artifacts/winui-preview/presenter-integration`). Production shell brow
 regressions also pass six Playnite Library/tray/details checks and five YouTube
 Music checks; these do not establish Task Switcher physical acceptance. Managed
 session and shell suites pass 189 and 24 tests respectively.
+
+## Inactive preparation and activation regression
+
+Production prepares presenters while inactive. On activation the renderer now
+receives the current admitted frame before preview bindings resume, including
+first activation and a replacement HWND under the same logical window ID. A
+temporary managed surface-capacity rejection leaves a placeholder that retries
+on a later compatible publication; an existing compatible surface is retained.
+
+`scripts/Test-WinUiPreviewResume.ps1` exercises that production presenter path
+with freshly created owned source windows and a fresh renderer. Eleven native
+checks pass, including actual capture frames on cold/replacement activation,
+capacity recovery and successful native retirement after suspension. Teardown
+checks await the pump and verify released native callback ownership, revoked
+demand, stopped binding timer and empty XAML slot. The last published capture
+statistics are intentionally not a live post-disposal query.
+
+Evidence: `artifacts/winui-shell/preview-resume-green-05/`; the analyzer-enabled
+Debug build has zero warnings/errors. Earlier red fixtures reproduced both
+production defects before their fixes. This is an owned-window lifecycle test,
+not physical controller acceptance or arbitrary application capture qualification.

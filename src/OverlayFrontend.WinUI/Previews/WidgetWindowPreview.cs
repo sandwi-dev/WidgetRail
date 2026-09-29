@@ -29,7 +29,8 @@ internal sealed class WidgetWindowPreview : ContentControl, IDisposable
         var nextFit = node.ImageFit ?? ImageFit.Contain;
         var nextRatio = node.PreviewAspectRatio ?? 16d / 9;
         if (aspectRatio != nextRatio) { aspectRatio = nextRatio; InvalidateMeasure(); }
-        if (ReferenceEquals(renderer, nextRenderer) && target == nextTarget && fit == nextFit) return;
+        if (ReferenceEquals(renderer, nextRenderer) && target == nextTarget && fit == nextFit &&
+            (surface is not null || nextRenderer is null || nextTarget is null)) return;
         DisposeSurface();
         renderer = nextRenderer; target = nextTarget; fit = nextFit;
         if (renderer is null || target is null) return;
