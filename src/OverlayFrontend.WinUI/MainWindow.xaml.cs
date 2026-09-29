@@ -12,8 +12,9 @@ public sealed partial class MainWindow : Window
     private readonly Input.GamepadKeyBoundary? gamepadKeys;
     private bool closingAfterCleanup;
     private bool cleanupStarted;
+    private bool startHidden;
 
-    public MainWindow(IReadOnlyList<string> arguments)
+    internal MainWindow(IReadOnlyList<string> arguments, Shell.OverlayShellOptions? launchOptions, Exception? configurationError)
     {
         InitializeComponent();
         themeSettings = Microsoft.UI.System.ThemeSettings.CreateForWindowId(AppWindow.Id);
@@ -33,12 +34,12 @@ public sealed partial class MainWindow : Window
         AppWindow.ResizeClient(new SizeInt32(960, 640));
         var configured = false;
         ConfigureValidation(arguments, ref configured);
-        if (!configured) ConfigureProduction(arguments);
+        if (!configured) ConfigureProduction(arguments, launchOptions, configurationError);
         if (input is not null && Environment.GetCommandLineArgs().Contains("--trace-controller-input"))
             controllerTrace = new(ShellRoot, input.TraceInput);
         if (input is not null)
         {
-            gamepadKeys = new(ShellRoot, () => !cleanupStarted && input.IsActive && AppWindow.IsVisible && input.IsForeground);
+            gamepadKeys = new(ShellRoot, () => !cleanupStarted && input is { IsActive: true, IsForeground: true } && AppWindow.IsVisible);
             input.Failed += _ => gamepadKeys.Dispose();
         }
         AppWindow.Closing += (sender, args) =>
@@ -73,18 +74,17 @@ public sealed partial class MainWindow : Window
         };
     }
 
-    private void ConfigureProduction(IReadOnlyList<string> arguments)
+    private void ConfigureProduction(IReadOnlyList<string> arguments, Shell.OverlayShellOptions? launchOptions, Exception? configurationError)
     {
         Shell.OverlayShellOptions options;
         try
         {
-            options = Shell.OverlayLaunchConfiguration.Resolve(arguments, AppContext.BaseDirectory,
-                WidgetRail.PlatformSettings.PlatformSettingsPaths.CreateDefault().RootDirectory);
+            if (configurationError is not null) throw configurationError;
+            options = launchOptions ?? throw new InvalidDataException("The frontend launch configuration is missing.");
             if (!Shell.OverlayLaunchConfiguration.HasInstallationFiles(options))
                 throw new InvalidDataException("The frontend installation is incomplete.");
         }
-        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException or
-            System.Text.Json.JsonException or WidgetRail.PlatformSettings.PlatformSettingsException)
+        catch (Exception error) when (Shell.OverlayLaunchConfiguration.IsConfigurationError(error))
         {
             var recovery = new Microsoft.UI.Xaml.Controls.TextBlock
             {
@@ -97,8 +97,9 @@ public sealed partial class MainWindow : Window
             return;
         }
         var shellNoController = arguments.Contains("--shell-no-controller");
+        startHidden = arguments.Contains("--hidden");
         var page = new Shell.OverlayShellPage(options,
-            unchecked((ulong)WinRT.Interop.WindowNative.GetWindowHandle(this)));
+            unchecked((ulong)WinRT.Interop.WindowNative.GetWindowHandle(this)), initiallyVisible: !startHidden);
         RootFrame.Content = page;
         ConfigureProductionValidation(page, arguments);
         // Production has no validation title/card/Close row. Keep one native
@@ -124,11 +125,11 @@ public sealed partial class MainWindow : Window
             {
                 input = new(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this));
                 input.FrameReceived += page.Receive;
-                input.Failed += page.ReportFailure;
+                input.Failed += error => ReportInputFailure(page, error);
                 input.ToggleRequested += ToggleOverlay;
-                input.PrepareShow();
+                if (!startHidden) input.PrepareShow();
             }
-            catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
+            catch (Exception error) { ReportInputFailure(page, error); }
         }
         InitializeOverlaySizing(page);
     }
@@ -139,6 +140,30 @@ public sealed partial class MainWindow : Window
     partial void ResetValidationInput();
     partial void StartValidationReplay();
     partial void RetireValidation();
+
+    private void ReportInputFailure(Shell.OverlayShellPage page, Exception error)
+    {
+        input?.Dispose();
+        input = null;
+        page.ReportFailure(error);
+        // A resident with no Guide listener must not remain unreachable.
+        startHidden = false;
+        DispatcherQueue.TryEnqueue(() => { if (!cleanupStarted && !AppWindow.IsVisible) ShowOverlay(); });
+    }
+
+    internal void StartPresentation()
+    {
+        // Do not activate and then hide: that flashes a frame and steals focus
+        // during sign-in. The platform adapter still listens for Guide while
+        // XAML/Bridge initialization waits for the first real show.
+        if (startHidden && RootFrame.Content is Shell.OverlayShellPage)
+        {
+            input?.SetVisible(false);
+            return;
+        }
+        Activate();
+        StartInput();
+    }
 
     public void StartInput()
     {
@@ -164,6 +189,11 @@ public sealed partial class MainWindow : Window
         desktopBackdrop?.Dispose();
         try { if (RootFrame.Content is IAsyncDisposable resource) await resource.DisposeAsync(); }
         catch (Exception error) { System.Diagnostics.Trace.TraceError("WinUI page shutdown failed: {0}", error); }
-        finally { closingAfterCleanup = true; Close(); }
+        finally
+        {
+            await Presentation.NativePackageIconTintCache.ShutdownAsync(DispatcherQueue);
+            closingAfterCleanup = true;
+            Close();
+        }
     }
 }

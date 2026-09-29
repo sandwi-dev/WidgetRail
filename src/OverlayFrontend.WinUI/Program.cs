@@ -20,19 +20,28 @@ internal static partial class Program
             var arguments = FrontendArguments.Parse(launch, args);
             var fixture = false;
             IsValidationLaunch(arguments, ref fixture);
+            OverlayShellOptions? options = null;
+            Exception? configurationError = null;
             if (!fixture)
             {
                 var defaults = WidgetRail.PlatformSettings.PlatformSettingsPaths.CreateDefault().RootDirectory;
-                var options = OverlayLaunchConfiguration.Resolve(arguments, AppContext.BaseDirectory, defaults);
-                var election = OverlayProcessLease.Elect(ProcessProfilePolicy.ForSettingsRoot(options.SettingsRoot, defaults),
-                    showExisting: !arguments.Contains("--hidden"));
-                if (election.Lease is null) return 0;
-                lifetime = new(election.Lease);
+                try { options = OverlayLaunchConfiguration.Resolve(arguments, AppContext.BaseDirectory, defaults); }
+                catch (Exception error) when (OverlayLaunchConfiguration.IsConfigurationError(error))
+                { configurationError = error; }
+                if (options is not null)
+                {
+                    var election = OverlayProcessLease.Elect(ProcessProfilePolicy.ForSettingsRoot(options.SettingsRoot, defaults),
+                        showExisting: !arguments.Contains("--hidden"));
+                    if (election.Lease is null) return 0;
+                    lifetime = new(election.Lease);
+                }
             }
             Application.Start(parameter =>
             {
                 SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-                _ = new App();
+                // The elected profile and the shell must consume the same value,
+                // even if a diagnostic configuration file changes during startup.
+                _ = new App(arguments, options, configurationError);
             });
             return 0;
         }

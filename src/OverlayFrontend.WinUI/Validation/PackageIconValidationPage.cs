@@ -13,7 +13,7 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
-internal sealed class PackageIconValidationPage : Page, IAsyncDisposable
+internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new() { Text = "Package icon checks pending" };
@@ -40,7 +40,7 @@ internal sealed class PackageIconValidationPage : Page, IAsyncDisposable
             if (id == "broken") return new(id, "fixture", Encoding.UTF8.GetBytes("invalid SVG"));
             return Bytes(id);
         };
-        Loaded += (_, _) => running ??= RunAsync();
+        Loaded += (_, _) => running ??= Environment.GetCommandLineArgs().Contains("--validate-icon-shutdown") ? RunShutdownAsync() : RunAsync();
     }
     private static WidgetPresentationPackageIcon Bytes(string id)
     {

@@ -7,6 +7,10 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 /// </summary>
 internal static class OverlayLaunchConfiguration
 {
+    internal static bool IsConfigurationError(Exception error) => error is InvalidDataException or IOException or
+        UnauthorizedAccessException or ArgumentException or System.Text.Json.JsonException or
+        WidgetRail.PlatformSettings.PlatformSettingsException;
+
     internal static OverlayShellOptions Resolve(IReadOnlyList<string> arguments, string applicationDirectory,
         string defaultSettingsRoot)
     {

@@ -15,6 +15,9 @@ namespace WidgetRail.OverlayFrontend.WinUI;
 /// </summary>
 public partial class App : Application
 {
+    private readonly IReadOnlyList<string> arguments;
+    private readonly Shell.OverlayShellOptions? launchOptions;
+    private readonly Exception? configurationError;
     internal static string? ValidationFixturePath { get; private set; }
     /// <summary>
     /// The main application window. Use <c>App.Window</c> from any class that needs
@@ -40,8 +43,11 @@ public partial class App : Application
     /// <summary>
     /// Initializes the singleton application object.
     /// </summary>
-    public App()
+    internal App(IReadOnlyList<string> arguments, Shell.OverlayShellOptions? launchOptions, Exception? configurationError)
     {
+        this.arguments = arguments;
+        this.launchOptions = launchOptions;
+        this.configurationError = configurationError;
         InitializeComponent();
     }
 
@@ -51,14 +57,13 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
-        var arguments = Shell.FrontendArguments.Parse(args.Arguments, Environment.GetCommandLineArgs().Skip(1));
         if (arguments.Contains("--trace-layout")) DebugSettings.LayoutCycleTracingLevel = LayoutCycleTracingLevel.High;
         ValidationFixturePath = Shell.FrontendArguments.Value(arguments, "--playnite-layout-fixture");
-        var main = new MainWindow(arguments);
+        var main = new MainWindow(arguments, launchOptions, configurationError);
         Window = main;
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        Window.Activate();
-        main.StartInput();
+        ProcessLifecycle.Attach(main, main.ShowOverlay);
+        main.StartPresentation();
         main.StartReplay();
     }
 }

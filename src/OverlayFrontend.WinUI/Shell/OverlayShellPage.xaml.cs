@@ -49,9 +49,12 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal event Action? BridgeReady;
     internal AppearanceSettings Appearance { get; private set; } = AppearanceSettings.Default;
 
-    internal OverlayShellPage(OverlayShellOptions options, ulong hostWindow = 0, bool startService = true)
+    internal OverlayShellPage(OverlayShellOptions options, ulong hostWindow = 0, bool startService = true,
+        bool initiallyVisible = true)
     {
         this.options = options;
+        visible = initiallyVisible;
+        foreground = initiallyVisible;
         if (options.SwitchDiagnosticsPath is { } diagnostics) switchDiagnostics = new(diagnostics);
         this.hostWindow = hostWindow;
         preferencesStore = new(options.SettingsRoot);
@@ -69,7 +72,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         {
             if (shellViewport.Width > 0) ConfigureProductionViewport(shellViewport);
         };
-        if (startService) Loaded += (_, _) => startup ??= StartAsync();
+        if (startService)
+        {
+            Loaded += (_, _) => EnsureStarted();
+            serviceEnabled = true;
+        }
         Tray.GotFocus += TrayGotFocus;
         Tray.GettingFocus += TrayGettingFocus;
         WidgetHost.GotFocus += (_, _) => { RecordFocusTransfer("widget"); SetInteractive(true); };
@@ -82,6 +89,15 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 ToolTipService.SetToolTip(args.ItemContainer, item.Name);
             }
         };
+    }
+
+    private readonly bool serviceEnabled;
+
+    private void EnsureStarted()
+    {
+        // WinUI can load the tree of a hidden HWND. Loading is not permission
+        // to start workers; wait until that tree is actually requested onscreen.
+        if (serviceEnabled && visible && IsLoaded && !retired) startup ??= StartAsync();
     }
 
     private async Task StartAsync()
@@ -341,6 +357,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (!value) ExitPinnedInteraction(restoreMain: true);
         interactionAdmission.Invalidate();
         visible = value;
+        if (value) EnsureStarted();
         if (!value) switchCancellation?.Cancel();
         surface?.SetPresentationInputEnabled(value && !switching && activeWidget == requestedWidget);
         ReconcileSystemStatus();

@@ -43,8 +43,8 @@ the HWND, so Show arriving before window creation remains pending and is deliver
 on the UI thread. Explicit validation pages bypass production election only in
 builds containing validation code; production replay/switch diagnostics do not.
 
-App/MainWindow integration is owned by the main migration lane. This change does
-not alter those files, nor the already implemented hidden-start visibility rules.
+The integration branch attaches that endpoint before initial presentation and
+passes the same resolved launch configuration from election to the shell.
 The native DLL must be rebuilt and packaged with the frontend; a missing/newer
 process entry point fails startup closed instead of starting a second input owner.
 
@@ -62,6 +62,9 @@ process entry point fails startup closed instead of starting a second input owne
   directions. It uses isolated profiles and a message-only HWND; it never creates
   controller/Bridge sessions or changes installer state.
 
-Packaged process-count and foreground/hidden-start checks remain integration
-validation, after the one App hook is connected. No physical controller input is
-needed for those checks.
+The packaged activation probe now passes 17 checks through Windows' registered
+application activation API: a hidden duplicate does not show/start workers;
+normal duplicates show the same resident without toggling or replacing its one
+Bridge; clients and the final owner exit normally. The first launch still uses
+project-mode WinApp. Evidence: `artifacts/winui-shell/process-activation-integrated-01`.
+Foreground acquisition and physical controller acceptance remain separate.

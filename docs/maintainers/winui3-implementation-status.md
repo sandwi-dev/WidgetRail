@@ -1107,3 +1107,35 @@ checks pass. `winui-launch-bootstrap.md` records exact behavior and the remainin
 deployment/startup work, including the mutable runtime boundary required by the
 current AppContainer grants. Broader media motion/device recovery and performance
 qualification remain open.
+
+## Autonomous lifecycle and shared-control follow-up
+
+The integrated branch now uses native-compatible process election before XAML,
+supports quiet `--hidden` startup, and shares one resolved launch configuration
+between election and the shell. Windows activation tests pass 17 duplicate-launch
+and cleanup checks; seven hidden-start/show/reopen checks pass. Invalid launch
+configuration still displays service-free recovery. No startup entry or installed
+native overlay was replaced.
+
+That work reproduced a real shutdown deadlock in native icon rasterization.
+Started native render/readback operations now drain on the live dispatcher before
+window closure. All six visible/hidden interruption cases exit normally (42
+checks), and the existing 36 native package-icon checks pass. The analyzer builds
+are clean, and trimmed/ReadyToRun Release publish succeeds.
+
+Outgoing popup ownership now follows input revocation during widget switching:
+21 Select, 28 TextEntry and 60 context-menu behavior checks pass. Indexed native
+containers receive one completed admission notification instead of five repeated
+policy refreshes. All 83 managed shell and 21 native retained-theme checks pass.
+The latest real Playnite replay could not obtain Windows foreground ownership;
+it is not a passing replay or evidence of smoother physical scrolling. Detailed
+paths and limits are recorded in the feature-specific maintainer documents.
+
+Offline external-content package construction passes 17 checks. Actual sparse
+identity registration/activation, sandboxed-worker admission, runtime provisioning
+and transactional update/rollback remain open. The review also identified two
+unfinished shared-control corrections: accessible current values for Select and
+TextEntry, and Unicode text-element boundaries for controller keyboard edits.
+Broader performance/accessibility/media recovery and deferred pinned qualification
+remain open. This checkpoint does not finish the migration; nothing is merged
+to main, and no physical checks were requested while the user was away.

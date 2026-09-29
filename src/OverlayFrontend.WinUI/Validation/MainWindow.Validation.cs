@@ -7,6 +7,7 @@ public sealed partial class MainWindow
 {
     private Validation.ControllerReplayScenario? replay;
     private bool validationPlatformActivation;
+    private string? hiddenStartupResult;
 
     partial void ConfigureValidation(IReadOnlyList<string> arguments, ref bool handled)
     {
@@ -130,6 +131,7 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        hiddenStartupResult = Shell.FrontendArguments.Value(arguments, "--validate-hidden-startup");
         validationPlatformActivation = arguments.Contains("--validation-platform-activation");
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-widget-switches") is { } switchResult)
             page.EnableSwitchValidation(switchResult);
@@ -140,6 +142,7 @@ public sealed partial class MainWindow
     partial void ResetValidationInput() => (RootFrame.Content as Validation.ControllerValidationPage)?.ResetInputPresentation();
     partial void StartValidationReplay()
     {
+        if (hiddenStartupResult is not null) _ = ValidateHiddenStartupAsync(hiddenStartupResult);
         if (validationPlatformActivation) input?.AcquireForeground();
         replay?.Start();
     }

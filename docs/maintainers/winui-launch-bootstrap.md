@@ -37,8 +37,8 @@ denied interaction. That attempt is not a passing replay or a bootstrap diagnosi
 
 ## Deployment work still required
 
-This resolves launch roots; it does not implement quiet startup, cross-version
-single-instance activation, installer registration, update/rollback or provisioning.
+This resolves launch roots. Installer registration, update/rollback and runtime
+provisioning remain open; quiet startup and process activation are recorded below.
 The default-root path still needs a complete, staged payload qualification.
 
 Do not simply move every runtime into a protected full MSIX installation directory.
@@ -54,3 +54,28 @@ runtime/permission design. Microsoft's
 [external-location identity guidance](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/grant-identity-to-nonpackaged-apps)
 documents the identity-package alternative. No packaging model, certificate,
 installed startup entry or installed native application was changed by this work.
+
+## Quiet startup and one configuration per process
+
+`--hidden` does not activate then hide a window. It starts the existing Guide
+adapter with visible navigation polling disabled. Both overlay/backdrop stay
+hidden, and no Bridge, widget initialization or profile writes occur until Show.
+WinUI may load a hidden tree, so worker initialization is guarded by presentation
+visibility independently of `Loaded`. A failed Guide adapter surfaces recovery
+instead of leaving an unreachable resident. Missing/invalid installation still
+shows recovery even when hidden startup was requested.
+
+`Program` parses launch arguments and resolves configuration once. The elected
+settings profile and the shell share those immutable options; neither activation
+argument differences nor a rewritten diagnostic JSON file can change the profile
+after election. Configuration errors take the service-free recovery route;
+ownership failures still stop before creating services. The process activation
+endpoint is attached before initial presentation. See `winui-process-lifecycle.md`.
+
+Validation passes seven hidden-start/show/reopen checks and 17 packaged process
+activation checks, including hidden duplicate/no-show, normal duplicate/show,
+show-not-toggle, unchanged Bridge identity, child cleanup and process exit.
+Malformed-root recovery is also verified with `--hidden`. Evidence:
+`artifacts/winui-shell/{hidden-startup-integrated-02,process-activation-integrated-01,lifecycle-invalid-config-01}`.
+These checks do not replace physical Guide/foreground acceptance. All test
+profiles and payloads are isolated from the installed overlay.

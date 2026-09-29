@@ -24,6 +24,12 @@ public sealed partial class MainWindow
     private void ToggleOverlay()
     {
         if (AppWindow.IsVisible && input?.IsForeground == true) { HideOverlay(); return; }
+        ShowOverlay();
+    }
+
+    internal void ShowOverlay()
+    {
+        if (cleanupStarted) return;
         input?.PrepareShow();
         if (RootFrame.Content is Shell.OverlayShellPage page)
         {
