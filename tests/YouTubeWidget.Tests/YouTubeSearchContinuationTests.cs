@@ -8,6 +8,87 @@ namespace WidgetRail.YouTubeWidget.Tests;
 public sealed partial class YouTubeWidgetTests
 {
     [TestMethod]
+    public async Task SearchStickShortcutReturnsFromLazyRowToOnlyTheSearchField()
+    {
+        var widget = await CreateSearchFixture(new SearchFixture((_, _, _) => new(Items(0, 3), null, 3)));
+        try
+        {
+            await SubmitSearch(widget, "search shortcut");
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "search-stick");
+            using var rows = await host.AcquireAsync(YouTubeVideoWidget.SearchScrollId, 1, 1);
+            Assert.AreEqual(WidgetOperationAdmission.Enqueued, rows.RouteAction("youtube-video-" + ItemId(1), ControllerButton.RightStick));
+            ViewSnapshot returned = host.CurrentSnapshot;
+            for (var attempt = 0; attempt < 200; ++attempt)
+            {
+                returned = widget.RenderSnapshot("search-stick", attempt + 20);
+                if (returned.FocusGroupEntryRequest?.GroupId == YouTubeVideoWidget.SearchFieldGroupId) break;
+                await Task.Delay(10);
+            }
+            Assert.IsEmpty(ViewSnapshotValidator.Validate(returned));
+            Assert.AreEqual("youtube.search.query", returned.InitialFocusId);
+            Assert.AreEqual(YouTubeVideoWidget.SearchFieldGroupId, returned.FocusGroupEntryRequest?.GroupId);
+            var field = Find(returned.Root, YouTubeVideoWidget.SearchFieldGroupId);
+            Assert.HasCount(1, field.Children);
+            Assert.AreEqual("youtube.search.query", field.Children[0].Id);
+            Assert.IsNull(returned.FocusGroupEntryRequest?.IndexedItem);
+            var request = returned.FocusGroupEntryRequest!.RequestId;
+            await widget.OnActionAsync(new(YouTubeVideoWidget.SearchFocusActionId, "youtube.root"));
+            Assert.IsGreaterThan(request, widget.RenderSnapshot("search-stick", 500).FocusGroupEntryRequest!.RequestId);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    [TestMethod]
+    public async Task SettingsReturnFromLazySearchItemUsesCollectionIdentityAndKeepsMedia()
+    {
+        var widget = await CreateSearchFixture(new SearchFixture((_, _, _) => new(Items(0, 3), null, 3)));
+        try
+        {
+            await widget.OnActionAsync(new("youtube.link.open", "youtube.link.open"));
+            await CommitAsync(widget, "https://youtu.be/" + VideoId);
+            var loaded = widget.RenderSnapshot("settings-search", 1);
+            await ObserveAsync(widget, loaded.EmbeddedMediaSession!.PendingCommand!, EmbeddedMediaPlaybackState.Playing, 1);
+            await widget.OnActionAsync(new("youtube.search.open-route", "youtube.root"));
+            await SubmitSearch(widget, "settings");
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "settings-search");
+            using var rows = await host.AcquireAsync(YouTubeVideoWidget.SearchScrollId, 1, 1);
+            var before = host.CurrentSnapshot;
+            Assert.AreEqual(WidgetOperationAdmission.Enqueued, rows.RouteAction("youtube-video-" + ItemId(1), ControllerButton.Y));
+            ViewSnapshot settings = before;
+            for (var attempt = 0; attempt < 200; ++attempt)
+            {
+                settings = widget.RenderSnapshot("settings-search", attempt + 20);
+                if (TryFind(settings.Root, "youtube.setup.key") is not null) break;
+                await Task.Delay(10);
+            }
+            Assert.IsNotNull(TryFind(settings.Root, "youtube.setup.key"));
+            await widget.OnActionAsync(new("youtube.setup.back", "youtube.setup.back"));
+            var returned = widget.RenderSnapshot("settings-search", 500);
+            Assert.IsEmpty(ViewSnapshotValidator.Validate(returned));
+            Assert.AreEqual(YouTubeVideoWidget.SearchScrollId, returned.InitialFocusId);
+            Assert.AreEqual("youtube-video-" + ItemId(1), returned.FocusGroupEntryRequest?.IndexedItem?.ItemKey);
+            Assert.AreEqual(1, returned.FocusGroupEntryRequest?.IndexedItem?.Index);
+            Assert.AreEqual(before.EmbeddedMediaSession!.Id, settings.EmbeddedMediaSession!.Id);
+            Assert.AreEqual(before.EmbeddedMediaSession.Id, returned.EmbeddedMediaSession!.Id);
+            Assert.IsNull(returned.EmbeddedMediaSession.PendingCommand);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    [TestMethod]
+    public async Task EmptySearchRetainsContentSizingContract()
+    {
+        var widget = await CreateSearchFixture(new SearchFixture((_, _, _) => new([], null, 0)));
+        try
+        {
+            var snapshot = widget.RenderSnapshot("search-sizing", 1);
+            Assert.AreEqual(WidgetSurfaceAxisMode.Content, snapshot.Surface!.HeightMode);
+            WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("youtube-empty-search", snapshot);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    [TestMethod]
     public async Task EmptySearchTotalIsNotAnInvalidFiniteExtent()
     {
         var provider = new SearchFixture((_, _, _) => new([], null, 0));

@@ -7,6 +7,47 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
+    private bool restoringRetainedFocusPresentation;
+
+    private Binding? RememberedBinding() => remembered.TryGetValue(activeScope, out var identity) &&
+        bindings.TryGetValue(identity.Id, out var binding) && binding.Identity == identity ? binding : null;
+
+    // As in the native host, selecting a first-frame focus presentation is not
+    // an input grant. A retained target can be highlighted before lifecycle
+    // admission completes; every command still uses current action authority.
+    internal bool RestoreRetainedFocusPresentation()
+    {
+        if (disposed || applying || presentationOnly || frame is null || !IsLoaded || XamlRoot is null) return false;
+        Control? target = null;
+        if (RememberedBinding() is { } binding && Available(binding))
+        {
+            target = binding.Element as Control;
+            if (target is WidgetIndexedCollectionView collection)
+            {
+                var query = declarations[binding.Identity.Id].Node.IndexedCollection!;
+                collectionMemory.TryGetValue(new(binding.Identity, query.SourceId, query.QueryGeneration), out var item);
+                target = item is null ? null : collection.RetainedFocusTarget(item);
+            }
+        }
+        else if (FocusedBinding() is { } focused && Available(focused) &&
+            FocusManager.GetFocusedElement(XamlRoot) is Control leaf) target = leaf;
+        // Only reuse already-realized pixels here. Fetching/scrolling belongs to
+        // admitted entry; a native fallback header never replaces logical memory.
+        if (target is null || !target.IsLoaded || !target.IsEnabled) return false;
+        restoringRetainedFocusPresentation = true;
+        try { return target.Focus(FocusState.Keyboard); }
+        finally { restoringRetainedFocusPresentation = false; }
+
+        bool Available(Binding binding) => binding.Identity.Scope == activeScope &&
+            declarations[binding.Identity.Id].Node.IsDisabled != true &&
+            (declarations[binding.Identity.Id].Node.IsFocusable || binding.Element is WidgetIndexedCollectionView) &&
+            IsMemoryVisible(binding.Element);
+    }
+
+    internal bool CanLeaveRootScope => !disposed && !applying && presentationActive && presentationInputEnabled &&
+        frame is not null && !HasTransientControl && effectiveView is { Root.Kind: not ViewNodeKind.ModalLayer } &&
+        declarations.Values.Where(declaration => declaration.Node.IsFocusable && bindings[declaration.Node.Id].Element.Visibility == Visibility.Visible)
+            .All(declaration => declaration.Identity.Scope == activeScope);
     private sealed record GroupMemory(WidgetElementIdentity Group, WidgetElementIdentity Child);
     private sealed record GroupEntry(long RequestId, WidgetElementIdentity Group, IndexedCollectionFocusTarget? IndexedItem);
     private sealed record CollectionMemoryKey(WidgetElementIdentity Identity, string SourceId, long QueryGeneration);
@@ -75,6 +116,7 @@ internal sealed partial class WidgetViewPresenter
         collectionMemory.Remove(key);
         collectionMemory[key] = item;
         if (collectionMemory.Count > 64) collectionMemory.Remove(collectionMemory.Keys.First());
+        TraceFocus("remember-item");
     }
 
     private bool FocusBinding(Binding binding)
@@ -104,7 +146,7 @@ internal sealed partial class WidgetViewPresenter
     private DependencyObject? Neighbor(string? id, string scope)
     {
         if (id is null || !bindings.TryGetValue(id, out var target) || target.Identity.Scope != scope) return null;
-        return Eligible(target) ? target.Element : GroupTarget(target)?.Element;
+        return Navigable(target) ? target.Element : GroupTarget(target)?.Element;
     }
 
     private bool IsDescendant(string child, string ancestor)
@@ -132,10 +174,10 @@ internal sealed partial class WidgetViewPresenter
             declarations[group.Identity.Id].Node.InitialChildFocusId is not { } initial) return null;
         if (groupMemory.TryGetValue(group.Identity.Id, out var memory) && memory.Group == group.Identity &&
             bindings.TryGetValue(memory.Child.Id, out var rememberedChild) && rememberedChild.Identity == memory.Child &&
-            Eligible(rememberedChild) && IsDescendant(rememberedChild.Identity.Id, group.Identity.Id)) return rememberedChild;
-        if (bindings.TryGetValue(initial, out var defaultChild) && Eligible(defaultChild)
+            Navigable(rememberedChild) && IsDescendant(rememberedChild.Identity.Id, group.Identity.Id)) return rememberedChild;
+        if (bindings.TryGetValue(initial, out var defaultChild) && Navigable(defaultChild)
             && IsDescendant(defaultChild.Identity.Id, group.Identity.Id)) return defaultChild;
-        return bindings.Values.FirstOrDefault(candidate => Eligible(candidate) && IsDescendant(candidate.Identity.Id, group.Identity.Id));
+        return bindings.Values.FirstOrDefault(candidate => Navigable(candidate) && IsDescendant(candidate.Identity.Id, group.Identity.Id));
     }
 
     private bool TryRestoreGroupEntry()
@@ -164,7 +206,7 @@ internal sealed partial class WidgetViewPresenter
         // WinUI finds spatial candidates; group policy only chooses the declared
         // remembered/default child when a directional move enters that group.
         if (applying || redirectingGroupFocus || args.Direction == FocusNavigationDirection.None ||
-            FindBinding(args.NewFocusedElement) is not { } incoming || !Eligible(incoming)) return;
+            FindBinding(args.NewFocusedElement) is not { } incoming || !Navigable(incoming)) return;
         var outgoing = FindBinding(args.OldFocusedElement);
         if (incoming.Element is WidgetIndexedCollectionView && !ReferenceEquals(incoming, outgoing))
         {
@@ -175,7 +217,7 @@ internal sealed partial class WidgetViewPresenter
             DispatcherQueue.TryEnqueue(() =>
             {
                 if (!disposed && intent == entryIntentVersion && bindings.TryGetValue(incoming.Identity.Id, out var current) &&
-                    ReferenceEquals(current, incoming) && Eligible(current)) FocusBinding(current);
+                    ReferenceEquals(current, incoming) && Navigable(current)) FocusBinding(current);
             });
             return;
         }

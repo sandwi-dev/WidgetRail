@@ -17,6 +17,7 @@ internal sealed partial class WidgetViewPresenter
             {
                 var binding = bindings[declaration.Node.Id];
                 if (binding.Element is WidgetIndexedCollectionView collection) collection.RefreshAppearanceBinding(next);
+                if (binding.Element is WidgetArtworkView image) UpdateImage(binding, image, declaration.Node);
                 UpdateContainerLayout(binding, declaration.Node);
                 if (binding.Children is WidgetPosterPanel poster) UpdatePoster(poster, declaration.Node);
                 ApplySizeAndTypography(binding.Element, declaration.Node);

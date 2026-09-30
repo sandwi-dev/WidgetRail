@@ -23,14 +23,25 @@ public sealed partial class MainWindow
 
     private void ToggleOverlay()
     {
-        if (AppWindow.IsVisible && input?.IsForeground == true) { HideOverlay(); return; }
+        if (overlayRequestedVisible && AppWindow.IsVisible &&
+            (input?.IsForeground ?? (RootFrame.Content as OverlayShellPage)?.HasForeground) == true) { HideOverlay(); return; }
         ShowOverlay();
     }
 
     internal void ShowOverlay()
     {
         if (cleanupStarted) return;
-        input?.PrepareShow();
+        CancelTaskHandoff();
+        if (input?.PrepareShow() == false) return;
+        var entering = !overlayRequestedVisible;
+        overlayRequestedVisible = true;
+        if (entering)
+        {
+            ++overlayVisibilityVersion;
+            EnsureOverlayMotion();
+            overlayOpenPending = true;
+        }
+        ShellRoot.IsHitTestVisible = true;
         if (RootFrame.Content is Shell.OverlayShellPage page)
         {
             placementWindow = input?.PlacementWindow ?? WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -41,13 +52,32 @@ public sealed partial class MainWindow
         Activate();
         input?.AcquireForeground();
         StartInput();
+        QueueOverlayOpen();
     }
 
     private void HideOverlay()
     {
-        (RootFrame.Content as Shell.OverlayShellPage)?.SetVisible(false);
+        if (cleanupStarted || !overlayRequestedVisible) return;
+        if (overlayOpenPending && overlayMotion?.Playback is not { IsCompleted: false })
+        { HideOverlayImmediately(); return; }
+        overlayRequestedVisible = false;
+        overlayOpenPending = false;
+        var version = ++overlayVisibilityVersion;
+        ShellRoot.IsHitTestVisible = false;
+        // Logical visibility and input retire now; native pixels survive only
+        // until this short exit completes. No widget action waits on animation.
+        (RootFrame.Content as Shell.OverlayShellPage)?.SetVisible(false, retainExitPresentation: true);
         input?.SetVisible(false);
-        AppWindow.Hide();
+        _ = PlayOverlayVisibilityAsync(version, opening: false);
+    }
+
+    private void DismissForExternalForeground(nint observed)
+    {
+        // Recheck at the consumer: an obsolete observation must never hide a
+        // newly reopened overlay, or a transfer to one of our own pinned HWNDs.
+        if (cleanupStarted || !AppWindow.IsVisible || input?.IsCurrentExternalForeground(observed) != true) return;
+        input.TraceInput("Hiding overlay after confirmed external foreground change");
+        HideOverlayImmediately();
     }
 
     private void ApplyOverlayPlacement(AppearanceSettings appearance) => QueueOverlayPlacement();
@@ -80,7 +110,9 @@ public sealed partial class MainWindow
     private void OverlayWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
         if (applyingPlacement || cleanupStarted || RootFrame.Content is not OverlayShellPage || !args.DidPositionChange) return;
-        var current = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).DisplayId.Value;
+        var display = OverlayDisplayArea.Resolve(AppWindow.Id, AppWindow.Id);
+        if (display is null) return;
+        var current = display.DisplayId.Value;
         if (current == placementDisplay) return;
         placementWindow = WinRT.Interop.WindowNative.GetWindowHandle(this);
         QueueDisplayRefresh();
@@ -131,7 +163,10 @@ public sealed partial class MainWindow
     {
         var appearance = page.Appearance;
         var target = placementWindow != 0 ? placementWindow : WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var display = DisplayArea.GetFromWindowId(Win32Interop.GetWindowIdFromWindow(target), DisplayAreaFallback.Nearest);
+        var display = OverlayDisplayArea.Resolve(Win32Interop.GetWindowIdFromWindow(target), AppWindow.Id);
+        // Preserve the last valid placement if Windows is between display
+        // configurations. Display/XamlRoot notifications will request it again.
+        if (display is null) return;
         var work = display.WorkArea;
         // The work-area shell stays stationary across widget sizes. Native Grid
         // owns its chrome and the content surface resolves within the space above it.

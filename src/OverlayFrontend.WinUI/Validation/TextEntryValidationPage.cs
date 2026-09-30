@@ -6,14 +6,17 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
+using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetStyling;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
-internal sealed class TextEntryValidationPage : Page, IAsyncDisposable
+internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
+    private readonly NativePopupTheme popupTheme = new();
     private readonly TextBlock status = new() { Text = "Text entry validation waiting" };
     private readonly List<string> checks = [];
     private readonly List<WidgetActionRequest> actions = [];
@@ -30,6 +33,8 @@ internal sealed class TextEntryValidationPage : Page, IAsyncDisposable
 
     public TextEntryValidationPage()
     {
+        popupTheme.Attach(presenter);
+        popupTheme.Update(null, AppearanceSettings.Default);
         AutomationProperties.SetAutomationId(status, "TextEntry.Status");
         Content = new StackPanel { Spacing = 12, Children = { status, presenter } };
         presenter.Failed = error => failure = error.Message;
@@ -157,11 +162,63 @@ internal sealed class TextEntryValidationPage : Page, IAsyncDisposable
             await presenter.HandleControllerButtonAsync(ControllerButton.RightTrigger); await Closed();
             Check(failure == "Text entry commit failed.", "exception diagnostics cannot echo committed secret");
             throwOnCommit = false; failure = null;
+            await VerifyPopupScalingAsync();
+            await VerifyKeyboardActivationAsync();
             await Open(); await presenter.DisposeAsync(); await Closed(); Check(!presenter.HasTransientControl, "disposal retires keyboard");
             status.Text = $"Passed {checks.Count} TextEntry checks"; Write(new { result = "passed", checks });
         }
         catch (Exception error) { status.Text = "TextEntry validation failed: " + error.Message; Write(new { result = "failed", checks, error = error.ToString() }); }
     }
+    private async Task VerifyKeyboardActivationAsync()
+    {
+        sensitive = false; value = "ab"; Apply(); await Open();
+        var dialog = (WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
+        var editor = (TextBox)Editor();
+        var defaultFamily = dialog.FontFamily.Source;
+        popupTheme.Update(new Dictionary<string, BridgeNodeRenderStyles>
+        {
+            ["body"] = new() { Base = new Dictionary<string, BridgeComputedStyleValue>
+                { ["font-family"] = new() { Kind = WrssValueKind.FontFamily, Text = "Consolas" } },
+                Focused = new Dictionary<string, BridgeComputedStyleValue>(), Pressed = new Dictionary<string, BridgeComputedStyleValue>() },
+        }, AppearanceSettings.Default);
+        Check(dialog.FontFamily.Source == "Consolas", "open text-entry dialog receives authored popup font");
+        popupTheme.Update(null, AppearanceSettings.Default);
+        Check(ReferenceEquals(FindDialog("Widget.TextEntry.Dialog"), dialog) && dialog.FontFamily.Source == defaultFamily &&
+            ReferenceEquals(dialog.ReadLocalValue(Control.FontFamilyProperty), DependencyProperty.UnsetValue) && editor.Text == "ab",
+            "removing popup font restores native dialog typography without replacing the edit session");
+
+        var count = actions.Count;
+        async Task InvokeKey(string id)
+        {
+            var key = (Button)FindDialog("Widget.TextEntry." + id)!;
+            Check(key.Focus(FocusState.Keyboard), "native keyboard focus reaches " + id);
+            Check(!dialog.HandleKeyboardKey(Windows.System.VirtualKey.Enter) &&
+                !dialog.HandleKeyboardKey(Windows.System.VirtualKey.Space) && actions.Count == count,
+                "dialog preserves native Enter and Space activation for " + id);
+            ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)new ButtonAutomationPeer(key)
+                .GetPattern(PatternInterface.Invoke)).Invoke();
+            await Task.Delay(100);
+        }
+        await InvokeKey("Clear");
+        Check(editor.Text.Length == 0 && presenter.HasTransientControl, "native Clear activation edits without committing");
+        await InvokeKey("Key.10");
+        Check(editor.Text == "q" && presenter.HasTransientControl, "native character activation inserts its label without committing");
+        await InvokeKey("Space");
+        Check(editor.Text == "q " && presenter.HasTransientControl, "native Space key activation inserts one space");
+        await InvokeKey("Cancel"); await Closed();
+        Check(actions.Count == count && editor.Text.Length == 0, "native Cancel activation clears edits without committing");
+
+        await Open();
+        dialog = (WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
+        editor = (TextBox)Editor();
+        Check(editor.Focus(FocusState.Keyboard), "native editor accepts keyboard focus");
+        Check(dialog.HandleKeyboardKey(Windows.System.VirtualKey.Enter), "Enter in the native editor remains a commit shortcut");
+        await Closed();
+        Check(actions.Count == count + 1 && actions[^1].Action.CommittedText == "ab",
+            "editor Enter commits the final value exactly once");
+        actions.Clear();
+    }
+
     private async Task Open()
     {
         await Task.Delay(200);

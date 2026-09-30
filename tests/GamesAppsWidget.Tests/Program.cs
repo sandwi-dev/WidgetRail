@@ -85,6 +85,8 @@ var tests = new (string Name, Func<Task> Run)[]
         ElevationLaunchOutcomesAreExplained),
     ("Curated membership survives widget lifecycle reactivation", CurationSurvivesReactivation),
     ("First activation performs one saved-library session reconciliation", InitialActivationReconcilesOnce),
+    ("Slow saved-library restoration never blocks lifecycle acknowledgement", SlowRestoreDoesNotBlockActivation),
+    ("Canceled saved-library restoration cannot publish a late provider result", CanceledRestoreRejectsLateResult),
     ("Persisted later selection keeps first curated row as entry focus",
         PersistedLaterSelectionKeepsFirstEntryFocus),
     ("Reactivation retains the ready session snapshot without broker work", ReactivationReusesCachedLibrary),
@@ -1609,7 +1611,7 @@ static async Task ResolvedIconRenders()
     Assert.True(artwork.ImageSource is null);
     Assert.Equal(ImageFit.Contain, artwork.ImageFit);
     Assert.True(artwork.Glyph is null);
-    Assert.Equal(ProtocolConstants.IndexedCollectionVersion, snapshot.ProtocolVersion);
+    Assert.True(snapshot.ProtocolVersion >= ProtocolConstants.IndexedCollectionVersion);
     Assert.Valid(snapshot);
     await Background(widget);
 }
@@ -2496,6 +2498,65 @@ static async Task InitialActivationReconcilesOnce()
         Nodes(tile).Single(node => node.Id == tile.Id + ".artwork").ArtworkHandle);
     Assert.Valid(ready);
     await Background(widget);
+}
+
+static async Task SlowRestoreDoesNotBlockActivation()
+{
+    var entered = NewSignal();
+    var release = new TaskCompletionSource<ResolveSavedWidgetAppLibraryItemsResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var item = App("fresh-a", "Alpha") with { SavedId = "saved-a" };
+    var fake = new FakeAppLibraryHost
+    {
+        PrivateState = ProjectedState("saved-a", ("saved-a", "Alpha", WidgetAppLibraryKind.Application)),
+        Pages = { [0] = Page([item], null) },
+        ResolveHandler = (_, token) => { entered.TrySetResult(); return new(release.Task.WaitAsync(token)); },
+    };
+    var widget = Create(fake);
+    try
+    {
+        var activation = Interactive(widget);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await activation.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.False(release.Task.IsCompleted);
+        await WaitUntil(() => widget.ViewState == GamesAppsViewState.Loading);
+        Assert.Valid(Snapshot(widget, 991));
+        Assert.Equal(0, widget.CuratedItems.Count);
+        release.SetResult(new([item]));
+        await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready && widget.CuratedItems.Count == 1);
+        Assert.Equal("fresh-a", widget.CuratedItems.Single().AppId);
+        Assert.Valid(Snapshot(widget, 992));
+    }
+    finally { release.TrySetResult(new([item])); await Background(widget); }
+}
+
+static async Task CanceledRestoreRejectsLateResult()
+{
+    var entered = NewSignal();
+    var canceled = NewSignal();
+    var release = new TaskCompletionSource<ResolveSavedWidgetAppLibraryItemsResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeAppLibraryHost
+    {
+        PrivateState = ProjectedState("saved-a", ("saved-a", "Alpha", WidgetAppLibraryKind.Application)),
+        ResolveHandler = async (_, token) =>
+        {
+            using var registration = token.Register(() => canceled.TrySetResult());
+            entered.TrySetResult();
+            return await release.Task;
+        },
+    };
+    var widget = Create(fake);
+    try
+    {
+        await Interactive(widget).WaitAsync(TimeSpan.FromSeconds(1));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var hide = Background(widget);
+        await canceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        release.SetResult(new([App("late-a", "Late") with { SavedId = "saved-a" }]));
+        await hide.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Equal(0, widget.CuratedItems.Count);
+        Assert.Equal(0, fake.CatalogRequests.Count);
+    }
+    finally { release.TrySetResult(new([])); await Background(widget); }
 }
 
 static async Task PersistedLaterSelectionKeepsFirstEntryFocus()

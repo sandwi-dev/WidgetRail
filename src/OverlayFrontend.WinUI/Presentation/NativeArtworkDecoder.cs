@@ -14,8 +14,9 @@ internal sealed record NativeArtworkDecode(BitmapImage Image, ArtworkPixelSize S
 /// <summary>Native metadata validation and target-sized asynchronous decode. No pixel or encoded-data cache.</summary>
 internal static class NativeArtworkDecoder
 {
-    internal static ArtworkPixelSize SizeFor(ArtworkPixelSize source, ArtworkPixelSize target, ImageFit? fit)
+    internal static ArtworkPixelSize SizeFor(ArtworkPixelSize source, ArtworkPixelSize target, ImageFit? fit, bool naturalSize = false)
     {
+        if (naturalSize) return source; // object-fit:none keeps intrinsic DIPs; never shrink the decoded source.
         if (target.Width == 0 && target.Height == 0) return source; // Unconstrained intrinsic image.
         var x = target.Width > 0 ? (double)target.Width / source.Width : (double?)null;
         var y = target.Height > 0 ? (double)target.Height / source.Height : (double?)null;
@@ -27,7 +28,7 @@ internal static class NativeArtworkDecoder
     }
 
     internal static async Task<NativeArtworkDecode?> DecodeAsync(NativeArtworkPayload? payload,
-        ArtworkPixelSize target, ImageFit? fit, CancellationToken token)
+        ArtworkPixelSize target, ImageFit? fit, CancellationToken token, bool naturalSize = false)
     {
         if (payload is null || payload.RemoteUri is null && payload.Bytes.IsEmpty) return null;
         token.ThrowIfCancellationRequested();
@@ -45,7 +46,7 @@ internal static class NativeArtworkDecoder
             (ulong)metadata.PixelWidth * metadata.PixelHeight > ProtocolConstants.MaximumEncodedArtworkPixels)
             throw new InvalidDataException("Artwork exceeds its source pixel resource bound.");
         var source = new ArtworkPixelSize((int)metadata.OrientedPixelWidth, (int)metadata.OrientedPixelHeight);
-        var decoded = SizeFor(source, target, fit);
+        var decoded = SizeFor(source, target, fit, naturalSize);
         token.ThrowIfCancellationRequested();
         stream.Seek(0);
         var bitmap = new BitmapImage { DecodePixelType = DecodePixelType.Physical,

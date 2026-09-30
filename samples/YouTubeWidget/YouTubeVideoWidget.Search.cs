@@ -8,6 +8,8 @@ public sealed partial class YouTubeVideoWidget
     internal const int SearchPageSize = 12;
     internal const int MaximumRetainedSearchItems = 512;
     internal const string SearchScrollId = "youtube.search.results";
+    internal const string SearchFocusActionId = "youtube.search.focus";
+    internal const string SearchFieldGroupId = "youtube.search.field";
     private const string SearchCommitActionId = "youtube.search.query.commit";
     private const string SearchSubmitActionId = "youtube.search.submit";
     private const string SearchOpenActionId = "youtube.search.open";
@@ -22,7 +24,7 @@ public sealed partial class YouTubeVideoWidget
     private const string PreviousSectionActionId = "youtube.section.previous";
     private const string NextSectionActionId = "youtube.section.next";
     private const string RootScopeId = "youtube.root";
-    private const string SearchFocusGroupId = "youtube.search.page";
+    internal const string SearchFocusGroupId = "youtube.search.page";
     private const string PlayerFocusGroupId = "youtube.player.page";
     private const string ConfigurationKey = "youtube.configuration";
     private const string SetupCommandKey = "youtube.configure";
@@ -306,7 +308,7 @@ public sealed partial class YouTubeVideoWidget
                 UI.Text("Find a video by title, channel, or topic.", "youtube.search.task-help")
                     .Classes("youtube-section-copy"),
                 UI.Row("youtube.search.controls",
-                        query,
+                        UI.Stack(SearchFieldGroupId, query).RememberChildFocus("youtube.search.query").Classes("youtube-search-field"),
                         submit)
                     .RememberChildFocus("youtube.search.query")
                     .Classes("youtube-search-controls"))
@@ -320,7 +322,8 @@ public sealed partial class YouTubeVideoWidget
         var page = UI.Stack(SearchFocusGroupId, children.ToArray())
             .RememberChildFocus("youtube.search.query")
             .Classes("youtube-search-root");
-        var root = RootSectionShell(state, page, "youtube.search.query");
+        var root = RootSectionShell(state, page, "youtube.search.query")
+            .Shortcut(ControllerButton.RightStick, SearchFocusActionId, label: "Search");
         return new WidgetView(root,
             state.RootInitialFocusId ?? (hasQuery && snapshot.Count > 0 ? SearchScrollId : "youtube.search.query"),
             ActiveInputScopeId: RootScopeId, Surface: new WidgetSurfaceHints
@@ -527,7 +530,7 @@ public sealed partial class YouTubeVideoWidget
                 _setupCommand.Run(new(YouTubeSetupOperation.Delete));
                 return true;
             case SetupRouteActionId:
-                _model.Update(state => state.WithSetupRoute(action.FocusedElementId));
+                _model.Update(state => state.WithSetupRoute(action.FocusedElementId, action.FocusedCollectionItem));
                 return true;
             case SetupBackActionId:
                 _model.Update(state => state.WithSetupReturnRoute());
@@ -536,6 +539,12 @@ public sealed partial class YouTubeVideoWidget
                 _model.Update(state => state.Setup.Configured
                     ? state.WithRootSection(YouTubeRootSection.Discover)
                     : state.WithSetupRoute());
+                return true;
+            case SearchFocusActionId:
+                if (IsActive)
+                    _model.Update(state => state.Route == YouTubeRoute.Search && state.RootFocusRequestId < ProtocolConstants.MaximumFocusGroupEntryRequestId
+                        ? state with { RootFocusRequestId = state.RootFocusRequestId + 1, RootFocusGroupId = SearchFieldGroupId,
+                            RootInitialFocusId = "youtube.search.query" } : state);
                 return true;
             case LinkRouteActionId:
                 _model.Update(state => state.WithRootSection(YouTubeRootSection.Player));

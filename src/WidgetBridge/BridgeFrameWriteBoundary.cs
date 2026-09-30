@@ -40,6 +40,13 @@ internal sealed class BridgeFrameWriteBoundary
             applyWriteDeadline: false).ConfigureAwait(false);
     }
 
+    // Use only with value-owned payloads whose contents cannot change while
+    // waiting for the writer. Keeps the exact admission/deadline boundary,
+    // without an intermediate JsonElement copy of large encoded artwork.
+    internal Task WriteReplyAsync<T>(string type, long requestId, T payload, CancellationToken admissionCancellation) =>
+        WriteAsync((channel, cancellationToken) => channel.WriteAsync(type, requestId, payload, cancellationToken),
+            admissionCancellation, applyWriteDeadline: true);
+
     private async Task WriteAsync(
         BridgeEnvelope envelope,
         CancellationToken admissionCancellation,

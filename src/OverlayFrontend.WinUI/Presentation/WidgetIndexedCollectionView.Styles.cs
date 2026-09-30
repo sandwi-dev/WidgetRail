@@ -7,6 +7,13 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetIndexedCollectionView
 {
+    internal Func<bool>? ContextHintAdmitted { get; set; }
+    internal bool ContextHintsAdmitted => !disposed && CanReceiveInput && ContextHintAdmitted?.Invoke() == true;
+    internal void RefreshContextIndicators()
+    {
+        foreach (var container in containers.Keys)
+            NativeComputedStyleAdapter.For(container)?.RefreshContextIndicator();
+    }
     private NativeComputedStyleAdapter? pressedStyle;
     internal void SetControllerPressedStyle(bool value)
     {

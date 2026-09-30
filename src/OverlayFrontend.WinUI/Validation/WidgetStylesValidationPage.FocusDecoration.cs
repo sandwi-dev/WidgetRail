@@ -13,6 +13,7 @@ internal sealed partial class WidgetStylesValidationPage
 {
     private async Task NativeFocusDecorationAsync()
     {
+        await RetiredFocusLoadedAsync();
         var settings = AppearanceSettings.Default with { Motion = MotionPreference.Full, FocusAnimation = WidgetFocusAnimation.Fade };
         NativeComputedStyleAdapter.SetMotionPolicy(settings, true);
         var button = new Button { Content = "Focus decoration", Width = 220, Height = 60, Margin = new Thickness(12) };
@@ -29,6 +30,10 @@ internal sealed partial class WidgetStylesValidationPage
             adapter.Update(styles);
             await Wait(() => button.IsLoaded && adapter.FocusDecoration is { IsVisible: false });
             var decoration = adapter.FocusDecoration!;
+            var path = (Microsoft.UI.Composition.CompositionRoundedRectangleGeometry)
+                ((Microsoft.UI.Composition.CompositionSpriteShape)((Microsoft.UI.Composition.ShapeVisual)decoration.DecorationVisual).Shapes[0]).Geometry;
+            Check(path.Offset == new Vector2(1) && path.Size == new Vector2(218, 58),
+                "negative outline offset matches the native centered stroke geometry");
             Check(!button.UseSystemFocusVisuals && ElementCompositionPreview.GetElementChildVisual(button) is not null,
                 "authored focus outline receives one dedicated native child visual");
             button.Focus(FocusState.Keyboard);
@@ -61,6 +66,10 @@ internal sealed partial class WidgetStylesValidationPage
             adapter.Update(null);
             Check(button.UseSystemFocusVisuals && ElementCompositionPreview.GetElementChildVisual(button) is null,
                 "removing outline styles retires compositor resources and restores native focus behavior");
+            adapter.Update(Compute("#outer { outline-color: #ffffff; outline-width: 2px; outline-offset: 3px; }", "outer", "button"));
+            var expanded = adapter.FocusDecoration!.DecorationVisual;
+            Check(expanded.Size == new Vector2(230, 70) && expanded.Parent.Offset == new Vector3(-5, -5, 0),
+                "positive outline offset reserves the complete outside stroke without moving control content");
             var depth = Compute("#depth { background: rgba(40,60,80,.8); surface-shading: .1; }", "depth", "button");
             adapter.Update(depth);
             var gradient = (LinearGradientBrush)button.Background;
@@ -79,5 +88,26 @@ internal sealed partial class WidgetStylesValidationPage
             WidgetViewPresenter.SetHighContrastStyleOverride(null);
             NativeComputedStyleAdapter.SetMotionPolicy(AppearanceSettings.Default, true);
         }
+    }
+
+    private async Task RetiredFocusLoadedAsync()
+    {
+        var button = new Button { Content = "Retired focus", Width = 120, Height = 44, UseSystemFocusVisuals = true };
+        WidgetFocusDecoration? decoration = null;
+        var retiredOnLoad = false;
+        // Match passive pin entry: a preceding Loaded callback withdraws the
+        // decoration while XAML is delivering that same event to its subscribers.
+        button.Loaded += (_, _) => { retiredOnLoad = true; decoration?.Dispose(); };
+        decoration = WidgetFocusDecoration.Create(button) ?? throw new InvalidOperationException("Missing focus adornment");
+        try
+        {
+            host.Children.Add(button);
+            await Wait(() => retiredOnLoad && button.IsLoaded);
+            button.Width = 180;
+            await Task.Delay(40);
+            Check(!decoration.IsVisible && button.UseSystemFocusVisuals,
+                "focus decoration retired during Loaded ignores captured native callbacks and later resize without using closed visuals");
+        }
+        finally { decoration.Dispose(); host.Children.Remove(button); }
     }
 }

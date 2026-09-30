@@ -131,6 +131,19 @@ internal sealed partial class EmbeddedMediaValidationPage
         mediaOwner.SetHostState(Descriptor.Id, true, true);
         Check(ReferenceEquals(initialBrowser, OwnerBrowser()) && mediaOwner.BrowserCreationCount == creations, "overlay reopening restores the same browser without navigation or command replay");
 
+        declaration = declaration with { PendingCommand = new() { Sequence = 6, Kind = EmbeddedMediaPlaybackCommandKind.Pause, MediaKey = "fixture" } };
+        ownerPresenter.Apply(await SnapshotAsync());
+        await Until(() => events.Any(value => value.SessionId == "owner-player" && value.CommandSequence == 6));
+        ownerPresenter.SetPresentationInputEnabled(false);
+        mediaOwner.SetHostState(Descriptor.Id, true, false, acceptsDashboardPlayback: true);
+        declaration = declaration with { PendingCommand = new() { Sequence = 7, Kind = EmbeddedMediaPlaybackCommandKind.Play, MediaKey = "fixture" } };
+        ownerPresenter.Apply(await SnapshotAsync());
+        await Until(() => events.Any(value => value.SessionId == "owner-player" && value.CommandSequence == 7 && value.State == EmbeddedMediaPlaybackState.Playing));
+        Check(!slot.AcceptsInput && !initialBrowser.IsHitTestVisible && ReferenceEquals(initialBrowser, OwnerBrowser()),
+            "dashboard playback activates the existing visible media without granting widget or browser input");
+        ownerPresenter.SetPresentationInputEnabled(true);
+        mediaOwner.SetHostState(Descriptor.Id, true, true);
+
         var invalidModal = session.GetState(Descriptor.Id)!.LastGood!.Snapshot with
         {
             ActiveInputScopeId = "dialog", Root = new() { Id = "unsupported-modal", Kind = ViewNodeKind.ModalLayer,
@@ -143,9 +156,7 @@ internal sealed partial class EmbeddedMediaValidationPage
         // faults this exact document. No external request is admitted by its policy.
         var failureNotifications = 0;
         mediaOwner.FailureChanged = _ => ++failureNotifications;
-#pragma warning disable WUI4001 // EmbeddedMediaSurface owns EnsureCoreWebView2Async; IsReady was awaited above.
-        initialBrowser.CoreWebView2.Navigate("https://wrail-forbidden.invalid/");
-#pragma warning restore WUI4001
+        await FaultFullscreenOwnerAsync(initialBrowser);
         await Until(() => mediaOwner.GetFailure(Descriptor.Id) is not null);
         var failureCode = mediaOwner.GetFailure(Descriptor.Id);
         Check(failureCode == "media-navigation-failed" && !mediaOwner.IsReady(Descriptor.Id),
@@ -164,6 +175,12 @@ internal sealed partial class EmbeddedMediaValidationPage
         creations = mediaOwner.BrowserCreationCount;
         Check(mediaOwner.GetFailure(Descriptor.Id) is null && !ReferenceEquals(initialBrowser, OwnerBrowser()),
             "explicit document recovery creates one fresh browser without replaying a consumed playback command");
+        if (Environment.GetCommandLineArgs().Contains("--validate-media-process-failures"))
+        {
+            await CheckNativeGpuRecoveryAsync();
+            await CheckNativeBrowserRecoveryAsync(definition);
+            creations = mediaOwner.BrowserCreationCount;
+        }
 
         // Four actual native controllers may remain parked; a fifth never evicts audio.
         declaration = definition with { Id = "owner-player", PendingCommand = null };
@@ -176,6 +193,19 @@ internal sealed partial class EmbeddedMediaValidationPage
         await Task.Delay(150);
         Check(mediaOwner.ResidentCount == 4 && mediaOwner.BrowserCreationCount == creations + 3 && diagnostics.Contains("media-session-capacity"),
             "resident capacity counts real parked controllers and rejects a fifth without eviction");
+        var liveDocument = await session!.ResolveEmbeddedMediaAsync(session.GetState(Descriptor.Id)!.LastGood!.Authority);
+        for (var pass = 0; pass < 8; ++pass)
+        {
+            var retiringBrowser = new EmbeddedMediaSurface(session, liveDocument);
+            viewport.Children.Add(retiringBrowser.Element);
+            retiringBrowser.UpdatePresentation(true, false);
+            // Yield a native layout/Loaded opportunity, then retire while its
+            // controller creation or resource callbacks may still be pending.
+            await Task.Delay(pass % 2 == 0 ? 1 : 35);
+            await retiringBrowser.DisposeAsync();
+            viewport.Children.Remove(retiringBrowser.Element);
+            Check(retiringBrowser.IsRetired, "early browser retirement drains native initialization " + (pass + 1));
+        }
         declaration = null;
         await SnapshotAsync(Descriptor.Id); // Current presenter belongs to a different widget.
         await Until(() => mediaOwner.ResidentCount < 4 || mediaOwner.IsReady("media-extra-4"));

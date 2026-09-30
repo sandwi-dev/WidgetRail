@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory)][int]$AppPid,
     [Parameter(Mandatory)][string]$WindowHandle,
     [Parameter(Mandatory)][string]$OutputPath,
-    [switch]$RequireMediaPixels
+    [switch]$RequireMediaPixels,
+    [switch]$PassiveTopmost
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -39,7 +40,10 @@ public static class WidgetRailReadOnlyCapture {
     [DllImport("user32.dll", SetLastError=true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
-    public static uint Verify(uint expected, IntPtr window) {
+    [DllImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    public static extern IntPtr GetWindowLongPtrW(IntPtr window, int index);
+    public static uint Verify(uint expected, IntPtr window, bool passiveTopmost) {
         GetWindowThreadProcessId(window, out uint owner);
         if (owner != expected || IsWindowVisible(window) == 0 || IsIconic(window) != 0)
             throw new InvalidOperationException("The owned test window is unavailable.");
@@ -47,7 +51,12 @@ public static class WidgetRailReadOnlyCapture {
         GetWindowThreadProcessId(foreground, out uint active);
         // Native popups may have their own top-level HWND. Accept only the
         // process or root owner already admitted by this explicit test target.
-        if (active != expected && GetAncestor(foreground, 3) != window)
+        // A passive pin must render while another process owns foreground.
+        // Admit only an explicitly requested, owned, topmost/noactivate peer.
+        const long passiveMask = 0x08000008;
+        bool passive = passiveTopmost && (GetWindowLongPtrW(window, -20).ToInt64() & passiveMask) == passiveMask;
+        if (passiveTopmost && !passive) throw new InvalidOperationException("The target is not a passive topmost peer.");
+        if (!passive && active != expected && GetAncestor(foreground, 3) != window)
             throw new InvalidOperationException("The test is not foreground: foreground PID " + active + ", expected " + expected + ".");
         return active;
     }
@@ -66,7 +75,7 @@ $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($OutputPath)
 $priorDpi = [WidgetRailReadOnlyCapture]::SetThreadDpiAwarenessContext([IntPtr](-4))
 if ($priorDpi -eq [IntPtr]::Zero) { throw 'Could not establish physical-pixel capture coordinates.' }
 try {
-    $foregroundProcess = [WidgetRailReadOnlyCapture]::Verify([uint32]$AppPid, $window)
+    $foregroundProcess = [WidgetRailReadOnlyCapture]::Verify([uint32]$AppPid, $window, $PassiveTopmost.IsPresent)
     $rectangle = [WidgetRailReadOnlyCapture+Rect]::new()
     $origin = [WidgetRailReadOnlyCapture+Point]::new()
     if ([WidgetRailReadOnlyCapture]::GetClientRect($window, [ref]$rectangle) -eq 0 -or
@@ -79,7 +88,7 @@ try {
         $graphics = [Drawing.Graphics]::FromImage($bitmap)
         try { $graphics.CopyFromScreen($origin.X, $origin.Y, 0, 0, [Drawing.Size]::new($width, $height)); $capturedAt = [DateTime]::UtcNow }
         finally { $graphics.Dispose() }
-        $null = [WidgetRailReadOnlyCapture]::Verify([uint32]$AppPid, $window)
+        $null = [WidgetRailReadOnlyCapture]::Verify([uint32]$AppPid, $window, $PassiveTopmost.IsPresent)
         if ((Get-Process -Id $AppPid).StartTime.ToUniversalTime() -ne $created) { throw 'The process identity changed during capture.' }
         $green = 0
         if ($RequireMediaPixels) {
@@ -95,7 +104,7 @@ try {
         }
         $bitmap.Save($OutputPath, [Drawing.Imaging.ImageFormat]::Png)
         $evidence=[ordered]@{processId=$AppPid; processCreated=$created; capturedAtUtc=$capturedAt; window=$WindowHandle; foregroundProcessId=$foregroundProcess;
-            x=$origin.X; y=$origin.Y; width=$width; height=$height; mediaPixelSamples=$green; changesFocus=$false}
+            x=$origin.X; y=$origin.Y; width=$width; height=$height; mediaPixelSamples=$green; passiveTopmost=$PassiveTopmost.IsPresent; changesFocus=$false}
         $evidence | ConvertTo-Json | Set-Content ($OutputPath + '.json')
         if ($RequireMediaPixels -and $green -lt 100) { throw 'The sealed media pixels were not visible in the captured window.' }
         [pscustomobject]$evidence

@@ -2,29 +2,47 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; media-src http://127.0.0.1:*; connect-src 'none';">
 </head><body><script>
 'use strict';
-let audio = null, generation = 0, trackId = '', volume = .5;
+let audio = null, generation = 0, trackId = '', volume = .5, failed = false;
 const send = message => chrome.webview.postMessage(message);
-const playError = error => ['NotAllowedError','NotSupportedError','AbortError','NetworkError'].includes(error?.name) ? error.name : 'PlayerError';
+function failure(a, reason) {
+  if (a !== audio || failed) return;
+  failed = true;
+  a.pause();
+  state();
+  send({event:'playback-failed',generation,reason});
+}
+function play(a) {
+  a.play().catch(error => {
+    // Pause/replacement can reject an outstanding play promise normally.
+    if (error?.name === 'AbortError') return;
+    failure(a, error?.name === 'NotSupportedError' ? 'unsupported' :
+      error?.name === 'NetworkError' ? 'network' : 'attention');
+  });
+}
 function state(error = null) {
   const a = audio;
-  send({event:'state',generation,state:{trackId,playing:!!a && !a.paused && !a.ended,
-    buffering:!!a && !a.paused && a.readyState < 3,position:Number.isFinite(a?.currentTime)?a.currentTime:0,
+  send({event:'state',generation,state:{trackId,playing:!!a && !failed && !a.paused && !a.ended && a.readyState >= 3,
+    buffering:!!a && !failed && !a.paused && a.readyState < 3,position:Number.isFinite(a?.currentTime)?a.currentTime:0,
     duration:Number.isFinite(a?.duration)?a.duration:0,volume,error}});
   if (navigator.mediaSession) navigator.mediaSession.playbackState = a && !a.paused ? 'playing' : 'paused';
 }
 function load(p) {
   if (p.generation < generation) return;
-  if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load(); }
-  generation = p.generation; trackId = p.trackId; volume = p.volume;
+  const previous = audio; audio = null;
+  if (previous) { previous.pause(); previous.removeAttribute('src'); previous.load(); }
+  generation = p.generation; trackId = p.trackId; volume = p.volume; failed = false;
   const a = audio = new Audio();
   a.volume = volume; a.preload = 'auto'; a.src = p.url;
   for (const name of ['playing','pause','waiting','durationchange','seeked','timeupdate'])
     a.addEventListener(name,()=>{ if(a === audio) state(); });
   a.addEventListener('ended',()=>{ if(a === audio) {state(); send({event:'ended',generation});} });
-  a.addEventListener('error',()=>{if(a === audio) state('The audio stream could not be played. Select the song again to retry.');});
+  a.addEventListener('error',()=>{
+    if (a.error?.code === 1) return;
+    failure(a, a.error?.code === 2 ? 'network' : a.error?.code === 3 ? 'decode' : 'unsupported');
+  });
   if (navigator.mediaSession) navigator.mediaSession.metadata = new MediaMetadata({title:p.title,artist:p.artist,album:'YouTube Music · WidgetRail'});
   // Command acknowledgement is independent of the play promise; state comes from actual player events.
-  a.play().catch(error=>{if(a === audio) state('Playback could not start ('+playError(error)+'). Select Play to retry.');});
+  play(a);
   state();
 }
 chrome.webview.addEventListener('message',({data:r})=>{
@@ -32,8 +50,8 @@ chrome.webview.addEventListener('message',({data:r})=>{
     const p = r.args || {};
     switch(r.method) {
       case 'load': load(p); break;
-      case 'toggle': if(audio) {if(audio.paused) audio.play().catch(()=>state('Playback failed.')); else audio.pause();} break;
-      case 'play': if(audio) audio.play().catch(()=>state('Playback failed.')); break;
+      case 'toggle': if(audio) {if(audio.paused) play(audio); else audio.pause();} break;
+      case 'play': if(audio) play(audio); break;
       case 'pause': audio?.pause(); break;
       case 'stop': if(audio) {audio.pause();audio.removeAttribute('src');audio.load();audio=null;} trackId=''; break;
       case 'seek': if(audio && Number.isFinite(audio.duration) && Number.isFinite(p.value)) audio.currentTime=Math.max(0,Math.min(audio.duration,p.value)); break;

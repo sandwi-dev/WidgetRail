@@ -84,8 +84,13 @@ Diagnostic strings from browser/provider content are never used as UI messages.
 - Native popup ownership is checked at the actual activation boundary. The
   existing SDK rejection of widget-local ModalLayer plus embedded media remains
   unchanged; host dialogs and native flyouts can cover the media surface.
-- Late initialization/messages cannot acquire a retired document. All event and
-  nested-frame subscriptions are removed at teardown; browser closure retires audio.
+- Late initialization/messages cannot acquire a retired document. Core event
+  subscriptions are removed at teardown; browser closure retires audio. Per-frame
+  FrameCreated subscriptions are deliberately avoided: WebView2 154 can terminate
+  the host when removing one after frame destruction (including from finalization).
+  Core FrameNavigationStarting and the all-source WebResourceRequested Document
+  filter enforce frame origins. Resource-only CDN permissions do not authorize
+  nested document loads. Native tests create/remove nested iframes and force GC.
 
 ## Validation and remaining scope
 

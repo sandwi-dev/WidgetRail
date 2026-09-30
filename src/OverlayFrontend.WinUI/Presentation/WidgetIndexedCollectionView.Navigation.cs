@@ -14,6 +14,7 @@ internal sealed partial class WidgetIndexedCollectionView
 {
     private int? pendingIndex;
     private bool navigationQueued;
+    private bool navigationNeedsScroll;
     private FocusNavigationDirection pendingDirection;
     private IndexedCollectionFocusTarget? pendingEntry;
     private bool entering;
@@ -32,8 +33,23 @@ internal sealed partial class WidgetIndexedCollectionView
         QueueNavigation();
     }
     internal bool IsEntryPending => entering;
+    private void ParkFocusForQueryReplacement()
+    {
+        if (view?.XamlRoot is null || FocusedIndex() is null) return;
+        // Keep native focus in the logical collection, but outside ListView while
+        // its ItemsSource is reset. Otherwise ListView schedules its own first-item
+        // focus after realization, overriding a later authored deep-row entry.
+        IsTabStop = true;
+        try { Focus(FocusState.Programmatic); }
+        finally { IsTabStop = false; }
+    }
     internal event Action? NavigationSettled;
     internal Action<IndexedCollectionFocusTarget>? FocusRemembered { get; set; }
+
+    internal Control? RetainedFocusTarget(IndexedCollectionFocusTarget target) =>
+        MatchesQuery(target) && source!.Items[target.Index] is IndexedItem<WidgetIndexedRow> { Key: { } key } &&
+        key == target.ItemKey && view?.ContainerFromIndex(target.Index) is Control { IsLoaded: true, IsEnabled: true } control
+            ? control : null;
 
     internal bool Enter(IndexedCollectionFocusTarget? target = null, bool allowFallback = false)
     {
@@ -60,12 +76,21 @@ internal sealed partial class WidgetIndexedCollectionView
     }
     internal void CancelHostNavigation() => CancelNavigation();
 
-    private void RememberItemFocus()
+    internal IEnumerable<Control> ScrollFocusCandidates() => containers
+        .Where(pair => pair.Value.Slot.Value?.Lease.IsCurrent == true && !pair.Value.Slot.Failed)
+        .Select(pair => (Control)pair.Key);
+
+    internal IndexedCollectionFocusTarget? CaptureFocusedItem()
     {
         if (source is null || FocusedIndex() is not { } index ||
-            source.Items[index] is not Collections.IndexedItem<Collections.WidgetIndexedRow> { Key: { } key }) return;
+            source.Items[index] is not IndexedItem<WidgetIndexedRow> { Value: not null, Key: { } key }) return null;
         var query = source.Declaration.IndexedCollection!;
-        FocusRemembered?.Invoke(new(source.Declaration.Id, query.SourceId, query.QueryGeneration, key, index));
+        return new(source.Declaration.Id, query.SourceId, query.QueryGeneration, key, index);
+    }
+
+    private void RememberItemFocus()
+    {
+        if (CaptureFocusedItem() is { } item) FocusRemembered?.Invoke(item);
     }
 
     internal bool MoveFocus(FocusNavigationDirection direction)
@@ -115,9 +140,10 @@ internal sealed partial class WidgetIndexedCollectionView
         return true;
     }
 
-    private void QueueNavigation()
+    private void QueueNavigation(bool scrollIntoView = true)
     {
-        if (view is null) return;
+        if (view is null || pendingIndex is null || disposed) return;
+        navigationNeedsScroll |= scrollIntoView;
         if (source is not null && pendingIndex is { } target && target >= 0 && target < source.Items.Count &&
             navigationRetention?.Slot.Index != target)
         {
@@ -130,15 +156,21 @@ internal sealed partial class WidgetIndexedCollectionView
         if (!navigationQueued)
         {
             navigationQueued = true;
-            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            if (!DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
             {
                 navigationQueued = false;
                 if (pendingIndex is not { } index || view is null || index >= view.Items.Count) return;
                 // One native request for the newest logical target. A run of
                 // controller frames never creates a backlog of layout work.
-                view.ScrollIntoView(view.Items[index], ScrollIntoViewAlignment.Default);
-                FinishNavigation(null, null!);
-            });
+                if (navigationNeedsScroll)
+                {
+                    navigationNeedsScroll = false;
+                    view.ScrollIntoView(view.Items[index], ScrollIntoViewAlignment.Default);
+                    QueueNavigation(scrollIntoView: false);
+                    return;
+                }
+                CompleteNavigation();
+            })) { navigationQueued = false; CancelNavigation(); }
         }
     }
 
@@ -166,9 +198,14 @@ internal sealed partial class WidgetIndexedCollectionView
         return null;
     }
 
-    private void FinishNavigation(object? sender, object args)
+    // Realization/layout notifications report readiness. Focus is committed only
+    // after those native callbacks and ScrollIntoView have unwound: WinUI may
+    // still choose its own reset target inside the realization transaction.
+    private void FinishNavigation(object? sender, object args) => QueueNavigation(scrollIntoView: false);
+
+    private void CompleteNavigation()
     {
-        if (pendingIndex is not { } index || view is null || disposed) return;
+        if (pendingIndex is not { } index || view is null || disposed || !CanReceiveInput) return;
         if (index >= view.Items.Count)
         {
             if (source?.Declaration.IndexedCollection?.Discovery is not
@@ -192,6 +229,7 @@ internal sealed partial class WidgetIndexedCollectionView
         if (view.ContainerFromIndex(index) is not Control { IsLoaded: true } target) return;
         if (!target.IsEnabled)
         {
+            TraceNavigation("disabled-target", index, row, target);
             if (entering && allowEntryFallback)
             {
                 var next = pendingEntry is not null ? 0 : index + 1;
@@ -202,8 +240,14 @@ internal sealed partial class WidgetIndexedCollectionView
             }
             else if (entering || !MoveFocus(pendingDirection) || pendingIndex == index) CancelNavigation();
         }
-        else if (target.Focus(FocusState.Keyboard)) CancelNavigation();
+        else if (target.Focus(FocusState.Keyboard))
+        {
+            TraceNavigation("focused-target", index, row, target);
+            CancelNavigation();
+        }
     }
+
+    partial void TraceNavigation(string phase, int index, WidgetIndexedRow row, Control target);
 
     private void CancelNavigation()
     {
@@ -213,14 +257,24 @@ internal sealed partial class WidgetIndexedCollectionView
         pendingIndex = null;
         pendingEntry = null;
         entering = false;
+        navigationNeedsScroll = false;
         if (view is not null) view.LayoutUpdated -= FinishNavigation;
         if (wasPending) NavigationSettled?.Invoke();
     }
 
     private void OnLosingFocus(UIElement sender, LosingFocusEventArgs args)
     {
+        TraceFocusDeparture(args);
         for (var target = args.NewFocusedElement as DependencyObject; target is not null; target = VisualTreeHelper.GetParent(target))
             if (ReferenceEquals(target, view)) return;
+        // WinUI can temporarily focus a placeholder before its unavailable state
+        // is applied. Its automatic fallback is not a user cancellation of an
+        // authored entry. Preserve only that unavailable-control, same-root case;
+        // actual navigation, pointer input, hide and explicit departure still cancel.
+        if (entering && pendingIndex is not null && CanReceiveInput && args.Direction == FocusNavigationDirection.None &&
+            args.InputDevice == FocusInputDeviceKind.Keyboard && args.OldFocusedElement is Control { IsEnabled: false } &&
+            args.NewFocusedElement is FrameworkElement replacement && ReferenceEquals(replacement.XamlRoot, view?.XamlRoot)) return;
         CancelNavigation();
     }
+    partial void TraceFocusDeparture(LosingFocusEventArgs args);
 }

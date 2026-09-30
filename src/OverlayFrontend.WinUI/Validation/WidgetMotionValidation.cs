@@ -97,6 +97,41 @@ internal static class WidgetMotionValidation
                     "native focus loss clears the decoration under reduced motion");
             }
             finally { focusMotion.Dispose(); host.Children.Remove(otherButton); host.Children.Remove(focusCell); }
+            var readyContent = new Border { Width = 240, Height = 80,
+                Child = new TextBlock { Text = "Ready widget content" } };
+            host.Children.Add(readyContent);
+            var fill = new Border { Width = 240, Height = 80 };
+            host.Children.Add(fill);
+            using var reveal = new WidgetSurfaceResizeMotion(readyContent);
+            try
+            {
+                await UntilAsync(() => readyContent.IsLoaded && readyContent.ActualWidth > 0, "ready widget resize layout");
+                var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Full, Contrast = ContrastPreference.Standard,
+                    AnimateWidgetSwitching = true, WidgetAnimationSpeed = .5 };
+                reveal.Play(appearance, true, new(480, 160), fill);
+                Check(await reveal.Playback!.WaitAsync(TimeSpan.FromSeconds(5), token) == WidgetMotionOutcome.Completed && reveal.Starts == 1,
+                    "global widget-switch preference starts and completes a native surface resize");
+                var revealVisual = ElementCompositionPreview.GetElementVisual(readyContent);
+                Check(revealVisual.Opacity == 1 && readyContent.ActualWidth == 240,
+                    "widget resize finishes opaque without changing native layout");
+                reveal.Play(appearance with { AnimateWidgetSwitching = false }, true, new(480, 160), fill);
+                reveal.Play(appearance with { Motion = MotionPreference.Reduced }, true, new(480, 160), fill);
+                Check(reveal.Starts == 1, "disabled widget switching and reduced motion create no compositor playback");
+                reveal.Play(appearance, true, new(480, 160), fill);
+                var interrupted = reveal.Playback!;
+                reveal.Play(appearance, true, new(480, 160), fill);
+                var latest = reveal.Playback!;
+                Check(await interrupted == WidgetMotionOutcome.Canceled &&
+                    await latest.WaitAsync(TimeSpan.FromSeconds(5), token) == WidgetMotionOutcome.Completed && revealVisual.Opacity == 1,
+                    "rapid widget resize replacement cannot let old completion reset the new owner");
+                reveal.Play(appearance, true, new(480, 160), fill);
+                var unloaded = reveal.Playback!;
+                host.Children.Remove(readyContent);
+                await UntilAsync(() => !readyContent.IsLoaded, "widget resize unload");
+                Check(await unloaded == WidgetMotionOutcome.Canceled && revealVisual.Opacity == 1,
+                    "unloading settles widget resize and releases its compositor channels");
+            }
+            finally { reveal.Dispose(); host.Children.Remove(readyContent); host.Children.Remove(fill); }
             return results.AsReadOnly();
         }
         finally { motion.Dispose(); incomingTarget.Dispose(); outgoingTarget.Dispose(); host.Children.Remove(stage); }

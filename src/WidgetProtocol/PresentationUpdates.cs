@@ -85,6 +85,8 @@ public enum PresentationProperty
     RetainLastPresentation,
     Transition,
     CollectionLayout,
+    GridLayout,
+    GridCell,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -238,6 +240,8 @@ public static class PresentationPropertyMetadata
         PresentationProperty.StyleClasses or
         PresentationProperty.GridMinimumColumnWidth or
         PresentationProperty.GridMaximumColumns or
+        PresentationProperty.GridLayout or
+        PresentationProperty.GridCell or
         PresentationProperty.Minimum or
         PresentationProperty.Maximum or
         PresentationProperty.Step or

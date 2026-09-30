@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Input;
 using WidgetRail.OverlayPlatformClient;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
@@ -21,8 +22,19 @@ internal sealed partial class OverlayShellPage
 
     internal void Receive(ControllerFrame frame)
     {
+        if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
         if (frame.Connected == 0) { trayHold.Reset(); shellOwnedReleases.Clear(); radialInput.Reset(); }
-        if (retired || !visible || switching && interactive || frame.Connected == 0) { rightStick.Reset(); return; }
+        if (retired || !visible || frame.Connected == 0 || frame.Primed != 0) { heldAction.Reset(); rightStick.Reset(); return; }
+        if (switching && interactive)
+        {
+            // Entry suppresses fresh input, but the gesture that started it must
+            // still finish. Otherwise a short B/A tap leaves its ownership latch
+            // set and every subsequent press of that button is discarded.
+            foreach (var (mask, button) in Buttons)
+                if ((frame.ReleasedButtons & mask) != 0 && shellOwnedReleases.Contains(button))
+                    _ = RouteButtonAsync(button, ControllerEventPhase.Released);
+            heldAction.Reset(); rightStick.Reset(); return;
+        }
         if (trayHold.Capturing && (frame.State.Buttons & 0x8000) == 0 && (frame.ReleasedButtons & 0x8000) == 0)
         { trayHold.Reset(); shellOwnedReleases.Remove(ControllerButton.Y); }
         _ = RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, !reordering, Environment.TickCount64));
@@ -41,16 +53,29 @@ internal sealed partial class OverlayShellPage
         };
         if (!radialNavigation && direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None)
         {
-            if (PinnedInputActive) pinned!.Presenter.MoveFocus(next);
-            else if (IsMediaFullscreen) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = fullscreenView });
+            if (PinnedInputActive)
+            {
+                if (pinned!.Presenter is { } widget) widget.MoveFocus(next);
+                else if (pinned.MediaView is { } media) media.MoveFocus(next);
+            }
+            else if (IsMediaFullscreen) fullscreenView.MoveFocus(next);
             else if (interactive && RecoveryVisible) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = StatusChrome });
-            else if (interactive) surface?.MoveFocus(next);
+            else if (interactive && surface is { } focusedSurface)
+            {
+                rightStick.Reset();
+                if (!focusedSurface.MoveFocus(next) && next == FocusNavigationDirection.Down && focusedSurface.CanLeaveRootScope)
+                {
+                    FocusDirectionalTray();
+                }
+            }
             else if (!NavigateTray(next)) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
         }
         if (radialInput.AllowScroll && (PinnedInputActive ? pinned!.Presenter : interactive && !IsMediaFullscreen ? surface : null) is { } current)
         {
-            var delta = rightStick.Sample(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
+            var now = Environment.TickCount64;
+            var delta = rightStick.Sample(frame.State.RightThumbX, frame.State.RightThumbY, now);
             if (delta.X != 0 || delta.Y != 0) current.ScrollBy(delta.X, delta.Y);
+            else if (rightStick.ShouldSettle(now) && current.SettleScrollFocus()) rightStick.Reset();
         }
         else rightStick.Reset();
         foreach (var (mask, button) in Buttons)
@@ -58,14 +83,30 @@ internal sealed partial class OverlayShellPage
             if ((frame.PressedButtons & mask) != 0) _ = RouteButtonAsync(button, ControllerEventPhase.Pressed);
             if ((frame.ReleasedButtons & mask) != 0) _ = RouteButtonAsync(button, ControllerEventPhase.Released);
         }
-        if (frame.LeftTriggerPressed != 0) _ = RouteButtonAsync(ControllerButton.LeftTrigger, ControllerEventPhase.Pressed);
+        if (frame.LeftTriggerPressed != 0) BeginTrigger(ControllerButton.LeftTrigger);
         if (frame.LeftTriggerReleased != 0) _ = RouteButtonAsync(ControllerButton.LeftTrigger, ControllerEventPhase.Released);
-        if (frame.RightTriggerPressed != 0) _ = RouteButtonAsync(ControllerButton.RightTrigger, ControllerEventPhase.Pressed);
+        if (frame.RightTriggerPressed != 0) BeginTrigger(ControllerButton.RightTrigger);
         if (frame.RightTriggerReleased != 0) _ = RouteButtonAsync(ControllerButton.RightTrigger, ControllerEventPhase.Released);
+        PumpHeldAction(frame);
     }
 
-    private async Task RouteButtonAsync(ControllerButton button, ControllerEventPhase phase)
+    private void FocusDirectionalTray()
     {
+        // Native OverlayState distinguishes Directional entry from Back entry:
+        // the bottom edge always enters the rail, even with a radial switcher.
+        radialRequested = false;
+        SetInteractive(false);
+        RefreshRadialChooser();
+        FocusTray();
+    }
+
+    private async Task RouteButtonAsync(ControllerButton button, ControllerEventPhase phase,
+        ControllerInputOrigin origin = ControllerInputOrigin.PhysicalController)
+    {
+        // A host-owned gesture stays owned until release, even if it moved focus
+        // between the pin and main window. A queued duplicate press must not
+        // become a fresh Back/View action in the newly active surface.
+        if (phase == ControllerEventPhase.Pressed && shellOwnedReleases.Contains(button)) return;
         if (phase == ControllerEventPhase.Released && shellOwnedReleases.Remove(button))
         {
             if (button == ControllerButton.Y)
@@ -75,6 +116,7 @@ internal sealed partial class OverlayShellPage
         if (retired || switching && interactive || !visible) return;
         try
         {
+            if (await RoutePinnedPlacementButtonAsync(button, phase)) return;
             if (pinned is { } pin && !IsMediaFullscreen)
             {
                 if (button == ControllerButton.View && phase == ControllerEventPhase.Pressed)
@@ -86,7 +128,8 @@ internal sealed partial class OverlayShellPage
                 }
                 if (PinnedInputActive)
                 {
-                    var accepted = await pin.Presenter.HandleControllerButtonAsync(button, phase, cancellationToken: lifetime.Token);
+                    var accepted = pin.Media is not null ? RouteCompactButton(pin, button, phase) :
+                        await pin.Presenter!.HandleControllerButtonAsync(button, phase, origin, cancellationToken: lifetime.Token);
                     if (!accepted && button == ControllerButton.B && phase == ControllerEventPhase.Pressed && ReferenceEquals(pinned, pin))
                     { shellOwnedReleases.Add(button); ExitPinnedInteraction(restoreMain: true); }
                     return;
@@ -95,7 +138,7 @@ internal sealed partial class OverlayShellPage
             if (RouteFullscreenButton(button, phase)) return;
             if (!interactive)
             {
-                await RouteTrayButtonAsync(button, phase);
+                await RouteTrayButtonAsync(button, phase, origin);
                 return;
             }
             if (RecoveryVisible)
@@ -109,7 +152,7 @@ internal sealed partial class OverlayShellPage
             if (surface is null) return;
             var target = surface;
             var version = selectionVersion;
-            var handled = await target.HandleControllerButtonAsync(button, phase, cancellationToken: lifetime.Token);
+            var handled = await target.HandleControllerButtonAsync(button, phase, origin, cancellationToken: lifetime.Token);
             if (!handled && button == ControllerButton.B && phase == ControllerEventPhase.Pressed &&
                 !retired && visible && version == selectionVersion && ReferenceEquals(target, surface))
             {

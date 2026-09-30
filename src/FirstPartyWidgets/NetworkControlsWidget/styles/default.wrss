@@ -138,7 +138,6 @@
 
 .network-radio-toggle:focused {
   color: var(--text);
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
@@ -240,7 +239,6 @@
 .network-retry-action:focused,
 .network-scan-action:focused {
   color: var(--text);
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
@@ -300,5 +298,5 @@
   font-size: 14px;
   text-overflow: ellipsis;
 }
-.network-secondary-action:focused { background: var(--accent); color: var(--accent-contrast, #ffffff); }
+.network-secondary-action:focused { color: var(--accent-contrast, #ffffff); }
 .network-secondary-action:disabled { opacity: 0.55; }

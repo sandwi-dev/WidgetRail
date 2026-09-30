@@ -9,6 +9,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private SurfaceExtent shellViewport;
+    private (SurfaceExtent Viewport, double InterfaceScale, double TextScale, OverlayPosition Position, bool Fullscreen)? sizingContext;
     private RailGeometry railGeometry;
     private ScrollViewer? trayScroll;
     private Style? railItemStyle;
@@ -17,6 +18,12 @@ internal sealed partial class OverlayShellPage
 
     internal void ConfigureProductionViewport(SurfaceExtent viewport)
     {
+        var context = (viewport, Appearance.InterfaceScale, Appearance.TextScale, Appearance.OverlayPosition, IsMediaFullscreen);
+        var sameContext = sizingContext == context;
+        sizingContext = context;
+        // Sample before measuring/mutating native dimensions. Only content changes
+        // animate here; widget publication owns its separate switch transaction.
+        var previousSize = surface?.PresentedWidgetSize;
         shellViewport = viewport;
         var zoom = Appearance.InterfaceScale;
         ProductionLayout.Margin = new(24 / zoom, 24 / zoom, 24 / zoom, 14 / zoom);
@@ -28,6 +35,11 @@ internal sealed partial class OverlayShellPage
         ProductionLayout.RowDefinitions[4].Height = new(bands.RailHeight);
         var content = new SurfaceExtent(available.Width, bands.ContentHeight);
         var resolved = OverlaySurfaceSizing.Resolve(SurfaceHints, content, new(0, 0), Appearance.TextScale, MeasureContent);
+        var extentChanged = WidgetSurface.Width != resolved.Width || WidgetSurface.Height != resolved.Height;
+        var animateContentResize = extentChanged && sameContext && visible && !switching && !IsMediaFullscreen &&
+            surface is { IsLoaded: true, Visibility: Visibility.Visible } && previousSize is { X: > 0, Y: > 0 };
+        // Unchanged placement notifications must not interrupt an active resize.
+        if (extentChanged || !sameContext) surface?.SettleWidgetResize();
         WidgetSurface.Width = resolved.Width; WidgetSurface.Height = resolved.Height;
         if (surface is not null) ConfigurePresenterExtent(surface, resolved);
         if (preparingSurface is { } incoming && !ReferenceEquals(incoming.Presenter, surface))
@@ -39,6 +51,9 @@ internal sealed partial class OverlayShellPage
         WidgetSurface.HorizontalAlignment = StatusChrome.HorizontalAlignment = TrayHelp.HorizontalAlignment = RailRegion.HorizontalAlignment = alignment;
         ConfigureRail(available.Width);
         RefreshRadialChooser();
+        PositionOpeningIndicator();
+        if (animateContentResize)
+            surface!.ResizeWidgetContent(previousSize!.Value, WidgetSurface, Motion.WidgetResizeReason.ContentSizeChanged);
         RecordSizing(viewport, new(48 / zoom, ProductionShellGeometry.ReservedHeight + 38 / zoom), resolved);
     }
 
@@ -75,7 +90,7 @@ internal sealed partial class OverlayShellPage
         UpdateRailOverflow();
         void UpdateIcons(DependencyObject root)
         {
-            if (root is WidgetCatalogItemContent content) { content.IconSize = RailIconSize; return; }
+            if (root is WidgetCatalogItemContent content) { content.IconSize = RailIconSize; content.TileSize = railGeometry.TileSize; return; }
             for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); ++i) UpdateIcons(VisualTreeHelper.GetChild(root, i));
         }
     }
@@ -117,7 +132,9 @@ internal sealed partial class OverlayShellPage
         if (IsMediaFullscreen || args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse &&
             !args.GetCurrentPoint(ProductionRoot).Properties.IsLeftButtonPressed) return;
         for (var node = args.OriginalSource as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
-            if (ReferenceEquals(node, WidgetSurface) || node is Presentation.WidgetViewPresenter || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, TrayHelp) || ReferenceEquals(node, StatusChrome) || ReferenceEquals(node, radialView)) return;
+            // Popup routed input can reach this root even though its visual
+            // ancestry lives outside WidgetSurface. It is still UI content.
+            if (ReferenceEquals(node, WidgetSurface) || node is Presentation.WidgetViewPresenter or MenuFlyoutPresenter or MenuFlyoutItemBase or ContentDialog || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, TrayHelp) || ReferenceEquals(node, StatusChrome) || ReferenceEquals(node, radialView)) return;
         args.Handled = true;
         HideRequested?.Invoke();
     }

@@ -101,6 +101,8 @@ internal sealed partial class WidgetStylesValidationPage
                 "indexed fragment focus exit restores base typography");
         }
         finally { host.Children.Remove(fragment); await fragment.DisposeAsync(); }
+        await NativeLabelAlignmentAsync();
+        await NativeTextScaleScopesAsync();
     }
 
     private static FrameworkElement? FindTypographyElement(DependencyObject root, string id)

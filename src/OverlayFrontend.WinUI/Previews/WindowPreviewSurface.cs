@@ -48,6 +48,7 @@ internal sealed class WindowPreviewSurface : Grid, IDisposable
     internal Task Completion => completion;
     internal long InspectionCount => Interlocked.Read(ref inspectionCount);
     internal bool IsBindingTimerRunning => bindingTimer.IsEnabled;
+    internal string DemandState => $"loaded={demanded};viewport={viewportVisible};owner={ownerVisible};element={elementVisible};disposed={disposed}";
     internal bool HasNativeCallbackRoot { get { lock (gate) return callbackRoot.IsAllocated; } }
     internal string WindowId => target.WindowId;
     internal bool HasDemand => Volatile.Read(ref demanded) != 0 && Volatile.Read(ref viewportVisible) != 0 &&

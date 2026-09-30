@@ -52,10 +52,12 @@ internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
     {
         try
         {
+            await OriginalColorSizingAsync();
             Apply();
-            await Until(() => Find("Widget.icon") is WidgetPackageIconView { Content: ImageIcon { Source: SvgImageSource } });
+            await Until(() => Find("Widget.icon") is WidgetPackageIconView { Content: Image { Source: SvgImageSource } });
             var icon = (WidgetPackageIconView)Find("Widget.icon")!;
-            var original = (ImageIcon)icon.Content;
+            var original = (Image)icon.Content;
+            await Until(() => original.ActualWidth > 0);
             Check(original.ActualWidth > 0 || original.Width > 0, "native SVG icon has bounded size");
             Check(AutomationProperties.GetName(icon) == "Album", "native package icon retains authored accessible name");
             await Until(() => Find("Widget.tint") is WidgetPackageIconView { Content: ImageIcon native } && NativePackageIconTint.For(native) is not null);
@@ -82,7 +84,7 @@ internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
             Check(cache.PreparationCount == preparations, "Light and Dark themes change native tint without rerasterizing");
             root.RequestedTheme = previousTheme;
             var button = (Button)Find("Widget.button")!;
-            await Until(() => Descendants(button).OfType<ImageIcon>().Any());
+            await Until(() => Descendants(button).OfType<Image>().Any());
             Check(Descendants(button).OfType<TextBlock>().Any(text => text.Text == "Play") && button.IsTabStop,
                 "button keeps native activation label and package icon together");
             var count = requests.GetValueOrDefault("red");
@@ -105,7 +107,7 @@ internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
             asset = "late"; Apply();
             Check(icon.Content is FontIcon, "replacement immediately clears prior asset to semantic fallback");
             asset = "blue"; Apply();
-            await Until(() => icon.Content is ImageIcon);
+            await Until(() => icon.Content is Image);
             var replacement = icon.Content;
             late.SetResult(Bytes("red")); await Task.Delay(75);
             Check(ReferenceEquals(replacement, icon.Content), "late asset response cannot replace new icon identity");
@@ -152,7 +154,7 @@ internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
             if (Environment.GetCommandLineArgs().Contains("--probe-svg-raster", StringComparer.Ordinal))
                 await PackageIconRasterProbe.RunAsync((StackPanel)Content, (SvgImageSource)original.Source);
             removed = false; asset = "red"; Apply();
-            await Until(() => Find("Widget.icon") is WidgetPackageIconView { Content: ImageIcon });
+            await Until(() => Find("Widget.icon") is WidgetPackageIconView { Content: Image });
             await Until(() => tintView.ActualHeight <= tintView.FontSize + 1);
             Check(true, "removing explicit icon size restores intrinsic bounds without retaining old child size");
             catalogPreview = await CatalogIconValidation.RunAsync((StackPanel)Content, Check);

@@ -10,6 +10,9 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 internal sealed class WidgetMediaViewport : ContentControl
 {
     internal Grid SurfaceHost { get; } = new();
+    private readonly ProgressRing loading = new() { Width = 32, Height = 32, IsActive = false, Visibility = Visibility.Collapsed };
+    private readonly TextBlock pinnedNotice = new() { Text = "Media is playing in the pinned window", TextWrapping = TextWrapping.Wrap,
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
     internal Action? PlacementChanged { get; set; }
     internal EmbeddedMediaSession? Declaration { get; private set; }
     internal bool ScopeActive { get; set; }
@@ -19,7 +22,8 @@ internal sealed class WidgetMediaViewport : ContentControl
 
     public WidgetMediaViewport()
     {
-        Content = SurfaceHost;
+        var layers = new Grid(); layers.Children.Add(SurfaceHost); layers.Children.Add(loading); layers.Children.Add(pinnedNotice); Content = layers;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(loading, "Starting media player");
         IsTabStop = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
@@ -32,6 +36,20 @@ internal sealed class WidgetMediaViewport : ContentControl
             Clip = new RectangleGeometry { Rect = new Rect(0, 0, Math.Max(0, ActualWidth), Math.Max(0, ActualHeight)) };
             PlacementChanged?.Invoke();
         };
+    }
+
+    internal void SetMediaPinned(bool pinned)
+    {
+        pinnedNotice.Foreground = Foreground; pinnedNotice.FontSize = FontSize;
+        pinnedNotice.Visibility = pinned ? Visibility.Visible : Visibility.Collapsed;
+        if (pinned) SetMediaLoading(false);
+    }
+
+    internal void SetMediaLoading(bool active)
+    {
+        loading.Foreground = Foreground;
+        loading.IsActive = active;
+        loading.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
     }
 
     internal void Configure(EmbeddedMediaSession? declaration, bool scopeActive)
@@ -54,6 +72,7 @@ internal sealed class WidgetMediaViewport : ContentControl
     {
         if (Retired) return;
         Retired = true;
+        SetMediaLoading(false);
         PlacementChanged?.Invoke();
         PlacementChanged = null;
         CanAcceptInput = null;

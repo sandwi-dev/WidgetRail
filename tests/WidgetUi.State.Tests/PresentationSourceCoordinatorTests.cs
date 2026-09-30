@@ -199,6 +199,15 @@ public sealed class PresentationSourceCoordinatorTests
         AssertSlots(coordinator.Resolve(Revision(retainFragment: true), null), "default-art", "default-title");
     }
 
+    [TestMethod]
+    public void ReplacingOneSurfaceOwnerDoesNotInvalidateOtherSelections()
+    {
+        var coordinator = new PresentationSourceCoordinator<string>();
+        coordinator.Resolve(Revision(retainFragment: true), GameA);
+        coordinator.Forget(Background);
+        AssertSlots(coordinator.Resolve(Revision(retainFragment: true), null), "default-art", "title-a");
+    }
+
     private static PresentationRevision<string> Revision(bool? retainFragment = null,
         string suffix = "", bool omitA = false, PresentationAuthority? authority = null)
     {

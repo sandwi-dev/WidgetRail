@@ -61,6 +61,24 @@ public sealed partial class PlayniteLibraryLayoutTests
     }
 
     [TestMethod]
+    public void DestinationsKeepOneStableDeclaredBackgroundOwner()
+    {
+        foreach (var route in new[] { PlayniteLibraryRoute.Library, PlayniteLibraryRoute.Browse,
+                     PlayniteLibraryRoute.Categories, PlayniteLibraryRoute.Hidden })
+        {
+            var view = PlayniteLibraryPresentation.Render(State(Snapshot(WidgetPagedResourceStatus.Ready, []),
+                PlayniteLibraryPrivateState.Empty, route, []));
+            var snapshot = new PresentationWidget(view).RenderSnapshot("shared-background", 1);
+            var background = snapshot.Root.Children.Single(node => node.Kind == ViewNodeKind.BackgroundSurface);
+            Assert.AreEqual("playnite-library.root", snapshot.Root.Id, route.ToString());
+            Assert.AreEqual("playnite-library.cinematic", background.Id, route.ToString());
+            Assert.IsTrue(background.UsesFocusedDescendantArtwork == true);
+            Assert.IsFalse(background.RetainLastPresentation == false);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        }
+    }
+
+    [TestMethod]
     public void BrowsePagingPreservesFocusAndMatchingCount()
     {
         var items = Enumerable.Range(0, 6).Select(index => PlayniteLibraryItem.From(
@@ -262,7 +280,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(topActions.Children[^1].Children.All(node =>
             !node.IsFocusable));
         StringAssert.Contains(styles,
-            ".playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 0px; padding: 4px 6px 10px; }");
+            ".playnite-library-rail { width: 100%; min-width: 0px; flex-shrink: 0; gap: 0px; padding: 8px 6px 12px; }");
         StringAssert.Contains(styles,
             ".playnite-library-footer { min-height: 28px; flex-shrink: 0; flex-wrap: wrap; gap: 6px; }");
         StringAssert.Contains(styles,
@@ -312,7 +330,9 @@ public sealed partial class PlayniteLibraryLayoutTests
             new HashSet<string>(["wrail-focus-presentation-surface"],
                 StringComparer.Ordinal)));
         Assert.AreEqual("start", focusSurfaceStyle.Get("align")?.Text,
-            "The selected-game details must align with the left edge of the poster rail.");
+            "The selected-game details must align with the left edge above the poster rail.");
+        Assert.AreEqual("end", focusSurfaceStyle.Get("justify")?.Text,
+            "The summary and Home rail must remain adjacent at the bottom of the available frame.");
         var homeContentStyle = theme.Resolve(new WrssElement("stack", null,
             new HashSet<string>(["playnite-library-home-content"],
                 StringComparer.Ordinal)));
@@ -426,9 +446,15 @@ public sealed partial class PlayniteLibraryLayoutTests
                  })
             CollectionAssert.Contains(activeNodes.Single(node => node.Id == id)
                 .StyleClasses.ToArray(), "playnite-library-filter-active");
-        StringAssert.Contains(styles,
-            ".playnite-library-filter-active:focused { background:",
-            "The active hue must retain an independently visible focused state.");
+        var activeClasses = new HashSet<string>(["playnite-library-control", "playnite-library-filter-active"]);
+        var selectedStyle = theme.Resolve(new WrssElement("button", null, activeClasses));
+        var focusedStyle = theme.Resolve(new WrssElement("button", null, activeClasses,
+            new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
+        Assert.AreEqual(selectedStyle.Get("background")?.Text, focusedStyle.Get("background")?.Text,
+            "Focusing a selected filter must preserve its selected fill.");
+        Assert.AreNotEqual(selectedStyle.Get("outline-color")?.Text, focusedStyle.Get("outline-color")?.Text,
+            "Focus must be distinguished by an outline instead of borrowing the selected fill.");
+        Assert.AreNotEqual("0px", focusedStyle.Get("outline-width")?.Text);
 
         var productionSources = Directory.GetFiles(RepositoryRoot(), "*.cs",
                 SearchOption.AllDirectories)
@@ -524,9 +550,9 @@ public sealed partial class PlayniteLibraryLayoutTests
             PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []));
         Assert.AreEqual(WidgetSurfaceAxisMode.FillAvailable, browseView.Surface!.WidthMode);
         Assert.IsTrue(Nodes(browse.Root).Any(node =>
-            node.Id == "playnite-library.browse.cinematic" &&
+            node.Id == "playnite-library.cinematic" &&
             node.Kind == ViewNodeKind.BackgroundSurface));
-        var browseBackground = Nodes(browse.Root).Single(node => node.Id == "playnite-library.browse.cinematic");
+        var browseBackground = Nodes(browse.Root).Single(node => node.Id == "playnite-library.cinematic");
         var browseStage = browseBackground.Children.Single();
         Assert.AreEqual("playnite-library.browse.stage", browseStage.Id);
         CollectionAssert.Contains(browseStage.StyleClasses.ToArray(),
@@ -549,7 +575,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         var styles = File.ReadAllText(Path.Combine(AppContext.BaseDirectory,
             "styles", "default.wrss"));
         StringAssert.Contains(styles,
-            ".playnite-library-browse-scroll { gap: 4px 2px; padding: 4px; }");
+            ".playnite-library-browse-scroll { gap: 4px 2px; padding: 8px 4px; }");
         StringAssert.Contains(styles,
             ".playnite-library-browse-foreground { width: 100%; min-width: 0px; min-height: 0px;");
         var theme = CompileStyles();
@@ -761,7 +787,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             CollectionAssert.Contains(nodes.Single(node => node.Id == "playnite-library.root").StyleClasses.ToArray(),
                 "playnite-library-browse-surface", phase);
             var background = nodes.Single(node =>
-                node.Id == "playnite-library.browse.cinematic");
+                node.Id == "playnite-library.cinematic");
             Assert.AreEqual(ViewNodeKind.BackgroundSurface, background.Kind, phase);
             CollectionAssert.Contains(background.StyleClasses.ToArray(),
                 "playnite-library-browse-background", phase);
@@ -944,7 +970,11 @@ public sealed partial class PlayniteLibraryLayoutTests
         var browse = new PresentationWidget(PlayniteLibraryPresentation.Render(browseState))
             .RenderSnapshot("playnite-library.browse.background", 2);
         var browseBackground = Nodes(browse.Root).Single(node =>
-            node.Id == "playnite-library.browse.cinematic");
+            node.Id == "playnite-library.cinematic");
+        Assert.AreEqual(homeBackground.Id, browseBackground.Id,
+            "Home and Library declare one shared background owner across section changes.");
+        Assert.AreEqual(home.Root.Id, browse.Root.Id);
+        Assert.AreEqual(home.Root.InputScopeId, browse.Root.InputScopeId);
         Assert.AreEqual("library.tile.fallback", browseBackground.ArtworkHandle,
             "A selected game without Hero artwork must use its exact Tile handle.");
         Assert.AreEqual(ImageFit.Cover, browseBackground.ImageFit);

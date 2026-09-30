@@ -7,6 +7,15 @@ internal sealed class ReplayNativePlatform : IOverlayPlatformNative
 {
     private readonly Queue<ControllerFrame> frames = new();
     private readonly Queue<PlatformEvent> signals = new();
+    internal uint ControllerPrerequisiteFlags { get; set; }
+    internal PlatformControllerControlState ControlState { get; set; } = PlatformControllerControlState.Off;
+    internal PlatformStatus ExclusiveControlResult { get; set; } = PlatformStatus.ControllerIsolationUnavailable;
+    internal PlatformControllerControlState FailedControlState { get; set; } = PlatformControllerControlState.Failed;
+    internal PlatformStatus PrepareVisibleResult { get; set; }
+    internal int ExclusiveControlCalls { get; private set; }
+    internal int ReadControllerCalls { get; private set; }
+    internal int DestroyCalls { get; private set; }
+    internal List<uint> ExclusiveControlRequests { get; } = new();
     public void Move(NavigationDirection direction)
     {
         var frame = ControllerFrame.Create();
@@ -32,11 +41,22 @@ internal sealed class ReplayNativePlatform : IOverlayPlatformNative
     public PlatformStatus Create(in PlatformCreateOptions options, out nint handle) { handle = 1; return PlatformStatus.Ok; }
     public PlatformStatus Initialize(nint handle) => PlatformStatus.Ok;
     public void Shutdown(nint handle) { frames.Clear(); signals.Clear(); }
-    public void Destroy(nint handle) => Shutdown(handle);
+    public void Destroy(nint handle) { DestroyCalls++; Shutdown(handle); }
     public uint HasGameInput(nint handle) => 0;
     public uint RequiresLegacyGuidePolling(nint handle) => 1;
+    public uint ControllerPrerequisites() => ControllerPrerequisiteFlags;
+    public uint ControllerControlState(nint handle) => (uint)ControlState;
+    public PlatformStatus SetExclusiveControl(nint handle, uint enabled)
+    {
+        ExclusiveControlCalls++; ExclusiveControlRequests.Add(enabled);
+        var result = enabled == 0 ? PlatformStatus.Ok : ExclusiveControlResult;
+        ControlState = result == PlatformStatus.Ok
+            ? enabled == 0 ? PlatformControllerControlState.Off : PlatformControllerControlState.Active
+            : FailedControlState;
+        return result;
+    }
     public PlatformStatus SetWindowState(nint handle, uint visible, uint focused) => PlatformStatus.Ok;
-    public PlatformStatus PrepareVisible(nint handle) => PlatformStatus.Ok;
+    public PlatformStatus PrepareVisible(nint handle) => PrepareVisibleResult;
     public PlatformStatus DrainEvent(nint handle, ulong nowMilliseconds, ref PlatformEvent value, out uint hasEvent)
     { hasEvent = 0; return PlatformStatus.Ok; }
     public PlatformStatus PollLegacyGuide(nint handle, ulong nowMilliseconds, ref PlatformEvent value, out uint hasEvent)
@@ -44,6 +64,7 @@ internal sealed class ReplayNativePlatform : IOverlayPlatformNative
     public PlatformStatus PrimeController(nint handle, uint foregroundConfirmed, ulong nowMilliseconds) => PlatformStatus.Ok;
     public PlatformStatus ReadController(nint handle, uint foregroundConfirmed, ulong nowMilliseconds, ref ControllerFrame frame)
     {
+        ReadControllerCalls++;
         if (frames.TryDequeue(out var next)) frame = next;
         else frame.Connected = 1;
         return PlatformStatus.Ok;
@@ -58,4 +79,7 @@ internal sealed class ReplayNativePlatform : IOverlayPlatformNative
     { hasPlacement = 0; return PlatformStatus.Ok; }
     public NativeShortcutSource NativeShortcutButtons(nint handle, out ushort buttons)
     { buttons = 0; return NativeShortcutSource.Unavailable; }
+    public PlatformStatus SetViewMenuShortcut(nint handle, uint enabled) => PlatformStatus.Ok;
+    public PlatformStatus PollViewMenuShortcut(nint handle, out uint pressed, out uint consumed)
+    { pressed = consumed = 0; return PlatformStatus.Ok; }
 }

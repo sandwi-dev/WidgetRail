@@ -15,7 +15,8 @@ public sealed partial class WidgetPresentationSession
             throw new BridgeProtocolException("Shell style inventory exceeds its bound.");
         var styles = new Dictionary<string, BridgeNodeRenderStyles>(StringComparer.Ordinal);
         var allowed = new HashSet<string>(["canvas", "backdrop", "panel", "tray", "tray-item", "tray-item:selected",
-            "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "status"], StringComparer.Ordinal);
+            "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status",
+            "tray-clock", "tray-date", "tray-status-icon"], StringComparer.Ordinal);
         foreach (var property in raw.EnumerateObject())
         {
             if (!allowed.Contains(property.Name) || styles.ContainsKey(property.Name) || property.Value.ValueKind != JsonValueKind.Object ||

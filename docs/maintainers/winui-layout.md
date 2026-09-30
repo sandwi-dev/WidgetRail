@@ -8,6 +8,20 @@ positive flex-grow values map to star tracks. Start, center, end and space-betwe
 justification map to native auto/star tracks. Cross-axis alignment maps to native
 element alignment. Collapsed responsive branches create no tracks or gaps.
 
+Ordinary `Scroll` uses native `ScrollViewer`/`StackPanel` and shares the same
+cross-axis alignment policy as Row/Stack. Vertical rows stretch to viewport width
+by default; horizontal rows stretch to viewport height. Authored `align` positions
+narrow rows, while explicit `100%` fills the bounded axis. Fixed/min/max sizes
+remain native constraints. Apply alignment to each child's layout owner, including
+motion wrappers; reset the former axis when scroll direction changes. The scrolling
+axis remains content-sized. Indexed collection virtualization is unaffected.
+
+`FocusPresentationSurface` treats its retained fragment as an implicit first
+child. Direction, justification, cross-axis alignment and gap apply to the
+fragment/content pair. Bounded children retain their desired height, allowing a
+summary and horizontal poster rail to sit together at the bottom; an unbounded
+scrolling child still receives a finite remaining viewport.
+
 `Grid` uses `WidgetResponsiveGrid`, which adjusts native star columns from the
 available content width, authored minimum column width, maximum column count and
 gaps. Native Grid still measures and arranges the controls. This bounded static

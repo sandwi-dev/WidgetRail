@@ -24,6 +24,15 @@ if (compiled.IsValid)
 
 Parse diagnostics carry source, one-based line and column, severity, stable code, and a controller-readable message. Parse and compile off the render thread; atomically swap only a valid `WrssTheme`, retaining the last valid theme on errors.
 
+For WinUI authoring, also run
+`package.Documents.SelectMany(WinUiStyleDiagnostics.Analyze)`. This returns
+source-located `winui_unmapped_layout` warnings for `flex-shrink`, `flex-basis`
+and `flex-wrap`, with native Grid/ResponsiveGrid alternatives. These declarations
+remain legal shared WRSS syntax but have no WinUI mapping. This diagnostic does
+not change the cascade, reject packages, evaluate selector reachability or claim
+complete layout/pixel validation. No warnings means none of these known unmapped
+properties were found, not that every possible layout is correct.
+
 ## Supported language
 
 - `:root` custom properties such as `--accent`.

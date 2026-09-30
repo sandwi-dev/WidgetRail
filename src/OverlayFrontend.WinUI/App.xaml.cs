@@ -19,6 +19,7 @@ public partial class App : Application
     private readonly Shell.OverlayShellOptions? launchOptions;
     private readonly Exception? configurationError;
     internal static string? ValidationFixturePath { get; private set; }
+    internal static bool RestartRequested { get; set; }
     /// <summary>
     /// The main application window. Use <c>App.Window</c> from any class that needs
     /// the window reference (for dialogs, pickers, interop, etc.).
@@ -48,6 +49,21 @@ public partial class App : Application
         this.arguments = arguments;
         this.launchOptions = launchOptions;
         this.configurationError = configurationError;
+        UnhandledException += (_, args) =>
+        {
+            var log = Diagnostics.FrontendFailureLog.Current;
+            // Persist the exception before best-effort inspection of failed UI.
+            log.Write("xaml-unhandled", args.Exception, args.Message);
+            try
+            {
+                if (Window is MainWindow main && main.CaptureFailureLayout() is { } layout)
+                    log.Write("xaml-layout", null, layout);
+            }
+            catch (Exception error) { log.Write("xaml-layout-capture-failed", error); }
+            // Do not set Handled: a broken layout must retain normal crash/dump behavior.
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            Diagnostics.FrontendFailureLog.Current.Write("clr-unhandled", args.ExceptionObject as Exception);
         InitializeComponent();
     }
 

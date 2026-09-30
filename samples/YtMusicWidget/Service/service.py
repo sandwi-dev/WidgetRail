@@ -25,6 +25,10 @@ MAX_LINE = 2 * 1024 * 1024
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
+class StreamUnavailableError(Exception):
+    """Closed protocol category; provider exception text/URLs never cross IPC."""
+
+
 def browser_executable(environment=None):
     environment = os.environ if environment is None else environment
     # Match Now Playing's preference: installed Chrome first, then Edge.
@@ -565,7 +569,11 @@ class MusicService:
                 self.url_cache.remove(video)
             else:
                 key = self.stream_keys.get(video)
-                if key and self.streams.get(key, {}).get("expires", 0) > time.time() + StreamUrlCache.SAFETY_MARGIN:
+                if args.get("refresh") is True:
+                    self.url_cache.remove(video)
+                    if key in self.streams:
+                        self.streams[key]["expires"] = 0
+                if args.get("refresh") is not True and key and self.streams.get(key, {}).get("expires", 0) > time.time() + StreamUrlCache.SAFETY_MARGIN:
                     return {"url": self.local_url(key)}
                 cached = self.url_cache.get(video)
                 if cached is not None:
@@ -594,11 +602,15 @@ class MusicService:
                     del self.resolving[identity]
 
     def resolve_uncached(self, video, auth, generation, *, speculative=False, key=None):
+        from yt_dlp.utils import DownloadError
         lane = self.prefetch_resolver if speculative else self.foreground_resolver
-        info = lane.extract(video, auth, generation, self.is_current_session)
+        try:
+            info = lane.extract(video, auth, generation, self.is_current_session)
+        except DownloadError as error:
+            raise StreamUnavailableError() from error
         url = str(info.get("url", ""))
         if not valid_stream_url(url):
-            raise ValueError("unsupported_stream")
+            raise StreamUnavailableError()
         now = time.time()
         headers = {k: v for k, v in info.get("http_headers", {}).items() if k.lower() in StreamUrlCache.HEADER_NAMES}
         stream = {"url": url, "headers": headers, "expires": stream_expiry(url, now) or now + 900}
@@ -726,6 +738,8 @@ def main():
     def execute(request):
         try:
             reply({"id": request["id"], "result": service.handle(request["method"], request.get("args") or {})})
+        except StreamUnavailableError:
+            reply({"id": request.get("id"), "error": "stream_unavailable"})
         except Exception:
             reply({"id": request.get("id"), "error": "request_failed"})
         finally:

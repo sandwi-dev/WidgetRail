@@ -18,7 +18,7 @@ public sealed partial class MainWindow
         page.InitializeShellChrome();
         desktopBackdrop = new(); desktopBackdrop.DismissRequested += HideOverlay;
         page.SurfaceAppearanceChanged += RefreshShellAppearance;
-        page.AppearanceLoaded += settings => { RefreshShellAppearance(); _ = page.RefreshShellPaletteAsync(); };
+        page.AppearanceLoaded += settings => { RefreshShellAppearance(); RefreshOverlayMotionPolicy(); _ = page.RefreshShellPaletteAsync(); };
         page.BridgeReady += () => _ = page.RefreshShellPaletteAsync();
         page.Loaded += (_, _) => RefreshShellAppearance();
         AppWindow.Changed += (_, args) =>
@@ -37,7 +37,9 @@ public sealed partial class MainWindow
         page.RefreshShellChrome();
         OverlaySurfacePaint.Apply(page.SurfaceBackground, policy, page.ShellPalette);
         var color = OverlaySurfacePaint.Background(page.ShellPalette, "backdrop", Microsoft.UI.Colors.Black);
-        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).OuterBounds;
+        var display = OverlayDisplayArea.Resolve(AppWindow.Id, AppWindow.Id);
+        if (display is null) return;
+        var area = display.OuterBounds;
         try { desktopBackdrop.Apply(WinRT.Interop.WindowNative.GetWindowHandle(this), area, color,
             page.Appearance.BackdropOpacity, AppWindow.IsVisible); }
         catch (Exception error)

@@ -97,10 +97,15 @@ public sealed partial class IndexedRangeSessionTests
         var value = new BridgeComputedStyleValue { Kind = WrssValueKind.Color, Text = "#123456" };
         var state = new Dictionary<string, BridgeComputedStyleValue> { ["color"] = value };
         var styles = new Dictionary<string, BridgeNodeRenderStyles>
-        { ["node"] = new() { Base = state, Focused = state, Pressed = state } };
+        { ["node"] = new() { Base = state, Focused = state, Pressed = state, GroupHeader = state } };
         var frozen = BridgeRenderStyleContract.ValidateAndFreeze(styles, new HashSet<string> { "node" }, true);
         state.Clear(); styles.Clear();
         Assert.AreEqual("#123456", frozen["node"].Base["color"].Text);
+        Assert.AreEqual("#123456", frozen["node"].GroupHeader!["color"].Text);
+        var invalidHeader = frozen["node"] with { GroupHeader = Enumerable.Range(0, BridgeRenderStyleLimits.MaximumPropertiesPerState + 1)
+            .ToDictionary(index => "property-" + index, _ => value) };
+        Assert.ThrowsExactly<BridgeProtocolException>(() => BridgeRenderStyleContract.ValidateAndFreeze(
+            new Dictionary<string, BridgeNodeRenderStyles> { ["node"] = invalidHeader }, new HashSet<string> { "node" }, true));
         var oversized = Enumerable.Range(0, BridgeRenderStyleLimits.MaximumNodes + 1).ToDictionary(index => "n" + index,
             _ => frozen["node"]);
         Assert.ThrowsExactly<BridgeProtocolException>(() => BridgeRenderStyleContract.ValidateAndFreeze(oversized,

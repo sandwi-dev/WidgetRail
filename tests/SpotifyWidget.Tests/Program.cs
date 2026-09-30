@@ -70,6 +70,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing playback device produces actionable guidance", MissingPlaybackDeviceGuidance),
     ("Progress is projected locally without provider polling", ProjectedProgress),
     ("Playback actions publish optimistic state and reconcile", OptimisticPlayback),
+    ("Pending transport controls remain focusable while busy", PendingTransportControlsKeepFocus),
+    ("State-relative toggle restrictions preserve main and pinned focus through acknowledgement", ToggleRestrictionFocus),
     ("X playback keeps the stable page entry through pending and terminal",
         PlaybackShortcutKeepsStablePageEntry),
     ("Optimistic controls survive pre-response observations and settle",
@@ -1455,6 +1457,87 @@ static async Task OptimisticPlayback()
     await StopAsync(widget);
 }
 
+static async Task PendingTransportControlsKeepFocus()
+{
+    foreach (var (actionId, elementId, requestedValue) in new (string, string, double?)[]
+    {
+        ("spotify.play-toggle", "spotify.play-toggle", null),
+        ("spotify.next", "spotify.next", null),
+        ("spotify.previous", "spotify.previous", null),
+        ("spotify.shuffle", "spotify.shuffle", null),
+        ("spotify.repeat", "spotify.repeat", null),
+        ("spotify.seek", "spotify.seek.slider", 45000),
+    })
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var harness = SpotifyHarness.Ready();
+        harness.ControlWait = release.Task;
+        var widget = await StartAsync(harness);
+        try
+        {
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+            var action = widget.OnActionAsync(new WidgetActionEvent(actionId, elementId, RequestedValue: requestedValue)).AsTask();
+            await WaitUntil(() => harness.Commands.Count == 1);
+            var pending = Find(widget.Render().CreateSnapshot("spotify.pending-focus", 2).Root, elementId);
+            Assert.True(pending.IsBusy == true && pending.IsDisabled != true,
+                actionId + " must block duplicate action without removing native focus eligibility.");
+            release.TrySetResult();
+            await action;
+        }
+        finally { release.TrySetResult(); await StopAsync(widget); }
+    }
+}
+
+static async Task ToggleRestrictionFocus()
+{
+    foreach (var playing in new[] { false, true })
+    {
+        var harness = SpotifyHarness.Ready();
+        harness.Playback = harness.Playback with { IsPlaying = playing,
+            DisallowedActions = harness.Playback.DisallowedActions with { Pausing = !playing, Resuming = playing } };
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.ControlWait = release.Task;
+        var widget = await StartAsync(harness, new ManualTimeProvider(DateTimeOffset.FromUnixTimeSeconds(100)));
+        try
+        {
+            var host = WidgetTestHost.CreatePinnedLayoutHost(widget, "spotify.toggle-focus");
+            Assert.True(await host.SelectAsync(SpotifyPresentation.CompactPinnedLayoutId), "Compact pin unavailable");
+            Capture("ready", false);
+            var action = widget.OnActionAsync(new("spotify.play-toggle", "spotify.play-toggle")).AsTask();
+            await WaitUntil(() => harness.Commands.Count == 1);
+            Capture("pending", true);
+            release.SetResult(); await action;
+            Capture("acknowledged", true);
+            // Do not manufacture permissions for the opposite operation while
+            // waiting: the original provider restrictions are still retained.
+            Assert.Equal(!playing, widget.Playback!.DisallowedActions.Pausing);
+            Assert.Equal(playing, widget.Playback.DisallowedActions.Resuming);
+            harness.Playback = harness.Playback with { DisallowedActions = harness.Playback.DisallowedActions with
+                { Pausing = playing, Resuming = !playing } };
+            await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh"));
+            Capture("settled", false);
+
+            void Capture(string stage, bool busy)
+            {
+                var snapshot = widget.Render().CreateSnapshot("spotify.toggle-focus", 1);
+                var pin = snapshot.PinnedLayouts.Single(layout => layout.Id == SpotifyPresentation.CompactPinnedLayoutId);
+                foreach (var (mode, view, id) in new[] {
+                    ("main", snapshot, "spotify.play-toggle"),
+                    ("pin", snapshot with { Root = pin.Root!, Surface = pin.Surface, InitialFocusId = pin.InitialFocusId,
+                        ActiveInputScopeId = pin.ActiveInputScopeId!, PinnedLayouts = [], FocusGroupEntryRequest = null }, "spotify.player.pinned-compact.play-toggle") })
+                {
+                    var toggle = Find(view.Root, id);
+                    Assert.True(toggle.IsDisabled != true && (toggle.IsBusy == true) == busy,
+                        $"{mode}/{playing}/{stage}: toggle lost focus eligibility or reconciliation state");
+                    WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture($"Spotify-Busy-{mode}-{playing}-{stage}", view);
+                }
+            }
+        }
+        finally { release.TrySetResult(); await StopAsync(widget); }
+    }
+}
+
 static async Task PlaybackShortcutKeepsStablePageEntry()
 {
     var release = new TaskCompletionSource(
@@ -1472,8 +1555,8 @@ static async Task PlaybackShortcutKeepsStablePageEntry()
     await WaitUntil(() => harness.Commands.Count == 1);
     var pending = widget.RenderSnapshot("spotify.focus.pending", 2);
     Assert.Equal(focus, pending.InitialFocusId);
-    Assert.True(Find(pending.Root, "spotify.play-toggle").IsDisabled == true,
-        "The pending Play/Pause owner was not disabled.");
+    Assert.True(Find(pending.Root, "spotify.play-toggle") is { IsBusy: true, IsDisabled: not true },
+        "The pending Play/Pause owner must block actions while retaining focus eligibility.");
 
     release.SetResult();
     await WaitUntil(() => Find(widget.RenderSnapshot(
@@ -1506,8 +1589,8 @@ static async Task OptimisticControlsSurvivePreResponseObservations()
         var initiatingControl = Find(pending.Root, scenario.ControlId);
         Assert.True(initiatingControl.IsBusy == true,
             $"{scenario.Name} did not retain Busy through its provider response.");
-        Assert.True(initiatingControl.IsDisabled == true,
-            $"{scenario.Name} did not remain disabled through its provider response.");
+        Assert.True(initiatingControl.IsDisabled != true,
+            $"{scenario.Name} lost focus eligibility while its provider response was pending.");
         var unrelated = Find(pending.Root, "spotify.next");
         Assert.True(unrelated.IsBusy is not true && unrelated.IsDisabled is not true,
             $"{scenario.Name} changed an unrelated control's visual availability.");

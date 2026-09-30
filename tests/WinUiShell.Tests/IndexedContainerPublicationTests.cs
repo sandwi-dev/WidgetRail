@@ -7,6 +7,24 @@ namespace WinUiShell.Tests;
 public sealed class IndexedContainerPublicationTests
 {
     [TestMethod]
+    public void RetryingFailureRetainsIdentityAndPixelsWithoutRebindingContent()
+    {
+        var slot = new IndexedItem<string>(new object(), 7);
+        slot.SetValue("game.7", "retained pixels");
+        slot.SetFailed();
+        var properties = new List<string>();
+        var states = 0;
+        slot.PropertyChanged += (_, args) => properties.Add(args.PropertyName!);
+        slot.StateChanged += (_, _) => ++states;
+        slot.ClearFailure();
+        slot.ClearFailure();
+        Assert.IsFalse(slot.Failed);
+        Assert.AreEqual("game.7", slot.Key);
+        Assert.AreEqual("retained pixels", slot.Value);
+        CollectionAssert.AreEqual(new[] { nameof(slot.Failed) }, properties);
+        Assert.AreEqual(1, states);
+    }
+    [TestMethod]
     public void ContainerPolicySeesOneCommittedRowAfterNativeBindingsHaveUpdated()
     {
         var slot = new IndexedItem<string>(new object(), 7);

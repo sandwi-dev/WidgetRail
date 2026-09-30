@@ -21,7 +21,7 @@ public sealed class TaskSwitcherWidget : Widget
 
     public TaskSwitcherWidget() { _toastExpiry = CreateTimedMutation(); }
 
-    protected override async ValueTask OnActivatedAsync(CancellationToken activeLifetime)
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
         long generation;
         lock (_gate)
@@ -30,14 +30,19 @@ public sealed class TaskSwitcherWidget : Widget
             _windows = []; _focus = null; _loaded = false; _loadError = null; _busy = false;
             SetToastLocked(null);
         }
-        await RefreshAsync(generation, activeLifetime).ConfigureAwait(false);
         _refreshLoop = RefreshLoopAsync(generation, activeLifetime);
+        return ValueTask.CompletedTask;
     }
 
     private async Task RefreshLoopAsync(long generation, CancellationToken cancellationToken)
     {
         try
         {
+            // Publish the loading declaration within the lifecycle budget. Cold
+            // window/provider enumeration belongs to this cancelable owned task,
+            // not the activation acknowledgement that admits the widget surface.
+            await Task.Yield();
+            await RefreshAsync(generation, cancellationToken).ConfigureAwait(false);
             while (true)
             {
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
@@ -72,11 +77,10 @@ public sealed class TaskSwitcherWidget : Widget
                         .Concat(windows.Where(window => !oldIds.Contains(window.WindowId))).ToArray();
                 }
                 changed = !_loaded || _loadError is not null || !_windows.SequenceEqual(windows);
-                var previousIndex = _windows.ToList().FindIndex(window => _focus is not null &&
-                    (_focus == window.WindowId || _focus == CloseId(window.WindowId)));
+                var previousIndex = _windows.ToList().FindIndex(window => _focus == window.WindowId);
                 _windows = windows;
                 if (_focus != "tasks.refresh" && !_windows.Any(window =>
-                        _focus == window.WindowId || _focus == CloseId(window.WindowId)))
+                        _focus == window.WindowId))
                     _focus = windows.Count == 0 ? "tasks.refresh" :
                         windows[Math.Clamp(previousIndex, 0, windows.Count - 1)].WindowId;
                 _loaded = true; _loadError = null;
@@ -172,8 +176,6 @@ public sealed class TaskSwitcherWidget : Widget
             _ => "Windows couldn't complete this request. Try again.",
         };
 
-    private static string CloseId(string id) => "close-" + id;
-
     public override WidgetView Render()
     {
         lock (_gate)
@@ -198,9 +200,7 @@ public sealed class TaskSwitcherWidget : Widget
                     accessibilityLabel: "Switch to " + window.ApplicationName + ": " + window.Title)
                     .Busy(_busy).Classes("tasks-window") with
                     { Shortcuts = [new(ControllerButton.X, "close." + window.WindowId, Label: "Close window")] };
-                var close = UI.Button("Close", "close." + window.WindowId, CloseId(window.WindowId))
-                    .Busy(_busy).Classes("tasks-close");
-                rows.Add(UI.Stack(window.WindowId + ".row", tile, close).Classes("tasks-row"));
+                rows.Add(UI.Stack(window.WindowId + ".row", tile).Classes("tasks-row"));
             }
             if (rows.Count == 0)
                 rows.Add(UI.Text(_loadError ?? (_loaded ? "No other application windows are open." : "Loading windows..."),

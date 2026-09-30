@@ -7,6 +7,13 @@ namespace WinUiShell.Tests;
 public sealed class FrontendArgumentsTests
 {
     [TestMethod]
+    public void RestartArgumentsRoundTripWindowsQuoting()
+    {
+        string[] arguments = ["--shell-config=C:\\Some User\\profile.json", "--path=C:\\Some User\\", "--label=a\"b", ""];
+        CollectionAssert.AreEqual(arguments, FrontendArguments.Parse(FrontendArguments.Serialize(arguments), []));
+    }
+
+    [TestMethod]
     public void PackagedActivationRetainsQuotedPaths()
     {
         var arguments = FrontendArguments.Parse("--shell-config=\"C:\\Users\\Some User\\shell options.json\" --shell-no-controller", []);

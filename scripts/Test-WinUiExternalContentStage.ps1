@@ -13,6 +13,7 @@ function ReadXml([string]$Path) {
     try {$xml=[Xml.XmlDocument]::new();$xml.XmlResolver=$null;$xml.Load($reader);return ,$xml}finally{$reader.Dispose()}
 }
 $manifest=ReadXml $stage.manifest
+Check ((Split-Path $stage.manifest -Leaf) -ceq 'AppxManifest.xml') 'Loose registration uses the canonical manifest filename'
 $ns=[Xml.XmlNamespaceManager]::new($manifest.NameTable)
 $ns.AddNamespace('p','http://schemas.microsoft.com/appx/manifest/foundation/windows10')
 $ns.AddNamespace('u','http://schemas.microsoft.com/appx/manifest/uap/windows10/10')

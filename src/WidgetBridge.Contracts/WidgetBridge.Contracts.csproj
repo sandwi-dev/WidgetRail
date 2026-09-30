@@ -6,6 +6,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\PlatformDiagnostics\PlatformDiagnostics.csproj" />
+    <ProjectReference Include="..\PlatformSettings\PlatformSettings.csproj" />
     <ProjectReference Include="..\WidgetProtocol\WidgetProtocol.csproj" />
     <ProjectReference Include="..\WidgetSdk\WidgetSdk.csproj" />
     <ProjectReference Include="..\WidgetStyling\WidgetStyling.csproj" />

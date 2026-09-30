@@ -1,5 +1,18 @@
 # WinUI widget-local modal checkpoint
 
+## Current automation scope — 2026-09-30
+
+The stable WidgetMotionStage keeps parent and modal as visual siblings. Its native
+automation peer exposes the existing dialog peers while a modal is active, then
+restores the parent's native peers on close. Inactive parents and closing animation
+visuals are excluded from automation navigation without disabling their paint or
+rebuilding controls. Baseline UIA inspection proved background actions were exposed
+before this correction. The current native fixture passes38 checks, including
+scope exposure, parent identity/viewport retention and focus restoration. Evidence:
+`artifacts/winui-shell/modal-accessibility-20260930/` and `scripts/Test-WinUiModals.ps1`.
+
+The following records earlier implementation checkpoints.
+
 `WidgetView.WithModal` still supplies the same protocol: a root `ModalLayer`
 with two independently scoped children, the unchanged page and its dialog.
 The WinUI adapter uses a native Grid at the widget's own bounds. A themed

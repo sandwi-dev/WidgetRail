@@ -9,6 +9,129 @@ namespace WinUiMotion.Tests;
 [TestClass]
 public sealed class WidgetMotionTests
 {
+    [TestMethod]
+    public void OverlayEntranceUsesOriginalZoomAndDirectionalEasingWithSharedSpeed()
+    {
+        var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Full,
+            AnimateWidgetSwitching = false, SectionAnimation = WidgetSectionAnimation.None };
+        var opening = WidgetMotionPolicy.OverlayVisibility(appearance, true, true);
+        var closing = WidgetMotionPolicy.OverlayVisibility(appearance, true, false);
+        Assert.AreEqual(new Vector3(.88f, .88f, 1), opening.From.Scale);
+        Assert.AreEqual(0f, opening.From.Opacity);
+        Assert.AreEqual(Vector3.Zero, opening.From.Translation);
+        Assert.AreEqual(WidgetMotionPose.Identity, opening.To);
+        Assert.AreEqual(opening.From, closing.To);
+        Assert.AreEqual(opening.To, closing.From);
+        Assert.AreEqual(140d, opening.Duration.TotalMilliseconds);
+        Assert.AreEqual(100d, closing.Duration.TotalMilliseconds);
+        Assert.AreEqual(WidgetMotionEasing.EaseOut, opening.Easing);
+        Assert.AreEqual(WidgetMotionEasing.EaseIn, closing.Easing);
+        Assert.AreEqual(70d, WidgetMotionPolicy.OverlayVisibility(appearance with { WidgetAnimationSpeed = 2 }, true, true).Duration.TotalMilliseconds);
+        Assert.AreEqual(200d, WidgetMotionPolicy.OverlayVisibility(appearance with { WidgetAnimationSpeed = .5 }, true, false).Duration.TotalMilliseconds);
+    }
+
+    [TestMethod]
+    public void OverlayBackdropFadesWithoutZoomAndReducedMotionSettlesBothDirections()
+    {
+        foreach (var opening in new[] { true, false })
+        {
+            var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Full };
+            var shell = WidgetMotionPolicy.OverlayVisibility(appearance, true, opening);
+            var backdrop = WidgetMotionPolicy.OverlayVisibility(appearance, true, opening, backdrop: true);
+            Assert.AreEqual(shell.Duration, backdrop.Duration);
+            Assert.AreEqual(shell.Easing, backdrop.Easing);
+            Assert.AreEqual(shell.From.Opacity, backdrop.From.Opacity);
+            Assert.AreEqual(shell.To.Opacity, backdrop.To.Opacity);
+            Assert.AreEqual(Vector3.One, backdrop.From.Scale);
+            Assert.AreEqual(Vector3.One, backdrop.To.Scale);
+            foreach (var preference in new[] { MotionPreference.Reduced, MotionPreference.System })
+            {
+                var reduced = WidgetMotionPolicy.OverlayVisibility(appearance with { Motion = preference }, false, opening);
+                Assert.AreEqual(TimeSpan.Zero, reduced.Duration);
+                Assert.AreEqual(Vector3.One, reduced.From.Scale);
+                Assert.AreEqual(Vector3.One, reduced.To.Scale);
+                Assert.AreEqual(opening ? 1f : 0f, reduced.To.Opacity);
+            }
+            Assert.AreEqual(shell.Duration, WidgetMotionPolicy.OverlayVisibility(appearance, false, opening).Duration,
+                "Explicit full motion overrides the system preference as elsewhere in the host.");
+        }
+    }
+
+    [TestMethod]
+    public void GuideCrossfadeUsesSharedSpeedAndAccessibilityWithoutMovingContent()
+    {
+        var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Full,
+            SectionAnimation = WidgetSectionAnimation.Slide, Transparency = TransparencyPreference.Full };
+        WidgetSectionMotion Fade(AppearanceSettings value, bool system = true, bool contrast = false) =>
+            WidgetMotionPolicy.GuideCrossfade(value, system, contrast);
+        var fade = Fade(appearance);
+        Assert.AreEqual(140, fade.Incoming.Duration.TotalMilliseconds);
+        Assert.AreEqual(fade.Incoming.Duration, fade.Outgoing.Duration);
+        Assert.AreEqual(WidgetMotionPose.Identity with { Opacity = 0 }, fade.Incoming.From);
+        Assert.AreEqual(WidgetMotionPose.Identity, fade.Incoming.To);
+        Assert.AreEqual(WidgetMotionPose.Identity, fade.Outgoing.From);
+        Assert.AreEqual(fade.Incoming.From, fade.Outgoing.To);
+        Assert.AreEqual(70, Fade(appearance with { WidgetAnimationSpeed = 2 }).Incoming.Duration.TotalMilliseconds);
+        Assert.AreEqual(TimeSpan.Zero, Fade(appearance with { Motion = MotionPreference.Reduced }).Incoming.Duration);
+        Assert.AreEqual(TimeSpan.Zero, Fade(appearance with { Motion = MotionPreference.System }, false).Incoming.Duration);
+        Assert.AreEqual(TimeSpan.Zero, Fade(appearance with { SectionAnimation = WidgetSectionAnimation.None }).Incoming.Duration);
+        Assert.AreEqual(TimeSpan.Zero, Fade(appearance with { Transparency = TransparencyPreference.Reduced }).Incoming.Duration);
+        Assert.AreEqual(TimeSpan.Zero, Fade(appearance, contrast: true).Incoming.Duration);
+    }
+
+    [TestMethod]
+    public void ContentResizeIsIndependentOfSwitchToggleButHonorsMotionPreferences()
+    {
+        var appearance = AppearanceSettings.Default with { AnimateWidgetSwitching = false,
+            Motion = MotionPreference.Full, Contrast = ContrastPreference.Standard };
+        WidgetMotionRecipe Resize(AppearanceSettings value, bool system = true) =>
+            WidgetMotionPolicy.WidgetResize(value, system, new(980, 700), new(760, 440),
+                reason: WidgetResizeReason.ContentSizeChanged);
+        Assert.AreEqual(140, Resize(appearance).Duration.TotalMilliseconds);
+        Assert.AreEqual(70, Resize(appearance with { WidgetAnimationSpeed = 2 }).Duration.TotalMilliseconds);
+        Assert.AreEqual(TimeSpan.Zero, Resize(appearance with { Motion = MotionPreference.Reduced }).Duration);
+        Assert.AreEqual(TimeSpan.Zero, Resize(appearance with { Motion = MotionPreference.System }, false).Duration);
+        Assert.AreEqual(TimeSpan.Zero, Resize(appearance with { Transparency = TransparencyPreference.Reduced }).Duration);
+        Assert.AreEqual(TimeSpan.Zero, Resize(appearance with { Contrast = ContrastPreference.High }).Duration);
+    }
+
+    [TestMethod]
+    public void WidgetResizeUsesActualExtentsWithoutSlideOrFade()
+    {
+        var appearance = AppearanceSettings.Default with { AnimateWidgetSwitching = true, Motion = MotionPreference.Full, Contrast = ContrastPreference.Standard };
+        WidgetMotionRecipe Resize(AppearanceSettings value, bool system = true, bool highContrast = false) =>
+            WidgetMotionPolicy.WidgetResize(value, system, new(240, 160), new(720, 400), highContrast);
+        foreach (var section in Enum.GetValues<WidgetSectionAnimation>())
+        {
+            var reveal = Resize(appearance with { SectionAnimation = section });
+            Assert.AreEqual(140, reveal.Duration.TotalMilliseconds);
+            Assert.AreEqual(1f, reveal.From.Opacity);
+            Assert.AreEqual(Vector3.Zero, reveal.From.Translation);
+            Assert.AreEqual(WidgetMotionPose.Identity, reveal.To);
+            Assert.AreEqual(new Vector3(1f / 3, .4f, 1), reveal.From.Scale);
+        }
+        Assert.AreEqual(70, Resize(appearance with { WidgetAnimationSpeed = 2 }).Duration.TotalMilliseconds);
+        Assert.AreEqual(TimeSpan.Zero, Resize(appearance with { AnimateWidgetSwitching = false }).Duration);
+        Assert.AreEqual(TimeSpan.Zero, Resize(appearance with { Motion = MotionPreference.Reduced }).Duration);
+        Assert.AreEqual(TimeSpan.Zero, Resize(appearance with { Motion = MotionPreference.System }, false).Duration);
+        Assert.AreEqual(TimeSpan.Zero, Resize(appearance with { Transparency = TransparencyPreference.Reduced }).Duration);
+        Assert.AreEqual(TimeSpan.Zero, Resize(appearance with { Contrast = ContrastPreference.System }, true, true).Duration);
+        Assert.AreEqual(TimeSpan.Zero, WidgetMotionPolicy.WidgetResize(appearance, true, new(720, 400), new(720, 400)).Duration);
+        Assert.AreEqual(new Vector3(3, 2.5f, 1), WidgetMotionPolicy.WidgetResize(appearance, true, new(720, 400), new(240, 160)).From.Scale);
+    }
+
+    [TestMethod]
+    public void BackgroundBlendPreservesCoverageUntilTheIncomingPixelsReplaceIt()
+    {
+        var blend = WidgetMotionPolicy.ArtworkCrossfade(TimeSpan.FromMilliseconds(400));
+        foreach (var fraction in new[] { 0f, .1f, .25f, .5f, .75f, .9f, 1f })
+        {
+            var incoming = blend.Incoming.From.Opacity + fraction * (blend.Incoming.To.Opacity - blend.Incoming.From.Opacity);
+            var outgoing = blend.Outgoing.From.Opacity + fraction * (blend.Outgoing.To.Opacity - blend.Outgoing.From.Opacity);
+            Assert.AreEqual(1, incoming + (1 - incoming) * outgoing, .0001, "Opaque artwork must not expose the backdrop while blending.");
+        }
+    }
+
     private static WidgetMotionOptions Options(AppearanceSettings? appearance = null, bool system = true) =>
         WidgetMotionOptions.From(appearance ?? AppearanceSettings.Default, system);
 

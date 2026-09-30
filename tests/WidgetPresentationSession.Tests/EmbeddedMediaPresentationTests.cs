@@ -114,13 +114,13 @@ public sealed partial class EmbeddedMediaSessionTests
             var document = await session.ResolveEmbeddedMediaAsync(frame.Authority);
             var input = new ControllerInputEvent(ControllerButton.Y, ControllerEventPhase.Pressed, ControllerInputContext.OpenWidget,
                 "fullscreen", ActiveInputScopeId: "root", SnapshotSequence: frame.Authority.SnapshotSequence);
-            var action = session.ResolveEmbeddedMediaFullscreenInput(frame, input);
+            var action = session.ResolveEmbeddedMediaHostInput(frame, input);
             Assert.IsNotNull(action);
             Assert.AreEqual("root", action.SourceElementId);
             Assert.IsTrue(session.IsMediaPresentationCurrent(session.EnterEmbeddedMediaFullscreen(frame, action, document)));
-            Assert.IsNull(session.ResolveEmbeddedMediaFullscreenInput(frame, input with { Button = ControllerButton.X }));
-            Assert.IsNull(session.ResolveEmbeddedMediaFullscreenInput(frame, input with { Phase = ControllerEventPhase.Released }));
-            Assert.Throws<WidgetPresentationSessionException>(() => session.ResolveEmbeddedMediaFullscreenInput(frame, input with { SnapshotSequence = 2 }));
+            Assert.IsNull(session.ResolveEmbeddedMediaHostInput(frame, input with { Button = ControllerButton.X }));
+            Assert.IsNull(session.ResolveEmbeddedMediaHostInput(frame, input with { Phase = ControllerEventPhase.Released }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ResolveEmbeddedMediaHostInput(frame, input with { SnapshotSequence = 2 }));
         }, FullscreenMedia, root: FullscreenRoot);
     }
 }

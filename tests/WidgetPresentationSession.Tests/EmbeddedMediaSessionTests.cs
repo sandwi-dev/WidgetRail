@@ -14,7 +14,7 @@ public sealed partial class EmbeddedMediaSessionTests
 {
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(8);
     private static BridgeWidgetDescriptor Descriptor => new() { Id = "media", Name = "Media", InstanceId = "media.instance",
-        RuntimeGeneration = new('a', 32), PresentationGeneration = new('b', 32), PackageContentDigest = new('c', 64), Icon = WidgetGlyph.Music };
+        RuntimeGeneration = new('a', 32), PresentationGeneration = new('b', 32), PackageContentDigest = new('c', 64), Icon = WidgetGlyph.Music, PinningSupported = true };
     private static EmbeddedMediaSession Media => new()
     {
         Id = "player", AccessibleName = "Player", EntryAsset = "adapter/index.html",
@@ -60,6 +60,90 @@ public sealed partial class EmbeddedMediaSessionTests
             Assert.AreEqual("New name", current.Declaration.AccessibleName);
             await session.SendEmbeddedMediaPlaybackEventAsync(document, Observation with { CommandSequence = 2 });
             await Assert.ThrowsAsync<BridgeProtocolException>(() => session.SendEmbeddedMediaPlaybackEventAsync(document, Observation with { CommandSequence = 2 }));
+        });
+    }
+
+    [TestMethod]
+    public async Task CommandTerminalRetainsOriginAcrossCompatibleSnapshotsAndSpontaneousObservationUsesLatest()
+    {
+        await Run(async channel =>
+        {
+            var request = await Read(channel);
+            await Reply(channel, request.RequestId, BridgeMessageTypes.EmbeddedMediaSession, Bundle());
+            foreach (var sequence in new long[] { 2, 3 })
+            {
+                request = await Read(channel);
+                await Snapshot(channel, request.RequestId, Media with { AccessibleName = "Updated " + sequence }, sequence, scope: "page-" + sequence);
+            }
+            request = await Read(channel);
+            Assert.AreEqual(1L, request.Payload.GetProperty("sequence").GetInt64(), "A terminal must retain its command origin, not an intermediate UI snapshot.");
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { });
+            request = await Read(channel);
+            Assert.AreEqual(3L, request.Payload.GetProperty("sequence").GetInt64(), "Spontaneous observations use the latest document authority.");
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { });
+            request = await Read(channel);
+            await Snapshot(channel, request.RequestId, Media with { PendingCommand = Media.PendingCommand! with { Sequence = 2, Kind = EmbeddedMediaPlaybackCommandKind.Pause } }, 4);
+            request = await Read(channel);
+            Assert.AreEqual(4L, request.Payload.GetProperty("sequence").GetInt64(), "A replacement command starts a new origin.");
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { });
+        }, async (session, frame) =>
+        {
+            var document = await session.ResolveEmbeddedMediaAsync(frame.Authority);
+            await session.EstablishPresentationAsync(session.GetTarget("media"), WidgetLifecycleState.Interactive);
+            await session.EstablishPresentationAsync(session.GetTarget("media"), WidgetLifecycleState.Interactive);
+            await session.SendEmbeddedMediaPlaybackEventAsync(document, Observation);
+            await session.SendEmbeddedMediaPlaybackEventAsync(document, Observation with { Sequence = 2, CommandSequence = 0 });
+            await session.EstablishPresentationAsync(session.GetTarget("media"), WidgetLifecycleState.Interactive);
+            await session.SendEmbeddedMediaPlaybackEventAsync(document, Observation with { Sequence = 3, CommandSequence = 2 });
+        });
+    }
+
+    [TestMethod]
+    public async Task RemovedCommandIsExpectedSupersessionButUnknownFutureTerminalIsInvalid()
+    {
+        await Run(async channel =>
+        {
+            var request = await Read(channel);
+            await Reply(channel, request.RequestId, BridgeMessageTypes.EmbeddedMediaSession, Bundle());
+            request = await Read(channel);
+            await Snapshot(channel, request.RequestId, Media with { PendingCommand = null }, 2);
+            request = await Read(channel);
+            Assert.AreEqual(0L, request.Payload.GetProperty("event").GetProperty("commandSequence").GetInt64());
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { });
+        }, async (session, frame) =>
+        {
+            var document = await session.ResolveEmbeddedMediaAsync(frame.Authority);
+            await session.EstablishPresentationAsync(session.GetTarget("media"), WidgetLifecycleState.Interactive);
+            var stale = await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.SendEmbeddedMediaPlaybackEventAsync(document, Observation));
+            Assert.AreEqual("embedded_media_command_stale", stale.Code);
+            await Assert.ThrowsAsync<BridgeProtocolException>(() => session.SendEmbeddedMediaPlaybackEventAsync(document, Observation with { CommandSequence = 999 }));
+            Assert.IsNotNull(session.GetEmbeddedMediaState(document));
+            await session.SendEmbeddedMediaPlaybackEventAsync(document, Observation with { CommandSequence = 0 });
+        });
+    }
+
+    [TestMethod]
+    [DataRow("embedded_media_stale")]
+    [DataRow("embedded_media_command_stale")]
+    public async Task BrokerSupersessionPreservesTypedOutcomeWithoutRetiringHealthyDocument(string code)
+    {
+        await Run(async channel =>
+        {
+            var request = await Read(channel);
+            await Reply(channel, request.RequestId, BridgeMessageTypes.EmbeddedMediaSession, Bundle());
+            request = await Read(channel);
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Error, new { code, message = "Superseded in flight." });
+            request = await Read(channel);
+            Assert.AreEqual(2L, request.Payload.GetProperty("event").GetProperty("sequence").GetInt64());
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { });
+        }, async (session, frame) =>
+        {
+            var document = await session.ResolveEmbeddedMediaAsync(frame.Authority);
+            var stale = await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.SendEmbeddedMediaPlaybackEventAsync(document, Observation));
+            Assert.AreEqual(code, stale.Code);
+            Assert.IsNotNull(session.GetEmbeddedMediaState(document));
+            await Assert.ThrowsAsync<BridgeProtocolException>(() => session.SendEmbeddedMediaPlaybackEventAsync(document, Observation));
+            await session.SendEmbeddedMediaPlaybackEventAsync(document, Observation with { Sequence = 2, CommandSequence = 0 });
         });
     }
 
@@ -350,7 +434,8 @@ public sealed partial class EmbeddedMediaSessionTests
             await session.EstablishPresentationAsync(session.GetTarget("media"), WidgetLifecycleState.Interactive);
             updated.SetResult();
             await first;
-            await Assert.ThrowsAsync<BridgeProtocolException>(() => queued);
+            var stale = await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => queued);
+            Assert.AreEqual("embedded_media_command_stale", stale.Code);
         });
     }
 
@@ -385,14 +470,14 @@ public sealed partial class EmbeddedMediaSessionTests
     }
     private static async Task Run(Func<BridgeFrameChannel, Task> serverAction,
         Func<WidgetPresentationSession, WidgetPresentationFrame, Task> clientAction, EmbeddedMediaSession? media = null,
-        WidgetPresentationSessionOptions? options = null, ViewNode? root = null)
+        WidgetPresentationSessionOptions? options = null, ViewNode? root = null, BridgeWorkerRun? workerRun = null)
     {
         await using var server = new MediaBridgeServer();
         var serving = server.RunAuthenticatedAsync(async channel =>
         {
             var catalog = await Read(channel);
             await Reply(channel, catalog.RequestId, BridgeMessageTypes.Widgets, new { revision = 1, isComplete = true, widgets = new[] { Descriptor } });
-            var establish = await Read(channel); await Snapshot(channel, establish.RequestId, media ?? Media, 1, root: root);
+            var establish = await Read(channel); await Snapshot(channel, establish.RequestId, media ?? Media, 1, root: root, workerRun: workerRun);
             await serverAction(channel);
             var stop = await Read(channel); Assert.AreEqual(BridgeMessageTypes.Stop, stop.Type);
             await Reply(channel, stop.RequestId, BridgeMessageTypes.Acknowledged, new { });
@@ -407,7 +492,7 @@ public sealed partial class EmbeddedMediaSessionTests
         }
         await serving.WaitAsync(Limit);
     }
-    private static async Task Snapshot(BridgeFrameChannel channel, long id, EmbeddedMediaSession? media, long sequence, string scope = "root", ViewNode? root = null)
+    private static async Task Snapshot(BridgeFrameChannel channel, long id, EmbeddedMediaSession? media, long sequence, string scope = "root", ViewNode? root = null, BridgeWorkerRun? workerRun = null)
     {
         var snapshot = new ViewSnapshot { Sequence = sequence, WidgetInstanceId = Descriptor.InstanceId, ActiveInputScopeId = scope,
             Root = root ?? new() { Id = scope, Kind = ViewNodeKind.Stack }, EmbeddedMediaSession = media };
@@ -415,7 +500,7 @@ public sealed partial class EmbeddedMediaSessionTests
         Assert.AreEqual(0, errors.Count, string.Join("; ", errors.Select(error => error.Path + ": " + error.Message)));
         using var json = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
         await Reply(channel, id, BridgeMessageTypes.Snapshot, new { widgetId = Descriptor.Id, transactionKind = "ordinaryCheckpoint",
-            baseSequence = 0, recoveryOriginSequence = 0, snapshot = json.RootElement, renderStyles = new Dictionary<string, BridgeNodeRenderStyles>() });
+            baseSequence = 0, recoveryOriginSequence = 0, snapshot = json.RootElement, renderStyles = new Dictionary<string, BridgeNodeRenderStyles>(), workerRun });
     }
     private static Task<BridgeEnvelope> Read(BridgeFrameChannel channel) => channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(Limit);
     private static async Task Reply(BridgeFrameChannel channel, long id, string type, object value) =>

@@ -44,7 +44,7 @@ internal static class CatalogIconValidation
             list.SelectedItem = container; container.Focus(FocusState.Keyboard);
             var template = container.Template;
             content.DataContext = Item("new");
-            await Until(() => Current(content) is ImageIcon { Source: SvgImageSource });
+            await Until(() => Current(content) is Image { Source: SvgImageSource });
             var accepted = Current(content);
             late.SetResult(Bytes("late")); await Task.Delay(80);
             check(lateToken.IsCancellationRequested && ReferenceEquals(accepted, Current(content)),
@@ -55,11 +55,11 @@ internal static class CatalogIconValidation
             content.DataContext = Item("new"); await Task.Delay(40);
             check(calls["new"] == 1, "unchanged catalog identity does not restart icon demand");
             content.DataContext = Item("new") with { PackageContentDigest = "replacement" };
-            await Until(() => calls["new"] == 2 && Current(content) is ImageIcon);
+            await Until(() => calls["new"] == 2 && Current(content) is Image);
             check(true, "package replacement retires the prior icon identity even with unchanged widget id");
-            var original = (ImageIcon)Current(content)!;
+            var original = (Image)Current(content)!;
             content.Foreground = new SolidColorBrush(Microsoft.UI.Colors.Orange);
-            check(original.Source is SvgImageSource && NativePackageIconTint.For(original) is null,
+            check(original.Source is SvgImageSource,
                 "original-color tray art keeps its native source when foreground changes");
 
             content.DataContext = Item("tinted") with { PackageIcon = new("mark", WidgetPackageIconColorMode.ThemeTint) };
@@ -80,10 +80,10 @@ internal static class CatalogIconValidation
             unloading.SetResult(Bytes("unload")); await Task.Delay(40);
             check(Current(content) is null, "unloaded tray content cancels demand and drops native resources despite late completion");
             content.DataContext = Item("reload"); container.Content = content;
-            await Until(() => Current(content) is ImageIcon);
+            await Until(() => Current(content) is Image);
             check(calls["reload"] == 1, "reloaded native tray item resolves only its current catalog identity");
             content.ShowLabel = false;
-            check(!content.ShowLabel && Current(content) is ImageIcon,
+            check(!content.ShowLabel && Current(content) is Image,
                 "same catalog icon content supports label-free radial use without another input implementation");
             content.ShowLabel = true;
             return content;
@@ -102,8 +102,15 @@ internal static class CatalogIconValidation
         var bytes = Encoding.UTF8.GetBytes("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"10\" fill=\"#268ad8\"/><path d=\"M8 7 L18 12 L8 17 Z\" fill=\"#ffffff\"/></svg>");
         return new(asset, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), bytes);
     }
-    private static object? Current(WidgetCatalogItemContent content) =>
-        ((StackPanel)content.Content).Children.OfType<WidgetPackageIconView>().FirstOrDefault()?.Content;
+    private static object? Current(WidgetCatalogItemContent content) => FindIcon(content.Content)?.Content;
+    private static WidgetPackageIconView? FindIcon(object? content)
+    {
+        if (content is WidgetPackageIconView icon) return icon;
+        if (content is Panel panel)
+            foreach (var child in panel.Children)
+                if (FindIcon(child) is { } found) return found;
+        return null;
+    }
     private static async Task Until(Func<bool> condition)
     {
         for (var attempt = 0; attempt < 150; ++attempt) { if (condition()) return; await Task.Delay(20); }

@@ -39,6 +39,13 @@ internal static class SnapshotOmissionDefaults
             if (value is not JsonObject node) return;
             foreach (var key in new[] { "contextActions", "selectOptions", "styleClasses", "shortcuts", "children" })
                 Add(node, key, new JsonArray());
+            // Source-generated init-only construction otherwise replaces these
+            // declaration defaults with CLR defaults for omitted JSON members.
+            if (node["gridLayout"] is JsonObject grid)
+            {
+                Add(grid, "rows", new JsonArray());
+                Add(grid, "columns", new JsonArray());
+            }
             Node(node["focusPresentation"]);
             Node(node["defaultFocusPresentation"]);
             if (node["children"] is JsonArray children)

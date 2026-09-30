@@ -210,6 +210,10 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
 
     internal async Task<WidgetEncodedArtwork?> ResolveArtworkAsync(WidgetIndexedRow row, string handle, CancellationToken cancellation)
     {
+        // A recycled native template can finish binding a retained row after its
+        // query has retired. It may keep its pixels, but cannot start new work
+        // through the retired owner's (already disposed) cancellation sources.
+        if (lifetime.IsCancellationRequested || !row.Lease.IsCurrent) return null;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, activity.Token, lifetime.Token);
         await admission.WaitAsync(linked.Token).ConfigureAwait(false);
         try { return await row.Lease.ResolveArtworkAsync(row.Item.Key, handle, linked.Token).ConfigureAwait(false); }

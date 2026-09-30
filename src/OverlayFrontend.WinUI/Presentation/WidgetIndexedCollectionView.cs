@@ -35,7 +35,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             view.IsHitTestVisible = active && inputActive;
             view.IsTabStop = active && inputActive;
             view.IsItemClickEnabled = active && inputActive;
-            foreach (var container in containers.Keys) container.IsTabStop = active && inputActive;
+            foreach (var (container, item) in containers) container.IsTabStop = active && inputActive && item.Slot.Value is not null;
         }
         var drains = new List<Task>();
         if (source is not null) drains.Add(source.SetPresentationActiveAsync(active));
@@ -55,6 +55,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     internal void RefreshAppearanceBinding(WidgetPresentationBinding binding)
     {
         if (source is not null) source.Update(binding, source.Declaration);
+        RefreshGroupHeaderStyles();
     }
     internal Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
     internal bool Owns(WidgetIndexedRows owner) => ReferenceEquals(owner, source);
@@ -128,6 +129,11 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         if (source is null || !source.CanUpdate(binding, declaration))
         {
             CancelNavigation();
+            if (binding.View.FocusGroupEntryRequest?.IndexedItem is { } requested &&
+                requested.CollectionId == declaration.Id &&
+                requested.SourceId == declaration.IndexedCollection?.SourceId &&
+                requested.QueryGeneration == declaration.IndexedCollection?.QueryGeneration)
+                ParkFocusForQueryReplacement();
             DetachItems();
             DetachContainers();
             if (source is not null) RetireSource(source);
@@ -155,7 +161,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         view.IsEnabled = declaration.IsDisabled != true && declaration.IsBusy != true;
         if (!CanReceiveInput) CancelNavigation();
         view.IsItemClickEnabled = active;
-        foreach (var container in containers.Keys) container.IsTabStop = active;
+        foreach (var (container, item) in containers) container.IsTabStop = active && item.Slot.Value is not null;
         view.IsTabStop = active;
         view.IsHitTestVisible = active;
         ScrollViewer.SetVerticalScrollMode(view, axis == ScrollAxis.Horizontal ? ScrollMode.Disabled : ScrollMode.Enabled);
@@ -222,12 +228,20 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     }
     private void UpdateContainer(SelectorItem container, IndexedItem<WidgetIndexedRow> slot)
     {
-        container.IsTabStop = presentationActive && inputActive;
+        container.IsTabStop = presentationActive && inputActive && slot.Value is not null;
         ConfigureContainerLayout(container, axis ?? ScrollAxis.Vertical,
             slot.Value is null ? source?.Declaration.CollectionLayout?.EstimatedItemExtent ?? 0 : 0);
-        container.IsEnabled = slot.Value?.Item.Root is not { IsDisabled: true } and not { IsBusy: true };
+        // A logical position without a rendered row reserves layout only. WinUI
+        // can otherwise focus an empty placeholder during native fallback (for
+        // example while old Visible-state rows are disabled during admission).
+        // Controller entry continues waiting for its current lease in FinishNavigation.
+        // Busy rejects worker actions without removing the user's native focus.
+        // Selection remains authored status: these containers expose item Invoke,
+        // not an independently mutable native selection model.
+        container.IsEnabled = slot.Value is { Item.Root: not { IsDisabled: true } };
         AutomationProperties.SetAutomationId(container, "Widget." + (source?.Declaration.Id ?? "collection") + ".Item." + slot.Index);
         AutomationProperties.SetName(container, slot.Value?.Item.Root.AccessibilityLabel ?? slot.Value?.Item.Root.Text ?? $"Loading item {slot.Index + 1}");
+        AutomationProperties.SetItemStatus(container, WidgetAccessibleState.ItemStatus(slot.Value?.Item.Root));
         if (pendingIndex == slot.Index) FinishNavigation(null, null!);
         if (FocusedIndex() == slot.Index) { RememberItemFocus(); PresentationChanged?.Invoke(); }
         ContextChanged?.Invoke();
@@ -307,11 +321,11 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             if (!row.Lease.IsCurrent) { if (allowDeferredActivation) DeferActivation(row); return true; }
         }
         if (!row.Lease.IsCurrent) return true;
+        var capturedSource = source;
+        var capturedBinding = capturedSource.Presentation;
+        var displayed = capturedBinding.Frame;
         try
         {
-            var capturedSource = source;
-            var capturedBinding = capturedSource.Presentation;
-            var displayed = capturedBinding.Frame;
             if (!row.Lease.ClaimsInput(displayed, row.Item.Key, button, phase)) return false;
             var inputSequence = ++sequence;
             var timestamp = Environment.TickCount64 * 1000;
@@ -324,8 +338,14 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             // remain consumed for an input that the displayed declaration owns.
             return true;
         }
-        catch (WidgetPresentationSessionException error) when (!row.Lease.IsCurrent || error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale" or "indexed_input_stale" or "pinned_input_stale" or "stale_pinned_input_authority") { return true; }
-        catch (Exception error) { failed(error); return true; }
+        catch (WidgetPresentationSessionException error) when (WidgetInputFailure.IsStale(error)) { session.RequestInputRefresh(displayed); return true; }
+        catch (OperationCanceledException) when (disposed || !row.Lease.IsCurrent) { return true; }
+        catch (Exception error)
+        {
+            if (!disposed && ReferenceEquals(source, capturedSource) && capturedBinding.SameInput(source?.Presentation)) failed(error);
+            else Diagnostics.FrontendFailureLog.Current.Write("retired-indexed-input", error);
+            return true;
+        }
     }
     public async ValueTask DisposeAsync()
     {

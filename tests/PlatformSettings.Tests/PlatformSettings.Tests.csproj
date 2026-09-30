@@ -9,4 +9,23 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\PlatformSettings\PlatformSettings.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\src\FirstPartyWidgets\MediaSessionsWidget\styles\default.wrss" Link="ThemeFixtures\NowPlaying.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\SettingsWidget\styles\default.wrss" Link="ThemeFixtures\Settings.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\styles\default.wrss" Link="ThemeFixtures\Spotify.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\YtMusicWidget\styles\default.wrss" Link="ThemeFixtures\YouTubeMusic.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\PlayniteLibraryWidget\styles\default.wrss" Link="ThemeFixtures\Playnite.wrss" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\src\FirstPartyWidgets\AudioMixerWidget\styles\default.wrss" Link="ThemeFixtures\AudioMixer.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\DisplayProfilesWidget\styles\default.wrss" Link="ThemeFixtures\DisplayProfiles.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\EmbeddedMediaWidget\styles\default.wrss" Link="ThemeFixtures\EmbeddedMedia.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\styles\default.wrss" Link="ThemeFixtures\GamesApps.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\NetworkControlsWidget\styles\default.wrss" Link="ThemeFixtures\NetworkControls.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\PowerWidget\styles\default.wrss" Link="ThemeFixtures\Power.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\RecentAppsWidget\styles\default.wrss" Link="ThemeFixtures\RecentApps.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SdkGalleryWidget\styles\default.wrss" Link="ThemeFixtures\SdkGallery.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\TaskSwitcherWidget\styles\default.wrss" Link="ThemeFixtures\TaskSwitcher.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\YouTubeWidget\styles\default.wrss" Link="ThemeFixtures\YouTubeVideo.wrss" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

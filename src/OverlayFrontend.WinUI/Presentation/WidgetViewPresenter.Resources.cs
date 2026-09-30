@@ -19,16 +19,26 @@ internal sealed partial class WidgetViewPresenter
         internal NativeArtworkDemand? Native { get; set; }
     }
     private readonly Dictionary<Binding, ImageDemand> imageDemands = [];
+    private readonly Dictionary<Binding, Motion.WidgetArtworkReveal> artworkReveals = [];
+    internal int ArtworkRevealStarts => artworkReveals.Values.Sum(value => value.Starts);
     private readonly HashSet<Task> retirements = [];
     private bool disposed;
     public Action<Exception>? Failed { get; set; }
     internal Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? ResolveArtworkAsync { get; set; }
     internal string ArtworkGeneration { get; set; } = string.Empty;
+    internal Func<bool>? ArtworkAuthorityCurrent { get; set; }
 
     private void ReportFailure(Exception error) => Failed?.Invoke(error);
+    private void ReportFailure(Exception error, bool ownerCurrent)
+    {
+        if (ownerCurrent) ReportFailure(error);
+        else Diagnostics.FrontendFailureLog.Current.Write("retired-presentation-operation", error);
+    }
 
     private void Retire(Binding binding)
     {
+        RetireSlider(binding);
+        if (artworkReveals.Remove(binding, out var reveal)) reveal.Dispose();
         if (ReferenceEquals(waitingEntry, binding)) ClearEntryLayoutWait();
         RetireMediaViewport(binding);
         if (binding.Element is Previews.WidgetWindowPreview preview) preview.Dispose();
@@ -62,29 +72,46 @@ internal sealed partial class WidgetViewPresenter
         return null;
     }
 
-    private void UpdateImage(Binding binding, Image image, ViewNode node)
+    private void UpdateImage(Binding binding, WidgetArtworkView image, ViewNode node)
     {
-        image.Stretch = node.ImageFit switch { ImageFit.Contain => Stretch.Uniform, ImageFit.Cover => Stretch.UniformToFill, _ => Stretch.Fill };
-        UpdateArtwork(binding, node, value => image.Source = value, ResolveArtworkAsync, ArtworkGeneration);
+        image.ApplyStyle(ResolveArtworkStyle(binding, node));
+        UpdateArtwork(binding, node, value =>
+        {
+            var firstPixels = image.Source is null && value is not null;
+            image.Source = value;
+            if (value is null) { if (artworkReveals.Remove(binding, out var old)) old.Dispose(); return; }
+            if (!firstPixels || binding.MotionHost?.ArtworkLayer is not { } layer) return;
+            var parent = declarations.GetValueOrDefault(node.Id);
+            while (parent is not null && parent.Node.ActionSurfacePresentation != ActionSurfacePresentation.Poster)
+                parent = parent.ParentId is { } id ? declarations.GetValueOrDefault(id) : null;
+            if (parent is null) return;
+            if (!artworkReveals.TryGetValue(binding, out var reveal)) artworkReveals.Add(binding, reveal = new(layer));
+            reveal.Play(appearance, systemAnimationsEnabled);
+        }, ResolveArtworkAsync, ArtworkGeneration, ArtworkAuthorityCurrent);
     }
 
     private void UpdateArtwork(Binding binding, ViewNode node, Action<ImageSource?> publish,
-        Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? resolver, string generation)
+        Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? resolver, string generation, Func<bool>? sourceCurrent = null)
     {
-        if (!presentationActive) return;
-        var fit = node.ImageFit ?? (binding.Element is WidgetPresentationSurface ? ImageFit.Cover : ImageFit.Fill);
+        if (!presentationActive || sourceCurrent?.Invoke() == false) return;
+        var artworkStyle = ResolveArtworkStyle(binding, node);
+        var fit = artworkStyle.DecodeFit;
+        if (binding.Element is WidgetPresentationSurface surface)
+            surface.SetArtworkStyle(artworkStyle);
         var identity = node.ArtworkHandle is { } handle ? "handle:" + generation + ":" + handle : node.ImageSource ?? string.Empty;
-        // Ordinary opaque artwork is admitted against one snapshot. Indexed
-        // artwork belongs to its retained lease generation. Keep decoded pixels,
-        // but restart unfinished ordinary demand when its snapshot is replaced.
+        // Ordinary artwork survives cosmetic snapshots of the same owner. The
+        // session checks continuous handle declaration; indexed artwork retains
+        // its lease generation and pinned artwork retains its selected scope.
         var origin = node.ArtworkHandle is not null && generation.Length == 0 ? presentation : null;
         if (imageDemands.TryGetValue(binding, out var prior) && prior.Identity == identity &&
-            (prior.Completed || (origin?.Selection is not null ? origin.SameInput(prior.Origin) : prior.Origin?.Frame.Authority == origin?.Frame.Authority)))
+            (origin?.Selection is not null ? prior.Completed || origin.SameInput(prior.Origin) :
+                origin is null ? prior.Origin is null : origin.SameSurface(prior.Origin) &&
+                origin.Frame.Authority.WorkerRun == prior.Origin?.Frame.Authority.WorkerRun))
         {
             // Retained pixels can survive a snapshot; a later size upgrade must
             // resolve against the newly displayed authority, never the old one.
-            if (prior.Completed) prior.Origin = origin;
-            prior.Native?.Refresh(fit); return;
+            prior.Origin = origin;
+            prior.Native?.Refresh(fit, artworkStyle.NaturalSize); return;
         }
         if (imageDemands.Remove(binding, out prior)) { prior.Lifetime.Cancel(); prior.Lifetime.Dispose(); }
         var lifetime = new CancellationTokenSource();
@@ -94,8 +121,8 @@ internal sealed partial class WidgetViewPresenter
         // artwork decodes. A different item creates a different Image binding.
         if (identity.Length == 0) { demand.Completed = true; publish(null); return; }
         demand.Native = new(binding.Element, fit,
-            () => !disposed && presentationActive && imageDemands.GetValueOrDefault(binding) == demand,
-            ResolveAsync, publish, value => demand.Completed = value, TrackRetirement, DecodeFailed, lifetime.Token);
+            () => !disposed && presentationActive && imageDemands.GetValueOrDefault(binding) == demand && (sourceCurrent?.Invoke() ?? true),
+            ResolveAsync, publish, value => demand.Completed = value, TrackRetirement, DecodeFailed, lifetime.Token, artworkStyle.NaturalSize);
 
         async Task<NativeArtworkPayload?> ResolveAsync(CancellationToken token)
         {
@@ -130,9 +157,33 @@ internal sealed partial class WidgetViewPresenter
                 { imageDemands.Remove(binding); lifetime.Cancel(); lifetime.Dispose(); }
                 return;
             }
+            if (IsUnavailableArtwork(error))
+            {
+                // A failed optional resource must not replace the widget with
+                // shell recovery. Keep prior pixels (or the empty image slot)
+                // and retain a bounded diagnostic without logging the asset URL.
+                Diagnostics.FrontendFailureLog.Current.Write("artwork-unavailable", null,
+                    $"widget={presentation?.Frame.Authority.WidgetId} node={node.Id} error={error.GetType().Name} code={(error as WidgetPresentationSessionException)?.Code} hresult=0x{error.HResult:X8}");
+                return;
+            }
             ReportFailure(error);
         }
     }
+
+    private NativeArtworkStyle ResolveArtworkStyle(Binding binding, ViewNode node) => NativeArtworkStyle.Resolve(
+        presentation?.RenderStyles.GetValueOrDefault(binding.Identity.Id)?.Base, node.ImageFit,
+        binding.Element is WidgetPresentationSurface ? ImageFit.Cover : ImageFit.Fill);
+
+    private static bool IsUnavailableArtwork(Exception error) =>
+        error is IOException or InvalidDataException or FormatException or System.Net.Http.HttpRequestException ||
+        // An indexed provider can retire its lease before the replacement
+        // snapshot reaches this dispatcher. A rejected optional image request
+        // must not replace the still-valid widget with a recovery page.
+        error is WidgetPresentationSessionException { Code: "request_failed" or "indexed_artwork_unavailable" or
+            "indexed_artwork_timeout" or "indexed_artwork_saturated" } ||
+        error is System.Runtime.InteropServices.COMException &&
+        ((unchecked((uint)error.HResult) & 0xffff0000u) == 0x80190000u || // HTTP status errors
+         (unchecked((uint)error.HResult) & 0xffffff00u) == 0x88982f00u); // WIC image/stream errors
 
     private void RefreshArtworkDemands()
     {
@@ -154,6 +205,9 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed) return;
         disposed = true;
+        ResetSliderValues();
+        DisposeSurfaceClip();
+        surfaceResize?.Dispose(); surfaceResize = null;
         CancelMemoryRestoration();
         ClearEntryLayoutWait();
         SettleTransitions();

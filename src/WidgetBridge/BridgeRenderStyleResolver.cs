@@ -54,7 +54,10 @@ internal static class BridgeRenderStyleResolver
             var baseStyle = ResolveState(node, classes, baseStates);
             var focusedStyle = ResolveState(node, classes, focusedStates);
             var pressedStyle = ResolveState(node, classes, pressedStates);
-            totalProperties += baseStyle.Count + focusedStyle.Count + pressedStyle.Count;
+            var headerStyle = node.Kind == ViewNodeKind.IndexedCollection && node.IndexedGroups is not null
+                ? ResolveState(new ViewNode { Id = node.Id + ".group-header", Kind = ViewNodeKind.Text },
+                    new HashSet<string>(["wrail-section-header__title"], StringComparer.Ordinal), new HashSet<WrssPseudoState>()) : null;
+            totalProperties += baseStyle.Count + focusedStyle.Count + pressedStyle.Count + (headerStyle?.Count ?? 0);
             if (totalProperties > BridgeRenderStyleLimits.MaximumTotalProperties)
                 throw new BridgeProtocolException(
                     $"Computed style map exceeds {BridgeRenderStyleLimits.MaximumTotalProperties} properties.");
@@ -63,6 +66,7 @@ internal static class BridgeRenderStyleResolver
                 Base = baseStyle,
                 Focused = focusedStyle,
                 Pressed = pressedStyle,
+                GroupHeader = headerStyle,
             });
             if (node.FocusPresentation is { } focusPresentation)
                 Visit(focusPresentation, prefix);

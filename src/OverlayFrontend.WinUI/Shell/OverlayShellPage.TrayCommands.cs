@@ -10,6 +10,7 @@ using WidgetRail.WidgetBridge;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
@@ -20,8 +21,9 @@ internal sealed partial class OverlayShellPage
     private bool reordering;
     private long quickActionSequence;
     private TrayMenu? trayMenu;
+    private object? trayMenuRequest;
     private sealed record TrayMenu(BridgeWidgetDescriptor Owner, long Selection, MenuFlyout Flyout,
-        Control Anchor, List<MenuFlyoutItem> Items) { internal int FocusIndex; }
+        Control Anchor, List<MenuFlyoutItem> Items) { internal int FocusIndex; internal IDisposable? Theme; }
 
     private void InitializeTrayCommands()
     {
@@ -84,11 +86,7 @@ internal sealed partial class OverlayShellPage
     private void UpdateTrayHelp()
     {
         RefreshRadialChooser();
-        var hints = ControllerGuideModel.ResolveShellHints(interactive, RecoveryVisible,
-            Retry.Visibility == Visibility.Visible, trayMenu is not null, () => surface?.CaptureControllerGuide() ?? []);
-        if (RadialOpen && trayMenu is null && !reordering) hints = RadialGuideHints();
-        trayGuide.SetWidgetHints(hints);
-        trayGuide.SetState(reordering, interactive);
+        PublishControllerGuide();
         AutomationProperties.SetHelpText(Tray, trayGuide.HelpText);
         // Keep the native layout slot stable when focus enters/leaves the tray.
         TrayHelp.Visibility = Visibility.Visible;
@@ -125,77 +123,108 @@ internal sealed partial class OverlayShellPage
     private async Task RestartWidgetAsync(BridgeWidgetDescriptor widget, long selection)
     {
         if (owner is null) return;
+        var requestOwner = owner;
+        var failureCurrent = CaptureTrayOperationGuard(widget, selection);
         try
         {
             await transitions.WaitAsync(lifetime.Token);
             try
             {
-                if (!TrayOwnerCurrent(widget, selection)) return;
+                if (!failureCurrent()) return;
                 interactionAdmission.Invalidate();
-                await owner.Session.RestartAsync(owner.Session.GetTarget(widget.Id), lifetime.Token);
+                await requestOwner.Session.RestartAsync(requestOwner.Session.GetTarget(widget.Id), lifetime.Token);
             }
             finally { transitions.Release(); }
-            if (!retired && visible && selection == selectionVersion) await SelectAsync(widget.Id, enterWidget: false);
+            if (failureCurrent()) await SelectAsync(widget.Id, enterWidget: false);
         }
         catch (OperationCanceledException) when (retired) { }
         catch (WidgetPresentationSessionException error) when (error.Code is "catalog_stale" or "presentation_stale" or "unknown_widget") { }
-        catch (Exception error) { ReportFailure(error); }
+        catch (Exception error) { ReportOperationFailure(error, failureCurrent); }
     }
 
     private async Task InvokeTrayQuickActionAsync(BridgeWidgetDescriptor widget, BridgeQuickActionDescriptor action, long selection)
     {
         if (owner is null) return;
+        var requestOwner = owner;
+        var presentationCurrent = CapturePresentationFailureGuard();
+        var trayCurrent = CaptureTrayOperationGuard(widget, selection);
+        bool Current() => presentationCurrent() && trayCurrent();
         try
         {
             await transitions.WaitAsync(lifetime.Token);
             try
             {
-                if (!TrayOwnerCurrent(widget, selection)) return;
+                if (!Current()) return;
                 // Dashboard quick actions use Visible authority. They must not
                 // move focus into the widget or synthesize an ordinary action.
-                var target = owner.Session.GetTarget(widget.Id);
-                await owner.Session.InvokeQuickActionAsync(target, action.Id, ++quickActionSequence,
+                var target = requestOwner.Session.GetTarget(widget.Id);
+                await requestOwner.Session.InvokeQuickActionAsync(target, action.Id, ++quickActionSequence,
                     checked(Environment.TickCount64 * 1000), lifetime.Token);
             }
             finally { transitions.Release(); }
         }
         catch (OperationCanceledException) when (retired) { }
         catch (WidgetPresentationSessionException error) when (error.Code is "catalog_stale" or "presentation_stale" or "unknown_quick_action" or "unknown_widget") { }
-        catch (Exception error) { ReportFailure(error); }
+        catch (Exception error) { ReportOperationFailure(error, Current); }
+    }
+
+    // Restart intentionally retires its own presentation binding. Keep the tray
+    // command's selection/session owner without requiring the old widget frame.
+    private Func<bool> CaptureTrayOperationGuard(BridgeWidgetDescriptor widget, long selection)
+    {
+        var requestOwner = owner;
+        var visibleSession = visibleSince;
+        return () => ReferenceEquals(owner, requestOwner) && visibleSince == visibleSession && TrayOwnerCurrent(widget, selection);
     }
 
     private async Task ShowTrayMenuAsync(BridgeWidgetDescriptor descriptor)
     {
+        var request = new object();
+        TrayMenu? openedMenu = null;
+        Func<bool> failureCurrent = CapturePresentationFailureGuard();
         try
         {
             if (retired || !visible || owner is null) return;
             CloseTrayMenu(false);
             FinishTrayReorder(); trayHold.Cancel();
-            if (requestedWidget != descriptor.Id || interactive) await SelectAsync(descriptor.Id, enterWidget: false);
+            // Selection resets tray interaction synchronously. Claim this opening
+            // afterward, before awaiting, so later close/open requests retire it.
+            var selectionTask = requestedWidget != descriptor.Id || interactive
+                ? SelectAsync(descriptor.Id, enterWidget: false) : Task.CompletedTask;
+            trayMenuRequest = request;
             var selection = selectionVersion;
-            if (!TrayOwnerCurrent(descriptor, selection) || (RadialOpen ? radialView?.ContextAnchor(descriptor.Id) : Tray.ContainerFromItem(descriptor)) is not Control anchor) return;
+            var trayCurrent = CaptureTrayOperationGuard(descriptor, selection);
+            failureCurrent = () => ReferenceEquals(trayMenuRequest, request) && trayCurrent();
+            await selectionTask;
+            if (!failureCurrent() || (RadialOpen ? radialView?.ContextAnchor(descriptor.Id) : Tray.ContainerFromItem(descriptor)) is not Control anchor) return;
             var menu = new TrayMenu(descriptor, selection, new MenuFlyout { Placement = FlyoutPlacementMode.Top }, anchor, []);
+            openedMenu = menu;
             Input.GamepadKeyBoundary.ObserveFlyout(menu.Flyout, anchor);
             trayMenu = menu;
-            foreach (var action in descriptor.QuickActions)
-                Add(action.Label, "Quick." + action.Id, () => InvokeTrayQuickActionAsync(descriptor, action, selection));
-            if (menu.Items.Count != 0) menu.Flyout.Items.Add(new MenuFlyoutSeparator());
             AddPinnedCommands(descriptor, Add);
             Add("Reorder widgets", "Reorder", () => { anchor.Focus(FocusState.Keyboard); ToggleTrayReorder(); return Task.CompletedTask; });
             Add("Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection));
-            menu.Flyout.Opened += (_, _) =>
-            {
-                if (ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(descriptor, selection)) menu.Items[0].Focus(FocusState.Keyboard);
-                else CloseTrayMenu(false);
-            };
+            var quickActionStart = menu.Flyout.Items.Count;
+            if (DashboardFrame(descriptor) is { } displayed)
+                foreach (var action in displayed.Snapshot.QuickActions)
+                    Add(action.Label, "Dashboard." + action.Button,
+                        () => InvokeDashboardButtonAsync(descriptor, action.Button, ControllerInputOrigin.AccessibilityAutomation));
+            foreach (var action in descriptor.QuickActions)
+                Add(action.Label, "Quick." + action.Id, () => InvokeTrayQuickActionAsync(descriptor, action, selection));
+            if (menu.Flyout.Items.Count > quickActionStart)
+                menu.Flyout.Items.Insert(quickActionStart, new MenuFlyoutSeparator());
+            menu.Flyout.Opened += (_, _) => OnTrayMenuOpened(menu);
             menu.Flyout.Closed += (_, _) =>
             {
+                menu.Theme?.Dispose();
                 if (!ReferenceEquals(trayMenu, menu)) return;
                 trayMenu = null;
+                if (ReferenceEquals(trayMenuRequest, request)) trayMenuRequest = null;
                 UpdateTrayHelp();
                 if (TrayOwnerCurrent(descriptor, selection)) RequestTrayFocus(descriptor);
             };
             UpdateTrayHelp();
+            menu.Theme = NativePopupTheme.Menu(menu.Flyout, this);
             menu.Flyout.ShowAt(anchor);
 
             void Add(string label, string id, Func<Task> action)
@@ -214,15 +243,31 @@ internal sealed partial class OverlayShellPage
             }
         }
         catch (OperationCanceledException) when (retired) { }
-        catch (Exception error) { CloseTrayMenu(false); ReportFailure(error); }
+        catch (Exception error) { ReportTrayMenuFailure(error, request, openedMenu, failureCurrent); }
+    }
+
+    private void OnTrayMenuOpened(TrayMenu menu)
+    {
+        if (ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(menu.Owner, menu.Selection)) menu.Items[0].Focus(FocusState.Keyboard);
+        else if (ReferenceEquals(trayMenu, menu)) CloseTrayMenu(false);
+        else menu.Flyout.Hide();
+    }
+
+    private void ReportTrayMenuFailure(Exception error, object request, TrayMenu? openedMenu, Func<bool> failureCurrent)
+    {
+        var report = failureCurrent();
+        if (ReferenceEquals(trayMenuRequest, request) && ReferenceEquals(trayMenu, openedMenu)) CloseTrayMenu(false);
+        ReportOperationFailure(error, () => report);
     }
 
     private void CloseTrayMenu(bool restoreFocus)
     {
+        trayMenuRequest = null;
         if (trayMenu is not { } menu) return;
         trayMenu = null;
         UpdateTrayHelp();
         menu.Flyout.Hide();
+        menu.Theme?.Dispose();
         if (restoreFocus && TrayOwnerCurrent(menu.Owner, menu.Selection)) RequestTrayFocus(menu.Owner);
     }
 
@@ -231,9 +276,7 @@ internal sealed partial class OverlayShellPage
         if (trayMenu is { } menu)
         {
             if (!TrayOwnerCurrent(menu.Owner, menu.Selection)) { CloseTrayMenu(false); return true; }
-            var delta = direction == FocusNavigationDirection.Up ? -1 : direction == FocusNavigationDirection.Down ? 1 : 0;
-            menu.FocusIndex = Math.Clamp(menu.FocusIndex + delta, 0, menu.Items.Count - 1);
-            menu.Items[menu.FocusIndex].Focus(FocusState.Keyboard);
+            NativeMenuFocus.Move(menu.Items, direction, ref menu.FocusIndex);
             return true;
         }
         if (RadialOpen) { StepRadialSelection(direction); return true; }
@@ -248,8 +291,10 @@ internal sealed partial class OverlayShellPage
         return true;
     }
 
-    private async Task RouteTrayButtonAsync(ControllerButton button, ControllerEventPhase phase)
+    private async Task RouteTrayButtonAsync(ControllerButton button, ControllerEventPhase phase, ControllerInputOrigin origin)
     {
+        if (phase == ControllerEventPhase.Repeated && trayMenu is null && !reordering && FocusedTrayWidget() is { } repeatedWidget)
+        { await InvokeDashboardButtonAsync(repeatedWidget, button, origin, phase); return; }
         if (phase != ControllerEventPhase.Pressed) return;
         shellOwnedReleases.Add(button);
         if (trayMenu is { } menu)
@@ -266,11 +311,18 @@ internal sealed partial class OverlayShellPage
             if (button is ControllerButton.A or ControllerButton.B) FinishTrayReorder();
             return;
         }
-        if (button == ControllerButton.B) { if (!ReturnFromRadial()) HideRequested?.Invoke(); }
+        if (button == ControllerButton.B)
+        {
+            // The shell owns the entire gesture even after focus returns to the
+            // widget. Its release must not cancel the newly requested entry.
+            shellOwnedReleases.Add(button);
+            if (!await ReturnFromRadialAsync()) HideRequested?.Invoke();
+        }
         else if (FocusedTrayWidget() is { } widget)
         {
             if (button == ControllerButton.A) await SelectAsync(widget.Id);
             else if (button == ControllerButton.Menu) await ShowTrayMenuAsync(widget);
+            else if (await InvokeDashboardButtonAsync(widget, button, origin)) { }
             else if (widget.QuickActions.FirstOrDefault(action => action.ControllerButton == button) is { } action)
                 await InvokeTrayQuickActionAsync(widget, action, selectionVersion);
         }

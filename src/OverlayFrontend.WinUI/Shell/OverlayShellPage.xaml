@@ -9,9 +9,9 @@
         <Grid x:Name="ProductionLayout">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
-                <RowDefinition Height="3" />
+                <RowDefinition Height="8" />
                 <RowDefinition Height="58" />
-                <RowDefinition Height="46" />
+                <RowDefinition Height="8" />
                 <RowDefinition Height="76" />
             </Grid.RowDefinitions>
             <Border x:Name="WidgetSurface" VerticalAlignment="Bottom" IsHitTestVisible="False" />
@@ -28,7 +28,8 @@
                 <Grid ColumnSpacing="12">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <TextBlock x:Name="Status" Text="Connecting to widget service…" TextWrapping="Wrap"
-                               AutomationProperties.AutomationId="Overlay.Status" />
+                               AutomationProperties.AutomationId="Overlay.Status"
+                               AutomationProperties.LiveSetting="Polite" />
                     <Button x:Name="Retry" Grid.Column="1" Content="Retry" Visibility="Collapsed"
                             AutomationProperties.AutomationId="Overlay.Retry" Click="RetryClicked" />
                 </Grid>
@@ -36,7 +37,7 @@
             <Grid x:Name="MediaParking" Visibility="Collapsed" IsHitTestVisible="False"
                   AutomationProperties.AccessibilityView="Raw" />
             <ContentControl x:Name="TrayHelp" Grid.Row="2" IsTabStop="False"
-                            HorizontalContentAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
                             AutomationProperties.AutomationId="Overlay.TrayHelp" />
             <Grid x:Name="RailRegion" Grid.Row="4" VerticalAlignment="Center" ColumnSpacing="14">
                 <Grid.ColumnDefinitions>

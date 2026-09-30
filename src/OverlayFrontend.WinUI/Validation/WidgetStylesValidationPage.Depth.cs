@@ -40,6 +40,7 @@ internal sealed partial class WidgetStylesValidationPage
             "authored shadow color alpha blur and signed offsets map to native DropShadow");
         Check(depth.EdgeCount == 4 && ColorOf(button.BorderBrush).A == 0 && button.BorderThickness == new Thickness(2),
             "native per-edge strokes replace uniform border pixels while preserving border layout width");
+        Check(depth.UsesRoundedEdges, "uniform rounded depth edges follow one continuous antialiased contour around the corners");
         Check(ColorOf(button.Background).R == 240 && button.Opacity == 1,
             "shadow layers remain behind authored content without tinting or fading the control");
         var creates = depth.NativeResourceCreates;
@@ -55,6 +56,12 @@ internal sealed partial class WidgetStylesValidationPage
         await Wait(() => button.ActualWidth > size);
         Check(ReferenceEquals(depth, adapter.Depth) && depth.NativeResourceCreates == creates,
             "resizing updates native shadow geometry without reallocating visual owners");
+        adapter.Update(Compute("button { width: 320px; height: 70px; corner-radius: 30px; border-width: 2px; border-bottom-width: 4px; border-top-color: #ff3322; border-bottom-color: #2255ff; }", "depth-button", "button"));
+        Check(!depth.UsesRoundedEdges && button.BorderThickness.Bottom == 4,
+            "asymmetric authored borders retain their separate physical edge widths");
+        adapter.Update(style);
+        Check(depth.UsesRoundedEdges && depth.NativeResourceCreates == creates,
+            "returning to a uniform rounded border reuses the depth owner and restores its continuous contour");
         host.Children.Remove(presenter);
         await Wait(() => !button.IsLoaded && !depth.IsRealized);
         Check(!depth.IsRealized, "unloading a styled control releases native depth masks and brushes");
@@ -81,5 +88,6 @@ internal sealed partial class WidgetStylesValidationPage
         NativeComputedStyleAdapter.SetAccessibilityPolicy(AppearanceSettings.Default);
         await NativeCollectionDepthAsync();
         await NativePresentationMemoryAsync();
+        await RoundedBordersAsync();
     }
 }

@@ -396,6 +396,8 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.ActionSurfaceOrientation, before.ActionSurfaceOrientation, after.ActionSurfaceOrientation);
         Add(PresentationProperty.ActionSurfacePresentation, before.ActionSurfacePresentation, after.ActionSurfacePresentation);
         Add(PresentationProperty.GridMinimumColumnWidth, before.GridMinimumColumnWidth, after.GridMinimumColumnWidth);
+        Add(PresentationProperty.GridLayout, before.GridLayout, after.GridLayout);
+        Add(PresentationProperty.GridCell, before.GridCell, after.GridCell);
         Add(PresentationProperty.GridMaximumColumns, before.GridMaximumColumns, after.GridMaximumColumns);
         Add(PresentationProperty.IsDisabled, before.IsDisabled, after.IsDisabled);
         Add(PresentationProperty.IsSelected, before.IsSelected, after.IsSelected);

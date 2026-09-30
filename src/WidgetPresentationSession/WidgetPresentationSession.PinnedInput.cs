@@ -112,7 +112,7 @@ public sealed partial class WidgetPresentationSession
         var authority = projection.Frame.Authority;
         var exchange = RequestAsync(BridgeMessageTypes.PinnedAction,
             new BridgePinnedActionRequest(authority.WidgetId, authority.WidgetInstanceId, authority.RuntimeGeneration,
-                authority.PresentationGeneration, input), BridgeMessageTypes.Acknowledged, CancellationToken.None);
+                authority.PresentationGeneration, input, authority.WorkerRun), BridgeMessageTypes.Acknowledged, CancellationToken.None);
         dispatch.Track(exchange);
         var reply = await exchange.WaitAsync(cancellationToken).ConfigureAwait(false);
         RequireObjectProperties(reply.Payload, "admission");

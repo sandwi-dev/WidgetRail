@@ -37,6 +37,8 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     private string? activeWidget;
     private bool visible;
     private bool inputEnabled;
+    private bool dashboardPlaybackEnabled;
+    private bool retainingFullscreen;
     private bool retired;
     private bool reconciling;
     private bool reconcileAgain;
@@ -44,6 +46,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     internal Action<string, string>? Diagnostic { get; set; }
     internal Action<string>? BackRequested { get; set; }
     internal Action<string>? FailureChanged { get; set; }
+    internal event Action? Changed;
     internal string? GetFailure(string widgetId) => failures.GetValueOrDefault(widgetId);
     internal int ResidentCount => entries.Count;
     internal int BrowserCreationCount { get; private set; }
@@ -62,14 +65,17 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         session.CatalogChanged += CatalogChanged;
     }
 
-    internal void SetHostState(string? widgetId, bool isVisible, bool acceptsInput)
+    internal void SetHostState(string? widgetId, bool isVisible, bool acceptsInput, bool acceptsDashboardPlayback = false,
+        bool retainFullscreenDuringExit = false)
     {
         DemandDispatcher();
         if (retired) return;
         activeWidget = widgetId;
         visible = isVisible;
         inputEnabled = isVisible && acceptsInput;
-        if (!inputEnabled || fullscreen?.Document.Authority.WidgetId != widgetId) ExitFullscreen();
+        dashboardPlaybackEnabled = isVisible && acceptsDashboardPlayback;
+        retainingFullscreen = isVisible && retainFullscreenDuringExit && !acceptsInput;
+        if (!inputEnabled && !retainingFullscreen || fullscreen?.Document.Authority.WidgetId != widgetId) ExitFullscreen();
         Reconcile();
     }
 
@@ -113,6 +119,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             {
                 reconcileAgain = false;
                 if (fullscreen is not null && !session.IsMediaPresentationCurrent(fullscreen)) ExitFullscreen();
+                if (compact is not null && !session.IsMediaPresentationCurrent(compact)) ExitCompact();
                 foreach (var id in failures.Keys.ToArray())
                     if (!entries.ContainsKey(id) && session.GetState(id)?.LastGood?.Snapshot.EmbeddedMediaSession is null)
                         SetFailure(id, null);
@@ -124,7 +131,13 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
                     { Retire(entry); continue; }
                     if (entry.Surface is { } surface)
                     {
+                        // A native browser fault does not retire the session's
+                        // document epoch. Restore ordinary shell placement before
+                        // announcing its persistent failure so recovery is visible.
+                        if (surface.FailureCode is not null && fullscreen?.Document.Authority.WidgetId == entry.WidgetId)
+                            ExitFullscreen();
                         SetFailure(entry.WidgetId, surface.FailureCode);
+                        if (surface.FailureCode is not null && compact?.Document.Authority.WidgetId == entry.WidgetId) ExitCompact();
                         Place(entry, MatchingViewport(entry.WidgetId));
                         surface.Refresh();
                     }
@@ -141,6 +154,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
                     }
                     if (entry.Document is null && !entry.IsResolving && entry.AttemptSequence != frame.Authority.SnapshotSequence)
                     {
+                        target.Element.SetMediaLoading(true);
                         entry.AttemptSequence = frame.Authority.SnapshotSequence;
                         entry.IsResolving = true;
                         entry.Resolving = ResolveAsync(entry, frame.Authority);
@@ -150,6 +164,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             } while (reconcileAgain && !retired);
         }
         finally { reconciling = false; }
+        Changed?.Invoke();
     }
 
     private Viewport? MatchingViewport(string widgetId)
@@ -171,9 +186,13 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     private static bool ContainsViewport(ViewNode node, Viewport target) =>
         node.Kind == ViewNodeKind.MediaViewport && node.Id == target.ElementId && node.MediaSessionId == target.SessionId ||
         node.Children.Any(child => ContainsViewport(child, target));
-    private bool CanAcceptInput(string widgetId) => inputEnabled && (IsFullscreen(widgetId) ||
+    private bool CanAcceptInput(string widgetId) => IsCompact(widgetId) && compactInput || inputEnabled && (IsFullscreen(widgetId) ||
         MatchingViewport(widgetId) is { } target && target.Element.AcceptsInput &&
         session.GetState(widgetId)?.LastGood?.Authority.ActiveInputScopeId == target.Authority.ActiveInputScopeId);
+
+    private bool CanActivateDashboardPlayback(string widgetId) => !retired && dashboardPlaybackEnabled && visible && widgetId == activeWidget &&
+        (IsCompact(widgetId) || MatchingViewport(widgetId) is { Element.ScopeActive: true } target &&
+            session.GetState(widgetId)?.LastGood?.Authority.ActiveInputScopeId == target.Authority.ActiveInputScopeId);
 
     private static bool AncestorsVisible(FrameworkElement element)
     {
@@ -184,17 +203,23 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
 
     private async Task ResolveAsync(Entry entry, WidgetPresentationAuthority authority)
     {
+        var startupTrace = new MediaStartupTrace(entry.WidgetId);
+        startupTrace.Mark("admission-start");
         try
         {
             var document = await session.ResolveEmbeddedMediaAsync(authority, entry.Lifetime.Token);
+            startupTrace.Mark("resources-admitted");
             if (retired || !entries.TryGetValue(entry.WidgetId, out var current) || !ReferenceEquals(current, entry) ||
                 session.GetEmbeddedMediaState(document) is null) return;
             entry.Document = document;
             SetFailure(entry.WidgetId, null);
-            entry.Surface = new(session, document);
+            entry.Surface = new(session, document, startupTrace);
             entry.Surface.InputAuthority = () => CanAcceptInput(entry.WidgetId);
+            entry.Surface.PlaybackActivationAuthority = () => CanActivateDashboardPlayback(entry.WidgetId);
             ++BrowserCreationCount;
             entry.Surface.Diagnostic += code => Diagnostic?.Invoke(entry.WidgetId, code);
+            entry.Surface.ObservationFailed += error => Diagnostics.FrontendFailureLog.Current.Write("media-observation", error,
+                $"widget={entry.WidgetId}");
             entry.Surface.BackRequested += () => { if (visible && inputEnabled && entry.WidgetId == activeWidget) BackRequested?.Invoke(entry.WidgetId); };
             entry.Surface.StateChanged += Reconcile;
             Place(entry, MatchingViewport(entry.WidgetId));
@@ -217,19 +242,19 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     {
         if (entry.Surface is not { } surface) return;
         var isFullscreen = IsFullscreen(entry.WidgetId);
-        var destination = isFullscreen ? fullscreenHost! : target?.Element.SurfaceHost ?? parking;
-        if (!ReferenceEquals(surface.Element.Parent, destination))
-        {
-            surface.UpdatePresentation(false, false);
-            if (surface.Element.Parent is Panel previous) previous.Children.Remove(surface.Element);
-            destination.Children.Add(surface.Element);
-        }
-        surface.UpdatePresentation(isFullscreen || target is not null, (isFullscreen || target is not null) && inputEnabled);
+        var isCompact = IsCompact(entry.WidgetId);
+        target?.Element.SetMediaPinned(isCompact);
+        target?.Element.SetMediaLoading(!isCompact && !surface.IsReady && surface.FailureCode is null);
+        var destination = isCompact ? compactHost! : isFullscreen ? fullscreenHost! : target?.Element.SurfaceHost ?? parking;
+        _ = surface.MoveTo(destination, isCompact || isFullscreen || target is not null,
+            CanAcceptInput(entry.WidgetId));
+        if (isCompact) CompactChanged?.Invoke();
     }
 
     private void Retire(Entry entry)
     {
         if (!entries.Remove(entry.WidgetId)) return;
+        if (compact?.Document.Authority.WidgetId == entry.WidgetId) ExitCompact();
         if (fullscreen?.Document.Authority.WidgetId == entry.WidgetId) ExitFullscreen();
         SetFailure(entry.WidgetId, null);
         entry.Lifetime.Cancel();
@@ -269,7 +294,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     {
         if (failures.GetValueOrDefault(widgetId) == code) return;
         if (code is null) failures.Remove(widgetId);
-        else { failures[widgetId] = code; Diagnostic?.Invoke(widgetId, code); }
+        else { failures[widgetId] = code; MatchingViewport(widgetId)?.Element.SetMediaLoading(false); Diagnostic?.Invoke(widgetId, code); }
         FailureChanged?.Invoke(widgetId);
     }
 
@@ -278,6 +303,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     {
         DemandDispatcher();
         retired = true;
+        ExitCompact();
         ExitFullscreen();
         session.PresentationChanged -= PresentationChanged;
         session.CatalogChanged -= CatalogChanged;

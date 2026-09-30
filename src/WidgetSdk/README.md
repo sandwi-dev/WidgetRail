@@ -1,5 +1,8 @@
 # Widget SDK developer testing
 
+For current control mapping, working C# examples and native-frontend differences,
+start with [WinUI authoring](../../docs/reference/winui-authoring.md).
+
 For the WinUI migration branch, see the [indexed collection authoring contract](../../docs/developers/indexed-collections.md).
 It defines exact-count queries, occurrence identity, captured row actions, focus
 return and publication rules. Existing cursor declarations are not automatically
@@ -1073,6 +1076,20 @@ for focus restoration, lifecycle ownership, and theme classes.
 Modal entrance/exit motion is host-owned and follows reduced-motion policy.
 Returning the original page dismisses input immediately; outgoing panel pixels
 may remain briefly while the exit animation finishes.
+
+### WinUI author preflight
+
+Use `WidgetTestHost.ValidateWinUiPresentation(snapshot)` in author tests before
+launching the native candidate. It combines protocol validity with the frontend's
+shared declaration-admission rules, including pinned layouts and focus fragments.
+Errors identify a structural path and a safe element ID, and explain which native
+collection contract replaces unsupported legacy pagination declarations.
+
+Lazy collection templates are intentionally not executed by this check. Acquire
+representative ranges with `CreateIndexedCollectionHost`, then validate each
+`lease.Range.Items` root through `WinUiPresentationContract.ValidateSubtree`.
+Preflight does not prove theme rendering, focus, performance or provider effects;
+those still need behavioral and native tests.
 
 ### Retained focus presentations
 

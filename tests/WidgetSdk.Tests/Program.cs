@@ -8,6 +8,15 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("WinUI author preflight diagnoses legacy declarations", WinUiPresentationContractTests.LegacyDeclarations),
+    ("WinUI author preflight preserves native and protocol contracts", WinUiPresentationContractTests.NativeDeclarations),
+    ("WinUI author preflight includes pinned and deferred subtrees", WinUiPresentationContractTests.NestedAndPinned),
+    ("WinUI author preflight bounds diagnostics and protects values", WinUiPresentationContractTests.SafeAndBounded),
+    ("Explicit grids preserve native track cell and scope declarations", GridLayoutTests.Declarations),
+    ("Explicit grids reject invalid lengths placement and mixed contracts", GridLayoutTests.InvalidDeclarations),
+    ("Explicit grids own track arrays and preserve composed modifiers", GridLayoutTests.ImmutableAndComposed),
+    ("Explicit grids update reset and remove properties atomically", GridLayoutTests.IncrementalUpdates),
+    ("Explicit grids render lazily inside indexed templates", GridLayoutTests.DeferredTemplates),
     ("Discovered collections retain prefixes and bound continuation lifetime", () => WidgetIndexedCollectionTests.Diagnose(WidgetDiscoveredCollectionTests.Run)),
     ("Indexed groups partition flat sources and survive incremental transport", () => WidgetIndexedCollectionTests.Diagnose(WidgetIndexedGroupTests.Run)),
     ("Indexed author test host exercises captured queue scope artwork and ownership", WidgetIndexedTestHostTests.Run),

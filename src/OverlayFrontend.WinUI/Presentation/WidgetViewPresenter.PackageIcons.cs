@@ -63,7 +63,15 @@ internal sealed partial class WidgetViewPresenter
                 Children = { icon, label } };
         }
         var panel = (Grid)button.Content;
-        WidgetTextStyleAdapter.SetSource((TextBlock)panel.Children[1], node.Text ?? string.Empty);
+        var labelPresent = !string.IsNullOrEmpty(node.Text);
+        var currentLabel = (TextBlock)panel.Children[1];
+        WidgetTextStyleAdapter.SetSource(currentLabel, node.Text ?? string.Empty);
+        currentLabel.Visibility = labelPresent ? Visibility.Visible : Visibility.Collapsed;
+        panel.ColumnSpacing = labelPresent ? 8 : 0;
+        panel.ColumnDefinitions[0].Width = labelPresent ? GridLength.Auto : new(1, GridUnitType.Star);
+        panel.ColumnDefinitions[1].Width = labelPresent ? new(1, GridUnitType.Star) : new(0);
+        icon.HorizontalAlignment = HorizontalAlignment.Center;
+        icon.VerticalAlignment = VerticalAlignment.Center;
         UpdateNativeIcon(icon, node);
     }
     private static void UpdateButtonLabel(Button button, string source)

@@ -19,6 +19,7 @@ internal sealed partial class OverlayShellPage
                 VirtualKey.F7 => 0x100, // LB
                 VirtualKey.F8 => 0x200, // RB
                 VirtualKey.F9 => 0x1000, // A
+                VirtualKey.F10 => 0x8000, // Y
                 _ => 0,
             };
             if (mask == 0) return;

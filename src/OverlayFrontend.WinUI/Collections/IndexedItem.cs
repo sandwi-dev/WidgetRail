@@ -42,4 +42,11 @@ public sealed class IndexedItem<T> : IndexedItem where T : notnull
         Changed(nameof(Failed));
         StateUpdated();
     }
+    internal void ClearFailure()
+    {
+        if (!Failed) return;
+        Failed = false;
+        Changed(nameof(Failed));
+        StateUpdated();
+    }
 }

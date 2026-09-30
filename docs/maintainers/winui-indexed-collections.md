@@ -27,6 +27,14 @@ membership and WinUI requests the next batch. It is not a random-access contract
 
 ## Implemented native indexed adapter
 
+Indexed command rows retain focus while their authored `IsBusy` state blocks
+actions. Explicitly disabled rows and unresolved placeholders remain unavailable.
+Native ListView/GridView containers expose authored selection and busy state through
+UIA ItemStatus, using the same mapping as ordinary action controls. SelectionMode
+remains None: an authored selected marker is not a native selection-change command.
+Worker/lease admission continues to gate UIA, pointer and controller invocation.
+Cached automation providers do not gain authority after input or owner retirement.
+
 `OverlayFrontend.WinUI/Collections/IndexedItemsSource<T>` is an internal adapter
 for one fixed-count query and one native ListView/GridView consumer. It implements
 IList, INotifyCollectionChanged and IItemsRangeInfo. Query identity includes runtime
@@ -487,3 +495,19 @@ also could not acquire foreground; its invocation was correctly denied and no
 new physical-smoothness or real-replay acceptance is claimed. Preserve that
 evidence in `container-publication-native-01/` and
 `container-publication-inspect-02/`.
+
+## Native focus during query replacement
+
+When an authored indexed-entry request accompanies a new query, the collection
+briefly holds native focus outside its ListView/GridView while replacing ItemsSource.
+Without this handoff, WinUI can schedule first-row focus after our deep-row entry
+has completed. The handoff requires a matching source/query/collection request;
+ordinary content refresh does not reset focus or create another provider request.
+Navigation coalesces its newest target and commits after native realization callbacks
+unwind. Automatic fallback from a disabled loading placeholder preserves that pending
+entry, while explicit departures and revoked input cancel it. No stability timer or
+repeated focus reclamation is used.
+
+Evidence: `artifacts/winui-shell/indexed-entry-owner-20260930/`; final-entry25,
+activation31 and indexed-widget21 top-level checks pass, including logical entry,
+grouped navigation, scrolling, modal lifetime and accessible busy/selected state.

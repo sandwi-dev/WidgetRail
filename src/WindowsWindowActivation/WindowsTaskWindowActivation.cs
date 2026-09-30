@@ -1,10 +1,10 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
-namespace WidgetRail.OverlayPlatformClient;
+namespace WidgetRail.WindowsWindowActivation;
 
 /// <summary>Native task-switch handoff, matching the original overlay's identity checks.</summary>
-public sealed partial class WindowsTaskWindowActivation : ITaskWindowActivationPlatform
+public sealed partial class WindowsTaskWindowActivation(Action<string>? diagnostic = null) : ITaskWindowActivationPlatform
 {
     public long UptimeMilliseconds => Environment.TickCount64;
     public bool IsOverlayForeground
@@ -30,10 +30,26 @@ public sealed partial class WindowsTaskWindowActivation : ITaskWindowActivationP
 
     public bool RequestActivation(TaskWindowTarget target)
     {
-        if (!IsCurrent(target)) return false;
+        if (!IsCurrent(target)) { Trace("native-target-no-longer-current", target); return false; }
         var window = (nint)(nuint)target.Handle;
-        if (IsIconic(window) != 0 && ShowWindowAsync(window, 9 /* SW_RESTORE */) == 0) return false;
-        return SetForegroundWindow(window) != 0;
+        var minimized = IsIconic(window) != 0;
+        Trace("native-before-activation minimized=" + minimized, target);
+        if (minimized)
+        {
+            var restored = ShowWindowAsync(window, 9 /* SW_RESTORE */) != 0;
+            Trace("ShowWindowAsync(SW_RESTORE) accepted=" + restored, target);
+            if (!restored) return false;
+        }
+        var activated = SetForegroundWindow(window) != 0;
+        Trace("SetForegroundWindow accepted=" + activated, target);
+        return activated;
+    }
+
+    private void Trace(string message, TaskWindowTarget target)
+    {
+        if (diagnostic is null) return;
+        try { diagnostic(message + " " + Observe((nint)(nuint)target.Handle)); }
+        catch { /* Observing activation never changes its outcome. */ }
     }
 
     [LibraryImport("user32.dll")]

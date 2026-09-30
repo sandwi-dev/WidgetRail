@@ -17,7 +17,7 @@ public sealed partial class StandaloneMusicWidget
             var group = UI.Stack(compact ? ContentGroupId : _browse.GroupId, content).Classes(compact ? "music-panel-body" : "music-body");
             if (group.Id == ContentGroupId && !entry.StartsWith("music.nav.", StringComparison.Ordinal))
                 group = group.RememberChildFocus(entry);
-            var status = state.Player.Error ?? _status;
+            var status = state.Player.Error ?? state.PlaybackNotice ?? _status;
             if (string.IsNullOrWhiteSpace(status) || status == "Loading…" || _signingIn) status = string.Empty;
             var children = new List<WidgetElement> { Header(panel, status) };
             if (compact) children.Add(group);
@@ -44,26 +44,30 @@ public sealed partial class StandaloneMusicWidget
                 if (_history.Count != 0) root = root.Shortcut(ControllerButton.B, "back", label: "Back");
             }
             if (state.Current is not null)
-                root = root.Shortcut(ControllerButton.X, "player.toggle", label: "Play or pause")
-                    .Shortcut(ControllerButton.LeftBumper, "player.previous", label: "Previous song")
-                    .Shortcut(ControllerButton.RightBumper, "player.next", label: "Next song");
+                root = PlaybackShortcuts(root);
 
-            var pinned = UI.Stack("music.pinned", Player(state, "pinned"))
-                .InputScope("music.pinned").Classes("music-root");
+            var pinned = PlaybackShortcuts(UI.Stack("music.pinned", Player(state, "pinned"))
+                .InputScope("music.pinned").Classes("music-root", "music-pinned-root"));
             return new(root, InitialFocusId: entry, Surface: new()
             {
-                Mode = WidgetSurfaceMode.Adaptive, PreferredWidth = compact ? 760 : 980,
-                PreferredHeight = compact ? 440 : 700, MinimumWidth = 620, MinimumHeight = compact ? 360 : 400,
+                Mode = WidgetSurfaceMode.Adaptive, PreferredWidth = compact ? 760 : 840,
+                PreferredHeight = compact ? 440 : 580, MinimumWidth = 620, MinimumHeight = compact ? 360 : 400,
             })
             {
                 FocusGroupEntryRequest = _focusRequest,
                 QuickActions = state.Current is null ? [] :
                     [new(ControllerButton.X, "player.toggle", "Play or pause"), new(ControllerButton.LeftBumper, "player.previous", "Previous song"), new(ControllerButton.RightBumper, "player.next", "Next song")],
                 PinnedLayouts = state.Current is null ? [] : [WidgetView.PinnedLayout("music.compact", "Compact now playing",
-                    new() { Mode = WidgetSurfaceMode.Compact, PreferredWidth = 420, PreferredHeight = 330, MinimumWidth = 360, MinimumHeight = 300 }, pinned)],
+                    new() { Mode = WidgetSurfaceMode.Compact, PreferredWidth = 360, PreferredHeight = 440, MinimumWidth = 320, MinimumHeight = 300 },
+                    pinned, initialFocusId: "player.pinned.toggle")],
             };
         }
     }
+
+    private static StackElement PlaybackShortcuts(StackElement root) =>
+        root.Shortcut(ControllerButton.X, "player.toggle", label: "Play or pause")
+            .Shortcut(ControllerButton.LeftBumper, "player.previous", label: "Previous song")
+            .Shortcut(ControllerButton.RightBumper, "player.next", label: "Next song");
 
     private static WidgetElement Header(string? panel, string status)
     {
@@ -262,8 +266,9 @@ public sealed partial class StandaloneMusicWidget
         WidgetElement artwork = current.Artwork.StartsWith("https://", StringComparison.Ordinal)
             ? UI.Image(current.Artwork, prefix + ".artwork", current.Title, ImageFit.Cover).Classes("music-artwork")
             : UI.Icon(WidgetGlyph.Music, prefix + ".artwork", "No artwork").Classes("music-artwork", "music-artwork-placeholder");
-        var content = new List<WidgetElement>();
-        if (pane) content.Add(UI.Row(prefix + ".artwork.frame", artwork).Classes("music-artwork-frame"));
+        if (!pane) artwork = artwork.AddClasses("music-pinned-artwork");
+        var content = new List<WidgetElement>
+        { UI.Row(prefix + ".artwork.frame", artwork).Classes("music-artwork-frame") };
         content.Add(UI.Text(current.Title, prefix + ".title").Classes("music-track-title"));
         content.Add(UI.Text(p.Buffering ? "Buffering…" : current.Subtitle, prefix + ".artist").Classes("music-player-subtitle"));
         content.Add(UI.Scrubber(TimeSpan.FromSeconds(Math.Clamp(p.Position, 0, Math.Max(1, p.Duration))),

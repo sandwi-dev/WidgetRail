@@ -65,7 +65,10 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
         var contextProbe = new Button { Content = "Context" };
         AutomationProperties.SetAutomationId(contextProbe, "IndexedWidget.ContextProbe");
         contextProbe.Click += (_, _) => _ = ProbeContextAsync();
-        var probes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { probe, inputProbe, modalProbe, activationProbe, contextProbe } };
+        var scrollProbe = new Button { Content = "Scroll focus" };
+        AutomationProperties.SetAutomationId(scrollProbe, "IndexedWidget.ScrollFocusProbe");
+        scrollProbe.Click += (_, _) => _ = ProbeScrollFocusAsync();
+        var probes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { probe, inputProbe, modalProbe, activationProbe, contextProbe, scrollProbe } };
         diagnostics.Children.Add(probes); Grid.SetColumn(probes, 1);
         layout.Children.Add(diagnostics); layout.Children.Add(presenter);
         var memoryProbe = new Button { Content = "Memory" };
@@ -73,17 +76,18 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
         memoryProbe.Click += (_, _) => _ = ProbeMementoAsync();
         probes.Children.Add(memoryProbe);
         Content = layout;
-        presenter.Failed = error => { failure = error.Message; Observe(); };
+        presenter.Failed = error => { failure = error.ToString(); Observe(); };
         presenter.DispatchActionAsync = async request =>
         {
             try { if (session is not null) await session.SendActionAsync(request.Displayed, request.Action, lifetime.Token); }
-            catch (Exception error) { failure = error.Message; Observe(); }
+            catch (Exception error) { failure = error.ToString(); Observe(); }
         };
         Loaded += (_, _) => startup ??= StartAsync();
         KeyDown += (_, args) =>
         {
             switch (args.Key)
             {
+                case VirtualKey.F17: _ = ProbeScrollFocusAsync(); break;
                 case VirtualKey.F14: _ = ProbeSurfacesAsync(); break;
                 case VirtualKey.F15: _ = ProbeSuspensionAsync(); break;
                 case VirtualKey.F16: _ = ProbeMementoAsync(); break;
@@ -117,10 +121,21 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             session.PresentationChanged += Changed;
             await session.ListWidgetsAsync(lifetime.Token);
             await session.EstablishPresentationAsync(session.GetTarget("indexed-owned"), WidgetLifecycleState.Interactive, lifetime.Token);
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-entry-validation") is { } entryResult)
+                await ValidateEntryReplacementAsync(entryResult);
+            if (Environment.GetCommandLineArgs().Contains("--indexed-state-validation"))
+            {
+                activationResult = "pending"; Observe();
+                var result = await IndexedActivationValidation.RunAccessibilityAsync(presenter, session, lifetime.Token);
+                var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "diagnostics");
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(Path.Combine(directory, "indexed-accessibility-result.json"), JsonSerializer.Serialize(result));
+                activationResult = result.ResultCode + ":" + result.Checks.Count; Observe();
+            }
             var styleSettings = Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--style-validation-settings");
             if (styleSettings is not null) await ProbeStylesAsync(styleSettings);
         }
-        catch (Exception error) { failure = error.Message; Observe(); }
+        catch (Exception error) { failure = error.ToString(); Observe(); }
     }
     private void Changed(object? sender, WidgetPresentationChangedEventArgs args)
     {
@@ -133,7 +148,7 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
                 if (args.State.Failure is { } error) throw new InvalidOperationException(error.Message);
                 if (args.State.LastGood is { } frame) presenter.Apply(frame);
             }
-            catch (Exception error) { failure = error.Message; }
+            catch (Exception error) { failure = error.ToString(); }
             Observe();
         });
     }
@@ -145,7 +160,7 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             if (session?.GetState("indexed-owned")?.LastGood is { } frame)
                 await session.SendActionAsync(frame.Authority, new("content", "content", InputScopeId: "root"), lifetime.Token);
         }
-        catch (Exception error) { failure = error.Message; Observe(); }
+        catch (Exception error) { failure = error.ToString(); Observe(); }
     }
     private async Task ProbeNavigationAsync(bool reverse = false, bool burst = false)
     {
@@ -170,8 +185,52 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
         try
         {
             Parent();
+            await Send("focus-placeholder");
+            await Until(() => View() is { } placeholderView && placeholderView.Items.Count == 34 &&
+                placeholderView.ContainerFromIndex(33) is Control { IsLoaded: true });
+            var placeholderView = View()!;
+            var placeholder = (Control)placeholderView.ContainerFromIndex(33);
+            Check(((IndexedItem<WidgetIndexedRow>)placeholderView.Items[33]).Value is null,
+                "gated final partial-grid row was unexpectedly loaded");
+            Check(!placeholder.IsEnabled && !placeholder.IsTabStop && !placeholder.Focus(FocusState.Keyboard),
+                "empty final grid placeholder admitted native focus");
+            Check(FocusId() == "Widget.parent", "empty final grid placeholder moved focus from its prior control");
+            await Task.Delay(160, lifetime.Token);
+            Check(!presenter.IsGuidePresentationReady(requireFocus: false), "elapsed guide debounce admitted unprepared visible rows");
+            var pendingCollection = Descendants(presenter).OfType<WidgetIndexedCollectionView>().Single();
+            var transform = pendingCollection.RenderTransform;
+            try
+            {
+                pendingCollection.RenderTransform = new TranslateTransform { Y = presenter.ActualHeight + 1000 };
+                Check(presenter.IsGuidePresentationReady(requireFocus: false), "offscreen unrealized collection blocked the guide");
+            }
+            finally { pendingCollection.RenderTransform = transform; }
+            Check(!presenter.IsGuidePresentationReady(requireFocus: false), "returning pending collection to viewport did not restore guide readiness gate");
+            await Send("activation-release");
+            await Until(() => FocusId() == "Widget.items.Item.33");
+            await Until(() => presenter.IsGuidePresentationReady(requireFocus: true));
+            Check(placeholder.IsEnabled && placeholder.IsTabStop &&
+                Descendants(placeholder).OfType<TextBlock>().Any(text => text.Text == "Item 33"),
+                "final grid row did not become focusable with its rendered payload");
+            Parent();
+            await Send("focus-placeholder-end");
             await Send("focus-exact");
             await Until(() => FocusId() == "Widget.items.Item.75");
+            // A native focus attempt while the switcher owns input must not
+            // replace the remembered row when the widget becomes interactive.
+            await Until(() => View()?.ContainerFromIndex(74) is Control { IsLoaded: true, IsEnabled: true });
+            presenter.SetPresentationInputEnabled(false);
+            presenter.SetAutomaticFocusEnabled(false);
+            Check(((Control)View()!.ContainerFromIndex(74)).Focus(FocusState.Programmatic),
+                "fixture could not establish native fallback on another row");
+            await Task.Delay(100, lifetime.Token);
+            Check(FocusId() == "Widget.items.Item.75", "inactive native focus attempt replaced the remembered row");
+            presenter.SetPresentationInputEnabled(true);
+            presenter.SetAutomaticFocusEnabled(true);
+            presenter.Enter(restoreNativeFocus: true);
+            await Until(() => FocusId() == "Widget.items.Item.75");
+            await Task.Delay(200, lifetime.Token);
+            Check(FocusId() == "Widget.items.Item.75", "native fallback overwrote remembered collection item on entry");
             Parent();
             await Send("content", "content");
             await Task.Delay(300, lifetime.Token);
@@ -219,7 +278,7 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             await Send("groups", "groups");
             await Send("group-partition");
             await Send("groups", "groups");
-            logicalFocus = "passed:12";
+            logicalFocus = "passed:22";
         }
         catch (Exception error) { logicalFocus = "failed:" + error.Message; }
         Observe();
@@ -228,12 +287,27 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             ? "" : AutomationProperties.GetAutomationId(current);
         void Parent() => Descendants(presenter).OfType<Button>().First(button => AutomationProperties.GetAutomationId(button) == "Widget.parent").Focus(FocusState.Keyboard);
         static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
-        async Task Until(Func<bool> ready)
+        async Task Until(Func<bool> ready,
+            [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(ready))] string? waitingFor = null)
         {
             var deadline = Environment.TickCount64 + 5000;
             while (!ready())
             {
-                if (Environment.TickCount64 > deadline) throw new TimeoutException("Logical focus did not settle: " + FocusId());
+                if (Environment.TickCount64 > deadline)
+                {
+                    var view = View();
+                    var source = view?.ItemsSource as IndexedItemsSource<WidgetIndexedRow>;
+                    var tail = source is { Count: > 33 } ? (IndexedItem<WidgetIndexedRow>)source[33] : null;
+                    var container = view?.ContainerFromIndex(33) as Control;
+                    throw new TimeoutException("Logical focus did not settle: " + JsonSerializer.Serialize(new
+                    {
+                        waitingFor, focus = FocusId(), source?.CompletedLoads, source?.FailedLoads,
+                        source?.ResidentSlots, tail?.Key, tail?.Failed, hasValue = tail?.Value is not null,
+                        leaseCurrent = tail?.Value?.Lease.IsCurrent, container?.IsEnabled, container?.IsTabStop,
+                        entryPending = Descendants(presenter).OfType<WidgetIndexedCollectionView>().FirstOrDefault()?.IsEntryPending,
+                        presenter = presenter.FocusDiagnostics(),
+                    }));
+                }
                 await Task.Delay(20, lifetime.Token);
             }
         }
@@ -430,15 +504,17 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
         status.Text = JsonSerializer.Serialize(new
         {
             failure, publication, count = view?.Items.Count, control = view?.GetType().Name,
-            realized = nodes.Count(node => node is ListViewItem or GridViewItem), images = nodes.OfType<Image>().Count(image => image.Source is not null),
-            imageWidth = nodes.OfType<Image>().Select(image => image.ActualWidth).DefaultIfEmpty().Max(),
+            realized = nodes.Count(node => node is ListViewItem or GridViewItem), images = nodes.OfType<WidgetArtworkView>().Count(image => image.Source is not null),
+            rowContentApplies = nodes.OfType<WidgetIndexedRowView>().Sum(row => row.ContentApplyCount),
+            skippedRowApplies = nodes.OfType<WidgetIndexedRowView>().Sum(row => row.SkippedContentApplyCount),
+            imageWidth = nodes.OfType<WidgetArtworkView>().Select(image => image.ActualWidth).DefaultIfEmpty().Max(),
             focus = focus is null ? null : AutomationProperties.GetAutomationId(focus), y = bounds.Y,
             offset = scroll?.VerticalOffset, viewport = scroll?.ViewportHeight, height = view?.ActualHeight,
             status = FindNode(frame?.Snapshot.Root, "status")?.Text,
             calls = FindNode(frame?.Snapshot.Root, "calls")?.Text,
             columns = view?.ItemsPanelRoot is ItemsWrapGrid wrap ? wrap.MaximumRowsOrColumns : 1,
             revision = FindNode(frame?.Snapshot.Root, "items")?.IndexedCollection?.ContentRevision,
-            navigation, logicalFocus, groupedFocus, surfaces, inputRoute, modalResult, activationResult, contextResult,
+            navigation, logicalFocus, groupedFocus, surfaces, inputRoute, modalResult, activationResult, contextResult, scrollFocus,
             groupCount = FindNode(frame?.Snapshot.Root, "items")?.IndexedGroups?.Count ?? 0,
         });
     }

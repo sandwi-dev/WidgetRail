@@ -33,3 +33,32 @@ opens game details only and never invokes Play/Install or music playback.
 Managed tests cover bounded LRU behavior, exact IDs, replacement of each owner
 field, incomplete catalog retention, confirmed removal, explicit retirement and
 repeated lookups. Native eviction integration remains a separate deployment gate.
+
+`Test-WinUiWidgetSwitches.ps1 -SoakCycles 1000` extends the existing isolated
+synthetic fixture with repeated selection across four widgets (native cache limit
+three), and hide/reopen after every fourth switch. It checks cache/preparation
+bounds, recovery state and committed surfaces. Every20 cycles it records frontend
+private bytes, working set, managed heap, handles and retained-surface counts without
+forcing GC. The output is an observation, not an automatic memory-plateau pass:
+JIT, native caches and GC can change process usage. Worker/browser/GPU resources,
+real artwork-heavy collections and physical frame pacing require separate coverage.
+
+## Timed process-tree soak
+
+`Test-WinUiWidgetSwitches.ps1 -BridgeInstallation <staged-installation>
+-OutputDirectory <fresh-directory> -SoakSeconds 1800` runs the same isolated
+four-widget workload for thirty minutes. Native realization/retirement, delayed
+preparation, owner replacement and failure/recovery assertions remain enabled.
+Every fourth switch hides and reopens the shell. No forced GC is used.
+
+The runner verifies deployed DLL hashes and starts the read-only process-tree
+observer at five-second intervals. `process-tree.json` includes per-process private
+commit, working set, handles and CPU (percentage of one core), with PID/start-time
+identity checks. It follows the frontend, broker and synthetic workers, including
+known descendants whose original parent exits. The observer exits after the owned
+frontend closes and retains its report. Native samples/result.json remain separate.
+
+Interpret these as observations of this workload. They do not establish GPU memory,
+frame pacing, artwork-heavy grid behavior, browser lifetime or a comparative native
+renderer budget. A short pilot verifies the observer itself; it is not a substitute
+for the full duration. Evidence is under `resource-lifetime-20260930` in winui-shell.

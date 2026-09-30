@@ -21,7 +21,7 @@ public enum GalleryRoute
 /// Copyable, capability-free reference for the public controller-first SDK.
 /// It intentionally has no custom worker, broker calls, or host-only helpers.
 /// </summary>
-public sealed class SdkGalleryWidget : Widget
+public sealed partial class SdkGalleryWidget : Widget
 {
     public const string DefaultBackgroundArtworkHandle = "gallery.artwork.background.default";
     public const string WarmBackgroundArtworkHandle = "gallery.artwork.background.warm";
@@ -193,6 +193,7 @@ public sealed class SdkGalleryWidget : Widget
                 _navigation.PushFromAction(GalleryRoute.ActionSheet, action);
                 return ValueTask.CompletedTask;
             case "gallery.compact.toggle": _compactMode = !_compactMode; break;
+            case "gallery.grid.swap": _reverseGridProportions = !_reverseGridProportions; break;
             case "gallery.picker.open":
                 _navigation.PushFromAction(GalleryRoute.Picker, action);
                 return ValueTask.CompletedTask;
@@ -418,7 +419,8 @@ public sealed class SdkGalleryWidget : Widget
                 "gallery.scrub",
                 "gallery.scrubber",
                 "Preview position"))
-            .AddClasses("gallery-controls-scrubber-card"))
+            .AddClasses("gallery-controls-scrubber-card"),
+        NativeGridDemo())
         .AddClasses("gallery-page");
 
     private StackElement TilesPage() => UI.Stack("gallery.tiles",

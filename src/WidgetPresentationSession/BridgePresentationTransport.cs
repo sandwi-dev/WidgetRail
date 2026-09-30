@@ -8,6 +8,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
     private static readonly TimeSpan StopDeadline = TimeSpan.FromSeconds(2);
     private readonly NamedPipeClientStream _pipe;
     private readonly BridgeFrameChannel _channel;
+    private readonly Action<string>? _beforeInputWrite;
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     // Bridge dispatcher admits at most 16 concurrent requests. Leave one slot
     // for reply finalization/shutdown and reserve provider
@@ -34,10 +35,12 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
         NamedPipeClientStream pipe,
         BridgeFrameChannel channel,
         int maximumPendingRequests,
-        long initialRequestId)
+        long initialRequestId,
+        Action<string>? beforeInputWrite)
     {
         _pipe = pipe;
         _channel = channel;
+        _beforeInputWrite = beforeInputWrite;
         _requestId = initialRequestId;
         var total = Math.Min(maximumPendingRequests, MaximumWireRequests);
         var provider = Math.Min(4, (total - 1) / 2);
@@ -70,7 +73,8 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
             {
                 Type = BridgeMessageTypes.Hello,
                 RequestId = helloId,
-                Payload = BridgeJson.ToElement(new BridgeHello(options.ClientName, options.WindowPreviews)),
+                Payload = BridgeJson.ToElement(new BridgeHello(options.ClientName, options.WindowPreviews,
+                    options.ExclusiveControllerControl, options.HeldDpadScroll, options.StartupRegistration)),
             }, deadline.Token).ConfigureAwait(false);
             var hello = await channel.ReadAsync(deadline.Token).ConfigureAwait(false);
             if (hello.RequestId != helloId || hello.Type != BridgeMessageTypes.HelloAccepted ||
@@ -79,7 +83,7 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
                 throw new BridgeProtocolException(
                     "WidgetBridge rejected the presentation-session handshake.");
             return new BridgePresentationTransport(
-                pipe, channel, options.MaximumPendingRequests, helloId);
+                pipe, channel, options.MaximumPendingRequests, helloId, options.BeforeInputWrite);
         }
         catch
         {
@@ -165,12 +169,19 @@ internal sealed class BridgePresentationTransport : IAsyncDisposable
             await _writeGate.WaitAsync(_lifetime.Token).ConfigureAwait(false);
             try
             {
-                await _channel.WriteAsync(new BridgeEnvelope
+                var envelope = new BridgeEnvelope
                 {
                     Type = type,
                     RequestId = requestId,
                     Payload = BridgeJson.ToElement(payload),
-                }, _lifetime.Token).ConfigureAwait(false);
+                };
+                // Run after waiting for transport capacity/the write gate, so
+                // foreground eligibility cannot be captured from an earlier UI
+                // event while this input waits behind another request.
+                if (type is BridgeMessageTypes.Action or BridgeMessageTypes.PinnedAction or
+                    BridgeMessageTypes.QuickAction or BridgeMessageTypes.ControllerInput or BridgeMessageTypes.IndexedInput)
+                    _beforeInputWrite?.Invoke(type);
+                await _channel.WriteAsync(envelope, _lifetime.Token).ConfigureAwait(false);
                 written?.TrySetResult();
             }
             finally

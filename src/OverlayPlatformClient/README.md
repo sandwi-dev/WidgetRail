@@ -1,10 +1,20 @@
 # Managed overlay platform boundary
 
-This assembly binds native OverlayPlatformInterop ABI 5 without a WinUI dependency.
-It does not install drivers, opt into controller isolation, create a window,
+This assembly binds native OverlayPlatformInterop ABI 6 without a WinUI dependency.
+It does not install drivers, automatically opt into controller isolation, create a window,
 run polling timers or dispatch widget actions. `OverlayPlatformNative` supports
 the existing Windows x64 native build only. Tests use `IOverlayPlatformNative`
 fakes and never initialize controller hardware.
+
+Exclusive control is an explicit control-plane operation on the same session:
+`ControllerPrerequisites` reads driver/runtime readiness, `ControllerControlState`
+reads progress, and `SetExclusiveControl(bool)` applies one user preference.
+Readiness probes are not per-frame work. The native owner retains responsibility
+for physical/virtual controller routing, neutral transitions, and owned-policy
+cleanup. A false apply result means expected setup or recovery failure; report
+the current state instead of destroying ordinary input or automatically retrying.
+Unexpected ABI failures throw `PlatformException`. All three operations share
+the ordinary session lifetime lock and reject calls after disposal.
 
 Create one `OverlayPlatformSession` owned by the application. Supply a dispatcher
 whose `TryEnqueue` queues work and returns immediately; it must never invoke the

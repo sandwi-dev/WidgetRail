@@ -8,9 +8,12 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 /// <summary>Host-owned font assets; widgets send semantic prompts, never font paths or private characters.</summary>
 internal static class WidgetGlyphs
 {
-    private static readonly FontFamily Xbox = new("ms-appx:///Assets/Fonts/kenney_input_xbox_series.ttf#Kenney Input Xbox Series");
-    private static readonly FontFamily PlayStation = new("ms-appx:///Assets/Fonts/kenney_input_playstation_series.ttf#Kenney Input PlayStation Series");
-    private static readonly FontFamily Guide = new("ms-appx:///Assets/Fonts/promptfont.ttf#PromptFont");
+    // Subsets retain the original licensed outlines, normalized to the same
+    // optical box as the native renderer. FontSize therefore means glyph size,
+    // rather than the original fonts' much larger padded em square.
+    private static readonly FontFamily Xbox = new("ms-appx:///Assets/Fonts/xbox.ttf#WidgetRail Kenney Xbox");
+    private static readonly FontFamily PlayStation = new("ms-appx:///Assets/Fonts/playstation.ttf#WidgetRail Kenney PlayStation");
+    private static readonly FontFamily Guide = new("ms-appx:///Assets/Fonts/guide.ttf#WidgetRail Controller Guide");
     private static readonly FontFamily SystemIcons = new("Segoe Fluent Icons");
 
     // Same existing, licensed assets and character mapping as ControllerPrompt.h.

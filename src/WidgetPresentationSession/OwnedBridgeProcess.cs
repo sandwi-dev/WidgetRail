@@ -9,6 +9,10 @@ public sealed record BridgeProcessOptions(string InstallationRoot, string Settin
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(10);
     /// <summary>Opt in only when the frontend owns a permission-checked capture renderer.</summary>
     public bool WindowPreviews { get; init; }
+    /// <summary>Opt in only when the frontend exchanges and applies controller-control preferences.</summary>
+    public bool ExclusiveControllerControl { get; init; }
+    /// <summary>Optional host diagnostics for foreground delegation, without widget payloads.</summary>
+    public Action<string>? ForegroundDelegationDiagnostic { get; init; }
 
     internal ProcessStartInfo CreateStartInfo(string pipeName)
     {
@@ -58,6 +62,7 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
     private readonly Task stderr;
     private readonly ConcurrentQueue<string> diagnostics = new();
     private readonly object disposalGate = new();
+    private readonly Action<string>? foregroundDiagnostic;
     private readonly CancellationTokenSource drainLifetime = new();
     private Task? disposal;
     private WidgetPresentationSession? session;
@@ -65,9 +70,10 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
     public int ProcessId => process.Id;
     public IReadOnlyList<string> Diagnostics => diagnostics.ToArray();
 
-    private OwnedBridgeProcess(Process process)
+    private OwnedBridgeProcess(Process process, Action<string>? foregroundDiagnostic)
     {
         this.process = process;
+        this.foregroundDiagnostic = foregroundDiagnostic;
         stdout = DrainAsync(process.StandardOutput);
         stderr = DrainAsync(process.StandardError);
     }
@@ -81,11 +87,13 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
             throw new FileNotFoundException("The selected bridge installation is incomplete.");
         cancellationToken.ThrowIfCancellationRequested();
         var child = Process.Start(info) ?? throw new InvalidOperationException("Bridge process did not start.");
-        var owner = new OwnedBridgeProcess(child);
+        var owner = new OwnedBridgeProcess(child, options.ForegroundDelegationDiagnostic);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(options.ConnectTimeout);
         var connection = WidgetPresentationSession.ConnectAsync(pipe,
-            new() { ClientName = "WidgetRail.WinUI", ConnectTimeout = options.ConnectTimeout, WindowPreviews = options.WindowPreviews }, deadline.Token);
+            new() { ClientName = "WidgetRail.WinUI", ConnectTimeout = options.ConnectTimeout, WindowPreviews = options.WindowPreviews,
+                ExclusiveControllerControl = options.ExclusiveControllerControl,
+                BeforeInputWrite = owner.DelegateForegroundForInput }, deadline.Token);
         var exited = child.WaitForExitAsync(deadline.Token);
         try
         {
@@ -126,6 +134,36 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
             original.Data["BridgeCleanupFailure"] = cleanupError;
         }
     }
+
+    private void DelegateForegroundForInput(string requestType)
+    {
+        string diagnostic;
+        try
+        {
+            lock (disposalGate)
+            {
+                // The Process object owns this exact child; never discover a
+                // broker by name or delegate to a widget-supplied process ID.
+                if (disposal is not null || process.HasExited) return;
+                var foreground = BridgeForegroundPermission.ForegroundProcess;
+                if (foreground != (uint)Environment.ProcessId) return;
+                var allowed = BridgeForegroundPermission.Allow((uint)process.Id, out var error);
+                diagnostic = $"Foreground delegation request={requestType} brokerPid={process.Id} foregroundPid={foreground} allowed={allowed} error={error}";
+            }
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // A retiring process or a denied Windows permission must not turn
+            // an otherwise valid widget input into a transport/session failure.
+            diagnostic = $"Foreground delegation request={requestType} unavailable={error.GetType().Name}";
+        }
+        Record(diagnostic);
+        try { foregroundDiagnostic?.Invoke(diagnostic); }
+        catch { /* Diagnostics do not control input dispatch. */ }
+    }
+
+    /// <summary>Refresh the owned broker's permission immediately before an admitted host handoff hides.</summary>
+    public void RefreshForegroundPermissionForHandoff() => DelegateForegroundForInput("task-handoff");
 
     private async Task DrainAsync(StreamReader reader)
     {

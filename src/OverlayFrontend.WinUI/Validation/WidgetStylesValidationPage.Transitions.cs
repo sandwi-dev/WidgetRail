@@ -35,7 +35,10 @@ internal sealed partial class WidgetStylesValidationPage
                 "section change retains one native outgoing tree while replacing input bindings immediately");
             first.Command!.Execute(null);
             Check(invoked == 0, "outgoing button token cannot dispatch against the newly committed section");
-            var ghost = Descendants(page).OfType<WidgetOutgoingLayer>().Single();
+            var ghost = Descendants(page).OfType<WidgetOutgoingLayer>().Single(layer => layer.Children.Count > 0);
+            Check(VisualTreeHelper.GetParent(ghost) is WidgetMotionHost &&
+                !ReferenceEquals(VisualTreeHelper.GetParent(ghost), page.Content),
+                "outgoing section remains under the local declaration and its ancestor clipping");
             var peer = FrameworkElementAutomationPeer.CreatePeerForElement(ghost);
             Check(peer.GetChildren() is not { Count: > 0 }, "outgoing native tree contributes no automation children");
             await Wait(() => page.TransitionPlayback is not null || failure is not null);
@@ -86,12 +89,22 @@ internal sealed partial class WidgetStylesValidationPage
             await Task.Delay(100);
             Check(page.OutgoingTransitionCount == 0, "zero-size incoming content terminates pending section retention after native layout");
             Render("g", 6);
+            if (page.TransitionPlayback is { } finalPageMotion) await finalPageMotion;
+            Render("modal-a", 7, modal: true);
+            await Wait(() => Descendants(page).OfType<WidgetModalLayer>().Any(layer => layer.ActualWidth > 0));
+            if (page.TransitionPlayback is { } modalEntry) await modalEntry;
+            Render("modal-b", 8, modal: true);
+            var modalGhost = Descendants(page).OfType<WidgetOutgoingLayer>().Single(layer => layer.Children.Count > 0);
+            DependencyObject? ancestor = modalGhost;
+            while (ancestor is not null && ancestor is not WidgetModalLayer) ancestor = VisualTreeHelper.GetParent(ancestor);
+            Check(ancestor is WidgetModalLayer, "modal section exit preserves the dialog's native clipping and z-order ancestry");
+            if (page.TransitionPlayback is { } modalMotion) await modalMotion;
             await page.DisposeAsync();
             Check(page.OutgoingTransitionCount == 0, "presenter disposal cancels pending section motion and releases outgoing content");
         }
         finally { host.Children.Remove(page); await page.DisposeAsync(); }
 
-        void Render(string key, int order, bool zeroContent = false)
+        void Render(string key, int order, bool zeroContent = false, bool modal = false)
         {
             var root = new ViewNode { Id = "transition.root", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
                 new() { Id = "transition.tabs", Kind = ViewNodeKind.Row, Children = (ViewNode[])[
@@ -107,7 +120,14 @@ internal sealed partial class WidgetStylesValidationPage
             if (zeroContent) styles["transition.content"] = Compute("stack { height: 0px; }", "transition.content", "stack");
             foreach (var (id, selected) in new[] { ("transition.tab-a", order % 2 == 0), ("transition.tab-b", order % 2 != 0) })
                 styles[id] = Compute($"button {{ width: 120px; height: 44px; color: #ffffff; opacity: .6; background: {(selected ? "#22446680" : "transparent")}; corner-radius: 6px; }}", id, "button");
-            page.Apply(CreateFrame(root, styles));
+            if (modal)
+            {
+                styles[root.Id] = Compute("stack { width: 360px; height: 220px; overflow: clip; }", root.Id, "stack");
+                root = root with { InputScopeId = "dialog" };
+                root = new() { Id = "modal", Kind = ViewNodeKind.ModalLayer, Children = (ViewNode[])[
+                    new() { Id = "parent", Kind = ViewNodeKind.Stack, InputScopeId = "parent" }, root] };
+            }
+            page.Apply(CreateFrame(root, styles, modal ? "dialog" : null));
         }
         Button? Entry() => Descendants(page).OfType<Button>().FirstOrDefault(element =>
             AutomationProperties.GetAutomationId(element) == "Widget.transition.entry" && element.IsHitTestVisible);

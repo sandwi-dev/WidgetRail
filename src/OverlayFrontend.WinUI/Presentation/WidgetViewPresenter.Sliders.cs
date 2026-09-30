@@ -15,15 +15,27 @@ internal sealed partial class WidgetViewPresenter
     private bool updatingSlider;
     private Slider CreateSlider(WidgetElementIdentity identity, object token)
     {
-        var slider = new Slider { HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 120,
-            IsThumbToolTipEnabled = false };
+        var slider = new WidgetSlider { HorizontalAlignment = HorizontalAlignment.Stretch, MinWidth = 120,
+            IsThumbToolTipEnabled = false, UseSystemFocusVisuals = true };
         slider.ValueChanged += (_, args) =>
         {
-            if (!applying && !updatingSlider) _ = CommitSliderAsync(identity, token, args.NewValue);
+            // WinUI restores its entry value before raising FocusDisengaged.
+            // That is a native cancellation side effect, never a new user edit.
+            if (ReferenceEquals(adjustingSlider?.Element, slider) && !slider.IsFocusEngaged) return;
+            if (!applying && !updatingSlider) RequestSliderValue(identity, token, args.NewValue);
         };
-        slider.LosingFocus += (_, args) =>
+        slider.LostFocus += (_, _) =>
         {
-            if (adjustingSlider?.Element == slider && FindBinding(args.NewFocusedElement) != adjustingSlider) adjustingSlider = null;
+            if (slider.XamlRoot is null || FindBinding(FocusManager.GetFocusedElement(slider.XamlRoot) as DependencyObject)?.Element != slider)
+            {
+                FlushSlider(slider, force: true);
+                if (adjustingSlider?.Element == slider) SetSliderAdjustment(null);
+            }
+        };
+        slider.FocusDisengaged += (_, _) =>
+        {
+            if (adjustingSlider?.Element != slider) return;
+            FlushSlider(slider, force: true); SetSliderAdjustment(null);
         };
         return slider;
     }
@@ -40,8 +52,8 @@ internal sealed partial class WidgetViewPresenter
             slider.Minimum = node.Minimum.Value;
             slider.StepFrequency = slider.SmallChange = node.Step!.Value;
             slider.LargeChange = Math.Min(node.Maximum.Value - node.Minimum.Value, node.Step.Value * 10);
-            slider.Value = node.Value!.Value;
-            AutomationProperties.SetHelpText(slider, node.AccessibilityValue ?? string.Empty);
+            slider.Value = ReconcileSliderValue(slider, node);
+            UpdateSliderHelp(slider, node);
         }
         finally { updatingSlider = false; }
     }
@@ -49,8 +61,37 @@ internal sealed partial class WidgetViewPresenter
     {
         if (adjustingSlider is not { } binding) return;
         if (!bindings.TryGetValue(binding.Identity.Id, out var current) || !ReferenceEquals(binding, current) ||
-            !Eligible(binding) || declarations[binding.Identity.Id].Node.SliderInteractionMode != SliderInteractionMode.ActivateToAdjust)
-            adjustingSlider = null;
+            !Navigable(binding) || declarations[binding.Identity.Id].Node.SliderInteractionMode != SliderInteractionMode.ActivateToAdjust)
+            SetSliderAdjustment(null);
+    }
+    private void SetSliderAdjustment(Binding? next)
+    {
+        if (ReferenceEquals(adjustingSlider, next)) return;
+        var previous = adjustingSlider;
+        adjustingSlider = next;
+        if (previous?.Element is Slider old)
+        {
+            // Native disengagement may restore its entry value. Preserve the
+            // shared local-intent owner's value without dispatching a rollback.
+            var value = sliderValues.TryGetValue(old, out var entry) ? entry.State.Value : old.Value;
+            updatingSlider = true;
+            try { old.IsFocusEngaged = false; old.Value = value; }
+            finally { updatingSlider = false; }
+            if (declarations.TryGetValue(previous.Identity.Id, out var declaration)) UpdateSliderHelp(old, declaration.Node);
+        }
+        if (next?.Element is Slider slider)
+        {
+            slider.IsFocusEngagementEnabled = true;
+            slider.IsFocusEngaged = true;
+            UpdateSliderHelp(slider, declarations[next.Identity.Id].Node);
+        }
+        NotifyControllerGuideChanged();
+    }
+    private void UpdateSliderHelp(Slider slider, ViewNode node)
+    {
+        var instruction = node.SliderInteractionMode != SliderInteractionMode.ActivateToAdjust ? string.Empty :
+            ReferenceEquals(adjustingSlider?.Element, slider) ? "Adjustment active. Left/right to adjust; A or B to finish." : "Press A to adjust.";
+        AutomationProperties.SetHelpText(slider, string.Join(" ", new[] { node.AccessibilityValue, instruction }.Where(value => !string.IsNullOrWhiteSpace(value))));
     }
     private bool HandleSliderButton(ControllerButton button, ControllerEventPhase phase)
     {
@@ -60,26 +101,31 @@ internal sealed partial class WidgetViewPresenter
             if (phase != ControllerEventPhase.Pressed) return true;
             sliderBackPending = false;
         }
-        if (FocusedBinding() is not { Identity.Kind: ViewNodeKind.Slider } binding || !Eligible(binding)) return false;
+        if (FocusedBinding() is not { Identity.Kind: ViewNodeKind.Slider } binding || !Navigable(binding)) return false;
         var node = declarations[binding.Identity.Id].Node;
         if (node.SliderInteractionMode != SliderInteractionMode.ActivateToAdjust) return false;
         if (button == ControllerButton.A)
         {
-            if (phase == ControllerEventPhase.Pressed) adjustingSlider = ReferenceEquals(adjustingSlider, binding) ? null : binding;
+            if (phase == ControllerEventPhase.Pressed && (ReferenceEquals(adjustingSlider, binding) || node.IsBusy != true))
+            {
+                if (ReferenceEquals(adjustingSlider, binding)) FlushSlider((Slider)binding.Element, force: true);
+                SetSliderAdjustment(ReferenceEquals(adjustingSlider, binding) ? null : binding);
+            }
             return true;
         }
         if (ReferenceEquals(adjustingSlider, binding) && button == ControllerButton.B)
         {
-            if (phase == ControllerEventPhase.Pressed) { adjustingSlider = null; sliderBackPending = true; }
+            if (phase == ControllerEventPhase.Pressed) { FlushSlider((Slider)binding.Element, force: true); SetSliderAdjustment(null); sliderBackPending = true; }
             return true;
         }
         return false;
     }
     private bool MoveSlider(FocusNavigationDirection direction)
     {
-        if (FocusedBinding() is not { Element: Slider slider } binding || !Eligible(binding)) return false;
+        if (FocusedBinding() is not { Element: Slider slider } binding || !Navigable(binding)) return false;
         var node = declarations[binding.Identity.Id].Node;
         if (node.SliderInteractionMode == SliderInteractionMode.ActivateToAdjust && !ReferenceEquals(adjustingSlider, binding)) return false;
+        if (node.IsBusy == true && !ReferenceEquals(adjustingSlider, binding)) return true;
         if (direction is not (FocusNavigationDirection.Left or FocusNavigationDirection.Right))
             return ReferenceEquals(adjustingSlider, binding);
         StepSlider(binding, slider, direction);
@@ -92,11 +138,18 @@ internal sealed partial class WidgetViewPresenter
             ? SliderMath.Decrement(slider.Value, node.Minimum!.Value, node.Maximum!.Value, node.Step!.Value)
             : SliderMath.Increment(slider.Value, node.Minimum!.Value, node.Maximum!.Value, node.Step!.Value);
     }
-    private async Task CommitSliderAsync(WidgetElementIdentity identity, object token, double value)
+    private void RequestSliderValue(WidgetElementIdentity identity, object token, double value)
     {
+        if (bindings.TryGetValue(identity.Id, out var busy) && busy.Identity == identity && ReferenceEquals(busy.Token, token) &&
+            declarations[identity.Id].Node is { IsBusy: true } busyNode && busy.Element is Slider busySlider &&
+            !ReferenceEquals(adjustingSlider, busy))
+        {
+            UpdateSlider(busySlider, busyNode);
+            return;
+        }
         if (disposed || presentationOnly || frame is null || !CanDispatchAction ||
             !bindings.TryGetValue(identity.Id, out var binding) || binding.Identity != identity ||
-            !ReferenceEquals(binding.Token, token) || !Eligible(binding)) return;
+            !ReferenceEquals(binding.Token, token) || !Navigable(binding)) return;
         var node = declarations[identity.Id].Node;
         if (node.ValueChangedActionId is not { } action) return;
         // Native pointer/UIA updates also use the SDK's minimum-anchored grid.
@@ -106,15 +159,6 @@ internal sealed partial class WidgetViewPresenter
         if (!SliderMath.IsValidRequestedValue(target, node.Minimum.Value, node.Maximum.Value, node.Step.Value)) return;
         if (binding.Element is Slider slider && slider.Value != target)
         { updatingSlider = true; try { slider.Value = target; } finally { updatingSlider = false; } }
-        var displayed = presentation!;
-        try
-        {
-            await DispatchCapturedActionAsync(displayed, new WidgetActionEvent(action, identity.Id, Sequence: ++actionSequence,
-                MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000, RequestedValue: target,
-                InputScopeId: displayed.Scope) { FocusedElementId = identity.Id });
-        }
-        catch (WidgetPresentationSessionException error) when (error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale") { }
-        catch (OperationCanceledException) when (disposed) { }
-        catch (Exception error) { ReportFailure(error); }
+        QueueSliderValue(binding, node, target);
     }
 }

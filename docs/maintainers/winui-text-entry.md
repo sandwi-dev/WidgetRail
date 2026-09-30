@@ -16,7 +16,8 @@ control and cannot open a keyboard.
 - LT changes letter case; RT commits; LB/RB move the edit insertion point.
 - D-pad/normalized directional movement uses native XY focus within the keyboard.
 - Physical text editing/paste uses the native editor. Printable input also works
-  while a virtual key has focus; Enter commits and Escape cancels.
+  while a virtual key has focus. Enter commits from the editor; Enter/Space on a
+  focused virtual key activate that native button, including Cancel. Escape cancels.
 - The host has no second controller reader or raw-button queue. The existing
   normalized input ingress routes the keyboard before widget shortcuts.
 - Prompts use the existing licensed controller fonts and update with controller
@@ -86,3 +87,19 @@ WinApp UIA `get-value` reads the ordinary preview's value successfully. Evidence
 `artifacts/winui-shell/{unicode-managed.log,control-values-native-01,control-values-uia-02}`.
 These are behavior/automation checks, not new screenshot or physical-controller
 acceptance.
+
+## Popup scaling and retained edits
+
+The host keyboard's native ContentDialog is outside OverlayScaleRoot. It therefore
+receives interface zoom once through owned popup metrics, like native menus and
+tooltips. Key/editor font sizes also receive the theme's text scale and Bold Text
+policy; controller glyphs and layout gaps follow interface zoom alone. A native
+TextBlock title avoids ContentDialog's fixed-size default title template. Width
+remains bounded by the current XamlRoot, with native vertical scrolling for short
+viewports. Live preference changes retain the same controls, edit value and focus;
+restoring defaults resets the owned metrics without creating a second edit session.
+
+Validation:70 native text-entry checks pass, including15 new scaling/retention
+assertions and popup raster captures at0.5/1/1.25 zoom and1.5 text scale. Theme font
+removal, secret cleanup, native Enter/Space behavior and current-authority commit
+checks remain passing. Evidence: `artifacts/winui-shell/popup-typography-20260930/`.

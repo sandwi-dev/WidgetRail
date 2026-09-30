@@ -19,12 +19,10 @@ internal sealed partial class WidgetViewPresenter
         {
             if (Session is not { } session || !await AdmitBindingAsync(origin)) return;
             try { await session.SendPinnedActionAsync(selection, projection, action); }
-            catch (WidgetPresentationSessionException error) when (IsRetiredInput(error)) { }
+            catch (WidgetPresentationSessionException error) when (IsRetiredInput(error)) { session.RequestInputRefresh(origin.Frame); }
         }
         else if (DispatchActionAsync is { } dispatch) await dispatch(new(origin.Frame, action));
     }
 
-    private static bool IsRetiredInput(WidgetPresentationSessionException error) => error.Code is
-        "snapshot_stale" or "input_scope_stale" or "presentation_stale" or "ordinary_input_stale" or
-        "pinned_input_stale" or "stale_pinned_input_authority" or "indexed_input_stale" or "indexed_retired";
+    private static bool IsRetiredInput(WidgetPresentationSessionException error) => WidgetInputFailure.IsStale(error);
 }

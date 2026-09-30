@@ -8,6 +8,58 @@ using WidgetRail.PlatformDiagnostics;
 
 internal static class BridgeClientRegistryScenarios
 {
+    internal static async Task DashboardRevalidatesCompatiblePublication()
+    {
+        var configured = Widget("dashboard-race", worker: 'd', catalog: 'd');
+        var action = "play";
+        await using var fixture = new RegistryFixture(Catalog(configured), configure: (_, client) => client.SnapshotFactory = sequence =>
+            new WidgetView(UI.Stack("root").InputScope("root"), QuickActions: [new(ControllerButton.X, action, "Label " + sequence)])
+                .CreateSnapshot(configured.InstanceId, sequence));
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        var first = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        var latest = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        var input = new ControllerInputEvent(ControllerButton.X, ControllerEventPhase.Pressed, ControllerInputContext.DashboardQuickAction,
+            Sequence: 1, ActiveInputScopeId: "root", SnapshotSequence: first.Sequence, Origin: ControllerInputOrigin.AccessibilityAutomation);
+        using (var result = await fixture.Registry.SendControllerInputAsync(configured.Id, input,
+            configured.PublicDescriptor().RuntimeGeneration, default, default)) RegistryAssert.True(result.Value);
+        RegistryAssert.Equal(latest.Sequence, fixture.Clients.Single().ControllerInputs.Single().SnapshotSequence);
+        action = "different";
+        _ = await fixture.GetSnapshotAsync(configured.Id);
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() => fixture.Registry.SendControllerInputAsync(
+            configured.Id, input with { Sequence = 2 }, configured.PublicDescriptor().RuntimeGeneration, default, default));
+        RegistryAssert.Equal(1, fixture.Clients.Single().ControllerInputs.Count);
+    }
+
+    internal static async Task TaskActivationSurvivesHideButNotWorkerReplacement()
+    {
+        var configured = Widget("task-activation", worker: 'a', catalog: 'a');
+        await using var fixture = new RegistryFixture(Catalog(configured));
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Interactive);
+        var descriptor = configured.PublicDescriptor();
+        BridgeWorkerRun run;
+        using (var initial = fixture.Registry.TryAdmitHostEffect(configured.Id, configured.WorkerFingerprint))
+            run = initial!.Value.WorkerRun;
+        var ticket = new BridgeTaskActivationTickets.Ticket(configured.Id, configured.WorkerFingerprint,
+            descriptor.InstanceId, descriptor.RuntimeGeneration, Environment.TickCount64,
+            new(42, 51, 1234, "TestWindow"), run);
+        using (var initial = fixture.Registry.TryAdmitHostEffect(configured.Id, configured.WorkerFingerprint))
+            RegistryAssert.True(initial is not null);
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
+        using (var initial = fixture.Registry.TryAdmitHostEffect(configured.Id, configured.WorkerFingerprint))
+            RegistryAssert.True(initial is null);
+        using (var completion = fixture.Registry.TryAdmitTaskActivation(ticket))
+            RegistryAssert.True(completion is not null);
+        using (var wrong = fixture.Registry.TryAdmitTaskActivation(ticket with { RuntimeGeneration = "other" }))
+            RegistryAssert.True(wrong is null);
+        using (var wrong = fixture.Registry.TryAdmitTaskActivation(ticket with { InstanceId = "other" }))
+            RegistryAssert.True(wrong is null);
+        using (var wrong = fixture.Registry.TryAdmitTaskActivation(ticket with { WorkerRun = new(999, 999) }))
+            RegistryAssert.True(wrong is null);
+        fixture.Registry.ApplyCatalog(Catalog(configured with { WorkerFingerprint = new string('b', 64) }), 1);
+        using var retired = fixture.Registry.TryAdmitTaskActivation(ticket);
+        RegistryAssert.True(retired is null);
+    }
+
     internal static async Task ModalSeparatesMainAndPinnedAuthority()
     {
         var configured = Widget("modal-input", worker: 'm', catalog: 'm') with
@@ -860,6 +912,76 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal("stale_controller_input_authority", failure.Code);
     }
 
+    internal static async Task EmbeddedMediaIntermediateCommandPublication()
+    {
+        var configured = Widget("media-command-race", worker: 'm', catalog: 'm');
+        var media = new EmbeddedMediaSession
+        {
+            Id = "player", AccessibleName = "Player", EntryAsset = "media/index.html", AspectRatio = 16d / 9,
+            Resources = [new() { Path = "media/index.html", ContentType = "text/html" }],
+            Surface = new() { PreferredWidth = 640, PreferredHeight = 360, MinimumWidth = 320, MinimumHeight = 180 },
+            PendingCommand = new() { Sequence = 3, MediaKey = "track", Kind = EmbeddedMediaPlaybackCommandKind.Play },
+        };
+        await using var fixture = new RegistryFixture(Catalog(configured), configure: (_, client) => client.SnapshotFactory = sequence => new()
+        {
+            ProtocolVersion = ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion,
+            Sequence = sequence, WidgetInstanceId = configured.InstanceId, ActiveInputScopeId = "root",
+            Root = new() { Id = "root", Kind = ViewNodeKind.Stack }, EmbeddedMediaSession = media,
+        });
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        _ = await fixture.GetSnapshotAsync(configured.Id); // First publication of command 3.
+        var intermediate = await fixture.GetSnapshotAsync(configured.Id); // Frontend observes this revision.
+        _ = await fixture.GetSnapshotAsync(configured.Id); // UI advances while its completion is in flight.
+        var descriptor = configured.PublicDescriptor();
+        var request = new BridgeEmbeddedMediaPlaybackEventRequest(configured.Id, configured.InstanceId,
+            descriptor.RuntimeGeneration, descriptor.PresentationGeneration, intermediate.Snapshot.Sequence,
+            new() { SessionId = "player", Sequence = 1, CommandSequence = 3, MediaKey = "track",
+                State = EmbeddedMediaPlaybackState.Playing, PositionSeconds = 1, DurationSeconds = 10, Volume = 1, PlaybackRate = 1 });
+        await fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(request, CancellationToken.None);
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+            request with { Event = request.Event with { Sequence = 2 } }, CancellationToken.None));
+        media = media with { PendingCommand = media.PendingCommand! with { Sequence = 4 } };
+        _ = await fixture.GetSnapshotAsync(configured.Id);
+        await RegistryAssert.ThrowsAsync<BridgeStaleMediaAuthorityException>(() => fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+            request with { Event = request.Event with { Sequence = 3 } }, CancellationToken.None));
+    }
+
+    internal static async Task EmbeddedMediaObservationsFollowDocumentLifetime()
+    {
+        var configured = Widget("media-observations", worker: 'm', catalog: 'm');
+        var present = true;
+        var media = new EmbeddedMediaSession
+        {
+            Id = "player", AccessibleName = "Player", EntryAsset = "media/index.html", AspectRatio = 16d / 9,
+            Resources = [new() { Path = "media/index.html", ContentType = "text/html" }],
+            Surface = new() { PreferredWidth = 640, PreferredHeight = 360, MinimumWidth = 320, MinimumHeight = 180 },
+        };
+        await using var fixture = new RegistryFixture(Catalog(configured), configure: (_, client) => client.SnapshotFactory = sequence => new()
+        {
+            ProtocolVersion = ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion,
+            Sequence = sequence, WidgetInstanceId = configured.InstanceId, ActiveInputScopeId = "root",
+            Root = new() { Id = "root", Kind = ViewNodeKind.Stack }, EmbeddedMediaSession = present ? media : null,
+        });
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        var first = await fixture.GetSnapshotAsync(configured.Id);
+        var descriptor = configured.PublicDescriptor();
+        var request = new BridgeEmbeddedMediaPlaybackEventRequest(configured.Id, configured.InstanceId,
+            descriptor.RuntimeGeneration, descriptor.PresentationGeneration, first.Snapshot.Sequence,
+            new() { SessionId = "player", Sequence = 1, CommandSequence = 0, MediaKey = "local",
+                State = EmbeddedMediaPlaybackState.Paused, PositionSeconds = 1, DurationSeconds = 10, Volume = 1, PlaybackRate = 1 });
+        await fixture.GetSnapshotAsync(configured.Id);
+        // Reproduce a publication arriving between host observation and bridge admission.
+        await fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(request, CancellationToken.None);
+        present = false; await fixture.GetSnapshotAsync(configured.Id);
+        present = true; var replacement = await fixture.GetSnapshotAsync(configured.Id);
+        await RegistryAssert.ThrowsAsync<BridgeStaleMediaAuthorityException>(() => fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+            request with { Event = request.Event with { Sequence = 2 } }, CancellationToken.None));
+        await fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+            request with { Sequence = replacement.Snapshot.Sequence, Event = request.Event with { Sequence = 3 } }, CancellationToken.None);
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+            request with { Sequence = replacement.Snapshot.Sequence + 1, Event = request.Event with { Sequence = 4 } }, CancellationToken.None));
+    }
+
     internal static async Task EmbeddedMediaRequiresExactPublicationAuthority()
     {
         var configured = Widget("embedded-media-authority", worker: 'm', catalog: 'm');
@@ -1022,7 +1144,7 @@ internal static class BridgeClientRegistryScenarios
         var retired = await fixture.GetSnapshotAsync(configured.Id);
         RegistryAssert.Equal<EmbeddedMediaPlaybackCommand?>(
             null, retired.Snapshot.EmbeddedMediaSession!.PendingCommand);
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleMediaAuthorityException>(() =>
             fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
                 eventRequest, CancellationToken.None));
 
@@ -1048,13 +1170,13 @@ internal static class BridgeClientRegistryScenarios
 
         entryAsset = "media/replacement.html";
         var wrongResource = await fixture.GetSnapshotAsync(configured.Id);
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleMediaAuthorityException>(() =>
             fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
                 nextRequest with { Sequence = wrongResource.Snapshot.Sequence },
                 CancellationToken.None));
         entryAsset = "media/index.html";
         var exactCurrent = await fixture.GetSnapshotAsync(configured.Id);
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleMediaAuthorityException>(() =>
             fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
                 nextRequest with { InstanceId = "wrong-instance" },
                 CancellationToken.None));
@@ -1076,17 +1198,17 @@ internal static class BridgeClientRegistryScenarios
                 nextRequest with { Sequence = exactCurrent.Snapshot.Sequence },
                 CancellationToken.None));
 
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Task.Run(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleMediaAuthorityException>(() => Task.Run(() =>
         {
             using var _ = fixture.Registry.AdmitEmbeddedMedia(
                 exact with { Sequence = exact.Sequence + 1 });
         }));
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Task.Run(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleMediaAuthorityException>(() => Task.Run(() =>
         {
             using var _ = fixture.Registry.AdmitEmbeddedMedia(
                 exact with { RuntimeGeneration = new string('f', 32) });
         }));
-        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+        await RegistryAssert.ThrowsAsync<BridgeStaleMediaAuthorityException>(() =>
             fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
                 eventRequest with { Sequence = eventRequest.Sequence + 1 },
                 CancellationToken.None));
@@ -2609,7 +2731,7 @@ internal sealed class RegistryTestClient(
     internal bool? RevalidatedHandled { get; set; } = true;
     internal int RevalidatedAttempts { get; private set; }
     public Task<bool?> SendRevalidatedControllerInputAsync(
-        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null)
+        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null, int? expectedStartOrdinal = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         RevalidatedAttempts++;
@@ -2727,7 +2849,7 @@ internal sealed class RegistryTestClient(
     }
 
     internal List<PinnedActionInput> PinnedActions { get; } = [];
-    public Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken)
+    public Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         PinnedActions.Add(input);
@@ -2736,7 +2858,7 @@ internal sealed class RegistryTestClient(
 
     public Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, int? expectedStartOrdinal = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureStarted();
@@ -2747,7 +2869,7 @@ internal sealed class RegistryTestClient(
     public Task<bool> SendControllerInputAsync(
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, int? expectedStartOrdinal = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureStarted();
@@ -2757,13 +2879,16 @@ internal sealed class RegistryTestClient(
 
     public Task SendEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, int expectedStartOrdinal)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        EnsureStarted();
+        BeforeMediaSend?.Invoke();
+        if (!IsRunning || Starts != expectedStartOrdinal) throw new WidgetInputWorkerRetiredException();
         EmbeddedMediaPlaybackEvents.Add(playbackEvent);
         return Task.CompletedTask;
     }
+
+    internal Action? BeforeMediaSend { get; set; }
 
     public Task UnloadAsync(CancellationToken cancellationToken)
     {

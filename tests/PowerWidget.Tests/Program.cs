@@ -71,7 +71,10 @@ static async Task Availability()
     await Action(widget, "sleep"); await Action(widget, "shutdown"); Check(fake.Commands.Count == 0);
     Check(Nodes(Snapshot(widget).Root).Single(x => x.Id == "power.sleep").IsDisabled == true);
     fake.ReadError = true; await Action(widget, "check");
-    Check(Snapshot(widget).InitialFocusId == "power.check");
+    Check(Snapshot(widget).InitialFocusId is null);
+    Check(!Nodes(Snapshot(widget).Root).Any(node => node.Id == "power.check"));
+    var refresh = Snapshot(widget).Root.Shortcuts.Single();
+    Check(refresh.Button == ControllerButton.Y && refresh.ActionId == "check" && refresh.Label == "Refresh");
     fake.ReadError = false; fake.Availability = new(true, true, true); await Action(widget, "check");
     Check(Snapshot(widget).InitialFocusId == "power.sleep"); await Close(widget);
 }

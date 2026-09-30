@@ -52,6 +52,25 @@ public sealed class OverlayPlatformSession : IDisposable
 
     public bool HasGameInput => Invoke(h => native.HasGameInput(h) != 0);
     public bool RequiresLegacyGuidePolling => Invoke(h => native.RequiresLegacyGuidePolling(h) != 0);
+    /// <summary>Read-only driver readiness. Query on the control plane, not per input frame.</summary>
+    public PlatformControllerPrerequisites ControllerPrerequisites => Invoke(_ =>
+        (PlatformControllerPrerequisites)native.ControllerPrerequisites());
+    public PlatformControllerControlState ControllerControlState => Invoke(h =>
+        (PlatformControllerControlState)native.ControllerControlState(h));
+
+    /// <summary>
+    /// Applies one explicit isolation request. Expected setup/recovery failures
+    /// return false so the owner can report the native state without tearing down
+    /// ordinary input. Other ABI errors throw; this method never retries.
+    /// </summary>
+    public bool SetExclusiveControl(bool enabled) => Invoke(h =>
+    {
+        var status = native.SetExclusiveControl(h, Flag(enabled));
+        if (status == PlatformStatus.ControllerIsolationUnavailable) return false;
+        Check(status, "SetExclusiveControl");
+        return true;
+    });
+
     public void PrepareVisible() => Invoke(h => Check(native.PrepareVisible(h), "PrepareVisible"));
     public void SetWindowState(bool visible, bool focused) => Invoke(h =>
         Check(native.SetWindowState(h, Flag(visible), Flag(focused)), "SetWindowState"));
@@ -102,6 +121,14 @@ public sealed class OverlayPlatformSession : IDisposable
     {
         var source = native.NativeShortcutButtons(h, out var buttons);
         return (source, buttons);
+    });
+
+    public void SetViewMenuShortcut(bool enabled) => Invoke(h =>
+        Check(native.SetViewMenuShortcut(h, Flag(enabled)), "SetViewMenuShortcut"));
+    public (bool Pressed, bool Consumed) PollViewMenuShortcut() => Invoke(h =>
+    {
+        Check(native.PollViewMenuShortcut(h, out var pressed, out var consumed), "PollViewMenuShortcut");
+        return (pressed != 0, consumed != 0);
     });
 
     public Placement? ComputePlacement(PlacementInput input) => Invoke<Placement?>(_ =>

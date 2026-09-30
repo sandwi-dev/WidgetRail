@@ -15,7 +15,8 @@ internal static class WidgetDiscoveredCollectionTests
             ? new WidgetDiscoveredPage<string>(["one", "two"], "opaque-next") : new(["three"], null)));
         await widget.Start();
         using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "discovery");
-        Equal(63, host.CurrentSnapshot.ProtocolVersion);
+        Equal(ProtocolConstants.CurrentVersion, host.CurrentSnapshot.ProtocolVersion);
+        Equal(0, ViewSnapshotValidator.Validate(host.CurrentSnapshot with { ProtocolVersion = ProtocolConstants.DiscoveredCollectionVersion }).Count);
         Equal(0, widget.Source.Descriptor.Count);
         True(widget.Source.Descriptor.Discovery!.HasMore);
         await host.ContinueAsync("items"); host.PublishSnapshot();

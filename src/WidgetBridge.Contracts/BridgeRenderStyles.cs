@@ -28,4 +28,7 @@ public sealed record BridgeNodeRenderStyles
     public required IReadOnlyDictionary<string, BridgeComputedStyleValue> Base { get; init; }
     public required IReadOnlyDictionary<string, BridgeComputedStyleValue> Focused { get; init; }
     public required IReadOnlyDictionary<string, BridgeComputedStyleValue> Pressed { get; init; }
+    /// <summary>Shared section-title typography for a grouped collection's host-generated headers.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, BridgeComputedStyleValue>? GroupHeader { get; init; }
 }

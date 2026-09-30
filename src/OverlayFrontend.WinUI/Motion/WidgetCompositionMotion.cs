@@ -29,6 +29,8 @@ internal sealed class WidgetCompositionTarget : IDisposable
     internal Compositor Compositor => visual.Compositor;
     internal bool IsDisposed => disposed;
 
+    internal void SetAnchor(Vector3 point) { Check(); visual.CenterPoint = point; }
+
     // These must be dedicated parent/content layers: the wrapper has no existing
     // clip, and the content's transform/opacity channels have no other animator.
     internal WidgetCompositionTarget(Visual content, Visual clipViewport, Vector2 size)
@@ -73,7 +75,9 @@ internal sealed class WidgetCompositionTarget : IDisposable
             throw new ArgumentException("A target without its own viewport cannot animate clipping.", nameof(recipe));
         if (!fromCurrent) Set(recipe.From);
         if (recipe.Duration == TimeSpan.Zero) { Set(recipe.To); return; }
-        using var easing = Compositor.CreateCubicBezierEasingFunction(new(1f / 3, 0), new(2f / 3, 1));
+        using var easing = Compositor.CreateCubicBezierEasingFunction(
+            new(1f / 3, recipe.Easing == WidgetMotionEasing.EaseOut ? 1 : 0),
+            new(2f / 3, recipe.Easing == WidgetMotionEasing.EaseIn ? 0 : 1));
         AnimateVector(translation, translationProperty, originalTranslation + recipe.To.Translation);
         AnimateVector(visual, nameof(Visual.Scale), originalScale * recipe.To.Scale);
         AnimateScalar(visual, nameof(Visual.Opacity), originalOpacity * recipe.To.Opacity);
@@ -133,7 +137,7 @@ internal sealed class WidgetCompositionTarget : IDisposable
     }
     internal static void Validate(WidgetMotionRecipe recipe)
     {
-        if (recipe.Duration < TimeSpan.Zero || recipe.Duration > TimeSpan.FromSeconds(2))
+        if (recipe.Duration < TimeSpan.Zero || recipe.Duration > TimeSpan.FromSeconds(2) || !Enum.IsDefined(recipe.Easing))
             throw new ArgumentOutOfRangeException(nameof(recipe));
         CheckPose(recipe.From); CheckPose(recipe.To);
         static void CheckPose(WidgetMotionPose pose)

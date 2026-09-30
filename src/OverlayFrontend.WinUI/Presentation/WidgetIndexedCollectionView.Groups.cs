@@ -12,6 +12,7 @@ internal sealed partial class WidgetIndexedCollectionView
     private CollectionViewSource? groupedSource;
     private NativeGroupedRangeView? groupedView;
     private ObservableCollection<WidgetIndexedGroup>? groups;
+    private WidgetRail.WidgetBridge.BridgeNodeRenderStyles? groupHeaderStyles;
 
     private void DetachItems()
     {
@@ -22,6 +23,7 @@ internal sealed partial class WidgetIndexedCollectionView
         if (groupedSource is not null) groupedSource.Source = null;
         groupedSource = null;
         groups = null;
+        groupHeaderStyles = null;
     }
 
     private void ApplyGroups(IReadOnlyList<IndexedCollectionGroup>? declarations)
@@ -52,13 +54,25 @@ internal sealed partial class WidgetIndexedCollectionView
         }
         else
             for (var index = 0; index < groups.Count; ++index) groups[index].Header = declarations[index].Header;
+        RefreshGroupHeaderStyles();
         if (view.GroupStyle.Count == 0)
             view.GroupStyle.Add(new GroupStyle
             {
                 HidesIfEmpty = true,
                 HeaderTemplate = (DataTemplate)Application.Current.Resources["WidgetIndexedGroupHeaderTemplate"],
+                HeaderContainerStyle = (Style)Application.Current.Resources[view is GridView
+                    ? "WidgetIndexedGridHeaderContainer" : "WidgetIndexedListHeaderContainer"],
             });
         if (!ReferenceEquals(view.ItemsSource, groupedView)) view.ItemsSource = groupedView;
+    }
+
+    private void RefreshGroupHeaderStyles()
+    {
+        if (groups is null || source is null) return;
+        var header = source.Presentation.RenderStyles.GetValueOrDefault(source.Declaration.Id)?.GroupHeader;
+        if (!ReferenceEquals(header, groupHeaderStyles?.Base))
+            groupHeaderStyles = header is null ? null : new() { Base = header, Focused = header, Pressed = header };
+        foreach (var group in groups) group.HeaderStyle = groupHeaderStyles;
     }
 
     private int GroupIndex(int item)

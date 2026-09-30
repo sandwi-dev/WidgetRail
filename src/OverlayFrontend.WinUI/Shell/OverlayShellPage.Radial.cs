@@ -63,6 +63,7 @@ internal sealed partial class OverlayShellPage
             radialView.Width = radialView.Height = Math.Max(1, Math.Min(400, Math.Min(Math.Max(1, shellViewport.Width - 48 / Appearance.InterfaceScale), Math.Max(1, shellViewport.Height - ProductionShellGeometry.ReservedHeight - 38 / Appearance.InterfaceScale)) - 24));
             radialView.Update(catalogItems, radialSelection, radialPage, ShellPalette, Appearance, systemUi.AnimationsEnabled);
         }
+        if (!showing) radialView.Close();
         radialView.Visibility = showing ? Visibility.Visible : Visibility.Collapsed;
         RailControls.Opacity = showing ? 0 : 1;
         RailControls.IsHitTestVisible = !showing;
@@ -74,6 +75,7 @@ internal sealed partial class OverlayShellPage
         if (showing && !radialShowing)
             DispatcherQueue.TryEnqueue(() => { if (RadialOpen) { radialView.Open(WidgetMotionOptions.From(Appearance, systemUi.AnimationsEnabled)); radialView.FocusSelected(); } });
         radialShowing = showing;
+        PositionOpeningIndicator();
     }
     private BridgeWidgetDescriptor? RadialSelectedWidget() => RadialOpen ? catalogItems.FirstOrDefault(item => item.Id == radialSelection) : null;
     private void PreviewRadial(BridgeWidgetDescriptor item)
@@ -138,14 +140,13 @@ internal sealed partial class OverlayShellPage
         return hints;
     }
 
-    private bool ReturnFromRadial()
+    private async Task<bool> ReturnFromRadialAsync()
     {
-        if (!RadialOpen || reordering || activeWidget is null) return false;
-        radialRequested = false;
-        SetInteractive(true);
-        ResetInputPresentation();
-        RefreshRadialChooser();
-        QueueEntryFocus();
+        if (!RadialOpen || reordering || activeWidget is not { } current) return false;
+        // B and A on the displayed widget use the same entry transaction. It
+        // reuses the retained presenter and waits for Interactive admission
+        // before restoring focus, rather than racing Visible-state row updates.
+        await SelectAsync(current);
         return true;
     }
 }

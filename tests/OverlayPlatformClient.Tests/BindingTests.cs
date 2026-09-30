@@ -10,6 +10,90 @@ namespace OverlayPlatformClient.Tests;
 public sealed class BindingTests
 {
     [TestMethod]
+    public void ExclusiveControlMapsReadinessStateAndBooleanArguments()
+    {
+        var native = new FakeNative();
+        using var session = new OverlayPlatformSession(native, new QueuedDispatcher(), () => { });
+        Assert.AreEqual(0, native.ExclusiveControlCalls, "Creating a session must not change driver policy.");
+        for (uint flags = 0; flags <= 7; flags++)
+        {
+            native.ControllerPrerequisiteFlags = flags;
+            Assert.AreEqual((PlatformControllerPrerequisites)flags, session.ControllerPrerequisites);
+        }
+        PlatformControllerControlState[] states = [
+            PlatformControllerControlState.Unavailable, PlatformControllerControlState.Off,
+            PlatformControllerControlState.Starting, PlatformControllerControlState.Active,
+            PlatformControllerControlState.WaitingForController, PlatformControllerControlState.RecoveryRequired,
+            PlatformControllerControlState.Failed];
+        for (var i = 0; i < states.Length; i++)
+        {
+            native.ControllerState = (uint)i;
+            Assert.AreEqual(states[i], session.ControllerControlState);
+        }
+        Assert.IsTrue(session.SetExclusiveControl(true));
+        Assert.AreEqual(1U, native.ExclusiveControlEnabled);
+        Assert.IsTrue(session.SetExclusiveControl(false));
+        Assert.AreEqual(0U, native.ExclusiveControlEnabled);
+        Assert.AreEqual(2, native.ExclusiveControlCalls);
+        Assert.AreEqual(1, native.InitializeCalls, "The native owner controls reinitialization.");
+    }
+
+    [TestMethod]
+    public void ExpectedIsolationFailureKeepsSessionAvailableWithoutRetry()
+    {
+        var native = new FakeNative {
+            ExclusiveControlStatus = PlatformStatus.ControllerIsolationUnavailable,
+            ControllerState = (uint)PlatformControllerControlState.RecoveryRequired
+        };
+        using var session = new OverlayPlatformSession(native, new QueuedDispatcher(), () => { });
+        Assert.IsFalse(session.SetExclusiveControl(true));
+        Assert.AreEqual(PlatformControllerControlState.RecoveryRequired, session.ControllerControlState);
+        Assert.AreEqual(1U, session.ReadController(true, 42).Connected);
+        Assert.AreEqual(1, native.ExclusiveControlCalls);
+        Assert.AreEqual(0, native.DestroyCalls);
+        native.ExclusiveControlStatus = PlatformStatus.Ok;
+        Assert.IsTrue(session.SetExclusiveControl(false), "A subsequent explicit cleanup request remains possible.");
+        Assert.AreEqual(2, native.ExclusiveControlCalls);
+    }
+
+    [TestMethod]
+    public void UnexpectedIsolationErrorIsReportedOnceAndDisposalGuardsControlPlane()
+    {
+        var native = new FakeNative { ExclusiveControlStatus = PlatformStatus.InvalidArgument };
+        using var session = new OverlayPlatformSession(native, new QueuedDispatcher(), () => { });
+        var error = Assert.Throws<PlatformException>(() => session.SetExclusiveControl(true));
+        Assert.AreEqual(PlatformStatus.InvalidArgument, error.Status);
+        Assert.AreEqual(1, native.ExclusiveControlCalls);
+        Assert.AreEqual(0, native.DestroyCalls);
+        session.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => session.SetExclusiveControl(false));
+        Assert.Throws<ObjectDisposedException>(() => { _ = session.ControllerPrerequisites; });
+        Assert.Throws<ObjectDisposedException>(() => { _ = session.ControllerControlState; });
+        Assert.AreEqual(1, native.ExclusiveControlCalls);
+        Assert.AreEqual(0, native.ControllerPrerequisiteCalls);
+        Assert.AreEqual(0, native.ControllerStateCalls);
+    }
+
+    [TestMethod]
+    public void ViewMenuObserverUsesOwnedSessionAndStopsAfterDisposal()
+    {
+        var native = new FakeNative();
+        using var session = new OverlayPlatformSession(native, new QueuedDispatcher(), () => { });
+        session.SetViewMenuShortcut(true);
+        Assert.AreEqual(1U, native.ViewMenuEnabled);
+        Assert.AreEqual((false, false), session.PollViewMenuShortcut());
+        native.ViewMenuPressed = native.ViewMenuConsumed = 1;
+        Assert.AreEqual((true, true), session.PollViewMenuShortcut());
+        native.ViewMenuPressed = 0;
+        Assert.AreEqual((false, true), session.PollViewMenuShortcut());
+        session.SetViewMenuShortcut(false);
+        Assert.AreEqual(0U, native.ViewMenuEnabled);
+        session.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => session.PollViewMenuShortcut());
+        Assert.Throws<ObjectDisposedException>(() => session.SetViewMenuShortcut(true));
+    }
+
+    [TestMethod]
     public void AbiLayoutMatchesNativeStaticAssertions()
     {
         Assert.AreEqual(32, Marshal.SizeOf<PlatformEvent>());
@@ -300,6 +384,13 @@ internal sealed unsafe class FakeNative : IOverlayPlatformNative
     public uint ForegroundAcquired { get; set; }
     public PlatformStatus AcquisitionStatus { get; set; }
     public int AcquisitionCalls { get; private set; }
+    public uint ControllerPrerequisiteFlags { get; set; }
+    public uint ControllerState { get; set; } = (uint)PlatformControllerControlState.Off;
+    public PlatformStatus ExclusiveControlStatus { get; set; }
+    public uint ExclusiveControlEnabled { get; private set; }
+    public int ControllerPrerequisiteCalls { get; private set; }
+    public int ControllerStateCalls { get; private set; }
+    public int ExclusiveControlCalls { get; private set; }
     public uint GetAbiVersion() => Version;
     public PlatformStatus Create(in PlatformCreateOptions value, out nint handle)
     {
@@ -312,6 +403,10 @@ internal sealed unsafe class FakeNative : IOverlayPlatformNative
     public void Destroy(nint handle) { DuringDestroy?.Invoke(); if (SignalDuringDestroy) Signal(); DestroyCalls++; }
     public uint HasGameInput(nint handle) => 1;
     public uint RequiresLegacyGuidePolling(nint handle) => 0;
+    public uint ControllerPrerequisites() { ControllerPrerequisiteCalls++; return ControllerPrerequisiteFlags; }
+    public uint ControllerControlState(nint handle) { ControllerStateCalls++; return ControllerState; }
+    public PlatformStatus SetExclusiveControl(nint handle, uint enabled)
+    { ExclusiveControlCalls++; ExclusiveControlEnabled = enabled; return ExclusiveControlStatus; }
     public PlatformStatus SetWindowState(nint handle, uint visible, uint focused) { WindowState = (visible, focused); return PlatformStatus.Ok; }
     public PlatformStatus PrepareVisible(nint handle) => PlatformStatus.Ok;
     public PlatformStatus DrainEvent(nint handle, ulong now, ref PlatformEvent value, out uint present)
@@ -342,6 +437,11 @@ internal sealed unsafe class FakeNative : IOverlayPlatformNative
         output.Width = 100; present = 1; return PlatformStatus.Ok;
     }
     public NativeShortcutSource NativeShortcutButtons(nint handle, out ushort buttons) { buttons = 48; return NativeShortcutSource.Shared; }
+    public uint ViewMenuEnabled;
+    public uint ViewMenuPressed, ViewMenuConsumed;
+    public PlatformStatus SetViewMenuShortcut(nint handle, uint enabled) { ViewMenuEnabled = enabled; return PlatformStatus.Ok; }
+    public PlatformStatus PollViewMenuShortcut(nint handle, out uint pressed, out uint consumed)
+    { pressed = ViewMenuPressed; consumed = ViewMenuConsumed; return PlatformStatus.Ok; }
     public void Signal() => ((delegate* unmanaged[Stdcall]<nint, void>)options.EventAvailable)(options.CallbackContext);
     public void Diagnose(string value)
     {

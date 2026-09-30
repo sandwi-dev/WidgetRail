@@ -4,9 +4,13 @@ param(
     [ValidateSet('select','text-entry','slider','context-menu','embedded-media')][string[]]$Fixture,
     [switch]$IncludeMedia,
     [switch]$UsePlatformActivation,
+    [switch]$ProcessFailures,
     [switch]$BehaviorOnly
 )
 $ErrorActionPreference = 'Stop'
+if ($ProcessFailures -and (Get-Process -Name OverlayFrontend.WinUI -ErrorAction SilentlyContinue)) {
+    throw 'Close the candidate before injecting failures into the isolated media environment.'
+}
 $root = Split-Path $PSScriptRoot
 $project = Join-Path $root 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj'
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
@@ -21,6 +25,7 @@ $cases = @(
 if ($IncludeMedia -or $Fixture -contains 'embedded-media') { $cases += @{ Flag='--validate-embedded-media'; File='embedded-media-result.json'; Media=$true } }
 if ($BehaviorOnly -and ($IncludeMedia -or $Fixture -contains 'embedded-media')) { throw 'Media qualification requires its pixel captures.' }
 if ($Fixture) { $cases = @($cases | Where-Object { $Fixture -contains ($_.Flag -replace '^--validate-', '') }) }
+if ($ProcessFailures -and -not ($cases | Where-Object { $_.Media })) { throw 'Process-failure validation requires the isolated embedded-media fixture.' }
 $summary = [Collections.Generic.List[object]]::new()
 # Requires an analyzer-built x64 Debug frontend and exclusive package deployment.
 # Fixtures are host-owned. Optional activation uses the existing native platform
@@ -29,6 +34,7 @@ try {
     foreach ($case in $cases) {
         $started = [DateTime]::UtcNow
         $arguments = $case.Flag + $(if ($UsePlatformActivation) { ' --validation-platform-activation' } else { '' })
+        if ($ProcessFailures -and $case.Media) { $arguments += ' --validate-media-process-failures' }
         $raw = & winapp run $project --no-build --arch x64 -p Platform=x64 --detach --json --args $arguments
         if ($LASTEXITCODE -ne 0) { throw "Failed to launch $($case.Flag): $raw" }
         $launch = ($raw -join "`n") | ConvertFrom-Json
@@ -43,7 +49,7 @@ try {
             if ($mainWindow.Count -ne 1) { throw 'Could not identify the owned native fixture window.' }
             $mainHwnd = $mainWindow[0].hwnd
             $resultPath = Join-Path $diagnostics $case.File
-            $deadline = [DateTime]::UtcNow.AddSeconds(45)
+            $deadline = [DateTime]::UtcNow.AddSeconds($(if ($ProcessFailures) { 90 } else { 45 }))
             $result = $null
             $capturedPhases = [Collections.Generic.HashSet[string]]::new()
             do {
@@ -54,6 +60,10 @@ try {
                         & (Join-Path $PSScriptRoot 'Capture-WinUiTestWindow.ps1') -AppPid $ownedPid -WindowHandle $mainHwnd `
                             -OutputPath (Join-Path $OutputDirectory "$($result.phase).png") -RequireMediaPixels | Out-Null
                     }
+                    if ($case.Media -and $result.phase -eq 'gpu-recovered' -and $capturedPhases.Add($result.phase)) {
+                        & (Join-Path $PSScriptRoot 'Capture-WinUiTestWindow.ps1') -AppPid $ownedPid -WindowHandle $mainHwnd `
+                            -OutputPath (Join-Path $OutputDirectory 'gpu-recovered.png') | Out-Null
+                    }
                     if ($result.result -in @('passed', 'failed') -or
                         ($case.Media -and ($result.passed -eq $false -or $result.phase -eq 'complete'))) { break }
                 }
@@ -62,7 +72,10 @@ try {
             } while ([DateTime]::UtcNow -lt $deadline)
             if ($null -ne $result) { $result | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $OutputDirectory $case.File) }
             if (-not $BehaviorOnly) {
-                & winapp ui screenshot -w $mainHwnd --capture-screen -o (Join-Path $OutputDirectory "$($case.Flag.TrimStart('-')).png") --json | Out-Null
+                # Ordinary XAML controls can be captured from their owned
+                # window without borrowing foreground from the user's desktop.
+                [string[]]$captureOptions = if ($case.Media) { @('--capture-screen') } else { @() }
+                & winapp ui screenshot -w $mainHwnd @captureOptions -o (Join-Path $OutputDirectory "$($case.Flag.TrimStart('-')).png") --json | Out-Null
                 if ($LASTEXITCODE -ne 0) { throw 'Could not capture native control pixels.' }
             }
             $passed = $result.result -eq 'passed' -or ($case.Media -and $result.passed -eq $true -and $result.phase -eq 'complete')

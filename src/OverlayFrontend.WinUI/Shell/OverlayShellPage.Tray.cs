@@ -10,6 +10,7 @@ internal sealed partial class OverlayShellPage
 {
     private (object Item, long Selection)? pendingTrayFocus;
     private long nativeTrayFocusSelection;
+    private bool nativeTrayFocusTransferAllowed;
 
     private void RequestTrayFocus(object item)
     {
@@ -47,11 +48,14 @@ internal sealed partial class OverlayShellPage
 
     private void TrayGotFocus(object sender, RoutedEventArgs args)
     {
+        // Collapsing the retained widget during hide makes XAML choose another
+        // focusable control. That fallback is not a user transfer to the tray.
+        if (retired || !visible) return;
         // ItemClick can precede the native focus event from that same click.
         // Keep its explicit enter intent rather than converting it to a preview.
         // Native fallback during a widget publication is not a domain transfer,
         // even if Windows could not cancel the focused-element-removal move.
-        if (interactive && (switching || surface?.IsApplyingPresentation == true)) return;
+        if (interactive && (!nativeTrayFocusTransferAllowed || switching || surface?.IsApplyingPresentation == true)) return;
         // GettingFocus and GotFocus can straddle an asynchronous selection. A
         // completion of the previous entry is not a fresh tray selection intent.
         if (switching && nativeTrayFocusSelection != selectionVersion) return;
@@ -61,12 +65,18 @@ internal sealed partial class OverlayShellPage
         if (descriptor.Id != requestedWidget) { trayHold.Cancel(); FinishTrayReorder(); CloseTrayMenu(false); }
         Tray.SelectedItem = descriptor;
         if (descriptor.Id != requestedWidget) _ = SelectAsync(descriptor.Id, enterWidget: false);
+        else UpdateTrayHelp();
     }
 
     private void TrayGettingFocus(UIElement sender, GettingFocusEventArgs args)
     {
         nativeTrayFocusSelection = selectionVersion;
-        if (!retired && visible && interactive && surface?.IsApplyingPresentation == true)
-            args.TryCancel();
+        // Widget/tray ownership is a logical user choice, not XAML's fallback
+        // when a control unloads, a window activates, or a view is preparing.
+        // Explicit host transfers set interactive=false first; pointer and
+        // keyboard traversal remain valid user transfers.
+        nativeTrayFocusTransferAllowed = !interactive || (!switching && surface?.IsApplyingPresentation != true &&
+            (args.FocusState == FocusState.Pointer || args.Direction != FocusNavigationDirection.None));
+        if (!retired && !nativeTrayFocusTransferAllowed) args.TryCancel();
     }
 }

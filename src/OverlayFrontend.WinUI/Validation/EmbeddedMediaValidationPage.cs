@@ -43,11 +43,13 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
     private readonly Dictionary<string, EmbeddedMediaSession?> publishedMedia = [];
     private readonly Dictionary<string, long> publishedSequences = [];
     private bool retired;
+    private readonly bool crossRootProbe;
     private static BridgeWidgetDescriptor Descriptor => new() { Id = "media-validation", Name = "Embedded media", InstanceId = "media-validation.instance",
         RuntimeGeneration = new('a', 32), PresentationGeneration = new('b', 32), PackageContentDigest = new('c', 64), Icon = WidgetGlyph.Music };
 
-    public EmbeddedMediaValidationPage()
+    public EmbeddedMediaValidationPage(bool crossRootProbe = false)
     {
+        this.crossRootProbe = crossRootProbe;
         AutomationProperties.SetAutomationId(status, "EmbeddedMedia.Status");
         AutomationProperties.SetAutomationId(viewport, "EmbeddedMedia.Viewport");
         Content = new StackPanel { Spacing = 12, Children = { status, viewport } };
@@ -83,10 +85,23 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
             surface.UpdatePresentation(true, true);
             await Until(() => surface.IsReady);
             Check(surface.IsReady && surface.FailureCode is null, "sealed HTML and SDK runtime initialize in native WebView2");
+            await CheckFrameLifetimeAsync();
             await Command(EmbeddedMediaPlaybackCommandKind.Load, 1);
             Check(events.Last().State == EmbeddedMediaPlaybackState.Ready, "typed Load round-trips through strict adapter transport and session admission");
             await Command(EmbeddedMediaPlaybackCommandKind.Play, 2);
             Check(events.Last().State == EmbeddedMediaPlaybackState.Playing && events.Last().ErrorCode is null, "host input dispatch creates a trusted activation and starts native audio");
+            if (crossRootProbe)
+            {
+                await RunCrossRootProbeAsync();
+                await Command(EmbeddedMediaPlaybackCommandKind.Pause, 3);
+                await Command(EmbeddedMediaPlaybackCommandKind.Play, 4);
+                await Command(EmbeddedMediaPlaybackCommandKind.Pause, 5);
+                Check(surface.IsReady && resolveCount == 1,
+                    "returned native browser still accepts typed pause and trusted play without another document admission");
+                status.Text = "Cross-root media transfer checks passed";
+                Write(new { passed = true, phase = "complete", checks, diagnostics, transferObservations, events });
+                return;
+            }
             await Command(EmbeddedMediaPlaybackCommandKind.Pause, 3);
             Check(events.Last().State == EmbeddedMediaPlaybackState.Paused, "typed Pause reports the paused native audio state");
             parked = true;
@@ -122,7 +137,7 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
         catch (Exception error)
         {
             status.Text = "Embedded media check failed: " + error.Message;
-            Write(new { passed = false, checks, diagnostics, error = error.ToString(), events });
+            Write(new { passed = false, checks, diagnostics, error = error.ToString(), transferObservations, events });
         }
     }
 
@@ -361,10 +376,11 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
         throw new TimeoutException("Embedded media condition did not settle");
     }
     private void Check(bool value, string name) { if (!value) throw new InvalidOperationException(name); checks.Add(name); }
-    private static void Write<T>(T value)
+    private void Write<T>(T value)
     {
         var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "diagnostics");
-        Directory.CreateDirectory(path); File.WriteAllText(Path.Combine(path, "embedded-media-result.json"), JsonSerializer.Serialize(value));
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, crossRootProbe ? "embedded-media-cross-root-result.json" : "embedded-media-result.json"), JsonSerializer.Serialize(value));
     }
     public async ValueTask DisposeAsync()
     {

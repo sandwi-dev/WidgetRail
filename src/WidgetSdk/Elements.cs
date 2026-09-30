@@ -30,6 +30,17 @@ public abstract record WidgetElement(string Id)
     }
     internal abstract ViewNode ToProtocolNode();
 
+    /// <summary>Places this element in its direct explicit Grid parent without adding a visual node.</summary>
+    public WidgetElement InGrid(int row = 0, int column = 0, int rowSpan = 1, int columnSpan = 1)
+    {
+        if (row < 0 || row >= ProtocolConstants.MaximumGridLayoutTracks) throw new ArgumentOutOfRangeException(nameof(row));
+        if (column < 0 || column >= ProtocolConstants.MaximumGridLayoutTracks) throw new ArgumentOutOfRangeException(nameof(column));
+        if (rowSpan < 1 || rowSpan > ProtocolConstants.MaximumGridLayoutTracks - row) throw new ArgumentOutOfRangeException(nameof(rowSpan));
+        if (columnSpan < 1 || columnSpan > ProtocolConstants.MaximumGridLayoutTracks - column) throw new ArgumentOutOfRangeException(nameof(columnSpan));
+        var placement = new GridCellPlacement { Row = row, Column = column, RowSpan = rowSpan, ColumnSpan = columnSpan };
+        return this is GridCellElement cell ? cell with { Placement = placement } : new GridCellElement(this, placement);
+    }
+
     protected static string RequireId(string id)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);

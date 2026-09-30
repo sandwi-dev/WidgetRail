@@ -1,5 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using WidgetRail.OverlayPlatformClient;
+using WidgetRail.WindowsWindowActivation;
 
 namespace OverlayPlatformClient.Tests;
 
@@ -7,6 +7,120 @@ namespace OverlayPlatformClient.Tests;
 public sealed class TaskWindowActivationTests
 {
     private static readonly TaskWindowTarget Target = new(42, 51, 1234, "ExampleWindow");
+
+    [TestMethod]
+    public async Task PreparedHandoffWaitsThenRevalidatesBeforeHideAndBroker()
+    {
+        var native = new Fake();
+        var prepared = new TaskCompletionSource<bool>();
+        var pending = new TaskWindowActivation(native).ExecuteAsync(Target, 1000, 900, () => true,
+            () => native.Calls.Add("hide"), () => { native.Calls.Add("broker"); return Task.FromResult(TaskWindowActivationResult.Requested); },
+            prepareHandoff: () => prepared.Task);
+        CollectionAssert.AreEqual(new[] { "validate" }, native.Calls);
+        Assert.IsFalse(pending.IsCompleted);
+        prepared.SetResult(true);
+        Assert.AreEqual(TaskWindowActivationResult.Requested, await pending);
+        CollectionAssert.AreEqual(new[] { "validate", "validate", "hide", "validate", "broker" }, native.Calls);
+    }
+
+    [TestMethod]
+    public async Task PreparedHandoffRejectsCancelExpiryForegroundAuthorityAndTargetChanges()
+    {
+        for (var scenario = 0; scenario < 5; ++scenario)
+        {
+            var native = new Fake(); var authority = true;
+            var result = await new TaskWindowActivation(native).ExecuteAsync(Target, 1000, 900, () => authority,
+                () => Assert.Fail("Rejected handoff must not hide"),
+                () => throw new AssertFailedException("Rejected handoff reached broker"),
+                prepareHandoff: () =>
+                {
+                    if (scenario == 1) native.UptimeMilliseconds = 3001;
+                    if (scenario == 2) native.IsOverlayForeground = false;
+                    if (scenario == 3) authority = false;
+                    if (scenario == 4) native.Current = false;
+                    return Task.FromResult(scenario != 0);
+                });
+            Assert.AreEqual(TaskWindowActivationResult.Rejected, result);
+        }
+    }
+
+    [TestMethod]
+    public async Task AsyncCompletionHidesAndRevalidatesBeforeCallingBrokerOnly()
+    {
+        var native = new Fake();
+        var result = await new TaskWindowActivation(native).ExecuteAsync(Target, 1000, 900, () => true,
+            () => { native.Calls.Add("hide"); native.IsOverlayForeground = false; },
+            () => { native.Calls.Add("broker"); return Task.FromResult(TaskWindowActivationResult.Denied); });
+        Assert.AreEqual(TaskWindowActivationResult.Denied, result);
+        CollectionAssert.AreEqual(new[] { "validate", "hide", "validate", "broker" }, native.Calls);
+    }
+
+    [TestMethod]
+    public async Task AsyncCompletionRejectsChangedAuthorityIdentityAndExpiryAfterHide()
+    {
+        for (var scenario = 0; scenario < 3; scenario++)
+        {
+            var native = new Fake();
+            var authority = true;
+            var result = await new TaskWindowActivation(native).ExecuteAsync(Target, 1000, 900, () => authority,
+                () =>
+                {
+                    if (scenario == 0) authority = false;
+                    if (scenario == 1) native.Current = false;
+                    if (scenario == 2) native.UptimeMilliseconds = 3001;
+                }, () => throw new AssertFailedException("Stale completion reached broker."));
+            Assert.AreEqual(TaskWindowActivationResult.Rejected, result);
+            Assert.IsFalse(native.Calls.Contains("activate"));
+        }
+    }
+
+    [TestMethod]
+    public void DiagnosticsReportSpecificRejectionWithoutChangingAdmission()
+    {
+        var native = new Fake { IsOverlayForeground = false };
+        var messages = new List<string>();
+        var hides = 0;
+        var result = new TaskWindowActivation(native).Execute(Target, 1000, 900, () => true, () => ++hides, messages.Add);
+        Assert.AreEqual(TaskWindowActivationResult.Rejected, result);
+        Assert.AreEqual(0, hides);
+        CollectionAssert.AreEqual(new[] { "rejected reason=not-foreground" }, messages);
+        Assert.IsFalse(native.Calls.Contains("activate"));
+    }
+
+    [TestMethod]
+    public void DiagnosticsDistinguishAuthorityLossAfterHide()
+    {
+        var native = new Fake();
+        var current = true;
+        var messages = new List<string>();
+        var result = new TaskWindowActivation(native).Execute(Target, 1000, 900, () => current, () => current = false, messages.Add);
+        Assert.AreEqual(TaskWindowActivationResult.Rejected, result);
+        CollectionAssert.AreEqual(new[] { "phase=before-hide", "rejected reason=authority-after-hide" }, messages);
+        Assert.IsFalse(native.Calls.Contains("activate"));
+    }
+
+    [TestMethod]
+    public void DiagnosticsReportDenialWithoutRetry()
+    {
+        var native = new Fake { Accepted = false };
+        var messages = new List<string>();
+        var result = new TaskWindowActivation(native).Execute(Target, 1000, 900, () => true, () => { }, messages.Add);
+        Assert.AreEqual(TaskWindowActivationResult.Denied, result);
+        Assert.IsTrue(messages.Contains("phase=activation-returned accepted=False"));
+        Assert.AreEqual(1, native.Calls.Count(value => value == "activate"));
+    }
+
+    [TestMethod]
+    public void DiagnosticFailureCannotAlterActivation()
+    {
+        var native = new Fake();
+        var hides = 0;
+        var result = new TaskWindowActivation(native).Execute(Target, 1000, 900, () => true, () => ++hides,
+            _ => throw new IOException("logging unavailable"));
+        Assert.AreEqual(TaskWindowActivationResult.Requested, result);
+        Assert.AreEqual(1, hides);
+        Assert.AreEqual(1, native.Calls.Count(value => value == "activate"));
+    }
 
     [TestMethod]
     public void HandoffReleasesOverlayBeforeRevalidatingAndActivating()

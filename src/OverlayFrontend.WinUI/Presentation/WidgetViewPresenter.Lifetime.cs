@@ -23,6 +23,7 @@ internal sealed partial class WidgetViewPresenter
         if (active && !suspension.IsCompletedSuccessfully) throw new InvalidOperationException("Presentation suspension failed.", suspension.Exception);
         if (!active) RememberFocus();
         presentationActive = active;
+        RefreshContextIndicators();
         IsHitTestVisible = active && presentationInputEnabled;
         // Preview controls configure against the renderer's admitted frame.
         // Publish it before resuming bindings, including first cold activation.
@@ -30,6 +31,8 @@ internal sealed partial class WidgetViewPresenter
         var work = new List<Task>();
         if (!active)
         {
+            foreach (var reveal in artworkReveals.Values) reveal.Cancel();
+            SettleWidgetResize();
             ClearEntryLayoutWait(); CancelGroupEntry(); DismissTransientControl();
             ResetPressedStyles(); SettleTransitions(); SettleModalExit();
             foreach (var (binding, demand) in imageDemands.ToArray())

@@ -51,6 +51,21 @@ internal sealed partial class ShellAppearanceValidationPage : Page, IAsyncDispos
     {
         try
         {
+            var ownerDisplay = DisplayArea.GetFromWindowId(owner.AppWindow.Id, DisplayAreaFallback.Nearest);
+            Check(ownerDisplay is not null, "live fixture owner has a display");
+            Check(OverlayDisplayArea.Resolve(owner.AppWindow.Id, owner.AppWindow.Id)?.DisplayId == ownerDisplay!.DisplayId,
+                "valid placement target keeps its monitor");
+            var temporary = AppWindow.Create();
+            var retiredId = temporary.Id;
+            temporary.Destroy();
+            var retiredLookup = DisplayArea.GetFromWindowId(retiredId, DisplayAreaFallback.Nearest);
+            Check(retiredLookup is null, "retired foreground window reproduces a null nearest-display lookup");
+            Check(OverlayDisplayArea.Resolve(retiredId, owner.AppWindow.Id)?.DisplayId == ownerDisplay.DisplayId,
+                "retired placement window falls back to live overlay display");
+            Check(OverlayDisplayArea.Resolve(default, owner.AppWindow.Id)?.DisplayId == ownerDisplay.DisplayId,
+                "missing foreground window falls back to live overlay display");
+            Check(OverlayDisplayArea.Resolve(default, default)?.DisplayId == DisplayArea.Primary.DisplayId,
+                "missing window identities fall back to the primary display");
             var palette = Palette("rgba(240,40,30,0.5)");
             var settings = AppearanceSettings.Default;
             var panels = new List<Border>();

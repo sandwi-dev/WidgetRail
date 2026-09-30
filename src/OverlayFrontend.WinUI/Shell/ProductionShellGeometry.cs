@@ -10,9 +10,9 @@ internal readonly record struct ShellBands(double ContentHeight, double ContentG
 internal static class ProductionShellGeometry
 {
     internal const double GuideHeight = 58;
-    internal const double GuideRailGap = 46;
+    internal const double GuideRailGap = 8;
     internal const double RailHeight = 76;
-    internal const double ContentGuideGap = 3;
+    internal const double ContentGuideGap = 8;
     internal const double ReservedHeight = GuideHeight + GuideRailGap + RailHeight + ContentGuideGap;
     internal static ShellBands Bands(double availableHeight)
     {

@@ -8,6 +8,16 @@ namespace WinUiShell.Tests;
 public sealed class ProductionShellGeometryTests
 {
     [TestMethod]
+    public void GuideUsesBalancedCompactGapsWithoutShrinkingItsTextSlot()
+    {
+        var bands = ProductionShellGeometry.Bands(900);
+        Assert.AreEqual(8, bands.ContentGap);
+        Assert.AreEqual(8, bands.GuideGap);
+        Assert.AreEqual(58, bands.GuideHeight);
+        Assert.AreEqual(76, bands.RailHeight);
+    }
+
+    [TestMethod]
     public void TileCapacityIsBoundedAndStatusCannotConsumeIcons()
     {
         foreach (var width in new[] { 1d, 64, 180, 320, 640, 900, 1920, 3840 })

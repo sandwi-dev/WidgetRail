@@ -222,6 +222,14 @@ focus cache, cursor refresh, or background input admission is added.
 
 ## Section motion
 
+Home places the horizontal game rail at the bottom of its available content area,
+with the retained focused-game summary immediately above it, aligned left. The
+focus-presentation surface declares this through `justify: end`, `align: start`, and
+a 14-DIP gap; the rail content keeps its full width and does not grow a spacer.
+Home and Library destination buttons share a 128-DIP preferred width with a
+104-DIP minimum for narrower overlays. These layout styles preserve the existing
+presentation ownership, logical focus IDs, and section transition group.
+
 Home and Library opt into the shared navigation transition group
 `playnite-library.destinations`. The header stays in place while its selected
 destination and lower content animate together. Cursor changes keep the section

@@ -70,7 +70,7 @@ internal sealed class PinnedWidgetValidationPage : Page, IAsyncDisposable
             Check(presenter.CurrentBinding.Scope == "pin.scope" && genuine.Authority.ActiveInputScopeId == "dialog.scope", "pin scope independent of main modal");
             Check(!Nodes(presenter).Any(node => AutomationProperties.GetAutomationId(node) == "Widget.close"), "main modal excluded from pinned tree");
             Check(Math.Abs(Button("open").FontSize - 23) < .1, "pin-prefixed computed styles applied");
-            Check(Nodes(presenter).OfType<Image>().Any(image => image.Source is BitmapImage { PixelWidth: 8 }), "contrasting pinned artwork decoded");
+            Check(Nodes(presenter).OfType<WidgetArtworkView>().Any(image => image.Source is BitmapImage { PixelWidth: 8 }), "contrasting pinned artwork decoded");
 
             presenter.ActivateFocused(); await Status("open:");
             Check(lifecycleScopes.Contains("dialog.scope"), "host interaction retains original lifecycle authority");
@@ -160,7 +160,7 @@ internal sealed class PinnedWidgetValidationPage : Page, IAsyncDisposable
     {
         var list = List()!; list.ScrollIntoView(list.Items[index], ScrollIntoViewAlignment.Leading);
         await Until(() => list.ContainerFromIndex(index) is SelectorItem { IsEnabled: true } item &&
-            Nodes(item).OfType<Image>().Any(image => image.Source is not null));
+            Nodes(item).OfType<WidgetArtworkView>().Any(image => image.Source is not null));
         ((Control)list.ContainerFromIndex(index)).Focus(FocusState.Keyboard);
     }
     private async Task Until(Func<bool> condition)
@@ -175,7 +175,7 @@ internal sealed class PinnedWidgetValidationPage : Page, IAsyncDisposable
     }
     private void Check(bool condition, string name) { if (!condition) throw new InvalidOperationException(name); checks.Add(name); Observe(); }
     private ListViewBase? List() => Nodes(presenter).OfType<ListViewBase>().FirstOrDefault();
-    private int Images() => Nodes(presenter).OfType<Image>().Count(image => image.Source is not null);
+    private int Images() => Nodes(presenter).OfType<WidgetArtworkView>().Count(image => image.Source is not null);
     private FrameworkElement Find(string id) => Nodes(presenter).OfType<FrameworkElement>().First(element => AutomationProperties.GetAutomationId(element) == "Widget." + id);
     private Button Button(string id) => (Button)Find(id);
     private void Focus(string id) => ((Control)Find(id)).Focus(FocusState.Keyboard);

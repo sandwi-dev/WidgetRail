@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <type_traits>
 
-inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 5;
+inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 6;
 inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_FALSE = 0;
 inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_TRUE = 1;
 
@@ -176,6 +176,12 @@ WidgetRailOverlayPlatformConfigureControllerIsolation(std::uint32_t enabled) noe
 WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformNativeShortcutSource WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformNativeShortcutButtons(WidgetRailOverlayPlatformHandle* handle,
     std::uint16_t* buttons) noexcept;
+
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformSetViewMenuShortcut(WidgetRailOverlayPlatformHandle* handle, std::uint32_t enabled) noexcept;
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformPollViewMenuShortcut(WidgetRailOverlayPlatformHandle* handle,
+    std::uint32_t* pressed, std::uint32_t* consumed) noexcept;
 
 // Read-only readiness: bit 0 HidHide, bit 1 ViGEmBus, bit 2 GameInput/Guide.
 WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL

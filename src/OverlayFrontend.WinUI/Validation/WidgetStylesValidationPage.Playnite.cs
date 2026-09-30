@@ -37,9 +37,9 @@ internal sealed partial class WidgetStylesValidationPage
         presenter.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, 1,
             descriptor.InstanceId, snapshot.Sequence, snapshot.ActiveInputScopeId), descriptor, snapshot, styles));
         const string prefix = "Widget.playnite-library.details.";
-        await Wait(() => Find<Image>(prefix + "poster") is { Source: BitmapSource { PixelWidth: > 0 } });
+        await Wait(() => Find<WidgetArtworkView>(prefix + "poster") is { Source: BitmapSource { PixelWidth: > 0 } });
         var scroll = Find<ScrollViewer>("Widget.playnite-library.details.scroll")!;
-        var poster = Find<Image>(prefix + "poster")!;
+        var poster = Find<WidgetArtworkView>(prefix + "poster")!;
         var play = Find<Button>(prefix + "play")!;
         play.Focus(FocusState.Keyboard);
         await Task.Delay(150);

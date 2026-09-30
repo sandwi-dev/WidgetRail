@@ -32,10 +32,12 @@ internal sealed partial class BridgeClientRegistry
     {
         BridgePinnedRequestValidation.Validate(request);
         var registration = await GetOrCreateAsync(request.WidgetId, cancellationToken).ConfigureAwait(false);
+        using var heldRegistration = AdmitInputPublication(registration, registration, pinned: true);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            DemandCurrent(registration);
+            DemandCurrentInputRegistration(registration, pinned: true);
+            DemandInputWorkerRun(registration, request.WorkerRun, pinned: true);
             DemandInteractionAllowed(registration);
             var current = DemandPinnedIdentity(registration, request.InstanceId, request.RuntimeGeneration,
                 request.PresentationGeneration, request.Input.LayoutId);
@@ -50,11 +52,11 @@ internal sealed partial class BridgeClientRegistry
             { throw new BridgeStalePinnedInputAuthorityException("Pinned action binding retired."); }
             registration.CancelIdleUnload();
             var admission = await ExecuteClientOperationAsync(registration,
-                (client, token) => client.AdmitPinnedActionAsync(request.Input with { SnapshotSequence = current.Sequence }, token),
+                (client, token) => client.AdmitPinnedActionAsync(request.Input with { SnapshotSequence = current.Sequence }, token, request.WorkerRun?.StartOrdinal),
                 cancellationToken).ConfigureAwait(false);
-            DemandCurrent(registration);
+            DemandCurrentInputRegistration(registration, pinned: true);
             ScheduleIdleUnload(registration, sessionCancellation);
-            return AdmitPublication(registration, admission);
+            return AdmitInputPublication(registration, admission, pinned: true);
         }
         finally { registration.OperationGate.Release(); }
     }

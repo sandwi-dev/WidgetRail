@@ -158,4 +158,7 @@ public sealed class PresentationSourceCoordinator<TContent> where TContent : not
         _authority = null;
         _remembered.Clear();
     }
+
+    /// <summary>Retires one slot when its enclosing declaration ownership changes.</summary>
+    public void Forget(PresentationSurfaceId surface) => _remembered.Remove(surface);
 }

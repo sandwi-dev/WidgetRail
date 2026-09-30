@@ -47,6 +47,13 @@ routes around their saved entry. This state is in memory, not persisted across r
   disable transport until a cloud state refresh.
 - Selection generations reject old player events. Radio uses a fresh watch-playlist
   request and replaces the local queue only after its response is accepted.
+- Browser network/decode/unsupported failures publish one typed event per load,
+  coalescing media errors and rejected play promises. Recovery bypasses both URL
+  caches once, then advances without repeat/wrap. Three consecutive failed songs
+  or queue end stop recovery. Permission errors require explicit Play. Status
+  notices replace raw browser errors; manual selection and pause supersede pending
+  recovery. Provider URLs and exception bodies stay private. This handles transient
+  failures but does not establish why a particular provider stream failed.
 - Queue ordering, repeat and shuffle belong to the application, not the browser.
 - At most 24 catalogue responses are retained for five minutes. Resolved stream
   URLs have short lifetimes; only the next track is speculatively prepared.

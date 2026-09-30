@@ -61,6 +61,12 @@ internal static class IndexedSourceLifetimeScenarios
         Check(((IndexedItem<string>)source[4]).Value == "2:4" && nextOwner.Releases == 0,
             "invalid result releases only its own data and preserves the previous page");
 
+        source.RetryFailedPages();
+        Check(!((IndexedItem<string>)source[4]).Failed && ((IndexedItem<string>)source[4]).Value == "2:4",
+            "retry clears obsolete terminal failure before new data arrives, retaining pixels");
+        var invalidRetry = Complete(await Next(), wrongIdentity: true);
+        await Until(() => source.FailedLoads == 2 && invalidRetry.Releases == 1);
+
         var preserved = source[4];
         var revision = source.ContentRevision;
         var resets = 0;
@@ -72,6 +78,8 @@ internal static class IndexedSourceLifetimeScenarios
         await Task.Delay(50);
         Check(requests.IsEmpty && !source.HasMoreItems, "hidden source does not fetch or continue");
         await source.SetPresentationActiveAsync(true);
+        Check(!((IndexedItem<string>)source[4]).Failed,
+            "resume replaces a previous terminal failure with pending range admission");
         var resumed = await Next();
         Check(resumed.Request.StartIndex == 4 && resumed.Request.ContentRevision == revision,
             "same-revision resume reacquires saved viewport demand");
@@ -99,7 +107,7 @@ internal static class IndexedSourceLifetimeScenarios
         Complete(duringClose);
         await disposal.WaitAsync(TimeSpan.FromSeconds(5));
         Check(owners.All(owner => owner.Releases == 1), "all admitted rejected and late pages release exactly once");
-        return checks;
+        return checks + await IndexedSourceReentrancyScenarios.RunAsync(dispatcher);
 
         async Task<Pending> Next()
         {

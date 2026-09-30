@@ -257,7 +257,7 @@ internal sealed partial class WindowPreviewValidationPage : Page, IAsyncDisposab
                                 WindowId = id, PreviewAspectRatio = 1.6, ImageFit = ImageFit.Cover, AccessibilityLabel = "Owned fixture window" }).ToArray() } };
                         using (var serialized = JsonDocument.Parse(SnapshotJson.Serialize(snapshot)))
                             body = new { widgetId = Descriptor.Id, transactionKind = "ordinaryCheckpoint", baseSequence = 0, recoveryOriginSequence = 0,
-                                snapshot = serialized.RootElement.Clone(), renderStyles = new Dictionary<string, BridgeNodeRenderStyles>(),
+                                snapshot = serialized.RootElement.Clone(), renderStyles = PreviewFixtureStyles(snapshot),
                                 windowPreviews = targets.Where(pair => snapshot.Root.Children.Any(node => node.WindowId == pair.Key)).ToDictionary(pair => pair.Key, pair => new { handle = pair.Value.Handle.ToString("x", CultureInfo.InvariantCulture),
                                     processId = pair.Value.ProcessId, processCreated = pair.Value.ProcessCreated.ToString("x", CultureInfo.InvariantCulture), className = pair.Value.ClassName }) };
                         break;

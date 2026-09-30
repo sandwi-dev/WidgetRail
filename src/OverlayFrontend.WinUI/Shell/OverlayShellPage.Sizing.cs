@@ -12,8 +12,9 @@ internal sealed partial class OverlayShellPage
     private string activeDisplayId = string.Empty;
     private long displayVersion;
     private WidgetSurfaceHints? authoredSurfaceHints;
-    internal WidgetSurfaceHints? SurfaceHints => IsMediaFullscreen ? new()
-    { WidthMode = WidgetSurfaceAxisMode.FillAvailable, HeightMode = WidgetSurfaceAxisMode.FillAvailable } : authoredSurfaceHints;
+    // The work-area HWND already contains a separate aspect-fit fullscreen layer.
+    // Its extent must never overwrite the retained ordinary widget's layout.
+    internal WidgetSurfaceHints? SurfaceHints => authoredSurfaceHints;
     internal event Action? SizingChanged;
     internal double ContentWidth => WidgetSurface.ActualWidth;
     internal double ContentHeight => WidgetSurface.ActualHeight;
@@ -50,8 +51,7 @@ internal sealed partial class OverlayShellPage
 
     private void ApplyEffectiveAppearance()
     {
-        var scale = DisplayScalePolicy.Resolve(savedAppearance, activeDisplayId);
-        Appearance = savedAppearance with { InterfaceScale = scale.InterfaceScale, TextScale = scale.TextScale };
+        Appearance = AppearanceForDisplay(activeDisplayId);
         surface?.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
         if (preparingSurface is { } preparing && !ReferenceEquals(preparing.Presenter, surface))
             preparing.Presenter.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
@@ -71,16 +71,7 @@ internal sealed partial class OverlayShellPage
     internal SurfaceExtent? MeasureContent(SurfaceExtent constraint)
     {
         if (surface is null || !surface.IsLoaded) return null;
-        var width = surface.Width;
-        var height = surface.Height;
-        surface.Width = surface.Height = double.NaN;
-        surface.Measure(new(constraint.Width, constraint.Height));
-        var extent = new SurfaceExtent(surface.DesiredSize.Width, surface.DesiredSize.Height);
-        surface.Width = width;
-        surface.Height = height;
-        // This policy probe must not leave a retained child measured against a
-        // temporary constraint if the final HWND size happens to stay unchanged.
-        surface.InvalidateMeasure();
-        return extent;
+        var measured = surface.MeasureSurfaceContent(new(constraint.Width, constraint.Height), SurfaceHints);
+        return new(measured.Width, measured.Height);
     }
 }

@@ -192,7 +192,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         var view = PlayniteLibraryPresentation.Render(state, indexedBrowse:
             navigation.Route == PlayniteLibraryRoute.Browse ? _indexedBrowse : null, indexedHome:
             navigation.Route == PlayniteLibraryRoute.Library ? _indexedHome : null);
-        var root = _navigation.Scope(navigation, view.Root);
+        var root = ScopePresentation(navigation, view.Root);
         var initialFocusId = view.FocusGroupEntryRequest is not null ||
             navigation.Route == PlayniteLibraryRoute.Categories ||
             navigation.Route == PlayniteLibraryRoute.Browse &&
@@ -241,6 +241,20 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 local.DetailsGeneration));
         }
         return page;
+    }
+
+    private ContainerElement ScopePresentation(WidgetNavigationSnapshot<PlayniteLibraryRoute> navigation, WidgetElement root)
+    {
+        if (root is ContainerElement { Children.Count: 1 } page && page.Children[0] is BackgroundSurfaceElement background)
+        {
+            // The cinematic surface belongs to the widget. Navigation scopes
+            // belong to the foreground page and still change independently.
+            // Scoping the old outer root also replaced the background on every tab.
+            var foreground = _navigation.Scope(navigation, page with { Children = [background.Content] });
+            return UI.Stack("playnite-library.presentation", background with { Content = foreground }) with
+                { InputScopeId = "playnite-library.presentation" };
+        }
+        return _navigation.Scope(navigation, root);
     }
 
     private void PinRenderedArtwork(

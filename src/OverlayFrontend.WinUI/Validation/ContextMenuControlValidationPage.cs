@@ -49,6 +49,9 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
             presenter.MoveFocus(FocusNavigationDirection.Down);
             Check(FocusedId.EndsWith("Context.remove", StringComparison.Ordinal), "navigation skips disabled and busy actions");
             presenter.MoveFocus(FocusNavigationDirection.Down); presenter.MoveFocus(FocusNavigationDirection.Right);
+            Check(FocusedId.EndsWith("Context.play", StringComparison.Ordinal), "context menu Down wraps from last to first enabled action");
+            presenter.MoveFocus(FocusNavigationDirection.Up);
+            Check(FocusedId.EndsWith("Context.remove", StringComparison.Ordinal), "context menu Up wraps from first to last enabled action");
             Check(FocusedId.EndsWith("Context.remove", StringComparison.Ordinal), "popup boundaries consume all navigation");
             Apply();
             Check(presenter.HasTransientControl, "unrelated publication retains popup");
@@ -83,7 +86,7 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
                 "unavailable context owner consumes X without opening or falling through");
             unavailableOptions = false; Apply();
             ambiguous = true; Apply();
-            await WaitAsync(() => Find(presenter, "Widget.ambiguous") is { ActualWidth: > 0, ActualHeight: > 0 });
+            await WaitAsync(() => Find(presenter, "Widget.ambiguous") is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 });
             await FocusAsync("after");
             Check(!await presenter.HandleControllerButtonAsync(ControllerButton.X) && !presenter.HasTransientControl,
                 "ambiguous scope hints never open a popup");
@@ -169,7 +172,10 @@ internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
         var nodes = new List<ViewNode> { Hint("hint", ControllerButton.Menu), Hint("xhint", ControllerButton.X),
             new() { Id = "after", Kind = ViewNodeKind.Button, Text = "After", ActionId = "after" }, Poster("default", null) };
         if (!removed) nodes.Add(Poster("poster", ControllerButton.X));
-        if (ambiguous) nodes.Add(Hint("ambiguous", ControllerButton.X));
+        // Keep the native hint mounted; this scenario tests ambiguous command
+        // ownership, independently of WinUI's newly attached Loaded timing.
+        var extraHint = Hint("ambiguous", ControllerButton.X);
+        nodes.Add(ambiguous ? extraHint : extraHint with { ContextMenuButton = null, ContextActions = [] });
         nodes.Add(new() { Id = "modal", Kind = ViewNodeKind.Stack, InputScopeId = "dialog", Children = (ViewNode[])[Poster("modal.button", ControllerButton.X)] });
         var snapshot = new ViewSnapshot { WidgetInstanceId = "context.instance", Sequence = ++sequence,
             ActiveInputScopeId = modal ? "dialog" : "page", InitialFocusId = modal ? "modal.button" : "after",

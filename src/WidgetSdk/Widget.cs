@@ -127,6 +127,14 @@ public sealed record WidgetView(
         snapshot = snapshot with { ProtocolVersion = supportsCursorRetention
             ? Math.Max(requirements.RequiredVersion, ProtocolConstants.CursorRetentionVersion)
             : requirements.RequiredVersion };
+        // Deferred item declarations are not in the parent snapshot. Advertise
+        // this SDK's supported protocol so lazily rendered templates can use
+        // current controls without eagerly rendering the entire collection.
+        static bool HasIndexed(ViewNode node) => node.IndexedCollection is not null ||
+            node.Children.Any(HasIndexed) || node.FocusPresentation is { } focus && HasIndexed(focus) ||
+            node.DefaultFocusPresentation is { } fallback && HasIndexed(fallback);
+        if (HasIndexed(snapshot.Root) || snapshot.PinnedLayouts.Any(layout => layout.Root is { } root && HasIndexed(root)))
+            snapshot = snapshot with { ProtocolVersion = ProtocolConstants.CurrentVersion };
         var errors = ViewSnapshotValidator.Validate(snapshot, requirements);
         if (errors.Count != 0) throw new ProtocolValidationException(errors);
         return snapshot;

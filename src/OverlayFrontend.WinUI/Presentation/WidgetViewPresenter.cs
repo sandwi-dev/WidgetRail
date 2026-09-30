@@ -61,8 +61,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     /// <summary>Explicit page/window entry. Ordinary data updates do not call this.</summary>
     public void Enter(bool restoreNativeFocus = false)
     {
+        TraceFocus("entry-request");
         this.restoreNativeFocus |= restoreNativeFocus;
-        needsEntry = needsEntry || FocusedBinding() is not { } focused || !Eligible(focused);
+        needsEntry = needsEntry || FocusedBinding() is not { } focused || !Navigable(focused) ||
+            RememberedBinding() is { } preferred && !ReferenceEquals(preferred, focused);
         QueueEntryFocus();
     }
 
@@ -70,9 +72,12 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     internal void SetAutomaticFocusEnabled(bool enabled)
     {
         if (automaticFocusEnabled == enabled) return;
+        TraceFocus(enabled ? "enable-focus" : "disable-focus");
+        if (!enabled) RememberFocus();
         automaticFocusEnabled = enabled;
         if (!enabled)
         {
+            scrollGesture = null;
             ClearEntryLayoutWait();
             foreach (var binding in bindings.Values)
                 if (binding.Element is WidgetIndexedCollectionView collection) collection.CancelHostNavigation();
@@ -80,7 +85,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         }
         // Pointer or UIA focus is an explicit choice; enabling host interaction
         // must not replace it with an old pending initial-focus request.
-        if (FocusedBinding() is { } focused && Eligible(focused)) needsEntry = false;
+        if (FocusedBinding() is { } focused && Navigable(focused) &&
+            (RememberedBinding() is not { } preferred || ReferenceEquals(preferred, focused))) needsEntry = false;
     }
 
     public WidgetViewPresenter(bool presentationOnly = false)
@@ -151,10 +157,13 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 nextBindings.Add(declaration.Node.Id, sameOwner && !transition.ReplacedIds.Contains(declaration.Node.Id)
                     && bindings.TryGetValue(declaration.Node.Id, out var retained)
                     && retained.Identity == declaration.Identity
+                    && SameGridLayoutMode(declarations[declaration.Node.Id].Node, declaration.Node)
+                    && SameSurfaceOwnership(declaration, plan)
                     && declarations[declaration.Node.Id].Node.Transition?.Kind == declaration.Node.Transition?.Kind
                     && declarations[declaration.Node.Id].Node.ActionSurfacePresentation == declaration.Node.ActionSurfacePresentation
                     ? retained : Create(declaration, IsModalDialog(declaration, plan)));
             var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
+            if (sameOwner) RetainBackgroundPaint(nextBindings, plan);
             var currentModal = root.Kind == ViewNodeKind.ModalLayer ? nextBindings[root.Id].LayoutElement : null;
             // Detach only changed parentage before any insert. In-place property
             // updates and adjacent insertions never clear surviving child controls.
@@ -192,9 +201,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             presentation = nextPresentation;
             if (presentationActive && !presentationOnly) WindowPreviews?.Apply(next);
             UpdateResponsiveVisibility();
-            foreach (var scope in remembered.Keys.ToArray())
-                if (!bindings.TryGetValue(remembered[scope].Id, out var member) || member.Identity != remembered[scope])
-                    remembered.Remove(scope);
+            // Scope memory survives transient/loading declarations. It is
+            // validated when used and cleared with the owning incarnation.
             foreach (var declaration in plan.Values)
             {
                 var binding = bindings[declaration.Node.Id];
@@ -217,10 +225,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             else Content = bindings[root.Id].LayoutElement;
             needsEntry = needsEntry || !sameOwner || oldScope != nextPresentation.Scope
                 || (focused is not null && (!bindings.TryGetValue(focused.Identity.Id, out var current)
-                    || !ReferenceEquals(current, focused) || !Eligible(current)));
+                    || !ReferenceEquals(current, focused) || !Navigable(current)));
             if (!presentationOnly) UpdateFocusPolicy(nextPresentation.View);
             else needsEntry = false;
-            pendingRestore = !needsEntry && focused is not null && Eligible(focused)
+            pendingRestore = !needsEntry && focused is not null && Navigable(focused)
                 && !ReferenceEquals(FocusedBinding(), focused) ? focused : null;
         }
         finally { applying = false; }
@@ -245,28 +253,30 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private void RestoreFocus()
     {
         focusQueued = false;
+        TraceFocus("restore-focus");
         if (!presentationActive || !automaticFocusEnabled || !IsLoaded || XamlRoot is null || frame is null || applying) return;
         var reassertFocus = restoreNativeFocus;
         restoreNativeFocus = false;
         if (TryRestoreTransientFocus()) return;
         if (TryRestoreGroupEntry()) return;
-        if (reassertFocus && FocusedBinding() is { } current && Eligible(current) &&
+        if (reassertFocus && FocusedBinding() is { } current && Navigable(current) &&
+            (RememberedBinding() is not { } preferred || ReferenceEquals(preferred, current)) &&
             FocusManager.GetFocusedElement(XamlRoot) is Control leaf && leaf.Focus(FocusState.Keyboard))
             needsEntry = false;
         if (pendingRestore is { } restore)
         {
             pendingRestore = null;
-            if (bindings.TryGetValue(restore.Identity.Id, out var retained) && ReferenceEquals(retained, restore) && Eligible(restore)
+            if (bindings.TryGetValue(restore.Identity.Id, out var retained) && ReferenceEquals(retained, restore) && Navigable(restore)
                 && !ReferenceEquals(FocusedBinding(), restore)) FocusBinding(restore);
         }
         if (!needsEntry) return;
         var scope = activeScope;
         Binding? target = null;
         if (remembered.TryGetValue(scope, out var identity) && bindings.TryGetValue(identity.Id, out var rememberedBinding)
-            && rememberedBinding.Identity == identity && Eligible(rememberedBinding)) target = rememberedBinding;
+            && rememberedBinding.Identity == identity && Navigable(rememberedBinding)) target = rememberedBinding;
         if (target is null && effectiveView!.InitialFocusId is { } initial && bindings.TryGetValue(initial, out var initialBinding)
-            && Eligible(initialBinding)) target = initialBinding;
-        target ??= bindings.Values.FirstOrDefault(Eligible);
+            && Navigable(initialBinding)) target = initialBinding;
+        target ??= bindings.Values.FirstOrDefault(Navigable);
         if (target is not null)
         {
             if (FocusBinding(target)) { needsEntry = false; ClearEntryLayoutWait(); }
@@ -277,6 +287,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     public bool MoveFocus(FocusNavigationDirection direction)
     {
         if (!presentationActive || applying || !IsLoaded || frame is null) return false;
+        if (!SettleScrollFocus()) return true;
         CancelGroupEntry();
         if (textEntryPopup is { } edit) { edit.Dialog.MoveFocus(direction); return true; }
         if (MoveContextFocus(direction) || MoveSelectFocus(direction) || MoveSlider(direction)) return true;
@@ -299,10 +310,12 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
     }
 
-    private bool Eligible(Binding binding) => presentationActive && presentation?.IsCurrent == true && frame is not null && binding.Identity.Scope == activeScope
+    // Busy is an action-admission state, not removal of the user's focus target.
+    private bool Eligible(Binding binding) => Navigable(binding) && declarations[binding.Identity.Id].Node.IsBusy != true;
+    private bool Navigable(Binding binding) => presentationActive && presentation?.IsCurrent == true && frame is not null && binding.Identity.Scope == activeScope
         && (declarations[binding.Identity.Id].Node.IsFocusable || binding.Element is WidgetIndexedCollectionView)
-        && declarations[binding.Identity.Id].Node is { IsDisabled: not true, IsBusy: not true }
-        && binding.Element.Visibility == Visibility.Visible;
+        && declarations[binding.Identity.Id].Node.IsDisabled != true
+        && IsMemoryVisible(binding.Element);
 
     private Binding? FocusedBinding() => XamlRoot is null ? null : FindBinding(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject);
 
@@ -317,17 +330,27 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         return null;
     }
 
+    partial void TraceFocus(string phase);
+    partial void ConfigureCollectionTrace(WidgetIndexedCollectionView collection);
+
     private void RememberFocus()
     {
-        if (!applying && FocusedBinding() is { } binding && Eligible(binding))
+        if (!applying && automaticFocusEnabled && presentationInputEnabled && FocusedBinding() is { } binding && Navigable(binding))
         {
             // A new native/pointer/automation focus choice after structural
             // reconciliation supersedes the pending low-priority restoration.
             pendingRestore = null;
             if (waitingEntry is not null) { needsEntry = false; ClearEntryLayoutWait(); }
+            remembered.Remove(binding.Identity.Scope);
             remembered[binding.Identity.Scope] = binding.Identity;
+            if (remembered.Count > MaximumMemoryEntries) remembered.Remove(remembered.Keys.First());
+            // Native Focus() can settle before its routed GotFocus notification.
+            // Capture the exact item when yielding input, not just its collection.
+            if (binding.Element is WidgetIndexedCollectionView collection && collection.CaptureFocusedItem() is { } item)
+                RememberCollectionFocus(binding.Identity, item);
             RememberGroupFocus(binding);
             UpdateNativeNeighbors();
+            TraceFocus("remember-focus");
         }
         QueueMediaRefresh();
         QueueSurfaceUpdate();
@@ -366,7 +389,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 element = children = new WidgetModalLayer();
                 break;
             case ViewNodeKind.Grid:
-                element = children = new WidgetResponsiveGrid();
+                element = children = node.GridLayout is null ? new WidgetResponsiveGrid() : new Grid();
                 break;
             case ViewNodeKind.Icon:
                 element = new WidgetPackageIconView();
@@ -377,7 +400,12 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.IndexedCollection:
                 if (Session is null) throw new InvalidOperationException("Indexed widgets require a presentation session.");
                 element = new WidgetIndexedCollectionView(Session, ReportFailure)
-                { EnsureInteractionAsync = AdmitInteractionAsync, FocusRemembered = item => RememberCollectionFocus(declaration.Identity, item), PresentationChanged = QueueSurfaceUpdate, ContextChanged = () => { ValidateTransientControl(); NotifyControllerGuideChanged(); } };
+                { EnsureInteractionAsync = AdmitInteractionAsync, FocusRemembered = item =>
+                    {
+                        if (!applying && automaticFocusEnabled && presentationActive && presentationInputEnabled)
+                            RememberCollectionFocus(declaration.Identity, item);
+                    }, PresentationChanged = QueueSurfaceUpdate, ContextChanged = () => { ValidateTransientControl(); NotifyControllerGuideChanged(); } };
+                ConfigureCollectionTrace((WidgetIndexedCollectionView)element);
                 break;
             case ViewNodeKind.BackgroundSurface:
             case ViewNodeKind.FocusPresentationSurface:
@@ -408,7 +436,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     new Button { Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
                 break;
             case ViewNodeKind.Slider: element = presentationOnly ? new TextBlock() : CreateSlider(declaration.Identity, token); break;
-            case ViewNodeKind.Image: element = new Image(); break;
+            case ViewNodeKind.Image: element = new WidgetArtworkView(); break;
             case ViewNodeKind.MediaViewport: element = new Media.WidgetMediaViewport(); break;
             case ViewNodeKind.WindowPreview: element = new Previews.WidgetWindowPreview(); break;
             case ViewNodeKind.Text: element = new TextBlock { TextWrapping = TextWrapping.Wrap }; break;
@@ -424,7 +452,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             depthButton.UseSystemFocusVisuals = true;
         }
         AutomationProperties.SetAutomationId(element, $"Widget.{node.Id}");
-        var host = node.Transition is not null || element is Panel and not WidgetModalLayer || element is Border or WidgetPresentationSurface
+        var host = node.Transition is not null || element is Panel and not WidgetModalLayer || element is Border or WidgetPresentationSurface or Image
             ? new WidgetMotionHost(element, node.Transition?.Kind == WidgetTransitionKind.Selection, node.Transition is not null) { Tag = declaration.Identity } : null;
         return new(declaration.Identity, element, children, token, host);
     }
@@ -437,7 +465,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             if (!presentationActive) _ = indexed.SetPresentationActiveAsync(false);
             indexed.Apply(presentation!, node, binding.Identity.Scope);
         }
-        if (element is Image image) UpdateImage(binding, image, node);
+        if (element is WidgetArtworkView image) UpdateImage(binding, image, node);
         UpdateContainerLayout(binding, node);
         if (binding.Children is WidgetPosterPanel poster) UpdatePoster(poster, node);
         ApplySizeAndTypography(element, node);
@@ -453,7 +481,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (element is TextBlock text) WidgetTextStyleAdapter.SetSource(text, node.Kind == ViewNodeKind.TextEntry ? TextEntryLabel(node) : node.Text ?? string.Empty);
         if (element is Control control)
         {
-            control.IsEnabled = node.IsDisabled != true && node.IsBusy != true;
+            control.IsEnabled = node.IsDisabled != true;
+            // Selection is authored state, not a ToggleButton command. Preserve
+            // native Invoke semantics while announcing both selection and work.
+            AutomationProperties.SetItemStatus(control, WidgetAccessibleState.ItemStatus(node));
             control.IsTabStop = node.IsFocusable && binding.Identity.Scope == activeScope;
             control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview) && (!node.IsFocusable || binding.Identity.Scope == activeScope);
         }
@@ -494,13 +525,23 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
         void Visit(ViewNode node, string inheritedScope, string? parent, string itemPath)
         {
-            if (node.CollectionLayout is not null && node.Kind != ViewNodeKind.IndexedCollection || node.VirtualCollectionWindow is not null
-                || node.CollectionAnchorKey is not null || node.CollectionGeneration is not null || node.CollectionResetGeneration is not null
-                || node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null
-                || node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll or ViewNodeKind.Button or ViewNodeKind.ActionSurface
-                    or ViewNodeKind.Slider or ViewNodeKind.ModalLayer or ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.Text or ViewNodeKind.Progress or ViewNodeKind.LoadingIndicator or ViewNodeKind.Spacer or ViewNodeKind.IndexedCollection or ViewNodeKind.Image
-                    or ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface or ViewNodeKind.ControllerGlyph or ViewNodeKind.Icon or ViewNodeKind.MediaViewport or ViewNodeKind.WindowPreview))
-                throw new NotSupportedException($"WinUI presentation for {node.Kind} with these declarations is not implemented.");
+            var unsupported = WinUiPresentationContract.ValidateNode(node, "$");
+            if (unsupported.Count != 0)
+            {
+                // Build diagnostic paths only on failure, not on every rendered node.
+                var indices = new Stack<int>();
+                var child = node;
+                for (var owner = parent; owner is not null; owner = result[owner].ParentId)
+                {
+                    var children = result[owner].Node.Children;
+                    for (var index = 0; index < children.Count; ++index)
+                        if (ReferenceEquals(children[index], child)) { indices.Push(index); break; }
+                    child = result[owner].Node;
+                }
+                var declarationPath = "$.root" + string.Concat(indices.Select(index => $".children[{index}]"));
+                throw new NotSupportedException(string.Join(Environment.NewLine, unsupported.Select(error =>
+                    $"{declarationPath}{error.Path[1..]} ({error.Code}): {error.Message}")));
+            }
             var scope = node.InputScopeId ?? inheritedScope;
             var path = node.CollectionItemKey is { } key ? itemPath + key.Length + ":" + key : itemPath;
             result.Add(node.Id, new(node, new(scope, node.Id, node.Kind, path), parent));

@@ -23,7 +23,8 @@ internal sealed record SettingsPresentationState(
     string? ThemePickerFocusId = null,
     StartupRegistrationStatus? Startup = null,
     OverlayDisplayContext? Display = null,
-    bool Loading = false);
+    bool Loading = false,
+    SettingsHostFeatures? HostFeatures = null);
 
 /// <summary>Pure snapshot-only composition for Settings pages owned by DLV-036.</summary>
 internal static class SettingsPresentation
@@ -32,9 +33,19 @@ internal static class SettingsPresentation
     {
         ArgumentNullException.ThrowIfNull(state);
         var header = Header(state);
+        if (state.Loading && state.Page != SettingsPage.Root)
+        {
+            view = View(header, PageScope("settings.loading.section",
+                UI.LoadingIndicator("settings.loading.indicator", "Loading settings"),
+                UI.Text("Loading settings…", "settings.loading.message").Classes("home-loading-message"),
+                UI.Button("Back", "back", "settings.loading.back")),
+                "settings.loading.back", "settings.loading.section");
+            return true;
+        }
         view = state.Page switch
         {
-            SettingsPage.Root => RenderRoot(header, state.Settings, state.Themes, state.Busy, state.Loading),
+            SettingsPage.Root => RenderRoot(header, state.Settings, state.Themes, state.Busy, state.Loading,
+                state.HostFeatures ?? new()),
             SettingsPage.Appearance => RenderAppearance(
                 header, state.Settings, state.Themes, state.Busy),
             SettingsPage.ThemePicker => RenderThemes(
@@ -45,7 +56,8 @@ internal static class SettingsPresentation
                 header, state.Settings, state.Busy, state.Display),
             SettingsPage.AccessibilityVisual => RenderVisualAccessibility(
                 header, state.Settings, state.Busy),
-            SettingsPage.Overlay => RenderOverlay(header, state.Settings, state.Busy, state.Startup, state.Display),
+            SettingsPage.Overlay => RenderOverlay(header, state.Settings, state.Busy, state.Startup, state.Display,
+                state.HostFeatures ?? new()),
             SettingsPage.Controllers => ControllerSettingsPresentation.Render(state),
             SettingsPage.Diagnostics => RenderDiagnostics(header, state),
             SettingsPage.AuthorityRecovery => RenderAuthorityRecovery(header, state),
@@ -57,7 +69,9 @@ internal static class SettingsPresentation
 
     internal static WidgetView AnimatePage(WidgetView view, SettingsPage page, bool loading)
     {
-        if (loading || view.Root is not StackElement { Id: "settings-root" } root || root.Children.Count < 2)
+        // Loading is a data state within a page. Keep the motion parent and key
+        // stable so background completion cannot reparent already-focused cards.
+        if (view.Root is not StackElement { Id: "settings-root" } root || root.Children.Count < 2)
             return view;
         var children = root.Children.ToArray();
         children[1] = UI.Stack("settings.page-motion", children[1]).Classes("settings-page-motion")
@@ -175,7 +189,8 @@ internal static class SettingsPresentation
         PlatformSettingsDocument settings,
         ThemeCatalogSnapshot themes,
         bool busy,
-        bool loading)
+        bool loading,
+        SettingsHostFeatures hostFeatures)
     {
         var selectedTheme = themes.Themes.FirstOrDefault(entry => entry.IsValid &&
             entry.Descriptor.Id == settings.Appearance.ThemeId &&
@@ -189,20 +204,16 @@ internal static class SettingsPresentation
                     UI.Text(title, id + ".title", title).Classes("home-card-title"),
                     UI.Text(description, id + ".description", description).Classes("home-card-description"))
                     .Classes("home-card-copy"))
-                .Busy(busy).Classes("category-card");
+                .Busy(busy && !loading).Classes("category-card");
 
-        WidgetElement categories = loading
-            ? UI.Stack("settings.categories",
-                UI.Stack("settings.loading.content",
-                    UI.LoadingIndicator("settings.loading.indicator", "Loading settings"),
-                    UI.Text("Loading settings…", "settings.loading.message", "Loading settings").Classes("home-loading-message"))
-                    .Classes("home-loading-content")).Classes("home-loading")
-            : UI.VerticalScroll("settings.categories",
+        WidgetElement categories = UI.VerticalScroll("settings.categories",
             UI.ResponsiveGrid("settings.category-grid", 250, 2,
                 Card("Appearance", themeDescription, "open.appearance", "category.appearance", "appearance", WidgetGlyph.Settings),
                 Card("Accessibility", "Text, contrast, and motion", "open.accessibility", "category.accessibility", "accessibility", WidgetGlyph.Check),
-                Card("Overlay", "Scale, layout, and startup", "open.overlay", "category.overlay", "overlay", WidgetGlyph.Fullscreen),
-                Card("Controllers", "Input, shortcuts, and exclusive control", "open.controllers", "category.controllers", "controllers", WidgetGlyph.Connection),
+                Card("Overlay", hostFeatures.StartupRegistration ? "Scale, layout, and startup" : "Scale, layout, and animations",
+                    "open.overlay", "category.overlay", "overlay", WidgetGlyph.Fullscreen),
+                Card("Controllers", hostFeatures.ExclusiveControllerControl ? "Input, shortcuts, and exclusive control" : "Controller shortcuts",
+                    "open.controllers", "category.controllers", "controllers", WidgetGlyph.Connection),
                 Card("Widgets", "Install, update, and permissions", "open.installed-widgets", "category.installed-widgets", "widgets", WidgetGlyph.Settings),
                 Card("Diagnostics", "Status, logs, and troubleshooting", "open.diagnostics", "category.diagnostics", "diagnostics", WidgetGlyph.Connection))
                 .Classes("category-grid")).Classes("root-category-list");
@@ -214,7 +225,7 @@ internal static class SettingsPresentation
             .Classes("home-utilities");
         return RootView(header,
             UI.Stack("settings.home.body", categories, utilities).Classes("home-body"),
-            loading ? null : "category.appearance");
+            "category.appearance");
     }
 
     private static WidgetView RenderAppearance(
@@ -340,7 +351,8 @@ internal static class SettingsPresentation
         PlatformSettingsDocument settings,
         bool busy,
         StartupRegistrationStatus? startup,
-        OverlayDisplayContext? display)
+        OverlayDisplayContext? display,
+        SettingsHostFeatures hostFeatures)
     {
         var scale = DisplayScalePolicy.Resolve(settings.Appearance, display?.Id);
         var appearance = settings.Appearance with { InterfaceScale = scale.InterfaceScale };
@@ -361,10 +373,10 @@ internal static class SettingsPresentation
             down: null,
             busy);
         return View(header,
-            PageScope("overlay.page",
+            PageScope("overlay.page", [
                 UI.Text("Overlay", "overlay.heading", "Overlay settings")
                     .Classes("page-heading"),
-                UI.Text("Choose how WidgetRail looks and when it starts.",
+                UI.Text(hostFeatures.StartupRegistration ? "Choose how WidgetRail looks and when it starts." : "Choose how WidgetRail looks and moves.",
                     "overlay.help", "Overlay settings help").Classes("page-help"),
                 DisplayHint(display), interfaceScale, opacity,
                 UI.Button($"Position: {settings.Appearance.OverlayPosition switch
@@ -421,11 +433,12 @@ internal static class SettingsPresentation
                     "overlay.modal-animation", null, busy),
                 UI.Text("Section animations apply inside supported widgets. Speed ranges from 0.5× (slower) to 2× (faster). Reduced motion overrides focus, section and dialog animations.",
                     "overlay.animations.help").Classes("page-help"),
+                .. hostFeatures.StartupRegistration ? new WidgetElement[] {
                 UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
                     "startup.toggle", "overlay.startup").Busy(busy).Disabled(startup?.CanChange != true)
                     .AddClasses("setting-row"),
                 UI.Text("Status — " + (startup?.Message ?? "Startup settings unavailable."),
-                    "overlay.startup.status", "Startup status").Classes("page-help")),
+                    "overlay.startup.status", "Startup status").Classes("page-help") } : []]),
             "interface.stepper.decrement",
             "overlay.page");
     }

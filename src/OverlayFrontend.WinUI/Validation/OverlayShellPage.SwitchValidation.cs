@@ -32,6 +32,8 @@ internal sealed partial class OverlayShellPage
             {
                 if (startup is not null) await startup;
                 Check(activeWidget == "audio-mixer" && !switching, "Initial fixture commits");
+                var originalFailureOwner = CapturePresentationFailureGuard();
+                Check(originalFailureOwner(), "Current presentation can report its own operation failure");
                 CompositionTarget.Rendering += Observe;
                 // Acknowledgment of unrelated outgoing cleanup must not keep an
                 // already-published incoming widget inert. The worker barrier is
@@ -62,11 +64,52 @@ internal sealed partial class OverlayShellPage
                 }
                 finally { File.WriteAllText(barrier + ".release", "interactive-switch"); await draining; }
                 Check(admittedWhileDraining, "Committed incoming widget admits input while outgoing cleanup is pending");
+                Check(!originalFailureOwner(), "A late failure from the previous widget cannot replace the incoming presentation");
                 Check(actionWhileDraining, "Incoming action reaches its worker before unrelated outgoing cleanup completes");
                 Check(File.Exists(barrier + ".completed") && !File.Exists(barrier + ".timed-out"),
                     "Outgoing cleanup completes under the existing bounded lifecycle serializer");
                 Check(navigatedWhileDraining && FocusId() == "Widget.games-more",
                     "Incoming navigation survives outgoing cleanup without restoring earlier focus");
+                var beforeHideFailureOwner = CapturePresentationFailureGuard();
+                SetVisible(false);
+                Check(!beforeHideFailureOwner(), "Hidden presentation cannot publish late operation failure");
+                await Until(() => surface is { IsPresentationActive: false });
+                Check(interactive, "Hiding a focused widget does not interpret native tray fallback as a user domain transfer");
+                SetVisible(true);
+                await Until(() => visible && !switching && FocusId() == "Widget.games-more");
+                Check(!beforeHideFailureOwner(), "Reopen cannot revive a prior visible session's operation failure");
+                Check(interactive, "Reopening restores the widget's remembered item rather than entering the tray");
+                var down = WidgetRail.OverlayPlatformClient.ControllerFrame.Create();
+                down.Connected = 1;
+                down.DpadNavigation = new()
+                {
+                    Direction = WidgetRail.OverlayPlatformClient.NavigationDirection.Down,
+                    Phase = WidgetRail.OverlayPlatformClient.NavigationPhase.Pressed,
+                };
+                foreach (var switcher in new[] { WidgetRail.PlatformSettings.WidgetSwitcherLayout.Rail, WidgetRail.PlatformSettings.WidgetSwitcherLayout.Radial })
+                {
+                    Appearance = Appearance with { WidgetSwitcher = switcher };
+                    Receive(down);
+                    await Until(() => !interactive && FocusedTrayWidget()?.Id == "games-apps");
+                    Check(!RadialOpen && Tray.IsEnabled, switcher + " Controller Down at root bottom enters rail");
+                    await SelectAsync("games-apps", true);
+                    await RouteButtonAsync(WidgetRail.WidgetProtocol.ControllerButton.B, WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed);
+                    await RouteButtonAsync(WidgetRail.WidgetProtocol.ControllerButton.B, WidgetRail.WidgetProtocol.ControllerEventPhase.Released);
+                    await Until(() => !interactive && FocusedTrayWidget()?.Id == "games-apps");
+                    Check(RadialOpen == (switcher == WidgetRail.PlatformSettings.WidgetSwitcherLayout.Radial),
+                        switcher + " root Back honors the configured switcher independently of directional entry");
+                    var beforeAction = File.ReadAllText(actionPath);
+                    Check(trayGuide.DisplayedHints.Any(hint => hint.Button == WidgetRail.WidgetProtocol.ControllerButton.X),
+                        switcher + " guide includes current-view dashboard shortcut");
+                    await RouteButtonAsync(WidgetRail.WidgetProtocol.ControllerButton.X, WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed,
+                        WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation);
+                    await RouteButtonAsync(WidgetRail.WidgetProtocol.ControllerButton.X, WidgetRail.WidgetProtocol.ControllerEventPhase.Released,
+                        WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation);
+                    await Until(() => File.ReadAllText(actionPath) != beforeAction);
+                    Check(!interactive, switcher + " dispatches dashboard input once without entering the widget");
+                    await SelectAsync("games-apps", true);
+                }
+                Appearance = Appearance with { WidgetSwitcher = WidgetRail.PlatformSettings.WidgetSwitcherLayout.Rail };
                 await SelectAsync("audio-mixer", true);
                 File.WriteAllText(barrier + ".arm", "superseded-switch");
                 var supersededCleanup = SelectAsync("games-apps", true);
@@ -95,8 +138,11 @@ internal sealed partial class OverlayShellPage
                 Check(surface!.IsHitTestVisible, "Reopen prepares the latest intent after interrupted cleanup");
                 await SelectAsync("audio-mixer", true);
                 var original = surface!;
+                if (original.WidgetResizeCompletion is { } reveal)
+                    await reveal.WaitAsync(TimeSpan.FromSeconds(3));
                 var extent = new SurfaceExtent(WidgetSurface.Width, WidgetSurface.Height);
                 var before = await CornerPixels(original);
+                Check(before[3] > 240, "Committed widget raster is opaque, not two matching blank captures");
                 var slow = SelectAsync("wide-peer", false);
                 await Task.Delay(250);
                 Check(switching && activeWidget == "audio-mixer" && requestedWidget == "wide-peer", "Delayed request retains displayed identity");
@@ -109,6 +155,11 @@ internal sealed partial class OverlayShellPage
                 await slow;
                 Check(activeWidget == "wide-peer" && !switching && surface!.ActualWidth > original.ActualWidth,
                     "Cold incoming content and extent commit together");
+                Check(surface!.WidgetResizeCompletion is not null, "Different widget extents create a resize transition");
+                Check(await surface.WidgetResizeCompletion!.WaitAsync(TimeSpan.FromSeconds(3)) == Motion.WidgetMotionOutcome.Completed &&
+                    Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(surface).Scale == System.Numerics.Vector3.One &&
+                    Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(WidgetSurface).Scale == System.Numerics.Vector3.One,
+                    "Production publication completes widget and shell-fill resizing without layout cancellation");
                 Check(preparingSurface is null && surface!.Opacity == 1, "Preparation slot retires after commit");
                 await SelectAsync("audio-mixer", false);
                 Check(ReferenceEquals(original, surface), "Cached selection reuses native content");
@@ -156,6 +207,47 @@ internal sealed partial class OverlayShellPage
                 await Until(() => !switching && retainedSurfaces.TryGetValue("audio-mixer", out var value) &&
                     value.Descriptor.InstanceId == "audio-mixer.replacement");
                 Check(activeWidget == "audio-mixer" && !ReferenceEquals(livePresenter, surface), "Same-ID incarnation stages a replacement before retiring old content");
+                int.TryParse(FrontendArguments.Value(Environment.GetCommandLineArgs(), "--switch-soak-cycles"), out var cycles);
+                int.TryParse(FrontendArguments.Value(Environment.GetCommandLineArgs(), "--switch-soak-seconds"), out var seconds);
+                if (cycles > 0 || seconds > 0)
+                {
+                    if (cycles is < 0 or > 1000 || seconds is < 0 or > 1800) throw new ArgumentOutOfRangeException(nameof(cycles));
+                    var samples = new List<object>();
+                    var targets = new[] { "audio-mixer", "games-apps", "wide-peer", "now-playing" };
+                    var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                    // More widgets than the native cache can retain exercises
+                    // retirement/recreation, not only warmed visibility toggles.
+                    var completedCycles = 0;
+                    for (var cycle = 0; cycle < cycles || elapsed.Elapsed.TotalSeconds < seconds; ++cycle)
+                    {
+                        var target = targets[cycle % targets.Length];
+                        await SelectAsync(target, true);
+                        await Until(() => !switching && activeWidget == target && surface is { IsPresentationActive: true });
+                        if (cycle % 4 == 3)
+                        {
+                            SetVisible(false);
+                            await Until(() => surface is { IsPresentationActive: false });
+                            SetVisible(true);
+                            await Until(() => surface is { IsPresentationActive: true } && !switching);
+                        }
+                        await Task.Delay(100);
+                        if (invariantFailure is not null) throw new InvalidOperationException(invariantFailure);
+                        if (retainedSurfaces.Count > RetainedSurfaceLimit || preparingSurface is not null || RecoveryVisible)
+                            throw new InvalidOperationException("Switch soak retained preparation, exceeded the cache bound, or entered recovery.");
+                        completedCycles = cycle + 1;
+                        if (cycle % 20 == 19 || cycle + 1 >= cycles && elapsed.Elapsed.TotalSeconds >= seconds)
+                        {
+                            using var process = System.Diagnostics.Process.GetCurrentProcess();
+                            samples.Add(new { cycle = cycle + 1, elapsedSeconds = elapsed.Elapsed.TotalSeconds,
+                                process.PrivateMemorySize64, process.WorkingSet64, process.HandleCount,
+                                managedBytes = GC.GetTotalMemory(false), nativeSurfaces = WidgetSurfaces.Children.Count,
+                                retained = retainedSurfaces.Count });
+                        }
+                    }
+                    Check(true, $"{completedCycles} synthetic switches and {completedCycles / 4} shell hide/reopen cycles retain bounded native surfaces without recovery");
+                    observations.Add(new { scenario = "synthetic-switch-soak", completedCycles, elapsedSeconds = elapsed.Elapsed.TotalSeconds, samples,
+                        scope = "frontend process only; no real provider, artwork grid, WebView, controller or GPU-memory qualification" });
+                }
                 Check(invariantFailure is null, invariantFailure ?? "Every sampled native frame retained a committed surface within budget");
                 observations.Add(new { frames, nativeSurfaces = WidgetSurfaces.Children.Count, activeWidget });
                 Write(new { passed = true, checks, observations });

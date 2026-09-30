@@ -10,9 +10,11 @@ internal sealed partial class EmbeddedMediaOwner
     private WidgetMediaPresentation? fullscreen;
     internal event Action? FullscreenChanged;
     internal string? FullscreenWidgetId => fullscreen?.Document.Authority.WidgetId;
+    internal bool FullscreenCommandPending => fullscreen is not null &&
+        entries.GetValueOrDefault(fullscreen.Document.Authority.WidgetId)?.Surface?.IsCommandPending == true;
     internal WidgetPresentationEmbeddedMediaState? FullscreenState => fullscreen is not null && session.IsMediaPresentationCurrent(fullscreen)
         ? session.GetEmbeddedMediaState(fullscreen.Document) : null;
-    internal bool DispatchFullscreen(EmbeddedMediaHostCommand command) => fullscreen?.Document.Authority.WidgetId is { } id && IsFullscreen(id) &&
+    internal bool DispatchFullscreen(EmbeddedMediaHostCommand command) => inputEnabled && fullscreen?.Document.Authority.WidgetId is { } id && IsFullscreen(id) &&
         entries.GetValueOrDefault(id)?.Surface?.DispatchPresentation(command, WidgetRail.WidgetProtocol.MediaPresentationKind.OverlayFullscreen) == true;
 
     // One durable native destination owned by the shell. It must share the ordinary
@@ -29,7 +31,7 @@ internal sealed partial class EmbeddedMediaOwner
     {
         DemandDispatcher();
         var id = displayed.Authority.WidgetId;
-        if (retired || fullscreenHost is null || fullscreen is not null || !visible || !inputEnabled || id != activeWidget ||
+        if (retired || compact is not null || fullscreenHost is null || fullscreen is not null || !visible || !inputEnabled || id != activeWidget ||
             entries.GetValueOrDefault(id) is not { Document: { } document, Surface: { IsReady: true } surface } ||
             MatchingViewport(id) is not { } ordinary || !ordinary.Element.AcceptsInput ||
             !ReferenceEquals(surface.Element.Parent, ordinary.Element.SurfaceHost) ||
@@ -50,6 +52,6 @@ internal sealed partial class EmbeddedMediaOwner
         return true;
     }
 
-    private bool IsFullscreen(string id) => visible && inputEnabled && id == activeWidget && fullscreenHost is not null &&
+    private bool IsFullscreen(string id) => visible && (inputEnabled || retainingFullscreen) && id == activeWidget && fullscreenHost is not null &&
         fullscreen?.Document.Authority.WidgetId == id && session.IsMediaPresentationCurrent(fullscreen);
 }

@@ -48,7 +48,7 @@ internal sealed partial class WidgetViewPresenter
         var displayed = presentation!;
         var authority = displayed.Frame.Authority;
         var input = new ControllerInputEvent(button, phase, displayed.Selection is null ? ControllerInputContext.OpenWidget : ControllerInputContext.PinnedSurface,
-            FocusedBinding() is { } binding && Eligible(binding) ? binding.Identity.Id : null,
+            FocusedBinding() is { } binding && Navigable(binding) ? binding.Identity.Id : null,
             ++actionSequence, Environment.TickCount64 * 1000, displayed.Scope,
             authority.SnapshotSequence, Origin: origin) { PinnedLayoutId = displayed.PinnedLayoutId };
         try
@@ -56,15 +56,15 @@ internal sealed partial class WidgetViewPresenter
             if (!await AdmitBindingAsync(displayed, cancellationToken)) return true;
             if (displayed.Selection is { } selection && displayed.Projection is { } projection)
                 return await session.SendPinnedControllerInputAsync(selection, projection, input, cancellationToken);
-            if (DispatchActionAsync is not null && session.ResolveEmbeddedMediaFullscreenInput(displayed.Frame, input) is { } hostAction)
+            if (DispatchActionAsync is not null && session.ResolveEmbeddedMediaHostInput(displayed.Frame, input) is { } hostAction)
             { await DispatchActionAsync(new(displayed.Frame, hostAction)); return true; }
             return await session.SendControllerInputAsync(displayed.Frame, input, cancellationToken);
         }
         // A newer publication can retire the displayed input while it crosses IPC.
         // Drop it rather than replaying it against a different scope or game.
         catch (WidgetPresentationSessionException error) when
-            (IsRetiredInput(error)) { return true; }
+            (IsRetiredInput(error)) { session.RequestInputRefresh(displayed.Frame); return true; }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || disposed) { return true; }
-        catch (Exception error) { ReportFailure(error); return false; }
+        catch (Exception error) { ReportFailure(error, IsBindingCurrent(displayed)); return true; }
     }
 }

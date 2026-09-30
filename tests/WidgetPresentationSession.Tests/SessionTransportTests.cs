@@ -7,7 +7,7 @@ using WidgetRail.WidgetSdk;
 namespace WidgetRail.WidgetPresentationSession.Tests;
 
 [TestClass]
-public sealed class SessionTransportTests
+public sealed partial class SessionTransportTests
 {
     [TestMethod]
     public async Task InvalidationBeforeFirstSnapshotRefreshesAfterEstablishment()
@@ -862,7 +862,8 @@ public sealed class SessionTransportTests
         long requestId,
         BridgeWidgetDescriptor descriptor,
         long sequence,
-        string activeInputScopeId = "root")
+        string activeInputScopeId = "root",
+        BridgeWorkerRun? workerRun = null)
     {
         var snapshot = new ViewSnapshot
         {
@@ -882,6 +883,7 @@ public sealed class SessionTransportTests
                 transactionKind = "ordinaryCheckpoint",
                 baseSequence = 0,
                 recoveryOriginSequence = 0,
+                workerRun,
                 snapshot = document.RootElement.Clone(),
                 renderStyles = new Dictionary<string, BridgeNodeRenderStyles>(),
             }),

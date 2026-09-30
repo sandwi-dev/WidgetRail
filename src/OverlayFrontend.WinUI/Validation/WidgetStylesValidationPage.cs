@@ -40,8 +40,34 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        await AuthoringAdmissionAsync();
+        if (Environment.GetCommandLineArgs().Contains("--artwork-fit-only"))
+        { await NativeArtworkFitAsync(); return; }
+        if (Environment.GetCommandLineArgs().Contains("--flow-layout-only"))
+        { await FlowSpacingAndJustificationAsync(); return; }
+        if (Environment.GetCommandLineArgs().Contains("--explicit-grid-only"))
+        { await ExplicitGridAsync(); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--youtube-slider-fixture") is { } youtubeSlider)
+        { await YouTubeSliderSpacingAsync(youtubeSlider); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--content-sizing-result") is { } sizingResult)
+        {
+            Exception? failure = null;
+            try { await ContentSizingAsync(); }
+            catch (Exception error) { failure = error; throw; }
+            finally { System.IO.File.WriteAllText(sizingResult, System.Text.Json.JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() })); }
+            return;
+        }
+        if (Environment.GetCommandLineArgs().Contains("--context-indicator-only"))
+        { await NativeContextIndicatorAsync(); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--media-layout-fixtures") is { } mediaFixtures)
+        { await NativeMediaLayoutsAsync(mediaFixtures); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--spotify-busy-fixtures") is { } spotifyFixtures)
+        { await NativeSpotifyBusyAsync(spotifyFixtures); return; }
         if (Environment.GetCommandLineArgs().Contains("--artwork-only")) { await NativeArtworkAsync(); return; }
+        await ExplicitGridAsync();
+        await NativeToolTipsAsync();
         WidgetViewPresenter.SetHighContrastStyleOverride(false);
+        await FocusAndSelectionThemesAsync();
         var styles = Styles();
         Apply(styles);
         await Wait(() => Find<Button>("Widget.button") is not null);
@@ -114,6 +140,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         Check(Find<Button>("Widget.button") is null && NativeComputedStyleAdapter.For(retired) is null,
             "removed controls retire their shared style owner");
         await ResponsiveAndPostersAsync();
+        await NativeScrollThemeAsync();
         await NativeGridMeasureAsync();
         await NativeScaleAsync();
         await LoadingIndicatorGeometryAsync();
@@ -126,7 +153,13 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         await NativeDepthAsync();
         await NativeTypographyAsync();
         await NativeAppearancePublicationAsync();
+        await NativeBusyFocusAsync();
+        await NativeScrollFocusAsync();
+        await NativeWidgetRevealAsync();
+        await NativeTrayContentAsync();
+        await NativeStyleParityAsync();
         await NativeArtworkAsync();
+        await PosterArtworkRevealAsync();
         if (App.ValidationFixturePath is { } fixture) await PlayniteProductionLayoutAsync(fixture);
     }
 
@@ -186,9 +219,9 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         if (includeButton) children.Add(new() { Id = "button", Kind = ViewNodeKind.Button, Text = "Native styled button", ActionId = "activate" });
         presenter.Apply(CreateFrame(new() { Id = "root", Kind = ViewNodeKind.Stack, Children = children }, styles));
     }
-    private WidgetPresentationFrame CreateFrame(ViewNode root, IReadOnlyDictionary<string, BridgeNodeRenderStyles> styles)
+    private WidgetPresentationFrame CreateFrame(ViewNode root, IReadOnlyDictionary<string, BridgeNodeRenderStyles> styles, string? scope = null)
     {
-        var snapshot = new ViewSnapshot { WidgetInstanceId = "styles.instance", Sequence = ++sequence, ActiveInputScopeId = root.Id, Root = root };
+        var snapshot = new ViewSnapshot { WidgetInstanceId = "styles.instance", Sequence = ++sequence, ActiveInputScopeId = scope ?? root.Id, Root = root };
         var errors = ViewSnapshotValidator.Validate(snapshot);
         if (errors.Count > 0) throw new InvalidOperationException(string.Join("; ", errors));
         var descriptor = new BridgeWidgetDescriptor { Id = "styles", Name = "Styles", InstanceId = snapshot.WidgetInstanceId,
@@ -211,14 +244,19 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
     {
         var result = WrssThemeCompiler.Compile(new[] { WrssParser.Parse(css, "native-style-check.wrss").Document });
         var theme = result.Theme ?? throw new InvalidOperationException("Style fixture failed compilation.");
+        return Compute(theme, id, role, []);
+    }
+    private static BridgeNodeRenderStyles Compute(WrssTheme theme, string id, string role, string[] classes,
+        params WrssPseudoState[] persistent)
+    {
         IReadOnlyDictionary<string, BridgeComputedStyleValue> Resolve(params WrssPseudoState[] states) =>
-            theme.Resolve(new(role, id, new HashSet<string>(), states.ToHashSet())).Properties.ToDictionary(pair => pair.Key,
+            theme.Resolve(new(role, id, classes.ToHashSet(), persistent.Concat(states).ToHashSet())).Properties.ToDictionary(pair => pair.Key,
                 pair => new BridgeComputedStyleValue { Kind = pair.Value.Kind, Text = pair.Value.Text, Number = pair.Value.Number, Unit = pair.Value.Unit });
         return new() { Base = Resolve(), Focused = Resolve(WrssPseudoState.Focused), Pressed = Resolve(WrssPseudoState.Focused, WrssPseudoState.Pressed) };
     }
-    private T? Find<T>(string id) where T : FrameworkElement
+    private T? Find<T>(string id, DependencyObject? root = null) where T : FrameworkElement
     {
-        var pending = new Stack<DependencyObject>(); pending.Push(presenter);
+        var pending = new Stack<DependencyObject>(); pending.Push(root ?? presenter);
         while (pending.TryPop(out var node))
         {
             if (node is T element && AutomationProperties.GetAutomationId(element) == id) return element;

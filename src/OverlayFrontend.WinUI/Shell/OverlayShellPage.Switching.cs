@@ -18,6 +18,12 @@ internal sealed partial class OverlayShellPage
     private async Task SelectAsync(string id, bool enterWidget = true)
     {
         if (retired || owner is null) return;
+        // Closing focused switcher chrome can synchronously give XAML focus to
+        // the preview's first control. Capture/revoke before that happens so a
+        // native fallback cannot replace the widget's remembered user target.
+        switching = true;
+        surface?.SetPresentationInputEnabled(false);
+        surface?.SetAutomaticFocusEnabled(false);
         ResetTrayInteraction();
         ClearTrayFocus();
         interactionAdmission.Invalidate();
@@ -30,12 +36,10 @@ internal sealed partial class OverlayShellPage
         var inputPublished = false;
         requestedWidget = id;
         var version = ++selectionVersion;
+        BeginOpening(version, id);
         preparationFailure = null;
-        switching = true;
         interactive = enterWidget;
         UpdateTrayHelp();
-        surface?.SetAutomaticFocusEnabled(false);
-        surface?.SetPresentationInputEnabled(false);
         surface?.ResetPressedStyles();
         surface?.DismissTransientControl();
         ReconcileMediaHostState();
@@ -60,9 +64,12 @@ internal sealed partial class OverlayShellPage
                 try
                 {
                     Mark("preparing");
-                    var next = await owner.Session.EstablishPresentationAsync(owner.Session.GetTarget(id), LifecycleFor(id), token);
-                    token.ThrowIfCancellationRequested();
-                    ApplyWidgetSurfaceFrame(incoming, next);
+                    // Prepare the declaration for the destination input mode.
+                    // Host input remains revoked until commit; preparing as
+                    // Visible first exposes disabled preview rows to entry focus.
+                    var preparedLifecycle = interactive && foreground && !PinnedInteractionRequested
+                        ? WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive : LifecycleFor(id);
+                    await EstablishWidgetPresentationAsync(incoming, preparedLifecycle, token);
                     SizePreparingSurface(incoming);
                     incoming.Presenter.Opacity = ReferenceEquals(surface, incoming.Presenter) ? 1 : 0;
                     incoming.Presenter.Visibility = Visibility.Visible;
@@ -74,8 +81,14 @@ internal sealed partial class OverlayShellPage
                         InteractionOwner(incoming.Presenter, incoming.Frame!.Authority),
                         () => version == selectionVersion && !retired && visible && foreground && interactive &&
                             !PinnedInteractionRequested && !RadialOpen,
-                        cancellationToken => owner.Session.SetLifecycleAsync(owner.Session.GetTarget(id),
-                            WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive, cancellationToken), token);
+                        async cancellationToken =>
+                        {
+                            if (preparedLifecycle == WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive) return;
+                            // A lifecycle acknowledgement does not publish its UI.
+                            // Restore focus only against the Interactive declaration;
+                            // Visible-state rows may still be disabled in the preview.
+                            await EstablishWidgetPresentationAsync(incoming, WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive, cancellationToken);
+                        }, token);
                     // Lifecycle callbacks can publish a newer declaration. Its
                     // final native layout must still precede visible publication.
                     await WidgetPresentationReadiness.WaitAsync(incoming.Presenter, token);
@@ -83,7 +96,14 @@ internal sealed partial class OverlayShellPage
                     Mark("layout-ready");
                     // No await inside this publication: identity, extent, background,
                     // native content and authority change in one dispatcher operation.
+                    var previousSize = previous?.Presenter.PresentedWidgetSize;
+                    previous?.Presenter.SettleWidgetResize();
+                    // Freeze loading chrome in its presented position before
+                    // the incoming extent changes. Its fade does not gate input.
+                    openingIndicator?.Complete(version);
                     CommitPreparedSurface(incoming);
+                    if (previousId != id && previousSize is { X: > 0, Y: > 0 } extent)
+                        incoming.Presenter.ResizeWidgetContent(extent, WidgetSurface);
                     Mark("committed");
                     ShowPresentationStatus(incoming.Descriptor.Name);
                     Tray.SelectedItem = Tray.Items.Cast<BridgeWidgetDescriptor>().FirstOrDefault(widget => widget.Id == id);
@@ -145,6 +165,7 @@ internal sealed partial class OverlayShellPage
             if (ReferenceEquals(switchCancellation, cancellation)) switchCancellation = null;
             if (version == selectionVersion)
             {
+                openingIndicator?.Complete(version);
                 switching = false;
                 // Cleanup completion cannot re-enter or reset a page the user
                 // has already started navigating (or deliberately left).
@@ -163,13 +184,20 @@ internal sealed partial class OverlayShellPage
             if (MainFocusEnabled && activeWidget == requestedWidget) surface?.Enter(restoreNativeFocus: true);
             else if (visible && !enterWidget && activeWidget == requestedWidget) FocusTray();
             ReconcileMediaHostState();
+            UpdateTrayHelp();
         }
-        void Mark(string phase) => switchDiagnostics?.Write(new System.Text.Json.Nodes.JsonObject
+        void Mark(string phase)
         {
-            ["phase"] = phase, ["version"] = version, ["requested"] = id, ["displayed"] = activeWidget,
-            ["elapsedMilliseconds"] = Stopwatch.GetElapsedTime(started).TotalMilliseconds,
-            ["monotonicTimestamp"] = Stopwatch.GetTimestamp(),
-        }.ToJsonString());
+            if (version == selectionVersion)
+                Diagnostics.FrontendFailureLog.Current.SetContext(
+                    $"phase={phase} selection={version} active={activeWidget} requested={id}");
+            switchDiagnostics?.Write(new System.Text.Json.Nodes.JsonObject
+            {
+                ["phase"] = phase, ["version"] = version, ["requested"] = id, ["displayed"] = activeWidget,
+                ["elapsedMilliseconds"] = Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                ["monotonicTimestamp"] = Stopwatch.GetTimestamp(),
+            }.ToJsonString());
+        }
     }
 
     private void CommitPreparedSurface(RetainedWidgetSurface incoming)
@@ -197,17 +225,15 @@ internal sealed partial class OverlayShellPage
         var extent = OverlaySurfaceSizing.Resolve(incoming.Frame.Snapshot.Surface, available, new(0, 0), Appearance.TextScale,
             constraint =>
             {
-                presenter.Width = presenter.Height = double.NaN;
-                presenter.Measure(new(constraint.Width, constraint.Height));
-                var result = new SurfaceExtent(presenter.DesiredSize.Width, presenter.DesiredSize.Height);
-                presenter.InvalidateMeasure();
-                return result;
+                var measured = presenter.MeasureSurfaceContent(new(constraint.Width, constraint.Height), incoming.Frame.Snapshot.Surface);
+                return new(measured.Width, measured.Height);
             });
         ConfigurePresenterExtent(presenter, extent);
     }
 
     private void ConfigurePresenterExtent(WidgetViewPresenter presenter, SurfaceExtent extent)
     {
+        presenter.SetSurfaceCornerRadius(OverlaySurfacePaint.CornerRadius(ShellPalette));
         presenter.Width = extent.Width;
         presenter.Height = extent.Height;
         presenter.VerticalAlignment = VerticalAlignment.Bottom;

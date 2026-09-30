@@ -265,7 +265,7 @@ public sealed partial class WidgetPresentationSession
     {
         cancellationToken.ThrowIfCancellationRequested();
         var exchange = RequestAsync(BridgeMessageTypes.ControllerInput,
-            new BridgeControllerInputRequest(origin.Authority.WidgetId, input, origin.Authority.RuntimeGeneration, action, option),
+            new BridgeControllerInputRequest(origin.Authority.WidgetId, input, origin.Authority.RuntimeGeneration, action, option, origin.Authority.WorkerRun),
             BridgeMessageTypes.ControllerInputResult, CancellationToken.None);
         dispatch.Track(exchange);
         var reply = await exchange.WaitAsync(cancellationToken).ConfigureAwait(false);

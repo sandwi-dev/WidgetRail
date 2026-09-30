@@ -40,7 +40,8 @@ internal sealed partial class WidgetViewPresenter
     }
     internal void ResetPressedStyles()
     {
-        adjustingSlider = null;
+        ResetSliderValues();
+        SetSliderAdjustment(null);
         sliderBackPending = false;
         controllerPressedStyle = null;
         foreach (var adapter in nativeStyles.Values) adapter.SetControllerPressed(false);
@@ -62,7 +63,12 @@ internal sealed partial class WidgetViewPresenter
         { previous.Dispose(); nativeStyles.Remove(binding); }
         if (!nativeStyles.TryGetValue(binding, out var adapter))
             nativeStyles.Add(binding, adapter = new(target, node.IsFocusable));
+        adapter.ContextHintButton = WidgetContextIndicator.Resolve(node);
+        adapter.ContextHintAdmitted = () => !disposed && presentationActive && presentationInputEnabled && ContextOwnerAvailable(binding);
+        if (binding.Element is WidgetIndexedCollectionView indexed)
+            indexed.ContextHintAdmitted = adapter.ContextHintAdmitted;
         adapter.SelectionSurface = binding.MotionHost?.SelectionSurface;
+        adapter.RoundedContent = binding.Children as WidgetPosterPanel;
         adapter.DepthSlotsFactory = (binding.Element is Panel or Border or WidgetPresentationSurface || binding.MotionHost?.SelectionSurface is not null) && binding.MotionHost is { } depthHost
             ? depthHost.EnsureDepthSlots : null;
         adapter.TextContent = node.Kind is ViewNodeKind.Button or ViewNodeKind.Select or ViewNodeKind.TextEntry && binding.Element is Button button
@@ -78,6 +84,13 @@ internal sealed partial class WidgetViewPresenter
         if (!nativeStyles.Remove(binding, out var adapter)) return;
         if (ReferenceEquals(controllerPressedStyle, adapter)) controllerPressedStyle = null;
         adapter.Dispose();
+    }
+
+    private void RefreshContextIndicators()
+    {
+        foreach (var adapter in nativeStyles.Values) adapter.RefreshContextIndicator();
+        foreach (var binding in bindings.Values)
+            if (binding.Element is WidgetIndexedCollectionView collection) collection.RefreshContextIndicators();
     }
 
     private void UpdateControllerPressedStyle(ControllerEventPhase phase)
@@ -108,12 +121,30 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         if (next == accessibility) return;
         accessibility = next; EnvironmentChanged?.Invoke();
     }
-    private static double textScale = 1;
+    private static double defaultTextScale = 1;
+    private NativeTextScaleScope? textScaleScope;
+    private double? textScaleOverride;
+    private double textScale => textScaleOverride ?? textScaleScope?.Value ?? defaultTextScale;
+    internal void SetOwnTextScale(double value)
+    {
+        value = NativeTextScaleScope.Normalize(value);
+        if (textScaleOverride == value) return;
+        textScaleOverride = value;
+        Apply();
+    }
+    internal void RefreshTextScale() => Apply();
+    private void BindTextScale(NativeTextScaleScope? next)
+    {
+        if (ReferenceEquals(textScaleScope, next)) return;
+        if (textScaleScope is not null) textScaleScope.Changed -= Queue;
+        textScaleScope = next;
+        if (textScaleScope is not null) textScaleScope.Changed += Queue;
+    }
     internal static void SetTextScale(double value)
     {
         value = double.IsFinite(value) ? Math.Clamp(value, AppearanceSettings.MinimumTextScale, AppearanceSettings.MaximumTextScale) : 1;
-        if (value == textScale) return;
-        textScale = value; EnvironmentChanged?.Invoke();
+        if (value == defaultTextScale) return;
+        defaultTextScale = value; EnvironmentChanged?.Invoke();
     }
     internal static void SetMotionPolicy(AppearanceSettings appearance, bool animationsEnabled)
     {
@@ -124,6 +155,23 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private static int systemHighContrast;
     private static int highContrastOverride = -1;
     private static readonly ConditionalWeakTable<FrameworkElement, NativeComputedStyleAdapter> owners = new();
+    private static readonly ConditionalWeakTable<XamlRoot, RootFocusPresentation> focusRoots = new();
+    private sealed class RootFocusPresentation
+    {
+        internal bool Enabled = true;
+        internal event Action? Changed;
+        internal void SetEnabled(bool enabled)
+        {
+            if (Enabled == enabled) return;
+            Enabled = enabled;
+            Changed?.Invoke();
+        }
+    }
+    // Native focus remains remembered per XamlRoot while another HWND owns
+    // interaction. Only that root's existing/new adapters change presentation;
+    // this weak policy neither moves focus nor disables widget content.
+    internal static void SetRootFocusPresentation(XamlRoot root, bool enabled) =>
+        focusRoots.GetValue(root, static _ => new()).SetEnabled(enabled);
     private static event Action? EnvironmentChanged;
     internal static void SetSystemHighContrast(bool value)
     {
@@ -139,6 +187,12 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private readonly FrameworkElement element;
     private readonly bool interactive;
     private readonly bool selectorInput;
+    private RootFocusPresentation? focusRoot;
+    private WidgetContextIndicator? contextIndicator;
+    internal ControllerButton? ContextHintButton { get; set; }
+    internal Func<bool>? ContextHintAdmitted { get; set; }
+    internal Panel? ContextHintHost { get; set; }
+    internal WidgetContextIndicator? ContextIndicator => contextIndicator;
     internal FrameworkElement Target => element;
     private readonly Dictionary<DependencyProperty, object> originals = [];
     private readonly Dictionary<string, (Color Color, SolidColorBrush Brush)> brushes = new(StringComparer.Ordinal);
@@ -155,9 +209,13 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private WidgetControlScaleMotion? scaleMotion;
     private WidgetFocusDecoration? focusDecoration;
     internal Border? SelectionSurface { get; set; }
+    internal WidgetPosterPanel? RoundedContent { get; set; }
     internal Func<(Grid Shadow, Grid Edges)>? DepthSlotsFactory { get; set; }
     private WidgetNativeDepth? depth;
     private WidgetNativeButtonStates? buttonStates;
+    private WidgetNativeRoundedBorder? roundedBorder;
+    internal bool UsesVectorBorder => roundedBorder?.IsActive == true;
+    private WidgetNativeSelectorPaint? selectorPaint;
     internal WidgetNativeDepth? Depth => depth;
     private static readonly SolidColorBrush transparentSurface = new(Microsoft.UI.Colors.Transparent);
     internal WidgetFocusDecoration? FocusDecoration => focusDecoration;
@@ -184,7 +242,9 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         owners.Add(element, this);
         if (this.interactive) { element.GotFocus += Changed; element.LostFocus += Changed; }
         element.ActualThemeChanged += ThemeChanged;
+        element.SizeChanged += ShapeSizeChanged;
         element.Unloaded += Unloaded;
+        element.Loaded += FocusRootLoaded;
         if (selectorInput)
         {
             element.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(PointerPressed), true);
@@ -196,6 +256,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         }
         if (this.interactive) Watch(Control.FocusStateProperty);
         if (element is Control) Watch(Control.IsEnabledProperty);
+        if (element is Slider) Watch(Control.IsFocusEngagedProperty);
         if (this.interactive && element is ButtonBase) Watch(ButtonBase.IsPressedProperty);
         EnvironmentChanged += Queue;
     }
@@ -209,8 +270,30 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
 
     private void Changed(object sender, RoutedEventArgs args) => Queue();
     private void ThemeChanged(FrameworkElement sender, object args) => Queue();
+    private void ShapeSizeChanged(object sender, SizeChangedEventArgs args)
+    { if (styles?.Base.GetValueOrDefault("shape")?.Text is "circle" or "pill" || styles?.Focused.GetValueOrDefault("shape")?.Text is "circle" or "pill") Queue(); }
+
+    private double? ShapeRadius(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style)
+    {
+        var radius = Number(style, "corner-radius", true);
+        return style?.GetValueOrDefault("shape")?.Text switch
+        {
+            "circle" or "pill" => Math.Min(element.ActualWidth, element.ActualHeight) / 2,
+            "rounded" => Math.Max(8, radius ?? 0),
+            _ => radius,
+        };
+    }
     private void Unloaded(object sender, RoutedEventArgs args)
-    { pointerPressed = keyboardPressed = controllerPressed = false; Apply(); }
+    { pointerPressed = keyboardPressed = controllerPressed = false; Apply(); BindFocusRoot(null); BindTextScale(null); }
+    private void FocusRootLoaded(object sender, RoutedEventArgs args) => Apply();
+    private void BindFocusRoot(XamlRoot? root)
+    {
+        var next = root is null ? null : focusRoots.GetValue(root, static _ => new());
+        if (ReferenceEquals(next, focusRoot)) return;
+        if (focusRoot is not null) focusRoot.Changed -= Apply;
+        focusRoot = next;
+        if (focusRoot is not null) focusRoot.Changed += Apply;
+    }
     private void PointerPressed(object sender, PointerRoutedEventArgs args) { pointerPressed = true; Queue(); }
     private void PointerReleased(object sender, PointerRoutedEventArgs args) { pointerPressed = false; Queue(); }
     private void KeyDown(object sender, KeyRoutedEventArgs args)
@@ -228,14 +311,24 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     {
         if (disposed) return;
         if (!element.DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Apply computed styles on the element dispatcher.");
-        var focused = interactionOverride?.Focused ?? (interactive && element is Control { FocusState: not FocusState.Unfocused });
+        BindTextScale(NativeTextScaleScope.Find(element));
+        BindFocusRoot(element.XamlRoot);
+        var presentFocus = focusRoot?.Enabled != false;
+        if (!presentFocus) { focusDecoration?.Dispose(); focusDecoration = null; }
+        // Restore the authored native-focus policy before creating a custom
+        // decoration, whose owner independently suppresses the native outline.
+        if (element is Control) Put(Control.UseSystemFocusVisualsProperty, presentFocus ? null : false);
+        var focused = presentFocus && (interactionOverride?.Focused ?? (interactive && element is Control { FocusState: not FocusState.Unfocused }));
         var enabled = element is not Control { IsEnabled: false };
         if (!focused || !enabled) controllerPressed = keyboardPressed = false;
-        if (!enabled) pointerPressed = false;
-        var pressed = enabled && (interactionOverride?.Pressed ?? (interactive && (controllerPressed || pointerPressed || keyboardPressed || element is ButtonBase { IsPressed: true })));
+        if (!enabled || !presentFocus) pointerPressed = false;
+        var pressed = presentFocus && enabled && (interactionOverride?.Pressed ?? (interactive && (controllerPressed || pointerPressed || keyboardPressed || element is ButtonBase { IsPressed: true })));
         if (lastInteraction != (focused, pressed))
         { lastInteraction = (focused, pressed); InteractionChanged?.Invoke(focused, pressed); }
         var style = pressed ? styles?.Pressed : focused ? styles?.Focused : styles?.Base;
+        if (typographyOnly && RoundedContent is { } poster)
+            poster.SetContentCornerRadius(ShapeRadius(style) is { } authoredRadius
+                ? new CornerRadius(authoredRadius) : new());
         var systemContrast = Volatile.Read(ref highContrastOverride) is var contrastOverride && (contrastOverride < 0 ? Volatile.Read(ref systemHighContrast) != 0 : contrastOverride != 0);
         var contrast = accessibility.HighContrast(systemContrast);
         var fontSize = Number(style, "font-size", true) is { } font ? Math.Clamp(font, 1, 512) * textScale : (double?)null;
@@ -245,7 +338,6 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             Put(TextBlock.FontSizeProperty, fontSize);
             Put(TextBlock.FontWeightProperty, Weight(style));
             Put(TextBlock.FontFamilyProperty, Family(style));
-            Put(TextBlock.TextAlignmentProperty, Alignment(style));
             Put(TextBlock.CharacterSpacingProperty, CharacterSpacing(style, fontSize ?? text.FontSize));
             if (!typographyOnly) Put(TextBlock.PaddingProperty, Spacing(style, "padding"));
             else Put(TextBlock.PaddingProperty, null);
@@ -264,7 +356,10 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             Put(Control.FontWeightProperty, Weight(style));
             Put(Control.FontFamilyProperty, Family(style));
             Put(Control.CharacterSpacingProperty, CharacterSpacing(style, fontSize ?? control.FontSize));
-            Put(Control.HorizontalContentAlignmentProperty, Alignment(style) switch
+            // A live preview is a graphics viewport, not a text presenter.
+            // Text alignment on its authored placeholder must not center the
+            // empty capture Grid at its zero intrinsic width.
+            Put(Control.HorizontalContentAlignmentProperty, element is Previews.WidgetWindowPreview ? null : Alignment(style) switch
             {
                 TextAlignment.Left => HorizontalAlignment.Left, TextAlignment.Right => HorizontalAlignment.Right,
                 TextAlignment.Center => HorizontalAlignment.Center, _ => (HorizontalAlignment?)null,
@@ -278,13 +373,14 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             textStyle = textTarget is null ? null : new(textTarget);
         }
         if (textTarget is not null)
-            textStyle!.Apply(style, fontSize ?? (element is Control textOwner ? textOwner.FontSize : textTarget.FontSize));
+            textStyle!.Apply(style, fontSize ?? (element is Control textOwner ? textOwner.FontSize : textTarget.FontSize), Alignment(style));
         if (typographyOnly)
         {
             depth?.Dispose(); depth = null;
             focusDecoration?.Dispose(); focusDecoration = null;
             scaleMotion?.Dispose(); scaleMotion = null;
             RestoreSurfaces();
+            if (element is Control) Put(Control.UseSystemFocusVisualsProperty, presentFocus ? null : false);
             return;
         }
         // A collection item has one box owner. Its authored margin surrounds
@@ -299,21 +395,30 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         }
         else { scaleMotion?.Dispose(); scaleMotion = null; }
         var focusStyle = pressed ? styles?.Pressed : styles?.Focused;
-        if (interactive && !contrast && element is Control focusControl &&
+        var engagedSlider = element is Slider { IsFocusEngaged: true };
+        if (presentFocus && interactive && !contrast && !engagedSlider && element is Control focusControl &&
             Number(focusStyle, "outline-width", true) is > 0 and var outlineWidth &&
             focusStyle?.GetValueOrDefault("outline-color") is { } outlineColor && TryColor(outlineColor.Text, out var focusColor))
         {
             focusDecoration ??= WidgetFocusDecoration.Create(focusControl);
-            focusDecoration?.Apply(focusColor, (float)outlineWidth, (float)(Number(focusStyle, "corner-radius", true) ?? 0),
+            focusDecoration?.Apply(focusColor, (float)outlineWidth, (float)(ShapeRadius(focusStyle) ?? 0),
                 (float)(Number(focusStyle, "outline-offset") ?? 0), focused, motionOptions);
         }
         else { focusDecoration?.Dispose(); focusDecoration = null; }
+        if (element is Slider)
+        {
+            // WinUI's engaged slider template moves its focus target onto the
+            // native thumb. Keep that cue in the authored theme; system colors
+            // remain authoritative in high contrast.
+            Put(Control.FocusVisualPrimaryBrushProperty, engagedSlider && !contrast ? Brush(focusStyle, "outline-color", false, false) : null);
+            Put(Control.FocusVisualSecondaryBrushProperty, engagedSlider && !contrast ? transparentSurface : null);
+        }
         var opacity = Number(style, "opacity");
         Put(UIElement.OpacityProperty, accessibility.Opacity(opacity, contrast));
         var background = SurfaceBackground(Brush(style, "background", contrast, true), style, contrast);
         var border = Brush(style, "border-color", contrast, false);
         var padding = Spacing(style, "padding");
-        var radius = Number(style, "corner-radius", true) is { } value ? new CornerRadius(value) : (CornerRadius?)null;
+        var radius = ShapeRadius(style) is { } value ? new CornerRadius(value) : (CornerRadius?)null;
         var thickness = BorderWidth(style);
         var edgeColors = new[] { "border-top-color", "border-right-color", "border-bottom-color", "border-left-color" };
         var hasEdges = !contrast && edgeColors.Any(property => style?.ContainsKey(property) == true);
@@ -365,7 +470,55 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
                 break;
             case Panel: Put(Panel.BackgroundProperty, background); break;
         }
-        if (element is Button or SelectorItem) UpdateButtonResources(background, Brush(style, "color", contrast, false), border);
+        if (RoundedContent is { } rounded)
+            rounded.SetContentCornerRadius(element is Control owner ? owner.CornerRadius : radius ?? new());
+        if (element is SelectorItem selector)
+        {
+            selectorPaint ??= new(selector);
+            selectorPaint.Update(background, Brush(style, "color", contrast, false), border, radius);
+            RestoreResources();
+        }
+        else if (element is Button button)
+        {
+            UpdateButtonResources(background, Brush(style, "color", contrast, false), border);
+            roundedBorder ??= new(button);
+            roundedBorder.Update(border, thickness, radius);
+        }
+        else if (element is Slider)
+        {
+            var foreground = Brush(style, "color", contrast, false);
+            if (foreground is null && background is null) RestoreResources();
+            else
+            {
+                var values = EnsureResources();
+                foreach (var state in new[] { "", "PointerOver", "Pressed", "Disabled" })
+                {
+                    WidgetNativeResource.Set(values, "SliderTrackFill" + state, background);
+                    WidgetNativeResource.Set(values, "SliderTrackValueFill" + state, foreground);
+                    WidgetNativeResource.Set(values, "SliderThumbBackground" + state, foreground);
+                    WidgetNativeResource.Set(values, "SliderThumbBorderBrush" + state, border);
+                }
+                WidgetNativeResource.Set(values, "SliderHeaderForeground", foreground);
+                WidgetNativeResource.Set(values, "SliderTickBarFill", foreground);
+            }
+        }
+        else if (element is ScrollViewer or ListViewBase)
+        {
+            var thumb = Brush(style, "scrollbar-thumb-color", contrast, false);
+            var track = Brush(style, "scrollbar-track-color", contrast, true);
+            var scrollbarWidth = Number(style, "scrollbar-width", true);
+            if (thumb is null && track is null && scrollbarWidth is null) RestoreResources();
+            else WidgetScrollBarResources.Apply(EnsureResources(), thumb, track, scrollbarWidth);
+        }
+        RefreshContextIndicator();
+    }
+
+    internal void RefreshContextIndicator()
+    {
+        if (disposed || element is not Control control) return;
+        var prompt = lastInteraction?.Focused == true && control.IsEnabled && ContextHintAdmitted?.Invoke() == true ? ContextHintButton : null;
+        if (prompt is not null) contextIndicator ??= new(control);
+        contextIndicator?.Update(prompt, ContextHintHost);
     }
 
     private void Put(DependencyProperty property, object? value)
@@ -402,11 +555,12 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
 
     private void RestoreSurfaces()
     {
+        roundedBorder?.Restore();
         // A realized row's native SelectorItem owns its box, padding and opacity.
         // The noninteractive fragment receives typography only on its root.
         foreach (var property in originals.Keys.ToArray())
             if (property != TextBlock.ForegroundProperty && property != TextBlock.FontSizeProperty && property != TextBlock.FontWeightProperty &&
-                property != TextBlock.FontFamilyProperty && property != TextBlock.TextAlignmentProperty && property != TextBlock.CharacterSpacingProperty &&
+                property != TextBlock.FontFamilyProperty && property != TextBlock.CharacterSpacingProperty &&
                 property != Control.ForegroundProperty && property != Control.FontSizeProperty && property != Control.FontWeightProperty && property != Control.FontFamilyProperty &&
                 property != Control.CharacterSpacingProperty) Put(property, null);
         RestoreResources();
@@ -425,6 +579,18 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             }
         }
         if (background is null && foreground is null && border is null) { RestoreResources(); return; }
+        EnsureResources();
+        var prefix = element is GridViewItem ? "GridViewItem" : element is ListViewItem ? "ListViewItem" : "Button";
+        foreach (var (name, brush) in new[] { ("Background", background), ("Foreground", foreground), ("BorderBrush", border) })
+            foreach (var suffix in new[] { "", "PointerOver", "Pressed", "Disabled", "Selected", "SelectedPointerOver", "SelectedPressed" })
+            {
+                var key = prefix + name + suffix;
+                if (brush is null) resources!.Remove(key);
+                else if (!resources!.TryGetValue(key, out var current) || !ReferenceEquals(current, brush)) resources[key] = brush;
+            }
+    }
+    private ResourceDictionary EnsureResources()
+    {
         if (resources is null)
         {
             priorResources = element.Resources;
@@ -434,14 +600,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             element.Resources = resources;
             resources.MergedDictionaries.Add(priorResources);
         }
-        var prefix = element is GridViewItem ? "GridViewItem" : element is ListViewItem ? "ListViewItem" : "Button";
-        foreach (var (name, brush) in new[] { ("Background", background), ("Foreground", foreground), ("BorderBrush", border) })
-            foreach (var suffix in new[] { "", "PointerOver", "Pressed", "Disabled", "Selected", "SelectedPointerOver", "SelectedPressed" })
-            {
-                var key = prefix + name + suffix;
-                if (brush is null) resources.Remove(key);
-                else if (!resources.TryGetValue(key, out var current) || !ReferenceEquals(current, brush)) resources[key] = brush;
-            }
+        return resources;
     }
     private void RestoreResources()
     {
@@ -510,7 +669,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             "end" => element.FlowDirection == FlowDirection.RightToLeft ? TextAlignment.Left : TextAlignment.Right,
             _ => null,
         };
-    private static int? CharacterSpacing(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, double fontSize) =>
+    private int? CharacterSpacing(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, double fontSize) =>
         style?.GetValueOrDefault("letter-spacing") is { Number: { } number } value && double.IsFinite(number) && fontSize > 0
             ? value.Unit switch { "em" => (int)Math.Round(number * 1000), null or "px" => (int)Math.Round(number * textScale * 1000 / fontSize), _ => null } : null;
     private static Thickness? BorderWidth(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style)
@@ -571,15 +730,20 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     public void Dispose()
     {
         if (disposed) return;
+        BindTextScale(null);
+        BindFocusRoot(null);
+        contextIndicator?.Dispose(); contextIndicator = null; ContextHintAdmitted = null; ContextHintHost = null;
         textStyle?.Dispose(); textStyle = null; styledText = null;
         scaleMotion?.Dispose(); scaleMotion = null;
         depth?.Dispose(); depth = null;
         buttonStates?.Restore(); buttonStates = null;
+        roundedBorder?.Restore(); roundedBorder = null;
+        selectorPaint?.Dispose(); selectorPaint = null;
         focusDecoration?.Dispose(); focusDecoration = null;
         foreach (var property in originals.Keys.ToArray()) Put(property, null);
         RestoreResources();
         if (interactive) { element.GotFocus -= Changed; element.LostFocus -= Changed; }
-        element.ActualThemeChanged -= ThemeChanged; element.Unloaded -= Unloaded;
+        element.ActualThemeChanged -= ThemeChanged; element.Unloaded -= Unloaded; element.Loaded -= FocusRootLoaded; element.SizeChanged -= ShapeSizeChanged;
         if (selectorInput)
         {
             element.RemoveHandler(UIElement.PointerPressedEvent, new PointerEventHandler(PointerPressed));

@@ -24,13 +24,14 @@ internal sealed class WidgetFocusDecoration : IDisposable
     private WidgetCompositionMotion? motion;
     private WidgetMotionOptions options;
     private Vector2 size;
+    private float padding;
     private float width;
     private float radius;
     private float offset;
     private bool focused;
     private bool applied;
     private bool disposed;
-    internal bool IsVisible => visual.Opacity > 0;
+    internal bool IsVisible => !disposed && visual.Opacity > 0;
     internal Task<WidgetMotionOutcome>? Playback { get; private set; }
     internal Visual DecorationVisual => visual;
 
@@ -84,18 +85,25 @@ internal sealed class WidgetFocusDecoration : IDisposable
     }
     private bool UpdateGeometry()
     {
+        // Routed events can already have captured this handler when an earlier
+        // Loaded handler withdraws pinned focus presentation and disposes us.
+        if (disposed) return false;
         var next = new Vector2((float)control.ActualWidth, (float)control.ActualHeight);
         if (!control.IsLoaded || next.X <= 0 || next.Y <= 0) return false;
-        var rebuilt = target is null || size != next;
+        var nextPadding = Math.Max(0, offset + width);
+        var rebuilt = target is null || size != next || padding != nextPadding;
         if (rebuilt)
         {
-            RetireTargets(); size = next;
-            visual.Size = viewport.Size = size;
-            target = new(visual, viewport, size);
+            RetireTargets(); size = next; padding = nextPadding;
+            visual.Size = viewport.Size = size + new Vector2(2 * padding);
+            viewport.Offset = new(-padding, -padding, 0);
+            target = new(visual, viewport, visual.Size);
             motion = new(visual.Compositor, control.DispatcherQueue);
         }
-        var inset = Math.Clamp(Math.Max(width / 2, -offset), 0, Math.Min(size.X, size.Y) / 2);
-        geometry.Offset = new(inset);
+        // WRSS offsets locate the inner stroke edge relative to the box. Match
+        // the native renderer's centered path and reserve outside stroke pixels.
+        var inset = Math.Min(-(offset + width / 2), Math.Min(size.X, size.Y) / 2);
+        geometry.Offset = new(padding + inset);
         geometry.Size = Vector2.Max(Vector2.Zero, size - new Vector2(2 * inset));
         geometry.CornerRadius = new(Math.Min(radius, Math.Min(geometry.Size.X, geometry.Size.Y) / 2));
         outline.StrokeThickness = width;
@@ -104,17 +112,18 @@ internal sealed class WidgetFocusDecoration : IDisposable
     private void Loaded(object sender, RoutedEventArgs args)
     { if (UpdateGeometry()) target?.Set(WidgetMotionPose.Identity with { Opacity = focused ? 1 : 0 }); }
     private void Resized(object sender, SizeChangedEventArgs args) => Loaded(sender, args);
-    private void Unloaded(object sender, RoutedEventArgs args) { if (!control.IsLoaded) RetireTargets(); }
+    private void Unloaded(object sender, RoutedEventArgs args) { if (!disposed && !control.IsLoaded) RetireTargets(); }
     private void RetireTargets()
     { motion?.Dispose(); motion = null; target?.Dispose(); target = null; }
     public void Dispose()
     {
         if (disposed) return;
+        disposed = true;
         RetireTargets();
         control.SizeChanged -= Resized; control.Loaded -= Loaded; control.Unloaded -= Unloaded;
         adornment.Dispose();
         control.UseSystemFocusVisuals = nativeFocusVisuals;
         viewport.Children.RemoveAll(); visual.Shapes.Clear();
-        outline.Dispose(); geometry.Dispose(); brush.Dispose(); visual.Dispose(); viewport.Dispose(); disposed = true;
+        outline.Dispose(); geometry.Dispose(); brush.Dispose(); visual.Dispose(); viewport.Dispose();
     }
 }

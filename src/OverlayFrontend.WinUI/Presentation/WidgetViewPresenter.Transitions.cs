@@ -21,11 +21,12 @@ internal sealed partial class WidgetViewPresenter
         internal WidgetCompositionMotion? Motion;
         internal EventHandler<object>? LayoutReady;
     }
-    private sealed record SectionExit(string IncomingId, int Direction, WidgetMotionHost Outgoing);
+    private sealed record SectionExit(string IncomingId, int Direction, WidgetMotionHost Outgoing)
+    { internal WidgetMotionHost? Owner { get; set; } }
     private readonly WidgetMotionGroups motionGroups = new();
     private WidgetMotionStage? motionStage;
     private TransitionCommit? activeTransition;
-    internal int OutgoingTransitionCount => motionStage?.Outgoing.Children.Count ?? 0;
+    internal int OutgoingTransitionCount => activeTransition?.Sections.Count ?? 0;
     internal Task<WidgetMotionOutcome>? TransitionPlayback { get; private set; }
     internal int LastTransitionTargetCount { get; private set; }
     private long transitionStarts;
@@ -85,8 +86,7 @@ internal sealed partial class WidgetViewPresenter
             else if (ReferenceEquals(motionStage!.Current, host)) motionStage.SetCurrent(null);
             host.Margin = new(); host.Width = oldBounds.Width; host.Height = oldBounds.Height;
             host.MinWidth = host.MinHeight = 0; host.MaxWidth = host.MaxHeight = double.PositiveInfinity;
-            Canvas.SetLeft(host, oldBounds.X); Canvas.SetTop(host, oldBounds.Y);
-            motionStage!.Outgoing.Children.Add(host);
+            Canvas.SetLeft(host, 0); Canvas.SetTop(host, 0);
             commit.Sections.Add(new(incoming.Node.Id, change.Direction, host));
         }
         if (commit.Sections.Count > 0 || commit.Layout.Count > 0) activeTransition = commit;
@@ -126,6 +126,15 @@ internal sealed partial class WidgetViewPresenter
     private void StartTransitions(TransitionCommit commit)
     {
         if (!ReferenceEquals(activeTransition, commit)) return;
+        // Retained pixels stay within their incoming declaration's native
+        // ancestors. Hoisting them to the widget root loses modal/scroll clips
+        // and paints old dialog text over the scrim and unrelated controls.
+        foreach (var section in commit.Sections)
+        {
+            var incoming = bindings[section.IncomingId].MotionHost!;
+            section.Owner = incoming;
+            incoming.EnsureOutgoing().Children.Add(section.Outgoing);
+        }
         commit.LayoutReady = (_, _) =>
         {
             if (!ReferenceEquals(activeTransition, commit)) return;
@@ -170,7 +179,7 @@ internal sealed partial class WidgetViewPresenter
             WidgetCompositionTarget Target(WidgetMotionHost host, bool clipped = true, bool selection = false)
             {
                 var size = new Vector2((float)host.ActualWidth, (float)host.ActualHeight);
-                var target = clipped ? WidgetCompositionTarget.ForElement(host.Layer, host, size)
+                var target = clipped ? WidgetCompositionTarget.ForElement(host.Layer, host.Viewport, size)
                     : WidgetCompositionTarget.ForClippedDialog(selection ? host.SurfaceLayer : host.Layer, size);
                 commit.Targets.Add(target); return target;
             }
@@ -190,7 +199,7 @@ internal sealed partial class WidgetViewPresenter
         if (commit.LayoutReady is not null) LayoutUpdated -= commit.LayoutReady;
         commit.Motion?.Dispose();
         foreach (var target in commit.Targets) target.Dispose();
-        foreach (var section in commit.Sections) motionStage?.Outgoing.Children.Remove(section.Outgoing);
+        foreach (var section in commit.Sections) section.Owner?.ClearOutgoing();
         foreach (var binding in commit.Retained) Retire(binding);
     }
 }

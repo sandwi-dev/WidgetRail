@@ -260,7 +260,7 @@ internal sealed partial class BridgeClientRegistry
         lock (_gate)
         {
             owner = FindIndexedOwnerLocked(request.WidgetId, request.InstanceId, request.RuntimeGeneration, request.PresentationGeneration, request.Input.Item.LeaseId)
-                ?? throw new BridgeProtocolException("Indexed input lease is unavailable.");
+                ?? throw new BridgeStaleIndexedInputAuthorityException("Indexed input lease is unavailable.");
             if (owner.Active >= Widget.ActionQueueCapacity)
                 throw new BridgeProtocolException("Indexed input admission is full.");
             owner.Active++;
@@ -274,21 +274,20 @@ internal sealed partial class BridgeClientRegistry
                 IndexedCollectionInputContext currentContext;
                 lock (_gate)
                 {
-                    var current = DemandIndexedOwnerLocked(owner);
-                    DemandInteractionAllowed(registration);
-                    var origin = registration.FindInputOriginSnapshot(request.Context.SnapshotSequence)
-                        ?? throw new BridgeProtocolException("Indexed input origin is unavailable.");
                     var item = owner.Runtime.Lease.Range.Items.SingleOrDefault(item => item.Key == request.Input.Item.ItemKey)
                         ?? throw new BridgeProtocolException("Indexed input item is outside the lease.");
                     var expectedScope = owner.Runtime.Lease.Range.ScopeId;
                     if (request.Context.InputScopeId != expectedScope)
                         throw new BridgeProtocolException("Indexed input scope does not match its data lease.");
-                    var originOwners = IndexedCollectionInputContract.ResolveOwnerPath(origin, owner.Request.Range);
-                    var currentOwners = IndexedCollectionInputContract.ResolveOwnerPath(current, owner.Request.Range);
+                    var current = DemandIndexedInputOwnerLocked(owner);
+                    var origin = registration.FindInputOriginSnapshot(request.Context.SnapshotSequence)
+                        ?? throw new BridgeStaleIndexedInputAuthorityException("Indexed input origin is unavailable.");
+                    var originOwners = ResolveIndexedInputOwners(origin, owner);
+                    var currentOwners = ResolveIndexedInputOwners(current, owner);
                     var originBinding = IndexedCollectionInputContract.Resolve(originOwners, item.Root, request.Input);
                     var currentBinding = IndexedCollectionInputContract.Resolve(currentOwners, item.Root, request.Input);
                     if (originBinding != currentBinding)
-                        throw new BridgeProtocolException("Indexed input binding changed after presentation.");
+                        throw new BridgeStaleIndexedInputAuthorityException("Indexed input binding changed after presentation.");
                     if (currentBinding is null)
                         return null;
                     currentContext = request.Context with
@@ -302,10 +301,6 @@ internal sealed partial class BridgeClientRegistry
             }
             finally { registration.OperationGate.Release(); }
         }
-        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or ProtocolValidationException)
-        {
-            throw new BridgeProtocolException("Indexed input authority changed.");
-        }
         catch (Exception exception) when (IsWidgetRuntimeFailure(exception))
         {
             if (cancellationToken.IsCancellationRequested)
@@ -313,6 +308,32 @@ internal sealed partial class BridgeClientRegistry
             throw new BridgeWidgetRequestException(registration.Configured.Id, ClassifyWidgetRuntimeFailure(exception), exception);
         }
         finally { lock (_gate) EndIndexedOperationLocked(owner); }
+    }
+
+    private ViewSnapshot DemandIndexedInputOwnerLocked(IndexedOwner owner)
+    {
+        // These checks use the broker's retained, already validated lease request.
+        // A retired worker/query or newly hidden widget is expected supersession;
+        // malformed client input and worker protocol failures are not.
+        try
+        {
+            var current = DemandIndexedOwnerLocked(owner);
+            DemandInteractionAllowed(owner.Registration);
+            return current;
+        }
+        catch (Exception exception) when (exception is BridgeProtocolException or ArgumentException)
+        {
+            throw new BridgeStaleIndexedInputAuthorityException("Indexed input lease authority changed.");
+        }
+    }
+
+    private static IReadOnlyList<ViewNode> ResolveIndexedInputOwners(ViewSnapshot snapshot, IndexedOwner owner)
+    {
+        try { return IndexedCollectionInputContract.ResolveOwnerPath(snapshot, owner.Request.Range); }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            throw new BridgeStaleIndexedInputAuthorityException("Indexed input scope is no longer current.");
+        }
     }
 
     internal async Task<WidgetEncodedArtwork?> ResolveIndexedArtworkAsync(BridgeIndexedArtworkRequest request, CancellationToken cancellationToken,

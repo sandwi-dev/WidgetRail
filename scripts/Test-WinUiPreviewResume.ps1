@@ -23,7 +23,7 @@ try {
   Start-Sleep -Milliseconds 100
  }while([DateTime]::UtcNow -lt $deadline)
  if($result){$result|ConvertTo-Json -Depth 10|Set-Content (Join-Path $output 'result.json')}
- if(-not $result -or -not $result.passed -or $result.stage -ne 'PresenterResume' -or $result.checks.Count -ne 11){throw "Preview resume failed: $($result.error); expected 11 completed checks"}
+ if(-not $result -or -not $result.passed -or $result.stage -ne 'PresenterResume' -or $result.checks.Count -ne 13){throw "Preview resume failed: $($result.error); expected 13 completed checks"}
  "Passed $($result.checks.Count) native preview resume checks."
 }finally{
  if(Get-Process -Id $ownedPid -ErrorAction SilentlyContinue){

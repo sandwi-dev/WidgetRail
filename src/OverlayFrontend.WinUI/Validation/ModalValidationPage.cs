@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -80,6 +81,9 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             parentCommand.Execute(null);
             Check(actions.Count == 0, "retained parent command has no modal action authority");
             Check(AutomationProperties.GetIsDialog(panel), "dialog is exposed to automation");
+            var activePeers = AutomationIds(presenter).ToHashSet(StringComparer.Ordinal);
+            Check(activePeers.Contains("Widget.play") && !activePeers.Contains("Widget.game.12"),
+                "native modal automation exposes the dialog without inactive parent controls");
             CheckLocalBounds(panel, "dialog is bounded inside corner-positioned widget");
 
             var modalScroll = (ScrollViewer)Find(modal + ".scroll")!;
@@ -123,6 +127,9 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
             modal = null; Apply();
             Check(presenter.HasClosingModal, "closing retains only a noninteractive dialog visual while publishing the parent");
             await Until(() => FocusedId == "Widget.game.12");
+            var returnedPeers = AutomationIds(presenter).ToHashSet(StringComparer.Ordinal);
+            Check(returnedPeers.Contains("Widget.game.12") && !returnedPeers.Contains("Widget.play"),
+                "native automation restores the parent while excluding the closing dialog");
             Check(ReferenceEquals(parentScroll, Find("parent.scroll")) && Near(parentScroll.VerticalOffset, offset),
                 "closing returns exact parent focus and viewport");
             Check(parentUnloads == 0, "modal opening and closing keep the parent mounted in one native stage");
@@ -216,6 +223,25 @@ internal sealed class ModalValidationPage : Page, IAsyncDisposable
         var location = panel.TransformToVisual(widget).TransformPoint(new(0, 0));
         Check(location.X >= 15 && location.Y >= 15 && location.X + panel.ActualWidth <= widget.ActualWidth - 15 &&
             location.Y + panel.ActualHeight <= widget.ActualHeight - 15, name);
+    }
+    private static IEnumerable<string> AutomationIds(FrameworkElement root)
+    {
+        // A presentation-only ContentControl may have no peer. Find the first
+        // native peers beneath it, then let those peers own descendant exposure.
+        var pending = new Stack<AutomationPeer>(Roots(root));
+        while (pending.TryPop(out var current))
+        {
+            if (current.IsControlElement()) yield return current.GetAutomationId();
+            if (current.GetChildren() is { } children)
+                foreach (var child in children) pending.Push(child);
+        }
+        static IEnumerable<AutomationPeer> Roots(DependencyObject element)
+        {
+            if (element is FrameworkElement framework && FrameworkElementAutomationPeer.CreatePeerForElement(framework) is { } peer)
+            { yield return peer; yield break; }
+            for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); ++index)
+                foreach (var child in Roots(VisualTreeHelper.GetChild(element, index))) yield return child;
+        }
     }
     private static bool Near(double first, double second) => Math.Abs(first - second) < 1;
     private static WidgetModalLayer AncestorLayer(DependencyObject element)

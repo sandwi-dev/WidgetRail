@@ -73,14 +73,29 @@ internal sealed partial class PresentationSurfaceValidationPage
             Check(motion.RetainedImageCount == 1 && motion.IncomingSource is null,
                 "system high contrast suppresses decorative artwork blending");
             WidgetPresentationSurface.SetSystemHighContrast(false);
-            WidgetPresentationSurface.SetMotionAppearance(settings, true);
+            WidgetPresentationSurface.SetMotionAppearance(settings with { WidgetAnimationSpeed = .5 }, true);
             surface.SetArtwork(red, ImageFit.Cover);
             await Until(() => motion.IncomingSource is not null);
-            surface.Width = 300;
-            await Until(() => motion.IncomingSource is null);
-            Check(motion.RetainedImageCount == 1 && ReferenceEquals(surface.ArtworkSource, red),
-                "resizing settles to the latest artwork and retires old geometry");
+            var resizingPlayback = motion.Playback!;
+            var resizingStarts = motion.StartedCount;
             surface.SetArtwork(green, ImageFit.Cover);
+            surface.Width = 300;
+            surface.Height = 180;
+            surface.UpdateLayout();
+            Check(surface.ArtworkMotion.View.ActualWidth == 300 && surface.ArtworkMotion.View.ActualHeight == 180 &&
+                ReferenceEquals(motion.Playback, resizingPlayback) && !resizingPlayback.IsCompleted &&
+                motion.StartedCount == resizingStarts && ReferenceEquals(motion.IncomingSource, red) &&
+                ReferenceEquals(motion.OutgoingSource, last),
+                "native resize rearranges background layers without snapping or restarting their active blend");
+            Check(ReferenceEquals(surface.ArtworkSource, green) && motion.RetainedImageCount == 3,
+                "resize preserves the latest pending artwork without prematurely painting it");
+            Check(await resizingPlayback == WidgetRail.OverlayFrontend.WinUI.Motion.WidgetMotionOutcome.Completed,
+                "resized artwork finishes its original compositor batch normally");
+            await Until(() => motion.StartedCount == resizingStarts + 1 && motion.IncomingSource is null);
+            Check(motion.RetainedImageCount == 1 && ReferenceEquals(surface.ArtworkSource, green) && motion.Failure is null,
+                "pending artwork blends after resize and releases both older decoded images");
+            WidgetPresentationSurface.SetMotionAppearance(settings, true);
+            surface.SetArtwork(blue, ImageFit.Cover);
             await Until(() => motion.IncomingSource is not null);
             panel.Children.Remove(surface);
             await Until(() => !surface.IsLoaded && motion.IncomingSource is null);

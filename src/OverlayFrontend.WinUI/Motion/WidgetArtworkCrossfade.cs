@@ -73,7 +73,6 @@ internal sealed class WidgetArtworkCrossfade : IDisposable
         incomingLayer = new() { Background = incoming };
         View.Children.Add(committedLayer); View.Children.Add(incomingLayer);
         View.Unloaded += Unloaded;
-        View.SizeChanged += Resized;
         PreferencesChanged += EnvironmentChanged;
     }
     internal void SetFit(Stretch value)
@@ -81,6 +80,12 @@ internal sealed class WidgetArtworkCrossfade : IDisposable
         if (disposed || requestedFit == value) return;
         requestedFit = value;
         committed.Stretch = incoming.Stretch = value;
+    }
+    internal void SetAlignment(AlignmentX x, AlignmentY y)
+    {
+        if (disposed) return;
+        committed.AlignmentX = incoming.AlignmentX = x;
+        committed.AlignmentY = incoming.AlignmentY = y;
     }
     internal void SetSource(ImageSource? value, Stretch fit)
     {
@@ -117,16 +122,22 @@ internal sealed class WidgetArtworkCrossfade : IDisposable
         { ShowLatest(); return; }
         incoming.ImageSource = Source;
         incoming.Stretch = requestedFit;
+        // XAML continues arranging both image layers during a content resize.
+        // This recipe changes only opacity, so its captured center is irrelevant
+        // and no size-dependent clip exists. Keep the batch alive on SizeChanged:
+        // settling there would skip the blend and expose a newer pending source.
         var size = new System.Numerics.Vector2((float)View.ActualWidth, (float)View.ActualHeight);
         committedTarget = WidgetCompositionTarget.ForClippedDialog(committedLayer, size);
         incomingTarget = WidgetCompositionTarget.ForClippedDialog(incomingLayer, size);
         motion = new(CompositionTarget.GetCompositorForCurrentThread(), View.DispatcherQueue);
-        var shown = WidgetMotionPose.Identity;
-        var hidden = shown with { Opacity = 0 };
         var duration = Duration(400);
+        var recipe = WidgetMotionPolicy.ArtworkCrossfade(duration);
         var version = ++epoch;
         ++StartedCount;
-        Playback = motion.PlayAsync((WidgetMotionPlayback[])[new(committedTarget, new(shown, hidden, duration)), new(incomingTarget, new(hidden, shown, duration))]);
+        // Keep the previous pixels behind the incoming image until it covers
+        // them. Fading both layers exposes the underlying surface at mid-blend
+        // (two half-opaque images provide only 75 percent combined coverage).
+        Playback = motion.PlayAsync((WidgetMotionPlayback[])[new(committedTarget, recipe.Outgoing), new(incomingTarget, recipe.Incoming)]);
         _ = CompleteAsync(Playback, version);
     }
     private async Task CompleteAsync(Task<WidgetMotionOutcome> playback, long version)
@@ -171,12 +182,11 @@ internal sealed class WidgetArtworkCrossfade : IDisposable
         else View.DispatcherQueue.TryEnqueue(() => { if (!disposed) ShowLatest(); });
     }
     private void Unloaded(object sender, RoutedEventArgs args) { if (!View.IsLoaded) ShowLatest(); }
-    private void Resized(object sender, SizeChangedEventArgs args) { if (motion is not null) ShowLatest(); }
     public void Dispose()
     {
         if (disposed) return;
         disposed = true; PreferencesChanged -= EnvironmentChanged;
-        View.Unloaded -= Unloaded; View.SizeChanged -= Resized;
+        View.Unloaded -= Unloaded;
         CancelSettle(); RetireMotion();
         Source = null; committed.ImageSource = incoming.ImageSource = null;
         View.Children.Clear();

@@ -19,6 +19,9 @@ internal sealed partial class OverlayShellPage
             var palette = await owner.Session.ReadShellStylesAsync(lifetime.Token);
             if (retired || version != paletteVersion) return;
             ShellPalette = palette;
+            var radius = OverlaySurfacePaint.CornerRadius(palette);
+            foreach (var retained in retainedSurfaces.Values) retained.Presenter.SetSurfaceCornerRadius(radius);
+            preparingSurface?.Presenter.SetSurfaceCornerRadius(radius);
             if (pinned is { } current) ApplyPinnedAppearance(current);
             SurfaceAppearanceChanged?.Invoke();
         }

@@ -14,12 +14,16 @@ using PresentationSession = WidgetRail.WidgetPresentationSession.WidgetPresentat
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Real worker refresh barriers exercise activation during retained native row refresh.</summary>
-internal static class IndexedActivationValidation
+internal static partial class IndexedActivationValidation
 {
     internal sealed record Result(string ResultCode, IReadOnlyList<string> Checks, string? Error);
     internal static async Task<Result> RunAsync(WidgetViewPresenter presenter, PresentationSession session, CancellationToken cancellation)
     {
         var checks = new List<string>();
+        var tracePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "diagnostics", "indexed-activation-focus.log");
+        Directory.CreateDirectory(Path.GetDirectoryName(tracePath)!);
+        File.WriteAllText(tracePath, "");
+        presenter.FocusTrace = line => File.AppendAllText(tracePath, line + Environment.NewLine);
         Result result;
         try
         {
@@ -49,6 +53,7 @@ internal static class IndexedActivationValidation
             await Cancelled("expiry", () => Task.Delay(2200, cancellation));
             await Cancelled("changed action", () => Task.CompletedTask, "activation-changed");
             await Cancelled("disabled replacement", () => Task.CompletedTask, "activation-disabled");
+            await VerifyAccessibilityAsync(presenter, session, cancellation, checks);
             result = new("passed", checks, null);
         }
         catch (Exception error) { result = new("failed", checks, error.ToString()); }
@@ -56,6 +61,7 @@ internal static class IndexedActivationValidation
         {
             // Leave no blocked provider operation behind when an assertion fails.
             try { await Send("activation-release"); } catch (Exception) { }
+            presenter.FocusTrace = null;
         }
         var output = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "diagnostics");
         Directory.CreateDirectory(output);

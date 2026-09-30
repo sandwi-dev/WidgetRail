@@ -33,6 +33,7 @@ internal sealed partial class WidgetViewPresenter
         var dialog = new WidgetTextEntryDialog(node, commit => _ = CompleteTextEntryAsync(commit));
         dialog.SetBinding(RequestedThemeProperty, new Microsoft.UI.Xaml.Data.Binding { Source = this, Path = new PropertyPath(nameof(ActualTheme)), Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay });
         dialog.BindRoot(XamlRoot);
+        dialog.ThemeLease = NativePopupTheme.Dialog(dialog, this);
         var popup = new TextEntryPopup(binding, presentation!, node, dialog);
         textEntryPopup = popup;
         NotifyControllerGuideChanged();
@@ -46,7 +47,7 @@ internal sealed partial class WidgetViewPresenter
             if (previous is not null) await previous;
             if (ReferenceEquals(textEntryPopup, popup) && TextEntryIsCurrent(popup)) await popup.Dialog.ShowAsync();
         }
-        catch (Exception) { ReportFailure(new InvalidOperationException("Text entry could not be opened.")); }
+        catch (Exception) { ReportFailure(new InvalidOperationException("Text entry could not be opened."), TextEntryIsCurrent(popup)); }
         finally
         {
             if (ReferenceEquals(textEntryPopup, popup)) textEntryPopup = null;
@@ -85,12 +86,13 @@ internal sealed partial class WidgetViewPresenter
         { CommittedText = popup.Dialog.TakeValue(), FocusedElementId = popup.Owner.Identity.Id };
         DismissTextEntry();
         try { await DispatchCapturedActionAsync(displayed, action); }
+        catch (WidgetPresentationSessionException error) when (IsRetiredInput(error)) { Session?.RequestInputRefresh(displayed.Frame); }
         catch (OperationCanceledException) when (disposed) { }
         catch (Exception)
         {
             // Widget exceptions may echo the committed secret. Do not forward an
             // exception/message/inner exception from the sensitive boundary.
-            ReportFailure(new InvalidOperationException("Text entry commit failed."));
+            ReportFailure(new InvalidOperationException("Text entry commit failed."), IsBindingCurrent(displayed));
         }
     }
 

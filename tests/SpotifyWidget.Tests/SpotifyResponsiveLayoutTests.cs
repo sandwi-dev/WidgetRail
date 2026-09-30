@@ -12,6 +12,8 @@ internal static class SpotifyResponsiveLayoutTests
         var snapshot = SpotifyPresentation.Render(
                 ReadyState(), handles.Compact, handles.UpNext)
             .CreateSnapshot("spotify.responsive-fit", 1);
+        Equal(840d, snapshot.Surface!.PreferredWidth);
+        Equal(580d, snapshot.Surface.PreferredHeight);
 
         Equal(ViewNodeKind.Row, Find(snapshot.Root, "spotify.connected.panes").Kind);
         var player = Find(snapshot.Root, "spotify.card");
@@ -53,6 +55,36 @@ internal static class SpotifyResponsiveLayoutTests
         Equal("0px", bodyStyle.Get("flex-basis")?.Text);
         Equal("1", bodyStyle.Get("flex-grow")?.Text);
         Equal("1", bodyStyle.Get("flex-shrink")?.Text);
+        var compactPin = snapshot.PinnedLayouts.Single(layout => layout.Id == SpotifyPresentation.CompactPinnedLayoutId);
+        Equal(360d, compactPin.Surface.PreferredWidth);
+        Equal(360d, compactPin.Surface.PreferredHeight);
+        Equal(320d, compactPin.Surface.MinimumWidth);
+        Equal(300d, compactPin.Surface.MinimumHeight);
+        Equal(ViewNodeKind.Scroll, Find(compactPin.Root!, "spotify.player.pinned-compact.card").Kind);
+        Equal(ViewNodeKind.Image, Find(compactPin.Root!, "spotify.player.pinned-compact.artwork").Kind);
+        foreach (var playerTree in new[] { snapshot.Root, compactPin.Root! })
+        {
+            var toggle = FindAction(playerTree, "spotify.play-toggle");
+            Equal(string.Empty, toggle.Text);
+            Equal<WidgetGlyph?>(WidgetGlyph.Pause, toggle.Glyph);
+            HasClass(toggle, "wrail-icon-button--primary");
+            HasClass(toggle, "spotify-play");
+        }
+        var toggleStyle = Resolve(theme, "button", "spotify.play-toggle", "spotify-play");
+        Equal("52px", toggleStyle.Get("width")?.Text);
+        Equal("52px", toggleStyle.Get("height")?.Text);
+        foreach (var classes in new[] { new[] { "spotify-text-action" }, new[] { "spotify-page-action", "is-quiet" }, new[] { "wrail-settings-row__action" } })
+        {
+            var actionStyle = Resolve(theme, "button", "spotify.text.action", classes);
+            True(actionStyle.Get("background")?.Text != "transparent" && actionStyle.Get("border-color")?.Text != "transparent",
+                "Spotify text actions need a themed visible button surface and border.");
+            Equal("44px", actionStyle.Get("min-height")?.Text);
+            Equal("14px", actionStyle.Get("font-size")?.Text);
+        }
+        WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Player", snapshot);
+        WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture("Spotify-Compact-Pin", snapshot with
+        { Root = compactPin.Root!, Surface = compactPin.Surface, InitialFocusId = compactPin.InitialFocusId,
+            ActiveInputScopeId = compactPin.ActiveInputScopeId!, PinnedLayouts = [], FocusGroupEntryRequest = null });
         return Task.CompletedTask;
     }
 

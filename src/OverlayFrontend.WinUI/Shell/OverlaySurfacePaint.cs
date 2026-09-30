@@ -10,6 +10,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal static class OverlaySurfacePaint
 {
+    internal static double CornerRadius(IReadOnlyDictionary<string, BridgeNodeRenderStyles>? styles) => Math.Clamp(
+        styles?.GetValueOrDefault("panel")?.Base.GetValueOrDefault("corner-radius")?.Number ?? 18, 0, 256);
     internal static Color Panel(OverlaySurfaceAppearance policy, IReadOnlyDictionary<string, BridgeNodeRenderStyles>? styles)
     {
         if (policy.HighContrast) return new UISettings().GetColorValue(UIColorType.Background);
@@ -30,7 +32,6 @@ internal static class OverlaySurfacePaint
         var color = Panel(policy, styles);
         if (surface.Background is SolidColorBrush brush) brush.Color = color;
         else surface.Background = new SolidColorBrush(color);
-        surface.CornerRadius = new Microsoft.UI.Xaml.CornerRadius(Math.Clamp(
-            styles?.GetValueOrDefault("panel")?.Base.GetValueOrDefault("corner-radius")?.Number ?? 18, 0, 256));
+        surface.CornerRadius = new Microsoft.UI.Xaml.CornerRadius(CornerRadius(styles));
     }
 }

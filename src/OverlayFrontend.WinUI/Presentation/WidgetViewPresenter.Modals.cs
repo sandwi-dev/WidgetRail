@@ -27,7 +27,7 @@ internal sealed partial class WidgetViewPresenter
 
     private bool RejectInactiveFocus(Microsoft.UI.Xaml.Input.GettingFocusEventArgs args)
     {
-        if (!presentationInputEnabled && FindBinding(args.NewFocusedElement) is not null) { args.TryCancel(); return true; }
+        if (!presentationInputEnabled && !restoringRetainedFocusPresentation && FindBinding(args.NewFocusedElement) is not null) { args.TryCancel(); return true; }
         if (applying || frame is null || FindBinding(args.NewFocusedElement) is not { } incoming ||
             incoming.Identity.Scope == activeScope) return false;
         args.TryCancel();

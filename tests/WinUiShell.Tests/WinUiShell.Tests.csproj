@@ -5,7 +5,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\ForegroundDismissalPolicy.cs" Link="ForegroundDismissalPolicy.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\StartupCatalogPolicy.cs" Link="StartupCatalogPolicy.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\HeldActionRepeat.cs" Link="HeldActionRepeat.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Diagnostics\FrontendFailureLog.cs" Link="FrontendFailureLog.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\TextEntryEditing.cs" Link="TextEntryEditing.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\SliderValueState.cs" Link="SliderValueState.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Collections\IndexedItem.cs" Link="IndexedItem.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ProcessProfilePolicy.cs" Link="ProcessProfilePolicy.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\OverlayLaunchConfiguration.cs" Link="OverlayLaunchConfiguration.cs" />
@@ -13,6 +18,8 @@
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Media\EmbeddedMediaTransport.cs" Link="EmbeddedMediaTransport.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\RadialChooserPolicy.cs" Link="RadialChooserPolicy.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ControllerGuideModel.cs" Link="ControllerGuideModel.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ControllerGuideStability.cs" Link="ControllerGuideStability.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ControllerGuidePublication.cs" Link="ControllerGuidePublication.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ShellStatusSnapshot.cs" Link="ShellStatusSnapshot.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ProductionShellGeometry.cs" Link="ProductionShellGeometry.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\WidgetStateHistory.cs" Link="WidgetStateHistory.cs" />
@@ -23,6 +30,7 @@
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ShellPreferences.cs" Link="ShellPreferences.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\TrayHoldGesture.cs" Link="TrayHoldGesture.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\PinnedPlacement.cs" Link="PinnedPlacement.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\PinnedPlacementAdjustment.cs" Link="PinnedPlacementAdjustment.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\PinnedPreferences.cs" Link="PinnedPreferences.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\FrontendArguments.cs" Link="FrontendArguments.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\OverlayShellOptions.cs" Link="OverlayShellOptions.cs" />

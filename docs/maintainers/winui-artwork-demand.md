@@ -25,6 +25,13 @@ An unchanged size and source do not reacquire or decode. Cancellation, suspensio
 source replacement and native disposal prevent late publication. A retained
 ordinary image's next size upgrade uses the latest displayed snapshot authority.
 Indexed and pinned resource resolution keeps its existing lease/selection checks.
+Background and focus-fragment demands also capture the exact indexed source's
+current-authority predicate through final native publication. A retired resolver's
+null or failure is not a current declaration of missing artwork: it must preserve
+the prior pixels until a newly admitted source supplies a result. An authoritative
+missing-image result still clears the source. The native presentation-surface
+fixture exercises a pending source that retires before returning null, followed
+by a genuinely current missing-artwork selection.
 
 Array-backed, value-owned encoded bytes are exposed through a read-only stream;
 they are not copied again by the presenter. The payload remains alive for the
@@ -75,3 +82,26 @@ layout pass. Immediate-target checks at 112.5%/125%, decode upgrading, repeated
 focus/press reuse, replacement and reversal all pass in the combined 206-check
 `retained-accessibility-green-02` run. Both are under `artifacts/winui-shell/`.
 The correction neither forces synchronous layout nor redecodes on focus motion.
+
+## Declared background continuity, 2026-09-29
+
+Background source selection and decoded paint retention have distinct lifetimes.
+Removing a source retires its semantic selection and demand, but a retaining
+background keeps decoded pixels until a replacement is ready. Missing/empty
+artwork cannot erase them. Opting out clears them; surface removal, scope changes,
+enclosing presentation-owner changes and runtime retirement do not inherit them.
+There is no widget-wide last-image cache and no pairing of unrelated removed/added
+surface IDs. Transition recreation can copy decoded paint only for an identical
+surface declaration and ownership chain. Current fit updates still reach decoded
+artwork, without restoring retired request authority.
+
+Playnite Home and Library now declare the same cinematic surface ID under the
+same root. Scoped source memory remains in `PresentationSourceCoordinator`;
+decoded retention belongs to `WidgetPresentationSurface`.
+
+Evidence: `artifacts/winui-shell/scoped-background-20260929/`. The native surface
+fixture passes 43 checks, covering removed sources, missing/delayed images, nested
+boundaries, changed scopes/enclosing owners, runtime replacement, teardown,
+late completions and crossfade lifetime. The state coordinator passes 28 tests;
+Playnite passes 157. Actual Home, Library and details screenshots were captured
+using the isolated candidate and the updated Playnite 0.2.104 package.

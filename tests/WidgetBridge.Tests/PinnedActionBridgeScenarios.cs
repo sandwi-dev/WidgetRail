@@ -43,18 +43,29 @@ internal static class PinnedActionBridgeScenarios
             frame = session.GetState(configured.Id)!.LastGood!;
             projection = session.ResolvePinnedProjection(frame, selection.LayoutId);
             var invalidation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var updated = new TaskCompletionSource<WidgetPresentationFrame>(TaskCreationOptions.RunContinuationsAsynchronously);
             EventHandler<WidgetPresentationInvalidatedEventArgs> handler = (_, _) => invalidation.TrySetResult();
+            EventHandler<WidgetPresentationChangedEventArgs> changed = (_, args) =>
+            {
+                if (args.State.WidgetId == configured.Id && args.State.LastGood is { } next &&
+                    next.Snapshot.Root.Children[0].Children[0].Text == expected)
+                    updated.TrySetResult(next);
+            };
             session.Invalidated += handler;
+            session.PresentationChanged += changed;
             try
             {
                 Check(await session.SendPinnedActionAsync(selection, projection,
                     new(action, source, text is null ? ControllerButton.X : ControllerButton.A, InputScopeId: projection.Snapshot.ActiveInputScopeId)
                         { FocusedElementId = source == "menu-owner" ? "entry" : source, CommittedText = text }, cancellationToken: deadline.Token), "Pinned action was not admitted.");
                 await invalidation.Task.WaitAsync(TimeSpan.FromSeconds(3));
-                frame = await session.RefreshAsync(frame.Authority, deadline.Token);
+                // The session already refreshes invalidations. Its publication
+                // may beat this continuation and retire our pre-action frame;
+                // observe that actual result instead of refreshing stale authority.
+                frame = await updated.Task.WaitAsync(TimeSpan.FromSeconds(3));
                 Check(frame.Snapshot.Root.Children[0].Children[0].Text == expected, "Pinned action was misrouted or lost its text.");
             }
-            finally { session.Invalidated -= handler; }
+            finally { session.Invalidated -= handler; session.PresentationChanged -= changed; }
         }
     }
 

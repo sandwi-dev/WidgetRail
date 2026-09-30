@@ -83,8 +83,11 @@ and the next queued song is prepared in advance. Uncached selections can still t
 several seconds. URLs expire—often after about six hours—or can be rejected earlier;
 the player then resolves a fresh URL.
 
-**A song does not start.** Select it again to resolve a fresh stream. If your library
-also fails to load, reconnect in Settings. YouTube changes can require a widget update.
+**A song does not start.** Playback refreshes its stream once, then skips an
+unavailable song with a header status notice. Three consecutive unavailable songs
+stop playback instead of draining the queue; Play or another selection retries.
+If your library also fails to load, reconnect in Settings. YouTube changes can
+require a widget update.
 
 **Sign-in does not open.** Install Edge or Chrome. The widget uses a separate temporary
 profile and does not inspect your existing browser profile.

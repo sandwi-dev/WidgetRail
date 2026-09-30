@@ -56,6 +56,9 @@ try {
     Key F4
     $burst=Until '06-burst' {param($v) $v.navigation -ne 'pending'} 12
     Check 'batched controller frames coalesce without losing logical movement' ($burst.navigation.StartsWith('last:60;') -and $burst.focus -eq 'Widget.items.Item.60')
+    Ui @('invoke','IndexedWidget.ScrollFocusProbe') | Out-Null
+    $scrollFocus=Until '06-free-scroll-focus' {param($v) $v.scrollFocus -match '^(passed|failed):'} 12
+    Check 'right-stick release resumes navigation on visible realized rows without viewport rewind' ($scrollFocus.scrollFocus -eq 'passed:3')
     Key F3
     $superseded=Observe '06-superseded'
     Check 'leaving the collection cancels pending focus without stealing it back' ($superseded.focus -eq 'Widget.parent')
@@ -67,7 +70,7 @@ try {
     Check 'grid controller navigation retains the column across native realization' ($gridNavigation.navigation -eq ('last:'+[Math]::Min(99,12*$grid.columns)+';stalled:0'))
     Key F2
     $entry=Until '09-logical-focus' {param($v) $v.logicalFocus -ne 'pending'} 20
-    Check 'logical entry verifies keys and preserves one-shot focus lifecycle' ($entry.logicalFocus -eq 'passed:12')
+    Check 'logical entry verifies keys and preserves one-shot focus lifecycle' ($entry.logicalFocus -eq 'passed:22')
     Ui @('invoke','Widget.groups') | Out-Null
     $grouped=Until '10-grouped' {param($v) $v.groupCount -eq 4 -and $v.control -eq 'GridView'}
     Ui @('wait-for','Widget.items.Item.0','-p','Name','--value','Item 0','-t','5000') | Out-Null

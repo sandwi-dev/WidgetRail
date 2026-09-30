@@ -1,5 +1,13 @@
 # Scrolling and paged collections
 
+On the WinUI migration branch, use the indexed/discovered source APIs described
+in [WinUI authoring](winui-authoring.md#a-virtualized-list) and
+[indexed collections](../developers/indexed-collections.md). The cursor-window
+presentation, eager collection-layout overloads and near-edge pagination below
+describe the original frontend; WinUI does not accept those UI declarations.
+Provider-side resource helpers can still supply data to an indexed/discovered
+source. Ordinary small static scroll content remains supported.
+
 A scroll container describes the visible area of a list. A collection resource
 owns loading, errors and the items available to render. Choose the resource
 according to both the provider's API and how people will browse the list.

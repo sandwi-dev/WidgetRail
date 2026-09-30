@@ -104,3 +104,14 @@ fullscreen and popup captures were inspected: media is visible and the dropdown
 draws above it. All 101 behavior checks also pass. Evidence:
 `artifacts/winui-shell/media-readonly-capture-01/`. This resolves this capture gate;
 it does not replace motion, device-loss or wider media qualification.
+
+## Continued implementation build gate, 2026-09-29
+
+The current migration tree again publishes trimmed/ReadyToRun Release with the
+bundled WinUI analyzers and detailed linker warnings enabled, without suppressions
+or warnings/errors. Debug validation code also compiles analyzer-clean in an
+isolated output directory while the prior physical candidate remains running.
+Evidence: artifacts/winui-shell/native-continuation-20260929/{release01,debug-isolated01}.binlog.
+This is build qualification only: no package registration or installer change was
+performed, and the new native surface/collection regressions await the exclusive
+frontend slot.

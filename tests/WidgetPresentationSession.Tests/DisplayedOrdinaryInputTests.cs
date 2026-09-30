@@ -9,6 +9,124 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 [TestClass]
 public sealed class DisplayedOrdinaryInputTests
 {
+    [TestMethod]
+    public async Task MalformedInputIsNotReportedAsRecoverableSnapshotRetirement()
+    {
+        await Run(_ => Task.CompletedTask, async (session, displayed) =>
+        {
+            foreach (var input in new[] { Input with { Sequence = -1 }, Input with { Button = (ControllerButton)999 },
+                         Input with { RequestedValue = double.NaN }, Input with { Origin = (ControllerInputOrigin)999 } })
+                await Assert.ThrowsAsync<BridgeProtocolException>(() => session.SendControllerInputAsync(displayed, input));
+            foreach (var action in new[] { Action with { Sequence = -1 }, Action with { RequestedValue = double.PositiveInfinity },
+                         Action with { Phase = (ControllerEventPhase)999 }, Action with { CommittedText = "invalid\ntext" } })
+                await Assert.ThrowsAsync<BridgeProtocolException>(() => session.SendActionAsync(displayed, action));
+            await Assert.ThrowsAsync<BridgeProtocolException>(() => session.SendDashboardInputAsync(displayed,
+                Input with { Context = ControllerInputContext.DashboardQuickAction, Sequence = -1 }));
+        });
+    }
+
+    [TestMethod]
+    [DataRow(false)][DataRow(true)]
+    public async Task DashboardBindingAllowsCosmeticPublicationButRejectsChangedCommand(bool changed)
+    {
+        var quick = new WidgetQuickAction(ControllerButton.X, "play", "Play");
+        var initial = Snapshot(1) with { QuickActions = [quick] };
+        await Run(async channel =>
+        {
+            var refresh = await Read(channel);
+            await ReplySnapshot(channel, refresh.RequestId, Snapshot(2) with
+                { QuickActions = [quick with { Label = "New label", ActionId = changed ? "different" : "play" }] });
+            if (changed) return;
+            var request = await Read(channel);
+            Assert.AreEqual(BridgeMessageTypes.ControllerInput, request.Type);
+            Assert.AreEqual(1L, request.Payload.GetProperty("input").GetProperty("snapshotSequence").GetInt64());
+            await Reply(channel, request.RequestId, BridgeMessageTypes.ControllerInputResult, new { handled = true });
+        }, async (session, displayed) =>
+        {
+            await session.RefreshAsync(displayed.Authority);
+            var input = Input with { Button = ControllerButton.X, Context = ControllerInputContext.DashboardQuickAction, FocusedElementId = null };
+            if (changed) await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.SendDashboardInputAsync(displayed, input));
+            else Assert.IsTrue(await session.SendDashboardInputAsync(displayed, input));
+        }, initial);
+    }
+
+    [TestMethod]
+    public async Task StaleInputRecoveryCoalescesAndNeverReplaysAction()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Run(async channel =>
+        {
+            var request = await Read(channel);
+            Assert.AreEqual(BridgeMessageTypes.GetSnapshot, request.Type);
+            entered.SetResult();
+            await release.Task.WaitAsync(Limit);
+            await ReplySnapshot(channel, request.RequestId, Snapshot(2));
+            await published.Task.WaitAsync(Limit);
+            // Run's next read expects Stop. Any repeated refresh or action fails it.
+        }, async (session, displayed) =>
+        {
+            session.RequestInputRefresh(displayed);
+            await entered.Task.WaitAsync(Limit);
+            for (var i = 0; i < 20; ++i) session.RequestInputRefresh(displayed);
+            release.SetResult();
+            while (session.GetState("ordinary")?.LastGood?.Authority.SnapshotSequence != 2) await Task.Delay(5);
+            session.RequestInputRefresh(displayed);
+            published.SetResult();
+        });
+    }
+
+    [TestMethod]
+    public async Task ForgedAndReplacedFramesCannotRequestRecovery()
+    {
+        await Run(async channel =>
+        {
+            var request = await Read(channel);
+            await ReplySnapshot(channel, request.RequestId, Snapshot(2));
+        }, async (session, displayed) =>
+        {
+            var current = await session.RefreshAsync(displayed.Authority);
+            session.RequestInputRefresh(current with { }); // Not a session-published frame.
+            session.RequestInputRefresh(displayed with { Authority = displayed.Authority with { SessionGeneration = 999 } });
+        });
+    }
+
+    [TestMethod]
+    public void OnlyTypedStaleInputOutcomesAreRecoverable()
+    {
+        foreach (var code in new[] { "stale_indexed_input_authority", "stale_controller_input_authority", "ordinary_input_stale", "pinned_input_stale" })
+            Assert.IsTrue(WidgetInputFailure.IsStale(new WidgetPresentationSessionException(code, "retired")));
+        foreach (var code in new[] { "request_failed", "worker-runtime-failed", "invalid_request" })
+            Assert.IsFalse(WidgetInputFailure.IsStale(new WidgetPresentationSessionException(code, "failure")));
+        Assert.IsFalse(WidgetInputFailure.IsStale(new InvalidOperationException("widget failure")));
+    }
+
+    [TestMethod]
+    [DataRow("interface.increase@7ffe58769dd8718a11b38b7219df68a4011b4df8ac723b68545c3ce0e70b228a")]
+    [DataRow("interface.decrease@test-monitor")]
+    [DataRow("text.increase@test-monitor")]
+    [DataRow("play:provider/item")]
+    public async Task QualifiedActionNameMatchesDeclaredCommandWithoutIdentifierFiltering(string command)
+    {
+        var node = Button with { ActionId = command };
+        var action = Action with { ActionId = command };
+        await Run(async channel =>
+        {
+            var refresh = await Read(channel); await ReplySnapshot(channel, refresh.RequestId, Snapshot(2, node));
+            var request = await Read(channel);
+            Assert.AreEqual(BridgeMessageTypes.Action, request.Type);
+            Assert.AreEqual(command, request.Payload.GetProperty("action").GetProperty("actionId").GetString());
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { admission = WidgetOperationAdmission.Enqueued });
+        }, async (session, displayed) =>
+        {
+            await session.RefreshAsync(displayed.Authority);
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.SendActionAsync(displayed,
+                action with { ActionId = command + "-other" }));
+            Assert.AreEqual(WidgetOperationAdmission.Enqueued, await session.SendActionAsync(displayed, action));
+        }, Snapshot(1, node));
+    }
+
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(5);
     private static BridgeWidgetDescriptor Descriptor => new() { Id = "ordinary", Name = "Ordinary", InstanceId = "ordinary.instance",
         RuntimeGeneration = new('a', 32), PresentationGeneration = new('b', 32), PackageContentDigest = new('c', 64), Icon = WidgetGlyph.Music };
@@ -44,6 +162,21 @@ public sealed class DisplayedOrdinaryInputTests
             Assert.AreEqual("presentation_stale", actionError.Code);
             Assert.AreEqual("presentation_stale", inputError.Code);
         });
+    }
+
+    [TestMethod]
+    public async Task DashboardInputPreservesItsContextOriginAndRuntimeAuthority()
+    {
+        var dashboard = Input with { Button = ControllerButton.X, Context = ControllerInputContext.DashboardQuickAction,
+            FocusedElementId = null, Origin = ControllerInputOrigin.AccessibilityAutomation };
+        await Run(async channel =>
+        {
+            var request = await Read(channel);
+            Assert.AreEqual(BridgeMessageTypes.ControllerInput, request.Type);
+            Assert.AreEqual(dashboard, request.Payload.GetProperty("input").Deserialize<ControllerInputEvent>(BridgeJson.Options));
+            Assert.AreEqual(Descriptor.RuntimeGeneration, request.Payload.GetProperty("runtimeGeneration").GetString());
+            await Reply(channel, request.RequestId, BridgeMessageTypes.ControllerInputResult, new { handled = true });
+        }, async (session, displayed) => Assert.IsTrue(await session.SendControllerInputAsync(displayed.Authority, dashboard)));
     }
 
 

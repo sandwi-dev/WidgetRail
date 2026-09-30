@@ -14,6 +14,9 @@ internal sealed class WidgetWindowPreview : ContentControl, IDisposable
     private WidgetHostWindowTarget? target;
     private ImageFit fit;
     private double aspectRatio = 16d / 9;
+    internal bool HasRenderer => renderer is not null;
+    internal bool HasTarget => target is not null;
+    internal WindowPreviewSurface? CaptureSurface => surface;
 
     internal WidgetWindowPreview()
     {

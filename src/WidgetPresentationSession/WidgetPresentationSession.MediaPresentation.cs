@@ -19,8 +19,10 @@ public sealed class WidgetMediaPresentation
 public sealed partial class WidgetPresentationSession
 {
     public const string EnterMediaFullscreenAction = "host.embeddedMediaSession.enterFullscreen";
+    public const string ExitMediaWidgetAction = "host.embeddedMediaSession.back";
     private sealed record MediaPresentationEpoch(string Scope);
     private readonly ConditionalWeakTable<WidgetPresentationFrame, MediaPresentationEpoch> _fullscreenOrigins = new();
+    private readonly ConditionalWeakTable<WidgetPresentationFrame, MediaPresentationEpoch> _compactOrigins = new();
 
     private void ReconcileMediaPresentationsLocked(MediaDocumentEpoch document, WidgetPresentationFrame frame)
     {
@@ -32,6 +34,28 @@ public sealed partial class WidgetPresentationSession
             document.Presentations.TryAdd(kind, new(frame.Authority.ActiveInputScopeId));
         if (document.Presentations.TryGetValue(MediaPresentationKind.OverlayFullscreen, out var fullscreen))
             _fullscreenOrigins.GetValue(frame, _ => fullscreen);
+        if (document.Presentations.TryGetValue(MediaPresentationKind.CompactPinned, out var compact))
+            _compactOrigins.GetValue(frame, _ => compact);
+    }
+
+    /// <summary>Admit a host compact-media destination from a genuine displayed
+    /// frame. This is not an authored pinned layout and sends no widget command.
+    /// Native ownership, visibility and interaction are enforced by the frontend.</summary>
+    public WidgetMediaPresentation EnterEmbeddedMediaCompact(WidgetPresentationFrame displayed,
+        WidgetPresentationEmbeddedMediaDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(displayed);
+        ArgumentNullException.ThrowIfNull(document);
+        lock (_gate)
+        {
+            var current = ValidateDisplayedOrdinaryFrameLocked(displayed, displayed.Authority.ActiveInputScopeId);
+            if (!current.Descriptor.PinningSupported || !IsMediaDocumentCurrentLocked(document) ||
+                !SameMediaOwner(document.Authority, current.Authority) ||
+                !((MediaDocumentEpoch)document.Epoch).Presentations.TryGetValue(MediaPresentationKind.CompactPinned, out var epoch) ||
+                !_compactOrigins.TryGetValue(displayed, out var origin) || !ReferenceEquals(origin, epoch))
+                throw RetiredMedia(current.Authority.WidgetId);
+            return new(this, document, epoch, MediaPresentationKind.CompactPinned);
+        }
     }
 
     /// <summary>
@@ -47,16 +71,28 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(document);
         lock (_gate)
         {
-            var current = ValidateDisplayedOrdinaryFrameLocked(displayed, action.InputScopeId);
-            if (action.ActionId != EnterMediaFullscreenAction || action.Phase != ControllerEventPhase.Pressed ||
-                ResolveDisplayedAction(displayed.Snapshot, action) != ResolveDisplayedAction(current.Snapshot, action))
-                throw OrdinaryInputStale("The displayed fullscreen action is unavailable.");
+            var current = ValidateDisplayedMediaActionLocked(displayed, action, EnterMediaFullscreenAction);
             if (!IsMediaDocumentCurrentLocked(document) || !SameMediaOwner(document.Authority, current.Authority) ||
                 !((MediaDocumentEpoch)document.Epoch).Presentations.TryGetValue(MediaPresentationKind.OverlayFullscreen, out var epoch) ||
                 !_fullscreenOrigins.TryGetValue(displayed, out var originEpoch) || !ReferenceEquals(originEpoch, epoch))
                 throw RetiredMedia(current.Authority.WidgetId);
             return new(this, document, epoch, MediaPresentationKind.OverlayFullscreen);
         }
+    }
+
+    public void ValidateEmbeddedMediaBack(WidgetPresentationFrame displayed, WidgetActionEvent action)
+    {
+        ArgumentNullException.ThrowIfNull(displayed); ArgumentNullException.ThrowIfNull(action);
+        lock (_gate) _ = ValidateDisplayedMediaActionLocked(displayed, action, ExitMediaWidgetAction);
+    }
+
+    private WidgetPresentationFrame ValidateDisplayedMediaActionLocked(WidgetPresentationFrame displayed, WidgetActionEvent action, string expected)
+    {
+        var current = ValidateDisplayedOrdinaryFrameLocked(displayed, action.InputScopeId);
+        if (current.Snapshot.EmbeddedMediaSession is null || action.ActionId != expected || action.Phase != ControllerEventPhase.Pressed ||
+            ResolveDisplayedAction(displayed.Snapshot, action) != ResolveDisplayedAction(current.Snapshot, action))
+            throw OrdinaryInputStale("The displayed media action is unavailable.");
+        return current;
     }
 
     /// <summary>
@@ -74,7 +110,7 @@ public sealed partial class WidgetPresentationSession
     }
 
     /// <summary>Resolve a reserved host shortcut with the same displayed/current binding checks as worker input.</summary>
-    public WidgetActionEvent? ResolveEmbeddedMediaFullscreenInput(WidgetPresentationFrame displayed, ControllerInputEvent input)
+    public WidgetActionEvent? ResolveEmbeddedMediaHostInput(WidgetPresentationFrame displayed, ControllerInputEvent input)
     {
         ArgumentNullException.ThrowIfNull(displayed);
         ArgumentNullException.ThrowIfNull(input);
@@ -85,7 +121,7 @@ public sealed partial class WidgetPresentationSession
             var binding = ResolveDisplayedController(displayed.Snapshot, input);
             if (binding != ResolveDisplayedController(current.Snapshot, input))
                 throw OrdinaryInputStale("The displayed controller binding changed.");
-            return binding.ActionId == EnterMediaFullscreenAction && input.Phase == ControllerEventPhase.Pressed
+            return binding.ActionId is EnterMediaFullscreenAction or ExitMediaWidgetAction && input.Phase == ControllerEventPhase.Pressed
                 ? new(binding.ActionId, binding.Owner.Id, input.Button, input.Phase, input.Sequence, input.MonotonicTimestampMicroseconds,
                     InputScopeId: input.ActiveInputScopeId) { FocusedElementId = input.FocusedElementId }
                 : null;

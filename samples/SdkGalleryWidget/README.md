@@ -11,6 +11,8 @@ The five pages cover:
   in-widget rendering, plus theme-tinted focus and disabled-state examples;
 - switches, segmented tabs, `SettingsRow`, `Picker`, nested-B `ActionSheet`, and
   a controller-native `Scrubber`;
+- explicit WinUI-style Grid tracks (Auto, fixed DIPs and weighted star sizing),
+  spanning cells, and live proportion changes with stable control identities;
 - responsive `Tile` action surfaces for media and application content;
 - a visible embedded WebP and a portrait `PosterTile`, each with its own
   focus-associated detail presentation;

@@ -19,11 +19,13 @@ if (args is ["--export-renderer-fixture", var rendererFixturePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Host-selected Settings profile persists real actions and reloads the matching theme manager", HostSelectedSettingsProfile),
     ("Animation controls persist each preset and independent dialog preference", AnimationPreferences),
     ("Package completion produces one themed expiring toast without navigation", SettingsToastScenarios.PackageCompletionUsesToast),
     ("Startup setting preserves focus and gates mutations", StartupSettingsScenarios.Run),
     ("Settings toast replaces feedback expires and retires without taking focus", SettingsToastScenarios.ExpiryAndReplacement),
     ("Controllers page separates input behavior and prerequisite status", ControllerSettingsScenarios.LayoutAndGates),
+    ("Host features hide unsupported controller behaviors and reject stale actions", ControllerSettingsScenarios.HostFeatures),
     ("Controller actions gate enable preserve disable and retry recovery", ControllerSettingsScenarios.ActionsAndRecovery),
     ("Root keeps widget permissions inside Installed Widgets", RootCategories),
     ("Home secondary actions follow the destination cards without stealing focus", HeaderActions),
@@ -113,6 +115,54 @@ foreach (var test in tests)
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
 
+static async Task HostSelectedSettingsProfile()
+{
+    using var temp = new TemporaryDirectory();
+    var activeRoot = Path.Combine(temp.Path, "active profile");
+    var neighbor = Store(Path.Combine(temp.Path, "other profile"));
+    await neighbor.ReplaceAsync(PlatformSettingsDocument.Default with
+    { Appearance = AppearanceSettings.Default with { WidgetAnimationSpeed = 2 } });
+    var store = WidgetRail.FirstPartyWidgets.Settings.Worker.SettingsWorkerProfile.CreateStore(
+        ["--settings-root", activeRoot, "--installed-widget-catalog-root", Path.Combine(temp.Path, "catalog")]);
+    Assert.Equal(Path.GetFullPath(activeRoot), store.Paths.RootDirectory);
+    using var themes = new ThemeManager(new PlatformSettingsStore(new(activeRoot)), new ThemeCatalog(new(activeRoot)));
+    var before = await themes.ReloadAsync();
+    var widget = new SettingsWidget(store: store, diagnostics: new SizingDiagnostics());
+    try
+    {
+        await Activate(widget);
+        await Action(widget, "open.overlay");
+        await Action(widget, "section-animation.paging");
+        await Action(widget, "widget-animation-speed.decrease");
+        await Action(widget, "open.controllers");
+        await Action(widget, "controllers.open-shortcut.toggle");
+        await Action(widget, "controllers.hold-scroll.toggle");
+        var saved = await new PlatformSettingsStore(new(activeRoot)).LoadAsync();
+        Assert.Equal(WidgetSectionAnimation.Paging, saved.Appearance.SectionAnimation);
+        Assert.Equal(0.75d, saved.Appearance.WidgetAnimationSpeed);
+        Assert.Equal(ControllerOpenShortcut.Guide, saved.Controllers.OpenShortcut);
+        Assert.Equal(true, saved.Controllers.HoldDpadToScroll);
+        var refreshed = await themes.ReloadAsync();
+        Assert.True(refreshed.Published && refreshed.Current.Revision > before.Current.Revision,
+            "The host theme manager must publish settings saved by its Settings worker.");
+        Assert.Equal(saved.Appearance.SectionAnimation, refreshed.Current.Appearance.SectionAnimation);
+        Assert.Equal(saved.Appearance.WidgetAnimationSpeed, refreshed.Current.Appearance.WidgetAnimationSpeed);
+        Assert.Equal(2d, (await neighbor.LoadAsync()).Appearance.WidgetAnimationSpeed);
+    }
+    finally { await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None); }
+    foreach (var arguments in new string[][]
+    {
+        ["--settings-root"], ["--settings-root", "--other"], ["--settings-root", "relative-profile"],
+        ["--settings-root", activeRoot, "--settings-root", activeRoot],
+    })
+    {
+        var refused = false;
+        try { WidgetRail.FirstPartyWidgets.Settings.Worker.SettingsWorkerProfile.CreateStore(arguments); }
+        catch (ArgumentException) { refused = true; }
+        Assert.True(refused, "Malformed explicit profiles must not fall back to the user's default profile.");
+    }
+}
+
 static Task RootCategories()
 {
     using var temp = new TemporaryDirectory();
@@ -171,21 +221,34 @@ static async Task LoadingBeforeReady()
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default).AsTask().WaitAsync(TimeSpan.FromSeconds(2));
     await service.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
     var loading = Snapshot(widget);
-    Assert.True(Nodes(loading.Root).Any(node => node.Id == "settings.loading.indicator"), "No loading indicator while dependency was blocked.");
+    Assert.True(!Nodes(loading.Root).Any(node => node.Id == "settings.loading.indicator"), "Home should not wait behind initialization.");
     Assert.Equal("settings-root", loading.ActiveInputScopeId);
-    Assert.True(!Nodes(loading.Root).Any(node => node.Kind == ViewNodeKind.ActionSurface), "Home cards should be replaced while loading.");
+    Assert.True(Nodes(loading.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface && node.IsBusy != true) == 6, "Home categories must remain usable while loading.");
     Assert.True(!Nodes(loading.Root).Any(node => node.Id is "settings.home.subtitle" or "settings.toast"), "Loading home should have neither a subtitle nor a duplicate loading toast.");
     Assert.SequenceEqual(["settings.refresh", "category.reset", "settings.restart", "settings.quit"], Buttons(loading.Root).Select(node => node.Id));
     Assert.True(Buttons(loading.Root).All(node => node.IsBusy == true), "Loading footer actions must remain busy.");
     await Action(widget, "application.quit");
     Assert.Equal(0, service.Requests.Count);
+    await Action(widget, "open.appearance");
+    var section = Snapshot(widget);
+    Assert.True(Nodes(section.Root).Any(node => node.Id == "settings.loading.indicator"), "Unready section needs a local loading state.");
+    Assert.Equal("settings.loading.back", section.InitialFocusId);
+    Assert.True(!Nodes(section.Root).Any(node => node.Kind is ViewNodeKind.Slider or ViewNodeKind.Select), "Unready section must not expose default setting values.");
+    await Action(widget, "back");
+    Assert.Equal("settings-root", Snapshot(widget).ActiveInputScopeId);
+    await Action(widget, "open.controllers");
+    await Action(widget, "controllers.open-shortcut.toggle");
     service.Release.TrySetResult(PlatformDiagnosticsSnapshot.Unavailable());
     await widget.InitializationTask;
+    Assert.Equal(SettingsPage.Controllers, widget.CurrentPage);
+    await Action(widget, "back");
     var ready = Snapshot(widget);
     Assert.Equal("category.appearance", ready.InitialFocusId);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, ready.Surface?.HeightMode);
     Assert.Equal(loading.Surface, ready.Surface);
     Assert.Equal(loading.Root.Id, ready.Root.Id);
+    Assert.Equal(loading.Root.Children[1].Id, ready.Root.Children[1].Id);
+    Assert.Equal(loading.Root.Children[1].Transition, ready.Root.Children[1].Transition);
     Assert.Equal("Settings", Nodes(ready.Root).Single(node => node.Id == "settings.title").Text);
     Assert.True(!Nodes(ready.Root).Any(node => node.Id is "settings.home.subtitle" or "settings.loading.indicator"), "Ready home retained loading content or its removed subtitle.");
     Assert.Valid(loading);

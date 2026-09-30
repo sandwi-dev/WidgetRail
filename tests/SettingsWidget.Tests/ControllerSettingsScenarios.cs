@@ -7,6 +7,53 @@ using WidgetRail.WidgetSdk;
 
 internal static class ControllerSettingsScenarios
 {
+    public static async Task HostFeatures()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "wrail-host-features-" + Guid.NewGuid().ToString("N"));
+        var store = new PlatformSettingsStore(new(root));
+        var service = new ControllerService(store) { Status = new(ControllerControlState.Off, true, true, true) };
+        var startup = new RejectStartupMutation();
+        var widget = new SettingsWidget(store: store, diagnostics: service, hostFeatures: new(false, false, false),
+            startup: startup);
+        try
+        {
+            await widget.InitializeAsync(default);
+            await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
+            await widget.InitializationTask;
+            await widget.OnActionAsync(new("open.controllers", "test"));
+            var snapshot = widget.Render().CreateSnapshot("settings", 1);
+            var json = JsonSerializer.Serialize(snapshot);
+            if (!json.Contains("controllers.open-shortcut") || json.Contains("controllers.hold-scroll") ||
+                json.Contains("controllers.exclusive-control") || json.Contains("HidHide"))
+                throw new Exception("Settings must present only host-supported controller controls.");
+            var errors = ViewSnapshotValidator.Validate(snapshot);
+            if (errors.Count != 0) throw new Exception(string.Join(Environment.NewLine, errors));
+            await widget.OnActionAsync(new("controllers.hold-scroll.toggle", "controllers.hold-scroll"));
+            await widget.OnActionAsync(new("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
+            var saved = await store.LoadAsync();
+            if (saved.Controllers.HoldDpadToScroll || saved.Controllers.ExclusiveControl || service.Requests.Count != 0)
+                throw new Exception("Stale unsupported controller actions must not mutate the profile or call providers.");
+            await widget.OnActionAsync(new("controllers.open-shortcut.toggle", "controllers.open-shortcut"));
+            if ((await store.LoadAsync()).Controllers.OpenShortcut != ControllerOpenShortcut.Guide)
+                throw new Exception("Supported shortcut behavior must remain available.");
+            await widget.OnActionAsync(new("open.overlay", "test"));
+            if (JsonSerializer.Serialize(widget.Render().CreateSnapshot("settings", 2)).Contains("overlay.startup"))
+                throw new Exception("Host-unavailable startup controls must not be exposed.");
+            await widget.OnActionAsync(new("startup.toggle", "overlay.startup"));
+        }
+        finally
+        {
+            await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    private sealed class RejectStartupMutation : IStartupRegistration
+    {
+        public StartupRegistrationStatus Read() => new(false, true, "Available");
+        public StartupRegistrationStatus SetEnabled(bool enabled) => throw new Exception("Unsupported startup action reached system settings.");
+    }
+
     public static async Task ActionsAndRecovery()
     {
         var root = Path.Combine(Path.GetTempPath(), "wrail-controller-settings-" + Guid.NewGuid().ToString("N"));

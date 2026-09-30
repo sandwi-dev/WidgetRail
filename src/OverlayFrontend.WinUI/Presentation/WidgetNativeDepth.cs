@@ -32,6 +32,7 @@ internal sealed class WidgetNativeDepth : IDisposable
     private CompositionVisualSurface? maskSurface;
     private CompositionSurfaceBrush? mask;
     private CompositionGeometricClip? edgeClip;
+    private WidgetRoundedDepthEdges? roundedEdges;
     private readonly List<(SpriteVisual Visual, CompositionColorBrush Brush)> edgeVisuals = [];
     private bool disposed;
     internal DropShadow? NativeShadow => shadow;
@@ -40,6 +41,7 @@ internal sealed class WidgetNativeDepth : IDisposable
     internal bool IsRealized => shadowVisual is not null;
     internal bool UsesOuterMask => outerMask is not null;
     internal float MaskPadding => outerMask?.Padding ?? 0;
+    internal bool UsesRoundedEdges { get; private set; }
     internal static bool HasTemplateSlots(FrameworkElement element) => FindSlots(element) is not null;
 
     internal WidgetNativeDepth(FrameworkElement element, (Grid Shadow, Grid Edges)? suppliedSlots)
@@ -104,12 +106,24 @@ internal sealed class WidgetNativeDepth : IDisposable
         var bottom = Math.Min((float)value.Border.Bottom, size.Y - top);
         var left = Math.Min((float)value.Border.Left, size.X);
         var right = Math.Min((float)value.Border.Right, size.X - left);
+        // Theme depth usually has uniform width but different lighting on each
+        // edge. Follow the rounded perimeter instead of clipping four strips,
+        // which leaves abrupt bright fragments at the ends of a pill.
+        UsesRoundedEdges = value.Radius > 0 && value.Border.Top > 0 &&
+            value.Border == new Thickness(value.Border.Top);
+        if (UsesRoundedEdges) roundedEdges ??= new(edges);
+        roundedEdges?.Update(size, value.Radius, (float)value.Border.Top,
+            value.Top, value.Right, value.Bottom, value.Left, UsesRoundedEdges);
+        // The stroke is already inset and antialiased. A geometric clip at the
+        // same contour would trim its edge coverage a second time.
+        edges.Clip = UsesRoundedEdges ? null : edgeClip;
         Edge(0, Vector2.Zero, new(size.X, top), value.Top);
         Edge(1, new(size.X - right, top), new(right, Math.Max(0, size.Y - top - bottom)), value.Right);
         Edge(2, new(0, size.Y - bottom), new(size.X, bottom), value.Bottom);
         Edge(3, new(0, top), new(left, Math.Max(0, size.Y - top - bottom)), value.Left);
         void Edge(int index, Vector2 offset, Vector2 extent, Color color)
-        { var edge = edgeVisuals[index]; edge.Visual.Offset = new(offset, 0); edge.Visual.Size = extent; edge.Brush.Color = color; }
+        { var edge = edgeVisuals[index]; edge.Visual.IsVisible = !UsesRoundedEdges;
+          edge.Visual.Offset = new(offset, 0); edge.Visual.Size = extent; edge.Brush.Color = color; }
     }
 
     private static (Grid Shadow, Grid Edges)? FindSlots(FrameworkElement element)
@@ -133,6 +147,7 @@ internal sealed class WidgetNativeDepth : IDisposable
         if (shadow is not null) shadow.Mask = null;
         if (maskSurface is not null) maskSurface.SourceVisual = null;
         edges?.Children.RemoveAll(); if (edges is not null) edges.Clip = null;
+        roundedEdges?.Dispose(); roundedEdges = null; UsesRoundedEdges = false;
         foreach (var edge in edgeVisuals) { edge.Visual.Dispose(); edge.Brush.Dispose(); } edgeVisuals.Clear();
         edgeClip?.Dispose(); edgeClip = null; edges?.Dispose(); edges = null;
         maskVisual?.Shapes.Clear(); maskShape?.Dispose(); maskShape = null; maskFill?.Dispose(); maskFill = null;

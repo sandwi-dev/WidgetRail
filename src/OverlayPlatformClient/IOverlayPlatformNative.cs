@@ -13,6 +13,9 @@ public interface IOverlayPlatformNative
     void Destroy(nint handle);
     uint HasGameInput(nint handle);
     uint RequiresLegacyGuidePolling(nint handle);
+    uint ControllerPrerequisites();
+    uint ControllerControlState(nint handle);
+    PlatformStatus SetExclusiveControl(nint handle, uint enabled);
     PlatformStatus SetWindowState(nint handle, uint visible, uint focused);
     PlatformStatus PrepareVisible(nint handle);
     PlatformStatus DrainEvent(nint handle, ulong nowMilliseconds, ref PlatformEvent value, out uint hasEvent);
@@ -26,6 +29,8 @@ public interface IOverlayPlatformNative
     nuint ResolveForegroundTarget(nint handle, nuint fallback, uint rememberedTargetIsValid);
     PlatformStatus ComputePlacement(in PlacementInput input, ref Placement output, out uint hasPlacement);
     NativeShortcutSource NativeShortcutButtons(nint handle, out ushort buttons);
+    PlatformStatus SetViewMenuShortcut(nint handle, uint enabled);
+    PlatformStatus PollViewMenuShortcut(nint handle, out uint pressed, out uint consumed);
 }
 
 /// <summary>

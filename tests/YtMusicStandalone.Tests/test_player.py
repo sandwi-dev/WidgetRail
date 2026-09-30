@@ -24,6 +24,9 @@ data = buffer.getvalue()
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def do_GET(self):
+        if self.path == '/unavailable':
+            self.send_error(502)
+            return
         match = re.fullmatch(r"bytes=(\d+)-(\d*)", self.headers.get("Range", ""))
         start = int(match[1]) if match else 0
         end = min(int(match[2]), len(data) - 1) if match and match[2] else len(data) - 1
@@ -87,12 +90,26 @@ try:
     wait(lambda m: m.get("event") == "state" and m["state"]["playing"])
     send(6, "stop")
     wait(lambda m: m.get("id") == 6)
+    send(7, "load", dict(url=f"http://127.0.0.1:{server.server_port}/unavailable", generation=2,
+                        trackId="unavailable", title="Failure fixture", artist="WidgetRail", volume=0))
+    failure = wait(lambda m: m.get("event") == "playback-failed")
+    assert failure['generation'] == 2 and failure['reason'] in ('network', 'unsupported')
+    time.sleep(.2)
+    while not messages.empty():
+        value = messages.get_nowait()
+        assert value.get('event') != 'playback-failed', 'Duplicate media error/promise rejection'
+        assert not value.get('state', {}).get('error'), 'Raw browser error escaped into UI state'
+    send(8, "load", dict(url=f"http://127.0.0.1:{server.server_port}/fixture.wav", generation=3,
+                        trackId="recovered", title="Recovery fixture", artist="WidgetRail", volume=0))
+    wait(lambda m: m.get('generation') == 3 and m.get('state', {}).get('playing'))
+    send(9, "stop")
+    wait(lambda m: m.get('id') == 9)
     process.stdin.close()
     process.wait(timeout=8)
     assert process.returncode == 0
     cleanup_profile()
     assert not Path(profile.name).exists(), "Player did not release its browser profile handles"
-    print("PASS real player: initialize, muted playback, pause, seek, resume, stop, parent-pipe cleanup")
+    print("PASS real player: initialize, muted playback, pause, seek, resume, stop, single typed failure, recovery, parent-pipe cleanup")
 finally:
     if process.poll() is None: process.kill(); process.wait(timeout=3)
     server.shutdown()

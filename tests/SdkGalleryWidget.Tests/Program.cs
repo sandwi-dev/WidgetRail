@@ -9,6 +9,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Every gallery page publishes a valid responsive component tree", PageCoverage),
     ("Controls preserve stable state and requested scrub values", ControlState),
+    ("Explicit Grid uses native tracks and stable cells across proportion updates", NativeGrid),
     ("Picker and action sheet own nested B scopes", NestedScopes),
     ("Toast feedback adds no focus or action target", ToastDoesNotTakeFocus),
     ("Trusted artwork preserves provider-neutral encoded bytes", TrustedArtwork),
@@ -178,6 +179,43 @@ static async Task PageCoverage()
     Assert.Equal(null, Find(utilities, "gallery.utilities.code").ActionId);
     Assert.Equal(ViewNodeKind.LoadingIndicator, Find(utilities, "gallery.utilities.loading").Kind);
     Assert.Equal(LoadingIndicatorSize.Compact, Find(utilities, "gallery.utilities.loading").IndicatorSize);
+}
+
+static async Task NativeGrid()
+{
+    var widget = new SdkGalleryWidget();
+    await Act(widget, "gallery.tab.controls");
+    var before = Snapshot(widget, 1);
+    var firstGrid = Find(before, "gallery.grid");
+    Assert.Equal(ProtocolConstants.GridLayoutVersion, before.ProtocolVersion);
+    Assert.Equal(ViewNodeKind.Grid, firstGrid.Kind);
+    var layout = firstGrid.GridLayout!;
+    Assert.True(firstGrid.GridMinimumColumnWidth is null && firstGrid.GridMaximumColumns is null);
+    Assert.Equal(3, layout.Rows.Count);
+    Assert.Equal(GridTrackSizing.Auto, layout.Rows[0].Sizing);
+    Assert.Equal(68d, layout.Rows[1].Value);
+    Assert.Equal(GridTrackSizing.Pixel, layout.Columns[0].Sizing);
+    Assert.Equal(96d, layout.Columns[0].Value);
+    Assert.Equal(2d, layout.Columns[1].Value);
+    Assert.Equal(1d, layout.Columns[2].Value);
+    Assert.Equal(8d, layout.RowSpacing);
+    Assert.Equal(8d, layout.ColumnSpacing);
+    Assert.Equal(3, Find(before, "gallery.grid.heading").GridCell!.ColumnSpan);
+    Assert.Equal(1, Find(before, "gallery.grid.first").GridCell!.Row);
+    Assert.Equal(2, Find(before, "gallery.grid.second").GridCell!.Column);
+    await Act(widget, "gallery.grid.swap");
+    var after = Snapshot(widget, 2);
+    var nextGrid = Find(after, "gallery.grid");
+    Assert.Equal(1d, nextGrid.GridLayout!.Columns[1].Value);
+    Assert.Equal(2d, nextGrid.GridLayout.Columns[2].Value);
+    Assert.Equal(2d, layout.Columns[1].Value);
+    Assert.True(firstGrid.Children.Select(child => child.Id).SequenceEqual(nextGrid.Children.Select(child => child.Id)));
+    Assert.Equal(before.InitialFocusId, after.InitialFocusId);
+    Assert.Equal(before.ActiveInputScopeId, after.ActiveInputScopeId);
+    Assert.Equal(Find(before, "gallery.grid.first").GridCell, Find(after, "gallery.grid.first").GridCell);
+    Assert.Equal("1 part", Find(after, "gallery.grid.first").Text);
+    Assert.Equal(0, ViewSnapshotValidator.Validate(SnapshotJson.Deserialize(SnapshotJson.Serialize(after))).Count);
+    await WidgetTestHost.DestroyAsync(widget);
 }
 
 static async Task ControlState()
@@ -577,7 +615,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.22", manifest.Version);
+    Assert.Equal("0.1.24", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);

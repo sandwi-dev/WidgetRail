@@ -451,6 +451,10 @@ public sealed record ViewNode
     /// width; it never treats this value as a physical-pixel measurement.
     /// </summary>
     public double? GridMinimumColumnWidth { get; init; }
+    /// <summary>Explicit native Grid tracks; mutually exclusive with responsive grid columns.</summary>
+    public GridLayoutDefinition? GridLayout { get; init; }
+    /// <summary>Attached placement for a direct child of an explicit Grid.</summary>
+    public GridCellPlacement? GridCell { get; init; }
     /// <summary>
     /// Optional author cap on responsive columns. Omitting it lets the host use
     /// any safe count allowed by the protocol and available width.

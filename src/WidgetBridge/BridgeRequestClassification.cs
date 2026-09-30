@@ -10,6 +10,7 @@ internal enum BridgeRequestKind
     GetPlatformAppearance,
     ControllerControl,
     ApplicationControl,
+    CompleteTaskActivation,
     WindowPreviewPermissions,
     GetSnapshot,
     ReadIndexedRange,
@@ -60,7 +61,7 @@ internal readonly record struct BridgeRequestKey
 
     internal static BridgeRequestKey Global(BridgeRequestKind kind)
     {
-        if (kind is BridgeRequestKind.GetSnapshot or
+        if (kind is BridgeRequestKind.CompleteTaskActivation or BridgeRequestKind.GetSnapshot or
             BridgeRequestKind.ReadIndexedRange or
             BridgeRequestKind.CancelIndexedRange or
             BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or BridgeRequestKind.IndexedInput or
@@ -82,7 +83,7 @@ internal readonly record struct BridgeRequestKey
 
     internal static BridgeRequestKey Widget(BridgeRequestKind kind, string? widgetId)
     {
-        if (kind is not (BridgeRequestKind.GetSnapshot or
+        if (kind is not (BridgeRequestKind.CompleteTaskActivation or BridgeRequestKind.GetSnapshot or
             BridgeRequestKind.ReadIndexedRange or
             BridgeRequestKind.CancelIndexedRange or
             BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or BridgeRequestKind.IndexedInput or
@@ -145,6 +146,7 @@ internal static class BridgeRequestClassifier
         {
             return request.Type switch
             {
+                BridgeMessageTypes.CompleteTaskActivation => TaskActivation(request.Payload),
                 BridgeMessageTypes.ListWidgets => Empty(
                     request.Payload, BridgeRequestKind.ListWidgets),
                 BridgeMessageTypes.GetPlatformAppearance => Appearance(request.Payload),
@@ -253,6 +255,14 @@ internal static class BridgeRequestClassifier
             BridgeJson.FromElement<BridgeDisplayContextRequest>(value).Validate();
         }
         return BridgeRequestKey.Global(BridgeRequestKind.GetPlatformAppearance);
+    }
+
+    private static BridgeRequestKey TaskActivation(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeTaskActivationRequest>(payload);
+        if (request.Sequence <= 0 || !BridgeRequestKey.IsBoundedIdentifier(request.RuntimeGeneration))
+            throw new BridgeProtocolException("Invalid task activation completion.");
+        return BridgeRequestKey.Widget(BridgeRequestKind.CompleteTaskActivation, request.WidgetId);
     }
 
     private static BridgeRequestKey Empty(JsonElement payload, BridgeRequestKind kind) =>

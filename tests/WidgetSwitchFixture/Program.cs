@@ -190,6 +190,7 @@ internal static class Program
                         .Classes("switch-button"))
                     .Classes("switch-surface", _surface.ClassName),
                 InitialFocusId: $"{_surface.Id}-ready",
+                QuickActions: [new(ControllerButton.X, "fixture.ready", "Dashboard feedback")],
                 Surface: _surface.Hints);
         }
 

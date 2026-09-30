@@ -202,7 +202,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             ReadRange = async (query, start, count, token) =>
             {
                 if (query == 500) throw new InvalidOperationException("Native theme fixture provider failure.");
-                if (query is >= 300 and <= 303 && Volatile.Read(ref activationReadGate) is { } gate) await gate.Task.WaitAsync(token);
+                if ((query is >= 300 and <= 303 or 97) && Volatile.Read(ref activationReadGate) is { } gate) await gate.Task.WaitAsync(token);
                 await Task.Delay(query == 99 ? 500 : 80, token);
                 return Enumerable.Range(start, count).ToArray();
             },
@@ -218,6 +218,8 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
                     .ContextAction("context-play", "Play").ContextAction("context-disabled", "Unavailable", disabled: true)
                     .ContextAction("context-remove", "Remove", WidgetContextActionStyle.Danger);
                 if (query == 303) tile = ((ActionSurfaceElement)tile).Disabled();
+                if (query is 304 or 305) tile = ((ActionSurfaceElement)tile).Selected();
+                if (query == 305) tile = ((ActionSurfaceElement)tile).Busy();
                 return query >= 100 ? tile.FocusBackground(new("background")).PresentOnFocus(UI.Text($"Summary {query}:{item}", context.Id("summary"))) : tile;
             },
             OnAction = (query, item, action, _) =>
@@ -284,6 +286,17 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         Volatile.Write(ref status, action.ActionId);
         if (action.ActionId == "parent" && surfaces) releaseBackground.TrySetResult();
         if (action.ActionId == "content") source.UpdateContent(surfaces ? 101 : 1);
+        if (action.ActionId == "focus-placeholder")
+        {
+            activationReadGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            source.PublishQuery(97, 34);
+            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.33"), 33));
+        }
+        if (action.ActionId == "focus-placeholder-end")
+        {
+            activationReadGate?.TrySetResult(); activationReadGate = null;
+            source.PublishQuery(0, 100); entry = null;
+        }
         if (action.ActionId == "activation-mode")
         {
             activationReadGate?.TrySetResult(); activationReadGate = null;
@@ -297,6 +310,11 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             source.UpdateContent(action.ActionId == "activation-changed" ? 302 : action.ActionId == "activation-disabled" ? 303 : 301);
         }
         if (action.ActionId == "activation-release") activationReadGate?.TrySetResult();
+        if (action.ActionId is "activation-selected" or "activation-busy" or "activation-ready")
+        {
+            activationReadGate?.TrySetResult(); activationReadGate = null;
+            source.UpdateContent(action.ActionId == "activation-selected" ? 304 : action.ActionId == "activation-busy" ? 305 : 306);
+        }
         if (action.ActionId == "activation-replace") { source.PublishQuery(300, 100); entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75)); }
         if (action.ActionId == "activation-modal") { modalItem = 75; ++modalOpening; }
         if (action.ActionId == "context-mode")

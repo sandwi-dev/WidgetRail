@@ -14,14 +14,23 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
         typeof(WidgetIndexedRowView), new PropertyMetadata(null, (sender, _) => ((WidgetIndexedRowView)sender).ApplyRow()));
     public object? Row { get => GetValue(RowProperty); set => SetValue(RowProperty, value); }
     private WidgetViewPresenter? presenter;
+    private Grid? contentRoot;
     private readonly HashSet<Task> retiring = [];
     private bool disposed;
     private NativeComputedStyleAdapter? containerStyle;
     private SelectorItem? styleContainer;
     private WidgetPresentationIndexedLease? styledLease;
-    internal Task SetPresentationActiveAsync(bool active) =>
-        active && Row is WidgetIndexedRow { Lease.IsCurrent: false } ? Task.CompletedTask :
-        presenter?.SetPresentationActiveAsync(active) ?? Task.CompletedTask;
+    private WidgetIndexedRow? appliedRow;
+    private WidgetPresentationBinding? appliedPresentation;
+    private object? appliedStyles;
+    internal int ContentApplyCount { get; private set; }
+    internal int SkippedContentApplyCount { get; private set; }
+    internal Task SetPresentationActiveAsync(bool active)
+    {
+        containerStyle?.RefreshContextIndicator();
+        return active && Row is WidgetIndexedRow { Lease.IsCurrent: false } ? Task.CompletedTask :
+            presenter?.SetPresentationActiveAsync(active) ?? Task.CompletedTask;
+    }
     public WidgetIndexedRowView()
     {
         IsTabStop = false;
@@ -44,22 +53,39 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
             styledLease = row.Lease;
             styledLease.RenderStylesChanged += StylesChanged;
         }
-        presenter ??= new(presentationOnly: true);
-        _ = presenter.SetPresentationActiveAsync(row.Owner.IsPresentationActive);
-        presenter.Session = row.Owner.Session;
-        presenter.UseIndexedContainerStyles();
-        presenter.Failed = row.Owner.Failed;
-        presenter.ArtworkGeneration = row.Lease.LeaseId;
-        presenter.ResolveArtworkAsync = async (handle, token) =>
+        var presentation = row.Owner.Presentation;
+        var styles = row.Lease.RenderStyles;
+        if (ReferenceEquals(appliedRow, row) && ReferenceEquals(appliedPresentation, presentation) && ReferenceEquals(appliedStyles, styles))
         {
-            try { return await row.Owner.ResolveArtworkAsync(row, handle, token); }
-            catch (WidgetPresentationSessionException) when (!row.Lease.IsCurrent) { return null; }
-        };
-        presenter.ApplyFragment(row.Owner.Presentation.WithStyles(row.Lease.RenderStyles), row.Item.Root, row.Lease.Range.ScopeId);
-        Content = presenter;
+            ++SkippedContentApplyCount;
+            _ = presenter!.SetPresentationActiveAsync(row.Owner.IsPresentationActive);
+        }
+        else
+        {
+            presenter ??= new(presentationOnly: true);
+            _ = presenter.SetPresentationActiveAsync(row.Owner.IsPresentationActive);
+            presenter.Session = row.Owner.Session;
+            presenter.UseIndexedContainerStyles();
+            presenter.Failed = row.Owner.Failed;
+            presenter.ArtworkGeneration = row.Lease.LeaseId;
+            presenter.ResolveArtworkAsync = async (handle, token) =>
+            {
+                try { return await row.Owner.ResolveArtworkAsync(row, handle, token); }
+                catch (WidgetPresentationSessionException) when (!row.Lease.IsCurrent) { return null; }
+            };
+            presenter.ApplyFragment(presentation.WithStyles(styles), row.Item.Root, row.Lease.Range.ScopeId);
+            appliedRow = row; appliedPresentation = presentation; appliedStyles = styles;
+            ++ContentApplyCount;
+        }
+        if (contentRoot is null)
+        { contentRoot = new(); contentRoot.Children.Add(presenter!); Content = contentRoot; }
         SelectorItem? container = null;
+        WidgetIndexedCollectionView? collection = null;
         for (var current = VisualTreeHelper.GetParent(this); current is not null; current = VisualTreeHelper.GetParent(current))
-            if (current is SelectorItem item) { container = item; break; }
+        {
+            if (current is SelectorItem item) container ??= item;
+            if (current is WidgetIndexedCollectionView indexed) { collection = indexed; break; }
+        }
         if (!ReferenceEquals(container, styleContainer))
         {
             containerStyle?.Dispose(); containerStyle = null; styleContainer = container;
@@ -69,18 +95,28 @@ public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
                 containerStyle.InteractionChanged += (focused, pressed) => presenter?.SetIndexedRootInteraction(focused, pressed);
             }
         }
-        containerStyle?.Update(row.Lease.RenderStyles.GetValueOrDefault(row.Item.Root.Id));
         if (containerStyle is not null)
-            presenter.SetIndexedRootInteraction(containerStyle.Interaction.Focused, containerStyle.Interaction.Pressed);
+        {
+            containerStyle.ContextHintHost = contentRoot;
+            containerStyle.ContextHintButton = WidgetContextIndicator.Resolve(row.Item.Root);
+            containerStyle.ContextHintAdmitted = () => !disposed && ReferenceEquals(Row, row) && row.Lease.IsCurrent &&
+                collection?.ContextHintsAdmitted == true && row.Owner.IsPresentationActive &&
+                row.Owner.Presentation.Scope == row.Lease.Range.ScopeId;
+            containerStyle.Update(row.Lease.RenderStyles.GetValueOrDefault(row.Item.Root.Id));
+        }
+        if (containerStyle is not null)
+            presenter!.SetIndexedRootInteraction(containerStyle.Interaction.Focused, containerStyle.Interaction.Pressed);
     }
     private void Retire()
     {
+        appliedRow = null; appliedPresentation = null; appliedStyles = null;
         if (styledLease is not null) styledLease.RenderStylesChanged -= StylesChanged;
         styledLease = null;
         containerStyle?.Dispose(); containerStyle = null; styleContainer = null;
         var previous = presenter;
         presenter = null;
         Content = null;
+        contentRoot = null;
         if (previous is not null)
         {
             var task = previous.DisposeAsync().AsTask();

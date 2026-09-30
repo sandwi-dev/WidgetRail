@@ -6,7 +6,18 @@ using System.Text.Json;
 namespace WidgetRail.Samples.YtMusicWidget.Standalone;
 
 /// <summary>Private inherited stdio IPC; no discoverable command server or credentials in argv.</summary>
-internal sealed class JsonProcess : IAsyncDisposable
+internal interface IMusicProcess : IAsyncDisposable
+{
+    event Action<JsonElement>? Event;
+    Task<JsonElement> CallAsync(string method, object? args, CancellationToken token);
+}
+
+internal sealed class MusicStreamUnavailableException : IOException
+{
+    internal MusicStreamUnavailableException() : base("The selected audio stream is unavailable.") { }
+}
+
+internal sealed class JsonProcess : IMusicProcess
 {
     internal const int MaximumLine = 2 * 1024 * 1024;
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -17,7 +28,7 @@ internal sealed class JsonProcess : IAsyncDisposable
     private readonly Task _reader;
     private readonly Task _errors;
     private long _sequence;
-    internal event Action<JsonElement>? Event;
+    public event Action<JsonElement>? Event;
 
     internal JsonProcess(string executable, IEnumerable<string> arguments)
     {
@@ -41,7 +52,7 @@ internal sealed class JsonProcess : IAsyncDisposable
         });
     }
 
-    internal async Task<JsonElement> CallAsync(string method, object? args, CancellationToken token)
+    public async Task<JsonElement> CallAsync(string method, object? args, CancellationToken token)
     {
         if (_reader.IsCompleted || _lifetime.IsCancellationRequested) throw new IOException("The music helper is no longer running.");
         if (_pending.Count >= 16) throw new IOException("The music service is busy. Try again.");
@@ -76,8 +87,10 @@ internal sealed class JsonProcess : IAsyncDisposable
                 var root = document.RootElement;
                 if (root.TryGetProperty("id", out var id) && _pending.TryGetValue(id.GetInt64(), out var pending))
                 {
-                    if (root.TryGetProperty("error", out _))
-                        pending.TrySetException(new IOException("YouTube Music could not complete that request. Try again, or reconnect in Setup."));
+                    if (root.TryGetProperty("error", out var error))
+                        pending.TrySetException(error.ValueKind == JsonValueKind.String && error.GetString() == "stream_unavailable"
+                            ? new MusicStreamUnavailableException()
+                            : new IOException("YouTube Music could not complete that request. Try again, or reconnect in Setup."));
                     else pending.TrySetResult(root.GetProperty("result").Clone());
                 }
                 else if (root.TryGetProperty("event", out _)) Event?.Invoke(root.Clone());

@@ -131,6 +131,9 @@ internal sealed class ProtocolVersionRequirements
             bool inferDeferredFocusGroupEntry)
         {
             if (node is null) return;
+            if (node.GridLayout is not null || node.GridCell is not null)
+                Add("grid-layout", ProtocolConstants.GridLayoutVersion, path,
+                    $"Explicit Grid layout and cell placement require protocol version {ProtocolConstants.GridLayoutVersion} or later.");
             nodes++;
             if (nodes > ProtocolConstants.MaximumNodeCount ||
                 depth > ProtocolConstants.MaximumTreeDepth)

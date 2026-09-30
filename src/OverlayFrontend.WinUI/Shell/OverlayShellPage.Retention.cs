@@ -24,6 +24,7 @@ internal sealed partial class OverlayShellPage
         internal WindowPreviewRenderer? Previews { get; } = previews;
         internal long LastUse { get; set; }
         internal WidgetPresentationFrame? Frame { get; set; }
+        internal WidgetRail.WidgetSdk.WidgetLifecycleState? PresentedLifecycle { get; set; }
         internal bool RestoreMemoryOnFirstApply { get; set; } = true;
     }
 
@@ -40,7 +41,9 @@ internal sealed partial class OverlayShellPage
         surface.SetAutomaticFocusEnabled(false);
         previewRenderer?.SetVisible(false);
         await surface.SetPresentationActiveAsync(false);
-        surface.Visibility = Visibility.Collapsed;
+        // The HWND owns overlay visibility. Keeping its selected native tree
+        // parented/visible preserves XAML focus while all demand and input are
+        // suspended. Collapsing it sends focus to the tray before the next show.
     }
 
     private async Task<RetainedWidgetSurface> PrepareWidgetSurfaceAsync(string id, CancellationToken cancellationToken)
@@ -68,6 +71,7 @@ internal sealed partial class OverlayShellPage
                 DispatchActionAsync = InvokeAsync, EnsureInteractionAsync = EnsureInteractionAsync,
                 Visibility = Visibility.Collapsed,
             };
+            ConfigureFocusTrace(presenter, id);
             presenter.Failed = error =>
             {
                 if (ReferenceEquals(surface, presenter)) ReportFailure(error);
@@ -95,6 +99,15 @@ internal sealed partial class OverlayShellPage
         ApplyWidgetSurfaceFrame(retained, next);
     }
 
+    private async Task EstablishWidgetPresentationAsync(RetainedWidgetSurface retained,
+        WidgetRail.WidgetSdk.WidgetLifecycleState lifecycle, CancellationToken cancellationToken)
+    {
+        var next = await owner!.Session.EstablishPresentationAsync(owner.Session.GetTarget(retained.Descriptor.Id), lifecycle, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        ApplyWidgetSurfaceFrame(retained, next);
+        retained.PresentedLifecycle = lifecycle;
+    }
+
     private void ApplyWidgetSurfaceFrame(RetainedWidgetSurface retained, WidgetPresentationFrame next)
     {
         retained.Presenter.Apply(next);
@@ -113,6 +126,8 @@ internal sealed partial class OverlayShellPage
 
     private static WidgetStateOwner StateOwner(BridgeWidgetDescriptor descriptor) => new(descriptor.Id,
         descriptor.InstanceId, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, descriptor.PackageContentDigest);
+
+    partial void ConfigureFocusTrace(WidgetViewPresenter presenter, string widgetId);
 
     private void ReconcilePresentationMemory(WidgetPresentationCatalog catalog) =>
         presentationMemory.Reconcile(catalog.Widgets.Select(StateOwner), catalog.IsComplete);

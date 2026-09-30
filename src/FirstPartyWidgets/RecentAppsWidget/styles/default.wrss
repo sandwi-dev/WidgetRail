@@ -121,7 +121,6 @@
 
 .recent-item-button:focused,
 .recent-retry:focused {
-  background: var(--recent-control-focus);
   outline-color: var(--recent-focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);

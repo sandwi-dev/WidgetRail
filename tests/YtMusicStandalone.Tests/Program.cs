@@ -14,6 +14,14 @@ if (args is ["--export-layout", var directory])
             service.SetPlayback(playing);
             await File.WriteAllBytesAsync(Path.Combine(directory, playing ? "playing.snapshot.json" : "empty.snapshot.json"),
                 SnapshotJson.Serialize(widget.Render().CreateSnapshot("layout", 1)));
+            if (playing)
+            {
+                var snapshot = widget.Render().CreateSnapshot("layout", 2);
+                var pin = snapshot.PinnedLayouts.Single();
+                await File.WriteAllBytesAsync(Path.Combine(directory, "pinned-player.snapshot.json"), SnapshotJson.Serialize(snapshot with
+                { Root = pin.Root!, Surface = pin.Surface, InitialFocusId = pin.InitialFocusId, ActiveInputScopeId = pin.ActiveInputScopeId!,
+                    PinnedLayouts = [], FocusGroupEntryRequest = null }));
+            }
         }
         await RowAction(widget, "next.0");
         await Until(() => Nodes(widget.Render().CreateSnapshot("layout", 2).Root)
@@ -53,6 +61,8 @@ if (args is ["--export-layout", var directory])
 
 var tests = new List<(string, Func<Task>)>
 {
+    ("Playback recovery refreshes, skips, stops and rejects stale events", PlaybackRecoveryTests.Run),
+    ("Compact pin declares artwork and admits the same transport shortcuts as the main player", PinnedPlayer),
     ("Section content and navigation share motion identity without moving the player", async () =>
     {
         var (widget, service) = await Start();
@@ -288,6 +298,33 @@ static async Task Until(Func<bool> condition)
     using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
     while (!condition()) await Task.Delay(10, deadline.Token);
 }
+static async Task PinnedPlayer()
+{
+    var (widget, service) = await Start();
+    try
+    {
+        service.SetPlayback(true);
+        var host = WidgetTestHost.CreatePinnedLayoutHost(widget, "music.pin");
+        var snapshot = host.CurrentSnapshot;
+        Check(snapshot.Surface is { PreferredWidth: 840, PreferredHeight: 580 }, "Main player proportions changed unexpectedly");
+        var pin = snapshot.PinnedLayouts.Single();
+        Check(pin.Surface is { PreferredWidth: 360, PreferredHeight: 440, MinimumWidth: 320, MinimumHeight: 300 }, "Pin must default to room for artwork while preserving smaller saved sizes");
+        Check(pin.InitialFocusId == "player.pinned.toggle", "Pin entry should focus the play control");
+        Check(Nodes(pin.Root!).Any(node => node.Id == "player.pinned.artwork" && node.Kind == ViewNodeKind.Image &&
+            node.ImageSource == "https://example.invalid/fixture.png"), "Pinned artwork must be declared, not omitted");
+        Check(await host.SelectAsync(pin.Id), "Pin selection was rejected");
+        foreach (var (button, action) in new[] { (ControllerButton.X, "toggle"), (ControllerButton.LeftBumper, "previous"), (ControllerButton.RightBumper, "next") })
+        {
+            Check(pin.Root!.Shortcuts.Any(shortcut => shortcut.Button == button && shortcut.ActionId == "player." + action), "Missing pinned transport shortcut");
+            Check(await host.RouteActionAsync(button, pin.InitialFocusId!), "Pinned shortcut was not admitted");
+            await Until(() => service.Commands.Contains(action));
+        }
+        Check(await host.RevokeAsync(), "Pin selection did not revoke");
+        Check(!await host.RouteActionAsync(ControllerButton.X, pin.InitialFocusId!), "Retired pin accepted a shortcut");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
 static async Task Snapshots()
 {
     var (widget, service) = await Start();
@@ -864,7 +901,7 @@ sealed class FakeService : IMusicService
     public void ReplaceQueue(IReadOnlyList<MusicItem> queue) { State = State with { Queue = queue, Index = 0 }; Changed?.Invoke(); }
     public void SetPlayback(bool playing)
     {
-        State = playing ? new(true, [new("test", "song", "A song title", "Artist name")], 0, false, "off", new("test", true, Position: 15, Duration: 196))
+        State = playing ? new(true, [new("test", "song", "A song title", "Artist name", "https://example.invalid/fixture.png")], 0, false, "off", new("test", true, Position: 15, Duration: 196))
             : new(true, [], -1, false, "off", new());
         Changed?.Invoke();
     }

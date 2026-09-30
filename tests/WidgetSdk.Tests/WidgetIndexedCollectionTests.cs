@@ -20,8 +20,10 @@ internal static class WidgetIndexedCollectionTests
             read: (query, start, count, token) => { ++reads; return ValueTask.FromResult<IReadOnlyList<Item>>(Items(start, count)); },
             render: (query, item, context) => { ++renders; return Button(query, item, context); }), 100_000);
         var snapshot = widget.RenderSnapshot("indexed-widget", 1);
-        Equal(ProtocolConstants.IndexedCollectionVersion, snapshot.ProtocolVersion, "protocol requirement");
+        Equal(ProtocolConstants.CurrentVersion, snapshot.ProtocolVersion, "SDK advertises deferred item capabilities");
+        Equal(0, ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = ProtocolConstants.IndexedCollectionVersion }).Count, "older complete declarations remain valid");
         Equal(0, ViewSnapshotValidator.Validate(snapshot).Count, "valid declaration");
+        Equal(0, WidgetTestHost.ValidateWinUiPresentation(snapshot).Count, "WinUI preflight admits the real lazy collection without acquiring rows");
         Equal(0, reads, "declaring collection must not fetch all rows");
         Equal(0, renders, "declaring collection must not render all rows");
         var collection = snapshot.Root.Children[1];
@@ -33,6 +35,7 @@ internal static class WidgetIndexedCollectionTests
         var range = await widget.ReadIndexedRangeAsync(widget.Request(12, 3), CancellationToken.None);
         Equal(1, reads, "one range fetch"); Equal(3, renders, "only demanded rows rendered");
         Equal("key-12", range.Items[0].Key, "exact first item");
+        Equal(0, WinUiPresentationContract.ValidateSubtree(range.Items[0].Root).Count, "author tests can validate a demanded row independently");
         Equal("scope", range.ScopeId, "inherited scope");
         Equal(3, range.Items.Count, "exact range count");
         await WidgetTestHost.DestroyAsync(widget);

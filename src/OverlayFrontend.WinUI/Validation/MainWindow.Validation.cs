@@ -5,9 +5,11 @@ namespace WidgetRail.OverlayFrontend.WinUI;
 
 public sealed partial class MainWindow
 {
+    internal bool ValidationOwnsForeground => input?.IsForeground == true;
     private Validation.ControllerReplayScenario? replay;
     private bool validationPlatformActivation;
     private string? hiddenStartupResult;
+    private Input.PlatformInputPump? exclusiveControlValidationInput;
 
     partial void ConfigureValidation(IReadOnlyList<string> arguments, ref bool handled)
     {
@@ -33,7 +35,8 @@ public sealed partial class MainWindow
         var validateSlider = arguments.Contains("--validate-slider");
         var validatePackageIcons = arguments.Contains("--validate-package-icons");
         var validateShellSizing = arguments.Contains("--validate-shell-sizing");
-        var validateEmbeddedMedia = arguments.Contains("--validate-embedded-media");
+        var crossRootMediaProbe = arguments.Contains("--validate-embedded-media-cross-root");
+        var validateEmbeddedMedia = arguments.Contains("--validate-embedded-media") || crossRootMediaProbe;
         var validateWindowPreview = arguments.Contains("--validate-window-preview");
         var shellConfiguration = Shell.FrontendArguments.Value(arguments, "--shell-config");
         var widgetConfiguration = Shell.FrontendArguments.Value(arguments, "--widget-config");
@@ -75,7 +78,7 @@ public sealed partial class MainWindow
         else if (arguments.Contains("--validate-production-shell"))
         { AppWindow.Resize(new(1600, 1100)); RootFrame.Content = new Validation.ProductionShellValidationPage(); }
         else if (arguments.Contains("--validate-gamepad-boundary")) RootFrame.Content = new Validation.GamepadKeyBoundaryValidationPage();
-        else if (validateEmbeddedMedia) RootFrame.Content = new Validation.EmbeddedMediaValidationPage();
+        else if (validateEmbeddedMedia) RootFrame.Content = new Validation.EmbeddedMediaValidationPage(crossRootMediaProbe);
         else if (validatePackageIcons) RootFrame.Content = new Validation.PackageIconValidationPage();
         else if (validateShellSizing) RootFrame.Content = new Validation.ShellSizingValidationPage();
         else if (arguments.Contains("--validate-shell-appearance")) RootFrame.Content = new Validation.ShellAppearanceValidationPage(this);
@@ -118,25 +121,76 @@ public sealed partial class MainWindow
             validateCollection ? typeof(Validation.CollectionValidationPage) :
             validateGridView ? typeof(Validation.GridViewValidationPage) : typeof(MainPage));
         else return; // Debug and Release use the same production launch by default.
-        if (input is null && arguments.Contains("--validation-platform-activation"))
-        {
-            // Pixel checks need the same confirmed foreground path as production.
-            // This opt-in reuses that adapter; it forwards no input to the fixture.
-            input = new(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this));
-            input.PrepareShow();
-            validationPlatformActivation = true;
-        }
+        ConfigureValidationActivation(arguments);
         handled = true;
+    }
+
+    private void ConfigureValidationActivation(IReadOnlyList<string> arguments)
+    {
+        if (input is not null || !arguments.Contains("--validation-platform-activation")) return;
+        // Native fixture entry must acquire actual foreground through the same
+        // adapter as production. No FrameReceived/ToggleRequested subscription:
+        // physical controller input cannot drive fixture widget actions.
+        input = new(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this));
+        input.PrepareShow();
+        validationPlatformActivation = true;
     }
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-appearance-settings") is { } appearanceResult)
+            page.EnableAppearanceSettingsValidation(appearanceResult);
+        if (arguments.Contains("--shell-no-controller")) ConfigureValidationActivation(arguments);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-exclusive-control") is { } exclusiveResult)
+        {
+            var backend = new Validation.ReplayNativePlatform { ControllerPrerequisiteFlags = 7, ExclusiveControlResult = OverlayPlatformClient.PlatformStatus.Ok };
+            exclusiveControlValidationInput = new(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this), backend);
+            page.ControllerControlStatusRequested = exclusiveControlValidationInput.ReadControllerControlAsync;
+            page.ControllerControlPreferenceReceived += exclusiveControlValidationInput.ApplyControllerControlPreference;
+            page.EnableExclusiveControlValidation(exclusiveResult, exclusiveControlValidationInput, backend);
+        }
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-f1") is { } f1Result)
+            EnableKeyboardShortcutValidation(page, f1Result);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-overlay-motion") is { } overlayMotionResult)
+            EnableOverlayMotionValidation(page, overlayMotionResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-task-activation") is { } taskResult &&
+            Shell.FrontendArguments.Value(arguments, "--activation-task-peer") is { } taskPeer)
+            EnableReleaseTaskActivationValidation(page, taskResult, taskPeer, arguments.Contains("--handoff-reduced"),
+                Shell.FrontendArguments.Value(arguments, "--handoff-cancel"), arguments.Contains("--handoff-prime-input"));
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-foreground-dismissal") is { } foregroundResult &&
+            long.TryParse(Shell.FrontendArguments.Value(arguments, "--foreground-test-peer"), out var peer))
+            EnableForegroundDismissalValidation(page, foregroundResult, (nint)peer);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-youtube-volume") is { } volumeResult)
+            page.EnableYouTubeVolumeValidation(volumeResult);
         hiddenStartupResult = Shell.FrontendArguments.Value(arguments, "--validate-hidden-startup");
         validationPlatformActivation = arguments.Contains("--validation-platform-activation");
+        if ((arguments.Contains("--shell-no-controller") || arguments.Contains("--validate-production-controller")) &&
+            Shell.FrontendArguments.Value(arguments, "--validate-embedded-sample") is { } embeddedResult)
+            page.EnableEmbeddedSampleValidation(embeddedResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-widget-switches") is { } switchResult)
             page.EnableSwitchValidation(switchResult);
         if (arguments.Contains("--shell-no-controller") && arguments.Contains("--replay-shell-input"))
             page.EnableValidationInputReplay();
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-shared-ux") is { } uxResult)
+            page.EnableSharedUxValidation(uxResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-audio-return") is { } audioResult)
+            page.EnableAudioReturnValidation(audioResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-radial-return") is { } radialReturnResult)
+            page.EnableRadialReturnValidation(radialReturnResult, () => input?.IsForeground == true);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-guide-handoff") is { } guideHandoffResult)
+            page.EnableGuideHandoffValidation(guideHandoffResult, () => input?.IsForeground == true);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-settings-refresh-focus") is { } settingsFocusResult)
+            page.EnableSettingsRefreshFocusValidation(settingsFocusResult, () => input?.IsForeground == true);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-widget-opening") is { } openingResult)
+            page.EnableOpeningValidation(openingResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pinned-placement") is { } pinPlacementResult)
+            page.EnablePinnedPlacementValidation(pinPlacementResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-reference-workflows") is { } referenceResult)
+            page.EnableReferenceWorkflowValidation(referenceResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pinned-restore") is { } pinRestoreResult)
+            page.EnablePinnedRestoreValidation(pinRestoreResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-popup-cycle") is { } popupCycleResult)
+            page.EnablePopupCycleValidation(popupCycleResult);
     }
     partial void QueueValidationEntryFocus() => (RootFrame.Content as Validation.ControllerValidationPage)?.QueueEntryFocus();
     partial void ResetValidationInput() => (RootFrame.Content as Validation.ControllerValidationPage)?.ResetInputPresentation();
@@ -149,6 +203,7 @@ public sealed partial class MainWindow
     partial void RetireValidation()
     {
         replay?.Dispose();
+        exclusiveControlValidationInput?.Dispose();
         (RootFrame.Content as Validation.ExternalSurfacePage)?.Retire();
         (RootFrame.Content as Validation.GamepadKeyBoundaryValidationPage)?.Dispose();
     }

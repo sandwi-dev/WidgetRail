@@ -2,14 +2,17 @@
 param(
  [Parameter(Mandatory)][string]$Receipt,
  [Parameter(Mandatory)][string]$OutputDirectory,
- [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$WidgetId='media-sessions'
+ [ValidatePattern('^[A-Za-z0-9_.-]+$')][string]$WidgetId='media-sessions',
+ # Observe an exact registration made by the isolated deployment sequence.
+ # The driver will verify it through this built OS probe and leave it registered.
+ [string]$RegisteredStageProbe
 )
 $ErrorActionPreference='Stop'
 $probe=Get-Content $Receipt -Raw | ConvertFrom-Json
 $output=[IO.Path]::GetFullPath($OutputDirectory)
 if(Test-Path -LiteralPath $output){throw 'Choose a fresh evidence/profile directory'}
 if($probe.packageName -notmatch '^WidgetRail\.WinUI\.External[A-Za-z0-9.-]*Probe$'){throw 'Only isolated external-content probe identities are admitted'}
-if(@(Get-AppxPackage -Name $probe.packageName).Count){throw 'An existing registration must not be replaced by this probe'}
+if(@(Get-AppxPackage -Name $probe.packageName).Count -and -not $RegisteredStageProbe){throw 'An existing registration must not be replaced by this probe'}
 if((Get-FileHash (Join-Path $probe.externalLocation 'OverlayFrontend.WinUI.dll')).Hash -ne $probe.assemblySha256){throw 'The staged frontend assembly changed'}
 New-Item -ItemType Directory -Path $output | Out-Null
 if(-not ('ExternalRuntimeProbe' -as [type])) {
@@ -34,6 +37,19 @@ public static class ExternalRuntimeProbe {
 $appPid=0; $resident=$null; $ownedChildren=@(); $failure=$null; $registered=$false
 $result=@{passed=$false;receipt=[IO.Path]::GetFullPath($Receipt);widget=$WidgetId;registered=$false;processExited=$false;registrationsRemoved=$false}
 try {
+ if($RegisteredStageProbe){
+  $readbackPath=Join-Path $output 'registration-readback.json'
+  & $RegisteredStageProbe inspect --stage ([IO.Path]::GetFullPath($Receipt)) --output $readbackPath | Out-Null
+  if($LASTEXITCODE -ne 0){throw 'Could not inspect the existing development registration'}
+  $readback=Get-Content -LiteralPath $readbackPath -Raw|ConvertFrom-Json
+  if(-not $readback.Succeeded -or @($readback.Before).Count -ne 1){throw 'Expected one exact development registration'}
+  $observed=$readback.Before[0]
+  if(-not $observed.IsDevelopmentMode -or $observed.Name -cne $probe.packageName -or $observed.Version -cne $probe.version -or
+     -not [StringComparer]::OrdinalIgnoreCase.Equals([IO.Path]::TrimEndingDirectorySeparator($observed.ExternalLocation),[IO.Path]::TrimEndingDirectorySeparator($probe.externalLocation))){throw 'Existing registration does not match the supplied development stage'}
+  $package=Get-AppxPackage -Name $probe.packageName
+  if($package.PackageFullName -cne $observed.FullName){throw 'Development registration changed after readback'}
+  $result.registrationRetained=$true
+ } else {
  # Official CLI development registration: no certificate or trust-store changes.
  # Its debug metadata remains in this isolated evidence directory.
  Push-Location $output
@@ -42,6 +58,7 @@ try {
  $package=Get-AppxPackage -Name $probe.packageName
  $registered=$null -ne $package
  if($registerCode -ne 0 -or -not $package -or -not $package.IsDevelopmentMode){throw 'Development registration failed; inspect register-cli.log'}
+ }
  $result.registered=$true
  $profile=Join-Path $output 'profile'
  $arguments="--settings-root=`"$profile`" --installed-catalog-root=`"$(Join-Path $profile 'widgets')`" --widget=$WidgetId --shell-no-controller"
@@ -63,7 +80,8 @@ if(@($worker).Count -ne 1){throw 'Expected one sandboxed widget worker'}
 $ownedChildren=@(Get-Process -Id $bridge.ProcessId,$worker.ProcessId)
 $sandboxed=[ExternalRuntimeProbe]::IsAppContainer($worker.ProcessId)
 $identity=[ExternalRuntimeProbe]::Package($appPid)
-$result.runtime=@{pid=$appPid;package=$identity;activeWidget=$state.activeWidget;bridgePath=$bridge.ExecutablePath;workerPath=$worker.ExecutablePath;workerAppContainer=$sandboxed;defaultInstallationRoot=$probe.externalLocation}
+$result.runtime=@{pid=$appPid;package=$identity;frontendPath=$resident.Path;activeWidget=$state.activeWidget;bridgePath=$bridge.ExecutablePath;workerPath=$worker.ExecutablePath;workerAppContainer=$sandboxed;defaultInstallationRoot=$probe.externalLocation}
+if(-not [StringComparer]::OrdinalIgnoreCase.Equals($resident.Path,(Join-Path $probe.externalLocation 'OverlayFrontend.WinUI.exe'))){throw 'Activated frontend did not load from the registered external payload'}
 $privateRuntime=Join-Path $probe.externalLocation 'dotnet'
 $runtimeModules=foreach($child in $ownedChildren){
  $clr=@($child.Modules | Where-Object ModuleName -eq 'coreclr.dll')
@@ -94,7 +112,7 @@ finally {
    if($current -and $current.IsDevelopmentMode -and $current.PackageFullName -eq $package.PackageFullName){Remove-AppxPackage -Package $current.PackageFullName}
    if(@(Get-AppxPackage -Name $probe.packageName).Count){throw 'Probe registration cleanup incomplete'}
   }
-  $result.registrationsRemoved=$true
+  $result.registrationsRemoved=$registered
  } catch {$result.cleanupError=$_.Exception.Message;if(-not $failure){$failure=$_}}
  if($resident){$resident.Dispose()};foreach($child in $ownedChildren){$child.Dispose()}
  $result.passed=$null -eq $failure

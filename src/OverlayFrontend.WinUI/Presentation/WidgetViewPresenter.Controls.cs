@@ -14,7 +14,8 @@ internal sealed partial class WidgetViewPresenter
     // A popup holds declaration authority, never a worker callback or a second
     // command queue. WinUI owns popup placement, scrolling and pointer/keyboard UI.
     private sealed record SelectPopup(Binding Owner, WidgetPresentationBinding Presentation,
-        IReadOnlyList<WidgetSelectOption> Options, MenuFlyout Flyout, IReadOnlyList<ToggleMenuFlyoutItem> Items, IReadOnlyList<WidgetNativePackageIcon> Icons);
+        IReadOnlyList<WidgetSelectOption> Options, MenuFlyout Flyout, IReadOnlyList<ToggleMenuFlyoutItem> Items, IReadOnlyList<WidgetNativePackageIcon> Icons)
+    { internal IDisposable? Theme; }
     private SelectPopup? selectPopup;
     private int selectFocusIndex;
 
@@ -29,6 +30,7 @@ internal sealed partial class WidgetViewPresenter
         ((WidgetValueButton)popup.Owner.Element).SetExpanded(false);
         NotifyControllerGuideChanged(); // revoke immediately; an exiting popup has no action authority
         popup.Flyout.Hide();
+        popup.Theme?.Dispose();
         foreach (var icon in popup.Icons) icon.Dispose();
         return true;
     }
@@ -66,6 +68,7 @@ internal sealed partial class WidgetViewPresenter
         }).ToArray();
         var icons = options.Select((option, index) => CreateSelectIcon(items[index], option)).OfType<WidgetNativePackageIcon>().ToArray();
         var popup = new SelectPopup(binding, presentation!, options, flyout, items, icons);
+        popup.Theme = NativePopupTheme.Menu(flyout, this);
         selectPopup = popup;
         ((WidgetValueButton)binding.Element).SetExpanded(true);
         NotifyControllerGuideChanged();
@@ -86,6 +89,7 @@ internal sealed partial class WidgetViewPresenter
         };
         flyout.Closed += (_, _) =>
         {
+            popup.Theme?.Dispose();
             if (ReferenceEquals(selectPopup, popup))
             { selectPopup = null; ((WidgetValueButton)popup.Owner.Element).SetExpanded(false); }
             NotifyControllerGuideChanged();
@@ -94,6 +98,7 @@ internal sealed partial class WidgetViewPresenter
         try { flyout.ShowAt(binding.Element); }
         catch (Exception error)
         {
+            popup.Theme?.Dispose();
             if (ReferenceEquals(selectPopup, popup))
             { selectPopup = null; ((WidgetValueButton)popup.Owner.Element).SetExpanded(false); }
             NotifyControllerGuideChanged();
@@ -134,14 +139,8 @@ internal sealed partial class WidgetViewPresenter
         if (selectPopup is not { } popup) return false;
         if (!SelectIsCurrent(popup)) { DismissTransientControl(); return true; }
         // Consume every direction while open: a boundary cannot escape to the
-        // underlying widget. Native keyboard/pointer navigation remains native.
-        if (direction is not (FocusNavigationDirection.Up or FocusNavigationDirection.Down)) return true;
-        var focused = FocusManager.GetFocusedElement(XamlRoot);
-        var index = popup.Items.ToList().FindIndex(item => ReferenceEquals(item, focused));
-        var step = direction == FocusNavigationDirection.Up ? -1 : 1;
-        if (index < 0) index = step > 0 ? -1 : popup.Items.Count;
-        for (index += step; index >= 0 && index < popup.Items.Count; index += step)
-            if (popup.Items[index].IsEnabled) { popup.Items[index].Focus(FocusState.Keyboard); break; }
+        // underlying widget. Cycle through enabled options at either boundary.
+        NativeMenuFocus.Move(popup.Items, direction, ref selectFocusIndex);
         return true;
     }
 
@@ -172,7 +171,8 @@ internal sealed partial class WidgetViewPresenter
             InputScopeId: displayed.Scope) { FocusedElementId = popup.Owner.Identity.Id };
         DismissTransientControl();
         try { await DispatchCapturedActionAsync(displayed, action); }
+        catch (WidgetPresentationSessionException error) when (IsRetiredInput(error)) { Session?.RequestInputRefresh(displayed.Frame); }
         catch (OperationCanceledException) when (disposed) { }
-        catch (Exception error) { ReportFailure(error); }
+        catch (Exception error) { ReportFailure(error, IsBindingCurrent(displayed)); }
     }
 }

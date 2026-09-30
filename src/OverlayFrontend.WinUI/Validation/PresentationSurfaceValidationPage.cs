@@ -25,6 +25,8 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
     private readonly TaskCompletionSource releaseRevision = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource enteredRevision = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool rejectRevision;
+    private readonly TaskCompletionSource enteredRetired = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource releaseRetired = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal PresentationSurfaceValidationPage()
     {
         AutomationProperties.SetAutomationId(status, "Surfaces.Result");
@@ -33,6 +35,7 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
         presenter.ResolveArtworkAsync = async (handle, _) =>
         {
             if (handle == "missing") return null;
+            if (handle == "retired") { enteredRetired.TrySetResult(); await releaseRetired.Task; return null; }
             if (handle == "revision")
             {
                 ++revisionArtworkCalls;
@@ -82,28 +85,45 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
             await Focus("revision");
             await enteredRevision.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Apply(label: "Updated while ordinary artwork was pending");
-            await Until(() => revisionArtworkCalls == 2 && BackgroundSurface()?.ArtworkSource is not null);
+            await Task.Delay(100);
+            Check(revisionArtworkCalls == 1, "compatible snapshot restarted pending artwork");
+            releaseRevision.TrySetResult();
+            await Until(() => revisionArtworkCalls == 1 && BackgroundSurface()?.ArtworkSource is not null);
             var fresh = BackgroundSurface()!.ArtworkSource;
-            releaseRevision.TrySetResult(); await Task.Delay(100);
-            Check(ReferenceEquals(fresh, BackgroundSurface()?.ArtworkSource), "old snapshot artwork replaced the fresh demand");
             Apply(label: "Decoded artwork stays retained"); await Task.Delay(100);
-            Check(revisionArtworkCalls == 2 && ReferenceEquals(fresh, BackgroundSurface()?.ArtworkSource), "decoded artwork was refetched on an unrelated snapshot");
+            Check(revisionArtworkCalls == 1 && ReferenceEquals(fresh, BackgroundSurface()?.ArtworkSource), "decoded artwork was refetched on an unrelated snapshot");
             await Focus("missing"); rejectRevision = true; await Focus("revision");
-            await Until(() => revisionArtworkCalls == 3);
+            await Until(() => revisionArtworkCalls == 2);
             Apply(label: "Recover stale admission");
-            await Until(() => revisionArtworkCalls == 4 && BackgroundSurface()?.ArtworkSource is not null);
+            await Until(() => revisionArtworkCalls == 3 && BackgroundSurface()?.ArtworkSource is not null);
             Check(failure is null, "normal snapshot replacement became a widget error");
+            var retainedBackground = BackgroundSurface()!.ArtworkSource;
+            var sourceEpoch = 1;
+            presenter.ArtworkAuthorityCurrent = () => sourceEpoch == 1;
+            await Focus("retired");
+            await enteredRetired.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(ReferenceEquals(retainedBackground, BackgroundSurface()!.ArtworkSource), "pending background demand cleared retained pixels");
+            sourceEpoch = 2;
+            releaseRetired.TrySetResult();
+            await Task.Delay(100);
+            Check(ReferenceEquals(retainedBackground, BackgroundSurface()!.ArtworkSource), "retired source's null completion cleared retained background pixels");
+            presenter.ArtworkAuthorityCurrent = null;
+            await Focus("missing");
+            await Until(() => BackgroundSurface()!.ArtworkSource is null);
+            Check(failure is null, "retired background demand became a widget failure");
             Check(failure is null, failure ?? "unknown presenter error");
+            await BackgroundRetentionAsync();
             await ArtworkMotionAsync();
+            await FocusSurfaceLayoutAsync();
             status.Text = $"passed:{checks}";
         }
-        catch (Exception error) { releaseSlow.TrySetResult(); releaseRevision.TrySetResult(); status.Text = "failed:" + error.Message; }
+        catch (Exception error) { releaseSlow.TrySetResult(); releaseRevision.TrySetResult(); releaseRetired.TrySetResult(); status.Text = "failed:" + error.Message; }
     }
     private void Apply(bool retain = true, bool removeA = false, string label = "A", bool alternate = false, bool nested = false)
     {
         ViewNode Item(string id, string text) => new() { Id = id, Kind = ViewNodeKind.Button, Text = text, ActionId = id,
             FocusBackgroundArtworkHandle = id, FocusPresentation = new() { Id = id + ".summary", Kind = ViewNodeKind.Text, Text = text } };
-        var items = new List<ViewNode> { Item("b", "B"), Item("slow", "Slow"), Item("missing", "No artwork"), Item("revision", "Snapshot artwork") };
+        var items = new List<ViewNode> { Item("b", "B"), Item("slow", "Slow"), Item("missing", "No artwork"), Item("revision", "Snapshot artwork"), Item("retired", "Retired artwork") };
         if (!removeA) items.Insert(0, Item("a", label));
         ViewNode content = new() { Id = "items", Kind = ViewNodeKind.Row, Children = items };
         if (nested) content = new() { Id = "nested", Kind = ViewNodeKind.BackgroundSurface, Children = (ViewNode[])[content] };
@@ -111,15 +131,19 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
         {
             WidgetInstanceId = "surface.instance", Sequence = ++sequence, ActiveInputScopeId = alternate ? "other-scope" : "root", InitialFocusId = alternate ? "other" : "b",
             Root = new() { Id = "root", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
-                new() { Id = "background", Kind = ViewNodeKind.BackgroundSurface, ArtworkHandle = "fallback", ImageFit = ImageFit.Cover, UsesFocusedDescendantArtwork = true, Children = (ViewNode[])[
+                new() { Id = "background", Kind = ViewNodeKind.BackgroundSurface, RetainLastPresentation = false, ArtworkHandle = "fallback", ImageFit = ImageFit.Cover, UsesFocusedDescendantArtwork = true, Children = (ViewNode[])[
                     new() { Id = "fragment", Kind = ViewNodeKind.FocusPresentationSurface, RetainLastPresentation = retain,
                         DefaultFocusPresentation = new() { Id = "fallback-summary", Kind = ViewNodeKind.Text, Text = "Default" }, Children = (ViewNode[])[content] }] },
                 new() { Id = "outside", Kind = ViewNodeKind.Button, Text = "Outside", ActionId = "outside" },
                 new() { Id = "other-scope", Kind = ViewNodeKind.Stack, InputScopeId = "other-scope", Children = (ViewNode[])[
                     new() { Id = "other", Kind = ViewNodeKind.Button, Text = "Other scope", ActionId = "other" }] }] },
         };
+        Present(snapshot);
+    }
+    private void Present(ViewSnapshot snapshot, string runtime = "runtime")
+    {
         var descriptor = new BridgeWidgetDescriptor { Id = "surface", Name = "Surface", InstanceId = snapshot.WidgetInstanceId,
-            RuntimeGeneration = "runtime", PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };
+            RuntimeGeneration = runtime, PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };
         var errors = ViewSnapshotValidator.Validate(snapshot);
         if (errors.Count != 0) throw new InvalidOperationException(string.Join("; ", errors.Select(error => error.Path + ":" + error.Message)));
         presenter.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, 1,
@@ -135,7 +159,8 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
         if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => entered.SetResult()))
             throw new InvalidOperationException("Surface fixture dispatcher stopped.");
         await entered.Task;
-        var target = Descendants(presenter).OfType<Button>().Single(button => AutomationProperties.GetAutomationId(button) == "Widget." + id);
+        var target = Descendants(presenter).OfType<Button>().Single(button => button.IsHitTestVisible &&
+            AutomationProperties.GetAutomationId(button) == "Widget." + id);
         if (!target.Focus(FocusState.Keyboard)) throw new InvalidOperationException("Surface fixture could not focus " + id);
         await Task.Delay(50);
     }
@@ -154,5 +179,5 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
         for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); ++index)
             foreach (var child in Descendants(VisualTreeHelper.GetChild(root, index))) yield return child;
     }
-    public async ValueTask DisposeAsync() { releaseSlow.TrySetResult(); releaseRevision.TrySetResult(); if (running is not null) await running; await presenter.DisposeAsync(); }
+    public async ValueTask DisposeAsync() { releaseSlow.TrySetResult(); releaseRevision.TrySetResult(); releaseRetired.TrySetResult(); if (running is not null) await running; await presenter.DisposeAsync(); }
 }

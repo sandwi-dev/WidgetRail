@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetPresentationSession;
@@ -16,11 +18,27 @@ internal sealed class WidgetCatalogItemContent : ContentControl, IDisposable
 {
     private readonly Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> resolve;
     private readonly StackPanel panel = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
+    private readonly Grid stage = new();
+    private readonly Border selectedMark = new() { Height = 4, CornerRadius = new(2), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Visibility = Visibility.Collapsed };
+    private SelectorItem? selectionOwner;
+    private long selectionToken;
     private readonly TextBlock label = new() { VerticalAlignment = VerticalAlignment.Center };
     private WidgetPackageIconView? icon;
     private BridgeWidgetDescriptor? item;
     private bool disposed;
     private double iconSize = 24;
+    internal double TileSize
+    {
+        set
+        {
+            var extent = Math.Max(1, value);
+            Width = Height = extent;
+            panel.HorizontalAlignment = HorizontalAlignment.Center;
+            panel.VerticalAlignment = VerticalAlignment.Center;
+            selectedMark.Width = Math.Max(1, extent - 2 * Math.Min(18, extent * .28));
+            selectedMark.Height = Math.Min(4, extent * .12);
+        }
+    }
     internal double IconSize
     {
         get => iconSize;
@@ -35,13 +53,17 @@ internal sealed class WidgetCatalogItemContent : ContentControl, IDisposable
         Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> resolve)
     {
         this.resolve = resolve;
+        HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        VerticalContentAlignment = VerticalAlignment.Stretch;
         IsTabStop = false; IsHitTestVisible = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         AutomationProperties.SetAccessibilityView(this, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
-        panel.Children.Add(label); Content = panel;
+        panel.Children.Add(label); stage.Children.Add(panel); stage.Children.Add(selectedMark); Content = stage;
+        selectedMark.SetBinding(Border.BackgroundProperty, new Microsoft.UI.Xaml.Data.Binding
+            { Source = this, Path = new PropertyPath(nameof(Foreground)), Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay });
         DataContextChanged += (_, args) => SetItem(args.NewValue as BridgeWidgetDescriptor);
-        Loaded += (_, _) => PresentIcon();
-        Unloaded += (_, _) => ReleaseIcon();
+        Loaded += (_, _) => { PresentIcon(); AttachSelection(); };
+        Unloaded += (_, _) => { ReleaseIcon(); DetachSelection(); };
     }
 
     // Hosts can hide the label for radial items; their button supplies the accessible name.
@@ -78,5 +100,23 @@ internal sealed class WidgetCatalogItemContent : ContentControl, IDisposable
         icon.Dispose(); panel.Children.Remove(icon); icon = null;
     }
 
-    public void Dispose() { if (disposed) return; disposed = true; ReleaseIcon(); item = null; }
+    private void AttachSelection()
+    {
+        DetachSelection();
+        for (var ancestor = VisualTreeHelper.GetParent(this); ancestor is not null; ancestor = VisualTreeHelper.GetParent(ancestor))
+            if (ancestor is SelectorItem item)
+            {
+                selectionOwner = item;
+                selectionToken = item.RegisterPropertyChangedCallback(SelectorItem.IsSelectedProperty, (_, _) => UpdateSelection());
+                UpdateSelection(); break;
+            }
+    }
+    private void UpdateSelection() => selectedMark.Visibility = !ShowLabel && selectionOwner?.IsSelected == true ? Visibility.Visible : Visibility.Collapsed;
+    private void DetachSelection()
+    {
+        selectionOwner?.UnregisterPropertyChangedCallback(SelectorItem.IsSelectedProperty, selectionToken);
+        selectionOwner = null; selectedMark.Visibility = Visibility.Collapsed;
+    }
+
+    public void Dispose() { if (disposed) return; disposed = true; ReleaseIcon(); DetachSelection(); item = null; }
 }

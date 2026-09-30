@@ -19,6 +19,7 @@ internal sealed partial class WidgetViewPresenter
     {
         internal bool Closed;
         internal bool Invoking;
+        internal IDisposable? Theme;
         internal RoutedEventHandler? UnloadedHandler;
     }
     private ContextPopup? contextPopup;
@@ -94,6 +95,7 @@ internal sealed partial class WidgetViewPresenter
         var source = new ContextSource(node.Id, node.ActionId, node.CollectionItemKey, node.ContextMenuButton, node.ContextActions.ToArray());
         var popup = new ContextPopup(owner, source, presentation!, trigger, FocusedBinding()?.Identity.Id,
             FocusManager.GetFocusedElement(XamlRoot) as Control, anchor, flyout, items, row, retention);
+        popup.Theme = NativePopupTheme.Menu(flyout, this);
         contextPopup = popup;
         NotifyControllerGuideChanged();
         contextFocusIndex = Array.FindIndex(items, item => item.IsEnabled);
@@ -151,6 +153,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (popup.Closed) return;
         popup.Closed = true;
+        popup.Theme?.Dispose();
         popup.Anchor.Unloaded -= popup.UnloadedHandler;
         if (ReferenceEquals(contextPopup, popup)) contextPopup = null;
         NotifyControllerGuideChanged();
@@ -163,12 +166,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (contextPopup is not { } popup) return false;
         if (!ContextIsCurrent(popup)) { DismissContextMenu(); return true; }
-        if (direction is not (FocusNavigationDirection.Up or FocusNavigationDirection.Down)) return true;
-        var focused = FocusManager.GetFocusedElement(XamlRoot);
-        var currentIndex = popup.Items.ToList().FindIndex(item => ReferenceEquals(item, focused));
-        var step = direction == FocusNavigationDirection.Up ? -1 : 1;
-        for (var index = currentIndex + step; index >= 0 && index < popup.Items.Count; index += step)
-            if (popup.Items[index].IsEnabled) { if (popup.Items[index].Focus(FocusState.Keyboard)) contextFocusIndex = index; break; }
+        NativeMenuFocus.Move(popup.Items, direction, ref contextFocusIndex);
         return true;
     }
     private bool ActivateContextMenu()
@@ -201,9 +199,9 @@ internal sealed partial class WidgetViewPresenter
                     popup.Trigger, Sequence: inputSequence, MonotonicTimestampMicroseconds: timestamp,
                     InputScopeId: displayed.Scope) { FocusedElementId = popup.FocusedId });
         }
-        catch (WidgetPresentationSessionException error) when (error.Code is "snapshot_stale" or "input_scope_stale" or "presentation_stale" || popup.Row?.Lease.IsCurrent == false) { }
+        catch (WidgetPresentationSessionException error) when (IsRetiredInput(error)) { Session?.RequestInputRefresh(displayed.Frame); }
         catch (OperationCanceledException) when (disposed) { }
-        catch (Exception error) { ReportFailure(error); }
+        catch (Exception error) { ReportFailure(error, IsBindingCurrent(displayed) && ContextIsCurrent(popup)); }
         finally { popup.Retention?.Dispose(); }
     }
 }

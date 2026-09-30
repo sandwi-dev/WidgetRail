@@ -6,6 +6,7 @@ using WidgetRail.WidgetStyling;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Controller glyphs share readable geometry and theme ink", ControllerGlyphThemeTests.Run),
+    ("Focus preserves selection and authored fills in every built-in theme", FocusSelectionThemeTests.Run),
     ("Display sizing preserves defaults and isolates persisted monitors", DisplayScaleTests.Run),
     ("Startup registration respects ownership Windows approval and failures", StartupRegistrationTests.Run),
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),
@@ -706,7 +707,7 @@ static async Task BuiltInNeonCircuitSelection()
         null,
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
-    Assert.Equal("rgba(35, 45, 74, 0.98)", focused.Get("background")!.Text);
+    Assert.Equal(button.Get("background")!.Text, focused.Get("background")!.Text);
     Assert.Equal("#3fe0ff", focused.Get("outline-color")!.Text);
     Assert.Equal("1.5px", focused.Get("outline-width")!.Text);
     Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);
@@ -786,7 +787,7 @@ static async Task BuiltInArcadeRushSelection()
         null,
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
-    Assert.Equal("rgba(72, 48, 92, 0.98)", focused.Get("background")!.Text);
+    Assert.Equal(button.Get("background")!.Text, focused.Get("background")!.Text);
     Assert.Equal("#ff3ea5", focused.Get("outline-color")!.Text);
     Assert.Equal("1.5px", focused.Get("outline-width")!.Text);
     Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);
@@ -896,7 +897,7 @@ static async Task BuiltInRedlineSelection()
         null,
         new HashSet<string>(),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
-    Assert.Equal("rgba(77, 40, 43, 0.98)", focused.Get("background")!.Text);
+    Assert.Equal(button.Get("background")!.Text, focused.Get("background")!.Text);
     Assert.Equal("#ff3d2e", focused.Get("outline-color")!.Text);
     Assert.Equal("1.5px", focused.Get("outline-width")!.Text);
     Assert.Equal("-1.5px", focused.Get("outline-offset")!.Text);

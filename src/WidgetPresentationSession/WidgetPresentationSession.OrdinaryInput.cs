@@ -6,6 +6,33 @@ namespace WidgetRail.WidgetPresentationSession;
 
 public sealed partial class WidgetPresentationSession
 {
+    public async Task<bool> SendDashboardInputAsync(WidgetPresentationFrame displayed, ControllerInputEvent input,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(displayed);
+        ArgumentNullException.ThrowIfNull(input);
+        cancellationToken.ThrowIfCancellationRequested();
+        ValidateControllerPayload(input);
+        if (input.Context != ControllerInputContext.DashboardQuickAction || input.SnapshotSequence != displayed.Authority.SnapshotSequence ||
+            input.FocusedElementId is not null || input.RequestedValue is not null || input.PinnedLayoutId is not null ||
+            input.IsPinnedLayoutSelected is not null || input.Phase is not (ControllerEventPhase.Pressed or ControllerEventPhase.Repeated))
+            throw OrdinaryInputStale("Dashboard input origin is invalid.");
+        lock (_gate)
+        {
+            var current = ValidateDisplayedOrdinaryFrameLocked(displayed, input.ActiveInputScopeId);
+            var original = displayed.Snapshot.QuickActions.SingleOrDefault(action => action.Button == input.Button);
+            var latest = current.Snapshot.QuickActions.SingleOrDefault(action => action.Button == input.Button);
+            if (original is null || latest is null || original.ActionId != latest.ActionId || original.Capability != latest.Capability ||
+                original.RepeatPolicy != latest.RepeatPolicy || input.Phase == ControllerEventPhase.Repeated && latest.RepeatPolicy != ControllerActionRepeatPolicy.WhileHeld)
+                throw OrdinaryInputStale("Dashboard command changed after presentation.");
+        }
+        var reply = await RequestAsync(BridgeMessageTypes.ControllerInput,
+            new BridgeControllerInputRequest(displayed.Authority.WidgetId, input, displayed.Authority.RuntimeGeneration,
+                WorkerRun: displayed.Authority.WorkerRun), BridgeMessageTypes.ControllerInputResult, cancellationToken).ConfigureAwait(false);
+        RequireObjectProperties(reply.Payload, "handled");
+        return reply.Payload.GetProperty("handled").GetBoolean();
+    }
+
     /// <summary>
     /// Admit the exact action captured from a frame actually published by this session.
     /// Unrelated publications may advance while lifecycle activation is acknowledged;
@@ -26,7 +53,7 @@ public sealed partial class WidgetPresentationSession
             if (originBinding != currentBinding) throw OrdinaryInputStale("The displayed action binding changed.");
         }
         var response = await RequestAsync(BridgeMessageTypes.Action,
-            new BridgeActionRequest(displayed.Authority.WidgetId, action), BridgeMessageTypes.Acknowledged,
+            new BridgeActionRequest(displayed.Authority.WidgetId, action, displayed.Authority.WorkerRun), BridgeMessageTypes.Acknowledged,
             cancellationToken).ConfigureAwait(false);
         return ReadAdmission(response.Payload);
     }
@@ -51,7 +78,7 @@ public sealed partial class WidgetPresentationSession
                 throw OrdinaryInputStale("The displayed controller binding changed.");
         }
         var response = await RequestAsync(BridgeMessageTypes.ControllerInput,
-            new BridgeControllerInputRequest(displayed.Authority.WidgetId, input, displayed.Authority.RuntimeGeneration),
+            new BridgeControllerInputRequest(displayed.Authority.WidgetId, input, displayed.Authority.RuntimeGeneration, WorkerRun: displayed.Authority.WorkerRun),
             BridgeMessageTypes.ControllerInputResult, cancellationToken).ConfigureAwait(false);
         RequireObjectProperties(response.Payload, "handled");
         return response.Payload.GetProperty("handled").GetBoolean();
@@ -59,11 +86,17 @@ public sealed partial class WidgetPresentationSession
 
     private static void ValidateDisplayedControllerOrigin(WidgetPresentationFrame displayed, ControllerInputEvent input)
     {
+        ValidateControllerPayload(input);
         if (input.Context != ControllerInputContext.OpenWidget || input.SnapshotSequence != displayed.Authority.SnapshotSequence ||
-            !Enum.IsDefined(input.Button) || !Enum.IsDefined(input.Phase) || !Enum.IsDefined(input.Origin) ||
-            input.Sequence < 0 || input.MonotonicTimestampMicroseconds < 0 || input.PinnedLayoutId is not null ||
-            input.IsPinnedLayoutSelected is not null || input.RequestedValue is { } value && !double.IsFinite(value))
+            input.PinnedLayoutId is not null || input.IsPinnedLayoutSelected is not null)
             throw OrdinaryInputStale("The displayed controller input has invalid origin authority.");
+    }
+
+    private static void ValidateControllerPayload(ControllerInputEvent input)
+    {
+        if (!Enum.IsDefined(input.Button) || !Enum.IsDefined(input.Phase) || !Enum.IsDefined(input.Origin) || !Enum.IsDefined(input.Context) ||
+            input.Sequence < 0 || input.MonotonicTimestampMicroseconds < 0 || input.RequestedValue is { } value && !double.IsFinite(value))
+            throw new BridgeProtocolException("The controller input payload is invalid.");
     }
 
     private WidgetPresentationFrame ValidateDisplayedOrdinaryFrameLocked(WidgetPresentationFrame origin, string? scope)
@@ -86,10 +119,11 @@ public sealed partial class WidgetPresentationSession
 
     private static OrdinaryInputBinding ResolveDisplayedAction(ViewSnapshot snapshot, WidgetActionEvent action)
     {
-        if (!Safe(action.ActionId) || !Safe(action.SourceElementId) || !Enum.IsDefined(action.Phase) ||
+        if (!SafeActionName(action.ActionId) || !Safe(action.SourceElementId) || !Enum.IsDefined(action.Phase) ||
             action.ControllerButton is { } button && !Enum.IsDefined(button) || action.Sequence < 0 || action.MonotonicTimestampMicroseconds < 0 ||
-            action.FocusedCollectionItem is not null)
-            throw OrdinaryInputStale("The displayed action payload is invalid.");
+            action.FocusedCollectionItem is not null || action.RequestedValue is { } value && !double.IsFinite(value) ||
+            action.CommittedText is { } committed && (committed.Any(char.IsControl) || action.RequestedValue is not null || action.Phase != ControllerEventPhase.Pressed))
+            throw new BridgeProtocolException("The displayed action payload is invalid.");
         var scope = OrdinaryScope(snapshot);
         var path = OrdinaryPath(scope, action.SourceElementId);
         var node = path[^1];
@@ -158,6 +192,11 @@ public sealed partial class WidgetPresentationSession
     }
 
     private static bool Safe(string? value) => value is not null && ProtocolValidationIdentifierContext.IsSafeIdentifier(value);
+    // Action names are opaque worker commands, not element IDs. The worker's
+    // bounded action contract permits qualifiers such as Settings' @display-id;
+    // exact origin/current declaration matching below supplies their authority.
+    private static bool SafeActionName(string? value) => !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= 128 && !value.Any(char.IsControl);
     private static WidgetPresentationSessionException OrdinaryInputStale(string message) => new("ordinary_input_stale", message);
     private static ViewNode OrdinaryScope(ViewSnapshot snapshot)
     {

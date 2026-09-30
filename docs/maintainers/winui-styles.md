@@ -21,6 +21,27 @@ font size. Font metrics trigger native reflow instead of scaling text as a bitma
 The root presenter also establishes a scaled inherited default. Host display policy
 continues to own selecting the effective TextScale and InterfaceScale.
 
+## Artwork style mapping
+
+`object-fit` maps to native Stretch on ordinary Image and BackgroundSurface.
+Both consumers map the nine WRSS `object-position` keywords to native
+ImageBrush AlignmentX/AlignmentY (both retained layers for backgrounds). `image-tint`
+is a uniform theme color overlay; `scrim-color` covers the bottom 45 percent, as
+in the original host. These paint layers sit below authored foreground content;
+they do not modify decoded artwork or apply opacity to the foreground subtree.
+Missing properties restore centered placement and remove the corresponding paint.
+Appearance updates apply even while an empty source retains its previous pixels.
+
+Ordinary images use `WidgetArtworkView`: WinUI Image measures intrinsic size and
+aspect ratio off-tree, while ImageBrush paints the same decoded BitmapImage once.
+This is necessary because WinUI Image's internal brush fixes alignment to center.
+There is no new codec, image cache or custom aspect-fit geometry. The existing
+artwork demand still owns asynchronous loading, size upgrades and stale-result
+admission; the existing motion layer still owns poster reveal. Decorative overlays
+are created only when authored, with one named Image automation peer for the view.
+The shared WRSS validator accepts only the nine keyword positions, not arbitrary
+percentages.
+
 ## Shared text layout
 
 `WidgetTextStyleAdapter` projects existing WRSS typography onto native `TextBlock`
@@ -234,3 +255,69 @@ edge after correction. The full style suite passes 200 checks. Real Library
 screenshots confirm bottom-edge strips; the five eviction/modal checks still pass.
 Evidence: `artifacts/winui-shell/poster-badge-{red,green}-native/` and
 `artifacts/winui-shell/combined-switch-01/poster-retention/`.
+
+## Shared grouped headers and widget boundaries
+
+Grouped indexed collections use the theme's `.wrail-section-header__title`
+declaration for their host-generated labels. The Bridge includes that optional
+`GroupHeader` style alongside the collection's ordinary states; it is validated,
+frozen and counted against the same per-state and aggregate property budgets.
+It creates no additional widget node, action or input scope. The native header
+uses the regular text style adapter, including live theme/text-scale/contrast
+updates, rather than WinUI's unrelated SubtitleTextBlockStyle.
+
+The shell panel's corner radius also clips the whole widget presenter. The
+background and content are siblings, so rounding only the background cannot
+round opaque widget roots. That outer clip stays stationary while the inner
+content stage animates and follows layout size and theme changes.
+
+Container `direction` is projected before creating row/column tracks. Modal
+headers can therefore use column flow without changing their semantic node,
+focus or action identities. Playnite uses this to separate long game titles
+from its right-aligned controller hints, with a readable raised dialog surface.
+
+## Focused-item context prompt
+
+The host draws a decorative controller badge at the top right of a focused
+ActionSurface with available context actions. WidgetContextIndicator preserves
+the native renderer's 26-DIP badge, 5-DIP inset and 20-DIP Menu/X/Y glyph. Authors
+use the existing ContextActions and ContextMenuButton declarations; no extra
+layout node or shortcut is needed. It follows computed foreground/background
+brushes and controller family, inherits control scaling, and disappears if the
+badge is partly clipped or its focus/input/scope/lease is no longer eligible.
+Ordinary buttons and indexed row containers share this decoration. It contributes
+no layout size, hit target or accessible element; menus retain command ownership.
+
+### Native tooltips
+
+Use `NativePopupTheme.SetToolTip(origin, text)` for host-owned tooltip labels.
+It retains the stock WinUI ToolTip template, placement, wrapping and delay.
+The existing popup theme supplies panel surface, readable text, border ink and
+panel-derived corners; the `hint` role supplies compact typography, falling back
+to body typography. Padding is 8 by 4 DIP with a 280 DIP width limit at default
+scale. Text and interface scale apply once, Bold Text remains authoritative, and
+high contrast uses the system palette. No SDK declaration or new theme role is
+required. Closed/unloaded tooltips release their live appearance leases.
+Compact media attaches the same theme owner at its separate XAML root so pinned
+tooltips follow shell appearance changes as well.
+
+### Multiline control labels
+
+Button, glyph Button, Select and TextEntry labels apply text-align to their actual
+native TextBlock as well as positioning the outer content. The shared text adapter
+owns this property for ordinary text and retained labels, including focused/pressed
+styles, RTL start/end mapping and restoration of the original local value when the
+style is removed. Indexed descendant text retains its own authored alignment.
+No widget style changes are required. Native suite453 includes28 added assertions;
+evidence: `artifacts/winui-shell/popup-typography-20260930/styles03/`.
+
+### Presenter-scoped text scale
+
+NativeTextScaleScope retains a weak owner at each ordinary widget presenter.
+Nested row and presentation fragments inherit the nearest scope through their
+native/logical tree, so pinned and main roots can use different display text sizes.
+Adapters subscribe to that scope and detach when unloaded/disposed. Native shell
+chrome carries its own local scale. Global text-scale setters remain validation
+fallbacks for standalone controls, not the production appearance update path.
+The native scope fixture covers simultaneous values, logical-tree first layout,
+chrome isolation, live changes and reparenting. Styling/typography suite460 passes.

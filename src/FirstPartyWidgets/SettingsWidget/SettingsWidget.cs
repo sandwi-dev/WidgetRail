@@ -47,6 +47,7 @@ public sealed class SettingsWidget : Widget
     private const int MaximumManifestBytes = 1024 * 1024;
 
     private readonly PlatformSettingsStore _store;
+    private readonly SettingsHostFeatures _hostFeatures;
     private readonly ThemeCatalog _catalog;
     private readonly IStartupRegistration _startup;
     private StartupRegistrationStatus _startupStatus = new(false, false, "Checking Windows startup settings…");
@@ -116,9 +117,11 @@ public sealed class SettingsWidget : Widget
         string? bundledWidgetRoot = null,
         IPlatformDiagnosticsService? readinessDiagnostics = null,
         TimeProvider? timeProvider = null,
-        IStartupRegistration? startup = null)
+        IStartupRegistration? startup = null,
+        SettingsHostFeatures? hostFeatures = null)
     {
         _toastExpiry = CreateTimedMutation(timeProvider: timeProvider);
+        _hostFeatures = hostFeatures ?? new();
         _startup = startup ?? StartupRegistration.CreateForSettingsWorker();
         var paths = store?.Paths ?? PlatformSettingsPaths.CreateDefault();
         _store = store ?? new PlatformSettingsStore(paths);
@@ -171,7 +174,7 @@ public sealed class SettingsWidget : Widget
             settings = _settings;
             themes = _themes;
             loading = _initializing;
-            page = loading ? SettingsPage.Root : _page;
+            page = _page;
             busy = _busy || loading;
             error = _error;
             settingsValid = _settingsValid;
@@ -195,7 +198,7 @@ public sealed class SettingsWidget : Widget
             busy,
             error,
             selectedTheme,
-            themePickerFocusId, startupStatus, display, loading);
+            themePickerFocusId, startupStatus, display, loading, _hostFeatures);
         if (SettingsPresentation.TryRender(presentation, out var view))
             return SettingsPresentation.AnimatePage(view, page, loading);
         var header = SettingsPresentation.Header(presentation);
@@ -338,7 +341,16 @@ public sealed class SettingsWidget : Widget
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
-        lock (_stateLock) if (_initializing) return;
+        bool initializing;
+        lock (_stateLock)
+        {
+            initializing = _initializing;
+            if (initializing && SettingsNavigationPolicy.TryResolve(action.ActionId, _page, SettingsPage.Permissions, out var target))
+                _page = target;
+        }
+        // Home navigation needs no provider data and must not queue behind the
+        // initialization operation gate. Settings writes remain unavailable.
+        if (initializing) { Invalidate(); return; }
         // ReloadAsync owns the same operation gate used by normal actions. Keep
         // refresh outside that critical section so controller refresh cannot
         // deadlock while still serializing against every other mutation.
@@ -387,13 +399,14 @@ public sealed class SettingsWidget : Widget
                 await ToggleControllerShortcutAsync(cancellationToken).ConfigureAwait(false);
                 return;
             }
-            if (action.ActionId == "controllers.hold-scroll.toggle" && CurrentPage == SettingsPage.Controllers)
+            if (action.ActionId == "controllers.hold-scroll.toggle" && CurrentPage == SettingsPage.Controllers &&
+                _hostFeatures.HeldDpadScroll)
             {
                 await ToggleHeldDpadScrollAsync(cancellationToken).ConfigureAwait(false);
                 return;
             }
             if (action.ActionId is "controllers.exclusive-control.toggle" or "controllers.restore" &&
-                CurrentPage == SettingsPage.Controllers)
+                CurrentPage == SettingsPage.Controllers && _hostFeatures.ExclusiveControllerControl)
             {
                 await SetExclusiveControlAsync(cancellationToken, action.ActionId == "controllers.restore").ConfigureAwait(false);
                 return;
@@ -401,6 +414,7 @@ public sealed class SettingsWidget : Widget
             switch (action.ActionId)
             {
                 case "startup.toggle":
+                    if (!_hostFeatures.StartupRegistration) return;
                     var startup = _startup.Read();
                     var changed = startup.CanChange ? _startup.SetEnabled(!startup.Registered) : startup;
                     lock (_stateLock) _startupStatus = changed;

@@ -5,6 +5,8 @@ using WidgetRail.WidgetStyling;
 var tests = new (string Name, Action Run)[]
 {
     ("Parser preserves semantic selectors and source locations", ParserAndLocations),
+    ("WinUI layout guidance retains authored locations without changing valid styles", WinUiLayoutGuidance),
+    ("WinUI layout guidance ignores tokens and supported track inputs", WinUiSupportedLayout),
     ("Parser rejects browser and script escape syntax", UnsafeValues),
     ("Parser recovers independent declaration diagnostics", ErrorRecovery),
     ("Parser enforces bounded untrusted source sizes", ParserLimits),
@@ -58,6 +60,44 @@ foreach (var test in tests)
 
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static void WinUiLayoutGuidance()
+{
+    var parsed = WrssParser.Parse("""
+        :root { --basis: 80px; }
+        .row, .row:focused {
+          flex-wrap: wrap;
+          flex-basis: var(--basis);
+          flex-shrink: 0;
+          flex-grow: 1;
+        }
+        """, "styles/layout.wrss");
+    Assert.EmptyErrors(parsed.Diagnostics);
+    var compiled = WrssThemeCompiler.Compile(new[] { parsed.Document });
+    Assert.True(compiled.IsValid, "Guidance must not invalidate legal shared stylesheet syntax.");
+    var diagnostics = WinUiStyleDiagnostics.Analyze(parsed.Document);
+    Assert.Equal(3, diagnostics.Count);
+    Assert.SequenceEqual(new[] { 3, 4, 5 }, diagnostics.Select(item => item.Line));
+    Assert.True(diagnostics.All(item => item.Source == "styles/layout.wrss" && item.Column > 0 &&
+        item.Code == "winui_unmapped_layout" && item.Severity == WrssDiagnosticSeverity.Warning), "Warnings retain declaration locations and stable codes.");
+    Assert.True(diagnostics[0].Message.Contains("UI.ResponsiveGrid", StringComparison.Ordinal) &&
+        diagnostics[1].Message.Contains("UI.Grid", StringComparison.Ordinal), "Warnings provide native authoring alternatives.");
+    Assert.True(diagnostics.All(item => !item.Message.Contains("--basis", StringComparison.Ordinal)), "Guidance need not echo authored values.");
+    var style = compiled.Theme!.Resolve(new WrssElement("row", StyleClasses: new HashSet<string> { "row" }));
+    Assert.Equal("80px", style.Get("flex-basis")!.Text);
+}
+
+static void WinUiSupportedLayout()
+{
+    var parsed = WrssParser.Parse("""
+        :root { --flex-wrap: wrap; --flex-basis: 80px; }
+        .row { flex-grow: 1; width: 100%; min-width: 0px; max-width: 200px; gap: 8px; direction: row; align: stretch; }
+        .row:focused { scale: 1.05; }
+        """);
+    Assert.EmptyErrors(parsed.Diagnostics);
+    Assert.Equal(0, WinUiStyleDiagnostics.Analyze(parsed.Document).Count);
+    Assert.Throws<ArgumentNullException>(() => WinUiStyleDiagnostics.Analyze(null!));
+}
 
 static void ParserAndLocations()
 {

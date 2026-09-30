@@ -4,7 +4,7 @@ namespace WidgetRail.OverlayPlatformClient;
 
 public static class PlatformAbi
 {
-    public const uint Version = 5;
+    public const uint Version = 6;
 }
 
 public enum PlatformStatus : uint
@@ -18,6 +18,24 @@ public enum NavigationPhase : uint { None, Pressed, Repeated }
 public enum ControllerReadPath : uint { None, GameInputVisibleLease, XInputCompatibility, ControllerIsolation, DualSenseHid, DualSenseIsolation }
 public enum ControllerFamily : uint { Unknown, Xbox, PlayStation }
 public enum NativeShortcutSource : uint { Unavailable, Shared, Isolated }
+
+/// <summary>Read-only readiness bits from the controller-isolation ABI.</summary>
+[Flags]
+public enum PlatformControllerPrerequisites : uint
+{
+    None = 0,
+    HidHide = 1,
+    ViGEmBus = 2,
+    GameInputGuide = 4,
+    All = HidHide | ViGEmBus | GameInputGuide
+}
+
+/// <summary>Native isolation state; values match OverlayPlatformInterop.h.</summary>
+public enum PlatformControllerControlState : uint
+{
+    Unavailable = 0, Off = 1, Starting = 2, Active = 3,
+    WaitingForController = 4, RecoveryRequired = 5, Failed = 6
+}
 
 [StructLayout(LayoutKind.Sequential)]
 public struct PlatformEvent

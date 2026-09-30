@@ -5,16 +5,19 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
+using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetStyling;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Autonomous real-XAML Select lifecycle and controller-route checks; no controller owner.</summary>
-internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
+internal sealed partial class SelectControlValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
+    private readonly NativePopupTheme popupTheme = new();
     private readonly TextBlock status = new() { Text = "Select validation waiting for layout" };
     private readonly List<string> checks = [];
     private readonly List<WidgetActionRequest> actions = [];
@@ -24,12 +27,15 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
     private bool alternateScope;
     private bool disabled;
     private bool removed;
+    private bool thirdDisabled;
     private string thirdAction = "choose.third";
     private Task? run;
     private Exception? failure;
 
     public SelectControlValidationPage()
     {
+        popupTheme.Attach(presenter);
+        popupTheme.Update(null, AppearanceSettings.Default);
         AutomationProperties.SetAutomationId(status, "Select.Status");
         Content = new StackPanel { Spacing = 12, Children = { status, presenter } };
         presenter.Failed = error => failure = error;
@@ -68,9 +74,28 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
             presenter.SetPresentationInputEnabled(true);
             await OpenAsync();
             Check(FocusedId == "Widget.picker.Option.first", "selected option receives initial focus");
+            var retainedOption = (Control)FocusManager.GetFocusedElement(XamlRoot);
+            var defaultFamily = retainedOption.FontFamily.Source;
+            popupTheme.Update(new Dictionary<string, BridgeNodeRenderStyles>
+            {
+                ["body"] = new() { Base = new Dictionary<string, BridgeComputedStyleValue>
+                    { ["font-family"] = new() { Kind = WrssValueKind.FontFamily, Text = "Consolas" } },
+                    Focused = new Dictionary<string, BridgeComputedStyleValue>(), Pressed = new Dictionary<string, BridgeComputedStyleValue>() },
+            }, AppearanceSettings.Default);
+            Check(retainedOption.FontFamily.Source == "Consolas", "open Select option receives authored popup font");
+            popupTheme.Update(null, AppearanceSettings.Default);
+            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), retainedOption) && presenter.HasTransientControl &&
+                retainedOption.FontFamily.Source == defaultFamily &&
+                ReferenceEquals(retainedOption.ReadLocalValue(Control.FontFamilyProperty), DependencyProperty.UnsetValue),
+                "removing popup font restores native menu typography while retaining focused option");
+            presenter.MoveFocus(FocusNavigationDirection.Up);
+            Check(FocusedId == "Widget.picker.Option.third", "Up from first option wraps to last enabled option");
+            presenter.MoveFocus(FocusNavigationDirection.Down);
+            Check(FocusedId == "Widget.picker.Option.first", "Down from last option wraps to first enabled option");
             presenter.MoveFocus(FocusNavigationDirection.Down);
             Check(FocusedId == "Widget.picker.Option.third", "disabled and busy options are skipped");
             presenter.MoveFocus(FocusNavigationDirection.Down);
+            presenter.MoveFocus(FocusNavigationDirection.Up);
             presenter.MoveFocus(FocusNavigationDirection.Right);
             Check(FocusedId == "Widget.picker.Option.third", "popup boundary consumes navigation");
             Apply();
@@ -113,6 +138,15 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
             removed = true; Apply();
             Check(!presenter.HasTransientControl, "removed opener revokes popup");
             removed = false; Apply();
+            thirdDisabled = true; Apply();
+            await OpenAsync();
+            presenter.MoveFocus(FocusNavigationDirection.Up);
+            presenter.MoveFocus(FocusNavigationDirection.Down);
+            Check(FocusedId == "Widget.picker.Option.first" && actions.Count == 2,
+                "cycling a single enabled option retains focus and does not commit an action");
+            presenter.DismissTransientControl();
+            thirdDisabled = false; Apply();
+            await VerifySelectProvidersAsync();
             await OpenAsync();
             var origin = displayed;
             var dispatched = new TaskCompletionSource<WidgetActionRequest>();
@@ -184,7 +218,7 @@ internal sealed class SelectControlValidationPage : Page, IAsyncDisposable
             new("first", "First", "choose.first", IsSelected: true),
             new("disabled", "Unavailable", "choose.disabled", IsDisabled: true),
             new("busy", "Busy", "choose.busy", IsBusy: true),
-            new("third", "Third", thirdAction),
+            new("third", "Third", thirdAction, IsDisabled: thirdDisabled),
         };
         var snapshot = new ViewSnapshot { WidgetInstanceId = "select.instance", Sequence = ++sequence,
             ActiveInputScopeId = alternateScope ? "other" : "page", InitialFocusId = alternateScope ? "other.button" : removed ? "after" : "picker",

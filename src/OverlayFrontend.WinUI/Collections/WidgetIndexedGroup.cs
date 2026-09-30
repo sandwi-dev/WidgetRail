@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using WidgetRail.WidgetBridge;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Collections;
 
@@ -9,6 +10,7 @@ public sealed class WidgetIndexedGroup : IList, INotifyCollectionChanged, INotif
 {
     private readonly IndexedItemsSource<WidgetIndexedRow> source;
     private string header;
+    private BridgeNodeRenderStyles? headerStyle;
     internal WidgetIndexedGroup(string key, string header, int startIndex, int count, IndexedItemsSource<WidgetIndexedRow> source)
     { Key = key; this.header = header; StartIndex = startIndex; Count = count; this.source = source; }
     public string Key { get; }
@@ -16,6 +18,11 @@ public sealed class WidgetIndexedGroup : IList, INotifyCollectionChanged, INotif
     {
         get => header;
         internal set { if (header == value) return; header = value; PropertyChanged?.Invoke(this, new(nameof(Header))); }
+    }
+    public object? HeaderStyle
+    {
+        get => headerStyle;
+        internal set { if (ReferenceEquals(headerStyle, value)) return; headerStyle = (BridgeNodeRenderStyles?)value; PropertyChanged?.Invoke(this, new(nameof(HeaderStyle))); }
     }
     internal int StartIndex { get; }
     public int Count { get; }

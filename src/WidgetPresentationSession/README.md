@@ -14,6 +14,13 @@ must carry that authority. Successful invalidations are coalesced into a fresh
 snapshot; a failed refresh retains the last accepted frame and publishes a
 bounded typed failure.
 
+Snapshot authority also carries the trusted Bridge worker-run receipt. Ordinary,
+displayed-frame and pinned input echo that exact receipt; the Bridge checks it
+against the cached tree and running process under its operation gate. Sequence
+numbers can repeat after idle unload or restart without making old input valid.
+Exact input dispatch uses the existing worker pipe and never starts a replacement
+process. Legacy callers that omit the additive receipt retain their prior contract.
+
 The facade keeps bounded pending request, artwork, and diagnostic collections.
 Disposal asks the existing bridge session to stop, closes the client endpoint,
 and completes outstanding work with a terminal transport failure.

@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
@@ -19,19 +20,24 @@ internal sealed class WidgetTextEntryDialog : ContentDialog
     private readonly Dictionary<Button, Action> commands = [];
     private readonly int maximumLength;
     private readonly StackPanel body = new() { Spacing = 12 };
+    private readonly TextBlock heading = new() { TextWrapping = TextWrapping.Wrap, MaxLines = 2 };
+    private double interfaceScale = 1;
     private bool uppercase;
     private bool symbols;
     private bool completed;
     private bool needsInitialFocus = true;
     private int secretCaret;
     private Action<bool>? finish;
+    internal IDisposable? ThemeLease { get; set; }
 
     internal WidgetTextEntryDialog(ViewNode node, Action<bool> finish)
     {
         Input.GamepadKeyBoundary.ObserveDialog(this);
         this.finish = finish;
         maximumLength = node.TextEntryMaximumLength ?? ProtocolConstants.MaximumTextEntryLength;
-        Title = node.AccessibilityLabel ?? node.TextEntryPlaceholder ?? "Enter text";
+        heading.Text = node.AccessibilityLabel ?? node.TextEntryPlaceholder ?? "Enter text";
+        Title = heading;
+        AutomationProperties.SetName(this, heading.Text);
         AutomationProperties.SetAutomationId(this, "Widget.TextEntry.Dialog");
         DefaultButton = ContentDialogButton.None;
         IsPrimaryButtonEnabled = false;
@@ -74,6 +80,7 @@ internal sealed class WidgetTextEntryDialog : ContentDialog
         body.Children.Add(keys);
         Content = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        ApplyPopupMetrics(1, 16, new() { Weight = 400 }, null);
         GettingFocus += (_, args) =>
         {
             if (needsInitialFocus && !completed && args.TrySetNewFocusedElement(characters[10])) needsInitialFocus = false;
@@ -82,19 +89,26 @@ internal sealed class WidgetTextEntryDialog : ContentDialog
         AddHandler(PreviewKeyDownEvent, new KeyEventHandler((_, args) =>
         {
             if (Input.GamepadKeyBoundary.Owns(this, args)) return;
-            if (args.Key == Windows.System.VirtualKey.Escape) { args.Handled = true; Complete(false); }
-            else if (args.Key == Windows.System.VirtualKey.Enter)
-            { args.Handled = true; Complete(true); }
-            else if (args.Key == Windows.System.VirtualKey.Space && !ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), editor))
-            { args.Handled = true; Insert(" "); }
-            else if (args.Key == Windows.System.VirtualKey.Back && !ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), editor))
-            { args.Handled = true; Backspace(); }
+            if (HandleKeyboardKey(args.Key)) args.Handled = true;
         }), true);
         CharacterReceived += (_, args) =>
         {
-            if (!completed && args.Character >= 32 && FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key))
+            // Space belongs to native Button activation while a key has focus.
+            if (!completed && args.Character > 32 && FocusManager.GetFocusedElement(XamlRoot) is Button key && commands.ContainsKey(key))
             { Insert(char.ConvertFromUtf32((int)args.Character)); args.Handled = true; }
         };
+    }
+
+    internal bool HandleKeyboardKey(Windows.System.VirtualKey key)
+    {
+        if (completed) return false;
+        if (key == Windows.System.VirtualKey.Escape) { Complete(false); return true; }
+        var editorFocused = ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), (Control?)text ?? password);
+        // Focused virtual keys retain native Enter/Space activation, including
+        // Cancel. The commit shortcut applies only within the native editor.
+        if (key == Windows.System.VirtualKey.Enter && editorFocused) { Complete(true); return true; }
+        if (key == Windows.System.VirtualKey.Back && !editorFocused) { Backspace(); return true; }
+        return false;
     }
 
     internal void BindRoot(XamlRoot root)
@@ -104,10 +118,52 @@ internal sealed class WidgetTextEntryDialog : ContentDialog
         ConstrainWidth();
     }
     private void RootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => ConstrainWidth();
-    private void ConstrainWidth() => body.Width = Math.Max(200, Math.Min(640, XamlRoot.Size.Width - 120));
+    private void ConstrainWidth()
+    {
+        if (XamlRoot is not { } root) return;
+        body.Width = Math.Max(1, Math.Min(640 * interfaceScale, root.Size.Width - 120 * interfaceScale));
+    }
+    internal void ApplyPopupMetrics(double zoom, double size, Windows.UI.Text.FontWeight weight, FontFamily? family)
+    {
+        // ContentDialog lives in a popup outside the overlay's scale transform.
+        // Scale owned native metrics once, retaining controls, edits and focus.
+        interfaceScale = zoom;
+        Resources["ContentDialogMaxWidth"] = 760 * zoom;
+        Resources["ContentDialogMinWidth"] = 320 * zoom;
+        Resources["ContentDialogPadding"] = new Thickness(24 * zoom);
+        Resources["ContentDialogTitleMargin"] = new Thickness(0, 0, 0, 12 * zoom);
+        keys.ColumnSpacing = keys.RowSpacing = 4 * zoom;
+        body.Spacing = 12 * zoom;
+        heading.FontSize = size * 1.25;
+        heading.FontWeight = new() { Weight = Math.Max((ushort)600, weight.Weight) };
+        if (family is null) heading.ClearValue(TextBlock.FontFamilyProperty);
+        else heading.FontFamily = family;
+        foreach (var control in commands.Keys.Cast<Control>().Append((Control?)text ?? password!))
+        {
+            control.FontSize = size;
+            control.FontWeight = weight;
+            control.MinHeight = 36 * zoom;
+            control.Padding = new Thickness(4 * zoom);
+            if (family is null) control.ClearValue(Control.FontFamilyProperty);
+            else control.FontFamily = family;
+        }
+        foreach (var (button, icon, _, _) in prompts)
+        {
+            icon.FontSize = 18 * zoom;
+            var row = (StackPanel)button.Content;
+            row.Spacing = 6 * zoom;
+            var label = (TextBlock)row.Children[1];
+            label.FontSize = size;
+            label.FontWeight = weight;
+            if (family is null) label.ClearValue(TextBlock.FontFamilyProperty);
+            else label.FontFamily = family;
+        }
+        ConstrainWidth();
+    }
     internal string TakeValue() => text?.Text ?? password?.Password ?? string.Empty;
     internal void Erase()
     {
+        ThemeLease?.Dispose(); ThemeLease = null;
         completed = true;
         if (XamlRoot is { } root) root.Changed -= RootChanged;
         finish = null;

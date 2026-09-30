@@ -19,6 +19,37 @@ internal sealed partial class WidgetViewPresenter
     private readonly Dictionary<PresentationSurfaceId, SurfaceRetention> surfaceRetentions = [];
     private bool surfacesQueued;
 
+    private bool SameSurfaceOwnership(Declaration incoming, Dictionary<string, Declaration> plan)
+    {
+        if (incoming.Node.Kind is not (ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface)) return true;
+        return Owners(incoming, plan).SequenceEqual(Owners(declarations[incoming.Node.Id], declarations));
+
+        static IEnumerable<WidgetElementIdentity> Owners(Declaration declaration, Dictionary<string, Declaration> tree)
+        {
+            for (var parent = declaration.ParentId; parent is not null; parent = tree[parent].ParentId)
+                if (tree[parent].Node.Kind is ViewNodeKind.BackgroundSurface or ViewNodeKind.FocusPresentationSurface)
+                    yield return tree[parent].Identity;
+        }
+    }
+
+    private void RetainBackgroundPaint(Dictionary<string, Binding> next, Dictionary<string, Declaration> plan)
+    {
+        // A transition may recreate a native control for the same declaration.
+        // Only identical logical surfaces can inherit paint; never pair siblings
+        // by position, count or a shared widget. No leases/resolvers are transferred.
+        foreach (var (id, incoming) in next)
+        {
+            if (bindings.TryGetValue(id, out var old) && old.Element is WidgetPresentationSurface && !SameSurfaceOwnership(plan[id], plan))
+                surfaceSources.Forget(new(old.Identity.Scope, id,
+                    old.Identity.Kind == ViewNodeKind.BackgroundSurface ? PresentationSurfaceKind.Background : PresentationSurfaceKind.FocusFragment));
+            if (incoming.Element is WidgetPresentationSurface surface && plan[id].Node.Kind == ViewNodeKind.BackgroundSurface &&
+                plan[id].Node.RetainLastPresentation != false && bindings.TryGetValue(id, out var previous) &&
+                !ReferenceEquals(incoming, previous) && incoming.Identity == previous.Identity && SameSurfaceOwnership(plan[id], plan) &&
+                previous.Element is WidgetPresentationSurface { ArtworkSource: not null } outgoing)
+                surface.RetainArtwork(outgoing);
+        }
+    }
+
     private void QueueSurfaceUpdate()
     {
         if (!presentationActive || presentationOnly || disposed || applying || surfacesQueued) return;
@@ -105,6 +136,10 @@ internal sealed partial class WidgetViewPresenter
             var selectedRow = value.Row;
             if (selectedRow is { Lease.IsCurrent: false }) continue; // Keep pixels until the retained logical slot reacquires authority.
             var generation = selectedRow is null ? ArtworkGeneration : selectedRow.Lease.LeaseId + ":" + selectedRow.Item.Key.Length + ":" + selectedRow.Item.Key;
+            // Capture the exact source authority. A retiring indexed resolver may
+            // return null while its replacement is still queued; that is not an
+            // authoritative declaration that the retained background is absent.
+            Func<bool>? sourceCurrent = selectedRow is null ? ArtworkAuthorityCurrent : () => selectedRow.Lease.IsCurrent;
             var resolve = selectedRow is null ? ResolveArtworkAsync : async (string handle, CancellationToken token) =>
             {
                 try { return await selectedRow.Owner.ResolveArtworkAsync(selectedRow, handle, token); }
@@ -112,14 +147,18 @@ internal sealed partial class WidgetViewPresenter
             };
             if (selection.Surface.Kind == PresentationSurfaceKind.Background)
             {
-                surface.SetArtworkFit(value.Node.ImageFit);
-                UpdateArtwork(binding, value.Node, image => surface.SetArtwork(image, value.Node.ImageFit), resolve, generation);
+                // Retain decoded paint within this declared surface, not old
+                // source authority. Even an empty selection still retires demand.
+                surface.SetArtworkRetention(declarations[binding.Identity.Id].Node.RetainLastPresentation != false);
+                UpdateArtwork(binding, value.Node, surface.PublishArtwork, resolve, generation,
+                    sourceCurrent);
             }
             else if (surface.Fragment is { } fragment)
             {
                 fragment.Session = Session;
                 fragment.ResolveArtworkAsync = resolve;
                 fragment.ArtworkGeneration = generation;
+                fragment.ArtworkAuthorityCurrent = sourceCurrent;
                 fragment.Failed = ReportFailure;
                 _ = fragment.SetPresentationActiveAsync(true);
                 fragment.ApplyFragment(selectedRow is null ? presentation! : presentation!.WithStyles(selectedRow.Lease.RenderStyles), value.Node, value.Scope);

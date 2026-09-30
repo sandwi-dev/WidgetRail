@@ -32,19 +32,24 @@ internal static class ControllerSettingsPresentation
             ControllerControlState.RecoveryRequired => "Controller access needs to be restored. Select Restore controller access to turn this off and retry cleanup.",
             _ => "Controller status unavailable",
         };
-        return SettingsPresentation.View(SettingsPresentation.Header(state),
-            SettingsPresentation.PageScope("controllers.page",
+        var features = state.HostFeatures ?? new();
+        var controls = new List<WidgetElement>
+        {
                 UI.Text("Controllers", "controllers.heading", "Controllers settings").Classes("page-heading"),
                 UI.Text("Open WidgetRail", "controllers.open-heading", "Open WidgetRail").Classes("section-heading"),
                 UI.Button($"Controller shortcut: {(state.Settings.Controllers.OpenShortcut == ControllerOpenShortcut.Guide ? "Guide" : "View + Menu")}",
                     "controllers.open-shortcut.toggle", "controllers.open-shortcut").Busy(state.Busy).Classes("setting-row"),
                 UI.Text("Choose Guide or press View and Menu together to open and close the overlay. Press this option to switch shortcuts.",
                     "controllers.open-help", "Controller shortcut help").Classes("page-help", "controllers-help"),
+        };
+        if (features.HeldDpadScroll) controls.AddRange([
                 UI.Text("Input behavior", "controllers.input-heading", "Input behavior").Classes("section-heading"),
                 UI.Switch("Hold D-pad to scroll", state.Settings.Controllers.HoldDpadToScroll,
                     "controllers.hold-scroll.toggle", "controllers.hold-scroll").Busy(state.Busy).Classes("setting-row"),
                 UI.Text("Tap Up or Down to move focus. Hold to scroll vertically; release to focus a visible item in the same column where possible.",
                     "controllers.hold-scroll.help").Classes("page-help", "controllers-help"),
+        ]);
+        if (features.ExclusiveControllerControl) controls.AddRange([
                 toggle,
                 UI.Text($"Status - {statusText}", "controllers.status", $"Status - {statusText}")
                     .Classes("settings-status", "controllers-status"),
@@ -69,7 +74,9 @@ internal static class ControllerSettingsPresentation
                             ? "Exclusive control is unavailable until the required drivers are ready."
                             : "The required drivers must be ready before Exclusive control can be turned on.",
                     "controllers.requirements-help", "Exclusive control requirements").Classes("page-help"),
-                refresh),
+                refresh]);
+        return SettingsPresentation.View(SettingsPresentation.Header(state),
+            SettingsPresentation.PageScope("controllers.page", controls.ToArray()),
             "controllers.open-shortcut",
             "controllers.page");
     }

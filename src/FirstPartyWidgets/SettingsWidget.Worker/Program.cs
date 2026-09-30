@@ -15,12 +15,17 @@ internal static class Program
                 var installedCatalogRoot = OptionalPath(args, "--installed-widget-catalog-root");
                 var diagnostics = CreateDiagnostics(args);
                 return new SettingsWidget(
+                    store: SettingsWorkerProfile.CreateStore(args),
                     widgetCatalog: installedCatalogRoot is null
                         ? null
                         : new WidgetRail.WidgetCatalog.WidgetCatalog(installedCatalogRoot),
                     diagnostics: diagnostics.Operations,
                     bundledWidgetRoot: OptionalPath(args, "--bundled-widget-root"),
-                    readinessDiagnostics: diagnostics.Readiness);
+                    readinessDiagnostics: diagnostics.Readiness,
+                    hostFeatures: new(
+                        OptionalFeature(args, "--host-exclusive-controller-control"),
+                        OptionalFeature(args, "--host-held-dpad-scroll"),
+                        OptionalFeature(args, "--host-startup-registration")));
             })
             .ConfigureAwait(false);
     }
@@ -54,6 +59,17 @@ internal static class Program
     private sealed record DiagnosticsClients(
         IPlatformDiagnosticsService Operations,
         IPlatformDiagnosticsService Readiness);
+
+    private static bool OptionalFeature(string[] args, string name)
+    {
+        var token = OptionalToken(args, name, 5);
+        return token switch
+        {
+            null or "true" => true,
+            "false" => false,
+            _ => throw new WidgetWorkerBootstrapException("invalid_host_features", "The host features are invalid."),
+        };
+    }
 
     private static int? OptionalPositiveInt(string[] args, string name)
     {

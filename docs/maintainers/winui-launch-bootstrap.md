@@ -98,3 +98,20 @@ runtime. It does not grant access to an arbitrary inherited/global runtime.
 Microsoft signatures were verified by `Get-ReleaseRuntimes.ps1`; nothing was
 installed globally. Evidence:
 `artifacts/winui-deployment-evaluation/private-runtime-check-08/result.json`.
+
+## Development payload consistency
+
+When switching build output layouts, do not reuse a --no-build deployment merely
+because its executable exists. OutDir-only builds share intermediate files, and
+AppX staging can combine a new intermediate frontend with old output dependencies.
+Rebuild the chosen normal output before deployment (or give truly independent
+builds their own intermediate trees). After launch, run
+`scripts/Assert-WinUiCandidatePayload.ps1` against that qualified build directory
+and inspect real visible widget controls plus frontend errors. Process liveness
+and Bridge lifecycle success alone do not prove a usable widget.
+
+Do not use project-mode winapp --manifest with another identity as a way to run
+fixtures alongside the resident: the September 29 attempt updated the original
+registration despite returning the requested alternate AUMID. The live candidate
+was interrupted. Normal project-mode deployment needs an intentionally released
+frontend slot.

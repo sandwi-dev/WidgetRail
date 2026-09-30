@@ -1044,6 +1044,17 @@ public sealed class SpotifyWidget : Widget
         lock (_gate)
         {
             var navigation = _navigation.Value;
+            var presentationPending = _pendingOperation;
+            // A status-only response can precede the provider state that makes
+            // the opposite toggle available. Keep that control busy/focusable,
+            // rather than pairing an optimistic state with stale restrictions.
+            // Genuine provider restrictions and command admission stay unchanged.
+            if (presentationPending is null && _optimisticReconciliation is
+                { Operation: SpotifyPlaybackOperation.Play or SpotifyPlaybackOperation.Pause } reconciliation &&
+                _timeProvider.GetUtcNow() < reconciliation.ExpiresAt &&
+                _playback is { IsAvailable: true } pendingPlayback &&
+                (pendingPlayback.IsPlaying ? pendingPlayback.DisallowedActions.Pausing : pendingPlayback.DisallowedActions.Resuming))
+                presentationPending = reconciliation.Operation;
             var playlists = new SpotifyDiscoveredPresentation(UI.CollectionGrid(PlaylistsScrollId, _playlists, 280, 82,
                 "Spotify playlists", 3).Classes("spotify-page-scroll", "spotify-playlist-grid"));
             SpotifyPlaylistDetailPresentation? detail = null;
@@ -1057,7 +1068,7 @@ public sealed class SpotifyWidget : Widget
                 _viewState,
                 SpotifyPlaybackPolicy.Project(
                     _playback, _timeProvider.GetUtcNow().ToUnixTimeMilliseconds()),
-                _pendingOperation,
+                presentationPending,
                 _status,
                 _refreshWarning,
                 _setupViewGeneration,

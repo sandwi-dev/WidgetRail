@@ -9,12 +9,22 @@ internal sealed class RightStickScroll
 {
     private int axis;
     private long lastSample;
-    internal void Reset() { axis = 0; lastSample = 0; }
+    private long? neutralSince;
+    private bool moved;
+    internal bool ShouldSettle(long now) => moved && neutralSince is { } neutral && now - neutral >= 120;
+    internal void Reset() { axis = 0; lastSample = 0; neutralSince = null; moved = false; }
     internal (double X, double Y) Sample(short x, short y, long now)
     {
         var horizontal = Math.Abs((int)x);
         var vertical = Math.Abs((int)y);
-        if (horizontal <= 8000 && vertical <= 8000) { Reset(); return default; }
+        if (horizontal <= 8000 && vertical <= 8000)
+        {
+            neutralSince ??= now;
+            axis = 0; lastSample = 0;
+            return default;
+        }
+        neutralSince = null;
+        moved = true;
         var elapsed = axis == 0 ? 16 : Math.Clamp(now - lastSample, 0, 50);
         var next = horizontal >= vertical ? 1 : 2;
         if (axis == 1 && vertical < horizontal * 1.25 || axis == 2 && horizontal < vertical * 1.25) next = axis;

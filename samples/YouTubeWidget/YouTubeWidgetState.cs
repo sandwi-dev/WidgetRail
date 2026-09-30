@@ -333,6 +333,7 @@ internal sealed record YouTubeWidgetState
     public YouTubeRoute PlayerSettingsReturnRoute { get; init; } = YouTubeRoute.Player;
     public YouTubeRoute? SetupReturnRoute { get; init; }
     public string? SetupReturnFocusId { get; init; }
+    public IndexedCollectionFocusTarget? SetupReturnCollectionItem { get; init; }
     public string? RootInitialFocusId { get; init; }
     public YouTubeSetupState Setup { get; init; } = YouTubeSetupState.Initial;
     public YouTubeSearchState Search { get; init; } = YouTubeSearchState.Initial;
@@ -443,7 +444,8 @@ internal sealed record YouTubeWidgetState
         WithRoute(Setup.Configured ? YouTubeRoute.Search : YouTubeRoute.Setup);
 
     /// <summary>Opening setup deliberately clears the last failure it reported.</summary>
-    public YouTubeWidgetState WithSetupRoute(string? returnFocusId = null) => this with
+    public YouTubeWidgetState WithSetupRoute(string? returnFocusId = null,
+        IndexedCollectionFocusTarget? returnCollectionItem = null) => this with
     {
         Route = YouTubeRoute.Setup,
         SetupReturnRoute = Route is YouTubeRoute.Search or YouTubeRoute.Link or YouTubeRoute.Player
@@ -452,19 +454,28 @@ internal sealed record YouTubeWidgetState
         SetupReturnFocusId = Route is YouTubeRoute.Search or YouTubeRoute.Link or YouTubeRoute.Player
             ? returnFocusId
             : SetupReturnFocusId,
+        SetupReturnCollectionItem = Route == YouTubeRoute.Search ? returnCollectionItem
+            : Route is YouTubeRoute.Link or YouTubeRoute.Player ? null : SetupReturnCollectionItem,
         RootFocusGroupId = null,
         RootInitialFocusId = null,
         Setup = Setup with { Error = null },
     };
 
-    public YouTubeWidgetState WithSetupReturnRoute() => SetupReturnRoute is { } route
-        ? this with
+    public YouTubeWidgetState WithSetupReturnRoute()
+    {
+        if (SetupReturnRoute is not { } route) return this;
+        var item = route == YouTubeRoute.Search ? SetupReturnCollectionItem : null;
+        return this with
         {
             Route = route,
-            RootFocusGroupId = null,
-            RootInitialFocusId = SetupReturnFocusId,
-        }
-        : this;
+            // Lazy item IDs are not nodes in the page tree. Restore through the
+            // collection's generation/key/index contract, never InitialFocusId.
+            RootFocusGroupId = item is null ? null : YouTubeVideoWidget.SearchFocusGroupId,
+            RootFocusRequestId = item is null ? RootFocusRequestId : checked(RootFocusRequestId + 1),
+            RootInitialFocusId = item is null ? SetupReturnFocusId : null,
+            Search = item is null ? Search : Search with { ReturnCollectionItem = item },
+        };
+    }
 
     public YouTubeWidgetState WithConfigurationSummary(bool configured) => this with
     {
@@ -516,6 +527,7 @@ internal sealed record YouTubeWidgetState
     {
         Setup = Setup with { Configured = false, Busy = false },
         Search = Search with { QueryDraft = string.Empty, ActiveQuery = string.Empty, Revision = Search.Revision + 1, ReturnCollectionItem = null },
+        SetupReturnCollectionItem = null,
         SetupReturnRoute = SetupReturnRoute == YouTubeRoute.Search
             ? Playback.VideoId is null ? YouTubeRoute.Link : YouTubeRoute.Player
             : SetupReturnRoute,

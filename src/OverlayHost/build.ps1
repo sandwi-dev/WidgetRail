@@ -499,6 +499,7 @@ function Invoke-OverlayPlatformInteropBuild {
         (Join-Path $platformDirectory 'OverlayPlatformPlacement.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformTargeting.cpp'),
         (Join-Path $projectDirectory 'GuideInputCompatibility.cpp'),
+        (Join-Path $projectDirectory 'ControllerOpenShortcut.cpp'),
         "/Fo:$platformObjectDirectory\",
         "/Fe:$outputDirectory\OverlayPlatformInterop.dll",
         '/link',

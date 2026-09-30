@@ -9,20 +9,30 @@ public sealed class MusicService : IMusicService
     private readonly SemaphoreSlim _initialization = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly string _directory;
-    private JsonProcess? _backend;
-    private JsonProcess? _player;
+    private IMusicProcess? _backend;
+    private IMusicProcess? _player;
+    private readonly Func<string, IEnumerable<string>, IMusicProcess> _startProcess;
+    private bool _streamRetried;
+    private bool _recoveryStopped;
+    private int _consecutiveSkips;
+    private long _recoveringGeneration = -1;
     private string? _playerProfile;
     private MusicState _state = MusicState.Empty;
     private MusicItem[] _originalQueue = [];
     private CancellationTokenSource? _selection;
     private long _generation;
+    private long _playerGeneration;
     public MusicState State { get { lock (_gate) return _state; } }
     public event Action? Changed;
 
     public MusicService(string directory, double initialVolume = .5)
+        : this(directory, initialVolume, (executable, arguments) => new JsonProcess(executable, arguments)) { }
+
+    internal MusicService(string directory, double initialVolume, Func<string, IEnumerable<string>, IMusicProcess> startProcess)
     {
         if (!double.IsFinite(initialVolume) || initialVolume is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(initialVolume));
         _directory = Path.GetFullPath(directory);
+        _startProcess = startProcess;
         _state = MusicState.Empty with { Player = new(Volume: initialVolume) };
     }
 
@@ -34,7 +44,7 @@ public sealed class MusicService : IMusicService
             if (_backend is not null) return;
             // Installed packages are sealed. Late provider imports must never write
             // bytecode beside the bundled modules (-I ignores Python env settings).
-            var backend = new JsonProcess(Path.Combine(_directory, "python", "python.exe"),
+            var backend = _startProcess(Path.Combine(_directory, "python", "python.exe"),
                 ["-I", "-B", "-u", Path.Combine(_directory, "service", "service.py")]);
             try
             {
@@ -156,7 +166,7 @@ public sealed class MusicService : IMusicService
             if (_player is null)
             {
                 var profile = Path.Combine(Path.GetTempPath(), "WidgetRail", "ytmusic-player", Guid.NewGuid().ToString("N"));
-                var player = new JsonProcess(Path.Combine(_directory, "YtMusicPlaybackHost.exe"),
+                var player = _startProcess(Path.Combine(_directory, "YtMusicPlaybackHost.exe"),
                     ["--parent-pid", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), "--profile", profile]);
                 player.Event += OnPlayerEvent;
                 try
@@ -178,7 +188,7 @@ public sealed class MusicService : IMusicService
         finally { _initialization.Release(); }
     }
 
-    private async Task SelectAsync(CancellationToken token)
+    private async Task SelectAsync(CancellationToken token, long? expectedGeneration = null, bool refresh = false)
     {
         MusicItem current;
         long generation;
@@ -186,7 +196,15 @@ public sealed class MusicService : IMusicService
         CancellationToken selectionToken;
         lock (_gate)
         {
+            if (expectedGeneration is { } expected && expected != _generation) return;
             if (_state.Current is not { } item) return;
+            if (expectedGeneration is null)
+            {
+                _consecutiveSkips = 0;
+                _state = _state with { PlaybackNotice = null };
+            }
+            _streamRetried = refresh;
+            _recoveryStopped = false;
             current = item;
             _selection?.Cancel();
             _selection?.Dispose();
@@ -202,10 +220,15 @@ public sealed class MusicService : IMusicService
             // Starting WebView2 and resolving the stream do not depend on each
             // other. Observe both tasks before admitting this generation's load.
             var playerReady = EnsurePlayerAsync(selectionToken);
-            var streamReady = _backend!.CallAsync("resolve", new { videoId = current.Id }, selectionToken);
+            var streamReady = _backend!.CallAsync("resolve", new { videoId = current.Id, refresh }, selectionToken);
             await Task.WhenAll(playerReady, streamReady).ConfigureAwait(false);
             var stream = await streamReady.ConfigureAwait(false);
             selectionToken.ThrowIfCancellationRequested();
+            lock (_gate)
+            {
+                if (generation != _generation) return;
+                _playerGeneration = generation;
+            }
             // Generation travels to the player; stale audio events cannot replace the selected song.
             await _player!.CallAsync("load", new
             {
@@ -217,12 +240,19 @@ public sealed class MusicService : IMusicService
                 _ = PrefetchAsync(next.Queue[next.Index + 1].Id, selectionToken);
         }
         catch (OperationCanceledException) when (selection.IsCancellationRequested) { }
+        catch (MusicStreamUnavailableException)
+        {
+            await RecoverPlaybackAsync(generation, "unsupported").ConfigureAwait(false);
+        }
         catch
         {
             lock (_gate)
                 if (_generation == generation)
+                {
+                    _recoveryStopped = true;
                     _state = _state with { Player = _state.Player with { Buffering = false, Playing = false,
-                        Error = "Playback could not start. Retry the song or reconnect in Setup." } };
+                        Error = "Playback could not start. Retry the song or reconnect in Setup." }, PlaybackNotice = null };
+                }
             Changed?.Invoke();
             throw;
         }
@@ -245,15 +275,78 @@ public sealed class MusicService : IMusicService
             return;
         }
         if (!value.TryGetProperty("generation", out var generation)) return;
+        if (kind == "command")
+        {
+            lock (_gate)
+            {
+                // Playback state is generation-bound. User transport controls
+                // belong to the still-current player even after a canceled load.
+                if (generation.GetInt64() != _playerGeneration) return;
+            }
+            _ = HandlePlayerCommandAsync(value.GetProperty("command").GetString() ?? "");
+            return;
+        }
         lock (_gate)
         {
             if (generation.GetInt64() != _generation) return;
             if (kind == "state")
+            {
                 _state = _state with { Player = value.GetProperty("state").Deserialize<PlayerState>(JsonProcess.Json) ?? _state.Player };
+                if (_state.Player.Playing && !_state.Player.Buffering && _state.Player.Duration > 0)
+                {
+                    _consecutiveSkips = 0;
+                    if (_state.PlaybackNotice == "Refreshing the audio stream…") _state = _state with { PlaybackNotice = null };
+                }
+            }
         }
         Changed?.Invoke();
-        if (kind == "ended") _ = HandlePlayerCommandAsync("ended");
-        else if (kind == "command") _ = HandlePlayerCommandAsync(value.GetProperty("command").GetString() ?? "");
+        if (kind == "playback-failed") _ = RecoverPlaybackAsync(generation.GetInt64(), value.GetProperty("reason").GetString());
+        else if (kind == "ended") _ = HandlePlayerCommandAsync("ended");
+    }
+
+    private async Task RecoverPlaybackAsync(long generation, string? reason)
+    {
+        bool refresh;
+        lock (_gate)
+        {
+            if (generation != _generation || _recoveringGeneration == generation || _lifetime.IsCancellationRequested) return;
+            _recoveringGeneration = generation;
+            if (reason is not ("network" or "decode" or "unsupported"))
+            {
+                _recoveryStopped = true;
+                _state = _state with { PlaybackNotice = "Playback needs your attention. Select Play to retry.",
+                    Player = _state.Player with { Playing = false, Buffering = false, Error = null } };
+                refresh = false;
+            }
+            else if (!_streamRetried)
+            {
+                refresh = true;
+                _state = _state with { PlaybackNotice = "Refreshing the audio stream…" };
+            }
+            else
+            {
+                refresh = false;
+                // Never wrap or repeat a failed song, even with Repeat One/All.
+                // Stop after three consecutive failures to avoid draining a queue
+                // during a provider outage. Explicit selection starts a new attempt.
+                var next = _state.Index + 1;
+                _recoveryStopped = ++_consecutiveSkips >= 3 || next >= _state.Queue.Count;
+                _state = _state with
+                {
+                    Index = _recoveryStopped ? _state.Index : next,
+                    PlaybackNotice = _recoveryStopped ? "Playback stopped: songs are unavailable. Select another song or Play to retry." :
+                        $"Skipped “{_state.Current?.Title}”: audio unavailable.",
+                    Player = _state.Player with { Playing = false, Buffering = false, Error = null },
+                };
+            }
+            if (_recoveryStopped) ++_generation; // Reject remaining failed-element events.
+        }
+        Changed?.Invoke();
+        try { await SelectAsync(_lifetime.Token, generation, refresh).ConfigureAwait(false); }
+        catch (Exception error) when (error is IOException or OperationCanceledException)
+        {
+            // SelectAsync has already published a bounded status; no unobserved task.
+        }
     }
 
     private async Task HandlePlayerCommandAsync(string command)
@@ -264,6 +357,23 @@ public sealed class MusicService : IMusicService
 
     public async Task CommandAsync(string command, double? value, CancellationToken token)
     {
+        var canceledPendingPlayback = false;
+        bool retry;
+        lock (_gate)
+        {
+            if (_state.Player.Buffering && command is "pause" or "toggle")
+            {
+                _selection?.Cancel();
+                ++_generation;
+                _recoveryStopped = true;
+                _state = _state with { Player = _state.Player with { Playing = false, Buffering = false }, PlaybackNotice = null };
+                command = "pause";
+                canceledPendingPlayback = true;
+            }
+            retry = _recoveryStopped && command is "play" or "toggle";
+        }
+        if (canceledPendingPlayback) Changed?.Invoke();
+        if (retry) { await SelectAsync(token).ConfigureAwait(false); return; }
         if (command is "next" or "previous" or "ended")
         {
             lock (_gate)

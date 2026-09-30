@@ -67,11 +67,14 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual("20px", Resolve("text", "playnite-library-details-section-title").Get("font-size")?.Text);
         Assert.AreEqual("400", Resolve("text", "playnite-library-details-description").Get("font-weight")?.Text);
         Assert.AreEqual("128", Resolve("text", "playnite-library-details-description").Get("max-lines")?.Text);
-        Assert.AreEqual(raised!.Replace("0.98)", "0.80)"), Resolve("stack", "wrail-modal").Get("background")?.Text);
+        Assert.AreEqual(raised.Replace(", 0.98)", ", 0.8232)"), Resolve("stack", "wrail-modal").Get("background")?.Text);
         Assert.IsNull(Resolve("stack", "wrail-modal").Get("opacity"), "Panel alpha must not dim its children.");
         Assert.AreEqual(Resolve("backdrop").Get("background")?.Text,
             Resolve("modalLayer", "wrail-modal-layer").Get("background")?.Text);
-        Assert.AreEqual("20px", Resolve("stack", "wrail-modal").Get("padding")?.Text);
+        Assert.AreEqual("24px", Resolve("stack", "wrail-modal").Get("padding")?.Text);
+        Assert.AreEqual("column", Resolve("row", "wrail-modal__header").Get("direction")?.Text);
+        Assert.AreEqual("900px", Resolve("stack", "wrail-modal").Get("width")?.Text);
+        Assert.AreEqual("3", Resolve("text", "playnite-library-details-field").Get("flex-grow")?.Text);
         Assert.AreEqual(accent, Resolve("text", "playnite-library-summary-badge-accent").Get("color")?.Text);
         var focusedControl = theme.Resolve(new WrssElement("button", null,
             new HashSet<string>(["playnite-library-control"]),
@@ -83,7 +86,7 @@ public sealed partial class PlayniteLibraryLayoutTests
     }
 
     [TestMethod]
-    public void CategoryRowsAreSingleActionsAndMissingCoversKeepTheirLabels()
+    public async Task CategoryRowsAreSingleActionsAndMissingCoversKeepTheirLabels()
     {
         var item = PlayniteLibraryItem.From(Item("app-theme", "saved-theme",
             "A game with a long title and no cover artwork", "Steam"));
@@ -105,23 +108,29 @@ public sealed partial class PlayniteLibraryLayoutTests
 
         foreach (var route in new[] { PlayniteLibraryRoute.Library, PlayniteLibraryRoute.Browse, PlayniteLibraryRoute.Hidden })
         {
-            var view = PlayniteLibraryPresentation.Render(state with
+            var routeState = state with
             {
                 Route = route, HiddenRows = [item],
                 Organization = organization with { ExcludedSavedIds = route == PlayniteLibraryRoute.Hidden ? [item.Value.SavedId] : [] },
-            });
-            var rendered = new PresentationWidget(view).RenderSnapshot("playnite-library.fallback", 3);
+            };
+            await using var fixture = new IndexedPresentationFixture(routeState, [item]);
+            await fixture.StartAsync();
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture, "playnite-library.fallback");
+            var rendered = host.CurrentSnapshot;
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(rendered).Count);
-            var title = Nodes(rendered.Root).Single(node => node.StyleClasses.Contains("playnite-library-poster-fallback-title"));
+            using var lease = route == PlayniteLibraryRoute.Hidden ? null : await host.AcquireAsync(
+                route == PlayniteLibraryRoute.Library ? PlayniteLibraryPresentation.HomeRailId : PlayniteLibraryPresentation.ScrollId, 0, 1);
+            var posterRoot = lease?.Range.Items.Single().Root ?? rendered.Root;
+            var title = Nodes(posterRoot).Single(node => node.StyleClasses.Contains("playnite-library-poster-fallback-title"));
             Assert.AreEqual(item.Presentation.DisplayName, title.Text);
-            var scrim = Nodes(rendered.Root).Single(node => node.StyleClasses.Contains("playnite-library-poster-fallback"));
+            var scrim = Nodes(posterRoot).Single(node => node.StyleClasses.Contains("playnite-library-poster-fallback"));
             Assert.IsNull(CompileStyles().Resolve(new WrssElement("stack", scrim.Id,
                 scrim.StyleClasses.ToHashSet())).Get("height"), "Missing-cover labels must have natural height.");
         }
     }
 
     [TestMethod]
-    public void CompactSummaryKeepsLaunchFeedbackVisible()
+    public async Task CompactSummaryKeepsLaunchFeedbackVisible()
     {
         var item = PlayniteLibraryItem.From(Item("pending-app", "pending-game", "Pending game", "Steam"));
         var state = State(Snapshot(WidgetPagedResourceStatus.Ready, [item]),
@@ -129,12 +138,74 @@ public sealed partial class PlayniteLibraryLayoutTests
         {
             LaunchingSavedId = item.Value.SavedId,
         };
-        var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
-            .RenderSnapshot("playnite-library.pending-summary", 1);
-        var tile = Nodes(snapshot.Root).Single(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await using var fixture = new IndexedPresentationFixture(state, [item]);
+        await fixture.StartAsync();
+        using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture, "playnite-library.pending-summary");
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(host.CurrentSnapshot).Count);
+        using var lease = await host.AcquireAsync(PlayniteLibraryPresentation.HomeRailId, 0, 1);
+        var tile = lease.Range.Items.Single().Root;
+        Assert.AreEqual(PlayniteLibraryActions.DetailsOpen, tile.ActionId);
         var compactMetadata = Nodes(tile.FocusPresentation!).Single(node =>
             node.StyleClasses.Contains("playnite-library-summary-compact-meta"));
         StringAssert.StartsWith(compactMetadata.Text!, "Pending · ");
+    }
+
+    [TestMethod]
+    [DataRow((int)PlayniteLibraryRoute.Library)]
+    [DataRow((int)PlayniteLibraryRoute.Browse)]
+    public async Task IndexedPageAndPosterThemeContractsSurviveBusyAndRetainedStates(int routeValue)
+    {
+        var route = (PlayniteLibraryRoute)routeValue;
+        var item = ArtworkItem("theme-app", "theme-game", "Theme game", "Steam", "tile", "hero");
+        foreach (var busy in new[] { false, true })
+        foreach (var retained in new[] { false, true })
+        {
+            var state = State(Snapshot(WidgetPagedResourceStatus.Ready, []),
+                PlayniteLibraryPrivateState.Empty, route, []) with
+            {
+                OrganizationBusy = busy,
+                BrowseRetained = retained,
+            };
+            await using var fixture = new IndexedPresentationFixture(state, [item]);
+            await fixture.StartAsync();
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture, "playnite-library.indexed-theme");
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(host.CurrentSnapshot).Count);
+            var declaration = Nodes(host.CurrentSnapshot.Root).Single(node => node.Kind == ViewNodeKind.IndexedCollection);
+            Assert.AreEqual(0, declaration.Children.Count, "The page must never fall back to eager poster rendering.");
+            using var lease = await host.AcquireAsync(declaration.Id, 0, 1);
+            var poster = lease.Range.Items.Single().Root;
+            var disabled = busy || route == PlayniteLibraryRoute.Browse && retained;
+            Assert.AreEqual(disabled, poster.IsDisabled == true);
+            Assert.AreEqual("hero", poster.FocusBackgroundArtworkHandle);
+            Assert.AreEqual(disabled ? (ControllerButton?)null : ControllerButton.X, poster.ContextMenuButton,
+                "Busy or retained rows must not advertise actions which cannot be dispatched.");
+            Assert.IsTrue(poster.StyleClasses.Contains(route == PlayniteLibraryRoute.Library
+                ? "playnite-library-fixed-tile" : "playnite-library-browse-tile"));
+            Assert.AreEqual(ImageFit.Cover, Nodes(poster).Single(node => node.Kind == ViewNodeKind.Image).ImageFit);
+        }
+    }
+
+    [TestMethod]
+    public async Task IndexedWarmHomeKeepsMissingArtworkLabelsWithoutEnablingSavedOnlyGames()
+    {
+        var organization = PlayniteLibraryPrivateState.Empty with
+        {
+            Items = [new("saved-warm-theme", "Previously seen game", "Steam")],
+        };
+        var state = State(Snapshot(WidgetPagedResourceStatus.Loading, []), organization,
+            PlayniteLibraryRoute.Library, []) with { ContentEntryRequestId = 1 };
+        await using var fixture = new IndexedPresentationFixture(state, [], warmDisplayOnly: true);
+        await fixture.StartAsync();
+        using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture, "playnite-library.warm-theme");
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(host.CurrentSnapshot).Count);
+        Assert.IsNull(host.CurrentSnapshot.FocusGroupEntryRequest, "Loading must not request entry into disabled saved-only rows.");
+        using var lease = await host.AcquireAsync(PlayniteLibraryPresentation.HomeRailId, 0, 1);
+        var poster = lease.Range.Items.Single().Root;
+        Assert.IsTrue(poster.IsDisabled == true);
+        Assert.IsNull(poster.ContextMenuButton);
+        Assert.IsNull(poster.FocusBackgroundArtworkHandle);
+        Assert.AreEqual("Previously seen game", Nodes(poster).Single(node =>
+            node.StyleClasses.Contains("playnite-library-poster-fallback-title")).Text);
     }
 
     [TestMethod]
@@ -169,6 +240,18 @@ public sealed partial class PlayniteLibraryLayoutTests
                     var navigation = Nodes(snapshot.Root).Where(node => node.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen).ToArray();
                     Assert.AreEqual(2, navigation.Length);
                     Assert.AreEqual(1, navigation.Count(node => node.IsSelected == true));
+                    var theme = CompileStyles();
+                    foreach (var tab in navigation)
+                    {
+                        var tabStyle = theme.Resolve(new WrssElement("button", tab.Id,
+                            tab.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+                        Assert.AreEqual("128px", tabStyle.Get("width")?.Text,
+                            "Home and Library should offer equally wide targets.");
+                        Assert.AreEqual("104px", tabStyle.Get("min-width")?.Text,
+                            "Compact layouts must retain readable destination labels.");
+                        Assert.AreEqual(WidgetTransitionKind.Selection, tab.Transition?.Kind,
+                            "Sizing the destinations must preserve coordinated section selection motion.");
+                    }
                 }
                 if (phase == WidgetPagedResourceStatus.Loading)
                     Assert.IsNull(snapshot.FocusGroupEntryRequest, "Do not enter loading placeholders before games arrive.");

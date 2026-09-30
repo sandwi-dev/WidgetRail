@@ -22,6 +22,36 @@ The polynomial smoothstep from the existing native policy corresponds to the
 composition cubic Bezier `(1/3, 0), (2/3, 1)`. There is no managed animation tick,
 layout loop, pixel capture or fallback painter.
 
+## Ready widget switching
+
+`AnimateWidgetSwitching` controls resizing between the outgoing and incoming
+widget extents, independently of section presets. After the incoming presenter
+has a current frame, worker acknowledgment and native layout, publication starts
+`WidgetSurfaceResizeMotion` on the whole clipped presenter and its shell fill.
+Both use the same compositor batch, with a bottom-left, bottom-center or
+bottom-right pivot matching overlay placement. Duration is 140 ms before the
+shared speed multiplier, matching the native extent transition. Content is laid
+out once at its destination size; no layout or painting loop runs during motion.
+There is no slide-up or opacity animation. Equal extents and same-widget reentry
+have no artificial motion. Rapid replacement samples the current presented
+extent at publication, after incoming preparation, rather than jumping to the
+previous destination. Input readiness does not await visual completion.
+Disabled switching, reduced motion, reduced transparency and effective high
+contrast settle immediately. Suspension, external resize, unload, preference
+changes and disposal settle both layers without changing XAML staging opacity.
+
+Size changes within the active widget (for example YouTube Music opening Settings)
+use this same compositor owner through `ConfigureProductionViewport`. The host
+compares resolved extents, samples any in-flight size before changing native layout,
+then starts `ContentSizeChanged` motion. Repeated notifications with unchanged
+extents leave the current timeline alone. Viewport, interface/text scale, placement,
+and fullscreen changes settle instead; initial publication and widget switches
+remain owned by their existing publication transaction.
+
+As in the original host, content resizing is independent of the widget-switch
+toggle. Shared speed, reduced-motion, transparency and contrast policies still
+apply. No additional widget declaration or SDK API is required.
+
 ## Native ownership and integration hooks
 
 `WidgetCompositionTarget` owns transform/opacity channels on dedicated motion
@@ -273,9 +303,13 @@ At most three decoded image references remain: two painted images and the latest
 proposal. Completion never rewrites the logical latest source, and an obsolete
 completion cannot resurrect a cleared image. Null/missing artwork clears all
 references immediately. There are no per-frame callbacks, captures or readbacks.
+The outgoing image remains opaque while the incoming image fades over it;
+fading both layers would expose the backdrop at mid-blend even for opaque images.
 
-Resize, unload, preference changes and disposal retire outstanding timers/native
-animation owners. Same-source and image-fit updates reuse the decoded object
+Unload, preference changes and disposal retire outstanding timers/native
+animation owners. Native resize preserves the active opacity batch: XAML rearranges
+both image layers, and this recipe has no animated geometry or size-dependent clip.
+It must not snap to a newer pending source when content changes size. Same-source and image-fit updates reuse the decoded object
 without replaying a fade. This is artwork presentation; it does not animate the
 FocusPresentationSurface's text/control fragment or change its source retention.
 

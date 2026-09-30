@@ -123,7 +123,10 @@ $originalExeHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
 $sourceAssemblyHash = (Get-FileHash -LiteralPath (Join-Path $frontend 'OverlayFrontend.WinUI.dll') -Algorithm SHA256).Hash
 Invoke-WinApp @('manifest','generate',$identity,'--template','sparse','--package-name',$PackageName,'--publisher-name',$buildIdentity.Publisher,
     '--version',$Version,'--description','WidgetRail external-content deployment evaluation','--entrypoint',$exe) (Join-Path $logs 'manifest.log')
-$manifestPath = Join-Path $identity 'Package.appxmanifest'
+$manifestPath = Join-Path $identity 'AppxManifest.xml'
+# WinApp generates a source manifest name. Windows' loose registration API
+# consumes the canonical manifest file from the identity directory.
+Move-Item -LiteralPath (Join-Path $identity 'Package.appxmanifest') -Destination $manifestPath
 $manifest = Xml $manifestPath
 $manager = [Xml.XmlNamespaceManager]::new($manifest.NameTable)
 $manager.AddNamespace('p',$foundation); $manager.AddNamespace('uap',$uap)

@@ -9,6 +9,12 @@ internal sealed record ControllerGuideHint(ControllerPrompt Prompt, string Label
 
 internal static class ControllerGuideModel
 {
+    internal static IReadOnlyList<ControllerGuideHint> TrayHints(bool reordering) => reordering
+        ? (ControllerGuideHint[])[new(ControllerPrompt.DPadHorizontal, "Move widget", Required: true), new(ControllerPrompt.A, "Done", ControllerButton.A),
+            new(ControllerPrompt.B, "Done", ControllerButton.B, Required: true), new(ControllerPrompt.Y, "Done", ControllerButton.Y)]
+        : (ControllerGuideHint[])[new(ControllerPrompt.A, "Open widget", ControllerButton.A, Required: true),
+            new(ControllerPrompt.Y, "Reorder · hold to restart", ControllerButton.Y),
+            new(ControllerPrompt.Menu, "Commands", ControllerButton.Menu), new(ControllerPrompt.B, "Close", ControllerButton.B, Required: true)];
     private static readonly ControllerButton[] order = [ControllerButton.X, ControllerButton.LeftTrigger,
         ControllerButton.RightTrigger, ControllerButton.LeftBumper, ControllerButton.RightBumper,
         ControllerButton.Y, ControllerButton.Menu, ControllerButton.View, ControllerButton.LeftStick, ControllerButton.RightStick];
@@ -49,8 +55,9 @@ internal static class ControllerGuideModel
     }
 
     internal static IReadOnlyList<ControllerGuideHint> WithHost(IReadOnlyList<ControllerGuideHint> hints) =>
-        (ControllerGuideHint[])[.. hints, new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true),
-            new(ControllerPrompt.Guide, "Close", Required: true)];
+        (ControllerGuideHint[])[.. hints,
+            .. (hints.Any(hint => hint.Prompt == ControllerPrompt.B) ? [] : new ControllerGuideHint[] { new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true) }),
+            .. (hints.Any(hint => hint.Prompt == ControllerPrompt.Guide) ? [] : new ControllerGuideHint[] { new(ControllerPrompt.Guide, "Close", Required: true) })];
 
     // Native view supplies actual desired widths. Never approximate string width
     // or truncate a label; paired section actions are admitted together.

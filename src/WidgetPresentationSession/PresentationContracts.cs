@@ -6,9 +6,17 @@ namespace WidgetRail.WidgetPresentationSession;
 
 public sealed record WidgetPresentationSessionOptions
 {
+    // Installed only by the trusted process owner, not exposed to widget code or
+    // arbitrary pipe clients. Invoked at the serialized admitted-input write.
+    internal Action<string>? BeforeInputWrite { get; init; }
     public string ClientName { get; init; } = "ManagedPresentationHost";
     /// <summary>Opt in only when the frontend implements permission renewal and native capture retirement.</summary>
     public bool WindowPreviews { get; init; }
+    /// <summary>Advertise only controller behaviors this frontend actually consumes.</summary>
+    public bool ExclusiveControllerControl { get; init; }
+    public bool HeldDpadScroll { get; init; }
+    /// <summary>True only when the trusted Settings startup backend launches this frontend.</summary>
+    public bool StartupRegistration { get; init; }
     public TimeSpan ConnectTimeout { get; init; } = TimeSpan.FromSeconds(5);
     public int MaximumMessageBytes { get; init; } = BridgeProtocol.DefaultMaximumMessageBytes;
     public int MaximumPendingRequests { get; init; } = 32;
@@ -66,7 +74,11 @@ public sealed record WidgetPresentationAuthority(
     long SessionGeneration,
     string WidgetInstanceId,
     long SnapshotSequence,
-    string ActiveInputScopeId);
+    string ActiveInputScopeId)
+{
+    /// <summary>Trusted worker incarnation that produced the displayed snapshot.</summary>
+    public BridgeWorkerRun? WorkerRun { get; init; }
+}
 
 public sealed record WidgetPresentationFrame(
     WidgetPresentationAuthority Authority,

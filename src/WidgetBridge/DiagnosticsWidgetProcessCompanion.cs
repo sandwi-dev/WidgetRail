@@ -17,7 +17,8 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
         Func<CancellationToken, ValueTask<PlatformDiagnosticsSnapshot>> snapshotProvider,
         Func<string, CancellationToken, ValueTask<PlatformAuthorityRecoveryRetryResult>>
             authorityRecoveryRetry,
-        WidgetProcessCompanionContext context)
+        WidgetProcessCompanionContext context,
+        string? settingsRoot = null)
         : this(
             snapshotProvider,
             authorityRecoveryRetry,
@@ -27,7 +28,7 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
             static (_, _, token) => ValueTask.FromResult(
                 new PlatformWidgetLocalDataClearResult(
                     PlatformWidgetLocalDataClearStatus.Refused, "clear_unsupported")),
-            context)
+            context, settingsRoot: settingsRoot)
     {
     }
 
@@ -39,7 +40,8 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
             localDataInspection,
         Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>
             localDataClear,
-        WidgetProcessCompanionContext context)
+        WidgetProcessCompanionContext context,
+        string? settingsRoot = null)
         : this(
             snapshotProvider, authorityRecoveryRetry, localDataInspection, localDataClear,
             static (id, token) => ValueTask.FromResult(
@@ -50,7 +52,7 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
                 new PlatformWidgetPackageUninstallResult(
                     PlatformWidgetPackageUninstallStatus.Refused,
                     "uninstall_unsupported")),
-            context)
+            context, settingsRoot: settingsRoot)
     {
     }
 
@@ -72,7 +74,11 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
         Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? packageNotification = null,
         Func<string, CancellationToken, ValueTask<PlatformWidgetLocalDataInspection>>? builtInLocalDataInspection = null,
         Func<string, string, CancellationToken, ValueTask<PlatformWidgetLocalDataClearResult>>? builtInLocalDataClear = null,
-        Func<OverlayDisplayContext>? overlayDisplay = null)
+        Func<OverlayDisplayContext>? overlayDisplay = null,
+        string? settingsRoot = null,
+        bool exclusiveControllerControl = true,
+        bool heldDpadScroll = true,
+        bool startupRegistration = true)
     {
         ArgumentNullException.ThrowIfNull(snapshotProvider);
         ArgumentNullException.ThrowIfNull(authorityRecoveryRetry);
@@ -100,6 +106,10 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
             builtInLocalDataClear: builtInLocalDataClear);
         WorkerArguments =
         [
+            "--host-exclusive-controller-control", exclusiveControllerControl ? "true" : "false",
+            "--host-held-dpad-scroll", heldDpadScroll ? "true" : "false",
+            "--host-startup-registration", startupRegistration ? "true" : "false",
+            .. settingsRoot is null ? Array.Empty<string>() : new[] { "--settings-root", Path.GetFullPath(settingsRoot) },
             "--diagnostics-pipe", pipeName,
             "--diagnostics-nonce", _server.ChannelNonce,
             "--diagnostics-server-pid",

@@ -139,6 +139,10 @@
                         Duration="0:0:0.083" />
                 </ContentPresenter.BackgroundTransition>
             </ContentPresenter>
+            <!-- Curved authored strokes use the native vector Shape path, not
+                 ContentPresenter's optimized border raster. Layout and input
+                 remain owned by the standard content presenter. -->
+            <Rectangle x:Name="WidgetRoundedBorder" IsHitTestVisible="False" Visibility="Collapsed" />
             <Grid
                 x:Name="WidgetDepthEdges"
                 IsHitTestVisible="False" />
@@ -150,13 +154,47 @@
         <local:WidgetIndexedRowView
             Row="{x:Bind Content, Mode=OneWay}" />
     </DataTemplate>
+    <!-- Native header containers otherwise add their own 12-DIP inset, minimum
+         height and an OS-colored divider around our already styled header.
+         Keep their semantic container while the shared section label owns paint. -->
+    <Style x:Key="WidgetIndexedGridHeaderContainer" TargetType="GridViewHeaderItem">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="GridViewHeaderItem">
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                        ContentTemplate="{TemplateBinding ContentTemplate}"
+                        HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="WidgetIndexedListHeaderContainer" TargetType="ListViewHeaderItem">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListViewHeaderItem">
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                        ContentTemplate="{TemplateBinding ContentTemplate}"
+                        HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
     <DataTemplate
         x:Key="WidgetIndexedGroupHeaderTemplate"
         x:DataType="collections:WidgetIndexedGroup">
-        <TextBlock
+        <local:WidgetGroupHeader
             Text="{x:Bind Header, Mode=OneWay}"
-            Style="{StaticResource SubtitleTextBlockStyle}"
-            Margin="8,12,8,8" />
+            HeaderStyle="{x:Bind HeaderStyle, Mode=OneWay}" />
     </DataTemplate>
     <ItemsPanelTemplate
         x:Key="WidgetIndexedVerticalPanel">

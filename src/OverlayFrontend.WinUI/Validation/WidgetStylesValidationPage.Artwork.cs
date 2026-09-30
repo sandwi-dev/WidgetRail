@@ -16,6 +16,8 @@ internal sealed partial class WidgetStylesValidationPage
     private async Task NativeArtworkAsync()
     {
         var checkStart = checks.Count;
+        await NativeArtworkFitAsync();
+        await ArtworkFailureIsolationAsync();
         var bytes = await ArtworkPngAsync(2048, 1536);
         var before = NativeArtworkCounters.Snapshot();
         var image = new Image { Width = 160, Height = 96, Stretch = Stretch.UniformToFill };

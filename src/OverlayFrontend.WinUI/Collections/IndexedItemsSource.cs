@@ -90,7 +90,7 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         CheckAccess();
         if (active == value) return Task.CompletedTask;
         active = value;
-        if (value) { QueuePump(); return Task.CompletedTask; }
+        if (value) { ResetFailures(); QueuePump(); return Task.CompletedTask; }
         foreach (var fetch in fetching.Values) { fetch.Cancellation.Cancel(); ++CancelledLoads; }
         fetching.Clear(); failedPages.Clear();
         foreach (var page in pages.Values) Release(page.Lifetime);
@@ -142,7 +142,7 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         ContentRevision = revision;
         foreach (var fetch in fetching.Values) { fetch.Cancellation.Cancel(); ++CancelledLoads; }
         fetching.Clear();
-        failedPages.Clear();
+        ResetFailures();
         QueuePump();
     }
 
@@ -163,8 +163,17 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
     {
         CheckAccess();
         if (failedPages.Count == 0) return;
-        failedPages.Clear();
+        ResetFailures();
         QueuePump();
+    }
+
+    private void ResetFailures()
+    {
+        failedPages.Clear();
+        // A new read is pending, not terminally failed. Preserve slots/pixels;
+        // navigation still waits for current lease authority before entering.
+        // Notifications may retain another slot, so iterate a stable snapshot.
+        foreach (var slot in slots.Values.ToArray()) slot.ClearFailure();
     }
 
     [System.Diagnostics.CodeAnalysis.AllowNull]
@@ -327,11 +336,21 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
                     {
                         try
                         {
-                            Admit(fetch.Request, items!);
+                            var admitted = Validate(fetch.Request, items!);
                             if (pages.Remove(page, out var previous)) Release(previous.Lifetime);
                             pages.Add(page, items!);
                             retained = true;
                             ++CompletedLoads;
+                            // Binding/focus notifications can synchronously suspend,
+                            // dispose or refresh the source. Install ownership first
+                            // so those paths can retire this lease, and do not publish
+                            // the rest of a page after its presentation has retired.
+                            for (var index = 0; index < admitted.Length; ++index)
+                            {
+                                if (disposed || !active || ContentRevision != fetch.Request.ContentRevision ||
+                                    !pages.TryGetValue(page, out var published) || !ReferenceEquals(published, items)) break;
+                                GetSlot(fetch.Request.StartIndex + index).SetValue(admitted[index].Key, admitted[index].Value);
+                            }
                         }
                         catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
                     }
@@ -363,7 +382,7 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
         }
     }
 
-    private void Admit(IndexedRangeRequest request, IndexedRangeResult<T> result)
+    private KeyedCollectionItem<T>[] Validate(IndexedRangeRequest request, IndexedRangeResult<T> result)
     {
         if (result is null || result.Query != Query || result.RequestId != request.RequestId || result.StartIndex != request.StartIndex ||
             result.ContentRevision != request.ContentRevision || request.ContentRevision != ContentRevision)
@@ -380,8 +399,7 @@ internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, I
             if (slots.TryGetValue(request.StartIndex + index, out var old) && old.Key is { } oldKey && oldKey != item.Key)
                 throw new InvalidDataException("An indexed query changed an existing logical position.");
         }
-        for (var index = 0; index < copy.Length; ++index)
-            GetSlot(request.StartIndex + index).SetValue(copy[index].Key, copy[index].Value);
+        return copy;
     }
 
     // Existing order never changes. Only explicit Append emits structural Add;

@@ -5,8 +5,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\WindowsWindowActivation\WindowsWindowActivation.csproj" />
     <ProjectReference Include="..\..\src\OverlayPlatformClient\OverlayPlatformClient.csproj" />
+    <ProjectReference Include="..\..\src\PlatformSettings\PlatformSettings.csproj" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\ControllerControlPreference.cs" Link="ControllerControlPreference.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\PlatformInputDiagnostics.cs" Link="PlatformInputDiagnostics.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\ControllerInputOwnership.cs" Link="ControllerInputOwnership.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\ControllerHandoffRelease.cs" Link="ControllerHandoffRelease.cs" />
   </ItemGroup>
 </Project>

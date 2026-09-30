@@ -12,7 +12,7 @@ public sealed class PowerWidget : Widget
     private bool _busy;
     private long _generation;
     private string? _pending;
-    private string _focus = "power.sleep";
+    private string? _focus = "power.sleep";
     private string? _toast;
     private ToastTone _tone;
 
@@ -42,7 +42,7 @@ public sealed class PowerWidget : Widget
                 if (generation != _generation) return;
                 _availability = availability;
                 _focus = availability.CanSleep ? "power.sleep" :
-                    availability.CanRestart ? "power.restart" : availability.CanShutDown ? "power.shutdown" : "power.check";
+                    availability.CanRestart ? "power.restart" : availability.CanShutDown ? "power.shutdown" : null;
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
@@ -51,7 +51,7 @@ public sealed class PowerWidget : Widget
             lock (_gate) if (generation == _generation)
             {
                 _availability = new(false, false, false);
-                _focus = "power.check";
+                _focus = null;
                 ShowToastLocked(FriendlyError(error), ToastTone.Danger);
             }
         }
@@ -166,15 +166,15 @@ public sealed class PowerWidget : Widget
                     Option("Restart", "Start Windows again", "restart", WidgetGlyph.Refresh),
                     Option("Shut down", "Turn off your PC", "shutdown", WidgetGlyph.Settings)).Classes("power-options"));
                 children.Add(UI.Text(!_loaded ? "Checking power options..." : _busy ? "Waiting for Windows..." :
-                    !_availability.CanSleep && !_availability.CanRestart && !_availability.CanShutDown ? "Windows power options are unavailable. Try Check again." :
+                    !_availability.CanSleep && !_availability.CanRestart && !_availability.CanShutDown ? "Windows power options are unavailable. Refresh to check again." :
                     !_availability.CanSleep ? "Sleep isn't available on this PC right now." :
                     "Shut down and Restart will ask you to confirm.", "power.help").Classes("power-help"));
-                children.Add(UI.Button("Check again", "check", "power.check").Busy(_busy).Classes("power-check"));
                 scope = "power";
             }
             if (_toast is not null) children.Add(UI.Toast("Power", _toast, _tone, "power.toast"));
             var root = UI.Stack("power.root", children.ToArray()).InputScope(scope).Classes("power-widget");
             if (_pending is not null) root = root.Shortcut(ControllerButton.B, "cancel");
+            else root = root.Shortcut(ControllerButton.Y, "check", label: "Refresh");
             return new(root.TransitionContent("power.pages", scope, _pending is null ? 0 : 1), _focus, Surface: new WidgetSurfaceHints
             {
                 Mode = WidgetSurfaceMode.Standard, PreferredWidth = 680, PreferredHeight = 380,

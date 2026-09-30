@@ -15,6 +15,13 @@ internal sealed class BridgeStaleControllerInputAuthorityException(string messag
     : Exception(message);
 internal sealed class BridgeStalePinnedInputAuthorityException(string message)
     : Exception(message);
+internal sealed class BridgeStaleIndexedInputAuthorityException(string message)
+    : Exception(message);
+internal sealed class BridgeStaleMediaAuthorityException(string message, bool command = false)
+    : Exception(message)
+{
+    internal string Code => command ? "embedded_media_command_stale" : "embedded_media_stale";
+}
 internal sealed class BridgeStaleArtworkAuthorityException(string message)
     : Exception(message);
 internal sealed class BridgeStalePackageIconAuthorityException(string message)

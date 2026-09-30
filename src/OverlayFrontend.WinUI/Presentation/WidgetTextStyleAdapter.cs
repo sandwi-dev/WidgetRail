@@ -41,8 +41,12 @@ internal sealed class WidgetTextStyleAdapter : IDisposable
         else text.Text = value;
     }
 
-    internal void Apply(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, double fontSize)
+    internal void Apply(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, double fontSize, TextAlignment? alignment)
     {
+        // Control content alignment positions the label box, but does not align
+        // the individual lines inside it. One owner handles both plain text and
+        // retained control labels, restoring the native value on style removal.
+        Put(TextBlock.TextAlignmentProperty, alignment);
         var maxLines = style?.GetValueOrDefault("max-lines")?.Number is { } lines && double.IsFinite(lines)
             ? (int?)Math.Clamp(Math.Round(lines), 1, 128) : null;
         Put(TextBlock.MaxLinesProperty, maxLines);

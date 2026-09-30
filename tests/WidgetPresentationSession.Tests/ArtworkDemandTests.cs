@@ -13,6 +13,113 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 public sealed class ArtworkDemandTests
 {
     [TestMethod]
+    public async Task ReplacedWorkerCannotCompleteOldArtworkEvenWithIdenticalHandle()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            await EstablishAsync(channel);
+            var old = await ReadDemandAsync(channel);
+            await AckAsync(channel, old.RequestId);
+            var refresh = await ReadAsync(channel);
+            await SnapshotAsync(channel, refresh.RequestId, 2, workerRun: new(1, 1));
+            var current = await ReadDemandAsync(channel);
+            await AckAsync(channel, current.RequestId);
+            await CompleteAsync(channel, old, Artwork(3));
+            await CompleteAsync(channel, current, Artwork(4));
+            await StopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName))
+        {
+            var original = await EstablishAsync(session);
+            var pending = session.ResolveArtworkAsync(original.Authority, Handle);
+            var replacement = await session.RefreshAsync(original.Authority).WaitAsync(Deadline);
+            var retired = await Assert.ThrowsAsync<WidgetPresentationSessionException>(async () => await pending.WaitAsync(Deadline));
+            Assert.AreEqual("stale_artwork_authority", retired.Code);
+            CollectionAssert.AreEqual(Artwork(4), (await session.ResolveArtworkAsync(replacement.Authority, Handle).WaitAsync(Deadline)).EncodedBytes.ToArray());
+        }
+        await serverTask.WaitAsync(Deadline);
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task CosmeticSnapshotsRetainArtworkBeforeAndAfterAdmission(bool admitAfterUpdate)
+    {
+        await using var server = new ScriptedBridgeServer();
+        var expected = Artwork(9);
+        var refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            await EstablishAsync(channel);
+            BridgeEnvelope? demand = null;
+            if (!admitAfterUpdate)
+            {
+                demand = await ReadDemandAsync(channel);
+                await AckAsync(channel, demand.RequestId);
+            }
+            var refresh = await ReadAsync(channel);
+            await SnapshotAsync(channel, refresh.RequestId, 2);
+            await refreshed.Task.WaitAsync(Deadline);
+            if (admitAfterUpdate)
+            {
+                demand = await ReadDemandAsync(channel);
+                await AckAsync(channel, demand.RequestId);
+            }
+            await CompleteAsync(channel, demand!, expected);
+            await StopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName))
+        {
+            var original = await EstablishAsync(session);
+            var pending = admitAfterUpdate ? null : session.ResolveArtworkAsync(original.Authority, Handle);
+            await session.RefreshAsync(original.Authority).WaitAsync(Deadline);
+            refreshed.SetResult();
+            pending ??= session.ResolveArtworkAsync(original.Authority, Handle);
+            CollectionAssert.AreEqual(expected, (await pending.WaitAsync(Deadline)).EncodedBytes.ToArray());
+        }
+        await serverTask.WaitAsync(Deadline);
+    }
+
+    [TestMethod]
+    public async Task RemovedThenReaddedArtworkCannotReviveOldDemandOrAuthority()
+    {
+        await using var server = new ScriptedBridgeServer();
+        var serverTask = server.RunAuthenticatedAsync(async channel =>
+        {
+            await EstablishAsync(channel);
+            var old = await ReadDemandAsync(channel);
+            await AckAsync(channel, old.RequestId);
+            var remove = await ReadAsync(channel);
+            await SnapshotAsync(channel, remove.RequestId, 2, includeArtwork: false);
+            var restore = await ReadAsync(channel);
+            await SnapshotAsync(channel, restore.RequestId, 3);
+            var current = await ReadDemandAsync(channel);
+            await AckAsync(channel, current.RequestId);
+            await CompleteAsync(channel, old, Artwork(1));
+            await CompleteAsync(channel, current, Artwork(2));
+            await StopAsync(channel);
+        });
+        await using (var session = await WidgetPresentationSession.ConnectAsync(server.PipeName))
+        {
+            var original = await EstablishAsync(session);
+            var pending = session.ResolveArtworkAsync(original.Authority, Handle);
+            var removed = await session.RefreshAsync(original.Authority).WaitAsync(Deadline);
+            var restored = await session.RefreshAsync(removed.Authority).WaitAsync(Deadline);
+            var retired = await Assert.ThrowsAsync<WidgetPresentationSessionException>(async () => await pending.WaitAsync(Deadline));
+            Assert.AreEqual("stale_artwork_authority", retired.Code);
+            var readmit = await Assert.ThrowsAsync<WidgetPresentationSessionException>(async () =>
+                await session.ResolveArtworkAsync(original.Authority, Handle).WaitAsync(Deadline));
+            Assert.AreEqual("stale_artwork_authority", readmit.Code);
+            var forged = await Assert.ThrowsAsync<WidgetPresentationSessionException>(async () =>
+                await session.ResolveArtworkAsync(restored.Authority with { }, Handle).WaitAsync(Deadline));
+            Assert.AreEqual("stale_artwork_authority", forged.Code);
+            CollectionAssert.AreEqual(Artwork(2), (await session.ResolveArtworkAsync(restored.Authority, Handle).WaitAsync(Deadline)).EncodedBytes.ToArray());
+        }
+        await serverTask.WaitAsync(Deadline);
+    }
+
+    [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
     public async Task PresentationFragmentArtworkUsesSnapshotAuthority(bool focused)
@@ -156,7 +263,7 @@ public sealed class ArtworkDemandTests
     }
 
     [TestMethod]
-    public async Task ReplacedSnapshotRejectsOldDemandWithoutStealingNewCompletion()
+    public async Task CompatibleSnapshotKeepsConcurrentDemandsCorrelatedToTheirOrigins()
     {
         await using var server = new ScriptedBridgeServer();
         var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -183,8 +290,9 @@ public sealed class ArtworkDemandTests
             await admitted.Task.WaitAsync(Deadline);
             var replacement = await session.RefreshAsync(frame.Authority);
             var current = session.ResolveArtworkAsync(replacement.Authority, Handle);
-            var stale = await Assert.ThrowsAsync<WidgetPresentationSessionException>(async () => await old.WaitAsync(Deadline));
-            Assert.AreEqual("presentation_stale", stale.Code);
+            var retained = await old.WaitAsync(Deadline);
+            Assert.AreEqual(frame.Authority, retained.Authority);
+            CollectionAssert.AreEqual(Artwork(6), retained.EncodedBytes.ToArray());
             var artwork = await current.WaitAsync(Deadline);
             Assert.AreEqual(replacement.Authority, artwork.Authority);
             CollectionAssert.AreEqual(expected, artwork.EncodedBytes.ToArray());
@@ -289,13 +397,13 @@ public sealed class ArtworkDemandTests
         var establish = await ReadAsync(channel);
         await SnapshotAsync(channel, establish.RequestId, 1);
     }
-    private static async Task SnapshotAsync(BridgeFrameChannel channel, long requestId, long sequence, bool? fragmentFocused = null)
+    private static async Task SnapshotAsync(BridgeFrameChannel channel, long requestId, long sequence, bool? fragmentFocused = null, bool includeArtwork = true, BridgeWorkerRun? workerRun = null)
     {
         var snapshot = new ViewSnapshot
         {
             Sequence = sequence, WidgetInstanceId = Descriptor.InstanceId, ActiveInputScopeId = "root",
             Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack, Children =
-                [new ViewNode { Id = "image", Kind = ViewNodeKind.Image, ArtworkHandle = Handle, ImageFit = ImageFit.Contain, AccessibilityLabel = "Artwork" }] },
+                includeArtwork ? [new ViewNode { Id = "image", Kind = ViewNodeKind.Image, ArtworkHandle = Handle, ImageFit = ImageFit.Contain, AccessibilityLabel = "Artwork" }] : [] },
         };
         if (fragmentFocused is { } focused)
         {
@@ -312,7 +420,7 @@ public sealed class ArtworkDemandTests
         using var document = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
         await SendAsync(channel, requestId, BridgeMessageTypes.Snapshot,
             new { widgetId = Descriptor.Id, transactionKind = "ordinaryCheckpoint", baseSequence = 0, recoveryOriginSequence = 0,
-                snapshot = document.RootElement.Clone(), renderStyles = new Dictionary<string, BridgeNodeRenderStyles>() });
+                snapshot = document.RootElement.Clone(), renderStyles = new Dictionary<string, BridgeNodeRenderStyles>(), workerRun });
     }
     private static Task<BridgeEnvelope> ReadAsync(BridgeFrameChannel channel) => channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(Deadline);
     private static Task AckAsync(BridgeFrameChannel channel, long requestId) => SendAsync(channel, requestId, BridgeMessageTypes.Acknowledged, new { });

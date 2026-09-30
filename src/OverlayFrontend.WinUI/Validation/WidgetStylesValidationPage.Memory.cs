@@ -15,9 +15,10 @@ internal sealed partial class WidgetStylesValidationPage
     {
         var rows = Enumerable.Range(0, 30).Select(index => new ViewNode { Id = "ordinary." + index,
             Kind = ViewNodeKind.Button, Text = "Row " + index, ActionId = "row" }).ToArray();
-        var frame = CreateFrame(new() { Id = "memory", Kind = ViewNodeKind.Scroll, ScrollAxis = ScrollAxis.Vertical,
-            Children = (ViewNode[])[new() { Id = "memory-group", Kind = ViewNodeKind.Stack, InitialChildFocusId = "ordinary.0", Children = rows }] },
-            new Dictionary<string, BridgeNodeRenderStyles> { ["memory"] = Compute("#memory { height: 180px; }", "memory", "scroll") });
+        var frame = CreateFrame(new() { Id = "memory-shell", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
+            new() { Id = "memory", Kind = ViewNodeKind.Scroll, ScrollAxis = ScrollAxis.Vertical,
+                Children = (ViewNode[])[new() { Id = "memory-group", Kind = ViewNodeKind.Stack, InitialChildFocusId = "ordinary.0", Children = rows }] }] },
+            new Dictionary<string, BridgeNodeRenderStyles> { ["memory"] = Compute("#memory { height: 180px; padding: 14px; }", "memory", "scroll") });
         var first = new WidgetViewPresenter();
         var second = new WidgetViewPresenter();
         host.Children.Insert(2, first);
@@ -41,6 +42,9 @@ internal sealed partial class WidgetStylesValidationPage
             Check(second.RestorePresentationState(memory), "same owner imports ordinary presentation memory");
             host.Children.Insert(2, second);
             await second.SetPresentationActiveAsync(true);
+            await Wait(() => !second.HasPendingMemoryRestore);
+            Check(Math.Abs(FindIn<ScrollViewer>(second, "Widget.memory")!.VerticalOffset - offset) < 2,
+                "preview restores scroll before focus entry can mask a wrong offset");
             second.SetAutomaticFocusEnabled(true); second.Enter();
             await Wait(() => !second.HasPendingMemoryRestore && FocusManager.GetFocusedElement(XamlRoot) is FrameworkElement focused &&
                 AutomationProperties.GetAutomationId(focused) == "Widget.ordinary.20");

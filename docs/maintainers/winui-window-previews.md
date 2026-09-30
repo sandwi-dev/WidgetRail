@@ -34,8 +34,17 @@ use native composition; do not route pixels through the worker or the snapshot t
 Permission expiry/denial must clear the presented capture, not merely stop requesting
 new frames while stale pixels remain visible. A preview is never an input target.
 
-The session checkpoint passes 176 integrated tests, including 17 preview cases for
-negotiation, exact inventory, genuine-frame admission, compatible publications,
-removal/reappearance, consent denial, expiry, cancellation, bounds and teardown.
-It is not evidence of WinUI capture rendering. The shell does not opt in until that
-renderer and its native lifecycle checks are connected.
+The production shell now connects the shared GPU capture service and negotiates
+preview support only after that service initializes. Retained widget presenters
+revoke capture demand before suspension and rebind against their current admitted
+frame on resume. Native checks cover capture pixels, permission expiry, target
+replacement, device reset, visibility, and retirement; real Task Switcher acceptance
+remains distinct from these owned-window fixtures.
+
+Preview slots are graphics viewports. An authored `text-align` value may style
+placeholder text but must not override their stretched capture-content alignment.
+Task Switcher's centered style previously centered an empty capture Grid at zero
+intrinsic width, preventing viewport demand and leaving every thumbnail blank.
+The centered-style presenter fixture now verifies nonzero full-slot capture width
+and receipt of native frames. Layout diagnostics include bounded demand/state/frame
+counts without window titles, capture pixels, or native target handles.

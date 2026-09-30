@@ -10,9 +10,15 @@ internal sealed partial class WidgetViewPresenter
     // switch. Disabling input must not tear down media or retained item pixels.
     internal void SetPresentationInputEnabled(bool enabled)
     {
+        if (presentationInputEnabled && !enabled) RememberFocus();
         presentationInputEnabled = enabled;
+        RefreshContextIndicators();
         IsHitTestVisible = enabled && presentationActive;
-        if (!enabled) DismissTransientControl();
+        if (!enabled)
+        {
+            ResetSliderValues(); SetSliderAdjustment(null);
+            DismissTransientControl();
+        }
     }
 
     internal bool HasPreparedLayout => !disposed && !applying && presentationActive && frame is not null &&

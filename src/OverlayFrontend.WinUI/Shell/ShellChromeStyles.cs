@@ -15,11 +15,13 @@ internal sealed class ShellChromeStyles : IDisposable
     private readonly List<ListView> trays = [];
     private IReadOnlyDictionary<string, BridgeNodeRenderStyles>? palette;
     private bool disposed;
+    private double textScale = 1;
 
     internal void Register(FrameworkElement element, string role)
     {
         if (elements.Remove(element, out var previous)) previous.Style.Dispose();
         var style = new NativeComputedStyleAdapter(element);
+        style.SetOwnTextScale(textScale);
         elements.Add(element, (role, style)); style.Update(palette?.GetValueOrDefault(role));
     }
 
@@ -42,6 +44,7 @@ internal sealed class ShellChromeStyles : IDisposable
         if (!items.ContainsKey(item))
         {
             var style = new NativeComputedStyleAdapter(item);
+            style.SetOwnTextScale(textScale);
             var selection = item.RegisterPropertyChangedCallback(SelectorItem.IsSelectedProperty, (_, _) => UpdateItem(item));
             items.Add(item, (style, selection));
         }
@@ -51,7 +54,9 @@ internal sealed class ShellChromeStyles : IDisposable
     internal void Update(IReadOnlyDictionary<string, BridgeNodeRenderStyles>? next, AppearanceSettings settings, bool animationsEnabled)
     {
         if (disposed) return;
-        NativeComputedStyleAdapter.SetTextScale(settings.TextScale);
+        textScale = NativeTextScaleScope.Normalize(settings.TextScale);
+        foreach (var value in elements.Values) value.Style.SetOwnTextScale(textScale);
+        foreach (var value in items.Values) value.Style.SetOwnTextScale(textScale);
         NativeComputedStyleAdapter.SetAccessibilityPolicy(settings);
         NativeComputedStyleAdapter.SetMotionPolicy(settings, animationsEnabled);
         if (ReferenceEquals(next, palette)) return;

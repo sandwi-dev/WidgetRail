@@ -751,7 +751,7 @@ internal static class PlayniteLibraryPresentation
                     page.TransitionContent("playnite-library.destinations", "library", 1)).Classes("playnite-library-common-frame"),
                 "playnite-library-browse-stage");
             root = UI.Stack("playnite-library.root",
-                    UI.BackgroundSurface(browseStage, "playnite-library.browse.cinematic",
+                    UI.BackgroundSurface(browseStage, "playnite-library.cinematic",
                             catalogBackgroundArtwork)
                         .UseFocusedDescendantArtwork()
                         .AddClasses("playnite-library-cinematic",
@@ -789,6 +789,22 @@ internal static class PlayniteLibraryPresentation
         {
             root = UI.Stack("playnite-library.root", header, queryControls, content)
                 .Classes("playnite-library-widget", "playnite-library-route-shell");
+        }
+        // All destinations belong to this widget's cinematic background scope.
+        // Routes with no artwork keep that declared owner alive so the previous
+        // decoded background remains until a focused descendant replaces it.
+        if (root is ContainerElement routeRoot &&
+            !routeRoot.Children.OfType<BackgroundSurfaceElement>().Any(surface => surface.Id == "playnite-library.cinematic"))
+        {
+            root = routeRoot with
+            {
+                Children = [UI.BackgroundSurface(
+                        UI.Stack("playnite-library.route.background-content", routeRoot.Children.ToArray())
+                            .Classes("playnite-library-surface-stage"),
+                        "playnite-library.cinematic", catalogBackgroundArtwork)
+                    .UseFocusedDescendantArtwork()
+                    .Classes("playnite-library-cinematic", "playnite-library-browse-background")]
+            };
         }
         if (state.Route == PlayniteLibraryRoute.Browse &&
             state.BrowseInitialFocusId is null &&
@@ -1229,8 +1245,9 @@ internal static class PlayniteLibraryPresentation
 
     private static string GameCount(int count) => count == 1 ? "1 game" : $"{count} games";
 
-    private static WidgetElement NavigationTabs(PlayniteLibraryPresentationState state) =>
-        UI.NavigationShellParts("playnite-library.destinations",
+    private static WidgetElement NavigationTabs(PlayniteLibraryPresentationState state)
+    {
+        var parts = UI.NavigationShellParts("playnite-library.destinations",
             state.Route == PlayniteLibraryRoute.Library ? "home" : "library",
             NavigationShellContentEntry.Unavailable, UI.Stack("playnite-library.nav.unused"),
             [new("home", "Home", PlayniteLibraryActions.HomeOpen, WidgetGlyph.Play),
@@ -1238,9 +1255,23 @@ internal static class PlayniteLibraryPresentation
             compactLeadingAdornment: UI.ControllerGlyph(ControllerButton.LeftBumper,
                 "playnite-library.nav.previous", "Previous tab").Classes("playnite-library-tab-key"),
             compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper,
-                "playnite-library.nav.next", "Next tab").Classes("playnite-library-tab-key"))
-            .WithTransitions().CompactNavigation.VisibleWhen(ResponsiveVisibility.Always)
+                "playnite-library.nav.next", "Next tab").Classes("playnite-library-tab-key"));
+        var compact = (ResponsiveBranchElement)parts.CompactNavigation;
+        var tabs = (RowElement)compact.Child;
+        parts = parts with
+        {
+            CompactNavigation = compact with
+            {
+                Child = tabs with
+                {
+                    Children = tabs.Children.Select(child => child is ButtonElement button
+                        ? button.AddClasses("playnite-library-tab") : child).ToArray(),
+                },
+            },
+        };
+        return parts.WithTransitions().CompactNavigation.VisibleWhen(ResponsiveVisibility.Always)
             .AddClasses("playnite-library-tabs");
+    }
 
     private static ContainerElement LibraryNavigation(
         PlayniteLibraryPresentationState state,

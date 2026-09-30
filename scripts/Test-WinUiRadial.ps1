@@ -7,10 +7,11 @@ Add-Type -AssemblyName System.Drawing
 function Test-IconPixels([string]$Path) {
     $bitmap = [Drawing.Bitmap]::new((Resolve-Path $Path).Path)
     try {
-        # Centers derive from the authored ten-cell native Grid, including face/slot margins.
-        foreach ($position in @(@(5,1),@(8,2),@(9,5),@(8,8),@(5,9),@(2,8),@(1,5),@(2,2))) {
-            $cx = (20 + $position[0] * 36) * $bitmap.Width / 400
-            $cy = (20 + $position[1] * 36) * $bitmap.Height / 400
+        # Match the authored ring geometry: 144-DIP icon radius on a 400-DIP face.
+        foreach ($sector in 0..7) {
+            $angle = $sector * [Math]::PI / 4
+            $cx = (200 + [Math]::Sin($angle) * 144) * $bitmap.Width / 400
+            $cy = (200 - [Math]::Cos($angle) * 144) * $bitmap.Height / 400
             $radius = [Math]::Max(3,[int](12 * $bitmap.Width / 400))
             $ink = 0
             for ($y=[int]$cy-$radius; $y -lt [int]$cy+$radius; $y++) {
@@ -21,13 +22,23 @@ function Test-IconPixels([string]$Path) {
             }
             if ($ink -lt 8) { return $false }
         }
-        return $true
+        # Final native fixture palette is Neon Circuit (#3fe0ff focus), with
+        # sector zero selected. Inspect the actual composed window; XAML's
+        # RenderTargetBitmap does not capture its Z-translated chrome reliably.
+        $accent = 0
+        for ($y = [int]($bitmap.Height * .035); $y -lt [int]($bitmap.Height * .085); $y++) {
+            for ($x = [int]($bitmap.Width * .35); $x -lt [int]($bitmap.Width * .65); $x++) {
+                $pixel = $bitmap.GetPixel($x, $y)
+                if ([Math]::Abs($pixel.R - 63) -lt 24 -and [Math]::Abs($pixel.G - 224) -lt 24 -and [Math]::Abs($pixel.B - 255) -lt 24) { $accent++ }
+            }
+        }
+        return $accent -ge [Math]::Max(8, $bitmap.Width / 5)
     } finally { $bitmap.Dispose() }
 }
 foreach ($case in @(@{Scale='1';Text='1'},@{Scale='1.25';Text='1'},@{Scale='0.5';Text='1'},@{Scale='1.25';Text='2'})) {
     $name = "scale-$($case.Scale)-text-$($case.Text)"
     $start = [DateTime]::UtcNow
-    $launch = winapp run (Join-Path $root 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj') --no-build --arch x64 -p Platform=x64 --detach --json --args "--validate-production-shell --radial-fixture-scale=$($case.Scale) --radial-fixture-text-scale=$($case.Text)" | ConvertFrom-Json
+    $launch = winapp run (Join-Path $root 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj') --no-build --arch x64 -p Platform=x64 --detach --json --args "--validate-production-shell --validation-platform-activation --radial-fixture-scale=$($case.Scale) --radial-fixture-text-scale=$($case.Text)" | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or $launch.ProcessId -le 0) { throw 'Radial native fixture failed to launch.' }
     $ownedProcess = [int]$launch.ProcessId
     try {
@@ -53,7 +64,7 @@ foreach ($case in @(@{Scale='1';Text='1'},@{Scale='1.25';Text='1'},@{Scale='0.5'
             Start-Sleep -Milliseconds 250
         }
         if (!$pixelsReady) { throw "Radial icon pixels did not become visible in ${name}." }
-        $results.Add(@{ case=$name; passed=$true; nativeChecks=$result.checks.Count; allEightIconPixels=$true })
+        $results.Add(@{ case=$name; passed=$true; nativeChecks=$result.checks.Count; allEightIconPixels=$true; themedSelectionArcPixels=$true })
     } finally {
         & (Join-Path $PSScriptRoot 'Close-WinUiTestShell.ps1') -AppPid $ownedProcess
         Wait-Process -Id $ownedProcess -Timeout 10 -ErrorAction SilentlyContinue

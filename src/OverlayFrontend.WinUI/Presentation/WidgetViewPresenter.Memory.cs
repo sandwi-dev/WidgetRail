@@ -45,8 +45,11 @@ internal sealed partial class WidgetViewPresenter
         if (frame is null || state.Owner != PresentationMemoryOwner.From(frame.Authority)) return false;
         lastGroupRequest = Math.Max(lastGroupRequest, state.ConsumedFocusRequest);
         if (pendingGroupEntry is { } request && request.RequestId <= state.ConsumedFocusRequest) pendingGroupEntry = null;
+        // The first admitted frame may be a loading declaration. Keep bounded
+        // logical identity from this exact owner; use-time matching prevents a
+        // stale identity from focusing an unrelated replacement control.
         foreach (var identity in state.Focus.Take(MaximumMemoryEntries))
-            if (Matches(identity)) remembered[identity.Scope] = identity;
+            remembered[identity.Scope] = identity;
         foreach (var group in state.Groups.Take(MaximumMemoryEntries))
             if (Matches(group.Group) && Matches(group.Child) && IsDescendant(group.Child.Id, group.Group.Id))
                 groupMemory[group.Group.Id] = new(group.Group, group.Child);
@@ -61,7 +64,7 @@ internal sealed partial class WidgetViewPresenter
             if (Matches(viewport.Element) && Matches(viewport.Anchor)) pendingScrollViewports.Add(new(viewport));
         memoryIntent = entryIntentVersion;
         memoryOwner = state.Owner;
-        if (HasPendingMemoryRestore) LayoutUpdated += RestoreMemoryLayout;
+        if (HasPendingMemoryRestore) LayoutUpdated += MemoryLayoutUpdated;
         return true;
     }
 
@@ -126,8 +129,15 @@ internal sealed partial class WidgetViewPresenter
                 (declarations[memory.Element.Id].Node.ScrollAxis ?? ScrollAxis.Vertical) != memory.Axis)
             { ReleaseScroll(pending); pendingScrollViewports.Remove(pending); continue; }
             var anchor = bindings[memory.Anchor.Id].LayoutElement;
-            if (!anchor.IsLoaded || anchor.ActualWidth <= 0 || anchor.ActualHeight <= 0 || scroll.ViewportWidth <= 0 || scroll.ViewportHeight <= 0) continue;
-            if (pending.Scroll is null) { pending.Scroll = scroll; scroll.ViewChanged += MemoryScrollChanged; }
+            if (pending.Scroll is null)
+            {
+                pending.Scroll = scroll;
+                scroll.Loaded += MemoryScrollLoaded;
+                scroll.ViewChanged += MemoryScrollChanged;
+            }
+            // Descendants can already have geometry while the ScrollViewer is
+            // still loading. Its offsets and transforms do not yet agree then.
+            if (!scroll.IsLoaded || !anchor.IsLoaded || anchor.ActualWidth <= 0 || anchor.ActualHeight <= 0 || scroll.ViewportWidth <= 0 || scroll.ViewportHeight <= 0) continue;
             var bounds = anchor.TransformToVisual(scroll).TransformBounds(new Rect(0, 0, anchor.ActualWidth, anchor.ActualHeight));
             var horizontal = memory.Axis == ScrollAxis.Horizontal;
             var delta = (horizontal ? bounds.X : bounds.Y) + Math.Clamp(memory.ClippedFraction, -1, 1) * (horizontal ? bounds.Width : bounds.Height);
@@ -147,15 +157,23 @@ internal sealed partial class WidgetViewPresenter
 
     private void CancelMemoryRestoration()
     {
-        LayoutUpdated -= RestoreMemoryLayout;
+        LayoutUpdated -= MemoryLayoutUpdated;
         foreach (var pending in pendingIndexedViewports) ReleaseViewport(pending);
         foreach (var pending in pendingScrollViewports) ReleaseScroll(pending);
         pendingIndexedViewports.Clear(); pendingScrollViewports.Clear(); memoryOwner = null;
     }
 
+    // ChangeView invalidates native layout. Never call it reentrantly from the
+    // LayoutUpdated pass whose geometry we are inspecting.
+    private void MemoryLayoutUpdated(object? sender, object args) => QueueMemoryRestoration();
+    private void MemoryScrollLoaded(object sender, RoutedEventArgs args) => QueueMemoryRestoration();
     private void MemoryScrollChanged(object? sender, ScrollViewerViewChangedEventArgs args) => QueueMemoryRestoration();
     private void ReleaseScroll(PendingScroll pending)
-    { if (pending.Scroll is { } scroll) scroll.ViewChanged -= MemoryScrollChanged; }
+    {
+        if (pending.Scroll is not { } scroll) return;
+        scroll.Loaded -= MemoryScrollLoaded;
+        scroll.ViewChanged -= MemoryScrollChanged;
+    }
 
     private void ReleaseViewport(PendingViewport pending)
     {

@@ -7,7 +7,7 @@ New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Indexed worker did not publish its initial native row.' }
 & winapp ui invoke IndexedWidget.ActivationProbe -a $AppPid --json | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Could not start activation probe.' }
-$deadline=[DateTime]::UtcNow.AddSeconds(45)
+$deadline=[DateTime]::UtcNow.AddSeconds(75)
 do {
     $reply=(& winapp ui get-value IndexedWidget.Status -a $AppPid --json) | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw 'Could not read activation probe.' }
@@ -16,5 +16,5 @@ do {
     Start-Sleep -Milliseconds 100
 } while ([DateTime]::UtcNow -lt $deadline)
 $state | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $OutputDirectory 'result.json')
-if ($state.activationResult -ne 'passed:11') { throw "Activation probe failed: $($state.activationResult)" }
-'Indexed activation checks passed: 11.'
+if ($state.activationResult -notmatch '^passed:([1-9][0-9]*)$' -or [int]$Matches[1] -lt 31) { throw "Activation probe failed: $($state.activationResult)" }
+"Indexed activation checks passed: $($Matches[1])."

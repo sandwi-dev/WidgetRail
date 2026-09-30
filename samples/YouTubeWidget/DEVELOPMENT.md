@@ -88,11 +88,25 @@ separate, explicit action; package versions are immutable.
 
 ## Controller use
 
+Volume completion waits for YouTube's observed integer percentage, just as mute
+waits for observed provider state. `setVolume` is asynchronous even before first
+playback, when no progress observations are emitted; acknowledging its old getter
+value would incorrectly reconcile the host slider backward. The shared wait is
+bounded and cancelled when command/media authority retires.
+
+On Discover, press R3 to return to the search field. The shortcut uses a fresh
+focus-group entry request, including when focus is inside a lazy result row.
+LT/RT seek actions opt into `WhileHeld`; the host repeats only while their
+captured input owner remains current, with no backlog while commands are busy.
+
 **Discover** and **Player** are flat sibling sections. Use LB/RB to switch between
 them without adding Back history; the destination restores its remembered content
 focus. **Play a link** is the Player section's empty/link-entry state, not a third
 section. The separate in-widget **Y Settings** hint opens search configuration and
-B returns to the exact control that opened it. Player settings remain nested behind
+B returns to the control that opened it. Lazy search results use their indexed
+collection identity instead of an element ID in the page snapshot, with the
+collection's normal validation and fallback if the item is no longer available.
+Player settings remain nested behind
 the player control. Search uses a compact task card; the player keeps the 16:9 video
 primary and places icon transport, timeline, and compact volume on one row. The
 native **Fullscreen** action asks

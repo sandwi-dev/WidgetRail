@@ -15,6 +15,9 @@ public sealed partial class WidgetPresentationSession
         internal SemaphoreSlim Events { get; } = new(1, 1);
         internal long LastEventSequence;
         internal int PendingEvents;
+        internal EmbeddedMediaPlaybackCommand? Command;
+        internal WidgetPresentationAuthority? CommandOrigin;
+        internal long HighestCommandSequence;
         internal Dictionary<MediaPresentationKind, MediaPresentationEpoch> Presentations { get; } = [];
     }
     private readonly Dictionary<string, MediaDocumentEpoch> _mediaDocuments = new(StringComparer.Ordinal);
@@ -125,13 +128,15 @@ public sealed partial class WidgetPresentationSession
                 var media = frame.Snapshot.EmbeddedMediaSession!;
                 if (playbackEvent.SessionId != media.Id || playbackEvent.Sequence <= epoch.LastEventSequence)
                     throw new BridgeProtocolException("Embedded media observation session or sequence is invalid.");
-                ValidateMediaCommandTerminal(media.PendingCommand, playbackEvent);
-                authority = frame.Authority;
+                ValidateMediaCommandTerminal(epoch, playbackEvent);
+                // A terminal belongs to the snapshot that introduced the command,
+                // not whichever unrelated UI update happened to arrive last.
+                authority = playbackEvent.CommandSequence > 0 ? epoch.CommandOrigin! : frame.Authority;
                 epoch.LastEventSequence = playbackEvent.Sequence;
             }
             await MediaRequestAsync(BridgeMessageTypes.EmbeddedMediaPlaybackEvent,
                 new BridgeEmbeddedMediaPlaybackEventRequest(authority.WidgetId, authority.WidgetInstanceId,
-                    authority.RuntimeGeneration, authority.PresentationGeneration, authority.SnapshotSequence, playbackEvent),
+                    authority.RuntimeGeneration, authority.PresentationGeneration, authority.SnapshotSequence, playbackEvent, authority.WorkerRun),
                 BridgeMessageTypes.Acknowledged, deadline.Token).ConfigureAwait(false);
             deadline.Token.ThrowIfCancellationRequested();
             lock (_gate) DemandMediaEpochLocked(document.Authority.WidgetId, epoch);
@@ -160,14 +165,26 @@ public sealed partial class WidgetPresentationSession
         { RetireMediaDocumentLocked(state.WidgetId); return; }
         if (_mediaDocuments.TryGetValue(state.WidgetId, out var prior) &&
             SameMediaOwner(prior.Owner, frame.Authority) && SameMediaIdentity(prior.Identity, media))
+        {
+            ReconcileMediaCommandOrigin(prior, frame);
             ReconcileMediaPresentationsLocked(prior, frame);
+        }
         else
         {
             RetireMediaDocumentLocked(state.WidgetId);
             var next = new MediaDocumentEpoch(frame.Authority, media);
+            ReconcileMediaCommandOrigin(next, frame);
             ReconcileMediaPresentationsLocked(next, frame);
             _mediaDocuments[state.WidgetId] = next;
         }
+    }
+    private static void ReconcileMediaCommandOrigin(MediaDocumentEpoch epoch, WidgetPresentationFrame frame)
+    {
+        var command = frame.Snapshot.EmbeddedMediaSession!.PendingCommand;
+        if (epoch.Command == command) return;
+        epoch.Command = command is null ? null : command with { };
+        epoch.CommandOrigin = command is null ? null : frame.Authority;
+        if (command is not null) epoch.HighestCommandSequence = Math.Max(epoch.HighestCommandSequence, command.Sequence);
     }
     private void RetireMediaDocumentLocked(string? widgetId = null)
     {
@@ -271,9 +288,12 @@ public sealed partial class WidgetPresentationSession
             value.ErrorCode is { } error && !Identifier(error))
             throw new BridgeProtocolException("Embedded media observation is invalid.");
     }
-    private static void ValidateMediaCommandTerminal(EmbeddedMediaPlaybackCommand? command, EmbeddedMediaPlaybackEvent value)
+    private static void ValidateMediaCommandTerminal(MediaDocumentEpoch epoch, EmbeddedMediaPlaybackEvent value)
     {
         if (value.CommandSequence == 0) return;
+        var command = epoch.Command;
+        if ((command is null || command.Sequence != value.CommandSequence) && value.CommandSequence <= epoch.HighestCommandSequence)
+            throw Stale("embedded_media_command_stale", epoch.Owner.WidgetId, "The embedded media command has been superseded.");
         if (command is null || command.Sequence != value.CommandSequence || command.MediaKey != value.MediaKey ||
             (value.ErrorCode is null && ((command.Kind == EmbeddedMediaPlaybackCommandKind.SetPlaybackRate && command.PlaybackRate != value.PlaybackRate) ||
             (command.Kind == EmbeddedMediaPlaybackCommandKind.SetMuted && command.Muted != value.Muted) ||

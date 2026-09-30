@@ -7,6 +7,35 @@ namespace WinUiShell.Tests;
 public sealed class RightStickScrollTests
 {
     [TestMethod]
+    public void FocusSettlesAfterNeutralDelayAndCanWaitForReadyRows()
+    {
+        var scroll = new RightStickScroll();
+        scroll.Sample(0, 0, 100);
+        Assert.IsFalse(scroll.ShouldSettle(1000));
+        scroll.Sample(0, short.MinValue, 1100);
+        scroll.Sample(0, 0, 1200);
+        Assert.IsFalse(scroll.ShouldSettle(1319));
+        Assert.IsTrue(scroll.ShouldSettle(1320));
+        scroll.Sample(0, 0, 1400);
+        Assert.IsTrue(scroll.ShouldSettle(1400));
+        scroll.Reset();
+        Assert.IsFalse(scroll.ShouldSettle(2000));
+    }
+
+    [TestMethod]
+    public void ResumingScrollRestartsTheSettleDelayWithoutClockBacklog()
+    {
+        var scroll = new RightStickScroll();
+        scroll.Sample(0, short.MinValue, 100);
+        scroll.Sample(0, 0, 200);
+        Assert.AreEqual((0d, -35.2d), scroll.Sample(0, short.MaxValue, 300));
+        Assert.IsFalse(scroll.ShouldSettle(400));
+        scroll.Sample(0, 0, 450);
+        Assert.IsFalse(scroll.ShouldSettle(569));
+        Assert.IsTrue(scroll.ShouldSettle(570));
+    }
+
+    [TestMethod]
     public void NeutralDoesNotMoveAndInitialRateMatchesNativePolicy()
     {
         var scroll = new RightStickScroll();

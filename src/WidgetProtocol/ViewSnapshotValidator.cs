@@ -700,7 +700,7 @@ public static class ViewSnapshotValidator
                     $"The {label} height must be finite and between {minimumHeight} and {maximumHeight} DIPs.");
         }
 
-        void Visit(ViewNode? node, string path, int depth, string inheritedScopeKey)
+        void Visit(ViewNode? node, string path, int depth, string inheritedScopeKey, ViewNode? parent = null)
         {
             if (node is null)
             {
@@ -725,6 +725,7 @@ public static class ViewSnapshotValidator
 
             CheckIdentifier(node.Id, $"{path}.id", "node ID",
                 ProtocolValidationIdentifierKind.ElementReference);
+            GridLayoutValidation.Validate(node, parent, path, (errorPath, code, message) => Add(errorPath, code, message));
             if (!Enum.IsDefined(node.Kind))
                 Add($"{path}.kind", "invalid_node_kind", "The node kind is not supported.");
             if (node.VisibleWhen is { } visibility)
@@ -1105,7 +1106,7 @@ public static class ViewSnapshotValidator
                 CheckIdentifier(node.CollectionItemKey,
                     $"{path}.collectionItemKey", "collection item key");
             }
-            if (node.Kind is ViewNodeKind.Grid)
+            if (node.Kind is ViewNodeKind.Grid && node.GridLayout is null)
             {
                 if (node.GridMinimumColumnWidth is not { } minimumColumnWidth ||
                     !double.IsFinite(minimumColumnWidth) ||
@@ -1118,7 +1119,7 @@ public static class ViewSnapshotValidator
                     Add($"{path}.gridMaximumColumns", "invalid_grid_maximum_columns",
                         $"Grid maximum columns must be between 1 and {ProtocolConstants.MaximumGridColumns}.");
             }
-            else if (node.GridMinimumColumnWidth is not null || node.GridMaximumColumns is not null)
+            else if (node.Kind != ViewNodeKind.Grid && (node.GridMinimumColumnWidth is not null || node.GridMaximumColumns is not null))
             {
                 Add(path, "grid_property_not_allowed",
                     "Grid column properties apply only to responsive Grid nodes.");
@@ -1653,7 +1654,7 @@ public static class ViewSnapshotValidator
                     $"{path}.defaultFocusPresentation", depth + 1, scopeKey);
             }
             for (var index = 0; index < children.Count; index++)
-                Visit(children[index], $"{path}.children[{index}]", depth + 1, scopeKey);
+                Visit(children[index], $"{path}.children[{index}]", depth + 1, scopeKey, node);
         }
 
         void ValidateFocusPresentationOwnership(

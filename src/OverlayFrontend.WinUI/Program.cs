@@ -43,6 +43,17 @@ internal static partial class Program
                 // even if a diagnostic configuration file changes during startup.
                 _ = new App(arguments, options, configurationError);
             });
+            if (App.RestartRequested)
+            {
+                // All windows, workers, media and native input are gone before
+                // reactivation. Release profile election before the replacement
+                // process starts; AppLifecycle preserves package activation.
+                lifetime?.Dispose();
+                lifetime = null;
+                var failure = AppInstance.Restart(FrontendArguments.Serialize(arguments.Where(argument => argument != "--hidden")));
+                System.Diagnostics.Trace.TraceError("WidgetRail restart failed: {0}", failure);
+                return 1; // A successful Restart terminates this process.
+            }
             return 0;
         }
         catch (Exception error)

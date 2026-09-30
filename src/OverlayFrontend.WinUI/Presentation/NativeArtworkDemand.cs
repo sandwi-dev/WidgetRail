@@ -25,13 +25,14 @@ internal sealed class NativeArtworkDemand : IDisposable
     private ArtworkPixelSize? decodedSize;
     private ImageFit? decodedFit;
     private ImageFit? fit;
+    private bool naturalSize;
     private bool queued;
     private bool disposed;
     internal NativeArtworkDecode? LastDecode { get; private set; }
 
     internal NativeArtworkDemand(FrameworkElement target, ImageFit? fit, Func<bool> admitted,
         Func<CancellationToken, Task<NativeArtworkPayload?>> resolve, Action<ImageSource?> publish,
-        Action<bool> completed, Action<Task> observe, Action<Exception> failed, CancellationToken lifetime)
+        Action<bool> completed, Action<Task> observe, Action<Exception> failed, CancellationToken lifetime, bool naturalSize = false)
     {
         this.target = target; this.fit = fit; this.admitted = admitted; this.resolve = resolve;
         this.publish = publish; this.completed = completed; this.observe = observe; this.failed = failed; this.lifetime = lifetime;
@@ -42,21 +43,22 @@ internal sealed class NativeArtworkDemand : IDisposable
             if (target.DispatcherQueue.HasThreadAccess) Dispose();
             else target.DispatcherQueue.TryEnqueue(Dispose);
         });
-        Refresh(fit);
+        Refresh(fit, naturalSize);
     }
-    internal void Refresh(ImageFit? value)
+    internal void Refresh(ImageFit? value, bool preserveNaturalSize = false)
     {
         if (disposed) return;
-        if (fit != value) { fit = value; requested = null; }
+        if (fit != value || naturalSize != preserveNaturalSize)
+        { fit = value; naturalSize = preserveNaturalSize; requested = null; }
         if (queued) return;
         queued = true;
         if (!target.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         { queued = false; if (!disposed) ApplySize(); })) queued = false;
     }
-    internal void RefreshSize() => Refresh(fit);
-    private void Loaded(object sender, RoutedEventArgs args) => Refresh(fit);
-    private void SizeChanged(object sender, SizeChangedEventArgs args) => Refresh(fit);
-    private void RootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => Refresh(fit);
+    internal void RefreshSize() => Refresh(fit, naturalSize);
+    private void Loaded(object sender, RoutedEventArgs args) => RefreshSize();
+    private void SizeChanged(object sender, SizeChangedEventArgs args) => RefreshSize();
+    private void RootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => RefreshSize();
 
     private void ApplySize()
     {
@@ -81,13 +83,14 @@ internal sealed class NativeArtworkDemand : IDisposable
             foreach (var (zoom, token) in zoomRoots) zoom.UnregisterPropertyChangedCallback(Shell.OverlayScaleRoot.InterfaceScaleProperty, token);
             zoomRoots.Clear();
             foreach (var zoom in nextZoom) zoomRoots.Add((zoom,
-                zoom.RegisterPropertyChangedCallback(Shell.OverlayScaleRoot.InterfaceScaleProperty, (_, _) => Refresh(fit))));
+                zoom.RegisterPropertyChangedCallback(Shell.OverlayScaleRoot.InterfaceScaleProperty, (_, _) => RefreshSize())));
         }
         var pixels = TargetPixels(target);
         if (requested == pixels) return;
         requested = pixels;
-        if (sourceSize is { } source && decodedSize is { } existing && decodedFit == fit &&
-            NativeArtworkDecoder.SizeFor(source, pixels, fit) is { } needed &&
+        if (sourceSize is { } source && decodedSize is { } existing &&
+            (decodedFit == fit || decodedFit != ImageFit.Fill && fit != ImageFit.Fill) &&
+            NativeArtworkDecoder.SizeFor(source, pixels, fit, naturalSize) is { } needed &&
             existing.Width >= needed.Width && existing.Height >= needed.Height)
         {
             request?.Cancel(); request?.Dispose(); request = null;
@@ -97,7 +100,7 @@ internal sealed class NativeArtworkDemand : IDisposable
         request = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
         completed(false);
         NativeArtworkCounters.Requested();
-        observe(LoadAsync(request, pixels, fit));
+        observe(LoadAsync(request, pixels, fit, naturalSize));
     }
 
     internal static ArtworkPixelSize TargetPixels(FrameworkElement target)
@@ -124,14 +127,14 @@ internal sealed class NativeArtworkDemand : IDisposable
             (int)Math.Min(ProtocolConstants.MaximumEncodedArtworkDimension, Math.Ceiling(value / 32) * 32);
     }
 
-    private async Task LoadAsync(CancellationTokenSource owner, ArtworkPixelSize pixels, ImageFit? imageFit)
+    private async Task LoadAsync(CancellationTokenSource owner, ArtworkPixelSize pixels, ImageFit? imageFit, bool preserveNaturalSize)
     {
         var token = owner.Token;
         try
         {
             var payload = await resolve(token);
             token.ThrowIfCancellationRequested();
-            var decoded = await NativeArtworkDecoder.DecodeAsync(payload, pixels, imageFit, token);
+            var decoded = await NativeArtworkDecoder.DecodeAsync(payload, pixels, imageFit, token, preserveNaturalSize);
             if (disposed || token.IsCancellationRequested || !ReferenceEquals(request, owner) || !admitted()) return;
             sourceSize = decoded?.Source; decodedSize = decoded?.Decoded; decodedFit = imageFit; LastDecode = decoded;
             completed(true);
@@ -141,7 +144,7 @@ internal sealed class NativeArtworkDemand : IDisposable
         catch (OperationCanceledException) when (token.IsCancellationRequested) { NativeArtworkCounters.Cancelled(); }
         catch (Exception error)
         {
-            if (disposed || token.IsCancellationRequested || !ReferenceEquals(request, owner)) return;
+            if (disposed || token.IsCancellationRequested || !ReferenceEquals(request, owner) || !admitted()) return;
             completed(true); NativeArtworkCounters.Failed(); failed(error);
         }
         finally

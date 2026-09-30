@@ -10,7 +10,8 @@
     <Compile Include="..\AudioMixerWidget.Tests\ManualTimerTimeProvider.cs" Link="fixture\ManualTimerTimeProvider.cs" />
     <Compile Include="..\..\src\WidgetBridge\NetworkControlsHostPolicy.cs" Link="fixture\NetworkControlsHostPolicy.cs" />
     <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
-    <Compile Include="..\..\src\WidgetBridge\BridgeRenderStyles.cs" Link="fixture\BridgeRenderStyles.cs" />
+    <Compile Include="..\..\src\WidgetBridge.Contracts\BridgeRenderStyles.cs" Link="fixture\BridgeRenderStyles.cs" />
+    <Compile Include="..\..\src\WidgetBridge\BridgeRenderStyleResolver.cs" Link="fixture\BridgeRenderStyleResolver.cs" />
     <ProjectReference Include="..\..\src\FirstPartyWidgets\NetworkControlsWidget\NetworkControlsWidget.csproj" />
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />

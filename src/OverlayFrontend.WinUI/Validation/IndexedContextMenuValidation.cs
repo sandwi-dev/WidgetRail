@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
@@ -26,9 +27,23 @@ internal static class IndexedContextMenuValidation
             var container = view.ContainerFromIndex(75);
             var scroll = Descendants(view).OfType<ScrollViewer>().First();
             var offset = scroll.VerticalOffset;
+            var style = NativeComputedStyleAdapter.For((SelectorItem)container);
+            await Until(() => style?.ContextIndicator?.IsShown == true);
+            var badge = style!.ContextIndicator!;
+            await Until(() => Math.Abs(badge.TransformToVisual((SelectorItem)container).TransformBounds(badge.BadgeBounds).Top - 5) < .5);
+            Check(Math.Abs(badge.TransformToVisual((SelectorItem)container).TransformBounds(badge.BadgeBounds).Right -
+                (((SelectorItem)container).ActualWidth - 5)) < .5, "indexed badge uses outer control bounds despite native content alignment");
+            Check(badge.Glyph.Glyph == char.ConvertFromUtf32(WidgetGlyphs.Character(ControllerPrompt.X, WidgetControllerPrompts.PlayStation)),
+                "deep realized row shows its authored context shortcut");
+            presenter.SetPresentationInputEnabled(false);
+            Check(!badge.IsShown, "indexed context badge hides when host withdraws input");
+            presenter.SetPresentationInputEnabled(true);
+            await Until(() => badge.IsShown);
             Check(!await presenter.HandleControllerButtonAsync(ControllerButton.View), "unbound indexed input returns false from exact displayed declaration");
             var before = Calls();
             await Open();
+            await Until(() => !badge.IsShown);
+            Check(true, "indexed context badge clears while popup owns focus");
             Check(FocusId().EndsWith(".Context.context-play", StringComparison.Ordinal), "deep row menu opens using authored X instead of collection shortcut");
             presenter.MoveFocus(FocusNavigationDirection.Down);
             Check(FocusId().EndsWith(".Context.context-remove", StringComparison.Ordinal), "indexed menu skips disabled option");
@@ -45,6 +60,9 @@ internal static class IndexedContextMenuValidation
             await Send("context-refresh");
             await Until(() => !presenter.HasTransientControl && Row()?.Lease.IsCurrent == true && !ReferenceEquals(Row(), old));
             Check(!old.Lease.IsCurrent, "content replacement revokes popup and old lease");
+            var replacementBadge = NativeComputedStyleAdapter.For((SelectorItem)view.ContainerFromIndex(75))?.ContextIndicator;
+            Check(!badge.IsShown || ReferenceEquals(badge, replacementBadge) && Row()?.Lease.IsCurrent == true,
+                "recycled context badge is either hidden or rebound to the current row lease");
             await Open();
             await Send("context-replace");
             await Until(() => !presenter.HasTransientControl);

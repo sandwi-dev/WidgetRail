@@ -139,11 +139,19 @@ internal static class IndexedModalValidation
             await Button(ControllerButton.A);
             await Until(() => InModal() && FocusId() == "Widget.modal-play");
             var retiredRow = ((IndexedItem<WidgetIndexedRow>)view.Items[75]).Value!;
+            var retainedBackground = Artwork() ?? throw new InvalidOperationException("Missing background before query replacement.");
+            var retainedSurface = Descendants(presenter).OfType<WidgetPresentationSurface>()
+                .Single(surface => ReferenceEquals(surface.ArtworkSource, retainedBackground));
             var oldGeneration = Node("items")!.IndexedCollection!.QueryGeneration;
             await Send("modal-replace", "modal-replace");
             await Until(() => Node("items")!.IndexedCollection!.QueryGeneration > oldGeneration && !retiredRow.Lease.IsCurrent);
-            await Until(() => Summary() is null && Artwork() is null);
-            Check(InModal() && FocusId() == "Widget.modal-play", "query replacement retires parent lease and presentation without stealing modal focus");
+            await Until(() => Summary() is null);
+            // Query replacement retires the old row and its focus fragment. The
+            // still-declared background surface retains decoded paint until a
+            // replacement arrives; retaining pixels does not retain input authority.
+            Check(InModal() && FocusId() == "Widget.modal-play" &&
+                Descendants(presenter).Contains(retainedSurface) && ReferenceEquals(Artwork(), retainedBackground),
+                "query replacement retires parent lease and focus fragment while retaining scoped background paint and modal focus");
             var rejectedRetired = false;
             try { await retiredRow.Lease.AdmitInputAsync(Frame().Authority, retiredRow.Item.Key, ControllerButton.A, cancellationToken: cancellationToken); }
             catch (WidgetPresentationSessionException error) when (error.Code.Contains("stale", StringComparison.Ordinal) || error.Code.Contains("retired", StringComparison.Ordinal)) { rejectedRetired = true; }
@@ -209,7 +217,7 @@ internal static class IndexedModalValidation
                 lease = (row.Row as WidgetIndexedRow)?.Lease.IsCurrent,
                 content = row.Content?.GetType().Name,
                 texts = Descendants(row).OfType<TextBlock>().Select(text => text.Text).ToArray(),
-                images = Descendants(row).OfType<Image>().Select(image => new { identity = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(image), image.IsLoaded, source = image.Source?.GetType().Name, parent = VisualTreeHelper.GetParent(image)?.GetType().Name }).ToArray(),
+                images = Descendants(row).OfType<WidgetArtworkView>().Select(image => new { identity = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(image), image.IsLoaded, source = image.Source?.GetType().Name, parent = VisualTreeHelper.GetParent(image)?.GetType().Name }).ToArray(),
             }));
         }
         async Task SettleViewport(ScrollViewer scroll)
@@ -239,7 +247,7 @@ internal static class IndexedModalValidation
     private static string RowText(DependencyObject row) => string.Join(' ', Descendants(row).OfType<TextBlock>().Select(text => text.Text));
     // The worker's cover is an 8x8 contrasting checker. Parent backgrounds use
     // different tiny swatches, so those cannot accidentally satisfy this check.
-    private static bool HasRowArtwork(DependencyObject row) => Descendants(row).OfType<Image>().Any(image =>
+    private static bool HasRowArtwork(DependencyObject row) => Descendants(row).OfType<WidgetArtworkView>().Any(image =>
         image.IsLoaded && image.ActualWidth > 0 && image.ActualHeight > 0 &&
         image.Source is BitmapImage { PixelWidth: 8, PixelHeight: 8 });
     private static ViewNode? FindNode(ViewNode node, string id) => node.Id == id ? node :

@@ -26,7 +26,6 @@
 }
 .theme-row:selected { border-color: var(--accent); }
 .theme-row:focused {
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
@@ -165,7 +164,6 @@
 .primary-button:focused,
 .secondary-button:focused,
 .wrail-stepper__button:focused {
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
@@ -173,6 +171,12 @@
 
 .wrail-switch:selected,
 .setting-row.is-enabled { color: var(--accent); }
+
+.wrail-switch--on,
+.wrail-switch:selected,
+.setting-row:selected { background: var(--surface-active, rgba(48, 47, 43, 0.98)); }
+.wrail-switch:disabled,
+.setting-row:disabled { background: var(--surface-subtle, rgba(39, 39, 36, 0.92)); }
 
 .primary-button,
 .secondary-button,
@@ -194,7 +198,6 @@
 .danger-button { color: var(--danger, #c98181); }
 
 .danger-button:focused {
-  background: var(--surface-active, rgba(48, 47, 43, 0.98));
   color: var(--danger, #c98181);
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
@@ -215,4 +218,4 @@
 .home-utilities { flex-shrink: 0; gap: 8px; }
 .home-utility { min-height: 40px; padding: 8px 12px; font-size: 13px; color: var(--text-muted); }
 .home-utility.danger-card { color: var(--danger, #c98181); }
-.home-utility:focused { background: var(--surface-active, rgba(48, 47, 43, 0.98)); color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
+.home-utility:focused { color: var(--text); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }

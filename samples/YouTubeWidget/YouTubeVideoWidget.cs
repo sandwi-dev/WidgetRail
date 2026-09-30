@@ -154,9 +154,9 @@ public sealed partial class YouTubeVideoWidget : Widget
                     .Classes("youtube-time"),
                 timeline,
                 UI.Text(FormatTime(playback.Duration), "youtube.duration")
-                    .Classes("youtube-time", "is-end"))
+                    .Classes("youtube-time", "is-end"),
+                volumeControl)
             .Classes("youtube-timeline-group"));
-        transportControls.Add(volumeControl);
         var page = UI.Stack(
                 PlayerFocusGroupId,
                 UI.Row(

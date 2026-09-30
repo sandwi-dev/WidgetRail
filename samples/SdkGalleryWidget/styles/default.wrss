@@ -11,6 +11,8 @@
 }
 
 .gallery-header { flex-shrink: 0; }
+.gallery-explicit-grid { width: 100%; min-width: 0px; }
+.gallery-grid-cell { min-width: 0px; padding: 8px; background: var(--surface); color: var(--text); border-color: var(--border, #343b48); border-width: 1px; corner-radius: 8px; }
 .gallery-section-bumper-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); padding: 0px; flex-shrink: 0; }
 .wrail-section-header__content {
   min-width: 0px;
@@ -125,7 +127,6 @@
 .wrail-icon-button--danger { color: var(--danger, #e58b8b); }
 .wrail-icon-button:focused {
   color: var(--text);
-  background: var(--surface-active, #242933);
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
@@ -242,7 +243,6 @@
   corner-radius: 11px;
 }
 .wrail-tile:focused {
-  background: var(--surface-active, #242933);
   outline-color: var(--focus);
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);

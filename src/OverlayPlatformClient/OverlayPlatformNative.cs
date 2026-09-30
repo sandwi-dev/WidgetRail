@@ -19,6 +19,9 @@ public sealed partial class OverlayPlatformNative : IOverlayPlatformNative
     public void Destroy(nint handle) => NativeDestroy(handle);
     public uint HasGameInput(nint handle) => NativeHasGameInput(handle);
     public uint RequiresLegacyGuidePolling(nint handle) => NativeRequiresLegacyGuidePolling(handle);
+    public uint ControllerPrerequisites() => NativeControllerPrerequisites();
+    public uint ControllerControlState(nint handle) => NativeControllerControlState(handle);
+    public PlatformStatus SetExclusiveControl(nint handle, uint enabled) => NativeSetExclusiveControl(handle, enabled);
     public PlatformStatus SetWindowState(nint handle, uint visible, uint focused) => NativeSetWindowState(handle, visible, focused);
     public PlatformStatus PrepareVisible(nint handle) => NativePrepareVisible(handle);
     public PlatformStatus DrainEvent(nint handle, ulong nowMilliseconds, ref PlatformEvent value, out uint hasEvent) => NativeDrainEvent(handle, nowMilliseconds, ref value, out hasEvent);
@@ -32,6 +35,33 @@ public sealed partial class OverlayPlatformNative : IOverlayPlatformNative
     public nuint ResolveForegroundTarget(nint handle, nuint fallback, uint rememberedTargetIsValid) => NativeResolveForegroundTarget(handle, fallback, rememberedTargetIsValid);
     public PlatformStatus ComputePlacement(in PlacementInput input, ref Placement output, out uint hasPlacement) => NativeComputePlacement(in input, ref output, out hasPlacement);
     public NativeShortcutSource NativeShortcutButtons(nint handle, out ushort buttons) => NativeNativeShortcutButtons(handle, out buttons);
+    public PlatformStatus SetViewMenuShortcut(nint handle, uint enabled) => NativeSetViewMenuShortcut(handle, enabled);
+    public PlatformStatus PollViewMenuShortcut(nint handle, out uint pressed, out uint consumed) => NativePollViewMenuShortcut(handle, out pressed, out consumed);
+
+    [LibraryImport("OverlayPlatformInterop.dll", EntryPoint = "WidgetRailOverlayPlatformControllerPrerequisites")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial uint NativeControllerPrerequisites();
+
+    [LibraryImport("OverlayPlatformInterop.dll", EntryPoint = "WidgetRailOverlayPlatformControllerControlState")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial uint NativeControllerControlState(nint handle);
+
+    [LibraryImport("OverlayPlatformInterop.dll", EntryPoint = "WidgetRailOverlayPlatformSetExclusiveControl")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial PlatformStatus NativeSetExclusiveControl(nint handle, uint enabled);
+
+    [LibraryImport("OverlayPlatformInterop.dll", EntryPoint = "WidgetRailOverlayPlatformSetViewMenuShortcut")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial PlatformStatus NativeSetViewMenuShortcut(nint handle, uint enabled);
+
+    [LibraryImport("OverlayPlatformInterop.dll", EntryPoint = "WidgetRailOverlayPlatformPollViewMenuShortcut")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.System32)]
+    private static partial PlatformStatus NativePollViewMenuShortcut(nint handle, out uint pressed, out uint consumed);
 
     [LibraryImport("OverlayPlatformInterop.dll", EntryPoint = "WidgetRailOverlayPlatformGetAbiVersion")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvStdcall)])]

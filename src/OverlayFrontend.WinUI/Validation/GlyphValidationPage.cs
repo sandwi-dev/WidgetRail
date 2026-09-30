@@ -9,15 +9,19 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
-internal sealed class GlyphValidationPage : Page, IAsyncDisposable
+internal sealed partial class GlyphValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new() { Text = "Glyph checks pending" };
     private Task? running;
+    private readonly List<string> checks = [];
     internal GlyphValidationPage()
     {
         AutomationProperties.SetAutomationId(status, "Glyph.Result");
-        Content = new StackPanel { Spacing = 12, Children = { status, presenter } };
+        var content = new StackPanel { Spacing = 12, Children = { status } };
+        Content = content;
+        InitializeRasterSpecimens(content);
+        content.Children.Add(presenter);
         Loaded += (_, _) => running ??= RunAsync();
     }
     private async Task RunAsync()
@@ -47,20 +51,27 @@ internal sealed class GlyphValidationPage : Page, IAsyncDisposable
             Check(a.Glyph == "\uE04C" && AutomationProperties.GetName(a) == "Cross button", "family change reuses native glyph and updates label");
             presenter.SetControllerFamily(ControllerFamily.Unknown);
             Check(a.Glyph == "\uE04C", "unknown frame retains last physical family");
-            Check(icons.Single(icon => AutomationProperties.GetAutomationId(icon) == "Widget.prompt.Guide").FontFamily.Source.Contains("PromptFont", StringComparison.Ordinal), "PS Guide uses licensed fallback font");
+            Check(icons.Single(icon => AutomationProperties.GetAutomationId(icon) == "Widget.prompt.Guide").FontFamily.Source.Contains("WidgetRail Controller Guide", StringComparison.Ordinal), "PS Guide uses licensed fallback font");
             Check(icons.All(icon => !icon.IsHitTestVisible), "glyphs are presentation only");
             var semantic = Descendants(presenter).OfType<WidgetPackageIconView>().Select(view => view.Content).OfType<FontIcon>().ToArray();
             Check(semantic.Length == Enum.GetValues<WidgetGlyph>().Length && semantic.All(icon => icon.FontFamily.Source == "Segoe Fluent Icons"), "controller changes do not alter semantic widget icons");
-            status.Text = $"Passed 7 glyph checks; {icons.Length} symbols; PlayStation prompts";
+            await CheckNativeInkAsync(icons);
+            status.Text = $"Passed {checks.Count} glyph checks; Xbox/PlayStation ink at 18, 24 and 32 DIP";
+            WriteRasterResult(true);
         }
-        catch (Exception error) { status.Text = "Failed: " + error; }
+        catch (Exception error) { status.Text = "Failed: " + error; WriteRasterResult(false, error.ToString()); }
     }
-    private static void Check(bool condition, string name) { if (!condition) throw new InvalidOperationException(name); }
+    private void Check(bool condition, string name) { if (!condition) throw new InvalidOperationException(name); checks.Add(name); }
     private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
     {
         yield return root;
         for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); ++index)
             foreach (var child in Descendants(VisualTreeHelper.GetChild(root, index))) yield return child;
     }
-    public async ValueTask DisposeAsync() { if (running is not null) await running; await presenter.DisposeAsync(); }
+    public async ValueTask DisposeAsync()
+    {
+        WidgetControllerPrompts.Changed -= RefreshRasterSpecimens;
+        if (running is not null) await running;
+        await presenter.DisposeAsync();
+    }
 }

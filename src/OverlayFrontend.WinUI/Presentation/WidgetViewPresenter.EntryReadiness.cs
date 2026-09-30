@@ -23,7 +23,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (waitingEntry is not { } target) return;
         if (disposed || !needsEntry || !bindings.TryGetValue(target.Identity.Id, out var current) ||
-            !ReferenceEquals(target, current) || !Eligible(target))
+            !ReferenceEquals(target, current) || !Navigable(target))
         { ClearEntryLayoutWait(); return; }
         if (!target.Element.IsLoaded || target.Element.ActualWidth <= 0 || target.Element.ActualHeight <= 0) return;
         ClearEntryLayoutWait();

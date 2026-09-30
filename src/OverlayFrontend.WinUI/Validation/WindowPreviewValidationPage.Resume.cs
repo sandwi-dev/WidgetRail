@@ -10,6 +10,19 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 internal sealed partial class WindowPreviewValidationPage
 {
+    private static Dictionary<string, WidgetRail.WidgetBridge.BridgeNodeRenderStyles> PreviewFixtureStyles(ViewSnapshot snapshot)
+    {
+        var alignment = new Dictionary<string, WidgetRail.WidgetBridge.BridgeComputedStyleValue>
+        {
+            ["text-align"] = new() { Kind = WidgetRail.WidgetStyling.WrssValueKind.Keyword, Text = "center" },
+        };
+        // Task Switcher authors centered placeholder text. Captured graphics
+        // must still fill the slot rather than taking their zero intrinsic width.
+        return snapshot.Root.Children.Where(node => node.Kind == ViewNodeKind.WindowPreview)
+            .ToDictionary(node => node.Id, _ => new WidgetRail.WidgetBridge.BridgeNodeRenderStyles
+            { Base = alignment, Focused = alignment, Pressed = alignment });
+    }
+
     private async Task ValidatePresenterResumeAsync()
     {
         renderer!.Failed += error => serverFailure = error;
@@ -27,7 +40,13 @@ internal sealed partial class WindowPreviewValidationPage
         Check(FindPreviewSlot(widgetPresenter)?.Content is WindowPreviewSurface, "cold activation binds preview after publishing its frame");
         preview = (WindowPreviewSurface)FindPreviewSlot(widgetPresenter)!.Content;
         await Until(() => preview.InspectNative().State == 2 && preview.InspectNative().Frames > 0);
+        Check(preview.ActualWidth > 0 && Math.Abs(preview.ActualWidth - FindPreviewSlot(widgetPresenter)!.ActualWidth) < 1,
+            "centered placeholder text does not shrink captured graphics; preview fills the native slot");
         Check(true, "cold presenter receives actual native capture frames");
+        var firstFrames = preview.InspectNative().Frames;
+        ((Microsoft.UI.Xaml.Controls.Panel)source!.Content).Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.CornflowerBlue);
+        await Until(() => preview.InspectNative().Frames > firstFrames);
+        Check(true, "source repaint advances the live capture instead of retaining only its first frame");
         widgetPresenter.Apply(fixtureFrame);
         Check(ReferenceEquals(preview, FindPreviewSlot(widgetPresenter)!.Content), "compatible publication retains the active preview surface");
         await ValidatePreviewCapacityRecoveryAsync();

@@ -7,7 +7,8 @@ namespace WidgetRail.WidgetBridge;
 
 internal sealed record BridgeClientSnapshot(
     ConfiguredWidget Configured,
-    ViewSnapshot Snapshot);
+    ViewSnapshot Snapshot)
+{ internal BridgeWorkerRun? WorkerRun { get; init; } }
 
 internal sealed record BridgeClientPresentation(
     ConfiguredWidget Configured,
@@ -15,7 +16,8 @@ internal sealed record BridgeClientPresentation(
     long RequestBaseSequence,
     long RecoveryOriginSequence,
     ViewSnapshot Snapshot,
-    PresentationUpdateBatch? Update);
+    PresentationUpdateBatch? Update)
+{ internal BridgeWorkerRun? WorkerRun { get; init; } }
 
 internal sealed record BridgeResolvedArtwork(
     ConfiguredWidget Configured,
@@ -277,8 +279,8 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
         CancellationToken cancellationToken) => Task.FromResult(false);
     Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
-        CancellationToken cancellationToken);
-    Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken, int? expectedStartOrdinal = null);
+    Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
         Task.FromException<WidgetOperationAdmission?>(new NotSupportedException("Pinned action v1 is unavailable."));
     Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
         string artworkHandle,
@@ -286,13 +288,13 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
         Task.FromResult<WidgetEncodedArtwork?>(null);
     Task SendEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, int expectedStartOrdinal);
     Task<bool> SendControllerInputAsync(
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken, int? expectedStartOrdinal = null);
     Task<bool?> SendRevalidatedControllerInputAsync(
-        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null) =>
+        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null, int? expectedStartOrdinal = null) =>
         Task.FromResult<bool?>(null);
     Task UnloadAsync(CancellationToken cancellationToken);
 }
@@ -325,8 +327,8 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
     }
 
     public Task<bool?> SendRevalidatedControllerInputAsync(
-        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null) =>
-        client.SendRevalidatedControllerInputAsync(input, cancellationToken, admittedActionId);
+        ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null, int? expectedStartOrdinal = null) =>
+        client.SendRevalidatedControllerInputAsync(input, cancellationToken, admittedActionId, expectedStartOrdinal);
 
     public bool IsRunning => client.IsRunning;
     public int Starts => client.Starts;
@@ -358,23 +360,23 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
             state, expectedStartOrdinal, cancellationToken);
     public Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
-        CancellationToken cancellationToken) =>
-        client.AdmitActionAsync(action, cancellationToken);
-    public Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken) =>
-        client.AdmitPinnedActionAsync(input, cancellationToken);
+        CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
+        client.AdmitActionForWorkerAsync(action, cancellationToken, expectedStartOrdinal);
+    public Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
+        client.AdmitPinnedActionAsync(input, cancellationToken, expectedStartOrdinal);
     public Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
         string artworkHandle,
         CancellationToken cancellationToken) =>
         client.ResolveArtworkAsync(artworkHandle, cancellationToken);
     public Task SendEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
-        CancellationToken cancellationToken) =>
-        client.SendEmbeddedMediaPlaybackEventAsync(playbackEvent, cancellationToken);
+        CancellationToken cancellationToken, int expectedStartOrdinal) =>
+        client.SendEmbeddedMediaPlaybackEventForWorkerAsync(playbackEvent, cancellationToken, expectedStartOrdinal);
     public Task<bool> SendControllerInputAsync(
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
-        CancellationToken cancellationToken) =>
-        client.SendControllerInputAsync(input, authority, cancellationToken);
+        CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
+        client.SendControllerInputForWorkerAsync(input, authority, cancellationToken, expectedStartOrdinal);
     public Task UnloadAsync(CancellationToken cancellationToken) =>
         client.UnloadAsync(cancellationToken);
     public ValueTask DisposeAsync() => client.DisposeAsync();
@@ -503,7 +505,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             sessionCancellation,
             cancellationToken).ConfigureAwait(false);
         return publication.Map(value =>
-            new BridgeClientSnapshot(value.Configured, value.Snapshot));
+            new BridgeClientSnapshot(value.Configured, value.Snapshot) { WorkerRun = value.WorkerRun });
     }
 
     internal async Task<BridgeClientPublication<BridgeClientPresentation>> GetPresentationAsync(
@@ -583,7 +585,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                     baseSequence,
                     recoveryOriginSequence,
                     presentation.Snapshot,
-                    presentation.Update));
+                    presentation.Update) { WorkerRun = registration.CachedWorkerRun });
         }
         finally
         {
@@ -823,7 +825,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                     presentation.RequestBaseSequence,
                     presentation.RecoveryOriginSequence,
                     presentation.Snapshot,
-                    presentation.Update));
+                    presentation.Update) { WorkerRun = new(registration.Generation, registration.Client.Starts) });
             // The bridge-visible lifecycle, retained base, and publication token
             // become observable together only after worker presentation succeeds.
             CommitIndexedAwareSnapshot(registration, presentation.Snapshot);
@@ -865,11 +867,12 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         string widgetId,
         WidgetActionEvent action,
         CancellationToken sessionCancellation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BridgeWorkerRun? expectedWorkerRun = null)
     {
         var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
         return await AdmitActionAsync(
-            registration, action, sessionCancellation, cancellationToken).ConfigureAwait(false);
+            registration, action, sessionCancellation, cancellationToken, expectedWorkerRun).ConfigureAwait(false);
     }
 
     internal async Task<BridgeClientPublication<WidgetOperationAdmission>> AdmitQuickActionAsync(
@@ -904,16 +907,20 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken,
         string? expectedActionId = null,
-        string? expectedSelectOptionActionId = null)
+        string? expectedSelectOptionActionId = null,
+        BridgeWorkerRun? expectedWorkerRun = null)
     {
         var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
+        var pinnedInput = input.Context == ControllerInputContext.PinnedSurface;
+        using var heldRegistration = AdmitInputPublication(registration, registration, pinnedInput);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (expectedActionId is not null && expectedSelectOptionActionId is not null)
                 throw new BridgeProtocolException(
                     "Controller input cannot combine exact action authority kinds.");
-            DemandCurrent(registration);
+            DemandCurrentInputRegistration(registration, pinnedInput);
+            DemandInputWorkerRun(registration, expectedWorkerRun, input.Context == ControllerInputContext.PinnedSurface);
             if (input.Context == ControllerInputContext.PinnedSurface &&
                 string.IsNullOrWhiteSpace(expectedRuntimeGeneration))
                 throw new BridgeProtocolException(
@@ -944,25 +951,25 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 registration.CancelIdleUnload();
                 var admission = await ExecuteClientOperationAsync(
                         registration,
-                        (client, token) => client.AdmitActionAsync(selectAction, token),
+                        (client, token) => client.AdmitActionAsync(selectAction, token, expectedWorkerRun?.StartOrdinal),
                         cancellationToken)
                     .ConfigureAwait(false);
-                DemandCurrent(registration);
+                DemandCurrentInputRegistration(registration, pinnedInput);
                 ScheduleIdleUnload(registration, sessionCancellation);
-                return AdmitPublication(
+                return AdmitInputPublication(
                     registration,
                     admission is not (WidgetOperationAdmission.RejectedInactive or
-                        WidgetOperationAdmission.RejectedCapacity));
+                        WidgetOperationAdmission.RejectedCapacity), pinnedInput);
             }
             var admitted = DemandControllerInputAuthority(
                 registration, input, expectedActionId);
             // A pinned button that binds to nothing here is an ordinary
             // not-handled outcome. Open widgets retain their bounded raw-input
             // override path through an explicit origin/current binding.
-            if (admitted is null) return AdmitPublication(registration, false);
+            if (admitted is null) return AdmitInputPublication(registration, false, pinnedInput);
             var revalidated = admitted.SnapshotSequence != input.SnapshotSequence &&
                 input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.PinnedSurface;
-            input = admitted;
+            input = RevalidateDashboardInput(registration, admitted);
             registration.CancelIdleUnload();
             if (revalidated)
             {
@@ -972,26 +979,26 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 var actionId = binding is { IsRaw: false } ? binding.ActionId : null;
                 var result = await ExecuteClientOperationAsync(
                     registration,
-                    (client, token) => client.SendRevalidatedControllerInputAsync(input, token, actionId),
+                    (client, token) => client.SendRevalidatedControllerInputAsync(input, token, actionId, expectedWorkerRun?.StartOrdinal),
                     cancellationToken).ConfigureAwait(false);
-                DemandCurrent(registration);
+                DemandCurrentInputRegistration(registration, pinnedInput);
                 ScheduleIdleUnload(registration, sessionCancellation);
                 if (result is null)
                     throw ControllerInputAuthorityException(input,
                         "Controller input could not be revalidated before delivery.");
-                return AdmitPublication(registration, result.Value);
+                return AdmitInputPublication(registration, result.Value, pinnedInput);
             }
             var handled = await ExecuteClientOperationAsync(
                     registration,
                     (client, token) => client.SendControllerInputAsync(
                         input,
                         ResolveDashboardGestureAuthority(registration, input),
-                        token),
+                        token, expectedWorkerRun?.StartOrdinal),
                     cancellationToken)
                 .ConfigureAwait(false);
-            DemandCurrent(registration);
+            DemandCurrentInputRegistration(registration, pinnedInput);
             ScheduleIdleUnload(registration, sessionCancellation);
-            return AdmitPublication(registration, handled);
+            return AdmitInputPublication(registration, handled, pinnedInput);
         }
         finally
         {
@@ -1247,7 +1254,26 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         return true;
     }
 
-    internal BridgeClientPublication<BridgeWidgetDescriptor>? TryAdmitHostEffect(
+    // Completion follows hiding, so Interactive is no longer required. The
+    // consumed ticket carries the exact authority admitted while interactive.
+    internal BridgeClientPublication<BridgeWidgetDescriptor>? TryAdmitTaskActivation(
+        BridgeTaskActivationTickets.Ticket ticket)
+    {
+        lock (_gate)
+        {
+            if (_clients.TryGetValue(ticket.WidgetId, out var registration) &&
+                !registration.IsRetiring &&
+                registration.Configured.WorkerFingerprint == ticket.Fingerprint &&
+                registration.Configured.InstanceId == ticket.InstanceId &&
+                new BridgeWorkerRun(registration.Generation, registration.Client.Starts) == ticket.WorkerRun &&
+                registration.Client.IsRunning &&
+                registration.Configured.PublicDescriptor().RuntimeGeneration == ticket.RuntimeGeneration)
+                return AdmitPublicationLocked(registration, registration.Configured.PublicDescriptor());
+        }
+        return null;
+    }
+
+    internal BridgeClientPublication<(BridgeWidgetDescriptor Descriptor, BridgeWorkerRun WorkerRun)>? TryAdmitHostEffect(
         string widgetId,
         string expectedWorkerFingerprint)
     {
@@ -1261,7 +1287,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                     StringComparison.Ordinal) &&
                 registration.HostLifecycle == WidgetLifecycleState.Interactive)
                 return AdmitPublicationLocked(
-                    registration, registration.Configured.PublicDescriptor());
+                    registration, (registration.Configured.PublicDescriptor(), new BridgeWorkerRun(registration.Generation, registration.Client.Starts)));
         }
         return null;
     }
@@ -1402,10 +1428,11 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                     string.Equals(media.Id, request.SessionId, StringComparison.Ordinal))
                     return AdmitPublicationLocked(
                         registration,
-                        new BridgeClientSnapshot(registration.Configured, snapshot));
+                        new BridgeClientSnapshot(registration.Configured, snapshot)
+                        { WorkerRun = registration.CachedWorkerRun });
             }
         }
-        throw new BridgeProtocolException(
+        throw new BridgeStaleMediaAuthorityException(
             "Embedded media authority is stale or unavailable.");
     }
 
@@ -1414,13 +1441,24 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var registration = await GetOrCreateAsync(request.WidgetId, cancellationToken)
-            .ConfigureAwait(false);
+        ClientRegistration registration;
+        BridgeClientPublication<ClientRegistration> operationLifetime;
+        lock (_gate)
+        {
+            if (!_clients.TryGetValue(request.WidgetId, out registration!) || !IsCurrentLocked(registration))
+                throw new BridgeStaleMediaAuthorityException("Embedded media worker is no longer available.");
+            // Keep the registration (including its semaphore) alive across the
+            // lookup-to-wait gap. Retirement may revoke authority immediately,
+            // but disposal cannot race this wait or its matching Release.
+            operationLifetime = AdmitPublicationLocked(registration, registration);
+        }
+        using var heldRegistration = operationLifetime;
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            DemandCurrent(registration);
-            var snapshot = registration.CachedSnapshot ?? throw new BridgeProtocolException(
+            DemandMediaWorker();
+            var workerStart = registration.CachedWorkerRun.StartOrdinal;
+            var snapshot = registration.CachedSnapshot ?? throw new BridgeStaleMediaAuthorityException(
                 "Embedded media event has no current snapshot authority.");
             var descriptor = registration.Configured.PublicDescriptor();
             var media = snapshot.EmbeddedMediaSession;
@@ -1449,18 +1487,25 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 !string.Equals(snapshot.WidgetInstanceId, request.InstanceId, StringComparison.Ordinal) ||
                 !string.Equals(descriptor.RuntimeGeneration, request.RuntimeGeneration, StringComparison.Ordinal) ||
                 !string.Equals(descriptor.PresentationGeneration, request.PresentationGeneration, StringComparison.Ordinal) ||
-                !string.Equals(media.Id, request.Event.SessionId, StringComparison.Ordinal) ||
-                !registration.AdmitsEmbeddedMediaPlaybackEvent(
-                    request.Sequence, playbackEvent, snapshot))
-                throw new BridgeProtocolException(
-                    "Embedded media event authority is stale or unavailable.");
+                !string.Equals(media.Id, request.Event.SessionId, StringComparison.Ordinal))
+                throw new BridgeStaleMediaAuthorityException(
+                    "Embedded media event authority is stale or unavailable.", command: playbackEvent.CommandSequence > 0);
+            if (playbackEvent.CommandSequence > 0 && media.PendingCommand is { } currentCommand &&
+                (playbackEvent.CommandSequence > currentCommand.Sequence ||
+                 playbackEvent.CommandSequence == currentCommand.Sequence && playbackEvent.MediaKey != currentCommand.MediaKey))
+                throw new BridgeProtocolException("Embedded media command completion does not match the issued command.");
+            if (request.Sequence > snapshot.Sequence || registration.HasPublishedEmbeddedMediaTerminal(playbackEvent))
+                throw new BridgeProtocolException("Embedded media completion has a future origin or repeats a published terminal.");
+            if (!registration.AdmitsEmbeddedMediaPlaybackEvent(request.Sequence, playbackEvent, snapshot))
+                throw new BridgeStaleMediaAuthorityException(
+                    "Embedded media event origin has retired or already completed.", command: playbackEvent.CommandSequence > 0);
             if (playbackEvent.CommandSequence > 0 &&
                 (media.PendingCommand is not { } pendingCommand ||
                  pendingCommand.Sequence != playbackEvent.CommandSequence ||
                  !string.Equals(pendingCommand.MediaKey, playbackEvent.MediaKey,
                      StringComparison.Ordinal)))
-                throw new BridgeProtocolException(
-                    "Embedded media playback command authority is stale or unavailable.");
+                throw new BridgeStaleMediaAuthorityException(
+                    "Embedded media playback command authority is stale or unavailable.", command: true);
             if (playbackEvent.CommandSequence > 0 &&
                 playbackEvent.ErrorCode is null &&
                 media.PendingCommand is { } preferenceCommand &&
@@ -1473,14 +1518,30 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 throw new BridgeProtocolException(
                     "Embedded media playback preference terminal state does not match the pending command.");
             await registration.Client.SendEmbeddedMediaPlaybackEventAsync(
-                request.Event, cancellationToken).ConfigureAwait(false);
+                request.Event, cancellationToken, workerStart).ConfigureAwait(false);
+            DemandMediaWorker();
             if (playbackEvent.CommandSequence > 0)
                 registration.RecordEmbeddedMediaPlaybackTerminal(playbackEvent);
-            DemandCurrent(registration);
         }
+        catch (WidgetInputWorkerRetiredException)
+        { throw new BridgeStaleMediaAuthorityException("Embedded media worker retired before dispatch."); }
+        catch (Exception error) when (IsWidgetRuntimeFailure(error) && !cancellationToken.IsCancellationRequested &&
+            !registration.HasCurrentSnapshotWorker)
+        { throw new BridgeStaleMediaAuthorityException("Embedded media worker retired during dispatch."); }
         finally
         {
             registration.OperationGate.Release();
+        }
+
+        void DemandMediaWorker()
+        {
+            // A media callback observes the displayed worker; it never admits a
+            // new worker. The optional receipt also distinguishes colliding
+            // snapshot/command IDs after a worker restart in modern hosts.
+            if (!IsCurrent(registration) || !registration.HasCurrentSnapshotWorker ||
+                request.WorkerRun is { } expected && (expected.RegistryGeneration <= 0 || expected.StartOrdinal <= 0 ||
+                    registration.CachedWorkerRun != expected))
+                throw new BridgeStaleMediaAuthorityException("Embedded media event belongs to a retired worker run.");
         }
     }
 
@@ -1880,23 +1941,26 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         ClientRegistration registration,
         WidgetActionEvent action,
         CancellationToken sessionCancellation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BridgeWorkerRun? expectedWorkerRun = null)
     {
+        using var heldRegistration = AdmitInputPublication(registration, registration);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            DemandCurrent(registration);
+            DemandCurrentInputRegistration(registration);
+            DemandInputWorkerRun(registration, expectedWorkerRun);
             if (registration.HostLifecycle == WidgetLifecycleState.Background)
-                return AdmitPublication(registration, WidgetOperationAdmission.RejectedInactive);
+                return AdmitInputPublication(registration, WidgetOperationAdmission.RejectedInactive);
             registration.CancelIdleUnload();
             var admission = await ExecuteClientOperationAsync(
                     registration,
-                    (client, token) => client.AdmitActionAsync(action, token),
+                    (client, token) => client.AdmitActionAsync(action, token, expectedWorkerRun?.StartOrdinal),
                     cancellationToken)
                 .ConfigureAwait(false);
-            DemandCurrent(registration);
+            DemandCurrentInputRegistration(registration);
             ScheduleIdleUnload(registration, sessionCancellation);
-            return AdmitPublication(registration, admission);
+            return AdmitInputPublication(registration, admission);
         }
         finally
         {
@@ -1932,6 +1996,10 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
+        }
+        catch (WidgetInputWorkerRetiredException)
+        {
+            throw new BridgeStaleControllerInputAuthorityException("Input worker retired before dispatch.");
         }
         catch (Exception exception) when (IsWidgetRuntimeFailure(exception))
         {
@@ -2116,6 +2184,21 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
     }
 
     private void DemandNotDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
+    private static ControllerInputEvent RevalidateDashboardInput(ClientRegistration registration, ControllerInputEvent input)
+    {
+        if (input.Context != ControllerInputContext.DashboardQuickAction) return input;
+        var current = registration.CachedSnapshot;
+        var origin = registration.FindInputOriginSnapshot(input.SnapshotSequence);
+        var original = origin?.QuickActions.SingleOrDefault(action => action.Button == input.Button);
+        var latest = current?.QuickActions.SingleOrDefault(action => action.Button == input.Button);
+        if (!registration.HasCurrentSnapshotWorker || registration.HostLifecycle != WidgetLifecycleState.Visible ||
+            current is null || origin is null || original is null || latest is null ||
+            input.ActiveInputScopeId != origin.ActiveInputScopeId || origin.ActiveInputScopeId != current.ActiveInputScopeId ||
+            original.ActionId != latest.ActionId || original.Capability != latest.Capability || original.RepeatPolicy != latest.RepeatPolicy)
+            throw new BridgeStaleControllerInputAuthorityException("Dashboard action changed after presentation.");
+        return input with { SnapshotSequence = current.Sequence };
+    }
 
     private static WidgetDashboardGestureAuthority? ResolveDashboardGestureAuthority(
         ClientRegistration registration,
@@ -2480,8 +2563,11 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
 
         internal ViewSnapshot? CachedSnapshot { get; private set; }
         private int _cachedSnapshotWorkerStart;
+        internal BridgeWorkerRun CachedWorkerRun => new(Generation, _cachedSnapshotWorkerStart);
         private readonly Queue<ViewSnapshot> _inputOriginSnapshots = new();
         private EmbeddedMediaCommandAuthority? _embeddedMediaCommandAuthority;
+        private EmbeddedMediaResourceAuthority? _embeddedMediaObservationAuthority;
+        private long _embeddedMediaObservationOrigin;
         private long _lastDashboardInputSequence;
         private readonly object _residencyGate = new();
         private CancellationTokenSource? _idleUnloadCancellation;
@@ -2544,12 +2630,19 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                     _inputOriginSnapshots.Dequeue();
             }
             var media = snapshot.EmbeddedMediaSession;
+            if (media is null) _embeddedMediaObservationAuthority = null;
+            else if (!sameWorkerStart || CachedSnapshot?.WidgetInstanceId != snapshot.WidgetInstanceId ||
+                _embeddedMediaObservationAuthority is null || !_embeddedMediaObservationAuthority.Matches(media))
+            {
+                _embeddedMediaObservationAuthority = EmbeddedMediaResourceAuthority.Capture(media);
+                _embeddedMediaObservationOrigin = snapshot.Sequence;
+            }
             var pending = media?.PendingCommand;
             if (pending is null || media is null)
             {
                 _embeddedMediaCommandAuthority = null;
             }
-            else if (_embeddedMediaCommandAuthority is not { } current ||
+            else if (!sameWorkerStart || _embeddedMediaCommandAuthority is not { } current ||
                 !string.Equals(current.InstanceId, snapshot.WidgetInstanceId,
                     StringComparison.Ordinal) ||
                 !string.Equals(current.SessionId, media.Id, StringComparison.Ordinal) ||
@@ -2581,19 +2674,35 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 candidate.Sequence == sequence);
         }
 
+        internal bool HasPublishedEmbeddedMediaTerminal(EmbeddedMediaPlaybackEvent value) =>
+            value.CommandSequence > 0 && _embeddedMediaCommandAuthority is { TerminalPublished: true } authority &&
+            authority.CommandSequence == value.CommandSequence && authority.MediaKey == value.MediaKey;
+
         internal bool AdmitsEmbeddedMediaPlaybackEvent(
             long requestSequence,
             EmbeddedMediaPlaybackEvent playbackEvent,
             ViewSnapshot snapshot)
         {
             if (playbackEvent.CommandSequence == 0)
-                return requestSequence == snapshot.Sequence;
+                // Playback observations belong to the durable document. A
+                // compatible UI publication racing IPC must not kill playback.
+                // Require a genuinely retained origin within this uninterrupted
+                // resource epoch; removal/reappearance cannot revive an old one.
+                return _embeddedMediaObservationAuthority is { } observation &&
+                    requestSequence >= _embeddedMediaObservationOrigin && requestSequence <= snapshot.Sequence &&
+                    FindInputOriginSnapshot(requestSequence)?.EmbeddedMediaSession is { } origin && observation.Matches(origin);
             var media = snapshot.EmbeddedMediaSession;
             var pending = media?.PendingCommand;
+            // The frontend may have observed a compatible intermediate revision
+            // before another UI publication wins the race with its terminal IPC.
+            // Only a retained snapshot of this uninterrupted command is eligible.
             return _embeddedMediaCommandAuthority is { } authority &&
                 !authority.TerminalPublished &&
                 (requestSequence == authority.OriginSnapshotSequence ||
-                 requestSequence == snapshot.Sequence) &&
+                 requestSequence == snapshot.Sequence ||
+                 (requestSequence > authority.OriginSnapshotSequence && requestSequence < snapshot.Sequence &&
+                  FindInputOriginSnapshot(requestSequence)?.EmbeddedMediaSession is { } commandOrigin &&
+                  commandOrigin.PendingCommand == authority.Command && authority.ResourceAuthority.Matches(commandOrigin))) &&
                 string.Equals(authority.InstanceId, snapshot.WidgetInstanceId,
                     StringComparison.Ordinal) &&
                 string.Equals(authority.SessionId, media?.Id, StringComparison.Ordinal) &&

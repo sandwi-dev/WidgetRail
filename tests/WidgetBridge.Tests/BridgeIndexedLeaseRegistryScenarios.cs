@@ -58,12 +58,12 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
         Check(fake.Contexts.Single().SnapshotSequence == current.Sequence, "Input was not rebased after origin comparison.");
         fixture.Client.Shortcut = "changed";
         _ = await fixture.Snapshot();
-        await Reject(() => fixture.Registry.AdmitIndexedInputAsync(fixture.Input(lease, origin.Sequence, ControllerButton.X), CancellationToken.None));
+        await RejectStaleInput(() => fixture.Registry.AdmitIndexedInputAsync(fixture.Input(lease, origin.Sequence, ControllerButton.X), CancellationToken.None));
         Check(fake.Contexts.Count == 1, "Changed shortcut reached worker.");
         fixture.Client.ActiveOtherScope = true;
         _ = await fixture.Snapshot();
         Check(fake.Disposed == 0, "Changing active scope retired data lease.");
-        await Reject(() => fixture.Registry.AdmitIndexedInputAsync(input, CancellationToken.None));
+        await RejectStaleInput(() => fixture.Registry.AdmitIndexedInputAsync(input, CancellationToken.None));
         fixture.Client.ActiveOtherScope = false;
         var restored = await fixture.Snapshot();
         Check(await fixture.Registry.AdmitIndexedInputAsync(fixture.Input(lease, restored.Sequence, ControllerButton.A), CancellationToken.None) == WidgetOperationAdmission.Enqueued, "Restored parent scope lost lease.");
@@ -74,7 +74,7 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
         _ = await fixture.Snapshot();
         await fake.Released.Task.WaitAsync(TimeSpan.FromSeconds(2));
         Check(fake.Disposed == 1, "Query change must release exact data owner.");
-        await Reject(() => fixture.Registry.AdmitIndexedInputAsync(input, CancellationToken.None));
+        await RejectStaleInput(() => fixture.Registry.AdmitIndexedInputAsync(input, CancellationToken.None));
     }
 
     internal static async Task DuplicateAndCancellationPreserveOwnership()
@@ -359,9 +359,9 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
             AfterAcquire?.Invoke();
             return Task.FromResult<IBridgeIndexedLease>(lease);
         }
-        public Task<WidgetOperationAdmission> AdmitActionAsync(WidgetActionEvent action, CancellationToken token) => Task.FromResult(WidgetOperationAdmission.Enqueued);
-        public Task SendEmbeddedMediaPlaybackEventAsync(EmbeddedMediaPlaybackEvent playback, CancellationToken token) => Task.CompletedTask;
-        public Task<bool> SendControllerInputAsync(ControllerInputEvent input, WidgetDashboardGestureAuthority? authority, CancellationToken token) => Task.FromResult(false);
+        public Task<WidgetOperationAdmission> AdmitActionAsync(WidgetActionEvent action, CancellationToken token, int? expectedStartOrdinal = null) => Task.FromResult(WidgetOperationAdmission.Enqueued);
+        public Task SendEmbeddedMediaPlaybackEventAsync(EmbeddedMediaPlaybackEvent playback, CancellationToken token, int expectedStartOrdinal) => Task.CompletedTask;
+        public Task<bool> SendControllerInputAsync(ControllerInputEvent input, WidgetDashboardGestureAuthority? authority, CancellationToken token, int? expectedStartOrdinal = null) => Task.FromResult(false);
         public Task UnloadAsync(CancellationToken token)
         {
             IsRunning = false;
@@ -384,8 +384,10 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
         internal readonly TaskCompletionSource Released = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource ArtworkStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly List<IndexedCollectionInputContext> Contexts = [];
+        internal Exception? InputFailure;
         public Task<WidgetOperationAdmission?> AdmitInputAsync(IndexedCollectionInputRequest input, IndexedCollectionInputContext correlation, CancellationToken token)
         {
+            if (InputFailure is not null) throw InputFailure;
             Contexts.Add(correlation);
             return Task.FromResult<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued);
         }

@@ -30,6 +30,6 @@ internal sealed partial class OverlayShellPage
         return renderer;
     }
 
-    private void ReconcilePreviewVisibility() => previewRenderer?.SetVisible(visible && !retired);
+    private void ReconcilePreviewVisibility() => previewRenderer?.SetVisible(PresentationVisible && !retired);
 
 }

@@ -8,11 +8,14 @@ public sealed partial class MainWindow : Window
 {
     private readonly Microsoft.UI.System.ThemeSettings themeSettings;
     private Input.PlatformInputPump? input;
+    private Input.OverlayKeyboardShortcut? keyboardShortcut;
     private readonly Input.ControllerInputTrace? controllerTrace;
     private readonly Input.GamepadKeyBoundary? gamepadKeys;
     private bool closingAfterCleanup;
     private bool cleanupStarted;
     private bool startHidden;
+
+    internal string? CaptureFailureLayout() => (RootFrame.Content as Shell.OverlayShellPage)?.CaptureFailureLayout();
 
     internal MainWindow(IReadOnlyList<string> arguments, Shell.OverlayShellOptions? launchOptions, Exception? configurationError)
     {
@@ -24,11 +27,13 @@ public sealed partial class MainWindow : Window
         SystemBackdrop = new WinUIEx.TransparentTintBackdrop();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
-            presenter.SetBorderAndTitleBar(false, false);
             presenter.IsResizable = false;
             presenter.IsMaximizable = false;
             presenter.IsMinimizable = false;
+            // IsResizable=false installs WS_DLGFRAME; remove chrome last.
+            presenter.SetBorderAndTitleBar(false, false);
         }
+        Shell.OverlayWindowFrame.SuppressBorder(WinRT.Interop.WindowNative.GetWindowHandle(this));
         // Initial validation window uses physical pixels. Production placement
         // will come from the existing platform adapter's monitor/DPI policy.
         AppWindow.ResizeClient(new SizeInt32(960, 640));
@@ -41,6 +46,8 @@ public sealed partial class MainWindow : Window
         {
             gamepadKeys = new(ShellRoot, () => !cleanupStarted && input is { IsActive: true, IsForeground: true } && AppWindow.IsVisible);
             input.Failed += _ => gamepadKeys.Dispose();
+            if (RootFrame.Content is Shell.OverlayShellPage)
+                input.ExternalForegroundObserved += DismissForExternalForeground;
         }
         AppWindow.Closing += (sender, args) =>
         {
@@ -52,6 +59,7 @@ public sealed partial class MainWindow : Window
         {
             if (args.WindowActivationState != WindowActivationState.Deactivated)
             {
+                Shell.OverlayWindowFrame.SuppressBorder(WinRT.Interop.WindowNative.GetWindowHandle(this));
                 QueueValidationEntryFocus();
                 (RootFrame.Content as Shell.OverlayShellPage)?.SetForeground(true);
                 (RootFrame.Content as Shell.OverlayShellPage)?.QueueEntryFocus();
@@ -69,6 +77,7 @@ public sealed partial class MainWindow : Window
             RetireOverlaySizing();
             controllerTrace?.Dispose();
             gamepadKeys?.Dispose();
+            keyboardShortcut?.Dispose(); keyboardShortcut = null;
             input?.Dispose();
             RetireValidation();
         };
@@ -76,6 +85,10 @@ public sealed partial class MainWindow : Window
 
     private void ConfigureProduction(IReadOnlyList<string> arguments, Shell.OverlayShellOptions? launchOptions, Exception? configurationError)
     {
+        // The overlay is summoned by its controller/keyboard shortcut, like
+        // the original tool window. Use AppWindow policy rather than native
+        // extended-style mutations that can conflict with WinUI ownership.
+        AppWindow.IsShownInSwitchers = false;
         Shell.OverlayShellOptions options;
         try
         {
@@ -109,11 +122,26 @@ public sealed partial class MainWindow : Window
         ScaleRoot.Children.Add(RootFrame);
         Microsoft.UI.Xaml.Controls.Grid.SetRow(RootFrame, 0);
         InitializeShellAppearance(page);
+        // Confirmed launch effects must hand foreground off without waiting for
+        // decorative exit motion. Guide, keyboard and gap dismissal animate.
         page.HideRequested += HideOverlay;
+        page.ImmediateHideRequested += HideOverlayImmediately;
+        page.MotionPolicyChanged += RefreshOverlayMotionPolicy;
+        page.WindowActivationDiagnostic = message =>
+        {
+            if (input is not null) input.TraceForegroundState(message);
+            else Diagnostics.FrontendFailureLog.Current.Write("window-activation", null, message);
+        };
+        page.ApplicationControlRequested += action =>
+        {
+            if (cleanupStarted) return;
+            App.RestartRequested = action == WidgetRail.WidgetPresentationSession.WidgetApplicationControl.Restart;
+            _ = CloseWithCleanupAsync();
+        };
         page.ReturnFromPinnedRequested += () => { Activate(); input?.AcquireForeground(); page.QueueEntryFocus(); };
-        var taskActivation = new WidgetRail.OverlayPlatformClient.TaskWindowActivation(
-            new WidgetRail.OverlayPlatformClient.WindowsTaskWindowActivation());
-        page.TaskWindowActivationRequested += effect => page.ActivateTaskWindow(effect, taskActivation, HideOverlay);
+        var taskActivation = new WidgetRail.WindowsWindowActivation.TaskWindowActivation(
+            new WidgetRail.WindowsWindowActivation.WindowsTaskWindowActivation());
+        page.TaskWindowActivationRequested += effect => _ = RunTaskHandoffAsync(page, effect, taskActivation);
         page.AppearanceLoaded += ApplyOverlayPlacement;
         page.MediaPresentationChanged += () =>
         {
@@ -124,14 +152,30 @@ public sealed partial class MainWindow : Window
             try
             {
                 input = new(DispatcherQueue, WinRT.Interop.WindowNative.GetWindowHandle(this));
+                page.ControllerSettingsLoaded += input.ApplyControllerSettings;
+                page.ControllerControlStatusRequested = input.ReadControllerControlAsync;
+                page.ControllerControlPreferenceReceived += input.ApplyControllerControlPreference;
                 input.FrameReceived += page.Receive;
                 input.Failed += error => ReportInputFailure(page, error);
                 input.ToggleRequested += ToggleOverlay;
+                input.InitializeControllerSettings(async () =>
+                    (await new WidgetRail.PlatformSettings.PlatformSettingsStore(new(options.SettingsRoot)).LoadAsync()).Controllers);
                 if (!startHidden) input.PrepareShow();
             }
             catch (Exception error) { ReportInputFailure(page, error); }
         }
         InitializeOverlaySizing(page);
+        InitializeKeyboardShortcut();
+    }
+
+    private void InitializeKeyboardShortcut()
+    {
+        keyboardShortcut = new(WinRT.Interop.WindowNative.GetWindowHandle(this), () =>
+        {
+            if (cleanupStarted) return;
+            input?.TraceInput("F1 fallback toggle received");
+            ToggleOverlay();
+        });
     }
 
     partial void ConfigureValidation(IReadOnlyList<string> arguments, ref bool handled);
@@ -161,6 +205,7 @@ public sealed partial class MainWindow : Window
             input?.SetVisible(false);
             return;
         }
+        if (RootFrame.Content is Shell.OverlayShellPage) { ShowOverlay(); return; }
         Activate();
         StartInput();
     }
@@ -186,6 +231,11 @@ public sealed partial class MainWindow : Window
     {
         if (cleanupStarted) return;
         cleanupStarted = true;
+        CancelTaskHandoff();
+        keyboardShortcut?.Dispose(); keyboardShortcut = null;
+        input?.SetVisible(false);
+        AppWindow.Hide();
+        RetireOverlayMotion();
         desktopBackdrop?.Dispose();
         try { if (RootFrame.Content is IAsyncDisposable resource) await resource.DisposeAsync(); }
         catch (Exception error) { System.Diagnostics.Trace.TraceError("WinUI page shutdown failed: {0}", error); }

@@ -7,6 +7,7 @@
 #include "LocalControllerPolicy.h"
 #include "ViGEmOutputAdapter.h"
 #include "../OverlayHost/ControllerInputOwnership.h"
+#include "../OverlayHost/ControllerOpenShortcut.h"
 #include "../OverlayHost/GuideInputCompatibility.h"
 #include "../OverlayHost/OverlayPlacement.h"
 #include "../OverlayHost/OverlayTargeting.h"
@@ -131,6 +132,7 @@ struct WidgetRailOverlayPlatformHandle final {
     GameInputCallbackToken guideCallback{};
     GameInputCallbackToken compatibilityDeviceCallback{};
     widgetrail::input::XInputGuideCompatibility guideCompatibility;
+    std::unique_ptr<widgetrail::input::ControllerOpenShortcut> openShortcut;
     widgetrail::input::GuideCompatibilityActivation guideCompatibilityActivation;
     widgetrail::platform::GuideToggleDebouncer guideDebouncer;
     widgetrail::platform::ControllerFrameTracker controllerTracker;
@@ -747,6 +749,7 @@ WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noe
 void WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformShutdown(
     WidgetRailOverlayPlatformHandle* handle) noexcept {
     if (!handle || !handle->BeginShutdown()) return;
+    handle->openShortcut.reset();
     handle->controllerIsolation.Stop();
     handle->RetireLocalControllerOwners();
     handle->controllerTracker.Reset();
@@ -1001,6 +1004,43 @@ WidgetRailOverlayPlatformNativeShortcutSource WRAIL_OVERLAY_PLATFORM_CALL Widget
     return Source::Shared;
 }
 
+WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformSetViewMenuShortcut(
+    WidgetRailOverlayPlatformHandle* handle, const std::uint32_t enabled) noexcept {
+    const auto status = ValidateHandle(handle);
+    if (status != WidgetRailOverlayPlatformStatus::Ok) return status;
+    if (enabled > 1) return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    try {
+        if (!enabled) handle->openShortcut.reset();
+        else if (!handle->openShortcut) {
+            auto observer = std::make_unique<widgetrail::input::ControllerOpenShortcut>();
+            observer->Start(); // Held input must be released before the first chord.
+            handle->openShortcut = std::move(observer);
+        }
+        return WidgetRailOverlayPlatformStatus::Ok;
+    } catch (...) { return WidgetRailOverlayPlatformStatus::AllocationFailed; }
+}
+
+WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL WidgetRailOverlayPlatformPollViewMenuShortcut(
+    WidgetRailOverlayPlatformHandle* handle, std::uint32_t* pressed, std::uint32_t* consumed) noexcept {
+    if (!pressed || !consumed) return WidgetRailOverlayPlatformStatus::InvalidArgument;
+    *pressed = *consumed = 0;
+    const auto status = ValidateHandle(handle);
+    if (status != WidgetRailOverlayPlatformStatus::Ok) return status;
+    if (!handle->openShortcut) return WidgetRailOverlayPlatformStatus::Ok;
+    try {
+        std::uint16_t buttons{};
+        const auto source = WidgetRailOverlayPlatformNativeShortcutButtons(handle, &buttons);
+        using Source = WidgetRailOverlayPlatformNativeShortcutSource;
+        const auto sampling = handle->controllerIsolation.active()
+            ? widgetrail::input::OpenShortcutSampling::NativeOnly
+            : widgetrail::input::OpenShortcutSampling::AllControllers;
+        *pressed = ToAbiBoolean(handle->openShortcut->Poll(source == Source::Unavailable
+            ? std::nullopt : std::optional<std::uint16_t>{buttons}, sampling));
+        *consumed = ToAbiBoolean(handle->openShortcut->consumed());
+        return WidgetRailOverlayPlatformStatus::Ok;
+    } catch (...) { return WidgetRailOverlayPlatformStatus::AllocationFailed; }
+}
+
 WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
 WidgetRailOverlayPlatformReadController(
     WidgetRailOverlayPlatformHandle* handle,
@@ -1114,19 +1154,33 @@ WidgetRailOverlayPlatformAcquireForeground(
     const DWORD foregroundThread = GetWindowThreadProcessId(GetForegroundWindow(), &foregroundProcess);
     const auto plan = widgetrail::input::PlanForegroundAcquisition(
         foregroundProcess == currentProcess, currentThread, foregroundThread);
+    handle->Diagnostic(L"Foreground acquire begin callerThread=" + std::to_wstring(currentThread) +
+        L" foregroundThread=" + std::to_wstring(foregroundThread) + L" foregroundPid=" + std::to_wstring(foregroundProcess));
     if (plan.attemptDirect) {
-        (void)SetForegroundWindow(window);
-        (void)SetActiveWindow(window);
+        const BOOL accepted = SetForegroundWindow(window);
+        handle->Diagnostic(L"Foreground direct SetForegroundWindow accepted=" + std::to_wstring(accepted) +
+            L" foreground=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(GetForegroundWindow())));
+        const HWND previous = SetActiveWindow(window);
+        handle->Diagnostic(L"Foreground SetActiveWindow previous=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(previous)));
     }
     // The Guide callback does not itself grant foreground rights. Reuse the
     // native host's single bounded queue-attachment fallback, never a retry loop.
     // Every successful attachment is detached before returning to the caller.
-    if (!isForeground() && plan.attachForegroundThread &&
-        AttachThreadInput(currentThread, foregroundThread, TRUE)) {
-        (void)BringWindowToTop(window);
-        (void)SetForegroundWindow(window);
-        (void)SetActiveWindow(window);
-        (void)AttachThreadInput(currentThread, foregroundThread, FALSE);
+    if (!isForeground() && plan.attachForegroundThread) {
+        const BOOL attached = AttachThreadInput(currentThread, foregroundThread, TRUE);
+        const DWORD attachError = attached ? ERROR_SUCCESS : GetLastError();
+        handle->Diagnostic(L"Foreground AttachThreadInput accepted=" + std::to_wstring(attached) + L" error=" + std::to_wstring(attachError));
+        if (attached) {
+            const BOOL raised = BringWindowToTop(window);
+            const BOOL accepted = SetForegroundWindow(window);
+            const HWND previous = SetActiveWindow(window);
+            const BOOL detached = AttachThreadInput(currentThread, foregroundThread, FALSE);
+            handle->Diagnostic(L"Foreground attached BringWindowToTop accepted=" + std::to_wstring(raised) +
+                L" SetForegroundWindow accepted=" + std::to_wstring(accepted) +
+                L" SetActiveWindow previous=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(previous)) +
+                L" detached=" + std::to_wstring(detached) +
+                L" foreground=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(GetForegroundWindow())));
+        }
     }
     // Control focus belongs to the frontend. WinUI uses a child content HWND;
     // assigning focus to its outer window can suppress native focus visuals.

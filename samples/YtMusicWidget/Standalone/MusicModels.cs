@@ -7,7 +7,7 @@ public sealed record MusicQueueAddition(MusicState State, MusicItem[] OriginalQu
 public sealed record PlayerState(string TrackId = "", bool Playing = false, bool Buffering = false,
     double Position = 0, double Duration = 0, double Volume = .5, string? Error = null);
 public sealed record MusicState(bool Connected, IReadOnlyList<MusicItem> Queue, int Index,
-    bool Shuffle, string Repeat, PlayerState Player)
+    bool Shuffle, string Repeat, PlayerState Player, string? PlaybackNotice = null)
 {
     public static MusicState Empty { get; } = new(false, [], -1, false, "off", new());
     public MusicItem? Current => Index >= 0 && Index < Queue.Count ? Queue[Index] : null;

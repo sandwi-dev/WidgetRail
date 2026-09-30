@@ -25,6 +25,7 @@ internal static class BridgeMessageTypes
     public const string ControllerControl = "controller-control";
     public const string WindowPreviewPermissions = "window-preview-permissions";
     public const string ApplicationControl = "application-control";
+    public const string CompleteTaskActivation = "complete-task-activation";
     public const string PlatformAppearance = "platform-appearance";
     public const string AppearanceChanged = "platform-appearance-changed";
     public const string CatalogChanged = "widget-catalog-changed";
@@ -81,7 +82,8 @@ internal sealed record BridgeEnvelope
     public required JsonElement Payload { get; init; }
 }
 
-internal sealed record BridgeHello(string ClientName, bool WindowPreviews = false);
+internal sealed record BridgeHello(string ClientName, bool WindowPreviews = false,
+    bool ExclusiveControllerControl = true, bool HeldDpadScroll = true, bool StartupRegistration = true);
 internal sealed record WidgetIdRequest(string WidgetId);
 internal sealed record BridgeEmptyPayload;
 internal sealed record BridgeDisplayIdentity(string Id, string Name, IReadOnlyList<string> DevicePaths);
@@ -145,7 +147,8 @@ internal sealed record BridgeEmbeddedMediaPlaybackEventRequest(
     string RuntimeGeneration,
     string PresentationGeneration,
     long Sequence,
-    EmbeddedMediaPlaybackEvent Event);
+    EmbeddedMediaPlaybackEvent Event,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] BridgeWorkerRun? WorkerRun = null);
 internal sealed record BridgeWidgetLifecycleRequest(
     string WidgetId,
     WidgetRail.WidgetSdk.WidgetLifecycleState State,
@@ -157,17 +160,18 @@ internal sealed record BridgePresentationEstablishment(
         WidgetRail.WidgetSdk.WidgetPresentationTransactionKind.OrdinaryCheckpoint,
     long RecoveryOriginSequence = 0);
 internal sealed record BridgePinnedActionRequest(string WidgetId, string InstanceId, string RuntimeGeneration,
-    string PresentationGeneration, WidgetRail.WidgetSdk.PinnedActionInput Input);
+    string PresentationGeneration, WidgetRail.WidgetSdk.PinnedActionInput Input, BridgeWorkerRun? WorkerRun = null);
 internal sealed record BridgePinnedArtworkRequest(int Version, string WidgetId, string InstanceId, string RuntimeGeneration,
     string PresentationGeneration, string LayoutId, long SnapshotSequence, string InputScopeId, string ArtworkHandle, string DemandId);
-internal sealed record BridgeActionRequest(string WidgetId, WidgetRail.WidgetSdk.WidgetActionEvent Action);
+internal sealed record BridgeActionRequest(string WidgetId, WidgetRail.WidgetSdk.WidgetActionEvent Action, BridgeWorkerRun? WorkerRun = null);
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 internal sealed record BridgeControllerInputRequest(
     string WidgetId,
     WidgetRail.WidgetSdk.ControllerInputEvent Input,
     string? RuntimeGeneration = null,
     string? ExpectedActionId = null,
-    string? ExpectedSelectOptionActionId = null);
+    string? ExpectedSelectOptionActionId = null,
+    BridgeWorkerRun? WorkerRun = null);
 internal sealed record BridgeProtectedWifiRequest(
     string WidgetId,
     string RuntimeGeneration,
@@ -261,6 +265,11 @@ internal static class BridgeJson
 
 internal sealed class BridgeFrameChannel(Stream stream, int maximumMessageBytes)
 {
+    // One bounded scratch allocation per channel; the returned JsonElement
+    // owns its own data. Large exceptional frames never raise this high-water
+    // mark, and no process-global pool retains buffers from retired channels.
+    private const int MaximumRetainedReadBufferBytes = 1024 * 1024;
+    private byte[]? _readBuffer;
     private readonly Stream _stream = stream ?? throw new ArgumentNullException(nameof(stream));
     private readonly int _maximumMessageBytes = maximumMessageBytes is >= 256 and <= BridgeProtocol.AbsoluteMaximumMessageBytes
         ? maximumMessageBytes
@@ -315,26 +324,36 @@ internal sealed class BridgeFrameChannel(Stream stream, int maximumMessageBytes)
         var length = BinaryPrimitives.ReadInt32LittleEndian(header);
         if (length <= 0 || length > _maximumMessageBytes)
             throw new BridgeProtocolException($"Peer announced invalid bridge message length {length}.");
-        var bytes = new byte[length];
-        await _stream.ReadExactlyAsync(bytes, cancellationToken).ConfigureAwait(false);
-        var envelope = JsonSerializer.Deserialize(bytes, BridgeJson.TypeInfo<BridgeEnvelope>())
-            ?? throw new BridgeProtocolException("Peer sent a null bridge message.");
-        if (envelope.ProtocolVersion == 0)
+        var bytes = Interlocked.Exchange(ref _readBuffer, null);
+        if (bytes is null || bytes.Length < length) bytes = new byte[length];
+        try
         {
-            // Preserve the existing additive-envelope default only for omission;
-            // an explicitly supplied unsupported version still fails below.
-            using var document = JsonDocument.Parse(bytes);
-            if (!document.RootElement.TryGetProperty("protocolVersion", out _))
-                envelope = envelope with { ProtocolVersion = BridgeProtocol.CurrentVersion };
+            await _stream.ReadExactlyAsync(bytes.AsMemory(0, length), cancellationToken).ConfigureAwait(false);
+            var envelope = JsonSerializer.Deserialize(bytes.AsSpan(0, length), BridgeJson.TypeInfo<BridgeEnvelope>())
+                ?? throw new BridgeProtocolException("Peer sent a null bridge message.");
+            if (envelope.ProtocolVersion == 0)
+            {
+                // Preserve the existing additive-envelope default only for omission;
+                // an explicitly supplied unsupported version still fails below.
+                using var document = JsonDocument.Parse(bytes.AsMemory(0, length));
+                if (!document.RootElement.TryGetProperty("protocolVersion", out _))
+                    envelope = envelope with { ProtocolVersion = BridgeProtocol.CurrentVersion };
+            }
+            if (envelope.ProtocolVersion != BridgeProtocol.CurrentVersion)
+                throw new BridgeProtocolException(
+                    $"Unsupported bridge protocol {envelope.ProtocolVersion}; expected {BridgeProtocol.CurrentVersion}.");
+            if (string.IsNullOrWhiteSpace(envelope.Type) || envelope.Type.Length > 64)
+                throw new BridgeProtocolException("Bridge message type is invalid.");
+            if (envelope.RequestId < 0)
+                throw new BridgeProtocolException("Bridge request ID cannot be negative.");
+            return envelope;
         }
-        if (envelope.ProtocolVersion != BridgeProtocol.CurrentVersion)
-            throw new BridgeProtocolException(
-                $"Unsupported bridge protocol {envelope.ProtocolVersion}; expected {BridgeProtocol.CurrentVersion}.");
-        if (string.IsNullOrWhiteSpace(envelope.Type) || envelope.Type.Length > 64)
-            throw new BridgeProtocolException("Bridge message type is invalid.");
-        if (envelope.RequestId < 0)
-            throw new BridgeProtocolException("Bridge request ID cannot be negative.");
-        return envelope;
+        finally
+        {
+            Array.Clear(bytes);
+            if (bytes.Length <= MaximumRetainedReadBufferBytes)
+                Interlocked.CompareExchange(ref _readBuffer, bytes, null);
+        }
     }
 
     internal async ValueTask<BridgeProtectedWifiSecret> ReadProtectedWifiSecretAsync(
@@ -420,6 +439,10 @@ internal sealed record BridgeIndexedLeaseResponse(
     IndexedCollectionLease Lease,
     [property: JsonRequired] IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles,
     long AppearanceRevision = 0);
+// Trusted Bridge publication identity; independent of package fingerprints and
+// of snapshot sequence numbers that restart with each worker process.
+public sealed record BridgeWorkerRun(long RegistryGeneration, int StartOrdinal);
+
 internal sealed record BridgeResolvedStyleSnapshot(long Revision, IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles);
 internal sealed record BridgePresentationStylesRequest(
     string WidgetId, string InstanceId, string RuntimeGeneration, string PresentationGeneration, long SnapshotSequence);

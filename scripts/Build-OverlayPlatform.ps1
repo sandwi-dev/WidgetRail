@@ -99,6 +99,7 @@ $sources = @(
 ) | ForEach-Object { Join-Path $platformDirectory $_ }
 $sources += (Join-Path $viGEmDirectory 'src\ViGEmClient.cpp'), (Join-Path $hostDirectory 'GuideInputCompatibility.cpp')
 $sources += (Join-Path $hostDirectory 'OverlayProcessOwner.cpp')
+$sources += (Join-Path $hostDirectory 'ControllerOpenShortcut.cpp')
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 # Explicit static CRT matches the legacy build's cl default and avoids adding a
 # redistributable DLL dependency solely for the WinUI platform boundary.

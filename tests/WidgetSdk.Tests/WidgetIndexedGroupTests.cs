@@ -17,7 +17,8 @@ internal static class WidgetIndexedGroupTests
             Check(declaration.Groups![0].Key == "first", "SDK freezes the caller's array");
             Throws<NotSupportedException>(() => ((IList<IndexedCollectionGroup>)declaration.Groups!)[0] = groups[0]);
             var snapshot = new WidgetView(declaration, "collection").CreateSnapshot("groups", 1);
-            Check(snapshot.ProtocolVersion == 62 && snapshot.Root.Children.Count == 0, "grouping version with no inline item trees");
+            Check(snapshot.ProtocolVersion == ProtocolConstants.CurrentVersion && snapshot.Root.Children.Count == 0, "SDK deferred item capabilities with no inline item trees");
+            Check(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = ProtocolConstants.IndexedCollectionGroupsVersion }).Count == 0, "older grouped declarations remain valid");
             Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot)).Root.IndexedGroups!.SequenceEqual(declaration.Groups!), "group roundtrip");
             Check(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = 61 }).Count > 0, "old peers reject groups");
             Check(ViewSnapshotValidator.Validate(snapshot).Count == 0, "empty groups and repeated headings allowed");

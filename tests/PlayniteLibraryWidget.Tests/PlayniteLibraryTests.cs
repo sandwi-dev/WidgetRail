@@ -13,6 +13,30 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryTests
 {
     [TestMethod, Timeout(30_000)]
+    public async Task PageNavigationKeepsBackgroundOutsideTheChangingInputScope()
+    {
+        var host = new FakeHost(3);
+        var widget = Create(host);
+        await Interactive(widget); await Ready(widget, host);
+        var home = Snapshot(widget, 112_001);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "library"));
+        var browse = Snapshot(widget, 112_002);
+        Assert.AreNotEqual(home.ActiveInputScopeId, browse.ActiveInputScopeId,
+            "Navigation retains independent page focus and action scopes.");
+        Assert.AreEqual(home.Root.InputScopeId, browse.Root.InputScopeId);
+        Assert.AreEqual("playnite-library.presentation", home.Root.InputScopeId);
+        foreach (var page in new[] { home, browse })
+        {
+            var background = page.Root.Children.Single();
+            Assert.AreEqual(ViewNodeKind.BackgroundSurface, background.Kind);
+            Assert.AreEqual("playnite-library.cinematic", background.Id);
+            Assert.AreEqual(page.ActiveInputScopeId, background.Children.Single().InputScopeId);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(page).Count);
+        }
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task DetailsFetchFullDescriptionWithoutReplacingLibraryProjection()
     {
         var host = new FakeHost(3);
@@ -1104,13 +1128,14 @@ public sealed partial class PlayniteLibraryTests
             var page = Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.root");
             CollectionAssert.Contains(page.StyleClasses.ToArray(), "playnite-library-home-surface", phase);
             Assert.AreEqual(1, page.Children.Count, phase);
-            var background = page.Children[0];
+            var background = snapshot.Root.Children.Single();
             Assert.AreEqual(ViewNodeKind.BackgroundSurface, background.Kind, phase);
             Assert.AreEqual("playnite-library.cinematic", background.Id, phase);
             CollectionAssert.Contains(background.StyleClasses.ToArray(),
                 "playnite-library-home-background", phase);
             Assert.AreEqual(1, background.Children.Count, phase);
-            var stage = background.Children[0];
+            Assert.AreSame(page, background.Children[0], phase);
+            var stage = page.Children[0];
             Assert.AreEqual("playnite-library.home.stage", stage.Id, phase);
             CollectionAssert.Contains(stage.StyleClasses.ToArray(),
                 "playnite-library-home-stage", phase);
