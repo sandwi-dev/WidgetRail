@@ -221,7 +221,7 @@ internal static class SettingsInstalledWidgetPresentation
         bool busy,
         SettingsInstalledWidgetState state,
         SettingsPermissionState permissionState,
-        PlatformSettingsDocument settings)
+        PlatformSettingsDocument settings, bool technical = false)
     {
         var package = state.SelectedInstalled;
         var builtIn = state.SelectedBuiltIn;
@@ -257,7 +257,7 @@ internal static class SettingsInstalledWidgetPresentation
             };
             SettingsPresentation.LinkVertical(builtInControls);
             return SettingsPresentation.View(header,
-                SettingsPresentation.PageScope("installed.details", [
+                DetailsContent([
                     UI.Text(builtIn.Name, "installed.details.heading", "Built-in widget name")
                         .Classes("page-heading"),
                     UI.Text("Source: Built-in", "installed.details.source", "Built-in widget source")
@@ -284,8 +284,8 @@ internal static class SettingsInstalledWidgetPresentation
                             settings.BuiltInWidgets.IsEnabled(builtIn.Id) ? "Enabled · Included and updated with WidgetRail." : "Disabled · Enable this widget to show it in the overlay.",
                         "installed.details.status", "Built-in widget management status")
                         .Classes("page-help"),
-                    .. builtInControls]),
-                builtInHasPermissions ? "installed.details.permissions" :
+                    .. builtInControls], technical),
+                technical ? "settings.back" : builtInHasPermissions ? "installed.details.permissions" :
                     builtIn.Id != BuiltInWidgetSettings.SettingsWidgetId ? "installed.details.toggle" : "installed.details.back",
                 "installed.details");
         }
@@ -424,11 +424,28 @@ internal static class SettingsInstalledWidgetPresentation
         };
         details.AddRange(controls);
         return SettingsPresentation.View(header,
-            SettingsPresentation.PageScope("installed.details", details.ToArray()),
-            canUninstall && state.DetailsFocusId == SettingsInstalledWidgetUninstallPolicy.FocusId
+            DetailsContent(details, technical),
+            technical ? "settings.back" : canUninstall && state.DetailsFocusId == SettingsInstalledWidgetUninstallPolicy.FocusId
                 ? SettingsInstalledWidgetUninstallPolicy.FocusId
                 : canToggleNow ? "installed.details.toggle" : "installed.details.back",
             "installed.details");
+    }
+
+    private static ScrollElement DetailsContent(IEnumerable<WidgetElement> content, bool technical)
+    {
+        var items = content.ToList();
+        string[] technicalIds = ["installed.details.id", "installed.details.publisher", "installed.details.digest-label",
+            "installed.details.digest", "installed.details.runtime", "installed.details.host-api", "installed.details.architectures",
+            "installed.details.residency", "installed.details.required-permissions", "installed.details.optional-permissions"];
+        if (technical)
+            return SettingsPresentation.PageScope("installed.details", [
+                UI.Text("Technical details", "installed.technical.heading").Classes("page-heading"),
+                .. items.Where(item => technicalIds.Contains(item.Id))]);
+        items.RemoveAll(item => technicalIds.Contains(item.Id));
+        var beforeBack = items.FindIndex(item => item.Id == "installed.details.back");
+        items.Insert(beforeBack < 0 ? items.Count : beforeBack,
+            UI.Button("Technical details  ›", "open.widget-technical", "installed.details.technical").Classes("setting-row"));
+        return SettingsPresentation.PageScope("installed.details", items.ToArray());
     }
 
     private static WidgetView RenderUnusedInstalledCopy(

@@ -1800,6 +1800,7 @@ method static WidgetRail.WidgetSdk.UI.SectionHeader(string title, string id, str
 method static WidgetRail.WidgetSdk.UI.SegmentedTabs(string id, string selectedTabId, params WidgetRail.WidgetSdk.SegmentedTab[] tabs) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.Select(string label, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.SelectOption> options, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.SelectElement
 method static WidgetRail.WidgetSdk.UI.SensitiveTextEntry(string placeholder, string action, string id, int maximumLength = 96) -> WidgetRail.WidgetSdk.TextEntryElement
+method static WidgetRail.WidgetSdk.UI.SettingsField(string id, string label, WidgetRail.WidgetSdk.WidgetElement control, string? description = null, double minimumColumnWidth = 280) -> WidgetRail.WidgetSdk.GridElement
 method static WidgetRail.WidgetSdk.UI.SettingsRow(WidgetRail.WidgetSdk.WidgetIcon icon, string label, WidgetRail.WidgetSdk.ComponentAction action, string id, string? description = null, string? value = null, string? status = null, WidgetRail.WidgetSdk.StatusTone statusTone = WidgetRail.WidgetSdk.StatusTone.Neutral, bool isDisabled = false, bool isBusy = false) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.SettingsRow(string label, WidgetRail.WidgetSdk.ComponentAction action, string id, string? description = null, string? value = null, string? status = null, WidgetRail.WidgetSdk.StatusTone statusTone = WidgetRail.WidgetSdk.StatusTone.Neutral, bool isDisabled = false, bool isBusy = false, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Slider(double value, double minimum, double maximum, double step, string valueChangedAction, string id, string accessibilityLabel, string? accessibilityValue = null, string? activationAction = null) -> WidgetRail.WidgetSdk.SliderElement
@@ -2613,6 +2614,7 @@ property bool WidgetRail.WidgetSdk.PinnedLayoutHandle.IsSelected { get; }
 property bool WidgetRail.WidgetSdk.RegisterWidgetRunningAppResponse.AlreadyRegistered { get; set; }
 property bool WidgetRail.WidgetSdk.ScrollElement.ShowScrollbar { get; set; }
 property bool WidgetRail.WidgetSdk.SegmentedTab.IsDisabled { get; set; }
+property bool WidgetRail.WidgetSdk.SelectElement.ShowLabel { get; set; }
 property bool WidgetRail.WidgetSdk.SelectOption.IsBusy { get; set; }
 property bool WidgetRail.WidgetSdk.SelectOption.IsDisabled { get; set; }
 property bool WidgetRail.WidgetSdk.SelectOption.IsSelected { get; set; }

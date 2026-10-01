@@ -17,4 +17,7 @@
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="WidgetRailVersion" Value="$(WidgetRailReleaseVersion)" />
+  </ItemGroup>
 </Project>

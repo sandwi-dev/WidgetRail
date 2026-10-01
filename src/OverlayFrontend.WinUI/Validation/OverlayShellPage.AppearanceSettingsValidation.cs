@@ -36,7 +36,7 @@ internal sealed partial class OverlayShellPage
                 original = await store.LoadAsync();
                 if (startup is not null) await startup;
                 await SelectAsync("settings", true);
-                await Invoke("category.overlay");
+                await Invoke("category.appearance");
                 await Wait(() => Ready("interface.stepper.increment") && activeDisplayId.Length > 0);
                 var scale = Appearance.InterfaceScale;
                 var textScale = Appearance.TextScale;
@@ -56,22 +56,6 @@ internal sealed partial class OverlayShellPage
                     "backdrop darkness reaches persisted preferences and live shell appearance");
                 await Change("opacity.stepper.increment", value => value.BackdropOpacity == darkness, () => Appearance.BackdropOpacity == darkness,
                     "backdrop increment restores the previous value");
-                var switcher = Appearance.WidgetSwitcher;
-                await Change("overlay.widget-switcher", value => value.WidgetSwitcher != switcher, () => Appearance.WidgetSwitcher != switcher,
-                    "switcher control changes the live rail/radial policy");
-                await Change("overlay.widget-switcher", value => value.WidgetSwitcher == switcher, () => Appearance.WidgetSwitcher == switcher,
-                    "switcher control round-trips through Settings");
-                var position = Appearance.OverlayPosition;
-                for (var step = 0; step < 3; ++step)
-                {
-                    var before = Appearance.OverlayPosition;
-                    await Change("overlay.position", value => value.OverlayPosition != before, () => Appearance.OverlayPosition != before,
-                        "position control advances the live overlay anchor");
-                    await Wait(() => WidgetSurface.HorizontalAlignment == (Appearance.OverlayPosition switch
-                    { OverlayPosition.BottomLeft => HorizontalAlignment.Left, OverlayPosition.BottomRight => HorizontalAlignment.Right, _ => HorizontalAlignment.Center }));
-                }
-                Check(Appearance.OverlayPosition == position, "position control cycles through all three anchors");
-
                 foreach (var option in new[] { ("settle", WidgetFocusAnimation.Settle), ("none", WidgetFocusAnimation.None), ("fade", WidgetFocusAnimation.Fade) })
                     await Choose("overlay.focus-animation", option.Item1, value => value.FocusAnimation == option.Item2,
                         () => Appearance.FocusAnimation == option.Item2);
@@ -89,8 +73,20 @@ internal sealed partial class OverlayShellPage
                 var speed = Appearance.WidgetAnimationSpeed;
                 await Change("overlay.animation-speed.increment", value => value.WidgetAnimationSpeed > speed, () => Appearance.WidgetAnimationSpeed > speed,
                     "animation speed stepper reaches the live motion policy");
-                Check(Find("overlay.startup") is null, "development Settings omit unavailable startup registration");
 
+                await Back("category.overlay");
+                await Invoke("category.overlay");
+                await Wait(() => Ready("overlay.position"));
+                Check(Find("overlay.startup") is null, "development Settings omit unavailable startup registration");
+                foreach (var option in new[] { ("rail", WidgetSwitcherLayout.Rail), ("radial", WidgetSwitcherLayout.Radial) })
+                    await Choose("overlay.widget-switcher", option.Item1, value => value.WidgetSwitcher == option.Item2,
+                        () => Appearance.WidgetSwitcher == option.Item2);
+                foreach (var option in new[] { ("left", OverlayPosition.BottomLeft), ("right", OverlayPosition.BottomRight), ("center", OverlayPosition.Center) })
+                {
+                    await Choose("overlay.position", option.Item1, value => value.OverlayPosition == option.Item2, () => Appearance.OverlayPosition == option.Item2);
+                    await Wait(() => WidgetSurface.HorizontalAlignment == (Appearance.OverlayPosition switch
+                    { OverlayPosition.BottomLeft => HorizontalAlignment.Left, OverlayPosition.BottomRight => HorizontalAlignment.Right, _ => HorizontalAlignment.Center }));
+                }
                 await Back("category.accessibility");
                 await Invoke("category.accessibility");
                 await Wait(() => Ready("text.stepper.increment"));
@@ -101,7 +97,6 @@ internal sealed partial class OverlayShellPage
                     () => Appearance.TextScale > text, "text size stepper updates this display's text scale");
                 await Wait(() => (Find("accessibility.heading") as TextBlock)?.FontSize > fontSize);
                 Check(true, "text-size update changes actual native heading typography");
-                await Invoke("accessibility.visual");
                 await Wait(() => Ready("bold-text.toggle"));
                 var bold = Appearance.BoldText;
                 await Change("bold-text.toggle", value => value.BoldText != bold, () => Appearance.BoldText != bold,
@@ -111,11 +106,8 @@ internal sealed partial class OverlayShellPage
                 var transparency = Appearance.Transparency;
                 await Change("transparency.reduced", value => value.Transparency != transparency, () => Appearance.Transparency != transparency,
                     "reduced transparency reaches the live surface policy");
-                await Change("contrast.high", value => value.Contrast == ContrastPreference.High, () => Appearance.Contrast == ContrastPreference.High,
-                    "high contrast reaches the live shell and widget policy");
-                await Back("motion.reduced");
-                await Change("motion.reduced", value => value.Motion == MotionPreference.Reduced, () => Appearance.Motion == MotionPreference.Reduced,
-                    "reduced motion reaches the shared motion policy");
+                await Choose("contrast.preference", "high", value => value.Contrast == ContrastPreference.High, () => Appearance.Contrast == ContrastPreference.High);
+                await Choose("motion.preference", "reduced", value => value.Motion == MotionPreference.Reduced, () => Appearance.Motion == MotionPreference.Reduced);
                 await Back("category.appearance");
                 await Invoke("category.appearance");
                 var switching = Appearance.AnimateWidgetSwitching;

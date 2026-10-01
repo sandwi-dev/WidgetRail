@@ -50,5 +50,6 @@
   "src/WidgetSdk/PinnedActionContract.cs": "docs/reference/pinned-layouts.md",
   "src/WidgetSdk/WidgetModal.cs": "docs/developers/navigation.md",
   "src/WidgetSdk/WidgetTesting.IndexedCollections.cs": "docs/developers/indexed-collections.md",
-  "src/WidgetSdk/WidgetTransitions.cs": "docs/developers/navigation.md"
+  "src/WidgetSdk/WidgetTransitions.cs": "docs/developers/navigation.md",
+  "src/WidgetSdk/SettingsField.cs": "docs/reference/controller-ui-components.md"
 }

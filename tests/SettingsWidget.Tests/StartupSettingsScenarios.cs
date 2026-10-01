@@ -12,7 +12,7 @@ internal static class StartupSettingsScenarios
         var widget = new SettingsWidget(startup: service);
         await widget.OnActionAsync(new WidgetActionEvent("open.overlay", "category.overlay"));
         var view = widget.Render();
-        if (view.InitialFocusId != "interface.stepper.decrement") throw new Exception("Startup took initial focus.");
+        if (view.InitialFocusId != "overlay.position") throw new Exception("Startup took initial focus.");
         var json = JsonSerializer.Serialize(view.CreateSnapshot("settings", 1));
         if (!json.Contains("Start WidgetRail when I sign in") || !json.Contains("Status")) throw new Exception("Startup control or status missing.");
         await widget.OnActionAsync(new WidgetActionEvent("startup.toggle", "overlay.startup"));

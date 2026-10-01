@@ -26,6 +26,10 @@ internal enum SettingsPreferenceKind
     WidgetSwitcher,
     OverlayPosition,
     Theme,
+    MotionChoice,
+    ContrastChoice,
+    PositionChoice,
+    SwitcherChoice,
 }
 
 internal readonly record struct SettingsPreferenceMutation(
@@ -36,7 +40,11 @@ internal readonly record struct SettingsPreferenceMutation(
     string? DisplayId = null,
     WidgetFocusAnimation? FocusAnimation = null,
     WidgetSectionAnimation? SectionAnimation = null,
-    WidgetModalAnimation? ModalAnimation = null)
+    WidgetModalAnimation? ModalAnimation = null,
+    MotionPreference? Motion = null,
+    ContrastPreference? Contrast = null,
+    OverlayPosition? Position = null,
+    WidgetSwitcherLayout? Switcher = null)
 {
     public bool IsScale => Kind is SettingsPreferenceKind.TextDecrease or SettingsPreferenceKind.TextIncrease
         or SettingsPreferenceKind.InterfaceDecrease or SettingsPreferenceKind.InterfaceIncrease;
@@ -181,6 +189,10 @@ internal readonly record struct SettingsPreferenceMutation(
                 _ => OverlayPosition.Center,
             },
         },
+        SettingsPreferenceKind.MotionChoice when Motion is { } motion => appearance with { Motion = motion },
+        SettingsPreferenceKind.ContrastChoice when Contrast is { } contrast => appearance with { Contrast = contrast },
+        SettingsPreferenceKind.PositionChoice when Position is { } position => appearance with { OverlayPosition = position },
+        SettingsPreferenceKind.SwitcherChoice when Switcher is { } switcher => appearance with { WidgetSwitcher = switcher },
         _ => appearance,
     };
 
@@ -212,6 +224,17 @@ internal static class SettingsPreferencePolicy
         }
         mutation = actionId switch
         {
+            "motion.choose.system" => new(SettingsPreferenceKind.MotionChoice, "Motion preference saved", Motion: MotionPreference.System),
+            "motion.choose.full" => new(SettingsPreferenceKind.MotionChoice, "Motion preference saved", Motion: MotionPreference.Full),
+            "motion.choose.reduced" => new(SettingsPreferenceKind.MotionChoice, "Motion preference saved", Motion: MotionPreference.Reduced),
+            "contrast.choose.system" => new(SettingsPreferenceKind.ContrastChoice, "Contrast preference saved", Contrast: ContrastPreference.System),
+            "contrast.choose.standard" => new(SettingsPreferenceKind.ContrastChoice, "Contrast preference saved", Contrast: ContrastPreference.Standard),
+            "contrast.choose.high" => new(SettingsPreferenceKind.ContrastChoice, "Contrast preference saved", Contrast: ContrastPreference.High),
+            "position.choose.center" => new(SettingsPreferenceKind.PositionChoice, "Position saved", Position: OverlayPosition.Center),
+            "position.choose.left" => new(SettingsPreferenceKind.PositionChoice, "Position saved", Position: OverlayPosition.BottomLeft),
+            "position.choose.right" => new(SettingsPreferenceKind.PositionChoice, "Position saved", Position: OverlayPosition.BottomRight),
+            "switcher.choose.radial" => new(SettingsPreferenceKind.SwitcherChoice, "Switcher saved", Switcher: WidgetSwitcherLayout.Radial),
+            "switcher.choose.rail" => new(SettingsPreferenceKind.SwitcherChoice, "Switcher saved", Switcher: WidgetSwitcherLayout.Rail),
             "text.decrease" => new(SettingsPreferenceKind.TextDecrease, "Text size saved"),
             "text.increase" => new(SettingsPreferenceKind.TextIncrease, "Text size saved"),
             "interface.decrease" => new(

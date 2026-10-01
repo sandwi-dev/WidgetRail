@@ -14,6 +14,9 @@ namespace WidgetRail.FirstPartyWidgets.Settings;
 public enum SettingsPage
 {
     Root,
+    About,
+    ControllerHelp,
+    InstalledWidgetTechnical,
     Appearance,
     ThemePicker,
     ThemeVersion,
@@ -207,9 +210,9 @@ public sealed class SettingsWidget : Widget
             SettingsPage.InstalledWidgets =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgets(
                     header, busy, installedState, settings),
-            SettingsPage.InstalledWidgetDetails =>
+            SettingsPage.InstalledWidgetDetails or SettingsPage.InstalledWidgetTechnical =>
                 SettingsInstalledWidgetPresentation.RenderInstalledWidgetDetails(
-                    header, busy, installedState, permissionState, settings),
+                    header, busy, installedState, permissionState, settings, page == SettingsPage.InstalledWidgetTechnical),
             SettingsPage.InstalledWidgetUpdate => SettingsUpdatePresentation.Render(header, busy, installedState),
             SettingsPage.InstalledWidgetVersionRemoval => SettingsVersionRemovalPresentation.Render(header, busy, installedState),
             SettingsPage.InstalledWidgetVersions =>
@@ -293,7 +296,7 @@ public sealed class SettingsWidget : Widget
                 try
                 {
                     await ReadPackageNotificationAsync(cancellationToken).ConfigureAwait(false);
-                    if (CurrentPage is SettingsPage.Overlay or SettingsPage.Accessibility)
+                    if (CurrentPage is SettingsPage.Overlay or SettingsPage.Appearance or SettingsPage.Accessibility)
                         await ReadDisplayAsync(cancellationToken).ConfigureAwait(false);
                     if (CurrentPage != SettingsPage.Controllers) continue;
                     ControllerControlStatus status;
@@ -384,7 +387,7 @@ public sealed class SettingsWidget : Widget
                     PackageCapabilitiesReturnPage(),
                     out var targetPage))
             {
-                if (targetPage is SettingsPage.Overlay or SettingsPage.Accessibility)
+                if (targetPage is SettingsPage.Overlay or SettingsPage.Appearance or SettingsPage.Accessibility)
                     await ReadDisplayAsync(cancellationToken).ConfigureAwait(false);
                 if (targetPage == SettingsPage.Overlay)
                 {
@@ -399,9 +402,14 @@ public sealed class SettingsWidget : Widget
                 await PersistPreferenceAsync(preference, cancellationToken).ConfigureAwait(false);
                 return;
             }
-            if (action.ActionId == "controllers.open-shortcut.toggle" && CurrentPage == SettingsPage.Controllers)
+            if (action.ActionId is "controllers.open-shortcut.toggle" or "controllers.open-shortcut.guide" or "controllers.open-shortcut.view-menu" && CurrentPage == SettingsPage.Controllers)
             {
-                await ToggleControllerShortcutAsync(cancellationToken).ConfigureAwait(false);
+                await ToggleControllerShortcutAsync(cancellationToken, action.ActionId switch
+                {
+                    "controllers.open-shortcut.guide" => ControllerOpenShortcut.Guide,
+                    "controllers.open-shortcut.view-menu" => ControllerOpenShortcut.ViewMenu,
+                    _ => (ControllerOpenShortcut?)null
+                }).ConfigureAwait(false);
                 return;
             }
             if (action.ActionId == "controllers.hold-scroll.toggle" && CurrentPage == SettingsPage.Controllers &&
@@ -411,7 +419,7 @@ public sealed class SettingsWidget : Widget
                 return;
             }
             if (action.ActionId is "controllers.exclusive-control.toggle" or "controllers.restore" &&
-                CurrentPage == SettingsPage.Controllers && _hostFeatures.ExclusiveControllerControl)
+                CurrentPage is SettingsPage.Controllers or SettingsPage.ControllerHelp && _hostFeatures.ExclusiveControllerControl)
             {
                 await SetExclusiveControlAsync(cancellationToken, action.ActionId == "controllers.restore").ConfigureAwait(false);
                 return;
@@ -814,7 +822,7 @@ public sealed class SettingsWidget : Widget
         Invalidate();
     }
 
-    private async Task ToggleControllerShortcutAsync(CancellationToken cancellationToken)
+    private async Task ToggleControllerShortcutAsync(CancellationToken cancellationToken, ControllerOpenShortcut? selection = null)
     {
         SetOperation("Saving controller shortcut…", busy: true, error: false);
         try
@@ -823,8 +831,8 @@ public sealed class SettingsWidget : Widget
             {
                 Controllers = current.Controllers with
                 {
-                    OpenShortcut = current.Controllers.OpenShortcut == ControllerOpenShortcut.Guide
-                        ? ControllerOpenShortcut.ViewMenu : ControllerOpenShortcut.Guide,
+                    OpenShortcut = selection ?? (current.Controllers.OpenShortcut == ControllerOpenShortcut.Guide
+                        ? ControllerOpenShortcut.ViewMenu : ControllerOpenShortcut.Guide),
                 },
             }, cancellationToken).ConfigureAwait(false);
             lock (_stateLock)

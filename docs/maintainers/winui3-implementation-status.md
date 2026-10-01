@@ -7,6 +7,58 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### Settings organization and consistent rows — 2026-10-01, validation complete; packaging pending
+
+User accepted preview.16; main fast-forwarded to bf15d9d0. Unrelated instruction
+edits preserved. Prior evidence copied to
+C:/Users/dwive/Projects/WidgetRail-worktree-archive-20261001/winui-usability/.
+Codex refused archive because a pinned task/workspace protects that checkout.
+No bypass or pin changes. New branch: codex/settings-usability from bf15d9d0.
+
+Scope: category ownership, consistent label/control rows, explicit preference
+choices, stable Back/page title, concise help and management-first widget details.
+Preserve persisted preferences, focus and permission/recovery gates. Synthetic
+checks only; installed app update and physical acceptance remain user-owned.
+Normal Inno distribution, no MSIX.
+
+Implemented: General owns position/navigation/startup; Appearance owns theme,
+sizing/backdrop and grouped animations; Accessibility has explicit three-state
+motion/contrast choices in one page. Controllers uses an explicit shortcut picker,
+with driver help separated while recovery stays actionable. About/troubleshooting
+owns diagnostics/reset and shows the build version. Every subpage has stable Back
+and title; Quit/Restart remain secondary home actions. Widget technical information
+moves behind Technical details; trust/enable/permission confirmations remain intact.
+
+Cause of scanning problems: settings were split by implementation history, and
+combined-label buttons, toggles, steppers and selections used unrelated positions.
+The new shared UI.SettingsField composition provides native responsive label/control
+columns without duplicating control identity during reflow. Select.ShowLabel hides
+only repeated visual text and preserves accessible name/value. Explicit preference
+set actions are idempotent. Vertical focus links follow rows and preserve stepper
+columns. Cards/headings wrap at larger text sizes. Existing settings remain valid.
+
+Passed: Settings80 (including new category/focus/authority/choice tests), SDK148,
+SDK compatibility14, PlatformSettings27, native layout213 (six actual pages,
+880/520 DIP widths, ordinary/150% text, same-snapshot focus retention). Native
+fixture reused unchanged accepted native DLLs with recorded hashes; the release
+pipeline rebuilds them. Initial native fixture reused snapshot sequence1 across
+pages; its stale-frame guard correctly retained the first page. Corrected the
+fixture sequence, not production admission. Final layout screenshots inspected.
+
+Documentation mapping for the new SDK file passes. The documentation suite retains
+one unrelated baseline failure: its publication assertion expects inline code in
+Build-WinUiReleasePayload.ps1, now delegated to a module. Both script and assertion
+are unchanged from bf15d9d0. Not waived or reported green. No OS/provider mutations
+were exercised. The installed preview.16 is running and remains untouched. Full
+native live-service action qualification is user-owned; synthetic layout and managed
+state/action guards passed. Evidence: artifacts/settings-usability/.
+
+Code review checked stable identities, correct Back hierarchy, theme tokens,
+accessible select values, recovery action availability on both controller pages,
+exact preference setters and preserved permission/confirmation gates. Prepared
+normal preview.17 / FileVersion0.1.0.16, Settings widget0.1.5. Packaging pending.
+
+
 ### Post-migration usability batch — 2026-10-01, installer delivered
 
 FINAL: Normal Production and Developer preview.16 Inno installers are delivered in

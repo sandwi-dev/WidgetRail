@@ -17,8 +17,26 @@ if (args is ["--export-renderer-fixture", var rendererFixturePath])
     return 0;
 }
 
+if (args is ["--export-settings-layout-fixtures", var settingsFixtureDirectory])
+{
+    using var temp = new TemporaryDirectory();
+    var widget = Create(temp.Path);
+    await Activate(widget);
+    foreach (var (name, action) in new[] { ("home", "back"), ("appearance", "open.appearance"),
+        ("general", "open.overlay"), ("accessibility", "open.accessibility"), ("controllers", "open.controllers"), ("about", "open.about") })
+    {
+        await Action(widget, action);
+        await ExportRendererSnapshot(Snapshot(widget), Path.Combine(settingsFixtureDirectory, name + ".json"));
+    }
+    await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Settings pages have distinct ownership and valid focus paths", SettingsUsabilityScenarios.PagesHaveConsistentOwnershipAndFocus),
+    ("Explicit preference choices are idempotent", SettingsUsabilityScenarios.ExplicitChoicesAreIdempotent),
+    ("Shared setting rows retain control authority and accessible values", SettingsUsabilityScenarios.SettingRowKeepsControlSemantics),
     ("Host-selected Settings profile persists real actions and reloads the matching theme manager", HostSelectedSettingsProfile),
     ("Animation controls persist each preset and independent dialog preference", AnimationPreferences),
     ("Package completion produces one themed expiring toast without navigation", SettingsToastScenarios.PackageCompletionUsesToast),
@@ -169,11 +187,11 @@ static Task RootCategories()
     var widget = Create(temp.Path);
     var snapshot = Snapshot(widget);
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
-    Assert.Equal("category.appearance", snapshot.InitialFocusId);
+    Assert.Equal("category.overlay", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.appearance", "category.accessibility", "category.overlay", "category.controllers", "category.installed-widgets", "category.diagnostics"],
+        ["category.overlay", "category.appearance", "category.accessibility", "category.controllers", "category.installed-widgets", "category.diagnostics"],
         Nodes(snapshot.Root).Where(node => node.Kind == ViewNodeKind.ActionSurface).Select(node => node.Id));
-    Assert.SequenceEqual(["settings.refresh", "category.reset", "settings.restart", "settings.quit"],
+    Assert.SequenceEqual(["settings.restart", "settings.quit"],
         Buttons(snapshot.Root).Select(button => button.Id));
     foreach (var card in Nodes(snapshot.Root).Where(node => node.Kind == ViewNodeKind.ActionSurface))
     {
@@ -196,7 +214,7 @@ static async Task HeaderActions()
     var widget = new SettingsWidget(Store(temp.Path), diagnostics: service);
     await Activate(widget);
     var view = Snapshot(widget);
-    Assert.Equal("category.appearance", view.InitialFocusId);
+    Assert.Equal("category.overlay", view.InitialFocusId);
     Assert.Equal("application.quit", Button(view.Root, "settings.quit").ActionId);
     Assert.Equal("application.restart", Button(view.Root, "settings.restart").ActionId);
     Assert.True(!Buttons(Nodes(view.Root).Single(node => node.Id == "settings.header")).Any(),
@@ -225,7 +243,7 @@ static async Task LoadingBeforeReady()
     Assert.Equal("settings-root", loading.ActiveInputScopeId);
     Assert.True(Nodes(loading.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface && node.IsBusy != true) == 6, "Home categories must remain usable while loading.");
     Assert.True(!Nodes(loading.Root).Any(node => node.Id is "settings.home.subtitle" or "settings.toast"), "Loading home should have neither a subtitle nor a duplicate loading toast.");
-    Assert.SequenceEqual(["settings.refresh", "category.reset", "settings.restart", "settings.quit"], Buttons(loading.Root).Select(node => node.Id));
+    Assert.SequenceEqual(["settings.restart", "settings.quit"], Buttons(loading.Root).Select(node => node.Id));
     Assert.True(Buttons(loading.Root).All(node => node.IsBusy == true), "Loading footer actions must remain busy.");
     await Action(widget, "application.quit");
     Assert.Equal(0, service.Requests.Count);
@@ -243,7 +261,7 @@ static async Task LoadingBeforeReady()
     Assert.Equal(SettingsPage.Controllers, widget.CurrentPage);
     await Action(widget, "back");
     var ready = Snapshot(widget);
-    Assert.Equal("category.appearance", ready.InitialFocusId);
+    Assert.Equal("category.overlay", ready.InitialFocusId);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, ready.Surface?.HeightMode);
     Assert.Equal(loading.Surface, ready.Surface);
     Assert.Equal(loading.Root.Id, ready.Root.Id);
@@ -467,7 +485,7 @@ static async Task AnimationPreferences()
 {
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
-    await Action(widget, "open.overlay");
+    await Action(widget, "open.appearance");
     var initialOptions = Nodes(Snapshot(widget).Root).Single(node => node.Id == "overlay.section-animation").SelectOptions!;
     Assert.Equal("slide", initialOptions[0].Id);
     Assert.Equal(true, initialOptions[0].IsSelected);
@@ -494,7 +512,7 @@ static async Task AnimationPreferences()
         var select = Nodes(snapshot.Root).Single(node => node.Id == "overlay.section-animation");
         Assert.Equal("section-animation." + id, select.SelectOptions!.Single(option => option.IsSelected).ActionId);
         Assert.Equal(expected, (await Store(temp.Path).LoadAsync()).Appearance.SectionAnimation);
-        Assert.Equal(SettingsPage.Overlay, widget.CurrentPage);
+        Assert.Equal(SettingsPage.Appearance, widget.CurrentPage);
     }
     foreach (var (id, expected) in new[] { ("settle", WidgetFocusAnimation.Settle), ("fade", WidgetFocusAnimation.Fade), ("none", WidgetFocusAnimation.None) })
     {
@@ -535,7 +553,7 @@ static async Task CompositeControls()
     var nodes = Nodes(snapshot.Root).ToDictionary(node => node.Id, StringComparer.Ordinal);
     var buttons = Buttons(snapshot.Root).ToDictionary(button => button.Id, StringComparer.Ordinal);
     Assert.SequenceEqual(["wrail-stepper"], nodes["text.stepper"].StyleClasses);
-    Assert.SequenceEqual(["wrail-stepper__label"], nodes["text.stepper.label"].StyleClasses);
+    Assert.SequenceEqual(["wrail-setting-row__label"], nodes["text.stepper.row.label"].StyleClasses);
     Assert.SequenceEqual(["wrail-stepper__value"], nodes["text.stepper.value"].StyleClasses);
     Assert.SequenceEqual(
         ["wrail-stepper__button", "wrail-stepper__button--decrement"],
@@ -547,16 +565,11 @@ static async Task CompositeControls()
     Assert.Equal("text.increase@test-monitor", buttons["text.stepper.increment"].ActionId);
     Assert.Equal("Decrease Text size", buttons["text.stepper.decrement"].AccessibilityLabel);
     Assert.Equal("Increase Text size", buttons["text.stepper.increment"].AccessibilityLabel);
-    Assert.Equal("Follow Windows motion  On", buttons["motion.system"].Text);
-    Assert.Equal(true, buttons["motion.system"].IsSelected);
-    Assert.Equal("motion.system", buttons["motion.system"].ActionId);
-    Assert.SequenceEqual(["wrail-switch", "wrail-switch--on"],
-        buttons["motion.system"].StyleClasses);
-    Assert.SequenceEqual(["wrail-switch", "wrail-switch--off"],
-        buttons["motion.reduced"].StyleClasses);
-    Assert.Equal(null, buttons["motion.reduced"].Glyph);
-    Assert.Equal("motion.reduced", buttons["motion.system"].Focus!.Down);
-    Assert.Equal("accessibility.visual", buttons["motion.reduced"].Focus!.Down);
+    Assert.Equal(ViewNodeKind.Select, nodes["motion.preference"].Kind);
+    Assert.Equal("system", nodes["motion.preference"].SelectOptions!.Single(option => option.IsSelected).Id);
+    Assert.Equal("Motion", nodes["motion.preference"].AccessibilityLabel);
+    Assert.Equal("bold-text.toggle", buttons["text.stepper.increment"].Focus!.Down);
+    Assert.Equal("contrast.preference", buttons["bold-text.toggle"].Focus!.Down);
     Assert.Valid(snapshot);
 }
 
@@ -564,43 +577,31 @@ static async Task VisualAccessibilityPersistence()
 {
     using var temp = new TemporaryDirectory();
     await Store(temp.Path).ReplaceAsync(PlatformSettingsDocument.Default with
-    {
-        Appearance = AppearanceSettings.Default with { BoldText = false },
-    });
+    { Appearance = AppearanceSettings.Default with { BoldText = false } });
     var widget = Create(temp.Path);
     await Activate(widget);
     await Action(widget, "open.accessibility");
-    await Action(widget, "open.visual-accessibility");
-
     var initial = Snapshot(widget);
-    Assert.Equal("accessibility.visual.page", initial.ActiveInputScopeId);
-    Assert.Equal("contrast.system", initial.InitialFocusId);
-    Assert.HasShortcut(initial.Root, "accessibility.visual.page", ControllerButton.B, "back");
-    Assert.Equal(true, Button(initial.Root, "contrast.system").IsSelected);
-    Assert.Equal(null, Button(initial.Root, "contrast.high").Glyph);
-    Assert.Equal(null, Button(initial.Root, "bold-text.toggle").Glyph);
-    Assert.Equal(null, Button(initial.Root, "transparency.reduced").Glyph);
-    Assert.Equal("contrast.high", Button(initial.Root, "contrast.system").Focus!.Down);
-    Assert.Equal("bold-text.toggle", Button(initial.Root, "contrast.high").Focus!.Down);
-    Assert.Equal("transparency.reduced", Button(initial.Root, "bold-text.toggle").Focus!.Down);
+    Assert.Equal("accessibility.page", initial.ActiveInputScopeId);
+    Assert.Equal("text.stepper.decrement", initial.InitialFocusId);
+    Assert.HasShortcut(initial.Root, "accessibility.page", ControllerButton.B, "back");
+    var contrast = Nodes(initial.Root).Single(node => node.Id == "contrast.preference");
+    Assert.Equal("system", contrast.SelectOptions!.Single(option => option.IsSelected).Id);
+    Assert.Equal("transparency.reduced", contrast.Focus!.Down);
     Assert.Valid(initial);
-
-    await Action(widget, "contrast.high");
+    await Action(widget, "contrast.choose.high");
+    await Action(widget, "contrast.choose.high"); // selecting current value is idempotent
     await Action(widget, "bold-text.toggle");
     await Action(widget, "transparency.reduced");
     var saved = await Store(temp.Path).LoadAsync();
     Assert.Equal(ContrastPreference.High, saved.Appearance.Contrast);
     Assert.Equal(true, saved.Appearance.BoldText);
     Assert.Equal(TransparencyPreference.Reduced, saved.Appearance.Transparency);
-
     var updated = Snapshot(widget);
-    Assert.True(Button(updated.Root, "contrast.system").IsSelected is not true,
-        "System contrast remained selected after choosing high contrast.");
-    Assert.Equal(true, Button(updated.Root, "contrast.high").IsSelected);
+    Assert.Equal("high", Nodes(updated.Root).Single(node => node.Id == "contrast.preference").SelectOptions!.Single(option => option.IsSelected).Id);
     Assert.Equal(true, Button(updated.Root, "bold-text.toggle").IsSelected);
-    Assert.Equal(true, Button(updated.Root, "transparency.reduced").IsSelected);
     await Action(widget, "back");
-    Assert.Equal(SettingsPage.Accessibility, widget.CurrentPage);
+    Assert.Equal(SettingsPage.Root, widget.CurrentPage);
 }
 
 static async Task DisplaySizingContext()
@@ -609,7 +610,7 @@ static async Task DisplaySizingContext()
     var service = new SizingDiagnostics();
     var widget = new SettingsWidget(Store(temp.Path), diagnostics: service);
     await Activate(widget);
-    await Action(widget, "open.overlay");
+    await Action(widget, "open.appearance");
     Assert.Contains("Test monitor", Text(Snapshot(widget).Root, "settings.display").Text!);
     await Action(widget, "interface.increase");
     service.Display = new("second-monitor", "Second monitor");
@@ -687,8 +688,8 @@ static async Task ThemePickerScroll()
         "Theme picker did not expose every installed test theme in one Scroll.");
     for (var index = 0; index < options.Length; index++)
     {
-        Assert.Equal(index == 0 ? "settings.restart" : null, options[index].Focus?.Up);
-        Assert.Equal(null, options[index].Focus?.Down);
+        Assert.Equal(index == 0 ? "settings.back" : options[index - 1].Id, options[index].Focus?.Up);
+        Assert.Equal(index + 1 < options.Length ? options[index + 1].Id : null, options[index].Focus?.Down);
     }
     for (var index = 0; index < 6; index++)
         Assert.True(Nodes(snapshot.Root).Any(node =>
@@ -711,8 +712,8 @@ static async Task ThemePickerScroll()
     await Action(widget, "back");
     var restored = Snapshot(widget);
     Assert.Equal(options[^1].Id, restored.InitialFocusId);
-    Assert.Equal(null, Nodes(restored.Root).Single(node => node.Id == options[^1].Id).Focus?.Up);
-    Assert.Equal("settings.restart", Nodes(restored.Root).Single(node => node.Id == options[0].Id).Focus!.Up);
+    Assert.Equal(options[^2].Id, Nodes(restored.Root).Single(node => node.Id == options[^1].Id).Focus?.Up);
+    Assert.Equal("settings.back", Nodes(restored.Root).Single(node => node.Id == options[0].Id).Focus!.Up);
     Assert.Valid(restored);
 
     await Action(widget, $"theme.open.{ThemeIndex(widget, "Theme 5")}");
@@ -723,7 +724,7 @@ static async Task ThemePickerScroll()
     var selectedIndex = ThemeIndex(widget, "Theme 5");
     Assert.Equal($"theme.item.{selectedIndex}.action", selected.InitialFocusId);
     var selectedRow = Nodes(selected.Root).Single(node => node.Id == selected.InitialFocusId);
-    Assert.Equal(null, selectedRow.Focus?.Up);
+    Assert.Equal(selectedIndex == 0 ? "settings.back" : $"theme.item.{selectedIndex - 1}.action", selectedRow.Focus?.Up);
     Assert.Equal(true, selectedRow.IsSelected);
     Assert.Valid(selected);
 }
@@ -850,16 +851,16 @@ static async Task BusyFeedback()
     var lockPath = Path.Combine(temp.Path, ".platform-settings.lock");
     await using var heldLock = new FileStream(
         lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-    var save = widget.OnActionAsync(new WidgetActionEvent("motion.reduced", "motion.reduced")).AsTask();
+    var save = widget.OnActionAsync(new WidgetActionEvent("motion.choose.reduced", "motion.preference")).AsTask();
     await Task.Delay(20);
     var busy = Snapshot(widget);
     Assert.Contains("Saving", Text(busy.Root, "settings.toast.message").Text!);
-    Assert.Equal(true, Button(busy.Root, "motion.reduced").IsBusy);
+    Assert.Equal(true, Nodes(busy.Root).Single(node => node.Id == "motion.preference").IsBusy);
     await heldLock.DisposeAsync();
     await save;
     var complete = Snapshot(widget);
     Assert.Contains("saved", Text(complete.Root, "settings.toast.message").Text!);
-    Assert.True(Button(complete.Root, "motion.reduced").IsBusy is not true,
+    Assert.True(Nodes(complete.Root).Single(node => node.Id == "motion.preference").IsBusy is not true,
         "Busy state remained after persistence completed.");
 }
 
@@ -1217,7 +1218,7 @@ static async Task StableBoundFocus()
     Assert.True(Button(accessibility.Root, "text.stepper.increment") is not null, "Increment ID disappeared at bound.");
     Assert.Valid(accessibility);
     await Action(widget, "back");
-    await Action(widget, "open.overlay");
+    await Action(widget, "open.appearance");
     var overlay = Snapshot(widget);
     Assert.Equal(true, Button(overlay.Root, "interface.stepper.increment").IsDisabled);
     Assert.Equal(true, Button(overlay.Root, "opacity.stepper.decrement").IsDisabled);
@@ -1262,19 +1263,25 @@ static async Task InstalledWidgetReview()
     Assert.HasShortcut(details.Root, "installed.details", ControllerButton.B, "back");
     Assert.Contains("Unsigned", Text(details.Root, "installed.details.trust").Text!);
     Assert.Contains("publisher unverified", Text(details.Root, "installed.details.trust").Text!);
-    Assert.Contains("dev.test.installed5", Text(details.Root, "installed.details.id").Text!);
-    Assert.Contains("dev.publisher5", Text(details.Root, "installed.details.publisher").Text!);
-    Assert.Contains("unverified", Text(details.Root, "installed.details.publisher").Text!);
+    Assert.True(!Nodes(details.Root).Any(node => node.Id == "installed.details.digest"), "Technical details must not crowd primary management.");
+    await Action(widget, "open.widget-technical");
+    var technical = Snapshot(widget);
+    Assert.Contains("dev.test.installed5", Text(technical.Root, "installed.details.id").Text!);
+    Assert.Contains("dev.publisher5", Text(technical.Root, "installed.details.publisher").Text!);
+    Assert.Contains("unverified", Text(technical.Root, "installed.details.publisher").Text!);
     Assert.Equal(reviewedVersion.ContentDigest.ToLowerInvariant(),
-        Text(details.Root, "installed.details.digest").Text!);
+        Text(technical.Root, "installed.details.digest").Text!);
     Assert.Contains(PlatformCapabilities.AudioSessionsReadV1,
-        Text(details.Root, "installed.details.required-permissions").Text!);
+        Text(technical.Root, "installed.details.required-permissions").Text!);
     Assert.Contains(PlatformCapabilities.AudioSessionsControlV1,
-        Text(details.Root, "installed.details.optional-permissions").Text!);
+        Text(technical.Root, "installed.details.optional-permissions").Text!);
     Assert.Contains("Suspend when hidden",
-        Text(details.Root, "installed.details.residency").Text!);
+        Text(technical.Root, "installed.details.residency").Text!);
     Assert.Contains("no process/thread suspension",
-        Text(details.Root, "installed.details.residency").Text!);
+        Text(technical.Root, "installed.details.residency").Text!);
+    Assert.Valid(technical);
+    await Action(widget, "back");
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
     Assert.Contains("Enable unsigned widget", Button(details.Root, "installed.details.toggle").Text!);
     Assert.Contains("exact unsigned bytes", Text(details.Root, "installed.details.status").Text!);
     Assert.Contains("not publisher identity", Text(details.Root, "installed.details.status").Text!);
@@ -1677,7 +1684,7 @@ static async Task BuiltInWidgetInventory()
     Assert.True(Button(details.Root, "installed.details.toggle").StyleClasses.Contains("danger-button"),
         "Built-in disable must use the community-widget danger style.");
     string[] controlOrder = ["installed.details.permissions",
-        "installed.details.toggle", "installed.details.local-data", "installed.details.back"];
+        "installed.details.toggle", "installed.details.local-data", "installed.details.technical", "installed.details.back"];
     Assert.SequenceEqual(controlOrder, Buttons(details.Root)
         .Where(button => controlOrder.Contains(button.Id)).Select(button => button.Id));
     for (var index = 1; index < controlOrder.Length; index++)
@@ -2147,8 +2154,8 @@ static async Task PermissionScopesAreScrollable()
     Assert.Equal("permission.item.0", packages.InitialFocusId);
     Assert.True(!Nodes(packages.Root).Any(node => node.Id == "permissions.page-label"),
         "Permission package paging label remained visible.");
-    Assert.True(!Buttons(packages.Root).Any(button => button.ActionId == "back"),
-        "Permission package page rendered a redundant Back button.");
+    Assert.True(Buttons(packages.Root).Single(button => button.ActionId == "back").Id == "settings.back",
+        "Permission package page must use the consistent header Back button.");
 
     await Action(widget, "permission.select.5");
     var capabilities = Snapshot(widget);
@@ -2160,8 +2167,8 @@ static async Task PermissionScopesAreScrollable()
         button.Id.StartsWith("capability.item.", StringComparison.Ordinal)));
     Assert.True(!Nodes(capabilities.Root).Any(node => node.Id == "capabilities.page-label"),
         "Capability paging label remained visible.");
-    Assert.True(!Buttons(capabilities.Root).Any(button => button.ActionId == "back"),
-        "Capability list rendered a redundant Back button.");
+    Assert.True(Buttons(capabilities.Root).Single(button => button.ActionId == "back").Id == "settings.back",
+        "Capability list must use the consistent header Back button.");
     Assert.Contains("Required", Button(capabilities.Root, "capability.item.0").Text!);
     Assert.Contains("Optional", Button(capabilities.Root, "capability.item.4").Text!);
     Assert.Contains("Not decided", Button(capabilities.Root, "capability.item.0").Text!);
@@ -2173,8 +2180,8 @@ static async Task PermissionScopesAreScrollable()
     Assert.HasShortcut(decision.Root, "capability.decision", ControllerButton.B, "back");
     Assert.True(Buttons(decision.Root).Any(button => button.Id == "capability.grant"),
         "Grant confirmation action is missing.");
-    Assert.True(!Buttons(decision.Root).Any(button => button.ActionId == "back"),
-        "Capability decision rendered a redundant Back button.");
+    Assert.True(Buttons(decision.Root).Single(button => button.ActionId == "back").Id == "settings.back",
+        "Capability decision must use the consistent header Back button.");
     await Action(widget, "back");
     Assert.Equal(SettingsPage.PackageCapabilities, widget.CurrentPage);
     var restoredCapabilities = Snapshot(widget);
@@ -2453,7 +2460,7 @@ static async Task UndeclaredCapabilitiesAreHidden()
     var diagnostics = Snapshot(widget);
     Assert.Equal(SettingsPage.PermissionDiagnostics, widget.CurrentPage);
     Assert.HasShortcut(diagnostics.Root, "permission-diagnostics.page", ControllerButton.B, "back");
-    Assert.True(!Buttons(diagnostics.Root).Any(button => button.ActionId == "back"),
+    Assert.True(Buttons(diagnostics.Root).Single(button => button.ActionId == "back").Id == "settings.back",
         "Diagnostic review rendered a redundant Back action.");
     var diagnosticRows = Buttons(diagnostics.Root)
         .Where(button => button.Id.StartsWith("permission-diagnostics.unknown.", StringComparison.Ordinal) ||
@@ -2537,7 +2544,7 @@ static async Task PermissionDiagnosticsAreBounded()
     Assert.Equal(rows[0].Id, diagnostics.InitialFocusId);
     for (var index = 0; index < rows.Length; index++)
     {
-        Assert.Equal(index == 0 ? "settings.restart" : rows[index - 1].Id, rows[index].Focus!.Up);
+        Assert.Equal(index == 0 ? "settings.back" : rows[index - 1].Id, rows[index].Focus!.Up);
         Assert.Equal(index == rows.Length - 1 ? null : rows[index + 1].Id,
             rows[index].Focus!.Down);
     }

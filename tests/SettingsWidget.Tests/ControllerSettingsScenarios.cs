@@ -75,6 +75,11 @@ internal static class ControllerSettingsScenarios
             await widget.OnActionAsync(new WidgetActionEvent("controllers.open-shortcut.toggle", "controllers.open-shortcut"));
             if ((await store.LoadAsync()).Controllers.OpenShortcut != ControllerOpenShortcut.ViewMenu)
                 throw new Exception("Shortcut must switch back to View + Menu.");
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.open-shortcut.guide", "controllers.open-shortcut"));
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.open-shortcut.guide", "controllers.open-shortcut"));
+            if ((await store.LoadAsync()).Controllers.OpenShortcut != ControllerOpenShortcut.Guide)
+                throw new Exception("Selecting the current shortcut must not toggle it.");
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.open-shortcut.view-menu", "controllers.open-shortcut"));
             if ((await store.LoadAsync()).Controllers.HoldDpadToScroll)
                 throw new Exception("Held D-pad scrolling must be opt-in.");
             await widget.OnActionAsync(new WidgetActionEvent("controllers.hold-scroll.toggle", "controllers.hold-scroll"));
@@ -104,7 +109,7 @@ internal static class ControllerSettingsScenarios
             service.Status = new(ControllerControlState.Failed, true, true, true);
             await widget.OnActionAsync(new WidgetActionEvent("refresh", "controllers.refresh"));
             json = JsonSerializer.Serialize(widget.Render().CreateSnapshot("settings", 1));
-            if (!json.Contains("Exclusive control  Off") || !json.Contains("Normal controller input has been restored"))
+            if (!json.Contains("Exclusive control, Off") || !json.Contains("Normal controller input has been restored"))
                 throw new Exception("Failed startup must display Off and explain ordinary input restoration.");
             await widget.OnActionAsync(new WidgetActionEvent("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
             if (!service.Requests.Last()) throw new Exception("Retry after failed startup must request enable, not another disable.");
@@ -113,6 +118,13 @@ internal static class ControllerSettingsScenarios
             await widget.OnActionAsync(new WidgetActionEvent("controllers.restore", "controllers.refresh"));
             if (service.Requests.Last() || (await store.LoadAsync()).Controllers.ExclusiveControl)
                 throw new Exception("Keep off must cancel the saved enable request.");
+            await widget.OnActionAsync(new WidgetActionEvent("open.controller-help", "controllers.help"));
+            var previousRequests = service.Requests.Count;
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.restore", "controllers.refresh"));
+            if (service.Requests.Count != previousRequests + 1 || service.Requests.Last())
+                throw new Exception("Recovery must remain actionable from driver help.");
+            await widget.OnActionAsync(new WidgetActionEvent("back", "test"));
+            if (widget.CurrentPage != SettingsPage.Controllers) throw new Exception("Driver help must return to Controllers.");
             await widget.OnActionAsync(new WidgetActionEvent("back", "test"));
             if (widget.CurrentPage != SettingsPage.Root) throw new Exception("Controller page Back scope is wrong.");
         }
@@ -162,7 +174,7 @@ internal static class ControllerSettingsScenarios
             if (!SettingsPresentation.TryRender(state, out var view)) throw new Exception("Missing Controllers page.");
             var snapshot = view.CreateSnapshot("settings", 1);
             AssertNavigation(snapshot, status.CanEnable);
-            var json = JsonSerializer.Serialize(snapshot);
+            var json = JsonSerializer.Serialize(snapshot) + JsonSerializer.Serialize(ControllerSettingsPresentation.Render(state, details: true).CreateSnapshot("settings", 2));
             foreach (var text in new[] { "Input behavior", "Required drivers", "Exclusive control", "HidHide", "ViGEmBus",
                 "your game also reacts", "controller stops working in a game",
                 "single controller press may register twice in Settings or the Windows app switcher",
@@ -188,10 +200,10 @@ internal static class ControllerSettingsScenarios
             new[] { node }.Concat(node.Children.SelectMany(Nodes));
         var nodes = Nodes(snapshot.Root).ToArray();
         var toggle = nodes.Single(node => node.Id == "controllers.exclusive-control");
-        var refresh = nodes.Single(node => node.Id == "controllers.refresh");
-        if (canChange && (toggle.Focus?.Down is not null || refresh.Focus?.Up is not null))
-            throw new Exception("Controller actions must use geometric navigation inside the page.");
-        if (nodes.Single(node => node.Id == "controllers.open-shortcut").Focus?.Up != "settings.restart")
+        var help = nodes.Single(node => node.Id == "controllers.help");
+        if (toggle.Focus?.Down != "controllers.help" || help.Focus?.Up != "controllers.exclusive-control")
+            throw new Exception("Controller actions must follow the visible row order.");
+        if (nodes.Single(node => node.Id == "controllers.open-shortcut").Focus?.Up != "settings.back")
             throw new Exception("Shortcut must be connected to the header.");
         var errors = ViewSnapshotValidator.Validate(snapshot);
         if (errors.Count != 0) throw new Exception(string.Join(Environment.NewLine, errors));

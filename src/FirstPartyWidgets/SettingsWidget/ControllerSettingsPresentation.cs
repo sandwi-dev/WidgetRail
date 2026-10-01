@@ -7,7 +7,7 @@ namespace WidgetRail.FirstPartyWidgets.Settings;
 
 internal static class ControllerSettingsPresentation
 {
-    public static WidgetView Render(SettingsPresentationState state)
+    public static WidgetView Render(SettingsPresentationState state, bool details = false)
     {
         var requested = state.Settings.Controllers.ExclusiveControl;
         var status = state.Diagnostics.Controllers;
@@ -37,9 +37,11 @@ internal static class ControllerSettingsPresentation
         {
                 UI.Text("Controllers", "controllers.heading", "Controllers settings").Classes("page-heading"),
                 UI.Text("Open WidgetRail", "controllers.open-heading", "Open WidgetRail").Classes("section-heading"),
-                UI.Button($"Controller shortcut: {(state.Settings.Controllers.OpenShortcut == ControllerOpenShortcut.Guide ? "Guide" : "View + Menu")}",
-                    "controllers.open-shortcut.toggle", "controllers.open-shortcut").Busy(state.Busy).Classes("setting-row"),
-                UI.Text("Choose Guide or press View and Menu together to open and close the overlay. Press this option to switch shortcuts.",
+                UI.Select("Controller shortcut", [
+                    new("guide", "Guide", "controllers.open-shortcut.guide", IsSelected: state.Settings.Controllers.OpenShortcut == ControllerOpenShortcut.Guide),
+                    new("view-menu", "View + Menu", "controllers.open-shortcut.view-menu", IsSelected: state.Settings.Controllers.OpenShortcut == ControllerOpenShortcut.ViewMenu)
+                ], "controllers.open-shortcut").Busy(state.Busy),
+                UI.Text("Open and close the overlay with the selected shortcut.",
                     "controllers.open-help", "Controller shortcut help").Classes("page-help", "controllers-help"),
         };
         if (features.HeldDpadScroll) controls.AddRange([
@@ -50,6 +52,7 @@ internal static class ControllerSettingsPresentation
                     "controllers.hold-scroll.help").Classes("page-help", "controllers-help"),
         ]);
         if (features.ExclusiveControllerControl) controls.AddRange([
+                UI.Text("Controller isolation", "controllers.isolation-heading").Classes("section-heading"),
                 toggle,
                 UI.Text($"Status - {statusText}", "controllers.status", $"Status - {statusText}")
                     .Classes("settings-status", "controllers-status"),
@@ -75,6 +78,26 @@ internal static class ControllerSettingsPresentation
                             : "The required drivers must be ready before Exclusive control can be turned on.",
                     "controllers.requirements-help", "Exclusive control requirements").Classes("page-help"),
                 refresh]);
+        if (details && !features.ExclusiveControllerControl)
+            return SettingsPresentation.View(SettingsPresentation.Header(state),
+                SettingsPresentation.PageScope("controllers.help.page",
+                    UI.Text("Controller help", "controllers.help.heading").Classes("page-heading"),
+                    UI.Text("Exclusive control is unavailable on this host.", "controllers.help.unavailable").Classes("page-help")),
+                "settings.back", "controllers.help.page");
+        if (details)
+        {
+            controls = controls.Where(item => item.Id is "controllers.disable-help" or "controllers.compatibility-warning"
+                or "controllers.restart-help" or "controllers.drivers-heading" or "controllers.hidhide" or "controllers.vigem"
+                or "controllers.requirements-help" or "controllers.refresh").ToList();
+            controls.Insert(0, UI.Text("Driver status and help", "controllers.help.heading").Classes("page-heading"));
+            return SettingsPresentation.View(SettingsPresentation.Header(state),
+                SettingsPresentation.PageScope("controllers.help.page", controls.ToArray()), "controllers.refresh", "controllers.help.page");
+        }
+        controls.RemoveAll(item => item.Id is "controllers.disable-help" or "controllers.compatibility-warning"
+            or "controllers.restart-help" or "controllers.drivers-heading" or "controllers.hidhide" or "controllers.vigem"
+            or "controllers.requirements-help" || (item.Id == "controllers.refresh" && !recovery && !failed));
+        if (features.ExclusiveControllerControl)
+            controls.Add(UI.Button("Driver status and help  ›", "open.controller-help", "controllers.help").Classes("setting-row"));
         return SettingsPresentation.View(SettingsPresentation.Header(state),
             SettingsPresentation.PageScope("controllers.page", controls.ToArray()),
             "controllers.open-shortcut",
