@@ -1,7 +1,6 @@
 # WinUI migration implementation status
 
-Updated 2026-10-01; branch `codex/winui3-frontend`. Main and the installed production application
-are untouched. Migration is incomplete and resumed at the user's request.
+Updated 2026-10-01. Accepted migration checkpoint merged into main. Remaining qualification and deferred improvements below remain tracked.
 The user reversed the full-MSIX direction on 2026-10-01. Distribution is now an
 unpackaged WinUI application with Inno; neither full MSIX nor a signed identity
 package may be required. Earlier MSIX entries below are historical evidence only.
@@ -22,6 +21,12 @@ C:/Users/dwive/Projects/WidgetRail-worktree-archive-20261001/ with inventory and
 recovery references. The unrelated local implementation-agent-goal.md edit in the
 primary checkout is preserved. Installed app, data and downloaded installers are
 untouched. No remote push is included.
+
+Merge commit: 1818268f; migration completion commit: aa606458. User chose to
+retain six Codex-protected worktrees: compose-host-assessment, cursor-diagnostics,
+inno-distribution, playnite-details-poster-fill, spotify-profile-cleanup and
+ytmusic-standalone. Their original ignored evidence remains in place. The other
+87 worktrees are retired with recovery refs and evidence in the archive above.
 
 ### YouTube player API blocked after unpackaged rollback — 2026-10-01, installer delivered
 
