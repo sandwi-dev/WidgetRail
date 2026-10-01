@@ -156,6 +156,11 @@ static async Task ExplicitScan()
     Assert.Equal(1, fake.ScanCalls);
     Assert.True(widget.ScanBusy, "Explicit scan did not expose an immediate busy state.");
     Assert.Equal(NetworkControlsViewState.Scanning, widget.ViewState);
+    var scanButton = Button(Snapshot(widget, 10).Root, "network.wifi.scan");
+    Assert.True(scanButton.IsBusy is true && scanButton.IsDisabled is not true,
+        "A pending Wi-Fi scan must retain its focus target while blocking another scan.");
+    await widget.OnActionAsync(new("wifi.scan", "network.wifi.scan"));
+    Assert.Equal(1, fake.ScanCalls);
 
     fake.EmitWifi(Wifi(WidgetWifiScanState.Ready,
         Network("scan-a", "Studio", 86, WidgetWifiSecurityKind.Personal, saved: true),
@@ -397,7 +402,9 @@ static async Task BluetoothScanning()
     await widget.OnActionAsync(new("bluetooth.scan", "network.bluetooth.scan"));
     await fake.BluetoothScanStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
     await clock.TimerScheduled.Task.WaitAsync(TimeSpan.FromSeconds(2));
-    Assert.True(Button(Snapshot(widget, 1).Root, "network.bluetooth.scan").IsBusy is true);
+    var scanButton = Button(Snapshot(widget, 1).Root, "network.bluetooth.scan");
+    Assert.True(scanButton.IsBusy is true && scanButton.IsDisabled is not true,
+        "A pending Bluetooth scan must retain its focus target while blocking another scan.");
     await widget.OnActionAsync(new("bluetooth.scan", "network.bluetooth.scan"));
     Assert.Equal(1, fake.BluetoothScanCalls);
     await Background(widget);
