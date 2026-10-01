@@ -38,7 +38,6 @@ internal sealed partial class WidgetViewPresenter
     private void Retire(Binding binding)
     {
         RetireSlider(binding);
-        if (binding.Element is ToggleSwitch toggle && toggles.Remove(toggle, out var toggleAdapter)) toggleAdapter.Dispose();
         if (artworkReveals.Remove(binding, out var reveal)) reveal.Dispose();
         if (ReferenceEquals(waitingEntry, binding)) ClearEntryLayoutWait();
         RetireMediaViewport(binding);

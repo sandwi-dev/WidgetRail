@@ -109,11 +109,7 @@ to represent one three-state preference. Style the `wrail-setting-row` and its
 `__copy`, `__label`, `__description`, `__control` classes through theme tokens.
 
 
-`UI.Switch` renders a native WinUI `ToggleSwitch`. Its SDK signature and action
-ID are unchanged. The intrinsic `wrail-switch` marker carries its presentation
-semantics; its authored selected state supplies On/Off. User activation takes the
-normal action-admission path; applying worker snapshots never invokes the action.
-The native control exposes Toggle accessibility, preserves focus while busy, and
-uses theme brushes for its stock track/thumb template. Ordinary selected buttons
-remain commands and do not acquire Toggle semantics. Widgets should publish the
-actual setting value after handling the action, as before.
+`UI.Switch` uses the shared command-button presentation. Its state comes from
+widget snapshots; the host does not optimistically invert it. Busy controls should
+use `.Busy(true)` without also becoming disabled: this blocks action admission
+while preserving focus. Disable a control when its capability is unavailable.

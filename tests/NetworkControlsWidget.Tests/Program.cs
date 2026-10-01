@@ -1022,6 +1022,10 @@ static async Task RadioCancellationIsGenerationBound()
     var wifiAction = wifiWidget.OnActionAsync(new(
         "wifi.radio.toggle", "network.wifi.radio")).AsTask();
     await wifiFake.WifiRadioSetStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var busyWifi = Button(Snapshot(wifiWidget, 100).Root, "network.wifi.radio");
+    Assert.True(busyWifi.IsBusy is true && busyWifi.IsDisabled is not true,
+        "Pending Wi-Fi control must block dispatch without removing its focus target.");
+    Assert.True(busyWifi.IsSelected is true, "Wi-Fi must retain the authoritative On state until a provider result arrives.");
     await Background(wifiWidget);
     await Assert.Canceled(wifiAction);
     wifiFake.HoldWifiRadioSet = false;
@@ -1036,9 +1040,14 @@ static async Task RadioCancellationIsGenerationBound()
     var bluetoothWidget = Create(bluetoothFake);
     await ActivateInteractive(bluetoothWidget);
     await WaitUntil(() => bluetoothWidget.Bluetooth is not null);
+    await bluetoothWidget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
     var bluetoothAction = bluetoothWidget.OnActionAsync(new(
         "bluetooth.radio.toggle", "network.bluetooth.radio")).AsTask();
     await bluetoothFake.BluetoothRadioSetStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    var busyBluetooth = Button(Snapshot(bluetoothWidget, 100).Root, "network.bluetooth.radio");
+    Assert.True(busyBluetooth.IsBusy is true && busyBluetooth.IsDisabled is not true,
+        "Pending Bluetooth control must block dispatch without removing its focus target.");
+    Assert.True(busyBluetooth.IsSelected is true, "Bluetooth must retain its published state while awaiting the provider.");
     await Background(bluetoothWidget);
     await Assert.Canceled(bluetoothAction);
     bluetoothFake.HoldBluetoothRadioSet = false;

@@ -332,7 +332,7 @@ internal static class NetworkControlsPresentation
         var toggle = UI.Switch(label, isOn, "wifi.radio.toggle", "network.wifi.radio")
             .Icon(WidgetGlyph.Wifi, label)
             .Busy(busy)
-            .Disabled(!interactive || busy || !radio.CanControl)
+            .Disabled(!interactive || !radio.CanControl)
             .FocusUp("network.tab.wifi")
             .FocusDown("network.wifi.scan")
             .FocusLeft("network.wifi.radio")
@@ -496,8 +496,7 @@ internal static class NetworkControlsPresentation
                 radioLabel, isOn, "bluetooth.radio.toggle", "network.bluetooth.radio")
             .Icon(WidgetGlyph.Connection, radioLabel)
             .Busy(state.BluetoothBusy)
-            .Disabled(!state.Interactive || state.BluetoothBusy ||
-                snapshot?.CanControlRadio != true)
+            .Disabled(!state.Interactive || snapshot?.CanControlRadio != true)
             .FocusUp("network.tab.bluetooth")
             .FocusLeft("network.bluetooth.radio")
             .FocusRight("network.bluetooth.radio")

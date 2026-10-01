@@ -7,6 +7,28 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### Revert native switches and preserve radio focus — 2026-10-01, validated
+
+User rejected native toggle styling and reported state oscillation/focus loss in
+Wi-Fi. Restore the pre-preview.18 shared UI.Switch button renderer/SDK accessibility
+label; remove the native adapter, palette handling and native-toggle-only fixtures.
+Keep structured widget-list rows and the dedicated Exclusive control page.
+Confirmed code path: native IsOn changes before provider acknowledgement; Network
+publishes old state with busy=true and disabled=true, resetting appearance and
+removing the focused control from navigation. Restoring authored-state-only buttons
+removes optimistic state. Wi-Fi/Bluetooth radio controls should remain enabled and
+busy during pending operations; actual unavailable capabilities still disable them.
+Use fake providers and native synthetic checks, never real radio mutations. No
+installer requested; rebuild and launch a normal coherent candidate with the
+existing profile after validation. Preview.18 PID24720 was closed normally for checks.
+Validation: Network 31/31, SDK 148/148, Settings 81/81, native switch-command
+16/16 and Settings production layout 253/253 passed. Evidence: artifacts/switch-rollback.
+Native synthetic checks cover Invoke semantics, no optimistic state, repeated busy
+snapshots, stable focus, blocked repeat/automation commands, authoritative completion
+and genuinely unavailable controls. Layout screenshot reviewed; scoped code review
+found no further issues. Preview.19 release folders are next; no installer requested.
+
+
 ### Native toggles and widget-list rows — 2026-10-01, test candidate running
 
 User authorized the remaining suggested improvements. Continue on the existing
