@@ -6,6 +6,21 @@ namespace WidgetRail.WidgetBridge;
 /// <summary>Resolves only the primary intent actually shown in the admitted input scope.</summary>
 internal static class IntentActionAuthority
 {
+    internal static WidgetIntentRequest? RevalidateIndexed(IReadOnlyList<ViewNode> originOwners,
+        IReadOnlyList<ViewNode> currentOwners, ViewNode item, WidgetActionEvent action)
+    {
+        if (action.Phase != ControllerEventPhase.Pressed || action.ControllerButton is not (null or ControllerButton.A) ||
+            action.RequestedValue is not null || action.CommittedText is not null ||
+            action.VisibleCollectionKeys is not null || action.RetainedCollectionKeys is not null ||
+            item.Kind is not (ViewNodeKind.Button or ViewNodeKind.ActionSurface) || item.ActionId != action.ActionId ||
+            item.Id != action.SourceElementId || item.IsDisabled == true || item.IsBusy == true ||
+            originOwners.Concat(currentOwners).Any(node => node.IsDisabled == true || node.IsBusy == true) ||
+            item.Intent is not { } intent || !intent.IsWellFormed()) return null;
+        // The host's live semantic lease owns this immutable item; parent paths
+        // have independently passed the lease's query and active-scope checks.
+        return intent;
+    }
+
     internal static WidgetIntentRequest? Revalidate(ViewSnapshot origin, ViewSnapshot current, WidgetActionEvent action)
     {
         if (origin.WidgetInstanceId != current.WidgetInstanceId || origin.ActiveInputScopeId != current.ActiveInputScopeId ||

@@ -13,9 +13,17 @@ internal sealed partial class OverlayShellPage
 {
     private CancellationTokenSource? intentCancellation;
     private PinnedSurface? intentPinnedTarget;
+    private TaskCompletionSource? intentForegroundAcquired;
     private HostChoiceDialog? hostChoiceDialog;
     private bool HostChoiceActive => hostChoiceDialog is not null;
     internal Func<Uri, CancellationToken, Task<bool>>? OpenExternalWebPageRequested { get; set; }
+
+    private async Task InvokePinnedIntentAsync(PinnedSurface pin, WidgetActionRequest request)
+    {
+        if (retired || !visible || !ReferenceEquals(pinned, pin) || !pin.IsCurrent ||
+            !pin.HasForeground || !pin.Window.Interactive || !ReferenceEquals(request.PinnedSelection, pin.Selection)) return;
+        await InvokeIntentAsync(request);
+    }
 
     private async Task InvokeIntentAsync(WidgetActionRequest request)
     {
@@ -27,7 +35,18 @@ internal sealed partial class OverlayShellPage
         shellOwnedReleases.Add(ControllerButton.A);
         try
         {
-            prepared = await session.PrepareIntentAsync(request.Displayed, request.Action, cancellation.Token);
+            prepared = request.IndexedLease is { } lease && request.IndexedItemKey is { } key
+                ? await session.PrepareIndexedIntentAsync(lease, request.Displayed, key, cancellation.Token)
+                : request.PinnedSelection is { } sourceSelection && request.PinnedProjection is { } sourceProjection
+                    ? await session.PreparePinnedIntentAsync(sourceSelection, sourceProjection, request.Action, cancellation.Token)
+                    : await session.PrepareIntentAsync(request.Displayed, request.Action, cancellation.Token);
+            var sourcePin = request.PinnedSelection is not null ? pinned : null;
+            if (request.PinnedSelection is not null && (sourcePin is null || !sourcePin.IsCurrent || !sourcePin.HasForeground ||
+                !ReferenceEquals(sourcePin.Selection, request.PinnedSelection))) return;
+            var staysInSourcePin = sourcePin is not null && prepared.Kind == WidgetIntentLaunchKind.Widget &&
+                prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
+                prepared.Destinations.Single() is { SupportsPassiveDelivery: true } only && only.WidgetId == sourcePin.WidgetId;
+            if (sourcePin is not null && !staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
             if (prepared.Kind is WidgetIntentLaunchKind.Rejected or WidgetIntentLaunchKind.Unavailable)
             {
                 await ShowHostChoiceAsync("Cannot open this item", "No compatible widget is available for this action.", [], cancellation.Token);
@@ -54,11 +73,12 @@ internal sealed partial class OverlayShellPage
                     var projection = session.ResolvePinnedProjection(binding.Frame, pin.LayoutId);
                     completion = await session.CommitPinnedIntentAsync(prepared, selection, projection, cancellation.Token);
                     cancellation.Token.ThrowIfCancellationRequested();
-                    if (retired || !visible || !foreground || !ReferenceEquals(pinned, pin) || !pin.IsCurrent || !pin.Window.IsVisible) return;
+                    if (retired || !visible || !(foreground || staysInSourcePin && PinnedInputActive) || !ReferenceEquals(pinned, pin) || !pin.IsCurrent || !pin.Window.IsVisible) return;
                     if (completion.RequiresInteraction)
                     {
                         // The receiver already stored this request. Open its
                         // normal presentation without delivering it a second time.
+                        if (staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
                         await SelectAsync(selected, preserveIntent: true);
                         cancellation.Token.ThrowIfCancellationRequested();
                     }
@@ -76,6 +96,7 @@ internal sealed partial class OverlayShellPage
             var external = completion.ExternalUrl;
             if (!completion.Accepted)
             {
+                if (staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
                 if (completion.BrowserFallbackUrl is { } fallback)
                 {
                     if (await ShowHostChoiceAsync("Could not open the link", "The selected widget could not open this page.",
@@ -108,6 +129,19 @@ internal sealed partial class OverlayShellPage
             { intentCancellation = null; intentPinnedTarget = null; }
             PublishControllerGuide();
         }
+    }
+
+    private async Task ReturnIntentToMainAsync(CancellationToken token)
+    {
+        var acquired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        intentForegroundAcquired = acquired;
+        try
+        {
+            ExitPinnedInteraction(restoreMain: true);
+            if (!foreground) await acquired.Task.WaitAsync(TimeSpan.FromSeconds(2), token);
+            token.ThrowIfCancellationRequested();
+        }
+        finally { if (ReferenceEquals(intentForegroundAcquired, acquired)) intentForegroundAcquired = null; }
     }
 
     private async Task<string?> ShowHostChoiceAsync(string title, string message, IReadOnlyList<HostDialogChoice> choices, CancellationToken token)

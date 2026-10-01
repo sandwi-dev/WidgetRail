@@ -11,6 +11,14 @@ public sealed partial class MainWindow
         var calls = 0;
         try
         {
+            // This stage tests a main-window launch. Prior stages deliberately
+            // activate and dispose other HWNDs; establish its own foreground
+            // precondition instead of racing queued native activation events.
+            ShowOverlay();
+            await Task.Yield();
+            var foregroundDeadline = Environment.TickCount64 + 2000;
+            while (!page.HasForeground && Environment.TickCount64 < foregroundDeadline) await Task.Delay(20);
+            Check(page.HasForeground, "Web handoff fixture owns main-window foreground");
             externalWebLauncher = _ => { calls++; return Task.FromResult(false); };
             Check(!await OpenExternalWebPageAsync(page, new Uri("file:///C:/not-a-web-page"), default) && calls == 0,
                 "External fallback rejects non-web schemes before any launch");
@@ -21,7 +29,7 @@ public sealed partial class MainWindow
                     "Browser handoff waits for the ordinary close animation before launch");
                 return Task.FromResult(false);
             };
-            Check(!await OpenExternalWebPageAsync(page, new Uri("https://example.com"), default), "Browser launch failure is reported");
+            Check(!await OpenExternalWebPageAsync(page, new Uri("https://example.com"), default) && calls == 1, "Browser launch failure is reported after invoking the launcher");
             Check(overlayRequestedVisible && AppWindow.IsVisible && page.OverlayMotionValidationVisible,
                 "Failed browser launch restores the still-owned overlay");
             var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

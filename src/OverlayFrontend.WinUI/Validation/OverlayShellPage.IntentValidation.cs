@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
@@ -89,6 +90,26 @@ internal sealed partial class OverlayShellPage
                 await Until(() => activeWidget == "intent-target" && !switching);
                 Check(interactive, "Sender can request normal activation even when a passive pin is available");
                 await UnpinAsync(save: true);
+                await SelectAsync("intent-source");
+                await InvokeIndexed(surface!);
+                await Until(() => activeWidget == "intent-target" && surface?.CurrentBinding?.Frame.Snapshot.Root.Children[0].Text == "https://example.com/indexed/1");
+                Check(interactive, "A virtualized item opens its declared intent through its live lease");
+                await SelectAsync("intent-source");
+                await PinAsync("intent-source", "links-pin");
+                await EnterPinnedAsync();
+                await Until(() => PinnedInputActive && FocusManager.GetFocusedElement(pinned!.Window.AutomationRoot.XamlRoot) is DependencyObject focused &&
+                    AutomationProperties.GetAutomationId(focused) == "Widget.pin-open");
+                pinned!.Presenter!.ActivateFocused();
+                await Until(() => activeWidget == "intent-target" && foreground && !PinnedInputActive &&
+                    surface?.CurrentBinding?.Frame.Snapshot.Root.Children[0].Text == "https://example.com/pinned");
+                Check(interactive && pinned!.IsCurrent, "An authored pinned control transfers intent presentation to the main window");
+                await EnterPinnedAsync();
+                await Until(() => PinnedInputActive);
+                await InvokeIndexed(pinned!.Presenter!);
+                await Until(() => activeWidget == "intent-target" && foreground && !PinnedInputActive &&
+                    surface?.CurrentBinding?.Frame.Snapshot.Root.Children[0].Text == "https://example.com/indexed/1");
+                Check(interactive, "A virtualized pinned item preserves its lease and hands off input once");
+                await UnpinAsync(save: true);
                 if (verifyWebHandoff is not null) checks.AddRange(await verifyWebHandoff());
             }
             catch (Exception failure) { error = failure.ToString(); }
@@ -106,6 +127,17 @@ internal sealed partial class OverlayShellPage
             yield return node;
             for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
                 foreach (var child in Walk(VisualTreeHelper.GetChild(node, i))) yield return child;
+        }
+        static async Task InvokeIndexed(WidgetViewPresenter presenter)
+        {
+            var collection = Walk(presenter).OfType<WidgetIndexedCollectionView>().Single();
+            await Until(() => collection.NativeView.Items.Count >= 2);
+            collection.NativeView.ScrollIntoView(collection.NativeView.Items[1]);
+            await Until(() => collection.NativeView.ContainerFromIndex(1) is Control);
+            ((Control)collection.NativeView.ContainerFromIndex(1)).Focus(FocusState.Keyboard);
+            await Until(() => collection.FocusedRow()?.Item.Key == "link.1");
+            if (!await collection.InvokeFocusedInputAsync(ControllerButton.A, ControllerEventPhase.Pressed))
+                throw new InvalidOperationException("Indexed intent did not own its primary action.");
         }
     }
 }

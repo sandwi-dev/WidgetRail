@@ -16,6 +16,10 @@ internal sealed record WidgetElementIdentity(string Scope, string Id, ViewNodeKi
 internal sealed record WidgetActionRequest(WidgetPresentationFrame Displayed, WidgetActionEvent Action)
 {
     internal WidgetPresentationAuthority Authority => Displayed.Authority;
+    internal WidgetPinnedSelection? PinnedSelection { get; init; }
+    internal WidgetPinnedProjection? PinnedProjection { get; init; }
+    internal WidgetPresentationIndexedLease? IndexedLease { get; init; }
+    internal string? IndexedItemKey { get; init; }
 }
 
 /// <summary>
@@ -418,7 +422,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.IndexedCollection:
                 if (Session is null) throw new InvalidOperationException("Indexed widgets require a presentation session.");
                 element = new WidgetIndexedCollectionView(Session, ReportFailure)
-                { EnsureInteractionAsync = AdmitInteractionAsync, FocusRemembered = item =>
+                { EnsureInteractionAsync = AdmitInteractionAsync, DispatchIntentAsync = request => DispatchActionAsync?.Invoke(request) ?? Task.CompletedTask, FocusRemembered = item =>
                     {
                         if (!applying && automaticFocusEnabled && presentationActive && presentationInputEnabled)
                             RememberCollectionFocus(declaration.Identity, item);

@@ -142,8 +142,9 @@ Allow a receiver to request interaction for a particular accepted request (for
 example sign-in). Escalating presentation must not invoke the intent twice:
 retain the already accepted data and change presentation. Window/focus ownership
 remains host-side, and a handler cannot gain foreground permission through a
-background event. This policy still needs implementation; current ordinary
-intent activation always opens the destination.
+background event. This policy is implemented for live full-widget and authored
+pinned projections. Compact embedded-media destinations remain to be connected
+through their distinct media-document authority.
 
 ### Browser and local media preview
 
@@ -188,15 +189,16 @@ following sources. No game-memory access or autonomous game input.
 - [x] Worker receiver API and exact-process delivery with cancellation, duplicate rejection and lifetime checks.
 - [x] Wire ordinary SDK actions and receiver transport into Bridge admission and dispatch.
 - [x] Ordinary frontend activation with existing B/tray behavior and gesture handling.
-- [ ] Pinned/indexed source admission with the same lease/projection authority as ordinary actions.
-- [ ] Existing pinned destination reuse, sender presentation hints and receiver passive-delivery opt-in/escalation.
+- [x] Pinned/indexed source admission with the same lease/projection authority as ordinary actions.
+- [x] Full-widget/authored pinned destination reuse, sender hints and per-mapping passive-delivery opt-in/escalation.
+- [ ] Extend destination reuse to compact embedded-media pins with exact document authority.
 - [x] Fake sender/handler end-to-end tests, including isolated native shell checks.
 - [ ] Include the completed intent feature in the final Game Help physical-check candidate.
 
 ### 2. Browser and link consumers
 - [ ] Lazy host-owned web surface with controller cursor/scroll and toolbar.
 - [ ] Pinnable browser widget; normal/pinned focus qualification.
-- [ ] Default-browser fallback through the standard intent.
+- [x] Default-browser fallback through the standard intent (synthetic launcher qualified; physical candidate pending).
 - [ ] Playnite link migration; YouTube handler with optional start time.
 
 ### 3. Application context and capture
@@ -265,10 +267,10 @@ following sources. No game-memory access or autonomous game input.
   IPC cancellation that keeps the worker usable (`runtime-intents-tests03.log`).
   Shared indexed-lane IPC regressions: 7/7 (`runtime-indexed-regression01.log`).
   WinUI review checklist applied to ownership/input/security; no new UI authored.
-- Current boundary: ordinary button/card intent activation is connected through
-  the Bridge, real workers and native shell, including passive full-widget and
-  authored-layout pinned destinations. Pinned/indexed source support and compact
-  embedded-media destinations remain pending. Browser, capture recording, native
+- Current boundary: ordinary, pinned and indexed intent sources are connected
+  through the Bridge, real workers and native shell, including passive full-widget
+  and authored-layout pinned destinations. Compact embedded-media destinations
+  remain pending. Browser, capture recording, native
   media element/preview modal, Gemini integration and Game Help are not enabled.
   No updated user candidate has been staged yet.
 - 2026-10-01: Bridge prepare/commit/cancel messages and presentation-session APIs
@@ -335,11 +337,23 @@ following sources. No game-memory access or autonomous game input.
   completion from clearing a newer intent's pinned-target ownership. Synthetic
   shells PID24816 and PID9300 were closed normally. No website, real playback or
   system-setting action was used.
-- Next source integration: pinned controls currently use `SendPinnedActionAsync`
-  in `WidgetViewPresenter.Binding.cs`; virtualized rows use their exact indexed
-  lease in `WidgetIndexedCollectionView.InvokeAsync`. Extend intent preparation
-  through these existing selection/lease authorities rather than fabricating an
-  ordinary frame or bypassing their scope/query retirement checks.
+- 2026-10-01: Connected pinned controls and virtualized rows to intent preparation
+  using existing live projection/selection and item-lease authority. Both session
+  and Bridge revalidate query, scope, item, worker and primary action; disabled or
+  busy owners, retired leases and stale selections cannot issue intents. Intent
+  rows do not also invoke their widget action handler. Pinned sources use existing
+  main-window activation for chooser/destination handoff; a self-directed passive
+  update can retain pinned interaction. No B return stack was added.
+  Contract checks: 21/21 (`intent-sources-contract-tests01.log`); intent pipe
+  checks: 10/10 (`intent-sources-bridge-tests01.log`); indexed regressions: 19/19;
+  pinned regressions: 6/6 (matching `intent-sources-*-regression01.log`). Native:
+  26/26 (`native-intents-01/result-sources02.json`), including authored pin buttons
+  and actual virtualized rows in main and pinned views. The synthetic browser
+  handoff stage now explicitly reestablishes main-window foreground after native
+  pin disposal and confirms the fake launcher was actually called on failure.
+  PID26836 closed normally. No website, real playback or system setting changed.
+- Next: host web surface and Browser widget, then Playnite/YouTube consumers and
+  compact embedded-media destination integration.
 - 2026-10-01: Carried preview.23 Settings/Spotify source fixes and release baseline
   into this branch with merge `81f292a1`; no merge conflicts. Existing worktrees
   retained. Isolated native fixtures were closed through normal owned WM_CLOSE;

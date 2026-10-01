@@ -157,6 +157,7 @@ internal sealed partial class OverlayShellPage
                     window.ThemeChanged += () => ApplyPinnedAppearance(surface);
                     window.PlacementEnvironmentChanged += () => QueuePinnedPlacementEnvironment(surface);
                     presenter.EnsureInteractionAsync = (authority, token) => EnsurePinnedInteractionAsync(surface, authority, token);
+                    presenter.DispatchActionAsync = request => InvokePinnedIntentAsync(surface, request);
                     presenter.Failed = error => { if (ReferenceEquals(pinned, surface)) ReportFailure(error); };
                     window.CloseRequested += () => _ = UnpinAsync(save: true, surface);
                     window.ForegroundChanged += focused =>

@@ -549,6 +549,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         interactionAdmission.Invalidate();
         foreground = value;
+        if (value) intentForegroundAcquired?.TrySetResult();
         // The main HWND also deactivates when focus transfers to the pinned
         // peer. That peer owns its activation/loss notifications; treating
         // main deactivation as pin loss would cancel the handoff itself.
@@ -671,7 +672,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         {
             if (await EnsureInteractionAsync(request.Authority, lifetime.Token))
             {
-                if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.InstallLocalWidgetAction)
+                if (request.IndexedLease is not null) await InvokeIntentAsync(request);
+                else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.InstallLocalWidgetAction)
                     await InstallLocalWidgetAsync(request);
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EnterMediaFullscreenAction)
                 {

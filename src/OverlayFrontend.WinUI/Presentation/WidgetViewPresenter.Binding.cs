@@ -18,7 +18,15 @@ internal sealed partial class WidgetViewPresenter
         if (origin.Selection is { } selection && origin.Projection is { } projection)
         {
             if (Session is not { } session || !await AdmitBindingAsync(origin)) return;
-            try { await session.SendPinnedActionAsync(selection, projection, action); }
+            try
+            {
+                if (session.HasPinnedIntentAction(selection, projection, action))
+                {
+                    if (DispatchActionAsync is { } intent) await intent(new(origin.Frame, action)
+                        { PinnedSelection = selection, PinnedProjection = projection });
+                }
+                else await session.SendPinnedActionAsync(selection, projection, action);
+            }
             catch (WidgetPresentationSessionException error) when (IsRetiredInput(error)) { session.RequestInputRefresh(origin.Frame); }
         }
         else if (DispatchActionAsync is { } dispatch) await dispatch(new(origin.Frame, action));

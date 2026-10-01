@@ -23,9 +23,15 @@ public sealed partial class WidgetPresentationSession
     {
         if (!HasIntentAction(displayed, action) || displayed.Authority.WorkerRun is null)
             throw OrdinaryInputStale("No current intent action is available.");
+        return await PrepareIntentCoreAsync(displayed, action, null, null, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<WidgetIntentPreparation> PrepareIntentCoreAsync(WidgetPresentationFrame displayed,
+        WidgetActionEvent action, string? pinnedLayout, IndexedCollectionItemReference? indexedItem, CancellationToken cancellationToken)
+    {
         var response = await RequestAsync(BridgeMessageTypes.PrepareIntent,
             new BridgeIntentPrepareRequest(displayed.Authority.WidgetId, displayed.Authority.SnapshotSequence,
-                displayed.Authority.WorkerRun, action), BridgeMessageTypes.IntentPrepared, cancellationToken).ConfigureAwait(false);
+                displayed.Authority.WorkerRun!, action, pinnedLayout, indexedItem), BridgeMessageTypes.IntentPrepared, cancellationToken).ConfigureAwait(false);
         var result = BridgeJson.FromElement<WidgetIntentPreparation>(response.Payload);
         if (result.SourceWidgetId != displayed.Authority.WidgetId || !Enum.IsDefined(result.Kind) || !Enum.IsDefined(result.Presentation) || result.Destinations is null ||
             result.Destinations.Count > 256 || result.Destinations.Any(item => item is null || !Safe(item.WidgetId) ||

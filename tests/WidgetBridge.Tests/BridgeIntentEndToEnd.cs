@@ -77,6 +77,56 @@ internal static class BridgeIntentEndToEnd
         await server.RunAsync(TimeSpan.FromSeconds(30), default);
     }
 
+    internal static async Task SourceProjections()
+    {
+        var pipe = "intent-sources-" + Guid.NewGuid().ToString("N");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await using var server = new WidgetBridgeServer(pipe, Catalog());
+        var serving = server.RunAsync(TimeSpan.FromSeconds(3), deadline.Token);
+        await using var session = await WidgetPresentationSession.ConnectAsync(pipe, cancellationToken: deadline.Token);
+        _ = await session.ListWidgetsAsync(deadline.Token);
+        var source = await session.EstablishPresentationAsync(session.GetTarget("intent-source"), WidgetLifecycleState.Interactive, deadline.Token);
+        var projection = session.ResolvePinnedProjection(source, "links-pin");
+        var selection = await session.SelectPinnedLayoutAsync(projection, cancellationToken: deadline.Token);
+        var action = new WidgetActionEvent("pin-open", "pin-open", ControllerButton.A, InputScopeId: "pin-scope");
+        Check(!session.HasIntentAction(source, action));
+        Check(session.HasPinnedIntentAction(selection, projection, action));
+        var prepared = await session.PreparePinnedIntentAsync(selection, projection, action, deadline.Token);
+        var target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Interactive, deadline.Token);
+        Check((await session.CommitIntentAsync(prepared, target, deadline.Token)).Accepted);
+        target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Interactive, deadline.Token);
+        Check(target.Snapshot.Root.Children[0].Text == "https://example.com/pinned");
+
+        foreach (var inPin in new[] { false, true })
+        {
+            var parent = inPin ? projection.Snapshot : source.Snapshot;
+            var collection = parent.Root.Children.Single(node => node.Id == (inPin ? "pin-links" : "links"));
+            await using var lease = await session.AcquireIndexedRangeAsync(source.Authority, collection.Id, collection.IndexedCollection!,
+                0, 2, inPin ? selection.LayoutId : null, deadline.Token);
+            Check(session.ResolveIndexedIntentAction(lease, source, "link.1") is not null);
+            prepared = await session.PrepareIndexedIntentAsync(lease, source, "link.1", deadline.Token);
+            Check((await session.CommitIntentAsync(prepared, target, deadline.Token)).Accepted);
+            target = await session.EstablishPresentationAsync(session.GetTarget("intent-target"), WidgetLifecycleState.Interactive, deadline.Token);
+            Check(target.Snapshot.Root.Children[0].Text == "https://example.com/indexed/1");
+            await lease.DisposeAsync();
+            try
+            {
+                await session.PrepareIndexedIntentAsync(lease, source, "link.1", deadline.Token);
+                throw new Exception("Retired item lease accepted an intent.");
+            }
+            catch (WidgetPresentationSessionException error) when (error.Code == "indexed_retired") { }
+        }
+        await session.ClearPinnedSelectionAsync(selection, source, cancellationToken: deadline.Token);
+        try
+        {
+            await session.PreparePinnedIntentAsync(selection, projection, action, deadline.Token);
+            throw new Exception("Retired pin accepted an intent source.");
+        }
+        catch (WidgetPresentationSessionException error) when (error.Code == "pinned_input_stale") { }
+        await session.DisposeAsync();
+        await serving.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     internal static async Task ServeOwnedFixtureAsync(string pipe, string settingsRoot)
     {
         var paths = new PlatformSettingsPaths(Path.GetFullPath(settingsRoot));
@@ -99,8 +149,21 @@ internal static class BridgeIntentEndToEnd
     private static void Check(bool value) { if (!value) throw new Exception("Intent end-to-end assertion failed."); }
 }
 
-internal sealed class IntentBridgeProbeWidget(bool target) : Widget
+internal sealed class IntentBridgeProbeWidget : Widget
 {
+    private readonly bool target;
+    private readonly WidgetIndexedCollection<int, int> links;
+    internal IntentBridgeProbeWidget(bool target)
+    {
+        this.target = target;
+        links = CreateIndexedCollection<int, int>("intent-links", 0, 3, new()
+        {
+            ReadRange = (_, start, count, _) => ValueTask.FromResult<IReadOnlyList<int>>(Enumerable.Range(start, count).ToArray()),
+            ItemKey = item => new("link." + item),
+            RenderItem = (_, item, context) => Link(context.Id("link"), "Indexed guide " + item, "indexed/" + item),
+            OnAction = (_, _, _, _) => ValueTask.FromException(new InvalidOperationException("Intent leaked into the widget action handler.")),
+        });
+    }
     private string current = "No intent received";
     private int calls;
     public override WidgetView Render() => target
@@ -108,7 +171,11 @@ internal sealed class IntentBridgeProbeWidget(bool target) : Widget
         : new(UI.Stack("root", Link("open", "Open guide", "guide"), Link("wait", "Cancellable request", "wait"),
             Link("unsupported", "Unsupported guide", "unsupported"), Link("interaction", "Needs interaction", "interaction"),
             Link("open-full", "Open full widget", "guide") with { Intent = WidgetIntentRequest.Create(WidgetIntentContracts.Web,
-                JsonSerializer.SerializeToElement(new { url = "https://example.com/guide" }), WidgetIntentPresentation.OpenWidget) }), "open");
+                JsonSerializer.SerializeToElement(new { url = "https://example.com/guide" }), WidgetIntentPresentation.OpenWidget) },
+            UI.CollectionList("links", links, 52, "Guide links")), "open")
+        { PinnedLayouts = [WidgetView.PinnedLayout("links-pin", "Pinned links", new(),
+            UI.Stack("pin-root", Link("pin-open", "Pinned guide", "pinned"), UI.CollectionList("pin-links", links, 52, "Pinned links")).InputScope("pin-scope"),
+            initialFocusId: "pin-open", activeInputScopeId: "pin-scope")] };
     private static ButtonElement Link(string id, string label, string path) => UI.Button(label, id, id)
         .OpenIntent(WidgetIntentContracts.Web, JsonSerializer.SerializeToElement(new { url = "https://example.com/" + path }));
     public override async ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)

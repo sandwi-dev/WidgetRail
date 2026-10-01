@@ -33,7 +33,7 @@ internal sealed partial class BridgeClientRegistry
                     !source.HasCurrentSnapshotWorker || source.CachedWorkerRun != request.WorkerRun ||
                     source.FindInputOriginSnapshot(request.SnapshotSequence) is not { } origin ||
                     source.CachedSnapshot is not { } current || request.Action is null ||
-                    IntentActionAuthority.Revalidate(origin, current, request.Action) is not { } intent) return Rejected();
+                    ResolveIntentSourceLocked(source, origin, current, request) is not { } intent) return Rejected();
 
                 var declaration = source.Configured.Intents?.Requests.SingleOrDefault(item => item.Id == intent.ContractId && item.Version == intent.Version);
                 if (declaration is null) return Rejected();
@@ -155,6 +155,38 @@ internal sealed partial class BridgeClientRegistry
         _clients.TryGetValue(ticket.SourceId, out var source) && IsCurrentLocked(source) &&
         source.Configured.WorkerFingerprint == ticket.SourceFingerprint && source.HasCurrentSnapshotWorker &&
         source.CachedWorkerRun == ticket.SourceRun;
+
+    private WidgetIntentRequest? ResolveIntentSourceLocked(ClientRegistration source, ViewSnapshot origin,
+        ViewSnapshot current, BridgeIntentPrepareRequest request)
+    {
+        try
+        {
+            if (request.IndexedItem is { } reference)
+            {
+                IndexedCollectionInputContract.ValidateReference(reference);
+                var descriptor = source.Configured.PublicDescriptor();
+                var lease = FindIndexedOwnerLocked(request.WidgetId, descriptor.InstanceId, descriptor.RuntimeGeneration,
+                    descriptor.PresentationGeneration, reference.LeaseId);
+                if (lease is null || !ReferenceEquals(lease.Registration, source) ||
+                    lease.Request.Range.PinnedLayoutId != request.PinnedLayoutId ||
+                    lease.Runtime.Lease.Range.ScopeId != request.Action.InputScopeId) return null;
+                _ = DemandIndexedInputOwnerLocked(lease);
+                var item = lease.Runtime.Lease.Range.Items.SingleOrDefault(item => item.Key == reference.ItemKey);
+                return item is null ? null : IntentActionAuthority.RevalidateIndexed(
+                    ResolveIndexedInputOwners(origin, lease), ResolveIndexedInputOwners(current, lease), item.Root, request.Action);
+            }
+            if (request.PinnedLayoutId is { } layout)
+            {
+                if (!source.Configured.PinningSupported ||
+                    layout == PinnedSurfaceContract.FullWidgetLayoutId && !source.Configured.FullWidgetPinningSupported) return null;
+                origin = PinnedActionContract.Project(origin, layout, inheritRootless: true);
+                current = PinnedActionContract.Project(current, layout, inheritRootless: true);
+            }
+            return IntentActionAuthority.Revalidate(origin, current, request.Action);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or BridgeProtocolException or BridgeStaleIndexedInputAuthorityException)
+        { return null; }
+    }
 
     private static bool IntentTargetPresented(ClientRegistration target, IntentTicket ticket, BridgeIntentPinnedTarget? pin)
     {

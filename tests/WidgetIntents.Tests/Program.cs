@@ -26,6 +26,7 @@ var tests = new (string Name, Action Run)[]
     ("Handler catalogs are bounded and generation bearing", CatalogBounds),
     ("Displayed intent authority survives unrelated snapshots but rejects changed payloads", DisplayedIntentAuthority),
     ("Disabled busy and out-of-scope intent actions cannot be admitted", RejectedIntentAuthority),
+    ("Indexed intents require available ancestors and exact primary action", IndexedIntentAuthority),
 };
 var failures = 0;
 foreach (var (name, run) in tests)
@@ -289,6 +290,20 @@ static void RejectedIntentAuthority()
 static ViewSnapshot IntentSnapshot() => new WidgetView(UI.Stack("root", UI.Button("Guide", "open", "guide")
     .OpenIntent(WidgetIntentContracts.Web, Json("""{"url":"https://example.com"}""")))).CreateSnapshot("intent.widget", 1);
 static WidgetActionEvent IntentAction() => new("open", "guide", ControllerButton.A, InputScopeId: "root");
+
+static void IndexedIntentAuthority()
+{
+    var snapshot = IntentSnapshot();
+    var item = snapshot.Root.Children.Single();
+    var action = IntentAction();
+    Check(IntentActionAuthority.RevalidateIndexed([snapshot.Root], [snapshot.Root], item, action) is not null);
+    Check(IntentActionAuthority.RevalidateIndexed([snapshot.Root], [snapshot.Root with { IsBusy = true }], item, action) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([snapshot.Root with { IsDisabled = true }], [snapshot.Root], item, action) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([], [], item with { IsDisabled = true }, action) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([], [], item, action with { SourceElementId = "other" }) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([], [], item, action with { Phase = ControllerEventPhase.Repeated }) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([], [], item, action with { ControllerButton = ControllerButton.X }) is null);
+}
 
 static IntentHandlerCandidate Candidate(string id) => new(id, 42, CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web), true);
 static IntentResolution Resolve(IReadOnlyList<IntentHandlerCandidate> candidates, string? preferred = null) =>

@@ -1,9 +1,9 @@
 # Widget intents (in development)
 
-The ordinary button/card path is implemented through contracts, manifests,
-Bridge dispatch, worker delivery, native frontend activation and passive delivery
-into existing full-widget or authored-layout pins. Pinned/indexed source admission
-and compact embedded-media destinations are still being added.
+Button/card actions, pinned controls and virtualized row actions are implemented
+through contracts, manifests, Bridge dispatch, worker delivery, native frontend
+activation and passive delivery into existing full-widget or authored-layout pins.
+Compact embedded-media destinations are still being added.
 Do not advertise intent handling in published packages until the full integration
 and release compatibility gate are complete. Track progress in
 [the Game Help plan](../maintainers/game-help-implementation-plan.md).
@@ -144,10 +144,14 @@ UI.Button("Read guide", "read-guide", "guide")
 `ActionSurfaceElement` provides the same `OpenIntent` method. The manifest must
 declare the matching request contract. Payloads are validated and cloned when
 authored. Intent payload changes participate in atomic presentation updates and
-input-authority revalidation. Initial routing admits only primary activation
+input-authority revalidation. Routing admits only primary activation
 (pointer/keyboard or controller A press); repeat/release and unrelated shortcuts
-do not gain intent authority. Indexed and pinned routing still require their
-respective lease/projection admission before activation is enabled there.
+do not gain intent authority. Pinned controls use their live selected projection;
+virtualized rows use the exact retained item lease, query and active input scope,
+including within a pin. Retired selections/leases are rejected. Intent activation
+does not also invoke the widget's ordinary action callback. A pinned source that
+opens another widget or a chooser returns host input to the main window first;
+this adds no return-to-sender stack or B remapping.
 
 Receivers override `Widget.OnIntentAsync(WidgetIntentRequest, CancellationToken)`
 and return `WidgetIntentResult.Accepted` after accepting data into widget state,

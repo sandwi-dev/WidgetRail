@@ -58,6 +58,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         RefreshGroupHeaderStyles();
     }
     internal Func<WidgetPresentationAuthority, CancellationToken, Task<bool>>? EnsureInteractionAsync { get; set; }
+    internal Func<WidgetActionRequest, Task>? DispatchIntentAsync { get; set; }
     internal bool Owns(WidgetIndexedRows owner) => ReferenceEquals(owner, source);
     internal WidgetIndexedRow? FocusedRow() => source is not null && FocusedIndex() is { } index
         ? ((IndexedItem<WidgetIndexedRow>)source.Items[index]).Value : null;
@@ -339,6 +340,14 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             if (EnsureInteractionAsync is { } admit && !await admit(displayed.Authority, CancellationToken.None)) return true;
             if (disposed || !CanReceiveInput || !ReferenceEquals(source, capturedSource) || !capturedBinding.SameInput(capturedSource.Presentation) ||
                 !row.Lease.IsCurrent || !row.Lease.ClaimsInput(displayed, row.Item.Key, button, phase)) return true;
+            if (button == ControllerButton.A && phase == ControllerEventPhase.Pressed &&
+                session.ResolveIndexedIntentAction(row.Lease, displayed, row.Item.Key) is { } intentAction)
+            {
+                if (DispatchIntentAsync is { } dispatch) await dispatch(new(displayed, intentAction)
+                { IndexedLease = row.Lease, IndexedItemKey = row.Item.Key,
+                    PinnedSelection = capturedBinding.Selection, PinnedProjection = capturedBinding.Projection });
+                return true;
+            }
             await row.Lease.AdmitInputAsync(displayed, row.Item.Key, button, phase,
                 sequence: inputSequence, monotonicTimestampMicroseconds: timestamp);
             // A null reply also denotes a worker publication racing IPC. It must
