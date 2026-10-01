@@ -7,7 +7,7 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
-### Native toggles and widget-list rows — 2026-10-01, validated; packaging pending
+### Native toggles and widget-list rows — 2026-10-01, validated; test candidate preparing
 
 User authorized the remaining suggested improvements. Continue on the existing
 codex/settings-usability branch (preview.17 is delivered but not accepted/merged).
@@ -60,7 +60,12 @@ native Toggle provider, retaining assertions for serialized state and action IDs
 Code review also corrected Color-versus-Brush resources for stock visual states,
 and verified disposal and controller-page admission. The pre-existing unrelated
 documentation publication assertion recorded in preview.17 remains unchanged.
-Normal preview.18 / FileVersion0.1.0.17 and Settings0.1.6 are ready for packaging.
+Normal preview.18 / FileVersion0.1.0.17 and Settings0.1.6 are ready. Source b5047fed.
+The user then requested no installer yet: build a coherent test candidate, close
+installed preview.17 normally and launch the candidate with the existing user
+profile. No installer compilation or installation is authorized in this step.
+A normal release folder supplies the complete frontend, Bridge, sealed Settings,
+workers and bundled widgets; it will be launched directly for physical acceptance.
 
 
 
