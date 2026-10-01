@@ -7,6 +7,43 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### Settings/Spotify control consistency — 2026-10-01, candidate running
+
+User requested parallel fixes from preview.22 screenshots. Implemented in
+codex/widget-control-consistency with three bounded subagents sharing this worktree.
+Settings detail actions mixed transparent/raised and danger styles. They now share
+raised neutral surfaces; reversible enable/disable is neutral, destructive actions
+retain danger text. Disabled Settings controls use muted ink, surface fill and no
+border; baseline button/select/ActionSurface disabled ink is explicitly subdued
+across built-in themes. No global opacity factor is added. An initial theme test
+rejected opacity because of the existing anti-compounding rule; corrected to ink
+and border only and the exact suite passed. High contrast stays host-owned.
+The LocalDataButton helper's disabled flag was overwritten by its caller; validity
+and actual data availability now compose rather than re-enabling empty data rows.
+
+Spotify playlists had fixed 280px rows centered inside wider adaptive cells. Remove
+the cap and use full cell width, preserving artwork/text leading alignment. Devices
+Play here/Stop set Disabled for pending work; they now retain focus with Busy and
+single-flight dispatch protection. Provider Starting retains page-entry focus too.
+Setup buttons use Busy; missing duplicate guards on Check/Disconnect added. Actual
+capability/unavailable restrictions and setup text-entry locking remain intact.
+
+Validation: PlatformSettings/themes 27/27, Settings 82/82, Spotify 80/80; native
+Spotify main/pin/device busy checks 65/65 and Settings layout/detail checks 305/305.
+Detail-only 57-check run/screenshots inspected. Evidence: artifacts/control-consistency.
+Native fixture required an explicit ViewNode[] cast for CsWinRT; corrected and built.
+All provider actions used fakes, no real Spotify/system-setting actions performed.
+Source review completed. Spotify 0.3.84 packaged via its full-trust package builder;
+Settings 0.1.8 and app preview.23 published from source commit 783182d6;
+production/developer package verification passed (8/12 widgets). User approved close/validation/relaunch;
+preview.22 PID5212 closed normally. Preserve worktrees and evidence; no installer,
+merge or push requested. Update the installed Spotify package before relaunch so the
+candidate exercises the new widget code, preserving existing enabled state.
+Delivered: CLI installed and selected Spotify 0.3.84, restored its enabled state
+and retained 0.3.83 for rollback. Preview.23 launched normally with --show as
+PID36128 with its owned Bridge; no PID36128 frontend errors recorded at startup.
+Candidate remains open for physical testing. No installer, merge/push or cleanup.
+
 ### Local widget installation accepted and integrated — 2026-10-01
 
 User accepted preview.22 and requested integration/closeout. Merge 6027699b brings

@@ -37,6 +37,18 @@ internal sealed partial class WidgetStylesValidationPage
                 await Task.Delay(100);
                 presenter.UpdateLayout();
                 var label = Path.GetFileNameWithoutExtension(file) + " " + width + (largeText ? " large text" : "");
+                foreach (var node in Walk(snapshot.Root).Where(node => node.StyleClasses.Contains("widget-detail-action")))
+                {
+                    var button = Find<Button>("Widget." + node.Id)!;
+                    Check(button.IsEnabled == (node.IsDisabled != true), label + ": detail availability matches " + node.Id);
+                    if (node.IsDisabled == true)
+                    {
+                        var enabled = Walk(snapshot.Root).First(item => item.Id == "installed.details.update");
+                        var peer = Find<Button>("Widget." + enabled.Id)!;
+                        Check(ColorOf(button.Foreground) != ColorOf(peer.Foreground) && ColorOf(button.Background) != ColorOf(peer.Background),
+                            label + ": disabled detail is visually distinct " + node.Id);
+                    }
+                }
                 foreach (var node in Walk(snapshot.Root).Where(node => node.StyleClasses.Contains("wrail-setting-row")))
                 {
                     var row = Find<FrameworkElement>("Widget." + node.Id)!;

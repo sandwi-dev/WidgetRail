@@ -168,8 +168,6 @@
 .wrail-switch--on,
 .wrail-switch:selected,
 .setting-row:selected { background: var(--surface-active, rgba(48, 47, 43, 0.98)); }
-.wrail-switch:disabled,
-.setting-row:disabled { background: var(--surface-subtle, rgba(39, 39, 36, 0.92)); }
 
 .primary-button,
 .secondary-button,
@@ -234,3 +232,24 @@
 .installed-entry-status { font-size: 13px; color: var(--text-muted); max-lines: 3; }
 .installed-entry-version { font-size: 13px; color: var(--text-muted); max-width: 140px; max-lines: 2; text-align: end; }
 .installed-entry-chevron { font-size: 20px; color: var(--text-muted); width: 16px; }
+
+/* Management actions share a surface; only destructive commands use danger ink. */
+.widget-detail-action {
+  background: var(--surface-raised);
+  border-color: var(--border, rgba(246, 240, 226, 0.12));
+}
+
+/* Author-owned action styles must not mask unavailable controls. */
+.category-card:disabled,
+.setting-row:disabled,
+.setting-control:disabled,
+.wrail-switch:disabled,
+.primary-button:disabled,
+.secondary-button:disabled,
+.danger-button:disabled,
+.wrail-stepper__button:disabled,
+.widget-detail-action:disabled {
+  color: var(--text-muted);
+  background: var(--surface);
+  border-color: transparent;
+}

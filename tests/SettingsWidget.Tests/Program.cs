@@ -37,6 +37,8 @@ if (args is ["--export-settings-layout-fixtures", var settingsFixtureDirectory])
     await Activate(installed);
     await Action(installed, "open.installed-widgets");
     await ExportRendererSnapshot(Snapshot(installed), Path.Combine(settingsFixtureDirectory, "widgets.json"));
+    await Action(installed, "installed.select.1");
+    await ExportRendererSnapshot(Snapshot(installed), Path.Combine(settingsFixtureDirectory, "widget-details.json"));
     await installed.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
     return 0;
 }
@@ -123,6 +125,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bundled first-party capability manifests join permission review", BundledPermissionsAreDiscovered),
     ("First-party packages are never auto-granted", FirstPartyIsNotAutoGranted),
     ("Explicit refresh reloads themes catalog and permissions while visible", ExplicitRefresh),
+    ("Widget detail actions stay consistent and distinguish unavailable controls across themes", WidgetDetailActionThemes),
     ("Manifest and default WRSS validate", ShippedAssetsValidate),
 };
 
@@ -1296,6 +1299,13 @@ static async Task InstalledWidgetReview()
     Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
     Assert.Equal("installed.details", details.ActiveInputScopeId);
     Assert.HasShortcut(details.Root, "installed.details", ControllerButton.B, "back");
+    Assert.True(Buttons(details.Root).Where(button => button.Id.StartsWith("installed.details.", StringComparison.Ordinal))
+        .All(button => button.StyleClasses.Contains("widget-detail-action")),
+        "Every widget management action must share the same surface styling.");
+    Assert.True(!Button(details.Root, "installed.details.toggle").StyleClasses.Contains("danger-button"),
+        "Reversible enable/disable must not use destructive styling.");
+    Assert.True(Button(details.Root, "installed.details.uninstall").StyleClasses.Contains("danger-button"),
+        "Destructive uninstall must remain distinguishable.");
     Assert.Contains("Unsigned", Text(details.Root, "installed.details.trust").Text!);
     Assert.Contains("publisher unverified", Text(details.Root, "installed.details.trust").Text!);
     Assert.True(!Nodes(details.Root).Any(node => node.Id == "installed.details.digest"), "Technical details must not crowd primary management.");
@@ -1464,6 +1474,7 @@ static async Task InstalledWidgetLocalDataClear()
     Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
     var cleared = Snapshot(widget);
     Assert.Equal("No local data stored", Button(cleared.Root, "installed.details.local-data").Text);
+    Assert.Equal(true, Button(cleared.Root, "installed.details.local-data").IsDisabled);
     Assert.Equal(2, service.InspectCount);
     Assert.Equal(1, service.ClearCount);
     Assert.Equal("dev.test.local-a", service.ClearedWidgetId);
@@ -1719,8 +1730,8 @@ static async Task BuiltInWidgetInventory()
     Assert.Contains("Built-in", Text(details.Root, "installed.details.source").Text!);
     Assert.Contains("Included and updated with WidgetRail",
         Text(details.Root, "installed.details.status").Text!);
-    Assert.True(Button(details.Root, "installed.details.toggle").StyleClasses.Contains("danger-button"),
-        "Built-in disable must use the community-widget danger style.");
+    Assert.True(Button(details.Root, "installed.details.toggle").StyleClasses.Contains("secondary-button"),
+        "Reversible built-in disable must use neutral action styling.");
     string[] controlOrder = ["installed.details.permissions",
         "installed.details.toggle", "installed.details.local-data", "installed.details.technical", "installed.details.back"];
     Assert.SequenceEqual(controlOrder, Buttons(details.Root)
@@ -1733,8 +1744,8 @@ static async Task BuiltInWidgetInventory()
     await Action(widget, "installed.builtin.toggle");
     Assert.True(!(await Store(temp.Path).LoadAsync()).BuiltInWidgets.IsEnabled("widgetrail.firstparty.audio-mixer"), "Built-in disable was not persisted.");
     var disabledBuiltIn = Snapshot(widget);
-    Assert.True(Button(disabledBuiltIn.Root, "installed.details.toggle").StyleClasses.Contains("primary-button"),
-        "Built-in enable must use the community-widget primary style.");
+    Assert.True(Button(disabledBuiltIn.Root, "installed.details.toggle").StyleClasses.Contains("secondary-button"),
+        "Reversible built-in enable must retain neutral action styling.");
     Assert.Equal("installed.details.toggle", Button(disabledBuiltIn.Root, "installed.details.local-data").Focus!.Up);
     Assert.Equal("installed.details.toggle", Button(disabledBuiltIn.Root, "installed.details.permissions").Focus!.Down);
     Assert.Valid(disabledBuiltIn);
@@ -2844,6 +2855,40 @@ static async Task BundledPermissionsAreDiscovered()
     var networkCapabilities = Snapshot(widget);
     Assert.Contains("Required", Button(networkCapabilities.Root, "capability.item.0").Text!);
     Assert.Contains("Optional", Button(networkCapabilities.Root, "capability.item.1").Text!);
+}
+
+static Task WidgetDetailActionThemes()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new ThemeCatalog(new PlatformSettingsPaths(temp.Path));
+    var project = ProjectDirectory();
+    var package = WrssPackageLoader.LoadFile(
+        Path.Combine(project, "styles", "default.wrss"), Path.Combine(project, "styles"));
+    foreach (var theme in catalog.BuiltInThemes)
+    {
+        var compiled = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package, package, theme.Package);
+        Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
+        var baseline = compiled.Theme!.Resolve(new WrssElement("button", null,
+            new HashSet<string>(["secondary-button", "widget-detail-action"])));
+        var muted = compiled.Theme.Resolve(new WrssElement("text", null,
+            new HashSet<string>(["page-help"])));
+        foreach (var actionClass in new[] { "setting-row", "primary-button", "secondary-button", "danger-button" })
+        {
+            var classes = new HashSet<string>([actionClass, "widget-detail-action"]);
+            var enabled = compiled.Theme.Resolve(new WrssElement("button", null, classes));
+            Assert.Equal(baseline.Get("background")?.Text, enabled.Get("background")?.Text);
+            Assert.Equal(baseline.Get("border-color")?.Text, enabled.Get("border-color")?.Text);
+            var disabled = compiled.Theme.Resolve(new WrssElement("button", null, classes,
+                new HashSet<WrssPseudoState>([WrssPseudoState.Disabled])));
+            Assert.Equal(muted.Get("color")?.Text, disabled.Get("color")?.Text);
+            Assert.Equal("transparent", disabled.Get("border-color")?.Text);
+            Assert.True(disabled.Get("background")?.Text != enabled.Get("background")?.Text,
+                $"{theme.Descriptor.Id}: unavailable {actionClass} retained the enabled fill.");
+            Assert.True(disabled.Get("color")?.Text != enabled.Get("color")?.Text,
+                $"{theme.Descriptor.Id}: unavailable {actionClass} retained enabled ink.");
+        }
+    }
+    return Task.CompletedTask;
 }
 
 static async Task ShippedAssetsValidate()

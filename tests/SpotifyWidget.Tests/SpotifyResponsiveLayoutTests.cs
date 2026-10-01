@@ -56,6 +56,13 @@ internal static class SpotifyResponsiveLayoutTests
         Equal("0px", bodyStyle.Get("min-width")?.Text);
         Equal("1", bodyStyle.Get("flex-grow")?.Text);
         Equal("12px", bodyStyle.Get("gap")?.Text);
+        // Grid cells adapt to the page width; a fixed-width tile centers inside
+        // the cell and leaves its artwork inset from the list's leading edge.
+        var playlistStyle = Resolve(theme, "row", "spotify.playlist.item",
+            "spotify-media-row", "spotify-playlist-row");
+        Equal("100%", playlistStyle.Get("width")?.Text);
+        Equal("0px", playlistStyle.Get("min-width")?.Text);
+        Equal<string?>(null, playlistStyle.Get("max-width")?.Text);
         var compactPin = snapshot.PinnedLayouts.Single(layout => layout.Id == SpotifyPresentation.CompactPinnedLayoutId);
         Equal(360d, compactPin.Surface.PreferredWidth);
         Equal(360d, compactPin.Surface.PreferredHeight);

@@ -1112,3 +1112,10 @@ button:pressed, .wrail-action-surface:pressed, .wrail-choice-row:pressed {
 .wrail-setting-row__label { font-weight: 600; color: var(--text); }
 .wrail-setting-row__description { color: var(--text-muted); }
 .wrail-setting-row__control { min-width: 0; justify: center; }
+
+/* Authored button brushes replace native Disabled brushes. Keep an explicit
+   baseline state for every themed command, including compound action content. */
+button:disabled, select:disabled, .wrail-action-surface:disabled {
+  color: var(--text-subdued);
+  border-color: var(--border);
+}

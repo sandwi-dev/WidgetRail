@@ -368,14 +368,14 @@ internal static class SpotifyPresentation
                     "spotify.setup-step-1").Classes("spotify-setup-step"),
             UI.Button("Open developer dashboard", "spotify.setup.dashboard",
                     "spotify.setup.dashboard")
-                .Disabled(setupBusy)
+                .Busy(setupBusy)
                 .FocusDown("spotify.setup.copy-redirect")
                 .Classes("spotify-secondary", "spotify-setup-action"),
             UI.Text($"2. Add this exact redirect URI: {SpotifyApplicationContract.ExactRedirectUri}",
                     "spotify.setup-step-2").Classes("spotify-setup-step"),
             UI.Button("Copy redirect URI", "spotify.setup.copy-redirect",
                     "spotify.setup.copy-redirect")
-                .Disabled(setupBusy)
+                .Busy(setupBusy)
                 .FocusUp("spotify.setup.dashboard")
                 .FocusDown("spotify.setup.client-id")
                 .Classes("spotify-secondary", "spotify-setup-action"),
@@ -390,7 +390,7 @@ internal static class SpotifyPresentation
                 .Classes("spotify-setup-input"),
             UI.Button("Check configuration", "spotify.setup.done",
                     "spotify.setup.done")
-                .Disabled(setupBusy)
+                .Busy(setupBusy)
                 .FocusUp("spotify.setup.client-id")
                 .Classes("spotify-primary", "spotify-setup-action"),
         };
@@ -401,7 +401,7 @@ internal static class SpotifyPresentation
                 .FocusDown("spotify.disconnect.setup");
             actions.Add(UI.Button("Disconnect account", "spotify.disconnect",
                     "spotify.disconnect.setup")
-                .Disabled(setupBusy)
+                .Busy(setupBusy)
                 .FocusUp("spotify.setup.done")
                 .FocusDown("spotify.setup.close")
                 .Classes("spotify-secondary", "spotify-setup-action", "is-quiet"));
@@ -548,9 +548,7 @@ internal static class SpotifyPresentation
         SpotifyDestination destination)
     {
         if (presentation.Navigation.Route == SpotifyRoute.Setup)
-            return presentation.SetupBusy
-                ? "spotify.setup.close"
-                : "spotify.setup.dashboard";
+            return "spotify.setup.dashboard";
         if (presentation.Navigation.Route == SpotifyRoute.PlaylistDetail &&
             presentation.PlaylistDetail is { } detail)
         {
@@ -581,7 +579,6 @@ internal static class SpotifyPresentation
         if (presentation.PageError is not null)
             return "spotify.page.error.shared.action";
         if (presentation.LocalPlayback is { State: not (
-                SpotifyLocalPlaybackState.Starting or
                 SpotifyLocalPlaybackState.PremiumRequired or
                 SpotifyLocalPlaybackState.Unavailable) })
             return "spotify.local.shared.action";
@@ -931,7 +928,7 @@ internal static class SpotifyPresentation
                     localPlaybackBusy ? "Starting" : LocalStateLabel(local.State),
                     localPlaybackBusy ? StatusTone.Info : LocalStateTone(local.State),
                     isDisabled: local.State is SpotifyLocalPlaybackState.PremiumRequired or
-                        SpotifyLocalPlaybackState.Unavailable || localPending,
+                        SpotifyLocalPlaybackState.Unavailable,
                     isBusy: localPending,
                     glyph: WidgetGlyph.Music)
                 .Classes("spotify-device-row"));
