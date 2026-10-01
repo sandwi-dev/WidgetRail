@@ -7,7 +7,7 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
-### Native toggles and widget-list rows — 2026-10-01, validated; test candidate preparing
+### Native toggles and widget-list rows — 2026-10-01, test candidate running
 
 User authorized the remaining suggested improvements. Continue on the existing
 codex/settings-usability branch (preview.17 is delivered but not accepted/merged).
@@ -66,6 +66,18 @@ installed preview.17 normally and launch the candidate with the existing user
 profile. No installer compilation or installation is authorized in this step.
 A normal release folder supplies the complete frontend, Bridge, sealed Settings,
 workers and bundled widgets; it will be launched directly for physical acceptance.
+
+Candidate built and launched. Normal source f301a067 publication passed both
+8/12-widget catalog/integrity checks. Production app root:
+C:/Users/dwive/.codex/worktrees/settings-usability/WidgetRail/artifacts/releases/0.1.0-preview.18/WidgetRail-0.1.0-preview.18-win-x64/.
+Frontend PID24720 launched with --show and the normal existing
+C:/Users/dwive/AppData/Local/WidgetRail profile; own Bridge PID16052 and Settings
+worker PID39292 verified under that same candidate root. UIA shows rendered
+Settings controls; no failure entry for the candidate PID. Normal profile election
+is retained. No installer built or installed, no profile reset, no provider-control
+actions sent. Candidate left running for the user's physical test. Runtime paths,
+processes and startup UI evidence are in artifacts/settings-completion/candidate-*.
+New UI work remains committed on codex/settings-usability, unmerged and unpushed.
 
 
 
