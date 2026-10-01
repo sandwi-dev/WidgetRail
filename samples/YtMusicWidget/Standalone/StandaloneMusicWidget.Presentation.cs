@@ -135,7 +135,7 @@ public sealed partial class StandaloneMusicWidget
                 (WidgetElement)UI.Button(Title(filter), "library." + filter, "library." + filter)
                     .Selected(_value == filter).Classes("music-filter")).ToArray();
             content.Add(UI.Row("library.toolbar",
-                UI.ResponsiveGrid("library.filters", 96, 4, filters).Classes("music-filters"),
+                UI.ResponsiveGrid("library.filters", 72, 4, filters).Classes("music-filters"),
                 RefreshControl()).Classes("music-library-toolbar"));
         }
         if (!state.Connected && _tab == "library")

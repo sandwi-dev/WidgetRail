@@ -1,5 +1,7 @@
 # YouTube Video
 
+Your selected playback volume is remembered across restarts and applied when a video loads.
+
 Watch a video without leaving your game. Search public YouTube videos, play a link,
 or pin the video beside your game with controller controls still available.
 

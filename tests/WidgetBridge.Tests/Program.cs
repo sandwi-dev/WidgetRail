@@ -115,6 +115,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog widget icons use the closed WidgetGlyph set with a safe fallback", CatalogGlyphIsClosed),
     ("Catalog rejects invalid WRSS with safe diagnostics", InvalidThemeIsRejected),
     ("Bundled widget failures are isolated from Bridge startup and recover", BundledWidgetFailuresAreIsolated),
+    ("Bundled first-party defaults require sealed provenance and preserve revocations", BundledPermissionDefaults),
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
     ("Catalog enumeration does not launch workers", EnumerationIsLazy),
     ("Package SVG icons resolve lazily with exact catalog authority and no worker",
@@ -1365,6 +1366,73 @@ static Task InvalidThemeIsRejected()
     Assert.True(!exception.Message.Contains(System.IO.Path.GetTempPath(), StringComparison.OrdinalIgnoreCase),
         "Catalog diagnostics must not disclose absolute package paths.");
     return Task.CompletedTask;
+}
+
+static async Task BundledPermissionDefaults()
+{
+    const string packageId = "widgetrail.firstparty.default-test";
+    const string publisher = "widgetrail.firstparty";
+    var read = PlatformCapabilities.AudioSessionsReadV1;
+    var preview = PlatformCapabilities.TaskWindowsPreviewV1;
+    using var fixture = TemporaryBundledCatalog.Create(
+        new(packageId, "First-party defaults", InvalidStyle: false,
+            Publisher: publisher, Permissions: [read], OptionalPermissions: [preview]),
+        new("dev.test.bundled-third-party", "Bundled third party", InvalidStyle: false, Permissions: [read]),
+        new("widgetrail.firstparty.rejected-test", "Rejected first party", InvalidStyle: true,
+            Publisher: publisher, Permissions: [read]),
+        new("widgetrail.firstparty.tampered-test", "Tampered first party", InvalidStyle: false,
+            Publisher: publisher, Permissions: [read]));
+    fixture.TamperPayload("widgetrail.firstparty.tampered-test");
+    using var installed = new TemporaryDirectory("wrail-bundled-defaults-installed");
+    using var consent = new TemporaryDirectory("wrail-bundled-defaults-consent");
+    var store = new ConsentStore(consent.Path);
+    var catalog = BridgeCatalog.LoadTrustedObserved(fixture.Path, installed.Path).Catalog;
+    var configured = catalog.GetConfigured(packageId);
+    Assert.True(configured.GrantsBundledPermissionDefaults, "Sealed first-party admission did not establish defaults.");
+    Assert.False(catalog.GetConfigured("dev.test.bundled-third-party").GrantsBundledPermissionDefaults,
+        "Bundled third-party widgets must still request consent.");
+    await catalog.EnsureBundledPermissionDefaultsAsync(store);
+    var document = await store.LoadAsync();
+    Assert.Equal(2, document.Entries.Count);
+    Assert.True(document.Entries.All(entry => entry.PackageId == packageId && entry.Decision == ConsentDecision.Grant),
+        "Only admitted first-party declarations receive default grants.");
+    await catalog.EnsureBundledPermissionDefaultsAsync(store);
+    Assert.Equal(document.Revision, (await store.LoadAsync()).Revision);
+
+    var identity = new BrokerWidgetIdentity(packageId, publisher, configured.InstanceId);
+    var owner = new object();
+    try
+    {
+        WindowPreviewRegistry.Replace(owner, identity, new Dictionary<string, NativeWindowPreviewTarget>
+        { ["default-preview"] = new("1234", 42, "12345678", "TestWindow") });
+        Assert.SequenceEqual(["default-preview"], await WindowPreviewResolver.AllowedWindowIdsAsync(store, configured, default));
+        var snapshot = new WidgetView(UI.WindowPreview("default-preview", "preview", "Preview"))
+            .CreateSnapshot("default.snapshot", 1);
+        Assert.Equal(1, (await WindowPreviewResolver.ResolveAsync(store, configured, snapshot, default)).Count);
+        await store.SetDecisionAsync(identity, preview, ConsentDecision.Deny);
+        await BridgeCatalog.LoadTrustedObserved(fixture.Path, installed.Path).Catalog
+            .EnsureBundledPermissionDefaultsAsync(store);
+        Assert.Equal(ConsentDecision.Deny, await store.GetDecisionAsync(identity, preview));
+        Assert.Equal(0, (await WindowPreviewResolver.AllowedWindowIdsAsync(store, configured, default)).Count);
+        Assert.Equal(0, (await WindowPreviewResolver.ResolveAsync(store, configured, snapshot, default)).Count);
+    }
+    finally { WindowPreviewRegistry.Retire(owner); }
+
+    // A downloaded package may claim the exact same manifest ID and publisher.
+    // Its installed content authority cannot inherit a shipped widget's grant.
+    var installedCatalog = new WidgetRail.WidgetCatalog.WidgetCatalog(installed.Path);
+    await InstallWidgetAsync(installedCatalog, fixture.Root, packageId, enabled: true,
+        permissions: [read, preview], publisher: publisher);
+    var emptyTrustedPath = Path.Combine(fixture.Root, "empty-catalog.json");
+    await File.WriteAllTextAsync(emptyTrustedPath, """{"catalogVersion":1,"widgets":[],"bundledWidgets":[]} """);
+    var downloadedLoad = await BridgeCatalog.LoadWithInstalledAsync(emptyTrustedPath, installed.Path, fixture.WorkerPath);
+    var downloaded = downloadedLoad.Catalog.GetConfigured(packageId);
+    Assert.False(downloaded.GrantsBundledPermissionDefaults, "Installed packages cannot gain bundled defaults by claimed identity.");
+    await downloadedLoad.Catalog.EnsureBundledPermissionDefaultsAsync(store);
+    Assert.True(downloaded.PublisherId.StartsWith("unsigned.", StringComparison.Ordinal),
+        "Downloaded package authority must be content-derived.");
+    Assert.Equal<ConsentDecision?>(null, await store.GetDecisionAsync(
+        new(downloaded.PackageId, downloaded.PublisherId, downloaded.InstanceId), read));
 }
 
 static async Task BundledWidgetFailuresAreIsolated()
@@ -7290,7 +7358,10 @@ file sealed record TemporaryBundledWidgetDefinition(
     bool PackageIcon = false,
     string PackageIconPathData = "M2 12 L12 2 L22 12 L12 22 Z",
     bool MixedPackageIcons = false,
-    bool OverAggregatePackageIcons = false);
+    bool OverAggregatePackageIcons = false,
+    string Publisher = "dev.test",
+    IReadOnlyList<string>? Permissions = null,
+    IReadOnlyList<string>? OptionalPermissions = null);
 
 file sealed class TemporaryBundledCatalog : IDisposable
 {
@@ -7383,7 +7454,7 @@ file sealed class TemporaryBundledCatalog : IDisposable
             {
                 manifestVersion = 1,
                 id = packageId,
-                publisher = "dev.test",
+                publisher = widget.Publisher,
                 name = widget.Name,
                 version = "1.0.0",
                 hostApi = new { minimum = "1.0", maximumMajor = 1 },
@@ -7395,8 +7466,8 @@ file sealed class TemporaryBundledCatalog : IDisposable
                 },
                 presentation,
                 iconAssets,
-                permissions = Array.Empty<string>(),
-                optionalPermissions = Array.Empty<string>(),
+                permissions = widget.Permissions ?? [],
+                optionalPermissions = widget.OptionalPermissions ?? [],
                 residencyPolicy = new
                 {
                     schemaVersion = 1,
@@ -7443,6 +7514,9 @@ file sealed class TemporaryBundledCatalog : IDisposable
             InstalledPackageIntegrity.Seal(Root, packageRoot, new WidgetCatalogOptions());
         }
     }
+
+    public void TamperPayload(string widgetId) =>
+        File.AppendAllText(System.IO.Path.Combine(_packageRoots[widgetId], "payload", "FixtureWidget.dll"), "tampered");
 
     public void AddConfiguredDeclaration(string id, string packageId)
     {

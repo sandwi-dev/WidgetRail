@@ -20,6 +20,8 @@ internal sealed partial class OverlayShellPage
             try
             {
                 if (startup is not null) await startup;
+                await ValidateStartupPresentationAsync(Check);
+                if (Environment.GetCommandLineArgs().Contains("--validate-startup-only")) { Write(true, null); return; }
                 var indicator = openingIndicator!;
                 await SelectAsync("settings", true);
                 await Task.Delay(250);

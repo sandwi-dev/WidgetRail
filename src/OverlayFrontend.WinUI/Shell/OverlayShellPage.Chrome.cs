@@ -42,6 +42,7 @@ internal sealed partial class OverlayShellPage
         trayGuide.ApplyAppearance(ShellPalette, Appearance, systemUi.AnimationsEnabled);
         RefreshSystemStatusAppearance();
         openingIndicator?.ApplyAppearance(ShellPalette, Appearance, systemUi.AnimationsEnabled);
+        RefreshStartupPresentation();
         RefreshRadialChooser();
     }
 

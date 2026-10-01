@@ -7,6 +7,58 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### Post-migration usability batch — 2026-10-01, in progress
+
+User approved parallel implementation on `codex/winui-usability`, based on main
+16388cf4. Pinned Move/Resize and Opacity must retain the radial and return its
+selection, matching Interact. Other entry contexts must restore remembered focus.
+Additional scope: left-aligned Network rows; persistent Music and optional Video
+volume; compact Music library filters; themed cold-start feedback that transitions
+to the ready shell; Settle as the default focus motion; default declared permissions
+for verified bundled widgets while preserving explicit revocations.
+
+Ownership: pinned_modes handles pin adjustment/input; music_preferences handles
+both media packages/preferences/layout; revert_msix_runtime handles bundled consent;
+root handles startup, network style, default motion, integration and delivery.
+Managed builds are serialized to avoid shared output races. Installed app/data are
+unchanged until needed for validation; user authorized closing the overlay. Delivery
+remains a normal Inno update for manual installation. No MSIX or test-profile changes.
+Evidence: `artifacts/usability-20261001/` in the implementation checkout.
+Implementation complete. Pinned adjustments retain their logical radial/widget
+context, revoke input during adjustment, and restore exact native focus on Save/
+Cancel. Hide/deactivation revokes deferred return. Network profile controls use
+explicit start alignment. Focus defaults to Settle while explicit choices remain.
+Startup reuses the themed widget loading indicator with the app mark, masks only
+incomplete content, and crossfades once the first presentation is ready. Readiness
+is separate from Bridge connection. Retry reuses an already connected Bridge;
+input releases and hide/reopen cancellation remain owned by the host.
+
+Verified bundled first-party packages seed only missing persisted permission grants
+under the consent lock; explicit denials, downloaded packages and normal action/
+lifecycle/gesture checks retain their existing behavior. Music and Video persist
+intentional volume separately from provider observations using bounded atomic
+coalesced writes. Music filters use compact widths/padding with 44px targets.
+Music 0.3.35 / Video 0.3.37 packages are in artifacts/usability-music; both validated.
+
+Managed checks passed: PlatformBroker64, bundled provenance2, window previews2,
+Music31, YouTube55 (including JS adapter), PlatformSettings27, Network31,
+WinUiMotion15, WinUiShell161. Native startup9 and pinned placement65 passed.
+All 460 native style checks passed. Normal preview.16 publication is next. Initial motion-test
+invocation incorrectly passed MSBuild-only switches to the MTP runner; canonical
+repository invocation discovered all tests. Updated the explicit Fade test to
+select Fade now that the default is Settle. Native compile corrections were a
+captured nullable Bridge owner and validation imports. A native retry regression
+caught the previous Ready badge surviving into a new startup; clearing the old
+badge on Begin fixed it and the replacement gate passed. First native harness
+invocation used space-separated options instead of the required equals syntax;
+that infrastructure timeout did not run the requested scenario.
+
+The installed preview.15 was closed with its normal shutdown path. User explicitly
+approved updating both media widgets via installed CLI after installer preparation.
+No audio/network/display/power actions were sent; native checks used isolated fixture
+profiles. Unchanged native DLLs for Debug validation came from accepted preview.15,
+with hashes recorded; normal release pipeline rebuilds them from source.
+
 ### Accepted migration checkpoint and worktree retirement — 2026-10-01
 
 The user confirmed the YouTube fix works and authorized merging the current

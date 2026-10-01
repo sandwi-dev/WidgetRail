@@ -9,9 +9,12 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
-    private sealed record PinnedAdjustment(PinnedSurface Surface, PinnedPlacementAdjustment Placement, bool OpacityOnly);
+    private sealed record PinnedAdjustment(PinnedSurface Surface, PinnedPlacementAdjustment Placement, bool OpacityOnly,
+        long Selection, long VisibleSession);
     private PinnedAdjustment? pinnedAdjustment;
     private bool savingPinnedAdjustment;
+    private bool restorePinnedAdjustmentFocus;
+    private bool PinnedAdjustmentActive => pinnedAdjustment is not null || savingPinnedAdjustment;
     private readonly PinnedPlacementInput pinnedPlacementInput = new();
     private RawControllerState lastPlacementController;
 
@@ -43,7 +46,7 @@ internal sealed partial class OverlayShellPage
 
     private Task BeginPinnedAdjustmentAsync(bool opacityOnly)
     {
-        if (retired || !visible || !foreground || IsMediaFullscreen || savingPinnedAdjustment ||
+        if (retired || !visible || !foreground || switching || IsMediaFullscreen || savingPinnedAdjustment ||
             pinned is not { } current || !current.IsCurrent) return Task.CompletedTask;
         CancelPinnedAdjustment();
         ExitPinnedInteraction(restoreMain: false);
@@ -51,12 +54,15 @@ internal sealed partial class OverlayShellPage
         if (!current.Window.IsVisible) return Task.CompletedTask;
         var placement = new PinnedPlacementAdjustment(current.Window.Bounds, current.Monitor, current.Limits,
             current.LayoutId, current.Window.OpacityPercent);
-        pinnedAdjustment = new(current, placement, opacityOnly);
+        pinnedAdjustment = new(current, placement, opacityOnly, selectionVersion, visibleSince);
+        restorePinnedAdjustmentFocus = true;
         var state = lastPlacementController;
         pinnedPlacementInput.Prime(state.Buttons, state.LeftThumbX, state.LeftThumbY, state.RightThumbX, state.RightThumbY, Environment.TickCount64);
         rightStick.Reset(); trayHold.Reset(); radialInput.Reset();
-        radialRequested = false;
-        SetInteractive(false);
+        // Adjustment owns input without changing the underlying widget/radial
+        // focus context. The wheel stays drawn and retains its selection.
+        ClearTrayFocus();
+        surface?.SetAutomaticFocusEnabled(false);
         surface?.SetPresentationInputEnabled(false);
         current.SetInput(false);
         current.Window.SetPlacementActive(true);
@@ -178,17 +184,20 @@ internal sealed partial class OverlayShellPage
         {
             if (entered) transitions.Release();
             savingPinnedAdjustment = false;
-            EndPinnedAdjustmentPresentation(adjustment.Surface);
+            EndPinnedAdjustmentPresentation(adjustment);
             if (!retired) { UpdateTrayHelp(); UpdateDiagnostics(); }
         }
     }
 
-    private void CancelPinnedAdjustment()
+    private void CancelPinnedAdjustment(bool restoreFocus = true)
     {
+        // Also revoke a pending save's focus return. Saving remains atomic,
+        // but completion after hide/deactivation must not restore native focus.
+        if (!restoreFocus) restorePinnedAdjustmentFocus = false;
         if (pinnedAdjustment is not { } adjustment) return;
         pinnedAdjustment = null;
         if (ReferenceEquals(pinned, adjustment.Surface)) RestorePinnedPlacement(adjustment);
-        EndPinnedAdjustmentPresentation(adjustment.Surface);
+        EndPinnedAdjustmentPresentation(adjustment);
         if (!retired) { UpdateTrayHelp(); UpdateDiagnostics(); }
     }
 
@@ -204,8 +213,9 @@ internal sealed partial class OverlayShellPage
             current.LayoutId, current.Window.OpacityPercent);
     }
 
-    private void EndPinnedAdjustmentPresentation(PinnedSurface current)
+    private void EndPinnedAdjustmentPresentation(PinnedAdjustment adjustment)
     {
+        var current = adjustment.Surface;
         if (ReferenceEquals(pinned, current))
         {
             current.Window.SetPlacementActive(false);
@@ -215,7 +225,11 @@ internal sealed partial class OverlayShellPage
         surface?.SetPresentationInputEnabled(!retired && visible && foreground && !switching && activeWidget == requestedWidget);
         surface?.SetAutomaticFocusEnabled(MainFocusEnabled);
         rightStick.Reset();
-        if (!retired && visible && foreground) FocusTray();
+        RefreshRadialChooser();
+        if (!restorePinnedAdjustmentFocus || retired || !visible || !foreground ||
+            adjustment.Selection != selectionVersion || adjustment.VisibleSession != visibleSince) return;
+        if (RadialOpen) radialView?.FocusSelected();
+        else QueueEntryFocus();
     }
 
     private void QueuePinnedPlacementEnvironment(PinnedSurface current)

@@ -5,6 +5,7 @@ Home recommendations in square artwork grids under YouTube Music’s section hea
 Search, your Library, a local Queue, and a compact pinned player.
 **Mixed for you** appears first when available.
 Collections scroll continuously as you browse.
+Your selected playback volume is remembered across widget and application restarts.
 
 On the WinUI migration branch, each returned service page is an exact-count
 indexed collection. Home uses grouped native grids; lists request only needed

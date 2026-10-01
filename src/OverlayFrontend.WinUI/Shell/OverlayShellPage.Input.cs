@@ -25,6 +25,19 @@ internal sealed partial class OverlayShellPage
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
         if (frame.Connected == 0) { trayHold.Reset(); shellOwnedReleases.Clear(); radialInput.Reset(); }
         if (retired || !visible || frame.Connected == 0 || frame.Primed != 0) { heldAction.Reset(); rightStick.Reset(); return; }
+        if (startupPresentationPending)
+        {
+            foreach (var (mask, button) in Buttons)
+            {
+                if ((frame.PressedButtons & mask) != 0) _ = RouteButtonAsync(button, ControllerEventPhase.Pressed);
+                if ((frame.ReleasedButtons & mask) != 0) _ = RouteButtonAsync(button, ControllerEventPhase.Released);
+            }
+            if (frame.LeftTriggerPressed != 0) _ = RouteButtonAsync(ControllerButton.LeftTrigger, ControllerEventPhase.Pressed);
+            if (frame.RightTriggerPressed != 0) _ = RouteButtonAsync(ControllerButton.RightTrigger, ControllerEventPhase.Pressed);
+            if (frame.LeftTriggerReleased != 0) _ = RouteButtonAsync(ControllerButton.LeftTrigger, ControllerEventPhase.Released);
+            if (frame.RightTriggerReleased != 0) _ = RouteButtonAsync(ControllerButton.RightTrigger, ControllerEventPhase.Released);
+            heldAction.Reset(); rightStick.Reset(); return;
+        }
         if (switching && interactive)
         {
             // Entry suppresses fresh input, but the gesture that started it must
@@ -110,7 +123,8 @@ internal sealed partial class OverlayShellPage
                 await RunTrayHoldAsync(trayHold.Release(TrayGestureIdentity, !reordering, Environment.TickCount64));
             return;
         }
-        if (retired || switching && interactive || !visible) return;
+        if (retired || !visible) return;
+        if (ReceiveStartupInput(button, phase) || switching && interactive) return;
         try
         {
             if (await RoutePinnedPlacementButtonAsync(button, phase)) return;

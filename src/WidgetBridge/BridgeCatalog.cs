@@ -30,6 +30,9 @@ internal sealed record ConfiguredWidget
     public string? IconPackageRoot { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
     public IReadOnlyList<string> DeclaredCapabilities { get; init; } = [];
+    /// <summary>Set only after sealed bundled admission; never accepted from JSON.</summary>
+    [JsonIgnore]
+    public bool GrantsBundledPermissionDefaults { get; init; }
     /// <summary>
     /// Trusted host policy. This member is never read from catalog JSON or a
     /// widget manifest; installed community packages are marked during merge.
@@ -184,6 +187,16 @@ public sealed class BridgeCatalog
 
     internal BridgeCatalog WithWidgetSettings(WidgetRail.PlatformSettings.BuiltInWidgetSettings settings) =>
         new(_ordered.Where(widget => widget.Id == "settings" || settings.IsEnabled(widget.PackageId)), IsComplete);
+
+    internal async Task EnsureBundledPermissionDefaultsAsync(
+        ConsentStore consentStore, CancellationToken cancellationToken = default)
+    {
+        foreach (var widget in _ordered.Where(widget =>
+                     widget.GrantsBundledPermissionDefaults && widget.DeclaredCapabilities.Count != 0))
+            await consentStore.EnsureDefaultGrantsAsync(
+                new(widget.PackageId, widget.PublisherId, widget.InstanceId),
+                widget.DeclaredCapabilities, cancellationToken).ConfigureAwait(false);
+    }
 
     internal ConfiguredWidget GetConfigured(string widgetId)
     {
@@ -996,6 +1009,7 @@ public sealed class BridgeCatalog
             DeclaredCapabilities = declaredCapabilities,
             RequiresAppContainer = true,
             IsolationKey = BundledIsolationKey(manifest.Publisher, manifest.Id),
+            GrantsBundledPermissionDefaults = manifest.Publisher == "widgetrail.firstparty",
             ReadOnlyPaths = [packageRoot],
             UsesGenericWorkerHost = true,
             StyleFile = styleFile,

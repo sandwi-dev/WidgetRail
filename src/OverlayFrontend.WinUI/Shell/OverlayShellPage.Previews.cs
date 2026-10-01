@@ -12,7 +12,7 @@ internal sealed partial class OverlayShellPage
     {
         // The capture device/dispatcher is independent of XAML. Only negotiate
         // this optional host capability after its renderer is actually available.
-        if (hostWindow == 0) return;
+        if (hostWindow == 0 || previewCaptures is not null) return;
         try { previewCaptures = await Task.Run(() => new WindowPreviewCaptureService()); }
         catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException or
             BadImageFormatException or System.Runtime.InteropServices.COMException)

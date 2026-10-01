@@ -85,11 +85,27 @@ public sealed class ConsentStore
         CancellationToken cancellationToken = default) =>
         SetDecisionsAsync(identity, [capabilityId], decision, cancellationToken);
 
-    public async Task<ConsentDocument> SetDecisionsAsync(
+    public Task<ConsentDocument> SetDecisionsAsync(
         BrokerWidgetIdentity identity,
         IReadOnlyCollection<string> capabilityIds,
         ConsentDecision decision,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        WriteDecisionsAsync(identity, capabilityIds, decision, onlyMissing: false, cancellationToken);
+
+    // The Bridge calls this only after admitting a sealed first-party bundled
+    // package. Defaulting is atomic with user decisions in every store instance.
+    internal Task<ConsentDocument> EnsureDefaultGrantsAsync(
+        BrokerWidgetIdentity identity,
+        IReadOnlyCollection<string> capabilityIds,
+        CancellationToken cancellationToken = default) =>
+        WriteDecisionsAsync(identity, capabilityIds, ConsentDecision.Grant, onlyMissing: true, cancellationToken);
+
+    private async Task<ConsentDocument> WriteDecisionsAsync(
+        BrokerWidgetIdentity identity,
+        IReadOnlyCollection<string> capabilityIds,
+        ConsentDecision decision,
+        bool onlyMissing,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(identity);
         identity.Validate();
@@ -107,6 +123,14 @@ public sealed class ConsentStore
             EnsureSafeExistingPath(_root);
             await using var crossProcess = await AcquireLockAsync(cancellationToken).ConfigureAwait(false);
             var current = await LoadAsync(cancellationToken).ConfigureAwait(false);
+            if (onlyMissing)
+            {
+                capabilities.ExceptWith(current.Entries
+                    .Where(entry => entry.PackageId == identity.PackageId &&
+                                    entry.PublisherId == identity.PublisherId)
+                    .Select(entry => entry.CapabilityId));
+                if (capabilities.Count == 0) return current;
+            }
             var entries = current.Entries
                 .Where(entry => !(entry.PackageId == identity.PackageId &&
                                   entry.PublisherId == identity.PublisherId &&

@@ -56,9 +56,10 @@ current focus. [Learn the controls](controls.md).
 
 ## Enable the features you want
 
-1. Open **Settings → Widgets** and select a widget you want to use. If it requests
-   access, open **Permissions & configuration**, review it, and allow the
-   permissions it needs. For example, Audio Mixer needs access to audio controls.
+1. Open **Settings → Widgets** and select a widget you want to use. Built-in widgets
+   have their declared permissions enabled by default. You can review or revoke
+   them in **Permissions & configuration**; updates preserve your decisions.
+   Downloaded widgets still require their normal permission review.
    Enable the widget if it is disabled.
 2. Choose **Disable widget** for widgets you do not need. They leave the tray
    and can be enabled again later. Settings stays enabled so you can always

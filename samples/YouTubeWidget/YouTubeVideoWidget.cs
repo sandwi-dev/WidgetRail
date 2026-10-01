@@ -339,7 +339,14 @@ public sealed partial class YouTubeVideoWidget : Widget
     private void RunPlayback(YouTubePlaybackRequest request)
     {
         var run = _playbackCommand.Run(request);
-        if (run.IsAccepted) SchedulePendingFeedback(run.Sequence);
+        if (run.IsAccepted)
+        {
+            if (request.Intent == YouTubePlaybackIntent.SetVolume && request.RequestedValue is { } value && double.IsFinite(value))
+            {
+                _volumePreference.Set(Math.Clamp(value, 0, 1));
+            }
+            SchedulePendingFeedback(run.Sequence);
+        }
     }
 
     /// <summary>Replaces an older load intent with the newest link or result.</summary>
@@ -414,7 +421,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                                 Math.Max(0, playback.Duration)))),
                     YouTubePlaybackIntent.SetVolume when
                         request.RequestedValue is { } requested && double.IsFinite(requested) =>
-                        state.WithPlayback(current => current.WithQueuedCommand(
+                        state.WithPlayback(current => (current with { PreferredVolume = Math.Clamp(requested, 0, 1) }).WithQueuedCommand(
                             sequence,
                             EmbeddedMediaPlaybackCommandKind.SetVolume,
                             videoId,

@@ -6,6 +6,7 @@
     xmlns:bridge="using:WidgetRail.WidgetBridge">
     <local:ProductionShellRoot x:Name="ProductionRoot" Background="Transparent" PointerPressed="ProductionGapPressed"
                                AutomationProperties.AutomationId="Overlay.Shell" AutomationProperties.Name="WidgetRail">
+        <Grid x:Name="StartupContentStage">
         <Grid x:Name="ProductionLayout">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
@@ -72,6 +73,7 @@
                             AutomationProperties.AutomationId="Overlay.TrayNext" AutomationProperties.Name="Next widgets" />
                 </Grid>
             </Grid>
+        </Grid>
         </Grid>
     </local:ProductionShellRoot>
 </Page>

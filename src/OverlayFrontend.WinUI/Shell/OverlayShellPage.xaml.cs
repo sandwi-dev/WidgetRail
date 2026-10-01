@@ -74,6 +74,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         InitializePinnedPlacement();
         InitializeRadialChooser();
         InitializeOpeningIndicator();
+        if (startService) InitializeStartupPresentation();
         UpdateTrayHelp();
         InitializeFullscreenView();
         if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041)) systemUi.AnimationsEnabledChanged += SystemAnimationsChanged;
@@ -154,61 +155,72 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             if (ControllerControlStatusRequested is not null) controllerControlPump = PumpControllerControlAsync();
             BridgeReady?.Invoke();
             Phase("bridge-notifications-queued");
-            WidgetPresentationCatalog catalog;
-            await transitions.WaitAsync(lifetime.Token);
-            Phase("catalog-lock-acquired");
-            try
-            {
-                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-                deadline.CancelAfter(TimeSpan.FromSeconds(30));
-                var firstResponse = true;
-                do
-                {
-                    catalog = await owner.Session.ListWidgetsAsync(deadline.Token);
-                    if (firstResponse) { Phase(catalog.IsComplete ? "first-catalog-complete" : "first-catalog-pending"); firstResponse = false; }
-                    if (StartupCatalogPolicy.CanOpenInitial(catalog.IsComplete, options.InitialWidgetId,
-                        catalog.Widgets.Select(widget => widget.Id))) break;
-                    await Task.Delay(50, deadline.Token);
-                } while (true);
-            }
-            finally { transitions.Release(); }
-            Phase(catalog.IsComplete ? "initial-catalog-complete" : "initial-widget-admitted");
-            SetCatalog(catalog);
-            var explicitInitial = catalog.Widgets.FirstOrDefault(widget => widget.Id == options.InitialWidgetId);
-            if (options.Development is { } development && (explicitInitial is null || explicitInitial.InstanceId != development.InstanceId))
-                throw new InvalidDataException("The development catalog does not contain the requested widget instance.");
-            // A fresh host launch mirrors native OpenWidgetWithTrayFocus(settings).
-            // Session hide/reopen is handled separately and retains its current widget.
-            var startupSettings = catalogItems.FirstOrDefault(widget => widget.Id == "settings");
-            var initial = explicitInitial ?? startupSettings
-                ?? catalogItems.FirstOrDefault(widget => widget.Id == preferences.LastWidget)
-                ?? catalogItems.FirstOrDefault();
-            if (initial is not null) await SelectAsync(initial.Id,
-                enterWidget: explicitInitial is not null || startupSettings is null && preferences.ReopenWidget);
-            else ShowRecovery("No installed widgets are available.", false);
-            Phase("initial-widget-ready");
-            await PublishDevelopmentReadyAsync();
-            // Settings is already in the trusted catalog. Keep its first view
-            // independent of installed-package validation, but restore saved pins
-            // only after the complete admitted catalog is available.
-            if (!catalog.IsComplete)
-            {
-                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-                deadline.CancelAfter(TimeSpan.FromSeconds(30));
-                do
-                {
-                    await Task.Delay(50, deadline.Token);
-                    await transitions.WaitAsync(deadline.Token);
-                    try { catalog = await owner.Session.ListWidgetsAsync(deadline.Token); }
-                    finally { transitions.Release(); }
-                } while (!catalog.IsComplete);
-                SetCatalog(catalog);
-                Phase("catalog-complete");
-            }
-            if (pinIntent == startupPinIntent) await RestorePinnedAsync();
+            await InitializeStartupCatalogAsync(startupPinIntent, Phase);
         }
         catch (OperationCanceledException) when (retired) { }
-        catch (Exception error) { ReportFailure(error); }
+        catch (Exception error)
+        {
+            ReportFailure(error);
+            if (owner is null && !retired)
+                ShowRecovery("The widget service could not start. Try again.", true);
+        }
+    }
+
+    private async Task InitializeStartupCatalogAsync(long startupPinIntent, Action<string> Phase)
+    {
+        var startupOwner = owner ?? throw new InvalidOperationException("The widget service is not connected.");
+        WidgetPresentationCatalog catalog;
+        await transitions.WaitAsync(lifetime.Token);
+        Phase("catalog-lock-acquired");
+        try
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            var firstResponse = true;
+            do
+            {
+                catalog = await startupOwner.Session.ListWidgetsAsync(deadline.Token);
+                if (firstResponse) { Phase(catalog.IsComplete ? "first-catalog-complete" : "first-catalog-pending"); firstResponse = false; }
+                if (StartupCatalogPolicy.CanOpenInitial(catalog.IsComplete, options.InitialWidgetId,
+                    catalog.Widgets.Select(widget => widget.Id))) break;
+                await Task.Delay(50, deadline.Token);
+            } while (true);
+        }
+        finally { transitions.Release(); }
+        Phase(catalog.IsComplete ? "initial-catalog-complete" : "initial-widget-admitted");
+        SetCatalog(catalog);
+        var explicitInitial = catalog.Widgets.FirstOrDefault(widget => widget.Id == options.InitialWidgetId);
+        if (options.Development is { } development && (explicitInitial is null || explicitInitial.InstanceId != development.InstanceId))
+            throw new InvalidDataException("The development catalog does not contain the requested widget instance.");
+        // A fresh host launch mirrors native OpenWidgetWithTrayFocus(settings).
+        // Session hide/reopen is handled separately and retains its current widget.
+        var startupSettings = catalogItems.FirstOrDefault(widget => widget.Id == "settings");
+        var initial = explicitInitial ?? startupSettings
+            ?? catalogItems.FirstOrDefault(widget => widget.Id == preferences.LastWidget)
+            ?? catalogItems.FirstOrDefault();
+        if (initial is not null) await SelectAsync(initial.Id,
+            enterWidget: explicitInitial is not null || startupSettings is null && preferences.ReopenWidget);
+        else ShowRecovery("No installed widgets are available.", false);
+        Phase("initial-widget-ready");
+        await PublishDevelopmentReadyAsync();
+        // Settings is already in the trusted catalog. Keep its first view
+        // independent of installed-package validation, but restore saved pins
+        // only after the complete admitted catalog is available.
+        if (!catalog.IsComplete)
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            do
+            {
+                await Task.Delay(50, deadline.Token);
+                await transitions.WaitAsync(deadline.Token);
+                try { catalog = await startupOwner.Session.ListWidgetsAsync(deadline.Token); }
+                finally { transitions.Release(); }
+            } while (!catalog.IsComplete);
+            SetCatalog(catalog);
+            Phase("catalog-complete");
+        }
+        if (pinIntent == startupPinIntent) await RestorePinnedAsync();
     }
 
     private void SetCatalog(WidgetPresentationCatalog catalog)
@@ -468,10 +480,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (retired || visible == value) return;
         retainingExitPresentation = !value && retainExitPresentation;
         ProductionRoot.IsHitTestVisible = value;
-        if (!value) CancelPinnedAdjustment();
+        if (!value) CancelPinnedAdjustment(restoreFocus: false);
         if (!value) ExitPinnedInteraction(restoreMain: false);
         interactionAdmission.Invalidate();
         visible = value;
+        RefreshStartupPresentation();
         // Reopen can await worker/lifecycle admission. Keep the last committed
         // pixels visible during that wait; its inactive presenter still rejects
         // input until SelectAsync publishes current authority again.
@@ -530,7 +543,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal void SetForeground(bool value)
     {
         if (foreground == value || retired) return;
-        if (!value) CancelPinnedAdjustment();
+        if (!value) CancelPinnedAdjustment(restoreFocus: false);
         interactionAdmission.Invalidate();
         foreground = value;
         // The main HWND also deactivates when focus transfers to the pinned
@@ -583,7 +596,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     internal void QueueEntryFocus()
     {
-        if (retired || !visible) return;
+        if (retired || !visible || startupPresentationPending) return;
         if (switching)
         {
             if (interactive && activeWidget == requestedWidget) surface?.RestoreRetainedFocusPresentation();
@@ -636,7 +649,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (admitted) { capturedSurface.SetAutomaticFocusEnabled(MainFocusEnabled); UpdateTrayHelp(); }
         return admitted;
 
-        bool Current() => !retired && visible && foreground && !switching && !RadialOpen && !PinnedInteractionRequested &&
+        bool Current() => !retired && visible && foreground && !switching && !RadialOpen && !PinnedInteractionRequested && !PinnedAdjustmentActive &&
             capturedSelection == selectionVersion && ReferenceEquals(surface, capturedSurface) &&
             ReferenceEquals(owner, capturedOwner) && activeWidget == authority.WidgetId &&
             capturedSurface.IsInteractionCurrent(authority);
@@ -679,6 +692,21 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private async Task RetryPresentationAsync()
     {
+        if (!retrying && serviceEnabled && requestedWidget is null)
+        {
+            retrying = true;
+            Retry.IsEnabled = false;
+            BeginStartupPresentation();
+            try
+            {
+                startup = owner is null ? StartAsync() : InitializeStartupCatalogAsync(pinIntent, _ => { });
+                await startup;
+            }
+            catch (OperationCanceledException) when (retired) { }
+            catch (Exception error) { ReportFailure(error); }
+            finally { retrying = false; Retry.IsEnabled = true; }
+            return;
+        }
         if (!retrying && owner is not null && requestedWidget is { } id)
         {
             var failureCurrent = CapturePresentationFailureGuard();
@@ -785,6 +813,9 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         interactionAdmission.Invalidate();
         retired = true;
         openingIndicator?.Dispose();
+        ++startupPresentationVersion;
+        startupIndicator?.Dispose();
+        StopStartupReveal();
         await DisposeSystemStatusAsync();
         ResetTrayInteraction();
         ClearTrayFocus();

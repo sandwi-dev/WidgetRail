@@ -112,6 +112,7 @@ internal sealed partial class OverlayShellPage
         };
         if (message is null)
         {
+            CompleteStartupPresentation();
             ++recoveryAnnouncementVersion;
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ProductionRoot, widgetName);
             StatusChrome.Visibility = Visibility.Collapsed;
@@ -124,6 +125,7 @@ internal sealed partial class OverlayShellPage
 
     private void ShowRecovery(string message, bool canRetry)
     {
+        CompleteStartupPresentation(failed: true);
         var changed = !RecoveryVisible || Status.Text != message;
         openingIndicator?.Clear();
         Status.Text = message;

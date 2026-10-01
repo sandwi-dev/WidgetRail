@@ -22,6 +22,9 @@ internal sealed partial class WidgetOpeningIndicator : ContentControl, IDisposab
     private readonly TextBlock name = new() { TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock status = new() { Text = "Opening…" };
     private readonly WidgetCatalogItemContent icon;
+    private readonly Image applicationIcon = new() { Width = 30, Height = 30,
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+        Visibility = Visibility.Collapsed };
     private readonly ShellChromeStyles styles = new();
     private readonly DispatcherQueueTimer delay;
     private WidgetCompositionMotion? fade;
@@ -47,7 +50,7 @@ internal sealed partial class WidgetOpeningIndicator : ContentControl, IDisposab
         icon = new(resolve) { ShowLabel = false, IconSize = 26, TileSize = 30,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         var mark = new Grid { Width = 50, Height = 50 };
-        mark.Children.Add(halo); mark.Children.Add(icon);
+        mark.Children.Add(halo); mark.Children.Add(icon); mark.Children.Add(applicationIcon);
         var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(name); text.Children.Add(status);
         var row = new Grid { ColumnSpacing = 12 };
@@ -60,7 +63,7 @@ internal sealed partial class WidgetOpeningIndicator : ContentControl, IDisposab
         styles.Register(name, "body"); styles.Register(status, "hint");
         AutomationProperties.SetAutomationId(this, "Overlay.WidgetOpening");
         AutomationProperties.SetLiveSetting(this, AutomationLiveSetting.Polite);
-        foreach (var child in new FrameworkElement[] { plate, row, mark, halo, icon, text, name, status })
+        foreach (var child in new FrameworkElement[] { plate, row, mark, halo, icon, applicationIcon, text, name, status })
             AutomationProperties.SetAccessibilityView(child, AccessibilityView.Raw);
         delay = DispatcherQueue.CreateTimer();
         delay.Interval = TimeSpan.FromMilliseconds(200); delay.IsRepeating = false;
@@ -85,6 +88,23 @@ internal sealed partial class WidgetOpeningIndicator : ContentControl, IDisposab
         icon.SetItem(descriptor);
         AutomationProperties.SetName(this, "Opening " + name.Text);
         delay.Start();
+    }
+
+    // Cold-start feedback shares the widget badge's theme, pulse and interruptible
+    // completion instead of maintaining another animation implementation.
+    internal void BeginApplication(long version)
+    {
+        if (disposed) return;
+        Clear(); selection = version; pending = true;
+        name.Text = "WidgetRail";
+        status.MinWidth = 0;
+        status.Text = "Starting…";
+        applicationIcon.Source ??= new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(
+            new Uri("ms-appx:///Assets/WidgetRail.svg")) { RasterizePixelWidth = 120, RasterizePixelHeight = 120 };
+        icon.Visibility = Visibility.Collapsed;
+        applicationIcon.Visibility = Visibility.Visible;
+        AutomationProperties.SetName(this, "Starting WidgetRail");
+        Show(delay, EventArgs.Empty);
     }
 
     private void Show(DispatcherQueueTimer sender, object args)
@@ -194,6 +214,8 @@ internal sealed partial class WidgetOpeningIndicator : ContentControl, IDisposab
         Visibility = Visibility.Collapsed;
         StopPulse(); StopFade();
         icon.SetItem(null);
+        icon.Visibility = Visibility.Visible;
+        applicationIcon.Visibility = Visibility.Collapsed;
     }
 
     private void StopFade()

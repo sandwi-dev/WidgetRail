@@ -5,6 +5,12 @@ Reading audio state does not automatically grant permission to change it.
 
 ## Declare and review access
 
+Verified first-party widgets shipped with WidgetRail receive their declared
+capabilities by default. Explicit user denials are preserved. This policy applies
+only after bundled-package admission; using a first-party name or publisher in a
+downloaded manifest does not grant access. Lifecycle, gesture, and action checks
+still apply, and users can revoke access in Settings.
+
 Put required capabilities in manifest `permissions` and optional features in
 `optionalPermissions`. Required does not mean automatically granted: the user
 still reviews access in Settings.

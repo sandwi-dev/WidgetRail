@@ -18,12 +18,12 @@
 .music-primary { min-height: 48px; padding: 10px 18px; font-weight: 600; }
 .music-secondary { min-height: 42px; padding: 8px 14px; }
 .music-icon-button { width: 44px; height: 44px; padding: 10px; }
-.music-library-toolbar { width: 100%; min-width: 0px; gap: 18px; align: center; }
+.music-library-toolbar { width: 100%; min-width: 0px; gap: 8px; align: center; }
 .music-filters { min-width: 0px; flex-grow: 1; gap: 4px; padding: 3px; background: var(--surface); corner-radius: 8px; }
-.music-filter { min-width: 70px; min-height: 44px; padding: 10px 14px; text-align: center; background: transparent; border-width: 0px; corner-radius: 6px; }
+.music-filter { min-width: 72px; min-height: 44px; padding: 10px 8px; font-size: 12px; text-align: center; background: transparent; border-width: 0px; corner-radius: 6px; }
 .music-filter:selected { color: var(--accent); background: var(--surface-active, #262623); }
 .music-filter:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
-.music-refresh { width: 36px; height: 36px; padding: 8px; background: transparent; border-width: 0px; corner-radius: 6px; }
+.music-refresh { width: 44px; height: 44px; padding: 10px; background: transparent; border-width: 0px; corner-radius: 6px; }
 .music-refresh:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .music-search { width: 100%; min-width: 0px; min-height: 48px; padding: 10px 12px; font-size: 15px; color: var(--text); background: var(--surface); border-width: 1px; border-color: var(--border, #343431); corner-radius: 8px; }
 .music-search:focused { border-color: var(--accent); outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }

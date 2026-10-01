@@ -102,7 +102,7 @@ public sealed record AppearanceSettings
     /// </summary>
     public bool AnimateWidgetSwitching { get; init; }
     /// <summary>Host-owned transitions between sections within a widget.</summary>
-    public WidgetFocusAnimation FocusAnimation { get; init; } = WidgetFocusAnimation.Fade;
+    public WidgetFocusAnimation FocusAnimation { get; init; } = WidgetFocusAnimation.Settle;
     public WidgetSectionAnimation SectionAnimation { get; init; } = WidgetSectionAnimation.Slide;
     /// <summary>Host-owned opening and closing motion for widget dialogs.</summary>
     public bool AnimateWidgetModals { get; init; } = true;

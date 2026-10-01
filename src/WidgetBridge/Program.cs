@@ -55,6 +55,10 @@ internal static class Program
             catch (PlatformSettingsException) { initialSettings = PlatformSettingsDocument.Default; }
             var trustedCatalog = BridgeCatalog.LoadTrustedObserved(
                 catalogPath, installedCatalogRoot);
+            var consentStore = new ConsentStore(
+                Path.Combine(settingsPaths.RootDirectory, "consent"));
+            await PrepareBundledPermissionsAsync(trustedCatalog.Catalog, consentStore, shutdown.Token)
+                .ConfigureAwait(false);
             var catalog = trustedCatalog.Catalog.WithWidgetSettings(initialSettings.BuiltInWidgets);
             mediaDiagnostics.RecordBridgeStartupPhase(
                 "trusted-catalog-ready",
@@ -67,6 +71,8 @@ internal static class Program
                 {
                     var loaded = await BridgeCatalog.LoadWithInstalledObservedAsync(catalogPath,
                         installedCatalogRoot, workerHostExecutable, cancellationToken).ConfigureAwait(false);
+                    await PrepareBundledPermissionsAsync(loaded.Catalog, consentStore, cancellationToken)
+                        .ConfigureAwait(false);
                     var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
                     return loaded with { Catalog = loaded.Catalog.WithWidgetSettings(settings.BuiltInWidgets) };
                 },
@@ -85,8 +91,6 @@ internal static class Program
                 settingsPaths,
                 new ThemeManager(settingsStore, new ThemeCatalog(settingsPaths)));
             await appearance.StartAsync(shutdown.Token).ConfigureAwait(false);
-            var consentStore = new ConsentStore(
-                Path.Combine(settingsPaths.RootDirectory, "consent"));
             await using var communityBackend = new WindowsCommunityPlatformBackend(
                 Path.Combine(settingsPaths.RootDirectory, "widget-state"));
             await using var platformBackend = new CompositePlatformBrokerBackend(
@@ -121,6 +125,21 @@ internal static class Program
         {
             Console.Error.WriteLine($"Widget bridge failed: {exception.Message}");
             return 1;
+        }
+    }
+
+    private static async Task PrepareBundledPermissionsAsync(
+        BridgeCatalog catalog, ConsentStore consentStore, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await catalog.EnsureBundledPermissionDefaultsAsync(consentStore, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is BrokerException or IOException or UnauthorizedAccessException)
+        {
+            // Preserve Settings and ordinary Bridge startup when consent is
+            // unavailable. Existing broker checks continue to fail closed.
+            Console.Error.WriteLine("Bundled widget permissions could not be initialized; review permission diagnostics in Settings.");
         }
     }
 

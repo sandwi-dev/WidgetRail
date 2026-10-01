@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using WidgetRail.Samples.Shared;
 using System.Text.Json;
 
 namespace WidgetRail.Samples.YtMusicWidget.Standalone;
@@ -9,6 +10,8 @@ public sealed class MusicService : IMusicService
     private readonly SemaphoreSlim _initialization = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly string _directory;
+    private readonly PlaybackVolumePreference _volumePreference;
+    private double _preferredVolume;
     private IMusicProcess? _backend;
     private IMusicProcess? _player;
     private readonly Func<string, IEnumerable<string>, IMusicProcess> _startProcess;
@@ -25,15 +28,17 @@ public sealed class MusicService : IMusicService
     public MusicState State { get { lock (_gate) return _state; } }
     public event Action? Changed;
 
-    public MusicService(string directory, double initialVolume = .5)
-        : this(directory, initialVolume, (executable, arguments) => new JsonProcess(executable, arguments)) { }
+    public MusicService(string directory, double initialVolume = .5, string? volumePreferencePath = null)
+        : this(directory, initialVolume, (executable, arguments) => new JsonProcess(executable, arguments), volumePreferencePath) { }
 
-    internal MusicService(string directory, double initialVolume, Func<string, IEnumerable<string>, IMusicProcess> startProcess)
+    internal MusicService(string directory, double initialVolume, Func<string, IEnumerable<string>, IMusicProcess> startProcess, string? volumePreferencePath = null)
     {
         if (!double.IsFinite(initialVolume) || initialVolume is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(initialVolume));
         _directory = Path.GetFullPath(directory);
         _startProcess = startProcess;
-        _state = MusicState.Empty with { Player = new(Volume: initialVolume) };
+        _volumePreference = new(volumePreferencePath);
+        _preferredVolume = _volumePreference.Read(initialVolume);
+        _state = MusicState.Empty with { Player = new(Volume: _preferredVolume) };
     }
 
     public async Task InitializeAsync(CancellationToken token)
@@ -73,7 +78,7 @@ public sealed class MusicService : IMusicService
         if (_player is not null) await _player.CallAsync("stop", null, token).ConfigureAwait(false);
         await InitializeAsync(token).ConfigureAwait(false);
         await _backend!.CallAsync("disconnect", null, token).ConfigureAwait(false);
-        lock (_gate) { _state = MusicState.Empty; _originalQueue = []; }
+        lock (_gate) { _state = MusicState.Empty with { Player = new(Volume: _preferredVolume) }; _originalQueue = []; }
         Changed?.Invoke();
     }
 
@@ -291,7 +296,7 @@ public sealed class MusicService : IMusicService
             if (generation.GetInt64() != _generation) return;
             if (kind == "state")
             {
-                _state = _state with { Player = value.GetProperty("state").Deserialize<PlayerState>(JsonProcess.Json) ?? _state.Player };
+                _state = _state with { Player = (value.GetProperty("state").Deserialize<PlayerState>(JsonProcess.Json) ?? _state.Player) with { Volume = _preferredVolume } };
                 if (_state.Player.Playing && !_state.Player.Buffering && _state.Player.Duration > 0)
                 {
                     _consecutiveSkips = 0;
@@ -357,6 +362,19 @@ public sealed class MusicService : IMusicService
 
     public async Task CommandAsync(string command, double? value, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
+        if (command == "volume")
+        {
+            if (value is not { } requested || !double.IsFinite(requested)) return;
+            value = Math.Clamp(requested, 0, 1);
+            lock (_gate)
+            {
+                _preferredVolume = value.Value;
+                _state = _state with { Player = _state.Player with { Volume = _preferredVolume } };
+                _volumePreference.Set(_preferredVolume);
+            }
+            Changed?.Invoke();
+        }
         var canceledPendingPlayback = false;
         bool retry;
         lock (_gate)
@@ -410,6 +428,7 @@ public sealed class MusicService : IMusicService
 
     public async ValueTask DisposeAsync()
     {
+        await _volumePreference.DisposeAsync().ConfigureAwait(false);
         _lifetime.Cancel();
         lock (_gate) _selection?.Cancel();
         if (_player is not null)

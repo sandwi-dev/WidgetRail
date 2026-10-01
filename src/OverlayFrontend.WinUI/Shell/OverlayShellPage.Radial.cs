@@ -65,15 +65,16 @@ internal sealed partial class OverlayShellPage
         }
         if (!showing) radialView.Close();
         radialView.Visibility = showing ? Visibility.Visible : Visibility.Collapsed;
+        radialView.IsHitTestVisible = !PinnedAdjustmentActive;
         RailControls.Opacity = showing ? 0 : 1;
-        RailControls.IsHitTestVisible = !showing;
+        RailControls.IsHitTestVisible = !showing && !PinnedAdjustmentActive;
         Tray.IsEnabled = !showing && !IsMediaFullscreen;
         UpdateRailOverflow();
         // The wheel overlays retained content and owns native focus while open.
-        WidgetHost.IsHitTestVisible = !showing;
+        WidgetHost.IsHitTestVisible = !showing && !PinnedAdjustmentActive;
 
         if (showing && !radialShowing)
-            DispatcherQueue.TryEnqueue(() => { if (RadialOpen) { radialView.Open(WidgetMotionOptions.From(Appearance, systemUi.AnimationsEnabled)); radialView.FocusSelected(); } });
+            DispatcherQueue.TryEnqueue(() => { if (RadialOpen) { radialView.Open(WidgetMotionOptions.From(Appearance, systemUi.AnimationsEnabled)); if (!PinnedAdjustmentActive) radialView.FocusSelected(); } });
         radialShowing = showing;
         PositionOpeningIndicator();
     }

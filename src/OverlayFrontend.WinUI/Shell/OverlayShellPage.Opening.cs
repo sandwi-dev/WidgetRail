@@ -20,7 +20,8 @@ internal sealed partial class OverlayShellPage
         if (!visible || retired) return;
         // Retained content stays drawable; this passive badge grants no input.
         StatusChrome.Visibility = Visibility.Collapsed;
-        openingIndicator?.Begin(version, catalogItems.FirstOrDefault(item => item.Id == id));
+        if (!startupPresentationPending)
+            openingIndicator?.Begin(version, catalogItems.FirstOrDefault(item => item.Id == id));
         PositionOpeningIndicator();
     }
 

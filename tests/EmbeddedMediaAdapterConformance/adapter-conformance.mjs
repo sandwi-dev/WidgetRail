@@ -101,6 +101,7 @@ let providerErrorCode = null;
 let mutedValueAfterReads = 0;
 let volumeValueAfterReads = 0;
 let pendingVolumeValue = null;
+let rejectVolumeBeforePlaying = false;
 let pendingMutedValue = null;
 let holdMutedPolls = false;
 let heldMutedPolls = [];
@@ -131,6 +132,7 @@ const player = {
   pauseVideo() { this.state = 2; stateCallback?.({data:2}); },
   seekTo(value) { this.currentTime = value; },
   setVolume(value) {
+    if (rejectVolumeBeforePlaying && this.state !== 1) throw new Error('volume-unavailable-before-play');
     if (volumeValueAfterReads > 0) pendingVolumeValue = value;
     else { this.volume = value; pendingVolumeValue = null; }
   },
@@ -250,6 +252,13 @@ if (profile === 'state-callback' && request.playbackCommands.includes('SetPlayba
 if (profile === 'state-callback' && request.playbackCommands.includes('SetMuted'))
   await exerciseMutedContract();
 if (profile === 'state-callback' && request.playbackCommands.includes('SetVolume')) {
+  rejectVolumeBeforePlaying = true;
+  await exercise({source:'volume:load-remains-ready', command:'load'},
+    {volume:.25, expectedPlaybackState:'ready', skipReleaseProbe:true});
+  const playing = await exercise({source:'volume:apply-on-first-play', command:'arm-activate'}, {expectedPlaybackState:'playing'});
+  if (Math.abs(playing.volume - .25) > .00001)
+    fail('volume-first-play', 'saved volume was not reapplied when playback became available');
+  rejectVolumeBeforePlaying = false;
   player.state = 5;
   for (const volume of [0, 1, .35]) {
     const terminal = await exercise({source:'volume:cued-delayed', command:'volume'},
@@ -347,6 +356,7 @@ async function exercise(requirement, options = {}) {
   if (falseAcknowledgements.length !== 0)
     fail('unsolicited-correlation', `${requirement.source} observation acknowledged a command`);
 
+  if (options.skipReleaseProbe) return terminal;
   const probeId = ++commandId;
   volumeValueAfterReads = 0;
   // The release probe must target the current provider item after a deliberate
@@ -494,7 +504,8 @@ async function send(data) {
   await flush();
 }
 async function flush() {
-  for (let index = 0; index < 5; index++) await Promise.resolve();
+  // Drain the microtask queue rather than assuming a particular promise-chain depth.
+  await new Promise(resolve => setImmediate(resolve));
 }
 function fail(code, message) {
   console.error(`${code}: ${message}`);

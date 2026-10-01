@@ -62,6 +62,7 @@ if (args is ["--export-layout", var directory])
 var tests = new List<(string, Func<Task>)>
 {
     ("Playback recovery refreshes, skips, stops and rejects stale events", PlaybackRecoveryTests.Run),
+    ("Volume preference survives restart and rejects provider defaults", VolumePreferenceTests.Run),
     ("Compact pin declares artwork and admits the same transport shortcuts as the main player", PinnedPlayer),
     ("Section content and navigation share motion identity without moving the player", async () =>
     {
@@ -703,7 +704,7 @@ static async Task BrowsePresentation()
         Check((await Rows(widget)).All(row => row.CollectionItemKey is not null && row.Kind == ViewNodeKind.ActionSurface), "Logical rows lost key/action");
         Check(toolbar.Kind == ViewNodeKind.Row && toolbar.Children[0].Id == "library.filters" && toolbar.Children[1].Id == "refresh", "Refresh not beside filters");
         var filters = toolbar.Children[0];
-        Check(filters.Kind == ViewNodeKind.Grid && filters.GridMinimumColumnWidth == 96 && filters.GridMaximumColumns == 4,
+        Check(filters.Kind == ViewNodeKind.Grid && filters.GridMinimumColumnWidth == 72 && filters.GridMaximumColumns == 4,
             "Library filters must reflow through a native responsive grid");
         Check(filters.Children.Select(node => node.Id).SequenceEqual(new[] { "library.playlists", "library.songs", "library.albums", "library.artists" }) &&
             filters.Children.All(node => node.ActionId == node.Id), "Responsive filters changed their stable focus/action identities");

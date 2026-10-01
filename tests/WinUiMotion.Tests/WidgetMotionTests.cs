@@ -141,7 +141,7 @@ public sealed class WidgetMotionTests
         var options = Options();
         Assert.AreEqual(WidgetSectionAnimation.Slide, options.Section);
         Assert.AreEqual(WidgetModalAnimation.Zoom, options.Modal);
-        Assert.AreEqual(WidgetFocusAnimation.Fade, options.Focus);
+        Assert.AreEqual(WidgetFocusAnimation.Settle, options.Focus);
         Assert.AreEqual(208, options.Duration(208).TotalMilliseconds);
         Assert.AreEqual(104, Options(AppearanceSettings.Default with { WidgetAnimationSpeed = 100 }).Duration(208).TotalMilliseconds);
         Assert.AreEqual(416, Options(AppearanceSettings.Default with { WidgetAnimationSpeed = -1 }).Duration(208).TotalMilliseconds);
@@ -216,7 +216,7 @@ public sealed class WidgetMotionTests
     [TestMethod]
     public void FocusAnimatesOnlyDecorationAndSettleStaysInsideBounds()
     {
-        var fade = WidgetMotionPolicy.Focus(Options(), new(200, 40), true);
+        var fade = WidgetMotionPolicy.Focus(Options(AppearanceSettings.Default with { FocusAnimation = WidgetFocusAnimation.Fade }), new(200, 40), true);
         Assert.AreEqual(Vector3.One, fade.From.Scale);
         Assert.AreEqual(Vector3.Zero, fade.From.Translation);
         Assert.AreEqual(0, fade.From.Opacity);

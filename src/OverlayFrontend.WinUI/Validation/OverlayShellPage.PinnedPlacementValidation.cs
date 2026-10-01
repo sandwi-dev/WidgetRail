@@ -35,6 +35,7 @@ internal sealed partial class OverlayShellPage
                 var originalBounds = tested.Window.Bounds;
                 original = PinnedPlacementPolicy.Capture(originalBounds, tested.Monitor, tested.Limits,
                     tested.LayoutId, tested.Window.OpacityPercent);
+                await ValidatePinnedAdjustmentFocusAsync(tested, Check);
                 var selection = tested.Selection;
                 Receive(Sample());
                 await BeginPinnedAdjustmentAsync();

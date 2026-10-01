@@ -110,6 +110,8 @@ internal sealed record YouTubePlaybackState
     public double Position { get; init; }
     public double Duration { get; init; }
     public double Volume { get; init; } = 0.8;
+    /// <summary>User preference is separate from transient provider observations.</summary>
+    public double PreferredVolume { get; init; } = 0.8;
     public double PlaybackRate { get; init; } = 1.0;
     public bool Muted { get; init; }
     public bool Loop { get; init; }
@@ -214,7 +216,7 @@ internal sealed record YouTubePlaybackState
             VideoId = videoId,
             Position = 0,
             Duration = 0,
-        }).WithQueuedCommand(sequence, EmbeddedMediaPlaybackCommandKind.Load, videoId);
+        }).WithQueuedCommand(sequence, EmbeddedMediaPlaybackCommandKind.Load, videoId, volume: PreferredVolume);
     }
 
     /// <summary>Loads a chosen search result without going through the link entry.</summary>
@@ -228,7 +230,7 @@ internal sealed record YouTubePlaybackState
             SeekBufferingSemantic = null,
             Position = 0,
             Duration = 0,
-        }).WithQueuedCommand(sequence, EmbeddedMediaPlaybackCommandKind.Load, videoId);
+        }).WithQueuedCommand(sequence, EmbeddedMediaPlaybackCommandKind.Load, videoId, volume: PreferredVolume);
 
     /// <summary>
     /// Applies one adapter report already admitted by WidgetOutOfBandCommand.

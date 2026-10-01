@@ -1,5 +1,6 @@
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.Samples.Shared;
 
 namespace WidgetRail.Samples.YouTubeWidget;
 
@@ -29,6 +30,7 @@ public sealed partial class YouTubeVideoWidget
     private const string ConfigurationKey = "youtube.configuration";
     private const string SetupCommandKey = "youtube.configure";
     private readonly IYouTubeApplicationService _application;
+    private readonly PlaybackVolumePreference _volumePreference;
     private sealed record SearchQuery(long Revision, string Text);
     private readonly WidgetDiscoveredCollection<SearchQuery, YouTubeSearchItem> _searchResults;
     private readonly WidgetOptimisticCommand<
@@ -50,16 +52,20 @@ public sealed partial class YouTubeVideoWidget
     public YouTubeVideoWidget() : this(
         new UnavailableYouTubeApplicationService(), TimeProvider.System) { }
 
-    public YouTubeVideoWidget(IYouTubeApplicationService application) :
-        this(application, TimeProvider.System) { }
+    public YouTubeVideoWidget(IYouTubeApplicationService application, string? volumePreferencePath = null) :
+        this(application, TimeProvider.System, volumePreferencePath) { }
 
     internal YouTubeVideoWidget(
         IYouTubeApplicationService application,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        string? volumePreferencePath = null)
     {
         _application = application ?? throw new ArgumentNullException(nameof(application));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-        _model = CreateModel(YouTubeWidgetState.Initial);
+        _volumePreference = new(volumePreferencePath);
+        var preferredVolume = _volumePreference.Read(YouTubePlaybackState.Initial.PreferredVolume);
+        _model = CreateModel(YouTubeWidgetState.Initial.WithPlayback(playback => playback with
+            { Volume = preferredVolume, PreferredVolume = preferredVolume }));
         _playbackCommand = CreateOutOfBandCommand(_model,
             new WidgetOutOfBandCommandOptions<
                 YouTubeWidgetState,
@@ -168,6 +174,8 @@ public sealed partial class YouTubeVideoWidget
             playback => playback.WithTransientStateCleared()));
         try
         {
+            await _volumePreference.DisposeAsync().AsTask().WaitAsync(shutdownToken)
+                .ConfigureAwait(false);
             await _application.DisposeAsync().AsTask().WaitAsync(shutdownToken)
                 .ConfigureAwait(false);
         }

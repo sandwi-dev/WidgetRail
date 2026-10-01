@@ -6,6 +6,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\Shared\PlaybackVolumePreference.cs" Link="Shared\PlaybackVolumePreference.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <Compile Remove="Application\**;PlaybackHost\**" />
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
   </ItemGroup>

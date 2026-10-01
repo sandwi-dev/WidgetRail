@@ -979,10 +979,10 @@ public sealed partial class YouTubeWidgetTests
             new[]
             {
                 "_application", "_model", "_playbackCommand", "_searchResults",
-                "_setupCommand", "_timeProvider",
+                "_setupCommand", "_timeProvider", "_volumePreference",
             },
             fields,
-            "WidgetModel, SDK command facilities, the search cursor, provider, and clock are " +
+            "WidgetModel, SDK command facilities, the search cursor, provider, clock, and preference store are " +
             "the only package owners; no pre-WidgetModel route, lifecycle, playback, task, " +
             "sequence, or gate field may remain.");
 

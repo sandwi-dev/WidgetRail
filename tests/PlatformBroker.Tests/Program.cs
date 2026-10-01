@@ -51,6 +51,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Wi-Fi radio read and control permissions are granular and host-gated", WifiRadioContracts),
     ("Bluetooth read and radio control are opaque granular and lifecycle-gated", BluetoothContracts),
     ("Consent updates are atomic across store instances", ConsentUpdatesAreAtomic),
+    ("Bundled default consent preserves decisions and ordinary broker enforcement", BundledDefaultConsent),
     ("Retired consent migrates without weakening unknown-capability validation", RetiredConsentMigratesSafely),
     ("Subscriptions coalesce and suspend with lifecycle", EventsCoalesceAcrossLifecycle),
     ("Consent revocation terminates subscriptions", RevocationTerminatesSubscriptions),
@@ -3080,6 +3081,40 @@ static async Task ConsentUpdatesAreAtomic()
     Assert.Equal(capabilities.Length, checked((int)document.Revision));
     Assert.SequenceEqual(capabilities.Order(StringComparer.Ordinal),
         document.Entries.Select(entry => entry.CapabilityId).Order(StringComparer.Ordinal));
+}
+
+static async Task BundledDefaultConsent()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var store = new ConsentStore(temp.Path);
+    var read = PlatformCapabilities.AudioSessionsReadV1;
+    var control = PlatformCapabilities.AudioSessionsControlV1;
+    await store.SetDecisionAsync(identity, control, ConsentDecision.Deny);
+    var seeded = await store.EnsureDefaultGrantsAsync(identity, [read, control]);
+    Assert.Equal(2L, seeded.Revision);
+    Assert.Equal(ConsentDecision.Grant, await store.GetDecisionAsync(identity, read));
+    Assert.Equal(ConsentDecision.Deny, await store.GetDecisionAsync(identity, control));
+    var repeated = await new ConsentStore(temp.Path).EnsureDefaultGrantsAsync(identity, [read, control]);
+    Assert.Equal(seeded.Revision, repeated.Revision);
+
+    await using var broker = Broker(identity, store, AudioBackend(), read, control);
+    var request = Request(identity, read, PlatformCapabilities.AudioSessionsList, new { });
+    Assert.Equal("lifecycle_denied", (await broker.HandleAsync(request)).ErrorCode);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    await broker.RefreshConsentAsync();
+    Assert.True((await broker.HandleAsync(request)).Succeeded);
+    await Task.WhenAll(
+        new ConsentStore(temp.Path).EnsureDefaultGrantsAsync(identity, [read, control]),
+        new ConsentStore(temp.Path).SetDecisionAsync(identity, read, ConsentDecision.Deny));
+    await store.EnsureDefaultGrantsAsync(identity, [read, control]);
+    await broker.RefreshConsentAsync();
+    Assert.Equal(ConsentDecision.Deny, await store.GetDecisionAsync(identity, read));
+    Assert.Equal("permission_denied", (await broker.HandleAsync(request)).ErrorCode);
+
+    await File.WriteAllTextAsync(Path.Combine(temp.Path, "consent-v1.json"), "{broken");
+    await Assert.ThrowsAsync<BrokerException>(() => store.EnsureDefaultGrantsAsync(identity, [read]), "invalid_consent");
+    Assert.Equal("{broken", await File.ReadAllTextAsync(Path.Combine(temp.Path, "consent-v1.json")));
 }
 
 static async Task RetiredConsentMigratesSafely()

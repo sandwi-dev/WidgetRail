@@ -219,6 +219,7 @@
 }
 
 .network-profile-button {
+  text-align: start;
   min-width: 0px;
   flex-grow: 1;
   max-lines: 1;
