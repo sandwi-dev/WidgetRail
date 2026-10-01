@@ -29,6 +29,9 @@ internal enum BridgeRequestKind
     RestartWidget,
     SetWidgetLifecycle,
     Action,
+    PrepareIntent,
+    CommitIntent,
+    CancelIntent,
     ControllerInput,
     ConnectProtectedWifi,
     InstallLocalWidgetPackage,
@@ -53,6 +56,7 @@ internal readonly record struct BridgeRequestKey
     internal BridgeIndexedRangeRequest? IndexedRange { get; private init; }
     internal BridgeIndexedArtworkRequest? IndexedArtwork { get; private init; }
     internal bool IsIndependent => Kind is BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.CancelIndexedRange or
+        BridgeRequestKind.CancelIntent or
         BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ReleaseIndexedLease or
         BridgeRequestKind.ResolveIndexedArtwork or BridgeRequestKind.CancelIndexedArtwork;
     internal bool IsIndexedProvider => Kind is BridgeRequestKind.ReadIndexedRange or BridgeRequestKind.AcquireIndexedRange or BridgeRequestKind.ResolveIndexedArtwork;
@@ -73,7 +77,7 @@ internal readonly record struct BridgeRequestKey
             BridgeRequestKind.EmbeddedMediaPlaybackEvent or
             BridgeRequestKind.RestartWidget or
             BridgeRequestKind.SetWidgetLifecycle or
-            BridgeRequestKind.Action or
+            BridgeRequestKind.PrepareIntent or BridgeRequestKind.CommitIntent or BridgeRequestKind.CancelIntent or BridgeRequestKind.Action or
             BridgeRequestKind.ControllerInput or
             BridgeRequestKind.ConnectProtectedWifi or
             BridgeRequestKind.QuickAction)
@@ -95,7 +99,7 @@ internal readonly record struct BridgeRequestKey
             BridgeRequestKind.EmbeddedMediaPlaybackEvent or
             BridgeRequestKind.RestartWidget or
             BridgeRequestKind.SetWidgetLifecycle or
-            BridgeRequestKind.Action or
+            BridgeRequestKind.PrepareIntent or BridgeRequestKind.CommitIntent or BridgeRequestKind.CancelIntent or BridgeRequestKind.Action or
             BridgeRequestKind.ControllerInput or
             BridgeRequestKind.ConnectProtectedWifi or
             BridgeRequestKind.QuickAction))
@@ -180,6 +184,10 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.Action => Widget(
                     BridgeJson.FromElement<BridgeActionRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.Action),
+                BridgeMessageTypes.PrepareIntent => Widget(
+                    BridgeJson.FromElement<BridgeIntentPrepareRequest>(request.Payload).WidgetId, BridgeRequestKind.PrepareIntent),
+                BridgeMessageTypes.CommitIntent => IntentCommit(request.Payload),
+                BridgeMessageTypes.CancelIntent => IntentCancel(request.Payload),
                 BridgeMessageTypes.ControllerInput => Widget(
                     BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.ControllerInput),
@@ -209,6 +217,19 @@ internal static class BridgeRequestClassifier
     {
         if (!new[] { widget, instance, runtime, presentation }.All(BridgeRequestKey.IsBoundedIdentifier))
             throw new BridgeProtocolException("Indexed identity is invalid.");
+    }
+
+    private static BridgeRequestKey IntentCommit(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeIntentCommitRequest>(payload);
+        if (!Guid.TryParseExact(request.TicketId, "N", out _)) throw new BridgeProtocolException("Invalid intent ticket.");
+        return Widget(request.WidgetId, BridgeRequestKind.CommitIntent);
+    }
+    private static BridgeRequestKey IntentCancel(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeIntentCancelRequest>(payload);
+        if (!Guid.TryParseExact(request.TicketId, "N", out _)) throw new BridgeProtocolException("Invalid intent ticket.");
+        return Widget(request.WidgetId, BridgeRequestKind.CancelIntent);
     }
 
     private static BridgeRequestKey IndexedLease(JsonElement payload, BridgeRequestKind kind = BridgeRequestKind.ReleaseIndexedLease)

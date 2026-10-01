@@ -235,6 +235,16 @@ following sources. No game-memory access or autonomous game input.
   request admission/dispatch and frontend intent activation are still pending.
   Browser, capture recording, native media element/preview modal, Gemini integration
   and Game Help widget are not enabled. Existing candidate untouched.
+- 2026-10-01: Bridge prepare/commit/cancel messages and presentation-session APIs
+  now connect the previously separate pieces. Verified package intent declarations
+  enter the host catalog and its fingerprints. Preparation admits only matching
+  current source actions and manifests, without starting a target. Bounded one-shot
+  tickets survive the intentional source hide, but reject expired/replaced workers.
+  Handler choice is explicit; only standard HTTP(S) web requests with no handler
+  return an external-browser launch grant. Cancellation targets one source-owned
+  active delivery. Synthetic Bridge checks: 5/5 (`bridge-intents-tests01.log`),
+  session build clean (`session-intents-build01.binlog`). Frontend wiring and real
+  pipe end-to-end checks are next, so this is not yet a user-visible completion.
 
 ## Validation and delivery policy
 

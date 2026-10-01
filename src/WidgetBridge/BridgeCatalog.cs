@@ -30,6 +30,9 @@ internal sealed record ConfiguredWidget
     public string? IconPackageRoot { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
     public IReadOnlyList<string> DeclaredCapabilities { get; init; } = [];
+    /// <summary>Copied only from a validated package manifest; never provided by worker IPC.</summary>
+    [JsonIgnore]
+    public WidgetIntentDeclarations? Intents { get; init; }
     /// <summary>Set only after sealed bundled admission; never accepted from JSON.</summary>
     [JsonIgnore]
     public bool GrantsBundledPermissionDefaults { get; init; }
@@ -177,6 +180,7 @@ public sealed class BridgeCatalog
 
     public IReadOnlyList<BridgeWidgetDescriptor> Widgets =>
         _ordered.Select(widget => widget.PublicDescriptor()).ToArray();
+    internal IReadOnlyList<ConfiguredWidget> IntentWidgets => _ordered;
 
     // Incomplete catalogs admit available widgets, but cannot prove that absent
     // installed widgets were removed. This metadata travels with the revision.
@@ -566,6 +570,7 @@ public sealed class BridgeCatalog
                     ]
                     : [],
                 DeclaredCapabilities = declaredCapabilities,
+                Intents = manifest.Intents,
                 RequiresAppContainer = executionTrust == WidgetExecutionTrust.Sandboxed,
                 ExecutionTrust = executionTrust,
                 IsolationKey = executionTrust == WidgetExecutionTrust.Sandboxed
@@ -665,6 +670,7 @@ public sealed class BridgeCatalog
             source.WorkerExecutable,
             .. source.WorkerArguments,
             .. source.DeclaredCapabilities,
+            .. (source.Intents is null ? Array.Empty<string>() : new[] { JsonSerializer.Serialize(source.Intents) }),
             source.ExecutionTrust.ToString(),
             source.RequiresAppContainer ? "appcontainer-required" : "job-only",
             source.IsolationKey ?? string.Empty,
@@ -1007,6 +1013,7 @@ public sealed class BridgeCatalog
                 "--widget-type", manifest.Entrypoint.Type!,
             ],
             DeclaredCapabilities = declaredCapabilities,
+            Intents = manifest.Intents,
             RequiresAppContainer = true,
             IsolationKey = BundledIsolationKey(manifest.Publisher, manifest.Id),
             GrantsBundledPermissionDefaults = manifest.Publisher == "widgetrail.firstparty",

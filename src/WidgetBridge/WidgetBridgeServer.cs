@@ -752,6 +752,26 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 .ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.PrepareIntent:
+        {
+            var prepare = BridgeJson.FromElement<BridgeIntentPrepareRequest>(request.Payload);
+            var result = await _registry.PrepareIntentAsync(prepare, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.IntentPrepared, request.RequestId, result, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.CommitIntent:
+        {
+            var commit = BridgeJson.FromElement<BridgeIntentCommitRequest>(request.Payload);
+            var result = await _registry.CommitIntentAsync(commit, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.IntentCompleted, request.RequestId, result, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.CancelIntent:
+        {
+            await _registry.CancelIntentAsync(BridgeJson.FromElement<BridgeIntentCancelRequest>(request.Payload)).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.ControllerInput:
         {
             var controllerRequest = BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload);

@@ -61,6 +61,11 @@ if (args is ["--export-styled-fixture", var snapshotPath, var stylePath, var out
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Intent bridge admission checks displayed action and manifest", BridgeIntentScenarios.Admission),
+    ("Intent bridge fallback tickets are bounded expiring and one-shot", BridgeIntentScenarios.FallbackTickets),
+    ("Intent bridge delivery survives source hide without starting targets", BridgeIntentScenarios.WidgetDelivery),
+    ("Intent bridge choice and replacement boundaries are explicit", BridgeIntentScenarios.ReplacementsAndChoice),
+    ("Intent bridge cancellation is exact and cannot replay", BridgeIntentScenarios.Cancellation),
     ("Dashboard input tolerates compatible publications without changing command", BridgeClientRegistryScenarios.DashboardRevalidatesCompatiblePublication),
     ("Task activation tickets are single-use bounded and owner-scoped", TaskActivationScenarios.TicketsAndWire),
     ("Task activation completion survives hiding but rejects retired workers", BridgeClientRegistryScenarios.TaskActivationSurvivesHideButNotWorkerReplacement),

@@ -56,6 +56,11 @@ internal static class BridgeMessageTypes
     public const string Snapshot = "snapshot";
     public const string PresentationUpdate = "presentation-update";
     public const string Action = "action";
+    public const string PrepareIntent = "prepare-widget-intent";
+    public const string CommitIntent = "commit-widget-intent";
+    public const string CancelIntent = "cancel-widget-intent";
+    public const string IntentPrepared = "widget-intent-prepared";
+    public const string IntentCompleted = "widget-intent-completed";
     public const string PinnedAction = "pinned-action-v1";
     public const string ResolvePinnedArtwork = "resolve-pinned-artwork-v1";
     public const string QuickAction = "quick-action";

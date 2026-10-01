@@ -2565,7 +2565,8 @@ internal sealed class RegistryFixture : IAsyncDisposable
         WorkerResidencyBudgetOptions? options = null,
         Action<ConfiguredWidget, RegistryTestClient>? configure = null,
         Func<TimeSpan, CancellationToken, Task>? delay = null,
-        Action<BridgeClientLifetimeDiagnostic>? lifetimeDiagnostic = null)
+        Action<BridgeClientLifetimeDiagnostic>? lifetimeDiagnostic = null,
+        Func<long>? intentNow = null)
     {
         _configure = configure;
         Registry = new BridgeClientRegistry(
@@ -2606,7 +2607,7 @@ internal sealed class RegistryFixture : IAsyncDisposable
                 Failures.Add(item);
                 return Task.CompletedTask;
             },
-            delay, lifetimeDiagnostic);
+            delay, lifetimeDiagnostic) { IntentNow = intentNow ?? (() => Environment.TickCount64) };
     }
 
     internal BridgeClientRegistry Registry { get; }
@@ -2739,6 +2740,15 @@ internal sealed class RegistryTestClient(
         return Task.FromResult(RevalidatedHandled);
     }
     internal List<WidgetActionEvent> ActionEvents { get; } = [];
+    internal List<WidgetIntentRequest> Intents { get; } = [];
+    internal Func<WidgetIntentRequest, CancellationToken, Task<bool>>? IntentHandler { get; set; }
+    public Task<bool> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsRunning || Starts != expectedStartOrdinal) throw new WidgetInputWorkerRetiredException();
+        Intents.Add(intent);
+        return IntentHandler?.Invoke(intent, cancellationToken) ?? Task.FromResult(true);
+    }
     internal List<EmbeddedMediaPlaybackEvent> EmbeddedMediaPlaybackEvents { get; } = [];
     internal Func<long, ViewSnapshot>? SnapshotFactory { get; set; }
     internal Func<IndexedCollectionRangeRequest, CancellationToken, Task<IndexedCollectionRange>>? IndexedReader { get; set; }

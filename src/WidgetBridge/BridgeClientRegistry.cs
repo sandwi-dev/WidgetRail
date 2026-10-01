@@ -280,6 +280,8 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
     Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken, int? expectedStartOrdinal = null);
+    Task<bool> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        Task.FromResult(false);
     Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
         Task.FromException<WidgetOperationAdmission?>(new NotSupportedException("Pinned action v1 is unavailable."));
     Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
@@ -362,6 +364,8 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         WidgetActionEvent action,
         CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
         client.AdmitActionForWorkerAsync(action, cancellationToken, expectedStartOrdinal);
+    public Task<bool> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken) =>
+        client.DeliverIntentAsync(intent, expectedStartOrdinal, cancellationToken);
     public Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
         client.AdmitPinnedActionAsync(input, cancellationToken, expectedStartOrdinal);
     public Task<WidgetEncodedArtwork?> ResolveArtworkAsync(
@@ -1623,6 +1627,8 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             if (!_disposed)
             {
                 _disposed = true;
+                _intentTickets.Clear();
+                foreach (var intent in _activeIntentDeliveries.Values) _ = intent.Cancellation.CancelAsync();
                 registrations = _clients.Values.ToArray();
                 foreach (var registration in registrations)
                 {
