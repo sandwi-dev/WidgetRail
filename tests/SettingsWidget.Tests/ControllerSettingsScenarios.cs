@@ -91,6 +91,9 @@ internal static class ControllerSettingsScenarios
             if ((await store.LoadAsync()).Controllers.HoldDpadToScroll)
                 throw new Exception("Held scrolling can be disabled.");
             await widget.OnActionAsync(new WidgetActionEvent("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
+            if (service.Requests.Count != 0) throw new Exception("Stale inline exclusive action must not reach the provider.");
+            await widget.OnActionAsync(new WidgetActionEvent("open.controller-help", "controllers.help"));
+            await widget.OnActionAsync(new WidgetActionEvent("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
             if ((await store.LoadAsync()).Controllers.ExclusiveControl) throw new Exception("Unavailable enable persisted.");
             service.Status = new(ControllerControlState.Off, true, true, true);
             await widget.OnActionAsync(new WidgetActionEvent("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
@@ -109,7 +112,7 @@ internal static class ControllerSettingsScenarios
             service.Status = new(ControllerControlState.Failed, true, true, true);
             await widget.OnActionAsync(new WidgetActionEvent("refresh", "controllers.refresh"));
             json = JsonSerializer.Serialize(widget.Render().CreateSnapshot("settings", 1));
-            if (!json.Contains("Exclusive control, Off") || !json.Contains("Normal controller input has been restored"))
+            if (json.Contains("wrail-switch--on") || !json.Contains("Normal controller input has been restored"))
                 throw new Exception("Failed startup must display Off and explain ordinary input restoration.");
             await widget.OnActionAsync(new WidgetActionEvent("controllers.exclusive-control.toggle", "controllers.exclusive-control"));
             if (!service.Requests.Last()) throw new Exception("Retry after failed startup must request enable, not another disable.");
@@ -174,6 +177,12 @@ internal static class ControllerSettingsScenarios
             if (!SettingsPresentation.TryRender(state, out var view)) throw new Exception("Missing Controllers page.");
             var snapshot = view.CreateSnapshot("settings", 1);
             AssertNavigation(snapshot, status.CanEnable);
+            var exclusive = ControllerSettingsPresentation.Render(state, details: true).CreateSnapshot("settings", 2);
+            var exclusiveNodes = Descendants(exclusive.Root).ToArray();
+            var toggle = exclusiveNodes.Single(node => node.Id == "controllers.exclusive-control");
+            if ((toggle.IsDisabled != true) != status.CanEnable || toggle.Focus?.Down != "controllers.refresh")
+                throw new Exception("Exclusive page lost its driver gate or recovery focus path.");
+            if (ViewSnapshotValidator.Validate(exclusive).Count != 0) throw new Exception("Invalid exclusive-control page.");
             var json = JsonSerializer.Serialize(snapshot) + JsonSerializer.Serialize(ControllerSettingsPresentation.Render(state, details: true).CreateSnapshot("settings", 2));
             foreach (var text in new[] { "Input behavior", "Required drivers", "Exclusive control", "HidHide", "ViGEmBus",
                 "your game also reacts", "controller stops working in a game",
@@ -194,15 +203,16 @@ internal static class ControllerSettingsScenarios
         return Task.CompletedTask;
     }
 
+    private static IEnumerable<ViewNode> Descendants(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Descendants));
+
     private static void AssertNavigation(ViewSnapshot snapshot, bool canChange)
     {
         static IEnumerable<ViewNode> Nodes(ViewNode node) =>
             new[] { node }.Concat(node.Children.SelectMany(Nodes));
         var nodes = Nodes(snapshot.Root).ToArray();
-        var toggle = nodes.Single(node => node.Id == "controllers.exclusive-control");
-        var help = nodes.Single(node => node.Id == "controllers.help");
-        if (toggle.Focus?.Down != "controllers.help" || help.Focus?.Up != "controllers.exclusive-control")
-            throw new Exception("Controller actions must follow the visible row order.");
+        if (nodes.Any(node => node.Id == "controllers.exclusive-control") ||
+            nodes.Single(node => node.Id == "controllers.help").ActionId != "open.controller-help")
+            throw new Exception("Controllers must route to the exclusive page, not show its toggle inline.");
         if (nodes.Single(node => node.Id == "controllers.open-shortcut").Focus?.Up != "settings.back")
             throw new Exception("Shortcut must be connected to the header.");
         var errors = ViewSnapshotValidator.Validate(snapshot);

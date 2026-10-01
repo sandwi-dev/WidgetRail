@@ -42,6 +42,8 @@ internal sealed partial class OverlayShellPage
                 await SelectAsync("settings", true);
                 await Until(() => Find("Widget.category.controllers") is Control { IsEnabled: true } && MainFocusEnabled);
                 Invoke("Widget.category.controllers");
+                await Until(() => Find("Widget.controllers.help") is Control { IsEnabled: true });
+                Invoke("Widget.controllers.help");
                 await Until(() => Find("Widget.controllers.exclusive-control") is Control { IsEnabled: true } && StatusContains("Off"));
                 Check(TextContains("Widget.controllers.hidhide.status", "Ready") && TextContains("Widget.controllers.vigem.status", "Ready"),
                     "actual Controllers page displays native prerequisite readiness and actionable exclusive control");
@@ -166,9 +168,9 @@ internal sealed partial class OverlayShellPage
                 var element = Find(id) as Control ?? throw new InvalidOperationException("Missing control " + id);
                 if (!element.IsEnabled) throw new InvalidOperationException("Disabled control " + id);
                 var peer = FrameworkElementAutomationPeer.CreatePeerForElement(element);
-                if (peer?.GetPattern(PatternInterface.Invoke) is not IInvokeProvider invoke)
-                    throw new InvalidOperationException("Missing invoke pattern " + id);
-                invoke.Invoke();
+                if (peer?.GetPattern(PatternInterface.Toggle) is IToggleProvider toggle) toggle.Toggle();
+                else if (peer?.GetPattern(PatternInterface.Invoke) is IInvokeProvider invoke) invoke.Invoke();
+                else throw new InvalidOperationException("Missing activation pattern " + id);
             }
             Task Until(Func<bool> condition) => UntilAsync(() => Task.FromResult(condition()));
             async Task UntilAsync(Func<Task<bool>> condition)

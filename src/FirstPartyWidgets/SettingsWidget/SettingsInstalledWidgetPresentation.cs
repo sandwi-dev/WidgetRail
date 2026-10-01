@@ -59,12 +59,9 @@ internal static class SettingsInstalledWidgetPresentation
             for (var index = 0; index < builtIn.Count; index++)
             {
                 var manifest = builtIn[index];
-                children.Add(UI.Button(
-                        $"{manifest.Name} · {manifest.Version} · {(settings.BuiltInWidgets.IsEnabled(manifest.Id) ? "Enabled" : "Disabled")}",
-                        $"installed.builtin.select.{index}", $"installed.builtin.item.{index}")
-                    .Disabled(!valid).Busy(busy)
-                    .Selected(settings.BuiltInWidgets.IsEnabled(manifest.Id))
-                    .Classes("setting-row", "is-built-in", settings.BuiltInWidgets.IsEnabled(manifest.Id) ? "is-enabled" : "is-disabled"));
+                children.Add(InstalledEntry(manifest.Name, manifest.Version.ToString(),
+                    settings.BuiltInWidgets.IsEnabled(manifest.Id) ? "Enabled" : "Disabled",
+                    $"installed.builtin.select.{index}", $"installed.builtin.item.{index}", busy, !valid));
             }
         }
 
@@ -83,13 +80,8 @@ internal static class SettingsInstalledWidgetPresentation
             var status = superseded ? "Unused copy · built-in version takes priority" : package.Enabled
                 ? compatibility.IsSupported ? "Enabled" : "Enabled · incompatible"
                 : compatibility.IsSupported ? "Disabled · review before enabling" : "Incompatible";
-            children.Add(UI.Button(
-                    $"{package.Name} · {package.ActiveVersion.Version} · " +
-                    (valid ? status : $"Last good · {status}"),
-                    $"installed.select.{index}", $"installed.item.{index}")
-                .Busy(busy)
-                .Selected(package.Enabled && !superseded)
-                .Classes("setting-row", package.Enabled && !superseded ? "is-enabled" : "is-disabled"));
+            children.Add(InstalledEntry(package.Name, package.ActiveVersion.Version.ToString(),
+                valid ? status : $"Last good · {status}", $"installed.select.{index}", $"installed.item.{index}", busy));
         }
 
         if (visible.Length == 0)
@@ -120,6 +112,17 @@ internal static class SettingsInstalledWidgetPresentation
                 : visible.Length == 0 ? "installed.install-local" : $"installed.item.{start}";
         return SettingsPresentation.View(header, scope, initialFocus, "installed.widgets");
     }
+
+    private static ActionSurfaceElement InstalledEntry(string name, string version, string status,
+        string action, string id, bool busy, bool disabled = false) =>
+        UI.ActionSurface(action, id, $"{name}. Version {version}. {status}. Open details.", ActionSurfaceOrientation.Horizontal,
+            UI.Stack(id + ".copy",
+                UI.Text(name, id + ".name").Classes("installed-entry-name"),
+                UI.Text(status, id + ".status").Classes("installed-entry-status"))
+                .Classes("installed-entry-copy"),
+            UI.Text(version, id + ".version").Classes("installed-entry-version"),
+            UI.Text("›", id + ".chevron").Classes("installed-entry-chevron"))
+            .Busy(busy).Disabled(disabled).Classes("installed-entry");
 
     public static WidgetView RenderInstalledCatalogRecoveryList(
         StackElement header,

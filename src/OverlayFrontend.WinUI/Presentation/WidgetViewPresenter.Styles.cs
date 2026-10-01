@@ -486,6 +486,31 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             roundedBorder ??= new(button);
             roundedBorder.Update(border, thickness, radius);
         }
+        else if (element is ToggleSwitch)
+        {
+            var foreground = Brush(style, "color", contrast, false);
+            var fill = Brush(style, "background", contrast, true);
+            if (foreground is null && fill is null) RestoreResources();
+            else
+            {
+                var values = EnsureResources();
+                var hasOnPalette = fill?.Color.A > 0 && foreground?.Color.A > 0;
+                foreach (var state in new[] { "", "PointerOver", "Pressed", "Disabled" })
+                {
+                    // Stock WinUI animates Off fill/stroke colors, while On
+                    // fill/stroke and both knobs use Brush-valued resources.
+                    WidgetNativeResource.Set(values, "ToggleSwitchFillOff" + state, state.Length == 0 ? fill : fill?.Color);
+                    WidgetNativeResource.Set(values, "ToggleSwitchStrokeOff" + state, state.Length == 0 ? foreground : foreground?.Color);
+                    WidgetNativeResource.Set(values, "ToggleSwitchKnobFillOff" + state, foreground);
+                    WidgetNativeResource.Set(values, "ToggleSwitchFillOn" + state, hasOnPalette ? foreground : null);
+                    WidgetNativeResource.Set(values, "ToggleSwitchStrokeOn" + state, hasOnPalette ? foreground : null);
+                    WidgetNativeResource.Set(values, "ToggleSwitchKnobFillOn" + state, hasOnPalette ? fill : null);
+                }
+                WidgetNativeResource.Set(values, "ToggleSwitchHeaderForeground", foreground);
+                WidgetNativeResource.Set(values, "ToggleSwitchHeaderForegroundDisabled", foreground);
+                WidgetNativeResource.Set(values, "ToggleSwitchContentForegroundDisabled", foreground);
+            }
+        }
         else if (element is Slider)
         {
             var foreground = Brush(style, "color", contrast, false);

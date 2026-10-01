@@ -226,3 +226,11 @@
 .section-heading { padding: 16px 0 4px; }
 .settings-header-row { align: center; }
 .home-utilities { justify: end; }
+
+.installed-entry { min-height: 64px; min-width: 0; padding: 12px 14px; gap: 14px; align: center; background: var(--surface-raised); border-width: 1px; border-color: var(--border, rgba(246, 240, 226, 0.12)); corner-radius: 8px; }
+.installed-entry:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
+.installed-entry-copy { flex-grow: 1; min-width: 0; gap: 4px; }
+.installed-entry-name { font-size: 15px; font-weight: 600; max-lines: 2; }
+.installed-entry-status { font-size: 13px; color: var(--text-muted); max-lines: 3; }
+.installed-entry-version { font-size: 13px; color: var(--text-muted); max-width: 140px; max-lines: 2; text-align: end; }
+.installed-entry-chevron { font-size: 20px; color: var(--text-muted); width: 16px; }

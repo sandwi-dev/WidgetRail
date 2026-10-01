@@ -160,6 +160,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 nextBindings.Add(declaration.Node.Id, sameOwner && !transition.ReplacedIds.Contains(declaration.Node.Id)
                     && bindings.TryGetValue(declaration.Node.Id, out var retained)
                     && retained.Identity == declaration.Identity
+                    && IsSwitch(declarations[declaration.Node.Id].Node) == IsSwitch(declaration.Node)
                     && SameGridLayoutMode(declarations[declaration.Node.Id].Node, declaration.Node)
                     && SameSurfaceOwnership(declaration, plan)
                     && declarations[declaration.Node.Id].Node.Transition?.Kind == declaration.Node.Transition?.Kind
@@ -323,6 +324,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (ActivateContextMenu() || ActivateTextEntry() || ActivateSelect() || HandleSliderButton(ControllerButton.A, ControllerEventPhase.Pressed)) return;
         if (FocusedBinding() is { Identity.Kind: ViewNodeKind.Slider } slider && Eligible(slider))
         { _ = InvokeAsync(slider.Identity, slider.Token); return; }
+        if (FocusedBinding() is { Element: ToggleSwitch toggle } toggleBinding && Eligible(toggleBinding))
+        { toggle.IsOn = !toggle.IsOn; return; }
         if (FindIndexedCollection()?.ActivateFocused() == true) return;
         if (!applying && FocusedBinding() is { Element: Button { Command: { } command } button } binding
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
@@ -451,7 +454,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 break;
             case ViewNodeKind.Button:
                 element = presentationOnly ? new TextBlock { TextWrapping = TextWrapping.Wrap } :
-                    new Button { Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
+                    IsSwitch(node) ? CreateSwitch(declaration.Identity, token) : new Button { Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
                 break;
             case ViewNodeKind.Slider: element = presentationOnly ? new TextBlock() : CreateSlider(declaration.Identity, token); break;
             case ViewNodeKind.Image: element = new WidgetArtworkView(); break;
@@ -502,10 +505,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             control.IsEnabled = node.IsDisabled != true;
             // Selection is authored state, not a ToggleButton command. Preserve
             // native Invoke semantics while announcing both selection and work.
-            AutomationProperties.SetItemStatus(control, WidgetAccessibleState.ItemStatus(node));
+            AutomationProperties.SetItemStatus(control, WidgetAccessibleState.ItemStatus(element is ToggleSwitch ? node with { IsSelected = null } : node));
             control.IsTabStop = element is not WidgetIndexedCollectionView && node.IsFocusable && binding.Identity.Scope == activeScope;
             control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview) && (!node.IsFocusable || binding.Identity.Scope == activeScope);
         }
+        if (element is ToggleSwitch toggle) toggles[toggle].Publish(node);
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);
         if (element is Button entry && node.Kind == ViewNodeKind.TextEntry) UpdateButtonLabel(entry, TextEntryLabel(node));
         if (element is ScrollViewer scroll)

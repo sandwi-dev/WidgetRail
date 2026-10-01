@@ -7,7 +7,7 @@ internal static partial class SettingsPresentation
 {
     private static ContainerElement ArrangeSettingsRows(ContainerElement page)
     {
-        var form = page.Id is "appearance.page" or "overlay.page" or "accessibility.page" or "controllers.page";
+        var form = page.Id is "appearance.page" or "overlay.page" or "accessibility.page" or "controllers.page" or "controllers.exclusive.page";
         var children = new List<WidgetElement>();
         for (var index = 0; index < page.Children.Count; index++)
         {

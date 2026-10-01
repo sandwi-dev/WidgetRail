@@ -43,6 +43,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         if (Environment.GetCommandLineArgs().Contains("--directional-navigation-only"))
         { await DirectionalNavigationAsync(); return; }
         await AuthoringAdmissionAsync();
+        if (Environment.GetCommandLineArgs().Contains("--native-toggles-only"))
+        { await NativeTogglesAsync(); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--settings-layout-fixtures") is { } settingsFixtures)
         { await SettingsProductionLayoutAsync(settingsFixtures); return; }
         if (Environment.GetCommandLineArgs().Contains("--playnite-layout-only") && App.ValidationFixturePath is { } playniteFixture)

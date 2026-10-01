@@ -177,7 +177,8 @@ internal sealed partial class OverlayShellPage
                     return bounds.Top >= -1 && bounds.Bottom <= surface!.ActualHeight + 1;
                 });
                 var peer = FrameworkElementAutomationPeer.CreatePeerForElement(control);
-                ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+                if (peer.GetPattern(PatternInterface.Toggle) is IToggleProvider toggle) toggle.Toggle();
+                else ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
             }
             async Task Settled(Func<AppearanceSettings, bool> saved, Func<bool> applied) =>
                 await WaitAsync(async () => saved((await store.LoadAsync()).Appearance) && applied());

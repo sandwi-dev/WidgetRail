@@ -1114,7 +1114,7 @@ public static partial class UI
         var state = isOn ? "On" : "Off";
         return new ButtonElement(id, $"{label}  {state}", action)
         {
-            AccessibilityLabel = $"{label}, {state}",
+            AccessibilityLabel = label,
             IsSelected = isOn ? true : null,
             IsDisabled = isDisabled ? true : null,
             RequiredStyleClasses = ["wrail-switch", isOn ? "wrail-switch--on" : "wrail-switch--off"],

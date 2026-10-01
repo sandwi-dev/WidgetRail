@@ -7,6 +7,63 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
+### Native toggles and widget-list rows — 2026-10-01, validated; packaging pending
+
+User authorized the remaining suggested improvements. Continue on the existing
+codex/settings-usability branch (preview.17 is delivered but not accepted/merged).
+UI.Switch keeps its SDK API and action authority, with a native ToggleSwitch
+renderer. Snapshot publication must never emit actions; busy/disabled/inactive,
+controller repeats, focus retention and live theme changes require native checks.
+Settings widget-list entries use existing ActionSurface composition for separate
+name/version/status, one stable focus target and unchanged package review gates.
+User additionally requested Exclusive control be a separate page reached from
+Controllers, merging its toggle/status/recovery with driver information and help.
+Do not move that toggle back into the primary Controllers page. Installed app and
+machine settings remain untouched; physical acceptance is user-owned. Preserve
+normal Inno/manual-install delivery. No push or merge requested.
+
+Implementation complete. UI.Switch keeps its SDK signature and existing semantic
+marker/action contract. The host composes a stock sealed WinUI ToggleSwitch with a
+small publication/event adapter: applying a snapshot never dispatches an action;
+busy/disabled/passive or retired controls cannot dispatch. The control survives
+state and busy updates, while changes between switch and ordinary command retire
+the old native element. Retirement detaches its event handler. Screen-reader names
+no longer repeat On/Off because native TogglePattern supplies the state. Ordinary
+selected command buttons retain their Invoke semantics. Native stock brushes,
+including Color-valued Off animation resources, follow theme/high-contrast colors.
+Missing/transparent On palettes retain the native paired palette.
+
+The Settings list now composes one existing ActionSurface per widget with distinct
+name, status and version fields. No new public widget-list component. IDs/actions,
+review gates and return focus remain stable. Controllers now contains a navigation
+option for Exclusive control; its dedicated page merges toggle, live status,
+recovery/check-again, drivers and help. Polling includes this page. Old inline
+exclusive actions are rejected; valid dedicated-page actions keep existing driver
+and recovery safeguards.
+
+Passed: Settings81; SDK148; compatibility14; native toggles50; production Settings
+layout253 at 880/520 DIP and ordinary/150% text; separate trimmed Release runtime
+smoke includes ToggleSwitch template, native accessibility, user activation and
+publication suppression plus the existing slider/artwork checks. Native toggle
+checks cover all five bundled themes, high contrast, hover/pressed resource types,
+controller repeat/release, busy and delayed publications, passive input denial,
+retired callbacks and semantic control replacement. Rendered widget-list and
+exclusive-page screenshots inspected. No system-setting/driver mutation performed.
+Native fixtures use simulated actions and isolated profiles; installed app untouched.
+
+Evidence: artifacts/settings-completion/. Initial build attempted derivation, but
+WinUI ToggleSwitch is sealed: corrected to composition around the stock control.
+A trim-fixture collection expression required explicit string[] for CsWinRT AOT;
+fixed in the fixture. New catalog fixtures initially used invalid publisher IDs;
+corrected them to reverse DNS. Existing SDK name expectations were updated for the
+native Toggle provider, retaining assertions for serialized state and action IDs.
+Code review also corrected Color-versus-Brush resources for stock visual states,
+and verified disposal and controller-page admission. The pre-existing unrelated
+documentation publication assertion recorded in preview.17 remains unchanged.
+Normal preview.18 / FileVersion0.1.0.17 and Settings0.1.6 are ready for packaging.
+
+
+
 ### Settings organization and consistent rows — 2026-10-01, first-pass installer delivered
 
 User accepted preview.16; main fast-forwarded to bf15d9d0. Unrelated instruction

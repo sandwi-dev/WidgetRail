@@ -2023,7 +2023,8 @@ static Task SettingsCompositesAreSemantic()
 
     var toggle = Find(snapshot.Root, "motion-toggle");
     Assert.Equal("Reduced motion  On", toggle.Text);
-    Assert.Equal("Reduced motion, On", toggle.AccessibilityLabel);
+    // The native Toggle provider announces state separately from the name.
+    Assert.Equal("Reduced motion", toggle.AccessibilityLabel);
     Assert.Equal("toggle-motion", toggle.ActionId);
     Assert.Equal(true, toggle.IsSelected);
     Assert.Equal(null, toggle.Glyph);
@@ -2034,7 +2035,7 @@ static Task SettingsCompositesAreSemantic()
 
     var offToggle = Find(snapshot.Root, "bold-toggle");
     Assert.Equal("Bold text  Off", offToggle.Text);
-    Assert.Equal("Bold text, Off", offToggle.AccessibilityLabel);
+    Assert.Equal("Bold text", offToggle.AccessibilityLabel);
     Assert.Equal(null, offToggle.IsSelected);
     Assert.Equal(null, offToggle.Glyph);
     Assert.Equal("toggle-bold", offToggle.ActionId);
@@ -2050,7 +2051,7 @@ static Task SettingsCompositesAreSemantic()
     Assert.Equal(true, packageStyledDisabledOn.IsSelected);
     Assert.Equal(true, packageStyledDisabledOn.IsDisabled);
     Assert.Equal(null, packageStyledDisabledOn.Glyph);
-    Assert.Equal("High contrast, On", packageStyledDisabledOn.AccessibilityLabel);
+    Assert.Equal("High contrast", packageStyledDisabledOn.AccessibilityLabel);
     Assert.True(
         new[] { "wrail-switch", "wrail-switch--on", "package-switch-accent" }
             .SequenceEqual(packageStyledDisabledOn.StyleClasses),

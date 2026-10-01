@@ -34,7 +34,8 @@ internal static class SettingsUsabilityScenarios
             throw new Exception("Category ownership overlaps.");
         if (Has(SettingsPage.Accessibility, "motion.system") || Has(SettingsPage.Accessibility, "contrast.high"))
             throw new Exception("Competing switches survived.");
-        if (Has(SettingsPage.Controllers, "controllers.hidhide") || !Has(SettingsPage.ControllerHelp, "controllers.hidhide"))
+        if (Has(SettingsPage.Controllers, "controllers.exclusive-control") || Has(SettingsPage.Controllers, "controllers.hidhide") ||
+            !Has(SettingsPage.ControllerHelp, "controllers.hidhide") || !Has(SettingsPage.ControllerHelp, "controllers.exclusive-control"))
             throw new Exception("Driver details must be available on the help page.");
         return Task.CompletedTask;
     }

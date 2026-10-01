@@ -23,17 +23,27 @@ if (args is ["--export-settings-layout-fixtures", var settingsFixtureDirectory])
     var widget = Create(temp.Path);
     await Activate(widget);
     foreach (var (name, action) in new[] { ("home", "back"), ("appearance", "open.appearance"),
-        ("general", "open.overlay"), ("accessibility", "open.accessibility"), ("controllers", "open.controllers"), ("about", "open.about") })
+        ("general", "open.overlay"), ("accessibility", "open.accessibility"), ("controllers", "open.controllers"), ("exclusive", "open.controller-help"), ("about", "open.about") })
     {
         await Action(widget, action);
         await ExportRendererSnapshot(Snapshot(widget), Path.Combine(settingsFixtureDirectory, name + ".json"));
     }
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
+    var catalogRoot = Path.Combine(temp.Path, "catalog");
+    WriteInstalledWidget(catalogRoot, "dev.example.library", "dev.publisher.example", "A library widget with a deliberately long name",
+        [PlatformCapabilities.AudioSessionsReadV1], []);
+    WriteInstalledWidget(catalogRoot, "dev.example.music", "dev.publisher.example", "Music", [], []);
+    var installed = CreateWithPermissions(temp.Path, catalogRoot, new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(installed);
+    await Action(installed, "open.installed-widgets");
+    await ExportRendererSnapshot(Snapshot(installed), Path.Combine(settingsFixtureDirectory, "widgets.json"));
+    await installed.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
     return 0;
 }
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Installed rows separate visible fields and preserve one action", StructuredInstalledRows),
     ("Settings pages have distinct ownership and valid focus paths", SettingsUsabilityScenarios.PagesHaveConsistentOwnershipAndFocus),
     ("Explicit preference choices are idempotent", SettingsUsabilityScenarios.ExplicitChoicesAreIdempotent),
     ("Shared setting rows retain control authority and accessible values", SettingsUsabilityScenarios.SettingRowKeepsControlSemantics),
@@ -1225,6 +1235,31 @@ static async Task StableBoundFocus()
     Assert.Valid(overlay);
 }
 
+static async Task StructuredInstalledRows()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = Path.Combine(temp.Path, "catalog");
+    const string name = "A library widget with a deliberately long name";
+    WriteInstalledWidget(catalog, "dev.test.structured", "dev.publisher.example", name, [PlatformCapabilities.AudioSessionsReadV1], []);
+    var widget = CreateWithPermissions(temp.Path, catalog, new ConsentStore(Path.Combine(temp.Path, "consent")));
+    await Activate(widget);
+    await Action(widget, "open.installed-widgets");
+    var snapshot = Snapshot(widget);
+    var row = Nodes(snapshot.Root).Single(node => node.Id == "installed.item.0");
+    Assert.Equal(ViewNodeKind.ActionSurface, row.Kind);
+    Assert.Equal("installed.select.0", row.ActionId);
+    Assert.Equal(1, Nodes(row).Count(node => node.IsFocusable));
+    Assert.Equal(name, Text(row, row.Id + ".name").Text);
+    Assert.Contains("Disabled", Text(row, row.Id + ".status").Text!);
+    Assert.True(!string.IsNullOrWhiteSpace(Text(row, row.Id + ".version").Text), "Version field missing.");
+    Assert.Contains(name, row.AccessibilityLabel!);
+    Assert.Valid(snapshot);
+    await Action(widget, row.ActionId!);
+    Assert.Equal(SettingsPage.InstalledWidgetDetails, widget.CurrentPage);
+    await Action(widget, "back");
+    Assert.Equal("installed.item.0", Snapshot(widget).InitialFocusId);
+}
+
 static async Task InstalledWidgetReview()
 {
     using var temp = new TemporaryDirectory();
@@ -1247,9 +1282,9 @@ static async Task InstalledWidgetReview()
     Assert.True(!Nodes(first.Root).SelectMany(node => node.Shortcuts).Any(shortcut =>
         shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper),
         "Installed pages must expose buttons without bumper shortcuts.");
-    Assert.Equal(5, Buttons(first.Root).Count(button =>
+    Assert.Equal(5, ActionControls(first.Root).Count(button =>
         button.Id.StartsWith("installed.item.", StringComparison.Ordinal)));
-    Assert.Contains("review before enabling", Button(first.Root, "installed.item.0").Text!);
+    Assert.Contains("review before enabling", Button(first.Root, "installed.item.0").AccessibilityLabel!);
 
     await Action(widget, "installed.next-page");
     var second = Snapshot(widget);
@@ -1383,8 +1418,8 @@ static async Task LocalWidgetInstallationAction()
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
     await widget.InitializationTask;
     var refreshed = Snapshot(widget);
-    Assert.Contains("Local import", Button(refreshed.Root, "installed.item.0").Text!);
-    Assert.Contains("Disabled", Button(refreshed.Root, "installed.item.0").Text!);
+    Assert.Contains("Local import", Button(refreshed.Root, "installed.item.0").AccessibilityLabel!);
+    Assert.Contains("Disabled", Button(refreshed.Root, "installed.item.0").AccessibilityLabel!);
     Assert.Equal(false, (await new WidgetCatalog(catalogRoot).DiscoverAsync())
         .Widgets.Single().Enabled);
     Assert.Equal("host.install-local-widget",
@@ -1666,12 +1701,12 @@ static async Task BuiltInWidgetInventory()
     var list = Snapshot(widget);
     Assert.Equal(ViewNodeKind.Scroll,
         Nodes(list.Root).Single(node => node.Id == "installed.widgets").Kind);
-    Assert.Equal(2, Buttons(list.Root).Count(button =>
+    Assert.Equal(2, ActionControls(list.Root).Count(button =>
         button.Id.StartsWith("installed.builtin.item.", StringComparison.Ordinal)));
-    Assert.Contains("Enabled", Button(list.Root, "installed.builtin.item.0").Text!);
-    Assert.Contains("Audio Mixer", Button(list.Root, "installed.builtin.item.0").Text!);
-    Assert.Contains("Now Playing", Button(list.Root, "installed.builtin.item.1").Text!);
-    Assert.True(!Buttons(list.Root).Any(button =>
+    Assert.Contains("Enabled", Button(list.Root, "installed.builtin.item.0").AccessibilityLabel!);
+    Assert.Contains("Audio Mixer", Button(list.Root, "installed.builtin.item.0").AccessibilityLabel!);
+    Assert.Contains("Now Playing", Button(list.Root, "installed.builtin.item.1").AccessibilityLabel!);
+    Assert.True(!ActionControls(list.Root).Any(button =>
         button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
         "Empty community catalog exposed a community package row.");
 
@@ -1739,8 +1774,8 @@ static async Task InstalledBuiltInCopy()
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
     var list = Snapshot(widget);
-    Assert.Contains("Unused copy", Button(list.Root, "installed.item.0").Text!);
-    Assert.Contains("Disabled", Button(list.Root, "installed.builtin.item.0").Text!);
+    Assert.Contains("Unused copy", Button(list.Root, "installed.item.0").AccessibilityLabel!);
+    Assert.Contains("Disabled", Button(list.Root, "installed.builtin.item.0").AccessibilityLabel!);
     await Action(widget, "installed.select.0");
     var details = Snapshot(widget);
     Assert.Equal("installed.details.builtin", details.InitialFocusId);
@@ -1846,7 +1881,7 @@ static async Task InstalledWidgetVersionRollback()
     await Action(widget, "installed.versions.open");
     var enabled = Snapshot(widget);
     Assert.Equal("installed.version.remove.0", enabled.InitialFocusId);
-    Assert.True(Buttons(enabled.Root)
+    Assert.True(ActionControls(enabled.Root)
         .Where(button => button.Id.StartsWith("installed.version.item.", StringComparison.Ordinal))
         .All(button => button.IsDisabled is true), "Enabled widget exposed a version-selection action.");
     await Action(widget, "installed.version.select.2");
@@ -1922,7 +1957,7 @@ static async Task ExplicitRefresh()
     await Action(widget, "back");
     await Action(widget, "back");
     await Action(widget, "open.installed-widgets");
-    Assert.Contains("Refreshed widget", Button(Snapshot(widget).Root, "installed.item.0").Text!);
+    Assert.Contains("Refreshed widget", Button(Snapshot(widget).Root, "installed.item.0").AccessibilityLabel!);
     await Action(widget, "back");
     await Action(widget, "open.permissions");
     Assert.Contains("Refreshed widget", Button(Snapshot(widget).Root, "permission.item.0").Text!);
@@ -1941,7 +1976,7 @@ static async Task InstalledWidgetCatalogFailure()
     await Action(widget, "open.installed-widgets");
     var snapshot = Snapshot(widget);
     Assert.Contains("invalid_manifest", Text(snapshot.Root, "installed.repair.failure").Text!);
-    Assert.True(!Buttons(snapshot.Root).Any(button =>
+    Assert.True(!ActionControls(snapshot.Root).Any(button =>
         button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
         "Malformed catalog exposed an installed-widget action.");
     Assert.Equal("installed.repair.back", snapshot.InitialFocusId);
@@ -1990,7 +2025,7 @@ static async Task InstalledWidgetCatalogRecovery()
     await Action(widget, "installed.repair.remove");
     var recovered = Snapshot(widget);
     Assert.Equal(SettingsPage.InstalledWidgets, widget.CurrentPage);
-    Assert.Contains("Recovery", Button(recovered.Root, "installed.item.0").Text!);
+    Assert.Contains("Recovery", Button(recovered.Root, "installed.item.0").AccessibilityLabel!);
     Assert.Contains("Removed inactive dev.test.recovery 8.0.0",
         Text(recovered.Root, "settings.toast.message").Text!);
     Assert.True(!Directory.Exists(Path.Combine(
@@ -2023,7 +2058,7 @@ static async Task InstalledWidgetVersionLimitRetry()
         new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
-    Assert.Contains("Quota widget", Button(Snapshot(widget).Root, "installed.item.0").Text!);
+    Assert.Contains("Quota widget", Button(Snapshot(widget).Root, "installed.item.0").AccessibilityLabel!);
 
     WriteInstalledWidget(
         catalogRoot, "dev.test.quota", "dev.publisher.quota",
@@ -2032,7 +2067,7 @@ static async Task InstalledWidgetVersionLimitRetry()
     var limited = Snapshot(widget);
     Assert.Contains("installed_widget_version_limit",
         Text(limited.Root, "installed.help").Text!);
-    Assert.Contains("Last good", Button(limited.Root, "installed.item.0").Text!);
+    Assert.Contains("Last good", Button(limited.Root, "installed.item.0").AccessibilityLabel!);
     Assert.True(Buttons(limited.Root).Any(button => button.ActionId == "refresh" &&
         button.Id == "installed.retry"), "The quota state did not expose Retry.");
     Assert.True(!Nodes(limited.Root).Any(node => node.Id == "installed.empty"),
@@ -2041,7 +2076,7 @@ static async Task InstalledWidgetVersionLimitRetry()
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
     await widget.InitializationTask;
     var reactivated = Snapshot(widget);
-    Assert.Contains("Last good", Button(reactivated.Root, "installed.item.0").Text!);
+    Assert.Contains("Last good", Button(reactivated.Root, "installed.item.0").AccessibilityLabel!);
 
     await Action(widget, "installed.select.0");
     var details = Snapshot(widget);
@@ -2057,11 +2092,11 @@ static async Task InstalledWidgetVersionLimitRetry()
     await Activate(restarted);
     await Action(restarted, "open.installed-widgets");
     Assert.Contains("Quota widget", Button(
-        Snapshot(restarted).Root, "installed.item.0").Text!);
+        Snapshot(restarted).Root, "installed.item.0").AccessibilityLabel!);
     await Action(widget, "refresh");
     var recovered = Snapshot(widget);
-    Assert.Contains("Quota widget", Button(recovered.Root, "installed.item.0").Text!);
-    Assert.True(!Button(recovered.Root, "installed.item.0").Text!
+    Assert.Contains("Quota widget", Button(recovered.Root, "installed.item.0").AccessibilityLabel!);
+    Assert.True(!Button(recovered.Root, "installed.item.0").AccessibilityLabel!
         .Contains("Last good", StringComparison.Ordinal),
         "Retry did not replace the last-good catalog projection.");
     Assert.DocumentEqual(retainedSettings, await Store(temp.Path).LoadAsync());
@@ -2079,21 +2114,21 @@ static async Task InstalledWidgetActivationReload()
         new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
-    Assert.True(!Buttons(Snapshot(widget).Root).Any(button =>
+    Assert.True(!ActionControls(Snapshot(widget).Root).Any(button =>
         button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
         "Empty catalog unexpectedly contained an installed package.");
 
     WriteInstalledWidget(catalogRoot, "dev.test.later-review", "dev.publisher.later", "Later",
         [PlatformCapabilities.NetworkReadV1], []);
     await Task.Delay(80);
-    Assert.True(!Buttons(Snapshot(widget).Root).Any(button =>
+    Assert.True(!ActionControls(Snapshot(widget).Root).Any(button =>
         button.Id.StartsWith("installed.item.", StringComparison.Ordinal)),
         "Settings polled the package catalog while already visible.");
 
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, CancellationToken.None);
     await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, CancellationToken.None);
     await widget.InitializationTask;
-    Assert.True(Buttons(Snapshot(widget).Root).Any(button => button.Id == "installed.item.0"),
+    Assert.True(ActionControls(Snapshot(widget).Root).Any(button => button.Id == "installed.item.0"),
         "Installed package review did not reload on the next activation.");
 }
 
@@ -2108,7 +2143,7 @@ static async Task IncompatibleInstalledWidget()
         new ConsentStore(Path.Combine(temp.Path, "consent")));
     await Activate(widget);
     await Action(widget, "open.installed-widgets");
-    Assert.Contains("Incompatible", Button(Snapshot(widget).Root, "installed.item.0").Text!);
+    Assert.Contains("Incompatible", Button(Snapshot(widget).Root, "installed.item.0").AccessibilityLabel!);
     await Action(widget, "installed.select.0");
     var details = Snapshot(widget);
     Assert.Equal(true, Button(details.Root, "installed.details.toggle").IsDisabled);
@@ -2944,6 +2979,9 @@ static IEnumerable<ViewNode> Nodes(ViewNode node)
         yield return descendant;
 }
 
+static IEnumerable<ViewNode> ActionControls(ViewNode root) =>
+    Nodes(root).Where(node => node.Kind is ViewNodeKind.Button or ViewNodeKind.ActionSurface);
+
 static IEnumerable<ViewNode> Buttons(ViewNode root) =>
     Nodes(root).Where(node => node.Kind == ViewNodeKind.Button);
 
@@ -2955,7 +2993,7 @@ static int ThemeIndex(SettingsWidget widget, string label) =>
         .First();
 
 static ViewNode Button(ViewNode root, string id) =>
-    Buttons(root).Single(node => node.Id == id);
+    Nodes(root).Single(node => node.Id == id && node.Kind is ViewNodeKind.Button or ViewNodeKind.ActionSurface);
 
 static ViewNode Text(ViewNode root, string id) =>
     Nodes(root).Single(node => node.Id == id && node.Kind == ViewNodeKind.Text);

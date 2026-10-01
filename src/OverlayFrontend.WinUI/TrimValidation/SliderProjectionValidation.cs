@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
@@ -58,7 +59,24 @@ public sealed partial class MainWindow
                 artwork.Arrange(new(0, 0, 160, 90));
                 if (FrameworkElementAutomationPeer.CreatePeerForElement(artwork)?.GetAutomationControlType() != AutomationControlType.Image)
                     throw new InvalidOperationException("Native artwork accessibility projection failed.");
-                File.WriteAllText(result, "PASS: three slider lifetimes; fractional range, value events, endpoints, range coercion and template application; value-button accessibility; artwork layout and accessibility.");
+                using var toggleAdapter = new WidgetNativeToggle();
+                var nativeToggle = toggleAdapter.Control;
+                var toggleActions = 0;
+                toggleAdapter.ActivationRequested = () => toggleActions++;
+                panel.Children.Add(nativeToggle);
+                var toggleNode = new WidgetRail.WidgetProtocol.ViewNode { Id = "trim.toggle", Kind = WidgetRail.WidgetProtocol.ViewNodeKind.Button,
+                    ActionId = "toggle", Text = "Example  On", IsSelected = true, StyleClasses = (string[])["wrail-switch"] };
+                toggleAdapter.Publish(toggleNode);
+                nativeToggle.ApplyTemplate();
+                await Task.Delay(30);
+                var toggleProvider = FrameworkElementAutomationPeer.CreatePeerForElement(nativeToggle).GetPattern(PatternInterface.Toggle) as IToggleProvider;
+                if (toggleProvider?.ToggleState != ToggleState.On || toggleActions != 0)
+                    throw new InvalidOperationException("Trimmed native ToggleSwitch publication or accessibility failed.");
+                toggleProvider.Toggle();
+                if (nativeToggle.IsOn || toggleActions != 1) throw new InvalidOperationException("Trimmed native ToggleSwitch activation failed.");
+                toggleAdapter.Publish(toggleNode);
+                if (!nativeToggle.IsOn || toggleActions != 1) throw new InvalidOperationException("Trimmed native ToggleSwitch update emitted another action.");
+                File.WriteAllText(result, "PASS: three slider lifetimes; fractional range, value events, endpoints, range coercion and template application; value-button accessibility; artwork layout and accessibility; native ToggleSwitch template, Toggle provider and publication suppression.");
             }
             catch (Exception error) { File.WriteAllText(result, "FAIL: " + error); }
             finally { Close(); }

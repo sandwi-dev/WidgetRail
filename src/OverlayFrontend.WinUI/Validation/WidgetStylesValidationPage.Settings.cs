@@ -49,6 +49,19 @@ internal sealed partial class WidgetStylesValidationPage
                     Check(width > 600 ? Math.Abs(origin.Y - copyOrigin.Y) < 1 : origin.Y >= copyOrigin.Y + copy.ActualHeight - 1,
                         label + ": setting pair uses the expected columns");
                 }
+                foreach (var node in Walk(snapshot.Root).Where(node => node.StyleClasses.Contains("installed-entry")))
+                {
+                    var row = Find<FrameworkElement>("Widget." + node.Id)!;
+                    var copy = Find<FrameworkElement>("Widget." + node.Id + ".copy")!;
+                    var version = Find<FrameworkElement>("Widget." + node.Id + ".version")!;
+                    var chevron = Find<FrameworkElement>("Widget." + node.Id + ".chevron")!;
+                    var versionOrigin = version.TransformToVisual(row).TransformPoint(new(0, 0));
+                    var copyOrigin = copy.TransformToVisual(row).TransformPoint(new(0, 0));
+                    var chevronOrigin = chevron.TransformToVisual(row).TransformPoint(new(0, 0));
+                    Check(versionOrigin.X >= copyOrigin.X + copy.ActualWidth - 1 && chevronOrigin.X + chevron.ActualWidth <= row.ActualWidth + 1,
+                        label + ": name/status and version do not overlap or overflow");
+                    Check(Walk(node).Count(item => item.IsFocusable) == 1, label + ": installed entry has exactly one focus target");
+                }
                 if (snapshot.InitialFocusId is { } focusId && Find<Control>("Widget." + focusId) is { } focused)
                 {
                     Check(focused.Focus(FocusState.Keyboard), label + ": initial control accepts focus");

@@ -298,7 +298,7 @@ public sealed class SettingsWidget : Widget
                     await ReadPackageNotificationAsync(cancellationToken).ConfigureAwait(false);
                     if (CurrentPage is SettingsPage.Overlay or SettingsPage.Appearance or SettingsPage.Accessibility)
                         await ReadDisplayAsync(cancellationToken).ConfigureAwait(false);
-                    if (CurrentPage != SettingsPage.Controllers) continue;
+                    if (CurrentPage is not (SettingsPage.Controllers or SettingsPage.ControllerHelp)) continue;
                     ControllerControlStatus status;
                     try { status = (await _diagnosticsService.GetSnapshotAsync(cancellationToken).ConfigureAwait(false)).Controllers; }
                     catch (PlatformDiagnosticsException) { status = ControllerControlStatus.Unavailable; }
@@ -419,7 +419,7 @@ public sealed class SettingsWidget : Widget
                 return;
             }
             if (action.ActionId is "controllers.exclusive-control.toggle" or "controllers.restore" &&
-                CurrentPage is SettingsPage.Controllers or SettingsPage.ControllerHelp && _hostFeatures.ExclusiveControllerControl)
+                CurrentPage == SettingsPage.ControllerHelp && _hostFeatures.ExclusiveControllerControl)
             {
                 await SetExclusiveControlAsync(cancellationToken, action.ActionId == "controllers.restore").ConfigureAwait(false);
                 return;
