@@ -7,8 +7,23 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
-### Post-migration usability batch — 2026-10-01, in progress
+### Post-migration usability batch — 2026-10-01, installer delivered
 
+FINAL: Normal Production and Developer preview.16 Inno installers are delivered in
+C:/Users/dwive/Downloads/WidgetRail-Inno-0.1.0-preview.16/ with installer metadata and
+SHA256SUMS.txt; copied hashes verified. Release source is d00323d1, FileVersion
+0.1.0.15. Normal release pipeline rebuilt native libraries, trimmed frontend and
+private services, and validated the 8/12-widget catalogs and both release inventories.
+Actual pinned Inno 6.7.3 compiler built both editions. No installer was executed.
+
+Installed CLI updated/enabled Music 0.3.35 and Video 0.3.37 in the normal user catalog;
+list verifies both, with old versions retained. Playnite and Spotify unchanged.
+Settings, credentials and widget data were preserved. Package copies are in the
+Downloads delivery's Widgets folder. Initial install correctly refused an enabled
+widget; disable/install/select/enable completed through normal CLI gates afterward.
+No playback or system-changing widget commands ran. The app remains closed for the
+user's manual installer update. Managed checks: 388; native checks: 534. Physical
+appearance/media acceptance remains user-owned. No merge to main or push in this batch.
 User approved parallel implementation on `codex/winui-usability`, based on main
 16388cf4. Pinned Move/Resize and Opacity must retain the radial and return its
 selection, matching Interact. Other entry contexts must restore remembered focus.
@@ -43,7 +58,7 @@ Music 0.3.35 / Video 0.3.37 packages are in artifacts/usability-music; both vali
 Managed checks passed: PlatformBroker64, bundled provenance2, window previews2,
 Music31, YouTube55 (including JS adapter), PlatformSettings27, Network31,
 WinUiMotion15, WinUiShell161. Native startup9 and pinned placement65 passed.
-All 460 native style checks passed. Normal preview.16 publication is next. Initial motion-test
+All 460 native style checks and normal preview.16 publication passed. Initial motion-test
 invocation incorrectly passed MSBuild-only switches to the MTP runner; canonical
 repository invocation discovered all tests. Updated the explicit Fade test to
 select Fade now that the default is Settle. Native compile corrections were a
