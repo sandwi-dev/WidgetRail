@@ -7,7 +7,7 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
-### Preserve network scan focus — 2026-10-01, validated
+### Preserve network scan focus — 2026-10-01, candidate running
 
 Follow-up to preview.19: Wi-Fi and Bluetooth scan buttons still set disabled while
 scanning, removing the focused control from native navigation. Remove only each
@@ -18,7 +18,11 @@ Network Controls 0.1.5; preview.20. Network 31/31 fake-provider checks pass, inc
 both scan buttons enabled/busy during pending work and duplicate commands rejected.
 Evidence: artifacts/scan-focus. Shared native busy-button focus and dispatch behavior
 was verified in preview.19's 16-check fixture. No real scans or radio changes run.
-User authorized candidate restart; build and relaunch next, no installer requested.
+Source commit b671c066. Production/developer catalog integrity checks passed (8/12
+widgets). Preview.19 PID8540 closed normally; preview.20 launched with --show
+and normal profile as PID34200. Startup process paths use the preview.20 payload;
+no frontend errors recorded for PID34200. Left running for physical acceptance.
+No installer built.
 
 ### Revert native switches and preserve radio focus — 2026-10-01, candidate running
 
