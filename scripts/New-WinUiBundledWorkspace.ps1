@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][string[]]$WidgetId,
     [ValidateSet('Debug','Release')][string]$Configuration = 'Debug',
+    [switch]$IncludeSettings,
     [Parameter(Mandatory)][string]$OutputDirectory
 )
 $ErrorActionPreference = 'Stop'
@@ -9,7 +10,7 @@ Set-StrictMode -Version Latest
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $output) { throw 'Choose a new isolated workspace directory.' }
-$catalogDefinition = Get-Content (Join-Path $repository 'src/OverlayHost/widget-catalog.json') -Raw | ConvertFrom-Json
+$catalogDefinition = Get-Content (Join-Path $repository 'eng/widget-catalog.json') -Raw | ConvertFrom-Json
 $widgets = @(foreach ($id in $WidgetId) {
     $entry = @($catalogDefinition.bundledWidgets | Where-Object id -CEQ $id)
     if ($entry.Count -ne 1) { throw "Unknown bundled widget: $id" }
@@ -22,6 +23,7 @@ foreach ($manifestPath in Get-ChildItem (Join-Path $repository 'src/FirstPartyWi
     $manifest = Get-Content -LiteralPath $manifestPath.FullName -Raw | ConvertFrom-Json
     if ($widgets.packageId -ccontains $manifest.id) { $sources[$manifest.id] = $manifestPath.DirectoryName }
 }
+$sources['widgetrail.samples.embedded-media'] = Join-Path $repository 'samples/EmbeddedMediaWidget'
 foreach ($widget in $widgets) {
     if (-not $sources.ContainsKey($widget.packageId)) { throw "No first-party source for $($widget.packageId)." }
 }
@@ -32,12 +34,33 @@ $logs = Join-Path $output 'logs'
 $null = New-Item -ItemType Directory -Path $installation,$catalog,$profile,$logs -Force
 function Publish([string]$Project, [string]$Destination, [string]$Name) {
     & dotnet publish $Project -c $Configuration -r win-x64 --self-contained false -o $Destination `
+        -p:ContinuousIntegrationBuild=true -p:CopyOutputSymbolsToPublishDirectory=false `
         "-bl:$logs/$Name-$([guid]::NewGuid().ToString('N')).binlog" *> (Join-Path $logs "$Name.log")
     if ($LASTEXITCODE -ne 0) { throw "Publish failed: $Name. See $logs/$Name.log" }
 }
 Publish (Join-Path $repository 'src/WidgetBridge/WidgetBridge.csproj') (Join-Path $installation 'runtime/Bridge') 'bridge'
 Publish (Join-Path $repository 'src/WidgetWorkerHost/WidgetWorkerHost.csproj') (Join-Path $installation 'runtime/WidgetWorkerHost') 'worker'
 Publish (Join-Path $repository 'tools/BundledWidgetPackageSeal/BundledWidgetPackageSeal.csproj') (Join-Path $output 'seal') 'seal'
+if ($IncludeSettings) {
+    $settings = Join-Path $installation 'runtime/Settings'
+    Publish (Join-Path $repository 'src/FirstPartyWidgets/SettingsWidget.Worker/SettingsWidget.Worker.csproj') $settings 'settings'
+    $source = Join-Path $repository 'src/FirstPartyWidgets/SettingsWidget'
+    foreach ($name in @('manifest.json','styles','assets')) {
+        $from = Join-Path $source $name
+        if (Test-Path -LiteralPath $from -PathType Container) {
+            foreach ($file in Get-ChildItem -LiteralPath $from -File -Recurse) {
+                $to = Join-Path $settings ([IO.Path]::GetRelativePath($source,$file.FullName))
+                New-Item -ItemType Directory -Path (Split-Path $to) -Force | Out-Null
+                Copy-Item -LiteralPath $file.FullName -Destination $to -Force
+            }
+        } else { Copy-Item -LiteralPath $from -Destination $settings -Force }
+    }
+    New-Item -ItemType Directory -Path (Join-Path $settings 'payload') -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $settings 'SettingsWidget.dll') -Destination (Join-Path $settings 'payload/SettingsWidget.dll')
+    # Seal exactly the publication that the runtime tests consume.
+    & (Join-Path $output 'seal/BundledWidgetPackageSeal.exe') $installation $settings *> (Join-Path $logs 'settings-seal.log')
+    if ($LASTEXITCODE -ne 0) { throw 'Trusted Settings sealing failed.' }
+}
 foreach ($widget in $widgets) {
     $source = $sources[$widget.packageId]
     $manifest = Get-Content (Join-Path $source 'manifest.json') -Raw | ConvertFrom-Json
@@ -52,7 +75,7 @@ foreach ($widget in $widgets) {
     # generated trees or mutating any existing candidate/package version.
     foreach ($file in Get-ChildItem -LiteralPath $published) {
         if ($file.Name -in @('WidgetSdk.dll','WidgetProtocol.dll','manifest.json','styles','assets') -or
-            $file.Extension -in @('.pdb','.xml')) { continue }
+            $file.Extension -in @('.pdb')) { continue }
         Copy-Item -LiteralPath $file.FullName -Destination $payload -Recurse
     }
     foreach ($name in @('manifest.json','styles','assets')) {
@@ -65,7 +88,7 @@ foreach ($widget in $widgets) {
 @{
     catalogVersion=$catalogDefinition.catalogVersion
     genericWorkerExecutable=$catalogDefinition.genericWorkerExecutable
-    widgets=@()
+    widgets=@(if ($IncludeSettings) { $catalogDefinition.widgets })
     bundledWidgets=$widgets
 } | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $installation 'widget-catalog.json') -Encoding utf8
 $options = Join-Path $output 'shell-options.json'
@@ -76,3 +99,5 @@ $options = Join-Path $output 'shell-options.json'
 @{ SourceCommit=(& git -C $repository rev-parse HEAD); Configuration=$Configuration; WidgetIds=$WidgetId; ShellConfiguration=$options } |
     ConvertTo-Json | Set-Content (Join-Path $output 'provenance.json') -Encoding utf8
 Write-Output $options
+
+

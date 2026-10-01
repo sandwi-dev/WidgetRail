@@ -14,7 +14,7 @@ using Windows.Foundation;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
-internal sealed class ProductionShellValidationPage : Page, IAsyncDisposable
+internal sealed partial class ProductionShellValidationPage : Page, IAsyncDisposable
 {
     private readonly OverlayShellPage shell = new(new(Path.GetTempPath(), Path.GetTempPath(), Path.GetTempPath()), startService: false);
     private readonly OverlayScaleRoot scale = new();

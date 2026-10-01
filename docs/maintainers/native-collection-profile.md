@@ -1,5 +1,12 @@
 # Native collection profile
 
+> Historical native-renderer profiling evidence. Playnite Home/Library now publish
+> indexed WinUI collections. `WRAIL_PLAYNITE_LAYOUT_OUTPUT` emits `.indexed.json`
+> parent/range fixtures for those pages; they are not compatible with the old
+> eager `ScrollWorkloadProbe`. Use `Test-WinUiPlaynitePresentation.ps1` for acquired
+> native row geometry and the shared UX gate for session-backed page behavior.
+> The independent `Native-Details-Geometry.renderer.json` fixture remains valid.
+
 2026-09-26. Adoption baseline: `a05e0279`, plus the adjacent
 `CollectionWorkloadProfile.inl` probe. This is an offscreen CPU/resource comparison,
 not live-overlay frame rate, compositor timing, provider latency or acceptance.

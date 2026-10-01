@@ -1,5 +1,72 @@
 # WinUI Release readiness
 
+## Unpackaged Inno direction — 2026-10-01
+
+Inno Setup installs the unpackaged WinUI frontend with self-contained .NET 10 and
+Windows App SDK runtime files, plus private .NET 8 widget services. The Start menu,
+CLI and startup entry launch its executable directly. Application MSIX identity,
+certificate trust, package registration and the deployment helper are retired.
+
+Synthetic release assembly and inventory checks, installer ownership contracts,
+and compilation of the actual Inno Pascal with placeholder files pass. Those
+checks do not qualify actual installation, prerequisite provisioning or startup.
+Use [release preparation](release-checklist.md) for current build commands.
+Clean-machine install, upgrade, edition switch and uninstall acceptance remain
+separate checks; old package registration evidence does not establish them.
+
+The older entries below are historical evidence from superseded packaging routes.
+Current unpackaged runtime results belong in the
+[implementation status](winui3-implementation-status.md).
+
+## Historical external-content boundary — 2026-09-30
+
+Trimmed, self-contained WinUI Release publication and isolated native startup/
+shutdown now pass, including the extracted native platform/preview libraries.
+The current toolchain requires `_TrimmerIPConstProp=false`: ILLink 10.0.10 removed
+a `Monitor.Exit` inside an async finally and deadlocked the first widget refresh.
+This is [dotnet/runtime#131088](https://github.com/dotnet/runtime/issues/131088).
+ReadyToRun and trimming remain enabled; application locking was not rewritten.
+The publication pipeline inspects the emitted session assembly with
+`ReleaseVerifier --frontend` to reject the known corruption before distribution.
+Remove the workaround only after qualifying a toolchain containing the upstream
+fix against both the emitted-code guard and actual startup/normal shutdown.
+
+Corrected native evidence is `migration-audit-20260930/trimfix-runtime01`:
+exact external-content package/executable, sandboxed worker, actual private .NET8
+runtime, normal process/child exit and temporary registration cleanup all pass.
+The earlier `release01`/`editions01` offline inventories passed but their runtime
+failed; they are retained as failure evidence, not a releasable payload.
+Fresh `release02`/`editions02` pass both catalogs and inventories, emitted cleanup,
+native hashes and all18 staging checks. Production contains8 widgets/978 inventoried
+files; Developer12/1006. The final Production service/runtime content and identical
+published frontend DLLs pass the same native runtime checks under a temporary
+development identity (`release02-runtime/result.json`). No temporary probe process
+or registration remains. The payload is still unsigned and validation-only.
+The original renderer and Rust/Taffy build graph are retired. Current evidence
+and remaining work are recorded in the
+[migration status](winui3-implementation-status.md); follow
+[release preparation](release-checklist.md) for the current build commands.
+
+Signed installer execution, disposable-machine runtime provisioning, upgrade/
+rollback and uninstall acceptance remain unqualified. Passing a publish or fake
+deployment test does not satisfy those gates. Broad physical provider workflows
+are user-owned; performance and memory investigations are deferred.
+
+The unsigned development-registration sequence now passes 12 real Windows checks
+with the corrected release02 payload, including version/location update, explicit
+rollback, missing-registration repair, rejected downgrade/obsolete removal and
+cleanup. Three activation/normal-shutdown checks verify the bound executable,
+sandboxed worker and loaded private runtime. Evidence:
+`migration-audit-20260930/deployment-sequence01/result.json`. These isolated OS
+registration checks do not qualify signed installation, the installer journal,
+same-version edition rebinding, data-schema rollback or prerequisite provisioning.
+
+## Historical publication findings
+
+The entries below preserve the sequence of findings and corrections. Statements
+about unresolved compilation or trimming describe their recorded stage, not the
+current build status.
+
 The first analyzer-enabled Release publish of the integrated frontend failed
 with IL2026. Release enables trimming; reflection-based JSON calls in production
 configuration, media transport, diagnostics and validation pages are not safe in

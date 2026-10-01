@@ -14,7 +14,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 /// Catalog content only: the containing native control owns focus, selection and input.
 /// A radial or list item can reuse the icon without retaining another input surface.
 /// </summary>
-internal sealed class WidgetCatalogItemContent : ContentControl, IDisposable
+internal sealed partial class WidgetCatalogItemContent : ContentControl, IDisposable
 {
     private readonly Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> resolve;
     private readonly StackPanel panel = new() { Orientation = Orientation.Horizontal, Spacing = 8 };

@@ -18,7 +18,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 /// Native SendInput probe of WinUI routing. It deliberately does not emulate
 /// hardware sampling or claim that a physical controller duplication is fixed.
 /// </summary>
-internal sealed class GamepadKeyBoundaryValidationPage : Page, IDisposable
+internal sealed partial class GamepadKeyBoundaryValidationPage : Page, IDisposable
 {
     private readonly StackPanel scene = new() { Spacing = 12, XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled };
     private readonly Button action = new() { Content = "Native action" };

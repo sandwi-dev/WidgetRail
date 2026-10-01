@@ -1,5 +1,6 @@
 #include "WindowPreviewNative.h"
 #include "WindowPreviewPolicy.h"
+#include "WindowPreviewDiagnostics.h"
 #include <Windows.h>
 #include <d3d11_4.h>
 #include <dxgi1_3.h>
@@ -56,6 +57,8 @@ std::pair<UINT, UINT> OutputSize(uint32_t width, uint32_t height) {
     return *size;
 }
 struct Preview final {
+    PreviewCloseDiagnostics* health{};
+    uint64_t id{};
     WrailPreviewTarget target;
     WrailPreviewAuthority authority{};
     void* authorityContext{};
@@ -75,13 +78,21 @@ struct Preview final {
     winrt::event_token arrived{};
     std::shared_ptr<std::atomic_bool> ready;
     ~Preview() { Stop(); }
-    void Stop() noexcept {
-        try { if (pool && arrived.value) pool.FrameArrived(arrived); } catch (...) {}
+    void Stop(State reason = Suspended) noexcept {
+        bool observed{};
+        auto close = [&](PreviewClosePhase phase, auto&& action) {
+            if (health) { health->Begin(phase, reason, id, target, frames, Counter()); observed = true; }
+            try { action(); }
+            catch (const winrt::hresult_error& failure) { if (health) health->Error(failure.code()); }
+            catch (...) { if (health) health->Error(E_FAIL); }
+        };
+        if (pool && arrived.value) close(PreviewClosePhase::DetachCallback, [&] { pool.FrameArrived(arrived); });
         arrived = {};
-        try { if (capture) capture.Close(); } catch (...) {}
-        try { if (pool) pool.Close(); } catch (...) {}
+        if (capture) close(PreviewClosePhase::CloseSession, [&] { capture.Close(); });
+        if (pool) close(PreviewClosePhase::ClosePool, [&] { pool.Close(); });
         capture = nullptr; pool = nullptr; item = nullptr; captureBytes = 0;
         ready.reset(); sourceSize = {}; startedAt = 0;
+        if (observed) health->End();
     }
 };
 }
@@ -91,6 +102,7 @@ struct WrailPreviewEngine final {
     std::mutex mutex;
     std::deque<std::function<void()>> commands;
     std::thread worker;
+    std::shared_ptr<PreviewCloseDiagnostics> health{std::make_shared<PreviewCloseDiagnostics>()};
     std::map<uint64_t, std::unique_ptr<Preview>> previews;
     uint64_t nextId{}, surfaceGeneration{};
     ComPtr<ID3D11Device> device;
@@ -182,7 +194,7 @@ struct WrailPreviewEngine final {
     }
     void Suspend(Preview& preview, State reason, HRESULT error = S_OK) {
         const bool wasLive = preview.state == Live || preview.state == Starting;
-        preview.Stop(); preview.state = reason; preview.error = error;
+        preview.Stop(reason); preview.state = reason; preview.error = error;
         if (wasLive || preview.clearPending || preview.presentPending) Clear(preview);
     }
     void Start(Preview& preview) {
@@ -192,7 +204,7 @@ struct WrailPreviewEngine final {
         auto size = preview.resizeHint.Width > 0 ? preview.resizeHint : preview.item.Size();
         preview.resizeHint = {};
         if (!widgetrail::preview::SourceFits(size.Width, size.Height, Bytes()))
-        { preview.Stop(); preview.state = Budget; return; }
+        { preview.Stop(Budget); preview.state = Budget; return; }
         const auto bytes = uint64_t(size.Width) * size.Height * 4;
         preview.pool = Direct3D11CaptureFramePool::CreateFreeThreaded(captureDevice, DirectXPixelFormat::B8G8R8A8UIntNormalized, 1, size);
         preview.ready = std::make_shared<std::atomic_bool>(false);
@@ -258,7 +270,7 @@ struct WrailPreviewEngine final {
                 frame.Close(); frame = nullptr;
                 if (Counter() >= preview.deadline) Suspend(preview, Expired);
             } catch (const winrt::hresult_error& error) {
-                preview.Stop(); preview.state = Faulted; preview.error = error.code(); preview.retryAt = now + Frequency();
+                preview.Stop(Faulted); preview.state = Faulted; preview.error = error.code(); preview.retryAt = now + Frequency();
                 try { Clear(preview); } catch (...) {}
                 if (!preview.backBuffer || !preview.clearTarget) {
                     preview.backBuffer.Reset(); preview.clearTarget.Reset(); preview.output.Reset(); preview.outputBytes = 0;
@@ -266,7 +278,7 @@ struct WrailPreviewEngine final {
                 }
                 if (device && FAILED(device->GetDeviceRemovedReason())) { ResetDevice(); break; }
             } catch (...) {
-                preview.Stop(); preview.state = Faulted; preview.error = E_FAIL;
+                preview.Stop(Faulted); preview.state = Faulted; preview.error = E_FAIL;
                 try { Clear(preview); } catch (...) { preview.clearPending = true; }
             }
         }
@@ -274,7 +286,7 @@ struct WrailPreviewEngine final {
     }
     void ResetDevice() {
         for (auto& [id, preview] : previews) {
-            preview->Stop();
+            preview->Stop(Faulted);
             try { Clear(*preview); } catch (...) {}
             preview->backBuffer.Reset(); preview->clearTarget.Reset(); preview->output.Reset(); preview->outputBytes = 0;
             preview->generation = ++surfaceGeneration;
@@ -305,6 +317,9 @@ struct WrailPreviewEngine final {
     }
 
 };
+struct WrailPreviewHealthReader final {
+    std::shared_ptr<PreviewCloseDiagnostics> health;
+};
 namespace {
 template<class F> HRESULT Call(WrailPreviewEngine* engine, uint64_t id, F callback) noexcept {
     if (!engine) return E_INVALIDARG;
@@ -332,7 +347,8 @@ int32_t __stdcall WrailPreviewAdd(WrailPreviewEngine* engine, const WrailPreview
         if (engine->Bytes() + uint64_t(size.first) * size.second * 8 > MaximumActiveBytes) return E_OUTOFMEMORY;
         auto preview = std::make_unique<Preview>(); preview->target = copied; preview->authority = authority; preview->authorityContext = context; preview->host = reinterpret_cast<HWND>(hostWindow);
         preview->width = size.first; preview->height = size.second; preview->fit = fit;
-        engine->CreateOutput(*preview); *id = ++engine->nextId; engine->previews.emplace(*id, std::move(preview)); return S_OK;
+        engine->CreateOutput(*preview); *id = ++engine->nextId; preview->id = *id; preview->health = engine->health.get();
+        engine->previews.emplace(*id, std::move(preview)); return S_OK;
     }); } catch (...) { return E_FAIL; }
 }
 int32_t __stdcall WrailPreviewRenew(WrailPreviewEngine* engine, uint64_t id, int64_t deadline) noexcept {
@@ -388,6 +404,18 @@ int32_t __stdcall WrailPreviewInspect(WrailPreviewEngine* engine, uint64_t id, W
 int32_t __stdcall WrailPreviewResetDevice(WrailPreviewEngine* engine) noexcept {
     if (!engine) return E_INVALIDARG;
     try { return engine->Invoke([=] { engine->ResetDevice(); return S_OK; }); } catch (...) { return E_FAIL; }
+}
+int32_t __stdcall WrailPreviewAcquireHealth(WrailPreviewEngine* engine, WrailPreviewHealthReader** result) noexcept {
+    if (!result) return E_POINTER;
+    *result = nullptr;
+    if (!engine) return E_INVALIDARG;
+    try { *result = new WrailPreviewHealthReader{engine->health}; return S_OK; }
+    catch (...) { return E_OUTOFMEMORY; }
+}
+void __stdcall WrailPreviewReleaseHealth(WrailPreviewHealthReader* reader) noexcept { delete reader; }
+int32_t __stdcall WrailPreviewReadHealth(WrailPreviewHealthReader* reader, WrailPreviewHealth* result) noexcept {
+    if (!reader || !result || result->size != sizeof(*result) || result->version != 1) return E_INVALIDARG;
+    return reader->health->Read(*result) ? S_OK : E_PENDING;
 }
 int32_t __stdcall WrailPreviewReadIdentity(uint64_t value, WrailPreviewTarget* target) noexcept {
     if (!target || target->size != sizeof(*target) || target->version != 1) return E_INVALIDARG;

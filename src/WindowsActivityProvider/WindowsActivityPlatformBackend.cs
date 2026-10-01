@@ -14,7 +14,7 @@ public sealed class WindowsActivityPlatformBackend : IActivityPlatformBrokerBack
     internal const int MaximumActivities = 16;
     private static readonly HashSet<string> ExcludedProcessKeys = new(StringComparer.Ordinal)
     {
-        "OVERLAYHOST",
+        "OVERLAYFRONTEND.WINUI",
         "WIDGETBRIDGE",
         "WIDGETWORKERHOST",
         "YTMUSICWIDGET.WORKER",

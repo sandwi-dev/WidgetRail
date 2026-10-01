@@ -20,7 +20,15 @@ struct WrailPreviewStats {
 };
 static_assert(sizeof(WrailPreviewTarget) == 544);
 static_assert(sizeof(WrailPreviewStats) == 64);
+struct WrailPreviewHealth {
+    uint32_t size{sizeof(WrailPreviewHealth)}, version{1}, phase{}, reason{}, processId{};
+    int32_t error{};
+    uint64_t window{}, slot{}, frames{};
+    int64_t startedAt{};
+};
+static_assert(sizeof(WrailPreviewHealth) == 56);
 struct WrailPreviewEngine;
+struct WrailPreviewHealthReader;
 using WrailPreviewAuthority = int32_t(__stdcall*)(void* context);
 extern "C" {
 PREVIEW_API int32_t __stdcall WrailPreviewCreate(WrailPreviewEngine** result) noexcept;
@@ -34,6 +42,13 @@ PREVIEW_API int32_t __stdcall WrailPreviewResize(WrailPreviewEngine* engine, uin
 PREVIEW_API int32_t __stdcall WrailPreviewRemove(WrailPreviewEngine* engine, uint64_t id) noexcept;
 PREVIEW_API int32_t __stdcall WrailPreviewSwapChain(WrailPreviewEngine* engine, uint64_t id, void** result, uint64_t* generation) noexcept;
 PREVIEW_API int32_t __stdcall WrailPreviewInspect(WrailPreviewEngine* engine, uint64_t id, WrailPreviewStats* result) noexcept;
+// Acquire while the engine is alive; the reader then owns diagnostics independently
+// and remains readable throughout and after engine destruction. Release readers
+// only after their callers finish. Neither acquisition nor reading joins the queue.
+PREVIEW_API int32_t __stdcall WrailPreviewAcquireHealth(WrailPreviewEngine* engine, WrailPreviewHealthReader** result) noexcept;
+PREVIEW_API void __stdcall WrailPreviewReleaseHealth(WrailPreviewHealthReader* reader) noexcept;
+// One bounded attempt. E_PENDING means publication overlapped; result is unchanged.
+PREVIEW_API int32_t __stdcall WrailPreviewReadHealth(WrailPreviewHealthReader* reader, WrailPreviewHealth* result) noexcept;
 PREVIEW_API int32_t __stdcall WrailPreviewResetDevice(WrailPreviewEngine* engine) noexcept;
 PREVIEW_API int32_t __stdcall WrailPreviewReadIdentity(uint64_t window, WrailPreviewTarget* target) noexcept;
 }

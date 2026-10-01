@@ -14,6 +14,12 @@ internal sealed class EmbeddedMediaRequestPolicy
     public string EntryUri { get; }
     public string? ApplicationReferer { get; }
 
+    // Executable-owned metadata is available in ordinary desktop installations,
+    // unlike MSIX identity. Widgets cannot choose or replace this identifier.
+    public EmbeddedMediaRequestPolicy(WidgetPresentationEmbeddedMediaDocument document,
+        EmbeddedMediaSession declaration)
+        : this(document, declaration, typeof(EmbeddedMediaRequestPolicy).Assembly.GetName().Name) { }
+
     public EmbeddedMediaRequestPolicy(WidgetPresentationEmbeddedMediaDocument document,
         EmbeddedMediaSession declaration, string? applicationIdentity)
     {

@@ -14,6 +14,10 @@ internal static class OverlayLaunchConfiguration
     internal static OverlayShellOptions Resolve(IReadOnlyList<string> arguments, string applicationDirectory,
         string defaultSettingsRoot)
     {
+        var development = DevelopmentLaunchOptions.Parse(arguments, defaultSettingsRoot);
+        if (development is not null)
+            return new(Absolute(Value(arguments, "--installation-root") ?? applicationDirectory),
+                development.SettingsRoot, development.CatalogRoot, development.WidgetId) { Development = development };
         var configuration = Value(arguments, "--shell-config");
         var installation = Value(arguments, "--installation-root");
         var settings = Value(arguments, "--settings-root");

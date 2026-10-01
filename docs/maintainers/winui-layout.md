@@ -92,3 +92,17 @@ five actual columns. New native checks inspect the realized container coordinate
 and actual Down navigation, not only MaximumRowsOrColumns. The combined native
 style/grid/production-details run passes 46 checks, including repeated sizing and
 resize. Real Library browsing remains a separate root integration check.
+
+
+### Playnite indexed presentation fixtures
+
+Home and Library use only indexed declarations. Optional test exports keep the
+parent snapshot and each SDK-acquired bounded range separate in `.indexed.json`,
+with production Bridge-resolved styles for each. They never expand rows into a
+parent tree for the retired renderer. `Test-WinUiPlaynitePresentation.ps1` accepts
+one such fixture and checks native poster-container and focused-summary geometry.
+It also accepts the independent `Native-Details-Geometry.renderer.json` modal
+fixture. These geometry checks do not stand in for session-backed viewport,
+action-authority or physical controller acceptance; those remain covered by the
+indexed managed suite and shared UX/native widget checks. No scrolling performance
+or memory qualification is implied.

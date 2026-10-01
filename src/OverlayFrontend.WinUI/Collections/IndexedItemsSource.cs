@@ -22,7 +22,7 @@ internal sealed record IndexedRangeResult<T>(IndexedQueryIdentity Query, long Re
 /// The trusted range reader must bound its work and honor cancellation; widget
 /// code must execute behind the service boundary, never in this delegate.
 /// </summary>
-internal sealed class IndexedItemsSource<T> : IList, INotifyCollectionChanged, IItemsRangeInfo, ISupportIncrementalLoading, IAsyncDisposable where T : notnull
+internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionChanged, IItemsRangeInfo, ISupportIncrementalLoading, IAsyncDisposable where T : notnull
 {
     internal const int MaximumRetainedIndices = 8;
 

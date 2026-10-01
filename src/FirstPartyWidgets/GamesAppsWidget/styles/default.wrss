@@ -16,7 +16,6 @@
   min-width: 0px;
   gap: 6px;
   flex-grow: 0;
-  flex-shrink: 0;
 }
 
 .games-header-summary {
@@ -26,7 +25,6 @@
   gap: 10px;
   align: center;
   flex-grow: 0;
-  flex-shrink: 0;
 }
 
 .games-title {
@@ -38,7 +36,6 @@
   max-lines: 1;
   text-overflow: ellipsis;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 
 .games-header-refresh {
@@ -47,7 +44,6 @@
   align: center;
   justify: end;
   flex-grow: 0;
-  flex-shrink: 0;
 }
 
 .games-refresh-catalog {
@@ -56,13 +52,11 @@
   min-width: 44px;
   min-height: 44px;
   flex-grow: 0;
-  flex-shrink: 0;
 }
 
 .games-section-navigation {
   min-width: 0px;
   flex-grow: 1;
-  flex-shrink: 1;
   justify: center;
 }
 
@@ -74,10 +68,9 @@
   align: center;
   justify: center;
   flex-grow: 0;
-  flex-shrink: 0;
 }
 
-.games-section-bumper-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); padding: 0px; flex-shrink: 0; }
+.games-section-bumper-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); padding: 0px; }
 
 .games-section-body {
   width: 100%;
@@ -86,7 +79,6 @@
   gap: 10px;
   align: stretch;
   flex-grow: 1;
-  flex-shrink: 1;
   overflow: clip;
 }
 
@@ -95,7 +87,6 @@
   min-width: 0px;
   min-height: 0px;
   flex-grow: 1;
-  flex-shrink: 1;
   overflow: clip;
 }
 
@@ -106,7 +97,6 @@
   gap: 8px;
   padding: 3px;
   flex-grow: 1;
-  flex-shrink: 1;
   overflow: clip;
 }
 
@@ -127,7 +117,6 @@
   border-width: 1px;
   corner-radius: 9px;
   flex-grow: 0;
-  flex-shrink: 0;
   overflow: clip;
   scale: 1;
   transition-duration: 140ms;
@@ -155,7 +144,6 @@
   min-height: 56px;
   corner-radius: 8px;
   flex-grow: 0;
-  flex-shrink: 0;
 }
 
 .games-app-tile-artwork.is-fallback {
@@ -168,7 +156,6 @@
   min-width: 0px;
   gap: 2px;
   flex-grow: 1;
-  flex-shrink: 1;
   overflow: clip;
 }
 
@@ -209,7 +196,6 @@
   color: var(--text-muted);
   background: transparent;
   flex-grow: 0;
-  flex-shrink: 0;
 }
 
 .games-page-action:focused {
@@ -236,7 +222,6 @@
   min-height: 0px;
   gap: 8px;
   flex-grow: 1;
-  flex-shrink: 1;
   overflow: clip;
 }
 
@@ -250,7 +235,6 @@
   min-width: 0px;
   max-width: 580px;
   flex-grow: 0;
-  flex-shrink: 1;
 }
 
 .games-state-progress {
@@ -268,14 +252,12 @@
   min-width: 0px;
   min-height: 0px;
   flex-grow: 1;
-  flex-shrink: 1;
 }
 
 .games-state-loading,
 .games-state-icon {
   width: 32px;
   height: 32px;
-  flex-shrink: 0;
   padding: 4px;
   color: var(--text-muted);
   background: transparent;
@@ -283,7 +265,6 @@
 
 .games-state-title {
   width: 100%;
-  flex-shrink: 0;
   color: var(--text);
   font-size: 18px;
   font-weight: 500;
@@ -295,7 +276,6 @@
 
 .games-state-help {
   width: 100%;
-  flex-shrink: 0;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 400;
@@ -308,5 +288,4 @@
   min-width: 176px;
   min-height: 48px;
   padding: 10px 14px;
-  flex-shrink: 0;
 }

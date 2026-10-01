@@ -71,11 +71,14 @@ static async Task FiltersPrivateProcesses()
 {
     var native = new FakeNative();
     await using var provider = new WindowsActivityPlatformBackend(native);
-    await provider.GetRecentActivitiesAsync(default);
-    native.Add(1, 11, "OverlayHost", "WidgetRail");
+    // Version-resource display names need not start with WidgetRail. Exclude
+    // the frontend by executable identity independently of that metadata.
+    native.Add(1, 11, "OverlayFrontend.WinUI", "Overlay Frontend");
     native.Add(2, 12, "RecentAppsWidget.Worker", "Recent Apps Worker");
     native.Add(3, 13, "Dwm", "Desktop Window Manager");
     native.Add(4, 14, "RealApp", "Real Application");
+    native.Foreground = 1;
+    Assert.Equal(0, (await provider.GetRecentActivitiesAsync(default)).Count);
     native.Publish(NativeActivityEventKind.Foreground, 4);
     for (var window = 1; window <= 3; window++)
         native.Publish(NativeActivityEventKind.Foreground, window);

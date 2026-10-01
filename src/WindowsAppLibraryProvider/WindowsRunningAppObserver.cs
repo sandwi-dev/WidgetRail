@@ -37,7 +37,7 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     private const int ErrorInsufficientBuffer = 122;
     internal const int MaximumWindowClassCharacters = 256;
     private static readonly HashSet<string> ExcludedProcesses = new(
-        ["OverlayHost.exe", "WidgetWorkerHost.exe", "WidgetBridge.exe", "wrail.exe", "ApplicationFrameHost.exe"],
+        ["OverlayFrontend.WinUI.exe", "WidgetWorkerHost.exe", "WidgetBridge.exe", "wrail.exe", "ApplicationFrameHost.exe"],
         StringComparer.OrdinalIgnoreCase);
     private readonly IWindowsRunningWindowReader _windows;
     private static readonly IWindowsExecutableAuthorityReader ExecutableAuthority =

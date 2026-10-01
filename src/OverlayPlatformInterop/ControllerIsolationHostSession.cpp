@@ -7,7 +7,7 @@
 #include "ControllerIsolationRoutingSession.h"
 #include "HidHideConfigurationAdapter.h"
 #include "ViGEmOutputAdapter.h"
-#include "../OverlayHost/GuideInputCompatibility.h"
+#include "GuideInputCompatibility.h"
 
 #include <windows.h>
 #include <shlobj.h>
@@ -176,6 +176,7 @@ struct ControllerIsolationHostSession::Impl final {
     std::deque<std::wstring> pendingDiagnostics;
     bool startupDone{}, desiredOverlay{};
     bool retryDiscovery{};
+    std::optional<SelectedControllerDiscoveryStatus> waitingDiscovery;
     bool preparingInput{};
     bool dualSense{};
     std::uint64_t sessionGeneration{};
@@ -267,16 +268,26 @@ struct ControllerIsolationHostSession::Impl final {
                 (descriptor = test->descriptor, SelectedControllerDiscoveryStatus::Ready)) :
 #endif
             DiscoverCurrentPhysicalController(GetTickCount64() | 1, descriptor, &ownedOutput);
-        if (discovery !=
-            SelectedControllerDiscoveryStatus::Ready) {
-            if (discovery == SelectedControllerDiscoveryStatus::Unavailable) {
-                retryDiscovery = true;
-                std::scoped_lock lock(mutex);
-                latest = {}; progress = LocalControllerProgress::WaitingForController;
-                startupDone = true; changed.notify_all();
-                return;
+        if (discovery != SelectedControllerDiscoveryStatus::Ready) {
+            // Hotplug enumeration can briefly include incomplete device ancestry
+            // or more than one candidate. Neither authorizes selecting/hiding a
+            // device, but neither is a policy-cleanup failure. Prior owned policy
+            // has already been restored above; retry through the existing bounded
+            // discovery cadence instead of latching Fault and disabling polling.
+            if (waitingDiscovery != discovery) {
+                waitingDiscovery = discovery;
+                QueueDiagnostic(L"Controller isolation waiting for safe discovery status=" +
+                    std::to_wstring(static_cast<unsigned>(discovery)));
             }
-            FinishStartup(L"No eligible physical controller could be selected safely."); return;
+            retryDiscovery = true;
+            std::scoped_lock lock(mutex);
+            latest = {}; progress = LocalControllerProgress::WaitingForController;
+            startupDone = true; changed.notify_all();
+            return;
+        }
+        if (waitingDiscovery) {
+            QueueDiagnostic(L"Controller isolation safe discovery resumed.");
+            waitingDiscovery.reset();
         }
         { std::scoped_lock lock(mutex); dualSense = descriptor.enrollment.deviceFamily == NativeDualSenseFamily; }
         HidHideSnapshot before; std::uint32_t error{}; std::wstring executableDevicePath;

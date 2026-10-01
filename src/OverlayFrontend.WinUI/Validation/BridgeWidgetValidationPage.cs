@@ -12,7 +12,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 /// Real bridge/worker round-trip fixture. Deliberately limited to the Clock
 /// sample; uses the shared presenter and real asynchronous action path.
 /// </summary>
-internal sealed class BridgeWidgetValidationPage : Page, IAsyncDisposable
+internal sealed partial class BridgeWidgetValidationPage : Page, IAsyncDisposable
 {
     internal sealed record Options(string InstallationRoot, string SettingsRoot,
         string InstalledCatalogRoot, string WidgetId);

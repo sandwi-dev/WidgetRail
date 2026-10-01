@@ -10,7 +10,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Decorative, zero-measure context prompt inside the native control's
 /// scaled visual tree. It never owns focus, hit testing or command dispatch.</summary>
-internal sealed class WidgetContextIndicator : Panel, IDisposable
+internal sealed partial class WidgetContextIndicator : Panel, IDisposable
 {
     private readonly Control owner;
     private readonly Border badge;

@@ -10,7 +10,7 @@ using Windows.Storage.Streams;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Native SVG source with an immediately available semantic fallback.</summary>
-internal sealed class WidgetPackageIconView : ContentControl, IDisposable
+internal sealed partial class WidgetPackageIconView : ContentControl, IDisposable
 {
     private readonly WidgetNativePackageIcon icon;
     private readonly List<(Shell.OverlayScaleRoot Root, long Token)> zoomRoots = [];

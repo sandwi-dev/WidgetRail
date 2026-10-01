@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
-internal sealed class WidgetMotionValidationPage : Page, IAsyncDisposable
+internal sealed partial class WidgetMotionValidationPage : Page, IAsyncDisposable
 {
     private readonly StackPanel stage = new() { Spacing = 8 };
     private readonly TextBlock status = new() { Text = "Motion checks pending" };

@@ -64,6 +64,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         TraceFocus("entry-request");
         this.restoreNativeFocus |= restoreNativeFocus;
         needsEntry = needsEntry || FocusedBinding() is not { } focused || !Navigable(focused) ||
+            focused.Element is WidgetIndexedCollectionView { IsFocusParked: true, IsEntryPending: false } ||
             RememberedBinding() is { } preferred && !ReferenceEquals(preferred, focused);
         QueueEntryFocus();
     }
@@ -78,6 +79,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (!enabled)
         {
             scrollGesture = null;
+            directionalScroll = null;
             ClearEntryLayoutWait();
             foreach (var binding in bindings.Values)
                 if (binding.Element is WidgetIndexedCollectionView collection) collection.CancelHostNavigation();
@@ -101,9 +103,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled;
         Loaded += (_, _) => QueueEntryFocus();
         SizeChanged += (_, _) => { SettleTransitions(); SettleModalExit(); RefreshResponsiveLayout(); };
-        Unloaded += (_, _) => { DismissTransientControl(); if (!IsLoaded) { SettleTransitions(); SettleModalExit(); } };
+        Unloaded += (_, _) => { DismissTransientControl(); if (!IsLoaded) { directionalScroll = null; SettleTransitions(); SettleModalExit(); } };
         GotFocus += (_, _) => { RememberFocus(); NotifyControllerGuideChanged(); };
         GettingFocus += OnGettingFocus;
+        PreviewKeyDown += DirectionalKeyDown;
         AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelGroupEntry()), true);
         AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {
@@ -199,6 +202,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             bindings = nextBindings;
             frame = next;
             presentation = nextPresentation;
+            if (!sameOwner || oldScope != nextPresentation.Scope) directionalScroll = null;
             if (presentationActive && !presentationOnly) WindowPreviews?.Apply(next);
             UpdateResponsiveVisibility();
             // Scope memory survives transient/loading declarations. It is
@@ -224,6 +228,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             if (motionStage is not null) { motionStage.SetCurrent(currentRoot); motionStage.SetModal(currentModal); Content = motionStage; }
             else Content = bindings[root.Id].LayoutElement;
             needsEntry = needsEntry || !sameOwner || oldScope != nextPresentation.Scope
+                || focused?.Element is WidgetIndexedCollectionView { IsFocusParked: true, IsEntryPending: false }
                 || (focused is not null && (!bindings.TryGetValue(focused.Identity.Id, out var current)
                     || !ReferenceEquals(current, focused) || !Navigable(current)));
             if (!presentationOnly) UpdateFocusPolicy(nextPresentation.View);
@@ -260,6 +265,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (TryRestoreTransientFocus()) return;
         if (TryRestoreGroupEntry()) return;
         if (reassertFocus && FocusedBinding() is { } current && Navigable(current) &&
+            current.Element is not WidgetIndexedCollectionView { IsFocusParked: true } &&
             (RememberedBinding() is not { } preferred || ReferenceEquals(preferred, current)) &&
             FocusManager.GetFocusedElement(XamlRoot) is Control leaf && leaf.Focus(FocusState.Keyboard))
             needsEntry = false;
@@ -284,23 +290,35 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         }
     }
 
-    public bool MoveFocus(FocusNavigationDirection direction)
+    public bool MoveFocus(FocusNavigationDirection direction, bool isRepeat = false)
     {
-        if (!presentationActive || applying || !IsLoaded || frame is null) return false;
+        if (NavigationObserved is null) return MoveFocusCore(direction, isRepeat);
+        var before = InspectionFocusId();
+        var handled = MoveFocusCore(direction, isRepeat);
+        NavigationObserved?.Invoke($"{direction}: {before} → {InspectionFocusId()} ({(handled ? "handled" : "boundary")})");
+        return handled;
+    }
+
+    private bool MoveFocusCore(FocusNavigationDirection direction, bool isRepeat)
+    {
+        if (!presentationActive || applying || !IsLoaded || frame is null) return true;
+        if (!presentationInputEnabled) return true;
+        // No row is focused yet. Directions cannot use the parking container as
+        // a spatial target or cancel the only pending route back to real content.
+        if (FindIndexedCollection() is { IsFocusParked: true, IsEntryPending: true }) return true;
         if (!SettleScrollFocus()) return true;
         CancelGroupEntry();
         if (textEntryPopup is { } edit) { edit.Dialog.MoveFocus(direction); return true; }
         if (MoveContextFocus(direction) || MoveSelectFocus(direction) || MoveSlider(direction)) return true;
-        if (FindIndexedCollection()?.MoveFocus(direction) == true) return true;
-        var scope = bindings.Values.FirstOrDefault(binding => declarations[binding.Identity.Id].Node.InputScopeId == activeScope)
-            ?? (bindings.GetValueOrDefault(effectiveView!.Root.Id)?.Identity.Scope == activeScope
-                ? bindings.GetValueOrDefault(effectiveView!.Root.Id) : null);
-        return scope is not null && FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = scope.Element });
+        return MoveDirectionalFocus(direction, isRepeat);
     }
 
     public void ActivateFocused()
     {
         if (!presentationActive || applying || disposed || presentationOnly) return;
+        // Parking is not an actionable row. Do not cancel its pending entry or
+        // activate a future row which the user has not seen yet.
+        if (FindIndexedCollection() is { IsFocusParked: true, IsEntryPending: true }) return;
         CancelGroupEntry();
         if (ActivateContextMenu() || ActivateTextEntry() || ActivateSelect() || HandleSliderButton(ControllerButton.A, ControllerEventPhase.Pressed)) return;
         if (FocusedBinding() is { Identity.Kind: ViewNodeKind.Slider } slider && Eligible(slider))
@@ -485,7 +503,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             // Selection is authored state, not a ToggleButton command. Preserve
             // native Invoke semantics while announcing both selection and work.
             AutomationProperties.SetItemStatus(control, WidgetAccessibleState.ItemStatus(node));
-            control.IsTabStop = node.IsFocusable && binding.Identity.Scope == activeScope;
+            control.IsTabStop = element is not WidgetIndexedCollectionView && node.IsFocusable && binding.Identity.Scope == activeScope;
             control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview) && (!node.IsFocusable || binding.Identity.Scope == activeScope);
         }
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);

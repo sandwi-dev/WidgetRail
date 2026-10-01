@@ -55,7 +55,7 @@ internal sealed partial class OverlayShellPage
         {
             if (PinnedInputActive)
             {
-                if (pinned!.Presenter is { } widget) widget.MoveFocus(next);
+                if (pinned!.Presenter is { } widget) widget.MoveFocus(next, direction.Phase == NavigationPhase.Repeated);
                 else if (pinned.MediaView is { } media) media.MoveFocus(next);
             }
             else if (IsMediaFullscreen) fullscreenView.MoveFocus(next);
@@ -63,10 +63,7 @@ internal sealed partial class OverlayShellPage
             else if (interactive && surface is { } focusedSurface)
             {
                 rightStick.Reset();
-                if (!focusedSurface.MoveFocus(next) && next == FocusNavigationDirection.Down && focusedSurface.CanLeaveRootScope)
-                {
-                    FocusDirectionalTray();
-                }
+                if (!focusedSurface.MoveFocus(next, direction.Phase == NavigationPhase.Repeated)) LeaveWidgetDirectionalBoundary(focusedSurface, next);
             }
             else if (!NavigateTray(next)) FocusManager.TryMoveFocus(next, new FindNextElementOptions { SearchRoot = Tray });
         }
@@ -164,5 +161,12 @@ internal sealed partial class OverlayShellPage
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { ReportFailure(error); }
+    }
+
+    private void LeaveWidgetDirectionalBoundary(Presentation.WidgetViewPresenter presenter, FocusNavigationDirection direction)
+    {
+        if (!retired && visible && interactive && ReferenceEquals(surface, presenter) && !PinnedInputActive &&
+            !IsMediaFullscreen && direction == FocusNavigationDirection.Down && presenter.CanLeaveRootScope)
+            FocusDirectionalTray();
     }
 }

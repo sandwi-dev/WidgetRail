@@ -7,6 +7,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Controller glyphs share readable geometry and theme ink", ControllerGlyphThemeTests.Run),
     ("Focus preserves selection and authored fills in every built-in theme", FocusSelectionThemeTests.Run),
+    ("Shipping first-party and built-in themes use supported WinUI layout declarations", WinUiShippingStylesTests.Run),
     ("Display sizing preserves defaults and isolates persisted monitors", DisplayScaleTests.Run),
     ("Startup registration respects ownership Windows approval and failures", StartupRegistrationTests.Run),
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),
@@ -508,7 +509,6 @@ static Task ThemeDiscovery()
             new HashSet<WrssPseudoState>()));
         Assert.Equal("44px", stepperButton.Get("width")!.Text);
         Assert.Equal("44px", stepperButton.Get("min-width")!.Text);
-        Assert.Equal("0", stepperButton.Get("flex-shrink")!.Text);
     }
     var focusedStepperButton = compiled.Theme.Resolve(new WrssElement(
         "button", null, new HashSet<string>(["wrail-stepper__button"]),
@@ -521,7 +521,7 @@ static Task ThemeDiscovery()
     var slider = compiled.Theme.Resolve(new WrssElement("slider"));
     Assert.Equal("44px", slider.Get("min-height")!.Text);
     Assert.Equal("1px", slider.Get("border-width")!.Text);
-    Assert.Equal("0.99", slider.Get("scale")!.Text);
+    Assert.Equal("1", slider.Get("scale")!.Text);
     Assert.Equal("90ms", slider.Get("transition-duration")!.Text);
     var segmentedTabs = compiled.Theme.Resolve(new WrssElement(
         "row",
@@ -529,7 +529,6 @@ static Task ThemeDiscovery()
         new HashSet<string>(["wrail-segmented-tabs"]),
         new HashSet<WrssPseudoState>()));
     Assert.Equal("50px", segmentedTabs.Get("min-height")!.Text);
-    Assert.Equal("0", segmentedTabs.Get("flex-shrink")!.Text);
     Assert.Equal("1px", segmentedTabs.Get("border-width")!.Text);
     var navigationRail = compiled.Theme.Resolve(new WrssElement(
         "stack",
@@ -537,7 +536,6 @@ static Task ThemeDiscovery()
         new HashSet<string>(["wrail-navigation-shell__rail"]),
         new HashSet<WrssPseudoState>()));
     Assert.Equal("156px", navigationRail.Get("width")!.Text);
-    Assert.Equal("0", navigationRail.Get("flex-shrink")!.Text);
     Assert.Equal("clip", navigationRail.Get("overflow")!.Text);
     var navigationItem = compiled.Theme.Resolve(new WrssElement(
         "button",
@@ -559,7 +557,6 @@ static Task ThemeDiscovery()
         new HashSet<string>(["wrail-action-sheet__item"]),
         new HashSet<WrssPseudoState>()));
     Assert.Equal("44px", actionSheetItem.Get("min-height")!.Text);
-    Assert.Equal("0", actionSheetItem.Get("flex-shrink")!.Text);
     var settingsDescription = compiled.Theme.Resolve(new WrssElement(
         "text",
         null,

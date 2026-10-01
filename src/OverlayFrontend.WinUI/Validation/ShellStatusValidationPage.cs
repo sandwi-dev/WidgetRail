@@ -11,7 +11,7 @@ using WidgetRail.WidgetStyling;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
-internal sealed class ShellStatusValidationPage : Page, IAsyncDisposable
+internal sealed partial class ShellStatusValidationPage : Page, IAsyncDisposable
 {
     private readonly TextBlock result = new() { Text = "Checking shared system status…", TextWrapping = TextWrapping.Wrap };
     private readonly StackPanel stage = new() { Spacing = 16 };

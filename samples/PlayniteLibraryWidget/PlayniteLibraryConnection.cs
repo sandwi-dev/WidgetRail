@@ -102,7 +102,7 @@ internal static class PlayniteLibraryConnectionPresentation
                         description: "Saved securely in Windows Credential Manager."),
                     token)
                 .Classes("playnite-library-playnite-card"),
-            UI.Row("playnite-library.playnite.actions", actions.ToArray())
+            UI.ResponsiveGrid("playnite-library.playnite.actions", 180, 3, actions.ToArray())
                 .Classes("playnite-library-actions", "playnite-library-playnite-actions"),
         };
         if (state.Feedback is { } feedback)

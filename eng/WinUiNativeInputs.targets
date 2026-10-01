@@ -1,0 +1,12 @@
+<Project>
+  <!-- Restore and IDE discovery must work before native prerequisites are built.
+       ComputeFilesToPublish also guards publication with NoBuild enabled. -->
+  <Target Name="ValidateWinUiNativeInputs"
+          BeforeTargets="PrepareForBuild;ComputeFilesToPublish"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">
+    <Error Condition="!Exists('$(OverlayPlatformInteropPath)')"
+           Text="Missing OverlayPlatformInterop.dll at '$(OverlayPlatformInteropPath)'. Run scripts/Build-OverlayPlatform.ps1 -Configuration Release, or set OverlayPlatformInteropPath to the freshly built DLL." />
+    <Error Condition="!Exists('$(WindowPreviewNativePath)')"
+           Text="Missing WinUiWindowPreviewNative.dll at '$(WindowPreviewNativePath)'. Run scripts/Build-WinUiWindowPreview.ps1 -Configuration Release, or set WindowPreviewNativePath to the freshly built DLL." />
+  </Target>
+</Project>

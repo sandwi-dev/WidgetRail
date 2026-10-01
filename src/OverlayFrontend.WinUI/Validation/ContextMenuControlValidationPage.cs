@@ -12,7 +12,7 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Real native popup lifetime checks. Hardware input is deliberately absent.</summary>
-internal sealed class ContextMenuControlValidationPage : Page, IAsyncDisposable
+internal sealed partial class ContextMenuControlValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new() { Text = "Context menu validation waiting for layout" };

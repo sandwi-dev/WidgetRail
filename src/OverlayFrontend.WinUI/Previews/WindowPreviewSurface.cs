@@ -17,7 +17,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Previews;
 /// WinUI only publishes desired state and binds published composition surfaces.
 /// All native capture work, including teardown, stays on the background pump.
 /// </summary>
-internal sealed class WindowPreviewSurface : Grid, IDisposable
+internal sealed partial class WindowPreviewSurface : Grid, IDisposable
 {
     private sealed record Published(NativePreviewStats Stats);
     private readonly object gate = new();

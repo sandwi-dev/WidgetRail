@@ -2664,6 +2664,7 @@ property bool WidgetRail.WidgetSdk.WidgetMediaSession.CanPlay { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetMediaSession.CanPrevious { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetMediaSession.CanTogglePlayPause { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetMediaSession.IsCurrent { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetModal.ScrollContent { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetModal.ShowScrollbar { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>.Changed { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetModelUpdate<TState>.Changed { get; set; }

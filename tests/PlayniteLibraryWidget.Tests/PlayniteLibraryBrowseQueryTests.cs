@@ -26,19 +26,11 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(3, query.Count);
         Assert.AreEqual(0, projected.Count, "Computing membership must not project item metadata/artwork or create trees.");
 
-        // Reproduce the current LoadPageAsync post-projection, then use the actual
-        // existing HeroRailPolicy for Browse metadata/exclusion/favorite behavior.
-        var legacyItems = games.Select(game => BrowseItem(game))
-            .Select(item => item.WithProjectedValue(PlayniteLibraryTitlePolicy.Project(organization, item.Value)))
-            .Where(item => item.Presentation.DisplayName.Contains(settings.SearchText!, StringComparison.OrdinalIgnoreCase) &&
-                settings.FavoriteSavedIds.Contains(item.Value.SavedId, StringComparer.Ordinal)).ToArray();
-        var state = State(Snapshot(WidgetPagedResourceStatus.Ready, legacyItems), organization,
-            PlayniteLibraryRoute.Browse, []) with { Query = settings, FavoriteFilter = true };
-        var expected = PlayniteLibraryHeroRailPolicy.ProjectBrowse(state, null, 0).Items;
         var actual = query.ReadRange(0, query.Count);
-        CollectionAssert.AreEqual(expected.Select(row => row.Display).ToArray(), actual.Select(row => row.Row.Display).ToArray());
-        CollectionAssert.AreEqual(expected.Select(row => (row.Favorite, row.Preferred, row.GroupSize)).ToArray(),
-            actual.Select(row => (row.Row.Favorite, row.Row.Preferred, row.Row.GroupSize)).ToArray());
+        CollectionAssert.AreEqual(new[] { "Zulu game", "Game 3", "Game 5" }, actual.Select(item => item.Row.Display.DisplayName).ToArray());
+        CollectionAssert.AreEqual(new[] { true, true, true }, actual.Select(item => item.Row.Favorite).ToArray());
+        CollectionAssert.AreEqual(new[] { false, true, false }, actual.Select(item => item.Row.Preferred).ToArray());
+        CollectionAssert.AreEqual(new[] { 2, 2, 0 }, actual.Select(item => item.Row.GroupSize).ToArray());
         CollectionAssert.AreEqual(new[] { games[0].Id, games[3].Id, games[5].Id }, projected);
         Assert.AreEqual("Zulu game", actual[0].Item.Presentation.DisplayName, "Title overrides do not re-sort the provider order.");
         Assert.IsTrue(query.TryGetIndex(actual[2].Key, out var index));

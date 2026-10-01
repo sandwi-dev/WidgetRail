@@ -8,7 +8,7 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Host-owned edit session. Only a final commit leaves this control.</summary>
-internal sealed class WidgetTextEntryDialog : ContentDialog
+internal sealed partial class WidgetTextEntryDialog : ContentDialog
 {
     private const string Letters = "1234567890qwertyuiopasdfghjkl-zxcvbnm,./";
     private const string Symbols = "!@#$%^&*()-_=+[]{}\\|;:'\",.<>/?`~?:+=_ ";

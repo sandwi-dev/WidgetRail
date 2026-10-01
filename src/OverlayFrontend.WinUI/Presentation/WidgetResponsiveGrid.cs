@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Bounded static SDK grids use native star columns; indexed collections remain virtualized controls.</summary>
-internal sealed class WidgetResponsiveGrid : Grid
+internal sealed partial class WidgetResponsiveGrid : Grid
 {
     private FrameworkElement[] items = [];
     private double minimum = 160;

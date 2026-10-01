@@ -141,6 +141,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Two unrelated full-trust applications use one ordinary runtime", FullTrustCommunityScenarios.TwoApplicationsUseTheOrdinaryRuntime),
     ("Packaged Spotify uses the ordinary full-trust runtime", FullTrustCommunityScenarios.SpotifyUsesTheOrdinaryRuntime),
     ("Packaged Playnite Library uses the ordinary full-trust runtime", FullTrustCommunityScenarios.PlayniteLibraryUsesTheOrdinaryRuntime),
+    ("Playnite process fixture preserves indexed workflows and stale query guards", FullTrustCommunityScenarios.PlayniteProcessWorkflow),
     ("Full-trust missing entrypoints and silent promotion fail closed", FullTrustCommunityScenarios.MissingEntrypointAndManifestPromotionFailClosed),
     ("Installed content generations receive distinct isolation identities", InstalledContentGenerationIsIsolated),
     ("Installed launch admission rejects content changed after catalog publication", InstalledLaunchAdmissionRejectsRace),
@@ -286,7 +287,7 @@ return failures.Count == 0 ? 0 : 1;
 
 static Task ConfiguredSettingsIcons()
 {
-    var catalog = BridgeCatalog.Load(Path.Combine(FindRepositoryRoot(), "src", "OverlayHost", "out", "Release", "widget-catalog.json"));
+    var catalog = BridgeCatalog.Load(Path.Combine(VerificationInstallation.Root, "widget-catalog.json"));
     var settings = catalog.GetConfigured("settings");
     var descriptor = settings.PublicDescriptor();
     Assert.Equal(6, descriptor.IconAssets.Count);
@@ -2183,6 +2184,7 @@ static async Task TrustedArtworkDemandIsExact()
             new BridgeActionRequest(
                 "test-widget", new WidgetActionEvent("artwork.launch", "artwork.launch")));
         Assert.Equal(BridgeMessageTypes.Acknowledged, launched.Type);
+        await WaitUntilAsync(() => backend.AppLibraryLaunchCalls == 1, TimeSpan.FromSeconds(2));
         Assert.Equal(1, backend.AppLibraryLaunchCalls);
         Assert.Equal("provider-one", backend.LastLaunchedAppId);
 
@@ -3540,7 +3542,7 @@ static async Task CatalogCompletenessRecovery()
 static async Task ColdInstalledCatalogDoesNotBlockBridgeReadiness()
 {
     var trustedCatalogPath = Path.Combine(
-        FindRepositoryRoot(), "src", "OverlayHost", "out", "Release", "widget-catalog.json");
+        VerificationInstallation.Root, "widget-catalog.json");
     Assert.True(File.Exists(trustedCatalogPath),
         "The coherent bundled catalog fixture was not built before the startup gate.");
     using var installedFiles = TemporaryCatalog.Create(
@@ -4446,7 +4448,10 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal(1.5d, response.Payload.GetProperty("widgetAnimationSpeed").GetDouble());
     Assert.Equal(false, response.Payload.GetProperty("animateWidgetModals").GetBoolean());
     var shellStyles = response.Payload.GetProperty("shellStyles");
-    Assert.Equal(12, shellStyles.EnumerateObject().Count());
+    Assert.SequenceEqual(new[] { "canvas", "backdrop", "panel", "tray", "tray-item", "tray-item:selected",
+        "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph",
+        "status", "tray-clock", "tray-date", "tray-status-icon" }.Order(StringComparer.Ordinal),
+        shellStyles.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.True(shellStyles.GetProperty("tray-item:focused")
         .TryGetProperty("outline-color", out _), "Focused tray style was not resolved.");
     Assert.Equal(0.9d, response.Payload.GetProperty("displayScales").GetProperty("monitor-a")
@@ -4631,6 +4636,7 @@ static async Task IdleUnloadSessionResumes()
         await session.ListWidgetsAsync();
         var target = session.GetTarget("test-widget");
         var first = await session.EstablishPresentationAsync(target, WidgetLifecycleState.Interactive);
+        for (var i = 0; i < 3; ++i) first = await ActAndAwaitPublicationAsync(first, i + 1);
         for (var i = 0; i < 3; ++i) first = await session.RefreshAsync(first.Authority);
         await session.SetLifecycleAsync(target, WidgetLifecycleState.Background);
         await WaitUntilAsync(() => server.RunningWorkerCount == 0,
@@ -4644,7 +4650,22 @@ static async Task IdleUnloadSessionResumes()
             "Idle restart produced a stale-snapshot error.");
         var stale = await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.RefreshAsync(first.Authority));
         Assert.Equal("presentation_stale", stale.Code);
-        _ = await session.RefreshAsync(resumed.Authority);
+        // Reopening must restore live updates, not just fetch one fresh checkpoint.
+        // The restarted worker's first invalidation is below the old run's revision.
+        // No lifecycle change or explicit refresh may rescue this action.
+        var updated = await ActAndAwaitPublicationAsync(resumed, 10);
+        Assert.Equal("unknown", FindNode(updated.Snapshot.Root, "busy-button").Text);
+
+        async Task<WidgetPresentationFrame> ActAndAwaitPublicationAsync(WidgetPresentationFrame displayed, long sequence)
+        {
+            var changed = WaitForPresentationAsync(session, state => state.LastGood is { } next &&
+                next.Authority.SessionGeneration == displayed.Authority.SessionGeneration &&
+                next.Authority.SnapshotSequence > displayed.Authority.SnapshotSequence);
+            await session.SendActionAsync(displayed, new WidgetActionEvent("refresh", "button",
+                Sequence: sequence, MonotonicTimestampMicroseconds: sequence * 1000,
+                InputScopeId: displayed.Authority.ActiveInputScopeId));
+            return (await changed).LastGood!;
+        }
     }
     await serving.WaitAsync(TimeSpan.FromSeconds(3));
 }
@@ -4915,6 +4936,14 @@ static async Task SnapshotAndQuickAction()
         new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Visible));
     Assert.Equal(BridgeMessageTypes.Acknowledged, activation.Type);
 
+    // A lifecycle transition withdraws the prior presentation. Admit the
+    // current Visible snapshot before sending controller input against it.
+    snapshotResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, snapshotResponse.Type);
+    snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        snapshotResponse.Payload.GetProperty("snapshot").GetRawText()));
+
     var acknowledgement = await harness.Client.RequestAsync(
         BridgeMessageTypes.ControllerInput,
         new BridgeControllerInputRequest("test-widget", new ControllerInputEvent(
@@ -4923,8 +4952,10 @@ static async Task SnapshotAndQuickAction()
             ControllerInputContext.DashboardQuickAction,
             Sequence: 7,
             MonotonicTimestampMicroseconds: 1000,
+            ActiveInputScopeId: snapshot.ActiveInputScopeId,
             SnapshotSequence: snapshot.Sequence)));
-    Assert.Equal(BridgeMessageTypes.ControllerInputResult, acknowledgement.Type);
+    Assert.True(acknowledgement.Type == BridgeMessageTypes.ControllerInputResult,
+        "Dashboard input failed: " + acknowledgement.Payload.GetRawText());
     Assert.True(acknowledgement.Payload.GetProperty("handled").GetBoolean(),
         "Expected dashboard quick action to be handled.");
     var invalidation = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
@@ -4938,6 +4969,7 @@ static async Task SnapshotAndQuickAction()
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
             Sequence: 8,
+            ActiveInputScopeId: snapshot.ActiveInputScopeId,
             SnapshotSequence: snapshot.Sequence,
             Origin: ControllerInputOrigin.AccessibilityAutomation)));
     Assert.Equal(BridgeMessageTypes.ControllerInputResult, automation.Type);
@@ -4954,6 +4986,7 @@ static async Task SnapshotAndQuickAction()
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
             Sequence: 7,
+            ActiveInputScopeId: snapshot.ActiveInputScopeId,
             SnapshotSequence: snapshot.Sequence)));
     Assert.Equal(BridgeMessageTypes.Error, replay.Type);
     var stale = await harness.Client.RequestAsync(
@@ -4963,6 +4996,7 @@ static async Task SnapshotAndQuickAction()
             ControllerEventPhase.Pressed,
             ControllerInputContext.DashboardQuickAction,
             Sequence: 9,
+            ActiveInputScopeId: snapshot.ActiveInputScopeId,
             SnapshotSequence: snapshot.Sequence + 1)));
     Assert.Equal(BridgeMessageTypes.Error, stale.Type);
 
@@ -4970,6 +5004,12 @@ static async Task SnapshotAndQuickAction()
         BridgeMessageTypes.SetWidgetLifecycle,
         new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
     Assert.Equal(BridgeMessageTypes.Acknowledged, interactive.Type);
+
+    snapshotResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, snapshotResponse.Type);
+    snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        snapshotResponse.Payload.GetProperty("snapshot").GetRawText()));
 
     var shortcut = await harness.Client.RequestAsync(
         BridgeMessageTypes.ControllerInput,
@@ -5655,7 +5695,7 @@ static async Task VirtualCollectionWindowCrossesBridge()
     Assert.Equal(BridgeMessageTypes.Snapshot, firstResponse.Type);
     var first = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         firstResponse.Payload.GetProperty("snapshot").GetRawText()));
-    Assert.Equal(ProtocolConstants.CollectionResetGenerationVersion, first.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.CursorRetentionVersion, first.ProtocolVersion);
     Assert.Equal(1L, first.Root.CollectionGeneration);
     Assert.Equal(1L, first.Root.CollectionResetGeneration);
     Assert.Equal(32, first.Root.Children.Count);
@@ -6313,7 +6353,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
 {
     if (!OperatingSystem.IsWindows()) return;
     var catalogPath = Path.GetFullPath(
-        Path.Combine("src", "OverlayHost", "out", "Release", "widget-catalog.json"));
+        Path.Combine(VerificationInstallation.Root, "widget-catalog.json"));
     var catalog = BridgeCatalog.Load(catalogPath);
     var descriptor = catalog.Widgets.Single(widget => widget.Id == "embedded-media-sample");
     var pipeName = $"wrail-embedded-media-sample-{Guid.NewGuid():N}";

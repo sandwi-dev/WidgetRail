@@ -3996,9 +3996,7 @@ static Task PackageValidates()
             ["games-page-scroll", "games-library-scroll"])))!;
     var routeProgress = compiled.Theme.Resolve(new WrssElement(
         "stack", StyleClasses: new HashSet<string>(["games-route-progress"])))!;
-    Assert.Equal("0", stateTitle.Get("flex-shrink")?.Text);
     Assert.Equal("center", stateTitle.Get("text-align")?.Text);
-    Assert.Equal("0", stateHelp.Get("flex-shrink")?.Text);
     Assert.Equal("100vh", rootStyle.Get("height")?.Text);
     Assert.Equal("0px", rootStyle.Get("min-height")?.Text);
     Assert.Equal("0px", contentStyle.Get("min-height")?.Text);

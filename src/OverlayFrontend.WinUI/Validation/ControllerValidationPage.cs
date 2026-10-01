@@ -11,7 +11,7 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Hardware validation only; production scope/action routing is separate.</summary>
-internal sealed class ControllerValidationPage : Page
+internal sealed partial class ControllerValidationPage : Page
 {
     private readonly TextBlock status = new() { Text = "Waiting for native input" };
     private readonly TextBlock action = new() { Text = "No action" };

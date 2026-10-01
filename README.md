@@ -110,7 +110,8 @@ included in either installer.
 | [Playnite Library](samples/PlayniteLibraryWidget/README.md) | Browse and search games, filter the library, launch installed games, and manage favorites, categories, hidden games, and completion status. | Playnite running with a compatible Playnite Bridge and a configured connection token. |
 
 Each widget's README covers installation, screenshots, and service-specific
-requirements.
+requirements. See [community service integrations](docs/reference/community-companion-services.md)
+for the shared backend and trust model.
 
 ## Customization
 
@@ -284,3 +285,4 @@ You can reuse the examples and choose a license for your own widgets.
 Third-party dependencies retain their respective licenses.
 
 [Contributing](CONTRIBUTING.md) · [Issue tracker](https://github.com/sandwi-dev/WidgetRail/issues) · [Licensing](LICENSING.md)
+

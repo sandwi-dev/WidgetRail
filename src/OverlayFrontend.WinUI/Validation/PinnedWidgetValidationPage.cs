@@ -17,7 +17,7 @@ using PresentationSession = WidgetRail.WidgetPresentationSession.WidgetPresentat
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Real worker authority through the production presenter; no fabricated input frames.</summary>
-internal sealed class PinnedWidgetValidationPage : Page, IAsyncDisposable
+internal sealed partial class PinnedWidgetValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new() { Text = "Connecting", TextWrapping = TextWrapping.Wrap, MaxLines = 3, TextTrimming = TextTrimming.CharacterEllipsis };

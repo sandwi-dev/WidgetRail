@@ -128,11 +128,11 @@ title { font-weight: 600; letter-spacing: -0.005em; }
 
 .wrail-badge__label { font-weight: 600; letter-spacing: 0.02em; }
 .wrail-window-preview {
-  width: 100%; min-width: 0; flex-shrink: 0; overflow: clip;
+  width: 100%; min-width: 0; overflow: clip;
   background: var(--surface); color: var(--text-muted);
   corner-radius: 6px; font-size: 12px; text-align: center;
 }
-.wrail-preview-poster { flex-wrap: nowrap; gap: 8px; min-width: 0; }
+.wrail-preview-poster { gap: 8px; min-width: 0; }
 
 /* Widget modal: host-clamped geometry, theme-owned colors and typography. */
 .wrail-modal-layer { background: var(--canvas-veil); }
@@ -142,6 +142,6 @@ title { font-weight: 600; letter-spacing: -0.005em; }
   border-color: var(--border-strong); border-width: 1px; corner-radius: 16px;
   shadow-color: rgba(0, 0, 0, 0.45); shadow-blur: 20px; overflow: clip;
 }
-.wrail-modal__header { direction: row; align: center; gap: 20px; flex-shrink: 0; }
+.wrail-modal__header { direction: row; align: center; gap: 20px; }
 .wrail-modal__title { font-size: 26px; font-weight: 600; flex-grow: 1; min-width: 0; max-lines: 2; text-overflow: ellipsis; overflow-wrap: anywhere; }
 .wrail-modal__scroll { flex-grow: 1; min-height: 0; min-width: 0; gap: 12px; padding: 4px; }

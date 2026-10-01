@@ -20,6 +20,7 @@ public sealed partial class MainWindow : Window
     internal MainWindow(IReadOnlyList<string> arguments, Shell.OverlayShellOptions? launchOptions, Exception? configurationError)
     {
         InitializeComponent();
+        AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         themeSettings = Microsoft.UI.System.ThemeSettings.CreateForWindowId(AppWindow.Id);
         Presentation.WidgetViewPresenter.SetSystemHighContrast(themeSettings.HighContrast);
         themeSettings.Changed += SystemThemeChanged;
@@ -109,11 +110,20 @@ public sealed partial class MainWindow : Window
             System.Diagnostics.Trace.TraceError("WinUI launch configuration: {0}", error);
             return;
         }
+        if (options.Development?.ProbeOnly == true)
+        {
+            startHidden = true;
+            var probe = new DevelopmentProbePage(options);
+            probe.Failed += () => _ = CloseWithCleanupAsync();
+            RootFrame.Content = probe;
+            return;
+        }
         var shellNoController = arguments.Contains("--shell-no-controller");
         startHidden = arguments.Contains("--hidden");
         var page = new Shell.OverlayShellPage(options,
             unchecked((ulong)WinRT.Interop.WindowNative.GetWindowHandle(this)), initiallyVisible: !startHidden);
         RootFrame.Content = page;
+        ConfigureDevelopment(page, options);
         ConfigureProductionValidation(page, arguments);
         // Production has no validation title/card/Close row. Keep one native
         // scale root, while fixtures retain their independent test wrapper.
@@ -197,6 +207,7 @@ public sealed partial class MainWindow : Window
 
     internal void StartPresentation()
     {
+        if (RootFrame.Content is DevelopmentProbePage probe) { probe.Start(); return; }
         // Do not activate and then hide: that flashes a frame and steals focus
         // during sign-in. The platform adapter still listens for Guide while
         // XAML/Bridge initialization waits for the first real show.
@@ -231,6 +242,7 @@ public sealed partial class MainWindow : Window
     {
         if (cleanupStarted) return;
         cleanupStarted = true;
+        RetireDevelopment();
         CancelTaskHandoff();
         keyboardShortcut?.Dispose(); keyboardShortcut = null;
         input?.SetVisible(false);

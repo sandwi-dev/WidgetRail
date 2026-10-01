@@ -208,7 +208,7 @@ internal sealed partial class ShellControllerGuide : ContentControl, IDisposable
         subscribed = false;
     }
 
-    private sealed class GuidePanel : Panel
+    private sealed partial class GuidePanel : Panel
     {
         internal IReadOnlyList<ControllerGuideHint> Hints { get; set; } = [];
         internal IReadOnlyList<int> Selected { get; private set; } = [];

@@ -1,6 +1,6 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
-using Microsoft.Windows.AppLifecycle;
+using System.Diagnostics;
 using WidgetRail.OverlayPlatformClient;
 using WidgetRail.OverlayFrontend.WinUI.Shell;
 
@@ -15,9 +15,9 @@ internal static partial class Program
         ProcessLifecycle? lifetime = null;
         try
         {
-            var activation = AppInstance.GetCurrent().GetActivatedEventArgs();
-            var launch = activation.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launchArgs ? launchArgs.Arguments : "";
-            var arguments = FrontendArguments.Parse(launch, args);
+            if (ControllerRecoveryStartup.TryRun(args, [], out var recoveryExitCode))
+                return recoveryExitCode;
+            var arguments = args;
             var fixture = false;
             IsValidationLaunch(arguments, ref fixture);
             OverlayShellOptions? options = null;
@@ -27,9 +27,15 @@ internal static partial class Program
                 var defaults = WidgetRail.PlatformSettings.PlatformSettingsPaths.CreateDefault().RootDirectory;
                 try { options = OverlayLaunchConfiguration.Resolve(arguments, AppContext.BaseDirectory, defaults); }
                 catch (Exception error) when (OverlayLaunchConfiguration.IsConfigurationError(error))
-                { configurationError = error; }
+                {
+                    // A malformed development generation must never fall through
+                    // to the normal profile or create an unowned recovery window.
+                    if (arguments.Any(value => value.StartsWith("--development-", StringComparison.Ordinal))) throw;
+                    configurationError = error;
+                }
                 if (options is not null)
                 {
+                    if (options.Development is { } development) DevelopmentJobEnrollment.Join(development.JobName);
                     var election = OverlayProcessLease.Elect(ProcessProfilePolicy.ForSettingsRoot(options.SettingsRoot, defaults),
                         showExisting: !arguments.Contains("--hidden"));
                     if (election.Lease is null) return 0;
@@ -47,17 +53,19 @@ internal static partial class Program
             {
                 // All windows, workers, media and native input are gone before
                 // reactivation. Release profile election before the replacement
-                // process starts; AppLifecycle preserves package activation.
+                // process starts. Inno and restart use the same direct executable.
                 lifetime?.Dispose();
                 lifetime = null;
-                var failure = AppInstance.Restart(FrontendArguments.Serialize(arguments.Where(argument => argument != "--hidden")));
-                System.Diagnostics.Trace.TraceError("WidgetRail restart failed: {0}", failure);
-                return 1; // A successful Restart terminates this process.
+                var start = new ProcessStartInfo(Environment.ProcessPath ?? throw new InvalidOperationException("Application executable is unavailable."))
+                { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
+                foreach (var argument in arguments.Where(argument => argument != "--hidden")) start.ArgumentList.Add(argument);
+                using var replacement = Process.Start(start) ?? throw new InvalidOperationException("WidgetRail restart failed.");
             }
             return 0;
         }
         catch (Exception error)
         {
+            Diagnostics.FrontendFailureLog.Current.Write("process-startup", error);
             System.Diagnostics.Trace.TraceError("WinUI process startup failed: {0}", error);
             return 1; // Fail closed: no window, input session or Bridge is created after a failed election.
         }

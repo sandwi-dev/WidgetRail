@@ -1862,13 +1862,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         route,
         fixedRows,
         _hiddenRows.Snapshot.Value ?? [],
-        local.SourceObservations,
-        route == PlayniteLibraryRoute.Browse
-            ? local.BrowseHeroSavedId
-            : local.HeroSavedId,
-        route == PlayniteLibraryRoute.Browse
-            ? local.BrowseHeroIndex
-            : local.HeroIndex)
+        local.SourceObservations)
     {
         ActiveCategoryId = local.ActiveCategoryId,
         SearchFocusPending = local.SearchFocusPending,
@@ -1905,7 +1899,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         PlayniteLibraryGameTarget? capturedTarget = null)
     {
         CancelDetailsOperations();
-        var tab = preserveTab ? _model.Value.DetailsExtras.Tab : PlayniteDetailsTab.Overview;
+        var tab = preserveTab ? _model.Value.DetailsExtras.Tab : PlayniteDetailsTab.Description;
         var generation = _model.Value.DetailsGeneration + 1;
         _model.Update(state => state with
         {

@@ -33,6 +33,13 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Preview policy test build failed.' }
         & (Join-Path $OutputDirectory 'WindowPreviewPolicyTests.exe')
         if ($LASTEXITCODE -ne 0) { throw 'Preview policy test failed.' }
+        $diagnostics = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DNOMINMAX') + $includes + @(
+            (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowPreviewDiagnosticsTests.cpp'), "/Fo:$objectDirectory\DiagnosticsTests.obj", "/Fe:$OutputDirectory\WindowPreviewDiagnosticsTests.exe", '/link',
+            (Join-Path $OutputDirectory 'WinUiWindowPreviewNative.lib')) + $libraries
+        & $compiler @diagnostics
+        if ($LASTEXITCODE -ne 0) { throw 'Preview diagnostics test build failed.' }
+        & (Join-Path $OutputDirectory 'WindowPreviewDiagnosticsTests.exe')
+        if ($LASTEXITCODE -ne 0) { throw 'Preview diagnostics test failed.' }
     }
     & (Join-Path $compilerDirectory 'dumpbin.exe') /nologo /exports (Join-Path $OutputDirectory 'WinUiWindowPreviewNative.dll') | Set-Content (Join-Path $OutputDirectory 'exports.txt')
 } finally { $env:PATH = $oldPath }

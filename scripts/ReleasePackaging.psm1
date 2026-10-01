@@ -64,7 +64,7 @@ function Copy-ReleaseTree {
     param([string]$Source, [string]$Destination, [string]$Root, [switch]$SealedPackage)
     foreach ($relative in Get-ReleaseFiles $Source) {
         $extension = [IO.Path]::GetExtension($relative)
-        if ($extension -in @('.pdb', '.xml')) {
+        if ($extension -eq '.pdb') {
             if ($SealedPackage) { throw "Sealed package contains development output: $relative" }
             continue
         }
@@ -99,6 +99,12 @@ function Test-ReleaseInventory {
             throw "Release inventory differs at $($actual[$i].path)."
         }
     }
+    if ($manifest.packaging -cne 'winui-unpackaged') { throw 'Release is not an unpackaged WinUI payload.' }
+    foreach ($file in @('OverlayFrontend.WinUI.exe', 'OverlayFrontend.WinUI.dll', 'OverlayFrontend.WinUI.runtimeconfig.json',
+        'OverlayPlatformInterop.dll', 'WinUiWindowPreviewNative.dll', 'OverlayFrontend.WinUI.pri',
+        'coreclr.dll', 'Microsoft.ui.xaml.dll', 'Microsoft.WindowsAppRuntime.dll')) {
+        if (!(Test-Path -LiteralPath (Assert-ReleasePath (Join-Path $Root $file) -Within $Root) -PathType Leaf)) { throw "Required WinUI release file missing: $file" }
+    }
     foreach ($desktop in @($manifest.requirements | Where-Object name -CEQ '.NET Desktop')) {
         foreach ($file in @('System.Windows.Forms.dll', 'PresentationFramework.dll', 'Microsoft.WindowsDesktop.App.deps.json')) {
             $path = Assert-ReleasePath (Join-Path $Root "dotnet/shared/Microsoft.WindowsDesktop.App/$($desktop.version)/$file") -Within $Root
@@ -124,32 +130,15 @@ function Test-ReleaseInventory {
     }
 }
 
-function New-WidgetRailReleaseFolders {
+function Copy-WidgetRailEditionRuntime {
     [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$BuildRoot,
-        [Parameter(Mandatory)][string]$DeveloperRoot,
-        [Parameter(Mandatory)][string]$RepositoryRoot,
-        [Parameter(Mandatory)][string]$OutputRoot,
-        [Parameter(Mandatory)][string]$Version,
-        [Parameter(Mandatory)][string]$SourceCommit,
-        [Parameter(Mandatory)][string]$SdkVersion,
-        [Parameter(Mandatory)]$Content,
-        [scriptblock]$VerifyCatalog,
-        [scriptblock]$BeforePublish,
-        [string]$PackagingCommit
-    )
-    if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$' -or $SourceCommit -notmatch '^[0-9a-f]{40}$') {
-        throw 'Release version or source commit is invalid.'
-    }
-    if ($Content.schemaVersion -ne 1 -or $Content.architecture -ne 'x64') { throw 'Unsupported release content schema.' }
-    $build = Assert-ReleasePath $BuildRoot
-    $developer = Assert-ReleasePath $DeveloperRoot
-    $output = Assert-ReleasePath $OutputRoot
-    $final = Assert-ReleasePath (Join-Path $output $Version) -Within $output
-    if (Test-Path -LiteralPath $final) { throw "Release version already exists: $final" }
-    $stage = Assert-ReleasePath (Join-Path $output ('.staging-' + [guid]::NewGuid().ToString('N'))) -Within $output
-    New-Item -ItemType Directory -Path $stage -Force | Out-Null
+    param([Parameter(Mandatory)][string]$BuildRoot, [Parameter(Mandatory)][string]$DeveloperRoot,
+        [Parameter(Mandatory)][string]$RepositoryRoot, [Parameter(Mandatory)][string]$Destination,
+        [Parameter(Mandatory)]$Content, [ValidateSet('production','developer')][string]$Edition)
+    if ($Content.schemaVersion -ne 2 -or $Content.architecture -ne 'x64') { throw 'Unsupported release content schema.' }
+    $build=Assert-ReleasePath $BuildRoot; $developer=Assert-ReleasePath $DeveloperRoot
+    $root=Assert-ReleasePath $Destination
+    New-Item -ItemType Directory -Path $root -Force | Out-Null
     $baseCatalog = Get-Content -LiteralPath (Join-Path $build 'widget-catalog.json') -Raw | ConvertFrom-Json
     $extraCatalog = Get-Content -LiteralPath (Join-Path $developer 'developer-widgets.json') -Raw | ConvertFrom-Json
     if (@($baseCatalog.widgets).Count -ne 1 -or $baseCatalog.widgets[0].id -ne 'settings') {
@@ -164,23 +153,13 @@ function New-WidgetRailReleaseFolders {
     foreach ($spec in $Content.developerWidgets) {
         if (@($extraCatalog | Where-Object id -CEQ $spec.id).Count -ne 1) { throw "Missing developer widget: $($spec.id)" }
     }
-    foreach ($edition in @('production', 'developer')) {
-        $folderName = if ($edition -eq 'production') { "WidgetRail-$Version-win-x64" } else { "WidgetRail-Developer-$Version-win-x64" }
-        $root = Join-Path $stage $folderName
-        New-Item -ItemType Directory -Path $root | Out-Null
-        foreach ($file in $Content.rootFiles) {
-            $source = Assert-ReleasePath (Join-Path $build $file) -Within $build
-            Copy-ReleaseFile $source (Join-Path $root $file) $root
-        }
         Copy-ReleaseFile (Join-Path $RepositoryRoot 'LICENSE') (Join-Path $root 'LICENSE') $root
         Copy-ReleaseFile (Join-Path $RepositoryRoot 'THIRD_PARTY_NOTICES.md') (Join-Path $root 'THIRD_PARTY_NOTICES.md') $root
         foreach ($license in @('third_party/ViGEmClient/LICENSE', 'third_party/public_suffix_list/LICENSE')) {
             Copy-ReleaseFile (Join-Path $RepositoryRoot $license) (Join-Path $root $license) $root
         }
         Copy-ReleaseTree (Join-Path $developer 'licenses') (Join-Path $root 'licenses') $root
-        foreach ($name in $Content.sharedRuntimeDirectories) {
-            Copy-ReleaseTree (Join-Path $developer $name) (Join-Path $root $name) $root
-        }
+        Copy-ReleaseTree (Join-Path $developer 'dotnet') (Join-Path $root 'dotnet') $root
         foreach ($name in $Content.hostRuntimeDirectories) {
             Copy-ReleaseTree (Join-Path $build "runtime/$name") (Join-Path $root "runtime/$name") $root
         }
@@ -210,6 +189,49 @@ function New-WidgetRailReleaseFolders {
             bundledWidgets = @($selected)
         }
         Write-ReleaseJson (Join-Path $root 'widget-catalog.json') $catalog
+    return [pscustomobject]$catalog
+}
+
+function New-WidgetRailReleaseFolders {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$BuildRoot,
+        [Parameter(Mandatory)][string]$DeveloperRoot,
+        [Parameter(Mandatory)][string]$RepositoryRoot,
+        [Parameter(Mandatory)][string]$OutputRoot,
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$SourceCommit,
+        [Parameter(Mandatory)][string]$SdkVersion,
+        [Parameter(Mandatory)]$Content,
+        [scriptblock]$VerifyCatalog,
+        [scriptblock]$BeforePublish,
+        [string]$PackagingCommit
+    )
+    if ($Version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$' -or $SourceCommit -notmatch '^[0-9a-f]{40}$') {
+        throw 'Release version or source commit is invalid.'
+    }
+    if ($Content.schemaVersion -ne 2 -or $Content.architecture -ne 'x64') { throw 'Unsupported release content schema.' }
+    $build = Assert-ReleasePath $BuildRoot
+    $developer = Assert-ReleasePath $DeveloperRoot
+    $output = Assert-ReleasePath $OutputRoot
+    $final = Assert-ReleasePath (Join-Path $output $Version) -Within $output
+    if (Test-Path -LiteralPath $final) { throw "Release version already exists: $final" }
+    $stage = Assert-ReleasePath (Join-Path $output ('.staging-' + [guid]::NewGuid().ToString('N'))) -Within $output
+    New-Item -ItemType Directory -Path $stage -Force | Out-Null
+    foreach ($edition in @('production', 'developer')) {
+        $folderName = if ($edition -eq 'production') { "WidgetRail-$Version-win-x64" } else { "WidgetRail-Developer-$Version-win-x64" }
+        $root = Join-Path $stage $folderName
+        New-Item -ItemType Directory -Path $root | Out-Null
+        $frontend = Assert-ReleasePath (Join-Path $build $Content.frontendDirectory) -Within $build
+        foreach ($file in $Content.rootFiles) {
+            $source = Assert-ReleasePath (Join-Path $frontend $file) -Within $frontend
+            if (!(Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing frontend publication: $file" }
+        }
+        Copy-ReleaseTree $frontend $root $root
+        $catalog = Copy-WidgetRailEditionRuntime -BuildRoot $build -DeveloperRoot $developer -RepositoryRoot $RepositoryRoot -Destination $root -Content $Content -Edition $edition
+        foreach ($name in $Content.sharedRuntimeDirectories | Where-Object { $_ -ne 'dotnet' }) {
+            Copy-ReleaseTree (Join-Path $developer $name) (Join-Path $root $name) $root
+        }
         $packages = @(foreach ($widget in @($catalog.widgets) + @($catalog.bundledWidgets)) {
             $packageRoot = if ($widget.id -eq 'settings') { 'runtime/Settings' } else { $widget.packageRoot }
             $metadata = Get-Content -LiteralPath (Join-Path $root "$packageRoot/manifest.json") -Raw | ConvertFrom-Json
@@ -218,15 +240,16 @@ function New-WidgetRailReleaseFolders {
         $readme = @(
             "WidgetRail $Version - $edition edition"
             ''
-            'Run OverlayHost.exe. Keep this complete folder together.'
+            'Install with WidgetRail setup, then launch WidgetRail. Keep this complete folder together.'
             'View + Menu toggles the overlay by default; F1 is the keyboard fallback.'
             'Review widget permissions in Settings before using Windows controls.'
             ''
-            'This Windows x64 folder includes a private .NET runtime.'
+            'The WinUI frontend includes its own .NET and Windows App SDK runtimes; widget services use the private dotnet folder.'
+            'Launch OverlayFrontend.WinUI.exe directly or use the Start menu shortcut created by setup.'
             'Use setup to install missing GameInput and WebView2 dependencies.'
             'Embedded web media requires the Microsoft Edge WebView2 runtime.'
             'Settings and user data remain under %LOCALAPPDATA%\WidgetRail.'
-            'Startup registration, driver installation and automatic updates are not performed.'
+            'Setup offers startup registration. Controller driver installation and automatic updates are not performed.'
         )
         $readme += @('', 'Command-line tools: wrail.cmd help',
             'Create an independent widget with wrail new widget <Name> --output <new-directory>.',
@@ -235,7 +258,7 @@ function New-WidgetRailReleaseFolders {
         Write-ReleaseJson (Join-Path $root 'release.json') ([ordered]@{
             schemaVersion = 1; product = 'WidgetRail'; version = $Version; edition = $edition
             architecture = 'x64'; sourceCommit = $SourceCommit; sdkVersion = $SdkVersion
-            packaging = 'private-runtime-folder'; signed = $false
+            packaging = 'winui-unpackaged'; signed = $false
             packagingCommit = $(if ($PackagingCommit) { $PackagingCommit } else { $SourceCommit })
             requirements = @($Content.runtimeRequirements); widgets = $packages
             files = @(Get-ReleaseInventory $root)
@@ -255,4 +278,4 @@ function New-WidgetRailReleaseFolders {
     return $final
 }
 
-Export-ModuleMember -Function Assert-ReleasePath, Get-ReleaseFiles, Copy-ReleaseTree, Write-ReleaseJson, New-WidgetRailReleaseFolders, Test-ReleaseInventory
+Export-ModuleMember -Function Assert-ReleasePath, Get-ReleaseFiles, Copy-ReleaseTree, Write-ReleaseJson, Copy-WidgetRailEditionRuntime, New-WidgetRailReleaseFolders, Test-ReleaseInventory

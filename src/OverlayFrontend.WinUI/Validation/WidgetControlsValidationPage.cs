@@ -13,7 +13,7 @@ using Windows.System;
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Exercises the actual shared presenter; no backend or hardware.</summary>
-internal sealed class WidgetControlsValidationPage : Page
+internal sealed partial class WidgetControlsValidationPage : Page
 {
     private readonly WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new();

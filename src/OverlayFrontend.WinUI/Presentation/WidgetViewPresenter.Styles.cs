@@ -227,6 +227,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private (bool Focused, bool Pressed)? lastInteraction;
     internal event Action<bool, bool>? InteractionChanged;
     internal (bool Focused, bool Pressed) Interaction => lastInteraction ?? (false, false);
+    internal IReadOnlyDictionary<string, BridgeComputedStyleValue>? InspectionStyle =>
+        Interaction.Pressed ? styles?.Pressed : Interaction.Focused ? styles?.Focused : styles?.Base;
     private bool pointerPressed;
     private bool keyboardPressed;
     private bool controllerPressed;

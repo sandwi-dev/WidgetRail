@@ -138,6 +138,10 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-preview-shutdown") is { } shutdownResult &&
+            Shell.FrontendArguments.Value(arguments, "--preview-shutdown-peer") is { } shutdownPeer)
+            page.EnablePreviewShutdownValidation(shutdownResult, shutdownPeer,
+                arguments.Contains("--preview-shutdown-hidden") ? HideOverlayImmediately : null);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-appearance-settings") is { } appearanceResult)
             page.EnableAppearanceSettingsValidation(appearanceResult);
         if (arguments.Contains("--shell-no-controller")) ConfigureValidationActivation(arguments);

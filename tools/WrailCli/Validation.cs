@@ -80,7 +80,7 @@ internal static class ValidateCommand
     }
 }
 
-/// <summary>Compatibility adapter for callers of the original CLI-local validator.</summary>
+/// <summary>Validates stylesheet syntax and reports unsupported WinUI layout declarations.</summary>
 public static class WrssValidator
 {
     public static IReadOnlyList<ToolDiagnostic> ValidateFile(string file)
@@ -109,7 +109,7 @@ public static class WrssValidator
         WrssPackageResult package)
     {
         var compiled = WrssThemeCompiler.Compile(package);
-        return compiled.Diagnostics
+        return compiled.Diagnostics.Concat(package.Documents.SelectMany(WinUiStyleDiagnostics.Analyze))
             .Select(item => new ToolDiagnostic(
                 ResolveSource(root, item.Source), item.Line, item.Column, item.Code, item.Message, item.Severity))
             .ToArray();

@@ -74,6 +74,7 @@ Assert-NoReparsePoint -Path $stagingRoot
 Assert-NoReparsePoint -Path $publishRoot
 
 & dotnet publish $widgetProject --configuration $Configuration --no-self-contained --nologo `
+    "-bl:$artifactsRoot/publish-{}.binlog" `
     --property:UseSharedCompilation=false --property:BuildInParallel=false --output $publishRoot
 if ($LASTEXITCODE -ne 0) { throw "SDK Gallery publish failed with exit code $LASTEXITCODE." }
 
@@ -106,9 +107,11 @@ if (Test-Path -LiteralPath $packagePath) {
 }
 
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
+    "-bl:$artifactsRoot/validate-{}.binlog" `
     --property:UseSharedCompilation=false --property:BuildInParallel=false -- validate $stagingRoot
 if ($LASTEXITCODE -ne 0) { throw 'wrail validate rejected the staged SDK Gallery addon.' }
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
+    "-bl:$artifactsRoot/pack-{}.binlog" `
     --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
     pack $stagingRoot --output $packagePath
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {

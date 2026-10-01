@@ -13,6 +13,8 @@ The five pages cover:
   a controller-native `Scrubber`;
 - explicit WinUI-style Grid tracks (Auto, fixed DIPs and weighted star sizing),
   spanning cells, and live proportion changes with stable control identities;
+- native responsive grids for action groups, controller hints and density badges,
+  retaining document order and focus identities as the available width changes;
 - responsive `Tile` action surfaces for media and application content;
 - a visible embedded WebP and a portrait `PosterTile`, each with its own
   focus-associated detail presentation;

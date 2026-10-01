@@ -40,5 +40,15 @@
   "src/WidgetSdk/WindowPreview.cs": "docs/reference/window-previews.md",
   "src/WidgetSdk/WidgetIcon.cs": "docs/reference/widget-icon-provenance.md",
   "src/WidgetSdk/StyleExtensions.cs": "docs/developers/styling.md",
-  "src/WidgetApplicationRuntime/WidgetApplicationBootstrap.cs": "docs/reference/application-widgets.md"
+  "src/WidgetApplicationRuntime/WidgetApplicationBootstrap.cs": "docs/reference/application-widgets.md",
+  "src/WidgetSdk/Collections.cs": "docs/developers/indexed-collections.md",
+  "src/WidgetSdk/WidgetCollectionItems.cs": "docs/developers/indexed-collections.md",
+  "src/WidgetSdk/WidgetDiscoveredCollection.cs": "docs/developers/indexed-collections.md",
+  "src/WidgetSdk/WidgetIndexedCollection.cs": "docs/developers/indexed-collections.md",
+  "src/WidgetSdk/WidgetIndexedLeases.cs": "docs/developers/indexed-collections.md",
+  "src/WidgetSdk/GridLayout.cs": "docs/reference/winui-authoring.md",
+  "src/WidgetSdk/PinnedActionContract.cs": "docs/reference/pinned-layouts.md",
+  "src/WidgetSdk/WidgetModal.cs": "docs/developers/navigation.md",
+  "src/WidgetSdk/WidgetTesting.IndexedCollections.cs": "docs/developers/indexed-collections.md",
+  "src/WidgetSdk/WidgetTransitions.cs": "docs/developers/navigation.md"
 }

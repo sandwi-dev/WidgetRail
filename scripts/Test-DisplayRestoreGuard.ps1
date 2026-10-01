@@ -1,12 +1,12 @@
 [CmdletBinding()]
-param([ValidateSet('Debug', 'Release')][string]$Configuration = 'Release')
+param([ValidateSet('Debug', 'Release')][string]$Configuration = 'Release', [Parameter(Mandatory)][string]$InstallationRoot)
 
 $ErrorActionPreference = 'Stop'
 $repository = Split-Path -Parent $PSScriptRoot
 $testExe = Join-Path $repository "tests/DisplayProfilesWidget.Tests/bin/$Configuration/net8.0-windows/DisplayProfilesWidget.Tests.exe"
-$bridge = Join-Path $repository "src/OverlayHost/out/$Configuration/runtime/Bridge/WidgetBridge.exe"
+$bridge = Join-Path $InstallationRoot "runtime/Bridge/WidgetBridge.exe"
 if (!(Test-Path -LiteralPath $testExe) -or !(Test-Path -LiteralPath $bridge)) {
-    throw 'Build the display-profile tests and the complete overlay before running the guard check.'
+    throw 'Build the display-profile tests and provide the coherent WinUI installation root before running the guard check.'
 }
 
 function Start-GuardTest([string]$Mode) {
@@ -50,3 +50,4 @@ try {
     if ($guard) { $guard.Dispose() }
     $parent.Dispose()
 }
+

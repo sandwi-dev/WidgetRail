@@ -2816,12 +2816,10 @@ static async Task ShippedAssetsValidate()
         "scroll", "settings.categories",
         new HashSet<string>(["root-category-list"], StringComparer.Ordinal)));
     Assert.Equal(1d, rootCategories.Get("flex-grow")?.Number);
-    Assert.Equal("0", rootCategories.Get("flex-basis")?.Text);
     var nestedPage = compiled.Theme.Resolve(new WrssElement(
         "scroll", "diagnostics.page",
         new HashSet<string>(["settings-page"], StringComparer.Ordinal)));
     Assert.Equal(1d, nestedPage.Get("flex-grow")?.Number);
-    Assert.Equal("0", nestedPage.Get("flex-basis")?.Text);
     var diagnosticArea = compiled.Theme.Resolve(new WrssElement(
         "text", "diagnostics.area.bridge",
         new HashSet<string>(["diagnostic-ok", "diagnostic-area"], StringComparer.Ordinal)));

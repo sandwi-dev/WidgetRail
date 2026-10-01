@@ -7,7 +7,7 @@ using Windows.Foundation;
 namespace WidgetRail.OverlayFrontend.WinUI.Previews;
 
 /// <summary>A native layout slot. Capture authority and resources belong to the shell renderer.</summary>
-internal sealed class WidgetWindowPreview : ContentControl, IDisposable
+internal sealed partial class WidgetWindowPreview : ContentControl, IDisposable
 {
     private WindowPreviewRenderer? renderer;
     private WindowPreviewSurface? surface;

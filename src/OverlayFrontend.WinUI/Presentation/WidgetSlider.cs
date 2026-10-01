@@ -4,7 +4,9 @@ using Microsoft.UI.Xaml.Controls;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Stock Slider behavior/template with bounded, centered thumb focus geometry.</summary>
-internal sealed class WidgetSlider : Slider
+// Partial enables C#/WinRT to generate the inherited native override interfaces.
+// Without them, trimmed builds fail RangeBase value/range callbacks with E_NOINTERFACE.
+internal sealed partial class WidgetSlider : Slider
 {
     private FrameworkElement? container;
     private Grid? horizontalTemplate;

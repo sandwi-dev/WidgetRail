@@ -1,0 +1,61 @@
+<Window
+    x:Class="WidgetRail.OverlayFrontend.WinUI.Development.DeveloperInspectorWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="WidgetRail — Widget Inspector">
+    <Grid x:Name="InspectorRoot" Padding="16" RowSpacing="12" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.Resources>
+            <Style x:Key="MapRectangle" TargetType="Rectangle">
+                <Setter Property="Stroke" Value="{ThemeResource ControlStrongStrokeColorDefaultBrush}" />
+                <Setter Property="StrokeThickness" Value="1" />
+            </Style>
+            <Style x:Key="SelectedRectangle" TargetType="Rectangle">
+                <Setter Property="Stroke" Value="{ThemeResource SystemControlHighlightAccentBrush}" />
+                <Setter Property="StrokeThickness" Value="3" />
+            </Style>
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="Search" Header="Element filter" PlaceholderText="Filter element IDs" MaxLength="256" TextChanged="SearchChanged"
+                     AutomationProperties.Name="Filter inspected elements" AutomationProperties.AutomationId="Inspector.Search" />
+            <ToggleButton x:Name="FollowFocus" Grid.Column="1" VerticalAlignment="Bottom" Content="Follow focus" IsChecked="True" Click="FollowClicked"
+                          AutomationProperties.AutomationId="Inspector.FollowFocus" />
+            <ToggleButton x:Name="Pause" Grid.Column="2" VerticalAlignment="Bottom" Content="Pause" Click="PauseClicked"
+                          AutomationProperties.AutomationId="Inspector.Pause" />
+            <Button Grid.Column="3" VerticalAlignment="Bottom" Content="Refresh" Click="RefreshClicked" AutomationProperties.AutomationId="Inspector.Refresh" />
+        </Grid>
+        <StackPanel Grid.Row="1" Spacing="4">
+            <TextBlock x:Name="Status" Text="Waiting for the widget…" TextWrapping="Wrap" AutomationProperties.AutomationId="Inspector.Status" />
+            <TextBlock x:Name="Navigation" Text="Navigate in the widget to inspect directional focus. F12 reopens this window."
+                       TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.AutomationId="Inspector.Navigation" />
+        </StackPanel>
+        <Grid Grid.Row="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" MinWidth="200" />
+                <ColumnDefinition Width="3*" MinWidth="160" />
+                <ColumnDefinition Width="3*" MinWidth="240" />
+            </Grid.ColumnDefinitions>
+            <TreeView x:Name="Tree" SelectionMode="Single" SelectionChanged="SelectionChanged" CanDragItems="False" AllowDrop="False"
+                      AutomationProperties.Name="Widget element tree" AutomationProperties.AutomationId="Inspector.Tree" />
+            <Border Grid.Column="1" Padding="8" BorderThickness="1" CornerRadius="8"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <Canvas x:Name="Map" Background="Transparent" PointerPressed="MapPointerPressed" SizeChanged="MapSizeChanged" AutomationProperties.Name="Read-only widget layout map"
+                        AutomationProperties.AutomationId="Inspector.Map" />
+            </Border>
+            <TextBox x:Name="Details" Grid.Column="2" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                     FontFamily="Consolas" FontSize="12" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.Name="Selected element geometry, focus and computed styles" AutomationProperties.AutomationId="Inspector.Details"
+                     Text="Select an element to inspect its native geometry, focus policy and resolved styles." />
+        </Grid>
+    </Grid>
+</Window>

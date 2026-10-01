@@ -6,6 +6,9 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed record OverlayShellOptions(string InstallationRoot, string SettingsRoot,
     string InstalledCatalogRoot, string? InitialWidgetId = null, string? LayoutDiagnosticsPath = null, string? SwitchDiagnosticsPath = null)
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DevelopmentLaunchOptions? Development { get; init; }
+
     internal static OverlayShellOptions Load(string path)
     {
         var options = JsonSerializer.Deserialize(File.ReadAllText(path), ShellJsonContext.CaseInsensitive.OverlayShellOptions)

@@ -6,7 +6,7 @@ using PresentationSession = WidgetRail.WidgetPresentationSession.WidgetPresentat
 namespace WidgetRail.OverlayFrontend.WinUI.Previews;
 
 /// <summary>One widget's displayed preview demand and permission renewal. Pixels never enter managed code.</summary>
-internal sealed class WindowPreviewRenderer : IAsyncDisposable
+internal sealed partial class WindowPreviewRenderer : IAsyncDisposable
 {
     private readonly object gate = new();
     private readonly PresentationSession session;

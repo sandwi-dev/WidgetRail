@@ -1,2 +1,0 @@
-#include "ApplicationIcon.h"
-IDI_WIDGETRAIL ICON "widgetrail.ico"

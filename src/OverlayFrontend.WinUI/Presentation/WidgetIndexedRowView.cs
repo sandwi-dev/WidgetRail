@@ -8,7 +8,7 @@ using WidgetRail.WidgetPresentationSession;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Shared declaration rendering inside a native item container.</summary>
-public sealed class WidgetIndexedRowView : ContentControl, IAsyncDisposable
+public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposable
 {
     public static readonly DependencyProperty RowProperty = DependencyProperty.Register(nameof(Row), typeof(object),
         typeof(WidgetIndexedRowView), new PropertyMetadata(null, (sender, _) => ((WidgetIndexedRowView)sender).ApplyRow()));

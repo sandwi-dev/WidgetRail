@@ -8,69 +8,52 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryLayoutTests
 {
     [TestMethod]
-    public void BrowseItemCacheRetainsIdentityWithoutRetainingStalePresentation()
+    public async Task IndexedBrowseContentUpdatesKeepIdentityWithoutStalePresentation()
     {
-        var items = Enumerable.Range(0, 3).Select(index => PlayniteLibraryItem.From(
-            Item("app-" + index, "saved-" + index, "Game " + index, "Steam"))).ToArray();
-        var inputs = items.Select(item => new PlayniteLibraryPresentation.TileInput(
-            item.Presentation.DisplayName, "Steam", item.Value.SavedId, null, false, null,
-            item, false, true, item.Key, true, null, null, false, true)).ToArray();
-        var cache = PlayniteLibraryPresentation.CreateBrowseItemCache();
-        var initial = cache.Capture(inputs);
-        var reordered = cache.Capture([inputs[2], inputs[0], inputs[1]]);
-        Assert.AreSame(initial[2], reordered[0]);
-        Assert.AreSame(initial[0], reordered[1]);
-        var launching = cache.Capture([inputs[0] with { Launching = true }, inputs[1], inputs[2]]);
-        Assert.AreNotSame(initial[0], launching[0]);
-        Assert.AreSame(initial[1], launching[1]);
-        var artwork = cache.Capture([inputs[0] with { ArtworkHandle = "art.new" }, inputs[1], inputs[2]]);
-        Assert.AreNotSame(launching[0], artwork[0]);
-        Assert.AreSame(launching[1], artwork[1]);
-        var busy = cache.Capture(inputs.Select(item => item with { Interactive = false }).ToArray());
-        Assert.AreNotSame(initial[1], busy[1]);
-        cache.Capture([inputs[0]]);
-        var restored = cache.Capture(inputs);
-        Assert.AreNotSame(initial[1], restored[1], "Evicted declarations are not retained indefinitely.");
+        var query = new PlayniteLibraryBrowseQuery(BrowseCapture(BrowseGames(4), new(false)),
+            PlayniteLibraryPrivateState.Empty, false);
+        await using var widget = new IndexedBrowseFixture(query);
+        await widget.Start();
+        using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "content.fixture");
+        var declaration = Nodes(host.CurrentSnapshot.Root).Single(node => node.Kind == ViewNodeKind.IndexedCollection);
+        using var original = await host.AcquireAsync(declaration.Id, 0, 4);
+        widget.State = widget.State with { Status = "Updated" };
+        var status = host.PublishSnapshot();
+        Assert.AreEqual(declaration.IndexedCollection, Nodes(status.Root).Single(node => node.Id == declaration.Id).IndexedCollection,
+            "Status-only publication must not replace query or content authority.");
+        foreach (var busy in new[] { false, true, false })
+        {
+            widget.Source.UpdateContent(new(query, actionsEnabled: !busy, launchingSavedId: busy ? null : "game-1"));
+            var updated = host.PublishSnapshot();
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(updated).Count);
+            var current = Nodes(updated.Root).Single(node => node.Id == declaration.Id).IndexedCollection!;
+            Assert.AreEqual(declaration.IndexedCollection!.QueryGeneration, current.QueryGeneration);
+            using var lease = await host.AcquireAsync(declaration.Id, 0, 4);
+            CollectionAssert.AreEqual(original.Range.Items.Select(row => row.Key).ToArray(), lease.Range.Items.Select(row => row.Key).ToArray());
+            Assert.AreEqual(busy, lease.Range.Items[0].Root.IsDisabled == true);
+            Assert.AreEqual(busy ? null : ControllerButton.X, lease.Range.Items[0].Root.ContextMenuButton);
+            Assert.IsFalse(original.Range.Items[0].Root.IsDisabled == true, "Acquired snapshots stay immutable after content changes.");
+            if (!busy)
+                StringAssert.Contains(lease.Range.Items[1].Root.AccessibilityLabel!, "Pending");
+        }
     }
 
     [TestMethod]
-    public void CachedBrowseMatchesUncachedPresentationThroughDataAndActionChanges()
+    public async Task IndexedBrowseReplacementRejectsOldLeasesAndPublishesExactReorderedRows()
     {
-        var items = Enumerable.Range(0, 4).Select(index => PlayniteLibraryItem.From(
-            Item("app-" + index, "saved-" + index, "Game " + index, "Steam"))).ToArray();
-        var state = State(Snapshot(WidgetPagedResourceStatus.Ready, items),
-            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []);
-        var cache = PlayniteLibraryPresentation.CreateBrowseItemCache();
-        var firstView = new PresentationWidget(PlayniteLibraryPresentation.Render(state, cache))
-            .RenderSnapshot("reuse.fixture", 1);
-        var statusView = new PresentationWidget(PlayniteLibraryPresentation.Render(state with { Status = "Updated" }, cache))
-            .RenderSnapshot("reuse.fixture", 2);
-        var firstItems = Nodes(firstView.Root).Single(node => node.Id == PlayniteLibraryPresentation.ScrollId).Children;
-        var statusItems = Nodes(statusView.Root).Single(node => node.Id == PlayniteLibraryPresentation.ScrollId).Children;
-        for (var index = 0; index < firstItems.Count; ++index)
-            Assert.AreSame(firstItems[index].Children, statusItems[index].Children,
-                "A status-only render must reuse the actual production poster's immutable content.");
-        foreach (var scenario in new[]
-        {
-            state, state with { Status = "Unrelated status update" },
-            state with { LaunchingSavedId = items[1].Value.SavedId },
-            state with { OrganizationBusy = true },
-            state with { BrowseRetained = true },
-            state with { Collection = Snapshot(WidgetPagedResourceStatus.Ready, items.Reverse().ToArray()) },
-            state with { Organization = state.Organization with
-            {
-                FavoriteSavedIds = [items[0].Value.SavedId],
-                Categories = [new("category-a", "Favorites", [items[0].Value.SavedId])],
-            } },
-            state,
-        })
-        {
-            var cached = new PresentationWidget(PlayniteLibraryPresentation.Render(scenario, cache))
-                .RenderSnapshot("cache.fixture", 1);
-            var eager = new PresentationWidget(PlayniteLibraryPresentation.Render(scenario))
-                .RenderSnapshot("cache.fixture", 1);
-            Assert.AreEqual(0, ViewSnapshotValidator.Validate(cached).Count);
-            CollectionAssert.AreEqual(SnapshotJson.Serialize(eager), SnapshotJson.Serialize(cached));
-        }
+        var games = BrowseGames(4);
+        var query = new PlayniteLibraryBrowseQuery(BrowseCapture(games, new(false)), PlayniteLibraryPrivateState.Empty, false);
+        await using var widget = new IndexedBrowseFixture(query);
+        await widget.Start();
+        using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "replacement.fixture");
+        using var old = await host.AcquireAsync(PlayniteLibraryPresentation.ScrollId, 0, 4);
+        var replacement = new PlayniteLibraryBrowseQuery(BrowseCapture(games.Reverse().ToArray(), new(false)), PlayniteLibraryPrivateState.Empty, false);
+        widget.Source.PublishQuery(new(replacement), replacement.Count);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(host.PublishSnapshot()).Count);
+        Assert.IsNull(old.RouteAction(old.Range.Items[0].Key, ControllerButton.A));
+        using var current = await host.AcquireAsync(PlayniteLibraryPresentation.ScrollId, 0, 4);
+        CollectionAssert.AreEqual(old.Range.Items.Reverse().Select(row => row.Key).ToArray(), current.Range.Items.Select(row => row.Key).ToArray());
+        current.Dispose();
+        Assert.IsNull(current.RouteAction(current.Range.Items[0].Key, ControllerButton.A), "Released ranges cannot regain action authority.");
     }
 }

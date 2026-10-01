@@ -86,10 +86,11 @@ A star track needs a finite available extent to divide. Use a bounded widget/pag
 surface for a growing ScrollViewer or indexed list; an outer scrolling StackPanel
 can make its scrolling axis unbounded. WinUI's native measurement rules apply.
 
-Stylesheet syntax validation is separate from frontend support. For each parsed
-document in a `WrssPackageResult`, run
-`WidgetRail.WidgetStyling.WinUiStyleDiagnostics.Analyze(document)` in author tests.
-It reports source line/column warnings for legacy `flex-shrink`, `flex-basis` and
+`wrail validate` checks stylesheet syntax and reports source line/column warnings
+for known unsupported WinUI layout declarations, including imported styles and
+state rules. Warnings do not fail validation. Author tests can also run
+`WidgetRail.WidgetStyling.WinUiStyleDiagnostics.Analyze(document)` for each parsed
+document in a `WrssPackageResult`. It reports legacy `flex-shrink`, `flex-basis` and
 `flex-wrap` declarations that have no WinUI effect. Use explicit native tracks and
 bounds, or `UI.ResponsiveGrid` for a small wrapping set. The helper is read-only;
 it does not change styles or guarantee final geometry. Keep native layout checks.
@@ -103,6 +104,17 @@ proportion changes using stable IDs. Native layout and controller acceptance are
 still separate from snapshot validation.
 
 ## Native control mapping
+
+Directional input first navigates between focusable controls in the nearest
+matching scroll container, including controls that need to be brought into view.
+If no further control exists but content remains, D-pad/left-stick input and
+keyboard arrows scroll that content. Internal authored focus links keep their
+priority; links leaving the container wait until its content edge. Holding stops
+at the edge; a fresh press may leave the container using the usual navigation
+rules. Reversing while the remembered control is offscreen scrolls back toward it.
+This behavior is host-owned and requires no widget handlers. A pane with no
+focusable entry point still needs an authored way to enter it, or right-stick
+scrolling. Editors, open menus and sliders being adjusted retain their own input.
 
 | SDK declaration | WinUI implementation and author responsibility |
 | --- | --- |
@@ -119,6 +131,14 @@ still separate from snapshot validation.
 | Images, icons, controller glyphs | Native image/font/vector presentation behind validated assets and artwork handles. Supply useful accessible names for icon-only actions. |
 | Background/focus presentation surfaces | Shared retained native presentation with declaration-scoped source ownership. Background continuity does not grant retained actions or worker authority. |
 | `WidgetView.WithModal` | A host-contained, themed modal layer with scoped input and focus return. The helper currently rejects a view declaring an embedded-media session; do not assume arbitrary ContentDialog or media/modal composition is exposed. |
+
+Modals scroll their whole content by default. Set `WidgetModal.ScrollContent = false`
+when supplying a bounded layout with fixed content and its own scroll region, for
+example an Auto/Star Grid with a game header in the Auto row and a ScrollViewer in
+the Star row. Give that content a growing, zero-minimum-height layout within the
+modal. `ShowScrollbar` controls only the default whole-content scroll wrapper;
+custom scroll regions use their own scrollbar setting. Modal scope, dismissal and
+focus return still belong to the same host modal layer.
 | Media viewport/window preview | Host-owned WebView2 or native preview integration. Keep using typed session/provider contracts, not raw HWNDs, DOM commands or custom drawing. |
 | `WidgetView.PinnedLayout` | An independently declared projection in a host-owned surface. Placement, interaction, opacity and media ownership belong to the host. |
 
@@ -229,6 +249,8 @@ power, network and audio actions. `WidgetTestHost.ValidateWinUiPresentation(snap
 runs protocol validation and the same declaration-admission rules as the native
 frontend. It checks main and pinned trees and declared focus fragments, reporting
 structural paths, safe element IDs and replacement guidance for legacy declarations.
+`wrail render snapshot.json` applies this same preflight before printing or saving
+a snapshot. It does not execute widget code or request lazy collection rows.
 For example, an old collection on a Scroll reports `collectionLayout` and points
 to indexed/discovered collections rather than failing later with a generic error.
 

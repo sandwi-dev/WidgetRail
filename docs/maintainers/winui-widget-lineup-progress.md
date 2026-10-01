@@ -13,19 +13,19 @@ current feature backlog.
 
 | Current widget | Candidate version | Evidence / outstanding acceptance |
 | --- | --- | --- |
-| Settings | Built in | Actual isolated controls/persistence pass34 native checks, including main display text/interface scale. Exclusive-control UI/broker/adapter checks use fakes; physical controller containment remains. Startup registration awaits installed application packaging. |
+| Settings | Built in | Actual isolated controls/persistence pass34 native checks, including main display text/interface scale. Exclusive-control UI/broker/adapter checks use fakes; physical controller containment remains. Startup registration and packaging integration are implemented; actual installed startup behavior remains unqualified. |
 | Now Playing | 0.1.2 | Owned silent Windows session Play/Pause/provider removal passed. User media-session behavior remains physical. |
 | Display Profiles | 0.1.0 | Enumeration/save/rename and fake apply/rollback coverage. Real mode-changing apply/revert remains user-only. |
 | Games & Apps | 0.1.1 | Indexed browsing, focus return and cold lifecycle fixes have native evidence. Actual game launch-and-return remains physical. |
-| Task Switcher | 0.2.1 | Cold activation now publishes loading before provider enumeration; delayed-provider baseline reproduced lifecycle timeout and corrected8-test suite passes. Broker handoff user-accepted for FF7/GoW. Native StopCapture shutdown hang confirmed by dump and still unresolved. Cold-opening physical confirmation and wider preview/activation acceptance remain separate. |
+| Task Switcher | 0.2.1 | Cold activation now publishes loading before provider enumeration; delayed-provider baseline reproduced lifecycle timeout and corrected8-test suite passes. Broker handoff user-accepted for FF7/GoW. User confirmed cold startup fixed. The bounded visible/hidden capture-close pass completed normally; the original intermittent capture-service hang has retained diagnostics but no proven correction. |
 | Audio Mixer | 0.1.2 | Fake provider covers sessions/devices, volume reconciliation/mute/removal. Real volume/device actions remain user-only. |
 | Network Controls | 0.1.2 | Fake provider covers radio/connection state, failures and cancellation. Real radio/network changes remain user-only. |
 | Power | 0.1.0 | Fake native provider covers confirmations/privileges/single-flight; no real shutdown/restart/suspend actions are automated. |
-| Playnite Library | 0.2.110 | Real browsing/modal/layout/retention evidence. Fast Library scrolling stutter is explicitly deferred by user; game launch/actions remain physical. |
-| YouTube Music | 0.3.33 | Shared layout, pinned artwork/shortcuts, recovery and managed provider checks. Final account/media workflows remain physical. |
+| Playnite Library | 0.2.114 | Real browsing/modal/layout/retention evidence. Fast Library scrolling stutter is explicitly deferred by user; game launch/actions remain physical. |
+| YouTube Music | 0.3.34 | Shared layout, pinned artwork/shortcuts, recovery and managed provider checks. Final account/media workflows remain physical. |
 | Spotify | 0.3.83 | Shared busy/focus/slider and SVG native checks; user has exercised playback. Final account/playback/volume acceptance remains physical. |
 | YouTube Video | 0.3.36 | Enabled; shared media native130/139 and local sample33 cover host behavior. Real provider/key/search/playback remains a separate acceptance scope. |
-| SDK Gallery | 0.1.24 | Staged, including explicit Grid authoring; broad style/native declaration checks. Visual/controller spot checks remain physical. |
+| SDK Gallery | 0.1.25 | Staged, including explicit Grid authoring; broad style/native declaration checks. Visual/controller spot checks remain physical. |
 | Clock | 0.1.1 | Existing ten real-worker checks plus current shared13-check reference gate, passing twice: time/date, manual Refresh/X, native control/focus retention. No settings or automatic invalidation timer. |
 | Full Application Reference | 0.1.1 | Sandbox reference with10,000 private records. Current shared13-check reference gate passes twice: indexed Library/Details/Back at0/75/9999, current lease refresh, cache eviction/deep reentry and hide/reopen. Earlier native01 deep Back timeout remains unexplained; validation diagnostics retained. No dialog/settings UI. |
 | Embedded Media Sample | 0.2.9 | Actual sealed local sample33 exercises transport, fullscreen, compact pinning, focus return, placement and opacity. Native process-failure139 gate additionally proves GPU/browser recovery behavior. |
@@ -35,8 +35,8 @@ production pin41, latest Settings34, and bounded query-reset/deferred-activation
 restoration. The30-minute process-tree soak completed with bounded visible surfaces,
 but memory growth has no established cause. Further memory testing is deferred at
 the user's request; long-run resource stability is not claimed. Physical mixed-monitor/DPI, controller containment,
-real-provider workflows and subjective motion remain distinct. CLI/installer/cutover
-and legacy renderer removal remain after widget qualification, as requested.
+real-provider workflows and subjective motion remain distinct. CLI and installer integration are implemented, and the original renderer has been retired.
+Signed installation/cutover qualification remains outstanding; see the current implementation status.
 
 Reference workflow runner: `scripts/Test-WinUiReferenceWorkflows.ps1`.
 It requires a fresh settings profile under its evidence directory and invokes only

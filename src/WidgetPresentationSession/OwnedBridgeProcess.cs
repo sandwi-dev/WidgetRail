@@ -13,6 +13,8 @@ public sealed record BridgeProcessOptions(string InstallationRoot, string Settin
     public bool ExclusiveControllerControl { get; init; }
     /// <summary>Optional host diagnostics for foreground delegation, without widget payloads.</summary>
     public Action<string>? ForegroundDelegationDiagnostic { get; init; }
+    /// <summary>Optional external process-tree owner. Null preserves ordinary process startup.</summary>
+    public string? ProcessOwnerJobName { get; init; }
 
     internal ProcessStartInfo CreateStartInfo(string pipeName)
     {
@@ -60,6 +62,8 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
     private readonly Process process;
     private readonly Task stdout;
     private readonly Task stderr;
+    private readonly StreamReader outputReader;
+    private readonly StreamReader errorReader;
     private readonly ConcurrentQueue<string> diagnostics = new();
     private readonly object disposalGate = new();
     private readonly Action<string>? foregroundDiagnostic;
@@ -70,12 +74,15 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
     public int ProcessId => process.Id;
     public IReadOnlyList<string> Diagnostics => diagnostics.ToArray();
 
-    private OwnedBridgeProcess(Process process, Action<string>? foregroundDiagnostic)
+    private OwnedBridgeProcess(Process process, Action<string>? foregroundDiagnostic,
+        StreamReader? standardOutput = null, StreamReader? standardError = null)
     {
         this.process = process;
         this.foregroundDiagnostic = foregroundDiagnostic;
-        stdout = DrainAsync(process.StandardOutput);
-        stderr = DrainAsync(process.StandardError);
+        outputReader = standardOutput ?? process.StandardOutput;
+        errorReader = standardError ?? process.StandardError;
+        stdout = DrainAsync(outputReader);
+        stderr = DrainAsync(errorReader);
     }
 
     public static async Task<OwnedBridgeProcess> StartAsync(BridgeProcessOptions options, CancellationToken cancellationToken = default)
@@ -86,8 +93,10 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
         if (!File.Exists(info.FileName) || !File.Exists(Path.Combine(info.WorkingDirectory, "widget-catalog.json")))
             throw new FileNotFoundException("The selected bridge installation is incomplete.");
         cancellationToken.ThrowIfCancellationRequested();
-        var child = Process.Start(info) ?? throw new InvalidOperationException("Bridge process did not start.");
-        var owner = new OwnedBridgeProcess(child, options.ForegroundDelegationDiagnostic);
+        var bound = options.ProcessOwnerJobName is not null
+            ? JobBoundProcess.Start(info, options.ProcessOwnerJobName) : null;
+        var child = bound?.Process ?? Process.Start(info) ?? throw new InvalidOperationException("Bridge process did not start.");
+        var owner = new OwnedBridgeProcess(child, options.ForegroundDelegationDiagnostic, bound?.Output, bound?.Error);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(options.ConnectTimeout);
         var connection = WidgetPresentationSession.ConnectAsync(pipe,
@@ -103,7 +112,18 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
                 try { owner.session = await connection.ConfigureAwait(false); }
                 catch (Exception error) when (error is not OutOfMemoryException) { }
                 cancellationToken.ThrowIfCancellationRequested();
-                throw new IOException(child.HasExited ? $"Bridge exited during connection (code {child.ExitCode})." : "Bridge connection timed out.");
+                var reason = child.HasExited ? $"Bridge exited during connection (code {child.ExitCode})." : "Bridge connection timed out.";
+                if (child.HasExited)
+                {
+                    // The runtime can fail before Program/Main and therefore before
+                    // bridge logging exists. Preserve its bounded redirected output.
+                    try { await Task.WhenAll(owner.stdout, owner.stderr).WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
+                    catch (TimeoutException) { }
+                    var details = string.Join(Environment.NewLine, owner.Diagnostics);
+                    if (details.Length > 4096) details = details[..4096];
+                    if (details.Length != 0) reason += Environment.NewLine + details;
+                }
+                throw new IOException(reason);
             }
             owner.session = await connection.ConfigureAwait(false);
             return owner;
@@ -224,6 +244,7 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
             {
                 drainLifetime.Cancel();
                 process.Dispose();
+                outputReader.Dispose(); errorReader.Dispose();
                 try { await Task.WhenAll(stdout, stderr).ConfigureAwait(false); }
                 finally { drainLifetime.Dispose(); }
             }

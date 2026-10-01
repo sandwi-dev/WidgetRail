@@ -345,7 +345,6 @@ static Task SessionSelectorStylesStayBounded()
     Assert.True(pill.Contains("min-width: 148px;", StringComparison.Ordinal));
     Assert.True(pill.Contains("max-width: 148px;", StringComparison.Ordinal));
     Assert.True(pill.Contains("flex-grow: 0;", StringComparison.Ordinal));
-    Assert.True(pill.Contains("flex-shrink: 0;", StringComparison.Ordinal));
     Assert.True(pill.Contains("text-overflow: ellipsis;", StringComparison.Ordinal));
     return Task.CompletedTask;
 }

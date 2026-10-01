@@ -31,6 +31,7 @@ internal sealed partial class WidgetViewPresenter
         var work = new List<Task>();
         if (!active)
         {
+            directionalScroll = null;
             foreach (var reveal in artworkReveals.Values) reveal.Cancel();
             SettleWidgetResize();
             ClearEntryLayoutWait(); CancelGroupEntry(); DismissTransientControl();

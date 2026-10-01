@@ -40,6 +40,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
     private readonly Action<BridgeWidgetRequestDiagnostic>? _requestDiagnosticSink;
     private readonly string? _workerDiagnosticRoot;
     private long _hostEffectSequence;
+    private long _invalidationSequence;
     private readonly BridgeTaskActivationTickets _taskActivations = new();
     private BridgeFrameChannel? _channel;
     private CancellationToken _sessionCancellation;
@@ -1113,7 +1114,11 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         CancellationToken cancellationToken) =>
         SendEventAsync(
             BridgeMessageTypes.Invalidation,
-            new BridgeInvalidation(invalidation.WidgetId, invalidation.Revision),
+            // Worker revisions restart at one after idle unload or replacement.
+            // The bridge connection outlives those runs; its refresh signals must
+            // remain monotonic or consumers suppress new updates as duplicates.
+            // The registry still owns current-run admission and coalescing.
+            new BridgeInvalidation(invalidation.WidgetId, Interlocked.Increment(ref _invalidationSequence)),
             cancellationToken);
 
     private Task PublishClientActionFailure(

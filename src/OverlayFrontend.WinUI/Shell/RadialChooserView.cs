@@ -14,7 +14,7 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 /// <summary>Eight native controls on an authored Grid; no custom measure/paint or input polling.</summary>
-internal sealed class RadialChooserView : ContentControl, IDisposable
+internal sealed partial class RadialChooserView : ContentControl, IDisposable
 {
     private readonly Grid wheel = new() { Width = 400, Height = 400 };
     private readonly Border face = new() { Width = 368, Height = 368, CornerRadius = new(184), Translation = new(0, 0, 16), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };

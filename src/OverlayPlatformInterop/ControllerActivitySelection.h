@@ -2,7 +2,7 @@
 
 #include "OverlayPlatformInterop.h"
 #include "DualSenseReport.h"
-#include "../OverlayHost/ControllerInputOwnership.h"
+#include "ControllerInputOwnership.h"
 
 #include <algorithm>
 #include <cstdlib>

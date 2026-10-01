@@ -11,7 +11,7 @@ using WidgetRail.WidgetBridge;
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 /// <summary>Passive, width-constrained clock and connectivity beside the widget rail.</summary>
-internal sealed class ShellStatusView : ContentControl, IAsyncDisposable
+internal sealed partial class ShellStatusView : ContentControl, IAsyncDisposable
 {
     private readonly Border surface = new() { Padding = new Thickness(12, 4, 12, 4) };
     private readonly Grid layout = new() { ColumnSpacing = 8 };
@@ -36,7 +36,7 @@ internal sealed class ShellStatusView : ContentControl, IAsyncDisposable
     internal string Description { get; private set; } = string.Empty;
 
     protected override AutomationPeer OnCreateAutomationPeer() => new StatusPeer(this);
-    private sealed class StatusPeer(ShellStatusView owner) : FrameworkElementAutomationPeer(owner)
+    private sealed partial class StatusPeer(ShellStatusView owner) : FrameworkElementAutomationPeer(owner)
     {
         protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Text;
         protected override string GetClassNameCore() => nameof(ShellStatusView);

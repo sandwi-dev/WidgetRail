@@ -3,7 +3,6 @@
 #include "../../src/OverlayPlatformInterop/ControllerActivitySelection.h"
 
 #include <vector>
-#include "../../src/OverlayHost/OverlayState.h"
 
 #include <Windows.h>
 #include <Xinput.h>
@@ -393,7 +392,9 @@ void BackgroundWindowPublicationPreservesControllerEdges() {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    const bool hardware = argc == 2 && std::string_view(argv[1]) == "--hardware";
+    if (argc != 1 && !hardware) return EXIT_FAILURE;
     BackgroundWindowPublicationPreservesControllerEdges();
     ControllerActivitySelectionKeepsHoldsAndReleases();
     CachedBackendCannotReplayAReleasedPress();
@@ -441,18 +442,12 @@ int main() {
           "a mismatched caller version is rejected before native ownership starts");
 
     widgetrail::platform::GuideToggleDebouncer guide;
-    widgetrail::OverlayState overlay({}, {L"widget"});
-    Check(guide.Accept(1'000) &&
-              overlay.Dispatch(widgetrail::Command::ToggleOverlay) &&
-              overlay.surface() == widgetrail::Surface::Widget && overlay.activeWidget() == L"widget",
-          "the first Guide edge presents the selected widget");
-    Check(!guide.Accept(1'149) &&
-              overlay.surface() == widgetrail::Surface::Widget && overlay.activeWidget() == L"widget",
+    Check(guide.Accept(1'000),
+          "the first Guide edge is admitted by the shared native policy");
+    Check(!guide.Accept(1'149),
           "a duplicate Guide source inside the debounce window cannot double toggle");
-    Check(guide.Accept(1'150) &&
-              overlay.Dispatch(widgetrail::Command::ToggleOverlay) &&
-              overlay.surface() == widgetrail::Surface::Hidden,
-          "a later Guide edge hides through the same host command");
+    Check(guide.Accept(1'150),
+          "a later Guide edge is admitted through the same shared policy");
 
     widgetrail::platform::ControllerFrameTracker tracker;
     WidgetRailOverlayPlatformRawControllerState state;
@@ -572,6 +567,15 @@ int main() {
                   handle, 10, WRAIL_OVERLAY_PLATFORM_FALSE) == 10,
           "target resolution uses valid remembered authority and bounded fallback");
 
+    if (!hardware) {
+        WidgetRailOverlayPlatformControllerFrame unread;
+        Check(WidgetRailOverlayPlatformReadController(handle, WRAIL_OVERLAY_PLATFORM_FALSE, 1'000, &unread) ==
+                  WidgetRailOverlayPlatformStatus::NotInitialized,
+              "controller reads stay closed before explicit hardware initialization");
+        WidgetRailOverlayPlatformDestroy(handle);
+        std::cout << "OverlayPlatformInteropTests synthetic contracts passed (" << checks << " checks)\n";
+        return EXIT_SUCCESS;
+    }
     Check(WidgetRailOverlayPlatformInitialize(handle) ==
               WidgetRailOverlayPlatformStatus::Ok,
           "native initialization remains usable with GameInput or its existing fallback");

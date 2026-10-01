@@ -1,5 +1,12 @@
 # Retained renderer preparation
 
+> Historical native-renderer profiling evidence. Playnite Home/Library now publish
+> indexed WinUI collections. `WRAIL_PLAYNITE_LAYOUT_OUTPUT` emits `.indexed.json`
+> parent/range fixtures for those pages; they are not compatible with the old
+> eager `ScrollWorkloadProbe`. Use `Test-WinUiPlaynitePresentation.ps1` for acquired
+> native row geometry and the shared UX gate for session-backed page behavior.
+> The independent `Native-Details-Geometry.renderer.json` fixture remains valid.
+
 Full snapshot transport no longer implies full native layout. After snapshot authority
 and virtual-window admission succeed, the session compares the canonical documents
 and computed styles and passes their changes through the existing presentation-impact

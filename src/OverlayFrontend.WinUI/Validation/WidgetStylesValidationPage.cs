@@ -40,7 +40,11 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Environment.GetCommandLineArgs().Contains("--directional-navigation-only"))
+        { await DirectionalNavigationAsync(); return; }
         await AuthoringAdmissionAsync();
+        if (Environment.GetCommandLineArgs().Contains("--playnite-layout-only") && App.ValidationFixturePath is { } playniteFixture)
+        { await PlayniteProductionLayoutAsync(playniteFixture); return; }
         if (Environment.GetCommandLineArgs().Contains("--artwork-fit-only"))
         { await NativeArtworkFitAsync(); return; }
         if (Environment.GetCommandLineArgs().Contains("--flow-layout-only"))

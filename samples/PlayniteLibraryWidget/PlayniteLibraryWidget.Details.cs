@@ -91,7 +91,7 @@ public sealed partial class PlayniteLibraryWidget
     private void LoadDetailsSection(PlayniteDetailsTab tab)
     {
         var state = _model.Value;
-        if (state.DetailsItem is not { } game || tab == PlayniteDetailsTab.Overview) return;
+        if (state.DetailsItem is not { } game || tab is not (PlayniteDetailsTab.Achievements or PlayniteDetailsTab.Activity)) return;
         var achievements = tab == PlayniteDetailsTab.Achievements;
         if (achievements ? state.DetailsExtras.Achievements is not null || state.DetailsExtras.AchievementsLoading
             : state.DetailsExtras.Activity is not null || state.DetailsExtras.ActivityLoading) return;
@@ -144,7 +144,8 @@ public sealed partial class PlayniteLibraryWidget
         }
         if (name is "tab.previous" or "tab.next")
         {
-            var next = (PlayniteDetailsTab)(((int)state.DetailsExtras.Tab + (name.EndsWith("next", StringComparison.Ordinal) ? 1 : 2)) % 3);
+            var tabs = Enum.GetValues<PlayniteDetailsTab>();
+            var next = tabs[((int)state.DetailsExtras.Tab + (name.EndsWith("next", StringComparison.Ordinal) ? 1 : tabs.Length - 1)) % tabs.Length];
             UpdateDetails(state.DetailsGeneration, value => value with { Tab = next, Page = 0 });
             LoadDetailsSection(next);
             return true;

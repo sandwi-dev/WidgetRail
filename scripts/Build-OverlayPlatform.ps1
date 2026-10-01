@@ -8,6 +8,9 @@ Process-lifecycle tests load only the ownership exports; they never initialize
 controller hardware. Restore uses the existing native dependency
 manifest. GameInput's static loader uses the separately installed runtime; its
 redistributable is copied but never installed by this script.
+TestPolicy runs synthetic controller policies, injected driver adapters and the
+production DLL's pre-initialization ABI. Actual hardware reads are opt-in through
+TestHardwareInput and are never included in TestPolicy.
 #>
 [CmdletBinding()]
 param(
@@ -17,6 +20,8 @@ param(
     [string]$Architecture = 'x64',
     [string]$OutputDirectory,
     [switch]$NoRestore,
+    [switch]$TestPolicy,
+    [switch]$TestHardwareInput,
     [switch]$TestForeground,
     [switch]$TestProcessLifecycle
 )
@@ -24,10 +29,10 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$hostDirectory = Join-Path $repositoryRoot 'src\OverlayHost'
 $platformDirectory = Join-Path $repositoryRoot 'src\OverlayPlatformInterop'
+$platformTestDirectory = Join-Path $repositoryRoot 'tests\OverlayPlatformInterop.Tests'
 $viGEmDirectory = Join-Path $repositoryRoot 'third_party\ViGEmClient'
-$dependencyProject = Join-Path $hostDirectory 'NativeDependencies.csproj'
+$dependencyProject = Join-Path $platformDirectory 'NativeDependencies.csproj'
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $repositoryRoot "artifacts\winui-platform\$Configuration"
 }
@@ -89,17 +94,16 @@ $libraryArguments = @(
     "/LIBPATH:$sdkRoot\Lib\$($sdk.Name)\ucrt\$Architecture",
     "/LIBPATH:$sdkRoot\Lib\$($sdk.Name)\um\$Architecture"
 )
-# Keep this list aligned with Invoke-OverlayPlatformInteropBuild in OverlayHost/build.ps1.
+# Canonical production native boundary; no original-renderer source is consumed.
 $sources = @(
     'OverlayPlatformInterop.cpp', 'ControllerIsolationCore.cpp', 'ControllerIsolationReader.cpp',
     'ControllerIsolationRoutingSession.cpp', 'GameInputSelectedControllerReader.cpp',
     'DualSenseHidReader.cpp', 'ControllerIsolationHostSession.cpp', 'LocalControllerPolicy.cpp',
     'HidHideConfigurationAdapter.cpp', 'ViGEmOutputAdapter.cpp', 'OverlayPlatformPolicy.cpp',
-    'OverlayPlatformPlacement.cpp', 'OverlayPlatformTargeting.cpp', 'OverlayProcessInterop.cpp'
+    'OverlayPlatformPlacement.cpp', 'OverlayPlatformTargeting.cpp', 'OverlayProcessInterop.cpp',
+    'GuideInputCompatibility.cpp', 'OverlayProcessOwner.cpp', 'ControllerOpenShortcut.cpp'
 ) | ForEach-Object { Join-Path $platformDirectory $_ }
-$sources += (Join-Path $viGEmDirectory 'src\ViGEmClient.cpp'), (Join-Path $hostDirectory 'GuideInputCompatibility.cpp')
-$sources += (Join-Path $hostDirectory 'OverlayProcessOwner.cpp')
-$sources += (Join-Path $hostDirectory 'ControllerOpenShortcut.cpp')
+$sources += (Join-Path $viGEmDirectory 'src\ViGEmClient.cpp')
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 # Explicit static CRT matches the legacy build's cl default and avoids adding a
 # redistributable DLL dependency solely for the WinUI platform boundary.
@@ -114,6 +118,30 @@ $arguments = @('/nologo', '/MP2', '/FS', '/MT', '/std:c++20', '/utf-8', '/EHsc',
     'advapi32.lib', 'shell32.lib', 'setupapi.lib', 'cfgmgr32.lib', 'ole32.lib',
     'ntdll.lib', 'userenv.lib', 'ws2_32.lib')
 $originalPath = $env:PATH
+function Invoke-PlatformContractTest {
+    param([string]$Name, [string[]]$Sources = @(), [string[]]$Definitions = @(),
+        [string[]]$Libraries = @(), [string[]]$TestArguments = @())
+    $testObjects = Join-Path $objectDirectory $Name
+    New-Item -ItemType Directory -Path $testObjects -Force | Out-Null
+    $testSources = @((Join-Path $platformTestDirectory ($Name + '.cpp'))) +
+        @($Sources | ForEach-Object { Join-Path $platformDirectory $_ })
+    $testCompilerArguments = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-',
+        '/DUSING_GAMEINPUT','/DUNICODE','/D_UNICODE','/DWIN32_LEAN_AND_MEAN','/DNOMINMAX') +
+        $Definitions + $includeArguments + @("/I$platformDirectory") + $testSources + @(
+            "/Fo:$testObjects\", "/Fe:$OutputDirectory\$Name.exe", '/link', '/SUBSYSTEM:CONSOLE') +
+        $libraryArguments + $Libraries
+    & $compiler @testCompilerArguments *> (Join-Path $logDirectory "$Name-build.txt")
+    if ($LASTEXITCODE -ne 0) { throw "$Name compile failed; see $logDirectory/$Name-build.txt" }
+    $stdout = Join-Path $logDirectory "$Name-tests.txt"
+    $stderr = Join-Path $logDirectory "$Name-errors.txt"
+    $start = @{ FilePath=(Join-Path $OutputDirectory "$Name.exe"); WindowStyle='Hidden'; PassThru=$true;
+        RedirectStandardOutput=$stdout; RedirectStandardError=$stderr }
+    if ($TestArguments.Count) { $start.ArgumentList = $TestArguments }
+    $process = Start-Process @start
+    if (!$process.WaitForExit(30000)) { $process.Kill(); throw "$Name exceeded its 30 second fixture bound." }
+    Get-Content -LiteralPath $stdout,$stderr
+    if ($process.ExitCode -ne 0) { throw "$Name failed with exit code $($process.ExitCode)." }
+}
 try {
     $env:PATH = "$sdkBin;$compilerDirectory;$originalPath"
     & $compiler @arguments
@@ -124,11 +152,29 @@ try {
     $imports = & $dumpbin /nologo /dependents (Join-Path $OutputDirectory 'OverlayPlatformInterop.dll')
     if ($LASTEXITCODE -ne 0) { throw 'Dependency inspection failed.' }
     $imports | Set-Content -LiteralPath (Join-Path $logDirectory 'dependencies.txt') -Encoding utf8
+    if ($TestPolicy) {
+        Invoke-PlatformContractTest 'ControllerInputOwnershipTests'
+        Invoke-PlatformContractTest 'ControllerOpenShortcutTests' @('ControllerOpenShortcut.cpp') -Libraries @('gameinput.lib','xinput9_1_0.lib')
+        Invoke-PlatformContractTest 'GuideInputCompatibilityTests' @('GuideInputCompatibility.cpp') -Libraries @('user32.lib')
+        Invoke-PlatformContractTest 'OverlayProcessOwnerTests' @('OverlayProcessOwner.cpp') -Definitions @('/DWRAIL_OVERLAY_PROCESS_OWNER_TESTING') -Libraries @('user32.lib','advapi32.lib')
+        Invoke-PlatformContractTest 'DualSenseReportTests'
+        Invoke-PlatformContractTest 'ControllerIsolationCoreTests' @('ControllerIsolationCore.cpp')
+        Invoke-PlatformContractTest 'ControllerIsolationReaderTests' @('ControllerIsolationReader.cpp') -Definitions @('/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING')
+        Invoke-PlatformContractTest 'ControllerIsolationRoutingSessionTests' @('ControllerIsolationRoutingSession.cpp','ControllerIsolationReader.cpp','ControllerIsolationCore.cpp') -Definitions @('/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING')
+        Invoke-PlatformContractTest 'ViGEmOutputAdapterTests' @('ViGEmOutputAdapter.cpp','ControllerIsolationReader.cpp')
+        Invoke-PlatformContractTest 'HidHideConfigurationAdapterTests' @('HidHideConfigurationAdapter.cpp')
+        Invoke-PlatformContractTest 'LocalControllerOwnerTests' @('ControllerIsolationHostSession.cpp','LocalControllerPolicy.cpp','ControllerIsolationCore.cpp','ControllerIsolationReader.cpp','ControllerIsolationRoutingSession.cpp','ViGEmOutputAdapter.cpp','HidHideConfigurationAdapter.cpp') -Definitions @('/DWRAIL_LOCAL_CONTROLLER_TESTING','/DWRAIL_GAMEINPUT_ISOLATION_READER','/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING') -Libraries @('shell32.lib','ole32.lib','advapi32.lib')
+        Invoke-PlatformContractTest 'OverlayPlatformInteropTests' @('OverlayPlatformPolicy.cpp') -Definitions @('/DWRAIL_OVERLAY_PLATFORM_IMPORTS') -Libraries @((Join-Path $OutputDirectory 'OverlayPlatformInterop.lib'),'user32.lib')
+    }
+    if ($TestHardwareInput) {
+        Invoke-PlatformContractTest 'GameInputQueryRuntimeTests' -Libraries @('gameinput.lib')
+        Invoke-PlatformContractTest 'OverlayPlatformInteropTests' @('OverlayPlatformPolicy.cpp') -Definitions @('/DWRAIL_OVERLAY_PLATFORM_IMPORTS') -Libraries @((Join-Path $OutputDirectory 'OverlayPlatformInterop.lib'),'user32.lib') -TestArguments @('--hardware')
+    }
     if ($TestProcessLifecycle) {
         $testArguments = @('/nologo', '/MT', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-',
             '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX') + $includeArguments + @(
             (Join-Path $repositoryRoot 'tests\OverlayPlatformInterop.Tests\ProcessLifecycleTests.cpp'),
-            (Join-Path $hostDirectory 'OverlayProcessOwner.cpp'),
+            (Join-Path $platformDirectory 'OverlayProcessOwner.cpp'),
             "/Fo:$objectDirectory\", "/Fe:$OutputDirectory\ProcessLifecycleTests.exe", '/link', "/LIBPATH:$OutputDirectory"
         ) + $libraryArguments + @('OverlayPlatformInterop.lib', 'user32.lib', 'advapi32.lib')
         & $compiler @testArguments
@@ -164,4 +210,4 @@ Copy-Item -LiteralPath (Join-Path $gameInputDirectory 'redist\GameInputRedist.ms
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'THIRD_PARTY_NOTICES.md') -Destination $OutputDirectory -Force
 Write-Output "Built platform-only DLL: $(Join-Path $OutputDirectory 'OverlayPlatformInterop.dll')"
 Write-Output "Export and dependency inspection: $logDirectory"
-Write-Output 'No hardware runtime initialization, host build/launch, or driver installation was performed.'
+if (!$TestHardwareInput) { Write-Output 'No controller hardware initialization, exclusive-driver mutation, host build/launch, or driver installation was performed.' }

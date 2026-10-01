@@ -90,7 +90,18 @@ internal static class BridgeIndexedEndToEndScenarios
                 Check(await lease.AdmitInputAsync(displayedOrigin ?? frame, "item.7", button, cancellationToken: deadline.Token) == WidgetOperationAdmission.Enqueued,
                     "Indexed input did not enter the existing worker queue.");
                 await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(3));
-                frame = await session.RefreshAsync(frame.Authority, deadline.Token);
+                // The session refreshes invalidations itself. Wait for that
+                // publication; the previously displayed authority may already
+                // have been superseded by the receive pump.
+                var until = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+                while (true)
+                {
+                    deadline.Token.ThrowIfCancellationRequested();
+                    frame = session.GetState(configured.Id)!.LastGood!;
+                    if (frame.Snapshot.Root.Children.Single(node => node.Id == "status").Text == expected) break;
+                    if (DateTime.UtcNow >= until) throw new TimeoutException($"Indexed action {button} was not published.");
+                    await Task.Delay(10, deadline.Token);
+                }
                 Check(frame.Snapshot.Root.Children.Single(node => node.Id == "status").Text == expected,
                     $"Indexed action {button} expected {expected}; observed {frame.Snapshot.Root.Children.Single(node => node.Id == "status").Text}.");
             }
@@ -303,6 +314,12 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             modalMode = grid = grouped = false; surfaces = true; modalItem = null;
             source.PublishQuery(300, 100);
             entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+        }
+        if (action.ActionId is "focus-default-replace" or "focus-default-republish")
+        {
+            activationReadGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            source.PublishQuery(97, 2);
+            if (action.ActionId == "focus-default-replace") entry = source.Enter("items", ++focusRequest);
         }
         if (action.ActionId is "activation-refresh" or "activation-changed" or "activation-disabled")
         {

@@ -12,6 +12,15 @@ internal sealed class NativePreviewEngine : SafeHandleZeroOrMinusOneIsInvalid
     protected override bool ReleaseHandle() { PreviewNative.Destroy(handle); return true; }
 }
 
+// Independent shared native diagnostic ownership permits reads even while the
+// engine's SafeHandle is inside its blocking Destroy/join. It owns no captures.
+internal sealed class NativePreviewHealthReader : SafeHandleZeroOrMinusOneIsInvalid
+{
+    internal NativePreviewHealthReader(NativePreviewEngine engine) : base(true)
+    { Marshal.ThrowExceptionForHR(PreviewNative.AcquireHealth(engine, out var value)); SetHandle(value); }
+    protected override bool ReleaseHandle() { PreviewNative.ReleaseHealth(handle); return true; }
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct NativePreviewTarget
 {
@@ -62,6 +71,12 @@ internal static partial class PreviewNative
     internal static partial int SwapChain(NativePreviewEngine engine, ulong id, out nint surface, out ulong generation);
     [LibraryImport(Library, EntryPoint = "WrailPreviewInspect")]
     internal static partial int Inspect(NativePreviewEngine engine, ulong id, ref NativePreviewStats stats);
+    [LibraryImport(Library, EntryPoint = "WrailPreviewAcquireHealth")]
+    internal static partial int AcquireHealth(NativePreviewEngine engine, out nint reader);
+    [LibraryImport(Library, EntryPoint = "WrailPreviewReleaseHealth")]
+    internal static partial void ReleaseHealth(nint reader);
+    [LibraryImport(Library, EntryPoint = "WrailPreviewReadHealth")]
+    internal static partial int ReadHealth(NativePreviewHealthReader reader, ref NativePreviewHealth health);
     [LibraryImport(Library, EntryPoint = "WrailPreviewResetDevice")]
     internal static partial int ResetDevice(NativePreviewEngine engine);
     [LibraryImport(Library, EntryPoint = "WrailPreviewReadIdentity")]

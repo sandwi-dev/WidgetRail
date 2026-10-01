@@ -11,7 +11,7 @@ using WinUIEx.Messaging;
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 /// <summary>Peer native window. The coordinator owns widget/session and input authority.</summary>
-internal sealed class PinnedWidgetWindow : IDisposable
+internal sealed partial class PinnedWidgetWindow : IDisposable
 {
     private readonly AppWindow window;
     private readonly DesktopWindowXamlSource island;
@@ -184,10 +184,10 @@ internal sealed class PinnedWidgetWindow : IDisposable
         OpacityPercent = Math.Clamp(percent, 30, 100);
         HwndExtensions.SetWindowOpacity(Handle, (byte)Math.Round(OpacityPercent * 255d / 100));
     }
-    private sealed class PinnedWindowRoot : Grid
+    private sealed partial class PinnedWindowRoot : Grid
     {
         protected override AutomationPeer OnCreateAutomationPeer() => new RootPeer(this);
-        private sealed class RootPeer(PinnedWindowRoot owner) : FrameworkElementAutomationPeer(owner)
+        private sealed partial class RootPeer(PinnedWindowRoot owner) : FrameworkElementAutomationPeer(owner)
         {
             protected override string GetClassNameCore() => nameof(PinnedWindowRoot);
             protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Pane;

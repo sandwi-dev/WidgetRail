@@ -12,11 +12,11 @@ internal static class DoctorCommand
 {
     public static async Task<int> RunAsync(string[] args, TextWriter output, CancellationToken cancellationToken,
         Func<string, CancellationToken, Task<SdkProbeResult>>? probe = null,
-        Func<string?, string>? resolveHost = null)
+        Func<string?, DevHostTarget>? resolveHost = null)
     {
-        var parsed = new CommandArguments(args, ["--host"], ["--json"]);
+        var parsed = new CommandArguments(args, ["--host", "--installation-root"], ["--json"]);
         if (parsed.Positionals.Count > 1)
-            throw new CliUsageException("Usage: wrail doctor [project-directory|widget.csproj] [--host <OverlayHost.exe>] [--json]");
+            throw new CliUsageException("Usage: wrail doctor [project-directory|widget.csproj] [--host <OverlayFrontend.WinUI.exe>] [--installation-root <directory>] [--json]");
         var target = Path.GetFullPath(parsed.Positionals.SingleOrDefault() ?? Environment.CurrentDirectory);
         var directory = File.Exists(target) && Path.GetExtension(target).Equals(".csproj", StringComparison.OrdinalIgnoreCase)
             ? Path.GetDirectoryName(target)! : target;
@@ -43,13 +43,13 @@ internal static class DoctorCommand
                 "Install a .NET SDK supporting net8.0 and check this project's global.json. Run dotnet --version from the project directory."));
         try
         {
-            var host = (resolveHost ?? (requested => DevHostLocator.Resolve(requested, "Release")))(parsed.Option("--host"));
-            checks.Add(new("overlay-host", "pass", $"Complete packaged host found: {host}. File presence checked; the host was not launched."));
+            var host = (resolveHost ?? (requested => DevHostLocator.Resolve(requested, parsed.Option("--installation-root"))))(parsed.Option("--host"));
+            checks.Add(new("overlay-host", "pass", $"WinUI executable and complete payload found: {host}. Executable/payload checked; launch and process ownership were not exercised."));
         }
-        catch (Exception exception) when (exception is CliUsageException or IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is CliUsageException or IOException or UnauthorizedAccessException or Win32Exception or JsonException)
         {
             checks.Add(new("overlay-host", "fail", DevSession.SafeMessage(exception),
-                "Install WidgetRail or build the packaged overlay; use --host to select another complete installation."));
+                "Install WidgetRail or select a WinUI executable with --host and its complete payload with --installation-root."));
         }
         var passed = checks.All(check => check.Status != "fail");
         if (parsed.HasFlag("--json"))

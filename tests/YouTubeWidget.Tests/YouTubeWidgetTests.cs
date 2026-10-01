@@ -485,9 +485,7 @@ public sealed partial class YouTubeWidgetTests
         StringAssert.Contains(styles,
             ".youtube-section-header { width: 100%; min-width: 0px; align: center; justify: end; gap: 12px;");
         StringAssert.Contains(styles,
-            ".youtube-section-navigation { min-width: 0px; flex-grow: 1; flex-shrink: 1; }");
-        StringAssert.Contains(styles,
-            ".youtube-section-settings-hint { flex-shrink: 0; }");
+            ".youtube-section-navigation { min-width: 0px; flex-grow: 1; }");
         StringAssert.Contains(styles,
             ".youtube-section-bumper-key { font-size: var(--controller-glyph-size, 24px);");
         Assert.DoesNotContain(".youtube-section-bumper-key { height: 100%", styles);
@@ -543,14 +541,17 @@ public sealed partial class YouTubeWidgetTests
             Find(settings.Root, "youtube.player.settings.quality.value").Text);
         var settingsStyles = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "styles", "default.wrss"));
+        var parsedStyles = WidgetRail.WidgetStyling.WrssParser.Parse(settingsStyles, "styles/default.wrss");
+        Assert.IsTrue(parsedStyles.IsValid);
+        Assert.IsEmpty(WidgetRail.WidgetStyling.WinUiStyleDiagnostics.Analyze(parsedStyles.Document));
         StringAssert.Contains(settingsStyles,
             ".youtube-player-settings { width: 100%; min-width: 0px; min-height: 0px;");
         Assert.DoesNotContain(".youtube-player-settings { width: 100%; height: 100%;",
             settingsStyles);
         StringAssert.Contains(settingsStyles,
-            ".wrail-dialog__content { min-height: 0px; flex-grow: 1; flex-shrink: 1; }");
+            ".wrail-dialog__content { min-height: 0px; flex-grow: 1; }");
         StringAssert.Contains(settingsStyles,
-            ".youtube-player-settings-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-basis: 0px; flex-grow: 1; flex-shrink: 1;");
+            ".youtube-player-settings-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1;");
 
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.PlaybackRateActionId,

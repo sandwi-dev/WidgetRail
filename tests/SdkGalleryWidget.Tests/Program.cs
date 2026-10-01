@@ -10,6 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Every gallery page publishes a valid responsive component tree", PageCoverage),
     ("Controls preserve stable state and requested scrub values", ControlState),
     ("Explicit Grid uses native tracks and stable cells across proportion updates", NativeGrid),
+    ("Action groups declare responsive native grids without changing controls or focus", ResponsiveActions),
     ("Picker and action sheet own nested B scopes", NestedScopes),
     ("Toast feedback adds no focus or action target", ToastDoesNotTakeFocus),
     ("Trusted artwork preserves provider-neutral encoded bytes", TrustedArtwork),
@@ -216,6 +217,37 @@ static async Task NativeGrid()
     Assert.Equal("1 part", Find(after, "gallery.grid.first").Text);
     Assert.Equal(0, ViewSnapshotValidator.Validate(SnapshotJson.Deserialize(SnapshotJson.Serialize(after))).Count);
     await WidgetTestHost.DestroyAsync(widget);
+}
+
+static async Task ResponsiveActions()
+{
+    var widget = new SdkGalleryWidget();
+    var overview = Snapshot(widget, 1);
+    Grid(overview, "gallery.overview.actions", 50, 3, "gallery.refresh", "gallery.play", "gallery.warning");
+    Grid(overview, "gallery.overview.package-icons", 50, 3, "gallery.package-icon.original", "gallery.package-icon.tinted", "gallery.package-icon.disabled");
+    Grid(overview, "gallery.overview.hints", 112, 4, "gallery.hint.navigate", "gallery.hint.select", "gallery.hint.back", "gallery.hint.scroll");
+    Assert.Equal("gallery.refresh", Find(overview, "gallery.refresh").ActionId);
+    await Act(widget, "gallery.tab.controls");
+    var controls = Snapshot(widget, 2);
+    Grid(controls, "gallery.controls.openers", 180, 2, "gallery.picker.open", "gallery.sheet.open");
+    Grid(controls, "gallery.controls.density-preview.row-one", 88, 3,
+        "gallery.controls.density-preview.alpha", "gallery.controls.density-preview.beta", "gallery.controls.density-preview.gamma");
+    await Act(widget, "gallery.tab.backgrounds");
+    var backgrounds = Snapshot(widget, 3);
+    Grid(backgrounds, "gallery.backgrounds.focus-row", 142, 3, "gallery.backgrounds.warm", "gallery.backgrounds.retain", "gallery.backgrounds.cool");
+    Assert.Equal("gallery.backgrounds.warm", Find(backgrounds, "gallery.backgrounds.focus-row").InitialChildFocusId);
+    Assert.Equal(overview.ActiveInputScopeId, backgrounds.ActiveInputScopeId);
+    await WidgetTestHost.DestroyAsync(widget);
+
+    static void Grid(ViewSnapshot snapshot, string id, double width, int columns, params string[] ids)
+    {
+        var node = Find(snapshot, id);
+        Assert.Equal(ViewNodeKind.Grid, node.Kind);
+        Assert.Equal<double?>(width, node.GridMinimumColumnWidth);
+        Assert.Equal<int?>(columns, node.GridMaximumColumns);
+        Assert.True(node.Children.Select(child => child.Id).SequenceEqual(ids));
+        Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+    }
 }
 
 static async Task ControlState()
@@ -615,7 +647,7 @@ static Task PackageContract()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
     Assert.Equal("widgetrail.samples", manifest.Publisher);
-    Assert.Equal("0.1.24", manifest.Version);
+    Assert.Equal("0.1.25", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
     Assert.Equal(typeof(SdkGalleryWidget).FullName, manifest.Entrypoint.Type);
@@ -679,6 +711,7 @@ static Task StyleContract()
     var parsed = WrssParser.Parse(source, "styles/default.wrss");
     Assert.True(parsed.IsValid, string.Join(Environment.NewLine,
         parsed.Diagnostics.Select(item => item.Message)));
+    Assert.Equal(0, WinUiStyleDiagnostics.Analyze(parsed.Document).Count);
     var compiled = WrssThemeCompiler.Compile([parsed.Document]);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine,
         compiled.Diagnostics.Select(item => item.Message)));
@@ -693,7 +726,7 @@ static Task StyleContract()
             ["wrail-controller-glyph", "gallery-section-bumper-key"])))!;
     Assert.Equal("24px", bumperKey.Get("font-size")?.Text);
     Assert.Equal("#aeb5c3", bumperKey.Get("color")?.Text);
-    Assert.Equal("0", bumperKey.Get("flex-shrink")?.Text);
+    Assert.Equal("0px", bumperKey.Get("padding")?.Text);
     var grid = compiled.Theme.Resolve(new WrssElement(
         "grid", StyleClasses: new HashSet<string>(["wrail-responsive-grid"])))!;
     Assert.Equal("100%", grid.Get("width")?.Text);

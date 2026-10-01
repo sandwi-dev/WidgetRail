@@ -424,6 +424,7 @@ static Task Theme()
 {
     var parsed = WrssParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "standalone.wrss")), "standalone.wrss");
     Check(parsed.IsValid, string.Join("\n", parsed.Diagnostics));
+    Check(WinUiStyleDiagnostics.Analyze(parsed.Document).Count == 0, "Sample relies on unmapped WinUI layout declarations");
     var compiled = WrssThemeCompiler.Compile([parsed.Document]);
     Check(compiled.IsValid, string.Join("\n", compiled.Diagnostics));
     var classes = new HashSet<string> { "music-track" };
@@ -701,6 +702,12 @@ static async Task BrowsePresentation()
         Check(BrowseScroll(widget).CollectionLayout is { Kind: CollectionLayoutKind.List }, "Library must declare native rows");
         Check((await Rows(widget)).All(row => row.CollectionItemKey is not null && row.Kind == ViewNodeKind.ActionSurface), "Logical rows lost key/action");
         Check(toolbar.Kind == ViewNodeKind.Row && toolbar.Children[0].Id == "library.filters" && toolbar.Children[1].Id == "refresh", "Refresh not beside filters");
+        var filters = toolbar.Children[0];
+        Check(filters.Kind == ViewNodeKind.Grid && filters.GridMinimumColumnWidth == 96 && filters.GridMaximumColumns == 4,
+            "Library filters must reflow through a native responsive grid");
+        Check(filters.Children.Select(node => node.Id).SequenceEqual(new[] { "library.playlists", "library.songs", "library.albums", "library.artists" }) &&
+            filters.Children.All(node => node.ActionId == node.Id), "Responsive filters changed their stable focus/action identities");
+        Check(filters.Children.Single(node => node.IsSelected == true).Id == "library.playlists", "Selected library filter was lost");
         Check(Nodes(view.Root).Single(n => n.Id == "player.main.scroll").ShowScrollbar == false, "Player scrollbar returned");
         service.PageOverride = new("Home", [new("a", "song", "First", Section: "Quick picks"), new("b", "song", "Second", Section: "Quick picks"), new("c", "playlist", "Mix", Section: "For you")]);
         await widget.OnActionAsync(new("tab.home", "test")); await widget.OnActionAsync(new("refresh", "test"));

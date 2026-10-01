@@ -386,6 +386,11 @@ public sealed class SettingsWidget : Widget
             {
                 if (targetPage is SettingsPage.Overlay or SettingsPage.Accessibility)
                     await ReadDisplayAsync(cancellationToken).ConfigureAwait(false);
+                if (targetPage == SettingsPage.Overlay)
+                {
+                    var startup = _startup.Read();
+                    lock (_stateLock) _startupStatus = startup;
+                }
                 Navigate(targetPage);
                 return;
             }
@@ -416,7 +421,9 @@ public sealed class SettingsWidget : Widget
                 case "startup.toggle":
                     if (!_hostFeatures.StartupRegistration) return;
                     var startup = _startup.Read();
-                    var changed = startup.CanChange ? _startup.SetEnabled(!startup.Registered) : startup;
+                    var changed = startup.CanChange
+                        ? _startup.SetEnabled(!startup.Registered)
+                        : startup;
                     lock (_stateLock) _startupStatus = changed;
                     SetOperation(changed.Message, false, changed.Error);
                     break;
@@ -975,10 +982,8 @@ public sealed class SettingsWidget : Widget
 
     private void Navigate(SettingsPage page)
     {
-        var startup = page == SettingsPage.Overlay ? _startup.Read() : null;
         lock (_stateLock)
         {
-            if (startup is not null) _startupStatus = startup;
             var previousPage = _page;
             _page = page;
             if (page == SettingsPage.Permissions &&

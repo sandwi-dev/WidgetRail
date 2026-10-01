@@ -36,8 +36,10 @@ internal static class FocusSelectionThemeTests
             Check(spotify, "button", ["wrail-choice-row", "spotify-device-row"], ["wrail-choice-row--selected"]);
             CheckFillPreserved(spotify, ["spotify-play"]);
             var focusedStop = Resolve(spotify, "button", ["wrail-settings-row__action"], WrssPseudoState.Focused);
+            var restingStop = Resolve(spotify, "button", ["wrail-settings-row__action"]);
             var selectedDevice = Resolve(spotify, "button", ["wrail-choice-row", "wrail-choice-row--selected", "spotify-device-row"]);
-            Equal("transparent", focusedStop.Get("background")?.Text, theme.Descriptor.Id + " Spotify Stop keeps its neutral fill");
+            Equal(restingStop.Get("background")?.Text, focusedStop.Get("background")?.Text,
+                theme.Descriptor.Id + " Spotify Stop preserves its authored fill on focus");
             if (focusedStop.Get("background")?.Text == selectedDevice.Get("background")?.Text)
                 throw new InvalidOperationException(theme.Descriptor.Id + " Spotify Stop resembles the selected device");
             var music = Fixture("YouTubeMusic");

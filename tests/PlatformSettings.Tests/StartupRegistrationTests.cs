@@ -8,7 +8,7 @@ internal static class StartupRegistrationTests
         var store = new Store { Root = root };
         var startup = new StartupRegistration(store, root);
         Check(!startup.Read().Registered && startup.Read().CanChange && store.Writes == 0, "Default must be off without writing.");
-        Check(startup.SetEnabled(true).Registered && store.Command == $"\"{Path.Combine(root, "OverlayHost.exe")}\"", "Quote the whole path and start hidden.");
+        Check(startup.SetEnabled(true).Registered && store.Command == $"\"{Path.Combine(root, "OverlayFrontend.WinUI.exe")}\" --hidden", "Quote the whole WinUI path and explicitly start hidden.");
         store.Approval = [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         var disabled = startup.Read();
         Check(disabled.Registered && disabled.Message.StartsWith("Disabled in Windows"), "Do not claim Windows-disabled entries are active.");

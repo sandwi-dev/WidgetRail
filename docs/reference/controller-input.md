@@ -103,6 +103,6 @@ foreground exclusivity does not suppress all XInput, HID, or other application
 input paths. Optional Exclusive control has its own lifecycle and drivers.
 Keep game-compatibility claims within the [documented limits](../users/known-limitations.md).
 
-For implementation details, see [`ControllerInputOwnership.h`](../../src/OverlayHost/ControllerInputOwnership.h),
+For implementation details, see [`ControllerInputOwnership.cs`](../../src/OverlayFrontend.WinUI/Input/ControllerInputOwnership.cs),
 [`ControllerShortcutResolver.cs`](../../src/WidgetProtocol/ControllerShortcutResolver.cs),
 and [Controller read fallback](controller-read-fallback.md).

@@ -29,7 +29,7 @@ internal static class FrontendArguments
 
     // Matches Windows quoting for an argument tail (not argv[0]); backslashes
     // are special only immediately before a quote. Quoted paths retain spaces.
-    private static IEnumerable<string> Tokenize(string arguments)
+    internal static IEnumerable<string> Tokenize(string arguments)
     {
         var token = new StringBuilder();
         var quoted = false;

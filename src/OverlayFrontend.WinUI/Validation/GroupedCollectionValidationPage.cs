@@ -19,7 +19,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 /// Isolated native grouped-source probe. No worker, custom layout or range forwarding
 /// adapter hides whether CollectionViewSource itself forwards native demand.
 /// </summary>
-internal sealed class GroupedCollectionValidationPage : Page, IAsyncDisposable
+internal sealed partial class GroupedCollectionValidationPage : Page, IAsyncDisposable
 {
     private readonly GridView view;
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Height = 180 };
@@ -180,7 +180,7 @@ internal sealed class GroupedCollectionValidationPage : Page, IAsyncDisposable
 
     // Each group is itself the observable IList, avoiding ItemsPath/property-binding
     // ambiguity. Range calls, if WinUI makes them, reach the existing proven adapter.
-    private sealed class ProbeGroup(string title, IndexedItemsSource<IndexedValidationItem> source, int offset, int count)
+    private sealed partial class ProbeGroup(string title, IndexedItemsSource<IndexedValidationItem> source, int offset, int count)
         : IList, INotifyCollectionChanged, IItemsRangeInfo
     {
         public string Title => title;

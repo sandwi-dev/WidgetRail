@@ -39,7 +39,7 @@ public sealed class StartupRegistration : IStartupRegistration
         if (string.IsNullOrWhiteSpace(root) || !Path.IsPathFullyQualified(root) ||
             root.Contains('"') || !string.Equals(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar),
                 _applicationRoot, StringComparison.OrdinalIgnoreCase)) return null;
-        return $"\"{Path.Combine(_applicationRoot, "OverlayHost.exe")}\"";
+        return $"\"{Path.Combine(_applicationRoot, "OverlayFrontend.WinUI.exe")}\" --hidden";
     }
 
     public StartupRegistrationStatus Read()

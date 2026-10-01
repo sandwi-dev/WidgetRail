@@ -17,7 +17,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.19041
 OutputDir={#OutputDirectory}
 OutputBaseFilename={#InstallerName}
-UninstallDisplayIcon={app}\versions\{#PayloadId}\OverlayHost.exe
+UninstallDisplayIcon={app}\versions\{#PayloadId}\OverlayFrontend.WinUI.exe
 UninstallDisplayName=WidgetRail
 Compression=lzma2
 SolidCompression=yes
@@ -33,7 +33,7 @@ SetupLogging=yes
 Name: startup; Description: "Start WidgetRail when I sign in (starts quietly; Windows Startup Apps restrictions still apply)"; Flags: unchecked
 
 [Icons]
-Name: "{userprograms}\WidgetRail"; Filename: "{app}\versions\{#PayloadId}\OverlayHost.exe"; Parameters: "--show"; WorkingDir: "{app}\versions\{#PayloadId}"
+Name: "{userprograms}\WidgetRail"; Filename: "{app}\versions\{#PayloadId}\OverlayFrontend.WinUI.exe"; Parameters: "--show"; WorkingDir: "{app}\versions\{#PayloadId}"
 
 [Registry]
 Root: HKCU; Subkey: "Software\WidgetRail\Installation"; ValueType: string; ValueName: "ApplicationRoot"; ValueData: "{app}\versions\{#PayloadId}"
@@ -61,7 +61,7 @@ end;
 
 function StartupCommand(Root: String): String;
 begin
-  Result := '"' + Root + '\OverlayHost.exe"';
+  Result := '"' + Root + '\OverlayFrontend.WinUI.exe" --hidden';
 end;
 
 function CompatibleGameInputFile(Path: String): Boolean;
@@ -99,6 +99,10 @@ var
 begin
   RegQueryStringValue(HKCU, InstallKey, 'ApplicationRoot', PreviousRoot);
   PreviousCommand := StartupCommand(PreviousRoot);
+  { Preserve the owned startup choice when upgrading the retired native frontend. }
+  if RegQueryStringValue(HKCU, RunKey, 'WidgetRail', Current) and
+     (CompareText(Current, '"' + PreviousRoot + '\OverlayHost.exe"') = 0) then
+    PreviousCommand := Current;
   ForeignStartup := RegValueExists(HKCU, RunKey, 'WidgetRail') and
     ((not RegQueryStringValue(HKCU, RunKey, 'WidgetRail', Current)) or
     (PreviousRoot = '') or (CompareText(Current, PreviousCommand) <> 0));
@@ -106,7 +110,7 @@ begin
     RegQueryStringValue(HKCU, RunKey, 'WidgetRail', Current);
   WizardForm.WelcomeLabel2.Caption :=
     'Install WidgetRail for your Windows account. Your widgets and settings are kept when upgrading or changing edition.' + #13#10#13#10 +
-    '.NET is included. Setup installs Microsoft GameInput and WebView2 if needed. GameInput may request administrator approval; WebView2 may need an internet connection. Exclusive controller drivers remain optional and are not installed here.';
+    '.NET and Windows App SDK are included. Setup installs Microsoft GameInput and WebView2 if needed. GameInput may request administrator approval; WebView2 may need an internet connection. Exclusive controller drivers remain optional and are not installed here.';
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -129,7 +133,7 @@ function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo,
   MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 begin
   Result := MemoDirInfo + NewLine + NewLine + MemoTasksInfo + NewLine + NewLine +
-    'Microsoft components:' + NewLine + Space + '.NET is included with WidgetRail.';
+    'Microsoft components:' + NewLine + Space + '.NET and Windows App SDK are included with WidgetRail.';
   if not HasGameInput then
     Result := Result + NewLine + Space + 'Install GameInput (Windows will ask for administrator approval).' +
       NewLine + Space + 'If its update gets stuck, restart your PC normally, then run WidgetRail setup again.';
@@ -236,9 +240,10 @@ begin
   if not Result then Exit;
   { Silent uninstall preserves data and never treats suppressed UI as consent. }
   if UninstallSilent then Exit;
-  Choice := MsgBox('Also delete all WidgetRail data for this Windows account?' + #13#10#13#10 +
-    'This includes installed widgets, settings, sign-ins, caches, logs and isolated-widget data, including data shared with development copies.' + #13#10#13#10 +
-    'Yes: permanently delete all data.' + #13#10 +
+  Choice := MsgBox('Also delete WidgetRail''s local data for this Windows account?' + #13#10#13#10 +
+    'This removes installed widgets, settings, caches, logs and isolated-widget data, including data shared with development copies.' + #13#10#13#10 +
+    'Credentials in Windows Credential Manager and data saved elsewhere by add-ons are kept.' + #13#10#13#10 +
+    'Yes: permanently delete this local data.' + #13#10 +
     'No (recommended): keep data for reinstalling.' + #13#10 +
     'Cancel: do not uninstall.',
     mbConfirmation, MB_YESNOCANCEL or MB_DEFBUTTON2);
@@ -254,7 +259,7 @@ begin
      not DeleteUserData and not UninstallSilent then begin
     MsgBox('Your WidgetRail data was kept.' + #13#10#13#10 +
       'To remove saved data manually later, press Win+R, enter %LOCALAPPDATA%, and delete only the WidgetRail folder. You can also delete the WidgetRail folder inside %TEMP%.' + #13#10#13#10 +
-      'For complete cleanup of Windows sandbox profiles too, reinstall WidgetRail and choose Yes to delete all data when uninstalling.', mbInformation, MB_OK);
+      'For complete cleanup of Windows sandbox profiles too, reinstall WidgetRail and choose Yes to delete local data when uninstalling. Credentials in Windows Credential Manager and data saved elsewhere by add-ons are kept.', mbInformation, MB_OK);
     Exit;
   end;
   if CurUninstallStep = usPostUninstall then begin

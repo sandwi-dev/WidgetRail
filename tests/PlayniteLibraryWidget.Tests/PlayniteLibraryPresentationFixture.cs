@@ -1,3 +1,4 @@
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WidgetRail.Samples.PlayniteLibrary;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
@@ -6,6 +7,33 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 
 public sealed partial class PlayniteLibraryLayoutTests
 {
+    private sealed record CapturedPresentation(WidgetView View, ViewSnapshot Snapshot,
+        IReadOnlyList<IndexedCollectionRange> Ranges)
+    {
+        internal IEnumerable<ViewNode> RowNodes => Ranges.SelectMany(range => range.Items).SelectMany(row => Nodes(row.Root));
+        internal IEnumerable<ViewNode> ParentAndRowNodes => Nodes(Snapshot.Root).Concat(RowNodes);
+    }
+
+    private static async Task<CapturedPresentation> CapturePresentationAsync(PlayniteLibraryPresentationState state)
+    {
+        await using var fixture = new IndexedPresentationFixture(state, state.Collection.Items);
+        await fixture.StartAsync();
+        using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture, "playnite.presentation");
+        var snapshot = host.CurrentSnapshot;
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        var ranges = new List<IndexedCollectionRange>();
+        foreach (var node in Nodes(snapshot.Root).Where(node => node.Kind == ViewNodeKind.IndexedCollection))
+        {
+            Assert.AreEqual(0, node.Children.Count);
+            for (var start = 0; start < node.IndexedCollection!.Count; start += 64)
+            {
+                using var lease = await host.AcquireAsync(node.Id, start, Math.Min(64, node.IndexedCollection.Count - start));
+                ranges.Add(lease.Range);
+            }
+        }
+        return new(fixture.Render(), snapshot, ranges);
+    }
+
     // Uses the same page and indexed renderers as RenderCore. Parent snapshots
     // deliberately contain no eager poster trees; tests must acquire row leases.
     private sealed class IndexedPresentationFixture : Widget, IAsyncDisposable
@@ -53,8 +81,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             await WidgetTestHost.SetLifecycleStateAsync(this, WidgetLifecycleState.Visible);
         }
 
-        public override WidgetView Render() => PlayniteLibraryPresentation.Render(state,
-            indexedBrowse: browse, indexedHome: home);
+        public override WidgetView Render() => PlayniteLibraryPresentation.Render(state, indexedBrowse: browse, indexedHome: home);
 
         public ValueTask DisposeAsync() => WidgetTestHost.DestroyAsync(this);
     }

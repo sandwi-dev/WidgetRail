@@ -1,62 +1,47 @@
 # WinUI frontend development
 
-Work in the isolated migration checkout. Native platform builds currently support
-Windows x64 only. The installed/native candidate is a separate product process;
-never run both controller owners simultaneously.
+The production frontend owns XAML controls, composition, controller navigation,
+focus restoration, pinned surfaces, embedded media and themed accessibility.
+The x64 C++ platform/preview DLLs handle Windows APIs that remain native.
 
-## Build
+## Build and verify
 
-1. Run `scripts/Build-OverlayPlatform.ps1` to build the platform DLL without Taffy
-   or the old renderer. This does not initialize hardware or install drivers.
-2. Build `src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj` with x64 platform
-   and a unique MSBuild binlog. Use the installed Microsoft WinUI skill analyzer.
-3. Launch through `winapp run` in project mode with `--no-build --arch x64
-   -p Platform=x64`. Explicit Platform avoids output-path ambiguity introduced by
-   project references. Do not launch the packaged executable directly.
+Run `scripts/Build-WinUiVerification.ps1` from the repository root. It builds both
+native DLLs, executes safe native policy tests and publishes the trimmed Release
+frontend with those exact binaries. It neither launches nor registers an app.
+See [Building from source](../../docs/maintainers/building.md) for prerequisites
+and [Build execution](../../docs/maintainers/build-execution.md) for audited restore.
 
-The default page is an honest foundation placeholder, not a migrated widget.
+A development launch uses `winapp run` in project mode with `--arch x64` and
+`-p Platform=x64`. Only one controller-owning overlay may run at a time.
+Use `--shell-no-controller` for synthetic UI validation. Development fixtures
+require a build with `EnableWidgetValidation=true`; release publication disables them.
 
-## Production workspace shell checkpoint
+## Isolated widget workspace
 
-`--shell-config="<absolute-json-path>"` opens the reusable native catalog/worker
-shell. Options are `InstallationRoot`, `SettingsRoot`, `InstalledCatalogRoot`, and
-optional `InitialWidgetId`. All roots must be absolute. This starts one owned
-bridge using the existing admission and sandbox/trust contracts; the tray comes
-from that bridge's actual catalog. This mode does not substitute fixture data.
-The Clock-only `--widget-config` mode remains separate and unchanged.
+`--shell-config="<absolute-json-path>"` selects `InstallationRoot`, `SettingsRoot`,
+`InstalledCatalogRoot`, and optional `InitialWidgetId`. All roots must be absolute.
+The shell owns a real WidgetBridge and consumes admitted worker snapshots.
+`scripts/New-WinUiBundledWorkspace.ps1` creates a fresh, sealed bundled installation
+and shell configuration. It does not modify the installed profile.
 
-The shell serializes catalog/lifecycle transitions, coalesces obsolete widget
-selection intents, backgrounds the outgoing worker, and disposes its native
-surface before switching ownership. Guide hide backgrounds the widget; reopening
-establishes a new visible snapshot before restoring native focus. Tray focus uses
-Visible lifecycle; widget focus uses Interactive. Unsolicited updates use current
-session publication authority and never rebase actions to another widget. Catalog
-removal retires the selected surface. Shutdown cancels demand, disposes surfaces,
-then closes the owned bridge. Actual Settings is another catalog worker, not a
-duplicate native settings implementation.
+The presenter reconciles controls, virtualizes indexed collections and retains
+focus by semantic identity when a target remains visible and focusable. Controller
+routing distinguishes widget, rail/radial, transient popup and pinned scopes.
+Pinning and playback have explicit lifetimes; hiding the main overlay does not
+end passive media. Shutdown retires capture/presentation resources before ending
+the owned bridge and child processes.
 
-This is still a migration checkpoint. The native platform adapter owns the single
-input reader, Guide activation/foreground request, and neutral-state admission.
-Use `--shell-no-controller` for UI automation alongside an existing overlay; it
-never creates a controller reader. Window extent and anchor use the existing
-platform placement operation, Windows DPI and persisted global appearance. Full
-content/interface scale, per-monitor overrides, authored surface-size requests,
-radial tray/reorder/pinning, controller guide, task activation and pinned/media
-surfaces remain to be connected. Right-stick kinetics has policy tests; its
-presenter scroll seam is integrated with the concurrent presentation checkpoint.
-Do not treat this shell or Clock UI checks as production Playnite performance
-evidence or full controller acceptance.
+Managed policies run in `WinUiShell.Tests`, `WinUiMotion.Tests`,
+`OverlayPlatformClient.Tests`, `WidgetPresentationSession.Tests` and related SDK/
+bridge suites. Native `Test-WinUi*.ps1` probes inspect actual XAML behavior;
+controller, real-provider and display acceptance remain physical checks.
 
-The later [shell sizing checkpoint](../../docs/maintainers/winui-shell-sizing.md)
-connects authored surface dimensions, native content measurement, actual interface
-zoom, physical-display saved scale and monitor placement. Its remaining gaps and
-validation evidence supersede the corresponding sizing limitations above.
+## Historical fixture notes
 
-`scripts/Test-WinUiShell.ps1 -AppPid <pid>` checks actual catalog selection, native
-tray focus and reopening, and captures a desktop screenshot. Launch packaged
-through winapp with a dedicated profile/catalog and serialize deployment with
-other migration lanes. `Overlay.Status` has a bounded UIA HelpText diagnostic
-containing widget ID, bridge PID, publication revision and lifecycle intent.
+The notes below record early migration probes and their evidence limits. They
+are not the current feature-completeness checklist; use the migration progress
+document and current source/tests for remaining work.
 
 ## Foundation validation modes
 
@@ -276,3 +261,4 @@ was blank; the PNG mask and solid control painted green. A non-null mask brush
 alone is not a passing rendering assertion. The comparison screenshot is retained
 in local `artifacts/winui-shell/native-svg-mask-baselines.png`. This records the
 observed capability boundary, not a claim about every future WinUI version.
+

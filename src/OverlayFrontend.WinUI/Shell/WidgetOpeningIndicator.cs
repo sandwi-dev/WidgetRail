@@ -14,7 +14,7 @@ using WidgetRail.WidgetPresentationSession;
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 /// <summary>Passive feedback for the shell's existing prepare/commit transaction.</summary>
-internal sealed class WidgetOpeningIndicator : ContentControl, IDisposable
+internal sealed partial class WidgetOpeningIndicator : ContentControl, IDisposable
 {
     private readonly Border plate = new() { Padding = new(14, 10, 18, 10), BorderThickness = new(1) };
     private readonly Ellipse halo = new() { Width = 46, Height = 46, StrokeThickness = 1.5,
@@ -69,7 +69,7 @@ internal sealed class WidgetOpeningIndicator : ContentControl, IDisposable
     }
 
     protected override AutomationPeer OnCreateAutomationPeer() => new OpeningPeer(this);
-    private sealed class OpeningPeer(WidgetOpeningIndicator owner) : FrameworkElementAutomationPeer(owner)
+    private sealed partial class OpeningPeer(WidgetOpeningIndicator owner) : FrameworkElementAutomationPeer(owner)
     {
         protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Text;
         protected override string GetClassNameCore() => nameof(WidgetOpeningIndicator);

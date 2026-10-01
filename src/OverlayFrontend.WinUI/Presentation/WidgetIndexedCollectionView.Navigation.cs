@@ -33,9 +33,11 @@ internal sealed partial class WidgetIndexedCollectionView
         QueueNavigation();
     }
     internal bool IsEntryPending => entering;
+    internal bool IsFocusParked => XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is { } focused &&
+        (ReferenceEquals(focused, this) || ReferenceEquals(focused, view));
     private void ParkFocusForQueryReplacement()
     {
-        if (view?.XamlRoot is null || FocusedIndex() is null) return;
+        if (view?.XamlRoot is null || FocusedIndex() is null && !IsFocusParked) return;
         // Keep native focus in the logical collection, but outside ListView while
         // its ItemsSource is reset. Otherwise ListView schedules its own first-item
         // focus after realization, overriding a later authored deep-row entry.
@@ -44,6 +46,12 @@ internal sealed partial class WidgetIndexedCollectionView
         finally { IsTabStop = false; }
     }
     internal event Action? NavigationSettled;
+    internal FrameworkElement? FocusedNavigationElement => FocusedIndex() is { } index
+        ? view?.ContainerFromIndex(index) as FrameworkElement : null;
+    internal FocusNeighbors? FocusedRowNavigation => FocusedIndex() is { } index && source is not null &&
+        index >= 0 && index < source.Items.Count &&
+        source.Items[index] is IndexedItem<WidgetIndexedRow> { Value: { Lease.IsCurrent: true } row }
+            ? row.Item.Root.Focus : null;
     internal Action<IndexedCollectionFocusTarget>? FocusRemembered { get; set; }
 
     internal Control? RetainedFocusTarget(IndexedCollectionFocusTarget target) =>

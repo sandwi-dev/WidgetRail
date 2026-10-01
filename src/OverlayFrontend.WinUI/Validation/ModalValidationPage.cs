@@ -16,7 +16,7 @@ using WidgetRail.PlatformSettings;
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Runs public SDK WithModal through the native presenter, without owning controller input.</summary>
-internal sealed class ModalValidationPage : Page, IAsyncDisposable
+internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new() { Text = "Modal checks pending", TextWrapping = TextWrapping.Wrap };

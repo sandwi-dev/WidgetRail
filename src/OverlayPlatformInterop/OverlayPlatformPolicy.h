@@ -1,7 +1,7 @@
 #pragma once
 
 #include "OverlayPlatformInterop.h"
-#include "../OverlayHost/ControllerNavigation.h"
+#include "ControllerNavigation.h"
 
 #include <cstdint>
 

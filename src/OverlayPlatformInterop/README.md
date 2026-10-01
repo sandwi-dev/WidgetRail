@@ -1,6 +1,6 @@
 # OverlayPlatformInterop
 
-`OverlayPlatformInterop` is the version-4 native presentation-platform boundary.
+`OverlayPlatformInterop` is the version-6 native presentation-platform boundary.
 It owns the single production Microsoft GameInput instance, supported Guide
 callback, quarantined legacy Guide adapter, controller device/sample lifecycle,
 repeat and neutral priming, Guide debounce, foreground-target memory, and safe
@@ -24,14 +24,12 @@ older platform DLL that reports only sample availability.
 Shutdown is idempotent. It stops and unregisters GameInput callbacks, closes
 callback admission, waits for in-flight callbacks, clears queued events, then
 releases native owners. The legacy XInput Guide ordinal remains private to
-`OverlayHost/GuideInputCompatibility.*`.
+`GuideInputCompatibility.*` in this directory.
 
 ## Opt-in controller isolation
 
-Controller isolation is disabled by default. Start the long-lived Release host
-with `OverlayHost.exe --controller-isolation`; the retired enable, status,
-disable, and recover helper commands are rejected. The native platform boundary
-then owns one dedicated routing thread, the selected physical controller reader,
+Controller isolation is disabled by default. Enable Exclusive Control in the
+WinUI Settings widget. The native platform boundary then owns one dedicated routing thread, the selected physical controller reader,
 one ViGEm Xbox 360 target, and the exact HidHide policy delta. Rendering and
 window-message work do not schedule gameplay forwarding.
 
@@ -50,7 +48,9 @@ delta is ours; foreign additions, inverse policy, corrupt local records, and
 the retired Guardian-era journal all fail closed.
 
 If startup reports a pending local recovery, run
-`OverlayHost.exe --controller-isolation-recover-only`. This keyboard/mouse
+the registered WinUI application with `--controller-isolation-recover-only`.
+Use project-mode `winapp run` during development; do not launch the packaged
+executable directly. This keyboard/mouse
 recovery command acquires the same session-wide owner, restores only the exact
 journaled delta, and exits without selecting a controller, creating a virtual
 target, or starting fresh hiding. It retains the record when policy drift or a
@@ -64,9 +64,9 @@ edge queue preserves controller taps and Guide edges for the host; it cannot
 backpressure game-facing output. Disconnect, stale readings, output failure, or
 queue corruption retire only the owned target.
 
-Normal OverlayHost shutdown stops callback admission and the routing thread,
+Normal WinUI frontend shutdown stops callback admission and the routing thread,
 neutralizes and removes only its ViGEm target, then restores only the journaled
-HidHide delta. Application crash survival and forwarding after OverlayHost exit
+HidHide delta. Application crash survival and forwarding after frontend exit
 are intentionally not guarantees of this application-lifetime design; the next
 startup can attempt bounded local policy recovery.
 

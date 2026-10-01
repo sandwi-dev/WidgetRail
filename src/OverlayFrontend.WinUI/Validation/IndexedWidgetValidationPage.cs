@@ -388,7 +388,11 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             await session.SendActionAsync(frame.Authority, new("parent", "parent", InputScopeId: "root"), lifetime.Token);
             await Until(() => BackgroundState() == "completed");
             await Task.Delay(150, lifetime.Token);
-            Check(ReferenceEquals(selected, Artwork()) && Artwork()?.PixelWidth == 2, "late same-page artwork replaced selected row");
+            var actualFocus = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+            Check(ReferenceEquals(selected, Artwork()) && Artwork()?.PixelWidth == 2,
+                $"late same-page artwork replaced selected row: sameSource={ReferenceEquals(selected, Artwork())}; " +
+                $"pixels={Artwork()?.PixelWidth}; summary={Summary()}; " +
+                $"focus={(actualFocus is null ? "" : AutomationProperties.GetAutomationId(actualFocus))}; publication={publication}");
             await FocusItem(0);
             await Until(() => Summary() == "Summary 100:0" && Artwork()?.PixelWidth == 1);
             Descendants(presenter).OfType<Button>().First(button => AutomationProperties.GetAutomationId(button) == "Widget.parent").Focus(FocusState.Keyboard);

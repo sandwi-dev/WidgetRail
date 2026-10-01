@@ -13,7 +13,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Collections;
 /// Native groups must be slices of that same flat immutable query in identical order.
 /// All calls belong to the constructing UI thread. Replace on membership/order changes.
 /// </summary>
-internal sealed class NativeGroupedRangeView : ICollectionView, IItemsRangeInfo
+internal sealed partial class NativeGroupedRangeView : ICollectionView, IItemsRangeInfo
 {
     private readonly ICollectionView native;
     private readonly IObservableVector<object> nativeGroups;

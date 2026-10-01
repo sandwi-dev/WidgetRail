@@ -6,7 +6,7 @@ using Windows.Foundation;
 namespace WidgetRail.OverlayFrontend.WinUI.Motion;
 
 /// <summary>Dedicated clip and transform layers; authored controls own their own style/scale.</summary>
-internal sealed class WidgetMotionHost : Grid
+internal sealed partial class WidgetMotionHost : Grid
 {
     internal Grid Layer { get; }
     internal Grid Viewport { get; }
@@ -59,7 +59,7 @@ internal sealed class WidgetMotionHost : Grid
 }
 
 /// <summary>Outgoing content paints but contributes no semantic or navigation destinations.</summary>
-internal sealed class WidgetOutgoingLayer : Canvas
+internal sealed partial class WidgetOutgoingLayer : Canvas
 {
     internal WidgetOutgoingLayer()
     {
@@ -67,7 +67,7 @@ internal sealed class WidgetOutgoingLayer : Canvas
         GettingFocus += (_, args) => args.TryCancel();
     }
     protected override AutomationPeer OnCreateAutomationPeer() => new EmptyPeer(this);
-    private sealed class EmptyPeer(FrameworkElement owner) : FrameworkElementAutomationPeer(owner)
+    private sealed partial class EmptyPeer(FrameworkElement owner) : FrameworkElementAutomationPeer(owner)
     {
         protected override List<AutomationPeer> GetChildrenCore() => [];
         protected override bool IsContentElementCore() => false;
@@ -76,14 +76,14 @@ internal sealed class WidgetOutgoingLayer : Canvas
 }
 
 /// <summary>Only the current root participates in native measurement.</summary>
-internal sealed class WidgetMotionStage : Panel
+internal sealed partial class WidgetMotionStage : Panel
 {
     internal WidgetOutgoingLayer Outgoing { get; } = new();
     internal FrameworkElement? Current { get; private set; }
     internal FrameworkElement? Modal { get; private set; }
     internal WidgetMotionStage() => Children.Add(Outgoing);
     protected override AutomationPeer OnCreateAutomationPeer() => new StagePeer(this);
-    private sealed class StagePeer(WidgetMotionStage owner) : FrameworkElementAutomationPeer(owner)
+    private sealed partial class StagePeer(WidgetMotionStage owner) : FrameworkElementAutomationPeer(owner)
     {
         protected override bool IsControlElementCore() => false;
         protected override bool IsContentElementCore() => false;

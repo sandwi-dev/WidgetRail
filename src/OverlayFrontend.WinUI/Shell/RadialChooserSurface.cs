@@ -13,7 +13,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 /// Selection only changes brushes/visibility; no render callback, bitmap capture
 /// or custom drawing loop is involved.
 /// </summary>
-internal sealed class RadialChooserSurface : Canvas
+internal sealed partial class RadialChooserSurface : Canvas
 {
     private readonly (ShapePath Fill, ShapePath Light, ShapePath Edge, ShapePath Accent)[] sectors;
     private readonly Ellipse faceLight = Circle(184), faceEdge = Circle(184), hub = Circle(98), hubLight = Circle(98), hubEdge = Circle(98);

@@ -41,7 +41,10 @@ internal sealed partial class WidgetViewPresenter
         }
         if (FocusedBinding() is { Element: WidgetIndexedCollectionView collection } focused && Eligible(focused))
         {
-            CancelGroupEntry();
+            // A release/repeat belongs to the gesture that may have requested a
+            // replacement query. It must not cancel that query's pending row
+            // entry while native focus is temporarily parked on the owner.
+            if (phase == ControllerEventPhase.Pressed && !collection.IsFocusParked) CancelGroupEntry();
             return await collection.InvokeFocusedInputAsync(button, phase);
         }
         if (Session is not { } session) return false;

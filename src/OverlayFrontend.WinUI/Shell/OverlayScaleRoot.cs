@@ -11,7 +11,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 /// then WinUI applies one matching presentation transform. Unlike a fixed canvas
 /// stretched to fit, narrow windows still reflow and virtualize at their real size.
 /// </summary>
-public sealed class OverlayScaleRoot : Panel
+public sealed partial class OverlayScaleRoot : Panel
 {
     public static readonly DependencyProperty InterfaceScaleProperty = DependencyProperty.Register(nameof(InterfaceScale),
         typeof(double), typeof(OverlayScaleRoot), new PropertyMetadata(1d, (sender, _) => ((OverlayScaleRoot)sender).ScaleChanged()));

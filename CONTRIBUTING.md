@@ -18,7 +18,8 @@ relevant validation in your pull request.
 
 | Area | Location |
 |---|---|
-| Native overlay, rendering and controller input | `src/OverlayHost` |
+| WinUI presentation, layout and focus | `src/OverlayFrontend.WinUI` |
+| Native Windows/controller boundary | `src/OverlayPlatformInterop`, `src/WinUiWindowPreviewNative` |
 | Public C# authoring API | `src/WidgetSdk` |
 | Declarative data contracts | `src/WidgetProtocol` |
 | Widget processes and lifecycle | `src/WidgetRuntime`, `src/WidgetWorkerHost` |
@@ -40,7 +41,7 @@ From the repository root:
 .\scripts\Verify.ps1 -Configuration Release -Lane managed
 ```
 
-The native lane requires the C++ and Rust tools:
+The native lane requires C++ tools and builds the trimmed WinUI frontend:
 
 ```powershell
 $env:RUSTUP_TOOLCHAIN = '1.97.1'
@@ -91,3 +92,4 @@ and update `tests/Documentation.Tests/sdk-doc-map.json`. That map catches missin
 entry points when public SDK files are added. It does not prove that prose is
 complete or correct: review behavior against the implementation and compile
 working examples as well.
+

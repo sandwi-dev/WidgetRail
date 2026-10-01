@@ -7,7 +7,7 @@ using Windows.Foundation.Collections;
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Small UI-thread contract checks; visual/native grouping is tested separately.</summary>
-internal static class NativeGroupedRangeViewScenarios
+internal static partial class NativeGroupedRangeViewScenarios
 {
     public static int Run()
     {
@@ -76,7 +76,7 @@ internal static class NativeGroupedRangeViewScenarios
     private static void Throws<T>(Action action) where T : Exception
     { try { action(); } catch (T) { return; } throw new InvalidOperationException("Expected " + typeof(T).Name); }
 
-    private sealed class Ranges : IItemsRangeInfo
+    private sealed partial class Ranges : IItemsRangeInfo
     {
         public int Calls;
         public bool Disposed;
@@ -86,9 +86,9 @@ internal static class NativeGroupedRangeViewScenarios
         { ++Calls; Visible = visibleRange; Tracked = trackedItems; }
         public void Dispose() => Disposed = true;
     }
-    private sealed class Change(CollectionChange change, uint index) : IVectorChangedEventArgs
+    private sealed partial class Change(CollectionChange change, uint index) : IVectorChangedEventArgs
     { public CollectionChange CollectionChange => change; public uint Index => index; }
-    private class Vector : IObservableVector<object>
+    private partial class Vector : IObservableVector<object>
     {
         private readonly List<object> values = [];
         private VectorChangedEventHandler<object>? changed;
@@ -110,9 +110,9 @@ internal static class NativeGroupedRangeViewScenarios
         public void RemoveAt(int index) => values.RemoveAt(index);
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
-    private sealed class GroupView(Vector items) : ICollectionViewGroup
+    private sealed partial class GroupView(Vector items) : ICollectionViewGroup
     { public object Group => this; public IObservableVector<object> GroupItems => items; }
-    private sealed class View : Vector, ICollectionView
+    private sealed partial class View : Vector, ICollectionView
     {
         private EventHandler<object>? changed;
         private CurrentChangingEventHandler? changing;

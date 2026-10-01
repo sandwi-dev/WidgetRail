@@ -7,7 +7,7 @@ using Windows.Foundation;
 namespace WidgetRail.OverlayFrontend.WinUI.Media;
 
 /// <summary>Native layout slot for browser pixels. SDK media viewports are deliberately not focus targets.</summary>
-internal sealed class WidgetMediaViewport : ContentControl
+internal sealed partial class WidgetMediaViewport : ContentControl
 {
     internal Grid SurfaceHost { get; } = new();
     private readonly ProgressRing loading = new() { Width = 32, Height = 32, IsActive = false, Visibility = Visibility.Collapsed };

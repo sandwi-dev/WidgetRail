@@ -94,7 +94,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         var organization = PlayniteLibraryPrivateState.Empty with { Categories = [category] };
         var state = State(Snapshot(WidgetPagedResourceStatus.Ready, [item]), organization,
             PlayniteLibraryRoute.Categories, []);
-        var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
+        var snapshot = new PresentationWidget((await CapturePresentationAsync(state)).View)
             .RenderSnapshot("playnite-library.categories-theme", 1);
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
         var row = Nodes(snapshot.Root).Single(node => node.ActionId == PlayniteLibraryActions.CategoryOpen(category.Id));
@@ -102,7 +102,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(row.IsFocusable);
         Assert.AreEqual(1, Nodes(row).Count(node => node.IsFocusable));
         Assert.IsTrue(Nodes(row).Any(node => node.Text == "1 game"));
-        var busy = new PresentationWidget(PlayniteLibraryPresentation.Render(state with { OrganizationBusy = true }))
+        var busy = new PresentationWidget((await CapturePresentationAsync(state with { OrganizationBusy = true })).View)
             .RenderSnapshot("playnite-library.categories-busy", 2);
         Assert.IsTrue(Nodes(busy.Root).Single(node => node.Id == row.Id).IsDisabled == true);
 
@@ -209,7 +209,7 @@ public sealed partial class PlayniteLibraryLayoutTests
     }
 
     [TestMethod]
-    public void SupportingScreensAndNavigationRemainValidAcrossStates()
+    public async Task SupportingScreensAndNavigationRemainValidAcrossStates()
     {
         var items = Enumerable.Range(0, 18).Select(index => PlayniteLibraryItem.From(Item(
             "app-" + index, "saved-" + index, "Adventure " + index, "Steam"))).ToArray();
@@ -232,8 +232,8 @@ public sealed partial class PlayniteLibraryLayoutTests
                         ? organization with { ExcludedSavedIds = items.Select(item => item.Value.SavedId).ToArray() }
                         : organization,
                 };
-                var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(state))
-                    .RenderSnapshot("playnite-library.fixture", 1);
+                var captured = await CapturePresentationAsync(state);
+                var snapshot = captured.Snapshot;
                 Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count, route + " " + phase);
                 if (route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
                 {
@@ -255,7 +255,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                 }
                 if (phase == WidgetPagedResourceStatus.Loading)
                     Assert.IsNull(snapshot.FocusGroupEntryRequest, "Do not enter loading placeholders before games arrive.");
-                ExportFixture(route + "-" + phase, snapshot);
+                ExportFixture(route + "-" + phase, snapshot, captured.Ranges);
             }
         }
         var longItem = Item("long-app", "long-game", "Long game", "Steam");
@@ -271,11 +271,11 @@ public sealed partial class PlayniteLibraryLayoutTests
                 },
             },
         });
-        var longView = PlayniteLibraryPresentation.Render(State(
+        var longCapture = await CapturePresentationAsync(State(
             Snapshot(WidgetPagedResourceStatus.Ready, [longGame]), organization, PlayniteLibraryRoute.Library, []));
-        var longSnapshot = new PresentationWidget(longView).RenderSnapshot("playnite-library.long-summary", 1);
+        var longSnapshot = longCapture.Snapshot;
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(longSnapshot).Count);
-        ExportFixture("Library-Long", longSnapshot);
+        ExportFixture("Library-Long", longSnapshot, longCapture.Ranges);
 
         foreach (var kind in Enum.GetValues<PlayniteBridgeConnectionKind>())
         {
@@ -290,23 +290,41 @@ public sealed partial class PlayniteLibraryLayoutTests
 
     // Optional local export feeds the production Bridge/native geometry probe.
     // These fixtures contain only synthetic game names and no user data.
-    private static void ExportFixture(string name, ViewSnapshot snapshot)
+    private static void ExportFixture(string name, ViewSnapshot snapshot, IReadOnlyList<IndexedCollectionRange>? ranges = null)
     {
         if (Environment.GetEnvironmentVariable("WRAIL_PLAYNITE_LAYOUT_OUTPUT") is not { Length: > 0 } directory) return;
         Directory.CreateDirectory(directory);
         File.WriteAllBytes(Path.Combine(directory, name + ".snapshot.json"), SnapshotJson.Serialize(snapshot));
-        WidgetRail.Tests.RendererFixtureExporter.Write(Path.Combine(directory, name + ".renderer.json"), snapshot, CompileStyles());
+        var theme = CompileStyles();
+        if (!Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.IndexedCollection))
+        {
+            WidgetRail.Tests.RendererFixtureExporter.Write(Path.Combine(directory, name + ".renderer.json"), snapshot, theme);
+            return;
+        }
+        // Preserve real parent/range ownership; never flatten lazy rows for the retired C++ renderer.
+        var options = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase));
+        using var document = System.Text.Json.JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
+        File.WriteAllText(Path.Combine(directory, name + ".indexed.json"), System.Text.Json.JsonSerializer.Serialize(new
+        {
+            snapshot = document.RootElement.Clone(),
+            renderStyles = WidgetRail.WidgetBridge.BridgeRenderStyleResolver.Resolve(snapshot, theme),
+            ranges = (ranges ?? []).Select(range => new { range, renderStyles = WidgetRail.WidgetBridge.BridgeRenderStyleResolver.ResolveRange(range, theme) }),
+        }, options));
     }
 
     [TestMethod]
-    public void LargeLibraryRendererFixtureUsesProductionPresentationAndStyles()
+    public async Task LargeLibraryIndexedFixtureUsesProductionRangesAndStyles()
     {
         var items = Enumerable.Range(0, 150).Select(index => PlayniteLibraryItem.From(Item(
             "scroll-app-" + index, "scroll-game-" + index, "Scrolling library game " + index, "Steam", "fixture.art." + index))).ToArray();
-        var snapshot = new PresentationWidget(PlayniteLibraryPresentation.Render(State(
+        var captured = await CapturePresentationAsync(State(
             Snapshot(WidgetPagedResourceStatus.Ready, items), PlayniteLibraryPrivateState.Empty,
-            PlayniteLibraryRoute.Browse, []))).RenderSnapshot("playnite.scroll.fixture", 1);
+            PlayniteLibraryRoute.Browse, []));
+        var snapshot = captured.Snapshot;
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
-        ExportFixture("Library-Scroll", snapshot);
+        Assert.AreEqual(150, Nodes(snapshot.Root).Single(node => node.Kind == ViewNodeKind.IndexedCollection).IndexedCollection!.Count);
+        Assert.AreEqual(150, captured.Ranges.Sum(range => range.Items.Count));
+        ExportFixture("Library-Scroll", snapshot, captured.Ranges);
     }
 }

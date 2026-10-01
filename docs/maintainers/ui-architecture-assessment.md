@@ -1,5 +1,11 @@
 # UI architecture assessment
 
+Historical renderer source references in this assessment are retained in the local
+migration checkpoint `7309b17467e8d56f1b40531664908980c056717d`. The renderer
+has since been retired; inspect a referenced file with `git show <revision>:<path>`.
+Use the assessment baseline below when comparing its original findings.
+That checkpoint has not been published, so these references are not public web links.
+
 Assessment date: 2026-09-26. WidgetRail baseline: `092ee64d`.
 This is a source-based architecture assessment, not a runtime comparison or a migration decision.
 
@@ -68,14 +74,14 @@ for this assessment.
 
 | Current boundary | Evidence | Architectural implication |
 |---|---|---|
-| Native host owns layout, focus, pixels and Windows integration | [Platform architecture](platform-architecture.md); [renderer output](../../src/OverlayHost/DeclarativeRenderer.h) | Rendering is coupled to navigation/accessibility geometry. Replacing drawing alone leaves much of the framework intact. |
+| Native host owns layout, focus, pixels and Windows integration | [Platform architecture](platform-architecture.md); renderer output (`src/OverlayHost/DeclarativeRenderer.h`) | Rendering is coupled to navigation/accessibility geometry. Replacing drawing alone leaves much of the framework intact. |
 | Cursor metadata describes an admitted item window | [ViewModels](../../src/WidgetProtocol/ViewModels.cs), `VirtualCollectionWindow`, `CollectionItemKey`; [CursorResource](../../src/WidgetSdk/WidgetCursorResource.cs), `Capture`/`PresentItem` | Stable keys and generation/reset/anchor information are useful design concepts. They are not an item factory or a guarantee of lazy UI realization. |
 | Widgets build concrete child trees | [Playnite presentation](../../samples/PlayniteLibraryWidget/PlayniteLibraryPresentation.cs); `ViewNode.Children` | Host-side laziness alone does not eliminate worker construction, serialization, validation and style preparation of those trees. |
 | Atomic structural updates already exist | [PresentationUpdates](../../src/WidgetProtocol/PresentationUpdates.cs): insert, remove, move, replace subtree | Do not describe incremental transport as missing. The renderer still conservatively performs full preparation on structural admission. The next model should carry collection operations without requiring eager realization. |
-| Layout sessions now retain validated Taffy nodes | [Retained preparation](renderer-preparation-retention.md); [native layout](../../src/OverlayHost/DeclarativeLayout.cpp) | This reduced measurement work; it did not create a complete lazy UI architecture. Full structural style/tree preparation and grid resolution remain. |
-| Windows composition is deeply integrated | [OverlayCompositionSurface](../../src/OverlayHost/OverlayCompositionSurface.cpp); [WidgetCompositionPresenter](../../src/OverlayHost/WidgetCompositionPresenter.cpp) | Device, target, visual-tree, texture lifetime and animation ownership must move together or have an explicit integration boundary. |
-| WebView2 uses a composition visual target | [RichMediaSurfaceCoordinator](../../src/OverlayHost/RichMediaSurfaceCoordinator.cpp), `put_RootVisualTarget` | A framework's HWND or GPU-texture import support does not automatically host this visual subtree with correct clipping and z-order. |
-| Input and accessibility carry action authority | [WidgetInteractionSession](../../src/OverlayHost/WidgetInteractionSession.h); [AccessibilityProvider](../../src/OverlayHost/AccessibilityProvider.h) | Preserve the requirement to reject stale actions, not necessarily these classes or their geometry-based algorithms. |
+| Layout sessions now retain validated Taffy nodes | [Retained preparation](renderer-preparation-retention.md); native layout (`src/OverlayHost/DeclarativeLayout.cpp`) | This reduced measurement work; it did not create a complete lazy UI architecture. Full structural style/tree preparation and grid resolution remain. |
+| Windows composition is deeply integrated | OverlayCompositionSurface (`src/OverlayHost/OverlayCompositionSurface.cpp`); WidgetCompositionPresenter (`src/OverlayHost/WidgetCompositionPresenter.cpp`) | Device, target, visual-tree, texture lifetime and animation ownership must move together or have an explicit integration boundary. |
+| WebView2 uses a composition visual target | RichMediaSurfaceCoordinator (`src/OverlayHost/RichMediaSurfaceCoordinator.cpp`), `put_RootVisualTarget` | A framework's HWND or GPU-texture import support does not automatically host this visual subtree with correct clipping and z-order. |
+| Input and accessibility carry action authority | WidgetInteractionSession (`src/OverlayHost/WidgetInteractionSession.h`); AccessibilityProvider (`src/OverlayHost/AccessibilityProvider.h`) | Preserve the requirement to reject stale actions, not necessarily these classes or their geometry-based algorithms. |
 | Community code executes outside the trusted renderer | [Security and trust](security-and-trust.md) | A JVM class loader or a .NET assembly load context is not a replacement for OS process isolation. |
 
 The latest physical Playnite sample had new-view scrolling renders of 47.244 ms

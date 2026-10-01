@@ -32,6 +32,12 @@ internal static class WidgetModalTests
         Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
         var noBar = background.WithModal(modal with { ShowScrollbar = false }).CreateSnapshot("instance", 2);
         Equal(false, noBar.Root.Children[1].Children[1].ShowScrollbar);
+        var ownScroll = background.WithModal(modal with { ScrollContent = false }).CreateSnapshot("instance", 3);
+        Equal("details.body", ownScroll.Root.Children[1].Children[1].Id);
+        Equal(ViewNodeKind.Stack, ownScroll.Root.Children[1].Children[1].Kind);
+        Equal("details.scope", ownScroll.ActiveInputScopeId);
+        Equal("play", ownScroll.InitialFocusId);
+        Equal(0, ViewSnapshotValidator.Validate(ownScroll).Count);
         True(snapshot.Root.Children[1].Shortcuts.Any(s => s.Button == ControllerButton.B && s.ActionId == "details.close"));
         True(ViewSnapshotValidator.Validate(snapshot with { ActiveInputScopeId = "page.scope" })
             .Any(error => error.Code == "invalid_modal_layer"));

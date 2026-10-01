@@ -173,6 +173,7 @@ static async Task DisconnectedLayoutContract()
         AppContext.BaseDirectory, "styles", "default.wrss"));
     var parsed = WrssParser.Parse(source, "styles/default.wrss");
     Assert.True(parsed.IsValid, string.Join(Environment.NewLine, parsed.Diagnostics));
+    Assert.Equal(0, WinUiStyleDiagnostics.Analyze(parsed.Document).Count);
     Assert.True(source.Contains(".spotify-primary { background: var(--accent);", StringComparison.Ordinal),
         "Primary actions must derive their fill from the active theme accent.");
     Assert.True(source.Contains("outline-color: var(--focus)", StringComparison.Ordinal),
@@ -184,13 +185,11 @@ static async Task DisconnectedLayoutContract()
         "icon", StyleClasses: new HashSet<string>(["spotify-full-logo"])))!;
     Assert.Equal("117px", fullLogo.Get("width")?.Text);
     Assert.Equal("32px", fullLogo.Get("height")?.Text);
-    Assert.Equal("0", fullLogo.Get("flex-shrink")?.Text);
     var detailStyle = theme.Resolve(new WrssElement(
         "text", StyleClasses: new HashSet<string>(["spotify-state-detail"])))!;
     Assert.Equal("100%", detailStyle.Get("width")?.Text);
     Assert.Equal("0px", detailStyle.Get("min-width")?.Text);
     Assert.Equal("560px", detailStyle.Get("max-width")?.Text);
-    Assert.Equal("0", detailStyle.Get("flex-shrink")?.Text);
     Assert.Equal<string?>(null, detailStyle.Get("max-lines")?.Text);
     Assert.Equal("1.35", detailStyle.Get("line-height")?.Text);
     Assert.Equal("center", detailStyle.Get("text-align")?.Text);
@@ -198,8 +197,8 @@ static async Task DisconnectedLayoutContract()
     var actionRow = theme.Resolve(new WrssElement(
         "row", StyleClasses: new HashSet<string>(["spotify-connect-actions"])))!;
     Assert.Equal("100%", actionRow.Get("width")?.Text);
-    Assert.Equal("wrap", actionRow.Get("flex-wrap")?.Text);
-    Assert.Equal("0", actionRow.Get("flex-shrink")?.Text);
+    Assert.Equal("8px", actionRow.Get("gap")?.Text);
+    Assert.Equal("center", actionRow.Get("justify")?.Text);
     var button = theme.Resolve(new WrssElement(
         "button", StyleClasses: new HashSet<string>(
             ["spotify-primary", "spotify-responsive-action"])))!;

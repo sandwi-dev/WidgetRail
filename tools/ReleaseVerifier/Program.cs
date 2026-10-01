@@ -1,9 +1,18 @@
 using System.Text.Json;
 using WidgetRail.WidgetBridge;
 
-if (args.Length != 1) { Console.Error.WriteLine("Usage: ReleaseVerifier <release-folder>"); return 2; }
+if (args.Length != 1 && !(args.Length == 2 && args[0] == "--frontend"))
+{
+    Console.Error.WriteLine("Usage: ReleaseVerifier <release-folder> | --frontend <published-frontend-folder>");
+    return 2;
+}
 try
 {
+    if (args.Length == 2)
+    {
+        FrontendCleanupVerification.Verify(Path.GetFullPath(args[1]));
+        return 0;
+    }
     var root = Path.GetFullPath(args[0]);
     using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root, "release.json")));
     var expected = manifest.RootElement.GetProperty("widgets").EnumerateArray()
@@ -19,6 +28,6 @@ try
 }
 catch (Exception error) when (error is not OutOfMemoryException)
 {
-    Console.Error.WriteLine("Release catalog verification failed: " + error.Message);
+    Console.Error.WriteLine("Release verification failed: " + error.Message);
     return 1;
 }

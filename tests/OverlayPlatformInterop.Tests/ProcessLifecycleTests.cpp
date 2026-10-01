@@ -1,5 +1,5 @@
 #include "../../src/OverlayPlatformInterop/OverlayProcessInterop.h"
-#include "../../src/OverlayHost/OverlayProcessOwner.h"
+#include "../../src/OverlayPlatformInterop/OverlayProcessOwner.h"
 #include <future>
 #include <iostream>
 #include <stdexcept>

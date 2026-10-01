@@ -42,6 +42,6 @@
   border-color: var(--border-strong); border-width: 1px; corner-radius: 16px;
   shadow-color: rgba(0, 0, 0, 0.45); shadow-blur: 20px; overflow: clip;
 }
-.wrail-modal__header { direction: row; align: center; gap: 20px; flex-shrink: 0; }
+.wrail-modal__header { direction: row; align: center; gap: 20px; }
 .wrail-modal__title { font-size: 26px; font-weight: 600; flex-grow: 1; min-width: 0; max-lines: 2; text-overflow: ellipsis; overflow-wrap: anywhere; }
 .wrail-modal__scroll { flex-grow: 1; min-height: 0; min-width: 0; gap: 12px; padding: 4px; }

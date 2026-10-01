@@ -67,11 +67,17 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     {
         this.session = session; this.failed = failed;
         IsTabStop = false;
+        // This owner is only a temporary focus parking point during query reset.
+        // User-facing focus belongs to the realized row, never this whole region.
+        UseSystemFocusVisuals = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
         SizeChanged += (_, _) => UpdateGridWidth();
         GotFocus += (_, _) => { ValidatePendingActivation(); RememberItemFocus(); };
         LostFocus += (_, _) => ValidatePendingActivation();
+        // Observe departures from both realized rows and the temporary parking
+        // owner so an explicit choice outside can cancel a pending handoff.
+        LosingFocus += OnLosingFocus;
         Unloaded += (_, _) => { if (!IsLoaded) CancelPendingActivation(); };
         GotFocus += (_, _) => PresentationChanged?.Invoke();
         AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => CancelNavigation()), true);
@@ -92,7 +98,13 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         var entry = CaptureEntry();
         var previousSource = source;
         var layout = declaration.CollectionLayout ?? throw new InvalidDataException("Indexed collection layout is missing.");
-        if (view is null || layoutKind != layout.Kind || axis != declaration.ScrollAxis)
+        var replaceView = view is null || layoutKind != layout.Kind || axis != declaration.ScrollAxis;
+        var replaceSource = source is null || !source.CanUpdate(binding, declaration);
+        // Protect current row focus before either native view or source retires.
+        // Default entry and same-request query refresh need this just as much as
+        // exact-item requests; WinUI otherwise focuses the empty ListView itself.
+        if (replaceView || replaceSource) ParkFocusForQueryReplacement();
+        if (view is null || replaceView)
         {
             CancelNavigation();
             RetireViewRows();
@@ -103,9 +115,10 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
                 view.UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
                 view.UnregisterPropertyChangedCallback(Control.PaddingProperty, paddingToken);
                 view.Footer = null;
-                view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; view.LosingFocus -= OnLosingFocus;
+                view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged;
             }
             view = layout.Kind == CollectionLayoutKind.AdaptiveGrid ? new GridView() : new ListView();
+            view.UseSystemFocusVisuals = false;
             discoveryForegroundToken = view.RegisterPropertyChangedCallback(ForegroundProperty, (_, _) => UpdateDiscoveryForeground());
             // Native ItemsPresenter places padding inside its scroll viewport.
             // A theme/state can change that inset without changing our outer size.
@@ -122,18 +135,12 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
                 ? "WidgetIndexedGridPanel" : axis == ScrollAxis.Horizontal ? "WidgetIndexedHorizontalPanel" : "WidgetIndexedVerticalPanel"];
             view.ItemClick += Clicked;
             view.ContainerContentChanging += ContainerChanged;
-            view.LosingFocus += OnLosingFocus;
             view.Loaded += (_, _) => UpdateGridWidth();
             Content = view;
         }
-        if (source is null || !source.CanUpdate(binding, declaration))
+        if (source is null || replaceSource)
         {
             CancelNavigation();
-            if (binding.View.FocusGroupEntryRequest?.IndexedItem is { } requested &&
-                requested.CollectionId == declaration.Id &&
-                requested.SourceId == declaration.IndexedCollection?.SourceId &&
-                requested.QueryGeneration == declaration.IndexedCollection?.QueryGeneration)
-                ParkFocusForQueryReplacement();
             DetachItems();
             DetachContainers();
             if (source is not null) RetireSource(source);
@@ -351,13 +358,14 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     {
         if (disposed) return;
         disposed = true;
+        LosingFocus -= OnLosingFocus;
         view?.UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
         view?.UnregisterPropertyChangedCallback(Control.PaddingProperty, paddingToken);
         CancelPendingActivation();
         CancelNavigation();
         RetireViewRows();
         DetachItems();
-        if (view is not null) { view.Footer = null; view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; view.LosingFocus -= OnLosingFocus; }
+        if (view is not null) { view.Footer = null; view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged; }
         DetachContainers(); Content = null;
         if (source is not null) RetireSource(source);
         await Task.WhenAll(retiring.ToArray());

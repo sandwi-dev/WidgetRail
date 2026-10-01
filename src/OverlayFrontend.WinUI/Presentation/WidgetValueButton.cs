@@ -7,7 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Native command button exposing the value it edits in a separate native popup.</summary>
-internal sealed class WidgetValueButton : Button
+internal sealed partial class WidgetValueButton : Button
 {
     private string accessibleValue = string.Empty;
     private bool sensitive;
@@ -36,7 +36,7 @@ internal sealed class WidgetValueButton : Button
     private ExpandCollapseState State => expanded ? ExpandCollapseState.Expanded : ExpandCollapseState.Collapsed;
     protected override AutomationPeer OnCreateAutomationPeer() => new ValuePeer(this);
 
-    private sealed class ValuePeer(WidgetValueButton owner) : ButtonAutomationPeer(owner), IValueProvider, IExpandCollapseProvider
+    private sealed partial class ValuePeer(WidgetValueButton owner) : ButtonAutomationPeer(owner), IValueProvider, IExpandCollapseProvider
     {
         protected override object GetPatternCore(PatternInterface pattern) => pattern switch
         {

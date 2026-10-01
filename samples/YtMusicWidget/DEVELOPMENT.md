@@ -113,16 +113,15 @@ Testing only mutable staging is not sufficient. These checks do not launch sign-
 Live provider tests are not CI gates: YouTube service and account availability
 are outside the repository's control.
 
-`tests/YtMusicStandalone.Tests/Test-Layout.ps1 -TaffyLibrary <built-wrail_taffy_layout.lib>`
-builds deterministic empty/playing/library/Home/Search snapshots, uses the production Bridge style
-projection, and checks their actual native-renderer geometry at 980×700 and 620×400.
-It verifies the bounded player width, separate browsing pane, full-height cards,
-centered empty state, transport containment, and nonoverlapping square Home tiles
-with per-tile focus bounds. It also checks the Search focus outline against its clip,
-Library toolbar placement, and production focus-memory restoration after tab changes
-and Refresh. Fixtures include artwork nodes and the full default + Neon
-Circuit + package theme cascade. The probe does not open or control the overlay.
-Use the library from a native build of this checkout's pinned Taffy source.
+Layout is rendered by the shared WinUI presenter. The retired native-renderer
+`Test-Layout.ps1`/Taffy probe is no longer a supported command. Follow
+[WinUI frontend development](../../src/OverlayFrontend.WinUI/README.md) for an
+isolated host and native presentation fixtures. Those fixtures cover shared host
+controls and collections; they do not certify every YouTube Music page's geometry.
+Check empty/playing/library/Home/Search pages at the supported interface scales,
+including transport containment, focus outlines, pinned layout and focus retention
+after navigation and Refresh. Use the normal package themes and reduced-motion
+setting when reviewing presentation.
 
 Before acceptance, install the candidate, sign in, browse a private playlist,
 start song radio, test transport and seeking, close/reopen the overlay while

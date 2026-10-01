@@ -6,11 +6,11 @@
 #include "DualSenseHidReader.h"
 #include "LocalControllerPolicy.h"
 #include "ViGEmOutputAdapter.h"
-#include "../OverlayHost/ControllerInputOwnership.h"
-#include "../OverlayHost/ControllerOpenShortcut.h"
-#include "../OverlayHost/GuideInputCompatibility.h"
-#include "../OverlayHost/OverlayPlacement.h"
-#include "../OverlayHost/OverlayTargeting.h"
+#include "ControllerInputOwnership.h"
+#include "ControllerOpenShortcut.h"
+#include "GuideInputCompatibility.h"
+#include "OverlayPlacement.h"
+#include "OverlayTargeting.h"
 
 #include <Windows.h>
 #include <GameInput.h>

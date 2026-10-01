@@ -81,8 +81,10 @@ public sealed record WidgetView(
                 UI.Text(modal.Title, StableIdentifier.Child(modal.Id, "title")).Classes("wrail-modal__title"),
                 modal.HeaderActions ?? UI.Button("Close", modal.DismissActionId, StableIdentifier.Child(modal.Id, "close")))
                 .Classes("wrail-modal__header"),
-            (UI.VerticalScroll(StableIdentifier.Child(modal.Id, "scroll"), modal.Content) with
-                { ShowScrollbar = modal.ShowScrollbar }).Classes("wrail-modal__scroll"))
+            modal.ScrollContent
+                ? (UI.VerticalScroll(StableIdentifier.Child(modal.Id, "scroll"), modal.Content) with
+                    { ShowScrollbar = modal.ShowScrollbar }).Classes("wrail-modal__scroll")
+                : modal.Content)
             .InputScope(scope)
             .Shortcut(ControllerButton.B, modal.DismissActionId, "Close")
             .Classes("wrail-modal");

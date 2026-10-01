@@ -1,9 +1,1527 @@
 # WinUI migration implementation status
 
-Updated 2026-09-30; branch `codex/winui3-frontend`. Main and the installed native candidate
-are untouched. Migration is active and incomplete.
+Updated 2026-10-01; branch `codex/winui3-frontend`. Main and the installed production application
+are untouched. Migration is incomplete and resumed at the user's request.
+The user reversed the full-MSIX direction on 2026-10-01. Distribution is now an
+unpackaged WinUI application with Inno; neither full MSIX nor a signed identity
+package may be required. Earlier MSIX entries below are historical evidence only.
 
 ## Current summary
+
+### Accepted migration checkpoint and worktree retirement — 2026-10-01
+
+The user confirmed the YouTube fix works and authorized merging the current
+migration into main and deleting the old worktrees. The complete migration source
+matches the accepted preview.15 release snapshot e8103e837965c0ee089757a856ddf9e93cbee8dc;
+only this progress record differs. Existing release/native/test evidence remains
+applicable; no further implementation changes are included in this integration.
+
+Old worktree heads and any unfinished local changes are preserved separately from
+main. Ignored diagnostic artifacts are retained outside the retired checkouts at
+C:/Users/dwive/Projects/WidgetRail-worktree-archive-20261001/ with inventory and
+recovery references. The unrelated local implementation-agent-goal.md edit in the
+primary checkout is preserved. Installed app, data and downloaded installers are
+untouched. No remote push is included.
+
+### YouTube player API blocked after unpackaged rollback — 2026-10-01, installer delivered
+
+Confirmed cause: removing MSIX identity left EmbeddedMediaSurface passing a null
+application identity, so its request policy rejected every remote resource. The
+local adapter became ready but YouTube's API could not load. The original native
+host had an unpackaged executable-manifest fallback that the rollback missed.
+
+The host now derives a stable identifier from its own managed assembly name
+(Referer https://overlayfrontend.winui/), independent of package identity. Existing
+HTTPS/origin/domain-family restrictions remain unchanged. Resource denials log one
+bounded reason per surface; widgets cannot choose the host identifier.
+
+Validation complete: 305/305 PresentationSession tests and 51 native checks pass,
+including loading the real public YouTube iframe API and dependent script through
+the production WebView2 request policy. No video/player was instantiated and no
+playback, account or system-setting action was taken. The full published Debug
+fixture supplied SDK theme resources missing from direct build output.
+Evidence: artifacts/youtube-unpackaged-20261001/, including native-result.json.
+
+Normal clean-source release and Inno builds passed for both editions at detached
+release snapshot e8103e837965c0ee089757a856ddf9e93cbee8dc. Production preview.15
+(FileVersion 0.1.0.14), Developer installer, SHA256SUMS.txt and installer-build.json
+were copied to C:/Users/dwive/Downloads/WidgetRail-Inno-0.1.0-preview.15/; all four
+copied SHA256 hashes match their originals. Production installer is
+WidgetRail-0.1.0-preview.15-win-x64-setup.exe (107,282,007 bytes), SHA256
+D949376769613C735B10C2F11C0FABB0C6E6EAE78B62CF1AB84F82425F598946.
+
+User installs manually. Installed app/data left untouched; no automatic restart,
+profile reset or installed-file patch. Existing settings/widgets are preserved by
+the normal update; the YouTube widget package does not require reinstalling.
+
+### Playnite, YouTube Video and Spotify installed through Inno CLI — 2026-10-01
+
+At user request, installed and enabled the current migration packages using the
+installed normal wrail.cmd and its default catalog: Playnite Library0.2.114,
+YouTube Video0.3.36, Spotify0.3.83. Inspections match source manifest versions;
+existing full-trust widget model approved through CLI. All three plus previously
+installed YouTube Music0.3.34 are listed enabled. No playback, game launch, account
+or system-setting actions performed. Evidence: `artifacts/inno-media-install-20261001/`.
+
+### YouTube Music installed through the Inno CLI — 2026-10-01
+
+User installed normal Production Inno0.1.0-preview.14; HKCU ApplicationRoot is
+`%LOCALAPPDATA%/Programs/WidgetRail/versions/0.1.0-preview.14-production-25dc6780a1312103`.
+At user request, its actual wrail.cmd/private-dotnet CLI inspected, installed and
+enabled YouTube Music0.3.34 into the default `%LOCALAPPDATA%/WidgetRail/widgets`
+catalog (initially empty). Reused reviewed full-trust application approval; no
+profile override, copied MSIX state or playback action. CLI list verifies enabled.
+Evidence: `artifacts/inno-ytmusic-install-20261001/`. Archive SHA256 remains
+424899b8f5a036e03991e45d0e52af11207c9d8acc64d07a41e13691f9879eaf.
+
+### MSIX rollback and unpackaged Inno restoration — 2026-10-01, installer delivered
+
+FINAL: Normal Production and Developer Inno installers are in
+`C:/Users/dwive/Downloads/WidgetRail-Inno-0.1.0-preview.14/`, with SHA256SUMS.txt and
+installer-build.json. Primary installer is WidgetRail-0.1.0-preview.14-win-x64-setup.exe
+(107,296,727 bytes); Developer is115,208,726 bytes. No installer was executed and no
+application auto-launched; user explicitly chose manual installer testing.
+
+Built through unchanged clean-source gates in normal Build-Release/Build-Installer,
+using clean detached release snapshot39f5153ed074e56e1fa0d240cd6af7c54ac60156 at
+`C:/Users/dwive/.codex/worktrees/inno-distribution/WidgetRail`. Snapshot captured
+the migration work without changing the migration branch HEAD/index. Actual Inno6.7.3
+compiler validated both editions. Both catalogs/inventories passed. Final Production
+Audio Mixer/native UI loaded with8 bundled widgets, frontend and Bridge explicitly
+verified without package identity; WinUI loaded app-local, Bridge loaded directly
+from runtime/Bridge with private dotnet, no runtime-cache created, normal shutdown
+drained workers. No system-setting actions sent. Evidence is final-runtime-local/
+under artifacts/msix-revert-20261001; clean-worktree logs are artifacts/distribution/.
+
+No profile override or test mode is embedded in the installer. Default paths and
+shortcuts are normal distribution behavior. The unused MSIX-profile copy remains
+only evidence. User data was neither reset nor moved; existing Inno uninstall
+retain/delete/cancel choices remain. Old installed MSIX test package/certificate
+were not uninstalled. Current SVG/open-close physical behavior should be retested
+on this normal installation; no unrelated speculative fix was introduced.
+
+User abandoned full MSIX and requested reverting its application changes. Clarified
+that the former Inno identity package also requires a trusted signature; user
+directed removing that identity dependency too. Preserve independent migration
+fixes (including generated slider/native interop, monotonic Bridge invalidations,
+focus/input handoff, controller recovery, capture and authoring improvements).
+
+Saved the complete tracked diff and untracked-path inventory under
+`artifacts/msix-revert-20261001/`; removed runtime sources have verified backups.
+Runtime rollback restores direct Bridge startup, ordinary worker .NET environment,
+and original sandbox content grants. Removed all protected-package/runtime-cache
+machinery, including the unfinished sharing/cleanup work. Catalog37/37,
+Runtime113/113 and PresentationSession304/304 pass. Named development-job ownership
+and bounded Bridge startup diagnostics are retained.
+
+Frontend is changing to WindowsPackageType=None with app-local WindowsAppSDK;
+direct args/restart and external settings/browser paths replace package activation
+and package-local storage. Settings StartupTask provider removed; ordinary owned
+Run-entry support is restored. Inno/publication agent owns installer/packaging
+rework; CLI agent owns direct EXE discovery/launch and is currently testing.
+No MSIX uninstall, certificate trust change or live profile/cache deletion has been
+performed. Installed0.1.0.4 may still be running; close normally only when the new
+candidate is ready for isolated native checks and relaunch. The reported cold-start
+SVG fallback/open-close symptoms remain unconfirmed; retest on the restored path
+before attributing them to Bridge identity or introducing separate behavior fixes.
+
+Runtime gates pass37/37 Catalog,113/113 Runtime,304/304 PresentationSession; direct
+CLI gate82/82; synthetic Inno contracts/release assembly and actual Pascal compile
+pass. Installed0.1.0.4 PID4052 was closed normally. A hash-verified copy of its
+profile exists (336 files/33,853,173 bytes, excluding runtime-cache), but the user
+subsequently chose a CLEAN profile to test first-use behavior. Do not launch using
+the copied profile or import its widgets/settings. Fresh unpackaged publication
+is building at `artifacts/msix-revert-20261001/publication` (exec session6842).
+After publication, qualify direct native startup/slider controls and relaunch with
+a separate new empty profile plus the8 production bundled widgets.
+
+Latest user instruction supersedes that launch plan: prepare the NORMAL Inno
+distribution installer for manual installation, with standard paths/shortcuts and
+no test profile or application changes for a clean profile. Do not reset, move or
+delete live local data. Original Inno uninstall retain/delete/cancel choice is
+preserved and explained to the user. The copied MSIX profile is inactive evidence.
+
+Unpackaged self-contained frontend builds. Native launch initially failed because
+disabling EnableMsixTooling also disables the SDK's compiled XAML/PRI output for
+WinExe. Restored that build-tool flag while keeping WindowsPackageType=None and
+GenerateAppxPackageOnBuild=false: no MSIX is produced/registered. Unpackaged
+publication emits OverlayFrontend.WinUI.pri (not packaged resources.pri); release
+and verification inventories now require it. Direct trimmed native controls pass
+(slider callbacks, endpoints, template, value-button and artwork accessibility).
+Settings77/77, PlatformSettings27/27 and shell161/161 pass after restoring ordinary
+synchronous Run-entry service contracts. Build real distribution via a clean source
+snapshot/worktree and normal Build-Release + Build-Installer; do not add test-only
+installer flags or weaken clean-source gates. No installer has been executed.
+
+### Shared runtime cache and upgrade cleanup — 2026-10-01, in progress
+
+User requested removing duplicated .NET cache bytes and obsolete per-version
+entries. Split immutable .NET into its own verified lease, shared by Bridge and
+generic workers; their code roots remain separate. Content keys use selection,
+paths/sizes/hashes, not package version; current protected inventory remains the
+authority and warm acquisitions still hash/pin every file. Runtime grants admit
+two disjoint exact roots and serialize each root independently, without granting
+sandbox access to Bridge/Settings code.
+
+Added background cleanup retaining every current inventory selection (including
+lazy widget entries). Cache publication/cleanup share a bounded cross-process
+lock. Obsolete entries must be renamed as a whole before removal; pinned roots
+deny rename, preserving active old processes. Unknown directories/reparse trees
+are left alone. Tests cover content reuse, code-only upgrades sharing .NET, warm
+integrity, active old leases, legacy-entry cleanup, lazy content retention and
+concurrent acquire/cleanup. Catalog40/40 passes. Bridge/runtime native checks and
+package preparation remain pending. Evidence: `artifacts/winui-shell/runtime-cache-20261001/`.
+Installed0.1.0.4 is now running (observed PID4052); leave it running during these
+isolated tests. No live cache deletion or automatic MSIX update performed.
+
+### MSIX YouTube Music test installation — 2026-10-01
+
+At the user's request, used the freshly published wrail CLI to inspect, install
+and enable the migration-tested YouTube Music0.3.34 package in the installed test
+identity's LocalState/WidgetRail/widgets catalog. Used the existing full-trust
+application approval; archive SHA256
+`424899b8f5a036e03991e45d0e52af11207c9d8acc64d07a41e13691f9879eaf`.
+CLI list confirms enabled/selected0.3.34; no account/profile data copied and no
+playback actions performed. Evidence: `artifacts/winui-shell/msix-ytmusic-install-20261001/`.
+OS registration still reports host0.1.0.3; signed0.1.0.4 remains ready for the user
+to install. Did not launch the known slider-broken0.1.0.3 for this installation.
+
+### Installed Audio Mixer native slider failure — 2026-10-01, signed 0.1.0.4 ready
+
+User reported Audio Mixer still failing on installed0.1.0.3. Its worker5964 stayed
+alive with successful lifecycle responses. Frontend33656 logged E_NOINTERFACE
+(0x80004002) in RangeBase.Maximum/Value from WidgetViewPresenter.UpdateSlider.
+This is a host projection error, not worker startup or provider failure.
+
+Reproduced the same error with an isolated trimmed/R2R Release fixture using only
+synthetic slider values. WidgetSlider was non-partial, so C#/WinRT could not emit
+its native override interfaces. Making it partial generates WinRTExposedType and
+the inherited callback tables. The same fixture now passes three slider lifetimes,
+fractional ranges, native value events, endpoints, coercion and template application.
+Preserves all slider geometry, focus, settlement and interaction behavior.
+Evidence: `artifacts/winui-shell/audio-slider-20261001/` baseline/fixed result files.
+`scripts/Test-WinUiTrimmedControls.ps1` repeats this small trim-safe native check;
+its fixture is excluded from shipping and ordinary debug builds. Both temporary
+probe registrations were removed. Installed overlay closed with user permission.
+Signed0.1.0.4 is ready in `C:/Users/dwive/Downloads/WidgetRail-MSIX-Test-20261001/WidgetRail-Test-x64-0.1.0.4.msix`;
+user owns package installation. Existing certificate remains valid for this update.
+
+User asked whether other required code could be missing. Enabled
+CsWinRTAotWarningLevel=1 (warnings are errors): the production audit confirmed38
+additional missing-partial declarations on WinRT-derived controls/automation peers
+and explicit WinRT collection adapters. Corrected those declarations and the
+containing PinnedWidgetWindow; applied the same correction to20 debug fixture types
+plus their containing helper. This is generated-interop coverage, not evidence of
+38 observed crashes. Previously these diagnostics were informational. The source
+generator's documented partial requirement applies to trimming as well as AOT.
+Expanded trimmed fixture also passes value-button accessibility and artwork
+layout/accessibility; final-regression/result.txt records it. Fixed a test-driver
+cleanup race by waiting for the fixture's own Close before attempting WM_CLOSE.
+Temporary probe registration verified removed; no real provider actions used.
+Debug builds cleanly with the diagnostic gate; all67 ordinary native slider
+interaction/geometry checks pass. The native driver initially timed out because
+WinApp development activation redirected the result to package LocalCache. It now
+checks both known locations for a fresh result from the exact launched family;
+the corrected driver passes. Full production package passed779 staging checks;
+the published async-cleanup check still passes. Signature verified and747 unsigned
+archive entries match the signed payload. SHA256:
+`B4291730CB87099E88700BB8E20A64DDE91CFF9A8979B732830F2A28648BCC89`.
+The installed0.1.0.3 app remains closed; no automatic package installation or old
+developer-candidate relaunch. User must validate Audio Mixer in installed0.1.0.4.
+
+### Startup cache size audit — 2026-10-01
+
+Read-only measurement of installed0.1.0.3 protected inventory and live runtime-cache:
+Bridge+private .NET = 198,914,200 bytes (189.70 MiB); Settings = 29,538,178 bytes
+(28.17 MiB); generic worker+private .NET = 170,748,794 bytes (162.84 MiB); all seven
+bundled sandbox widget payloads = 618,926 bytes (0.59 MiB). Complete fresh cache is
+399,820,098 bytes (381.30 MiB). Bridge is acquired at startup; Settings and generic
+worker runtime are lazy, and bundled widget content is acquired on demand.
+Warm cache hits do not copy file contents, but hash and pin them again. The cache
+key includes package full identity, so a version update creates new entries even
+for unchanged runtime bytes. The private .NET tree is duplicated between Bridge
+and generic-worker closures (160.10 MiB each). Live cache currently totals
+940,666,264 bytes (897.09 MiB), including older entries; no old-entry pruning is
+implemented in this cache. No deletion, restart, or production changes made.
+These are logical file sizes/source-path findings, not a disk-I/O trace or timing
+benchmark; verification and OS page caching affect actual startup I/O.
+
+### Installed Settings worker launch correction — 2026-10-01, signed 0.1.0.3 ready
+
+After the capability review, user requested continuing the crash investigation;
+retain strict widget capability isolation. Installed0.1.0.2 had frontend424
+and neutral Bridge30572 alive, but Settings failed before process creation. Direct neutral
+launch of its installed executable reproduces Win32 error5 Access denied, saved
+in `artifacts/winui-shell/installed-settings-20261001/direct-launch.json`.
+BridgePackagedWorkerEnvironment previously returned null for every non-sandboxed
+worker and therefore missed host-trusted Settings.
+
+Added a fixed, separately verified Settings-only cache selection. Only the exact
+trusted Settings identity/executable is mapped. Its original bundled-manifest root
+is made absolute so moving the executable cannot change catalog discovery. The
+Settings lease stays pinned until Bridge shutdown and receives no sandbox access
+grants; its private .NET runtime remains inherited from the neutral Bridge. Other
+full-trust community applications retain their existing path. No capability guard
+or machine permission was relaxed.
+
+New --installed-widget-startup probe uses the actual installed0.1.0.2 code and
+inventory through the corrected production Bridge server/worker launch pipeline,
+with isolated profile and simulated providers. All8 initial views pass: Settings,
+Now Playing, Games & Apps, Task Switcher, Audio Mixer, Network, Power and Display.
+No actions sent or system settings changed. Catalog39/39 and registry18/18 pass.
+Full production0.1.0.3 build completed, including 779 staging checks. Signed update:
+`C:/Users/dwive/Downloads/WidgetRail-MSIX-Test-20261001/WidgetRail-Test-x64-0.1.0.3.msix`.
+Signature verified and all 747 archive entries match the unsigned payload; evidence
+is in `artifacts/winui-shell/installed-settings-20261001/signed-update.json`.
+The failed frontend was closed normally; frontend424 and Bridge30572 have exited.
+User still owns installation (previously chose Prepare it; I'll install). The update
+uses the existing certificate; no certificate reinstall needed. Complete installed
+0.1.0.3 host startup remains user validation; the probe used installed0.1.0.2 payloads
+with the corrected current Bridge launch pipeline and simulated providers.
+Full physical workflow qualification remains distinct. Startup registration is
+not qualified by this test: the host currently does not advertise that feature.
+
+### User-requested package-capability design review — 2026-10-01
+
+User rejected continuing the startup-copy/cache approach and requested review of
+allowing the automatically added MSIX capability. Pause further cache-based fixes
+and package rebuilds until that design is resolved. No new implementation changes
+were made during the review. Installed0.1.0.2 still fails: frontend424 and neutral
+Bridge/dotnet30572 are alive, Settings fails before process creation (start0).
+Its exact underlying launch exception has not yet been captured; do not label it
+confirmed Settings file-access failure solely from analogy with0.1.0.1.
+
+Read-only live ACL inspection confirms package capability
+S-1-15-3-3348665716-2650962135-2922169281-183895853-4255586732-4182594799-4213010897
+has FullControl grants on platform-settings.json, consent/, widgets/ and LocalCache.
+This shared grant bypasses the exclusivity intended by individual AppContainer
+SID grants. Effective read/write still needs a real-token canary check including
+mandatory integrity and filesystem virtualization; ACL inspection alone is not
+proof of every operation. Secrets use Windows Credential Manager, so do not claim
+all credentials are readable merely from this filesystem capability. Embedded
+browser data is under package LocalCache and needs separate consideration.
+
+Candidate direction: permit only the exact OS-derived package capability while
+retaining exact widget SID, Low integrity, job and broker checks; first isolate
+host consent/settings/browser data and per-widget writable stores from shared
+package access, then prove direct packaged runtime loading and cross-widget
+denials. Allowing the capability with current storage layout changes the security
+boundary toward package-wide trust; it is not just a harmless token-check change.
+Current cache copies only on first materialization/version change, but rehashes
+and pins on later startup, so it does impose repeated startup I/O.
+
+### Installed 0.1.0.1 early Bridge load correction — 2026-10-01, signed 0.1.0.2 ready
+
+User installed0.1.0.1; frontend27620 survives but Bridge exits before Program.Main.
+Windows .NET Runtime event confirms FileLoadException Access denied for protected
+WindowsApps/runtime/Bridge/WidgetBridge.dll. Prior neutral-worker probe did not
+cover loading the actual protected Bridge DLL. Evidence preserved under
+`artifacts/winui-shell/installed-startup-20261001/`.
+
+Host now acquires a separate verified Bridge+private-dotnet closure and starts the
+cached Bridge DLL. This closure is distinct from the sandbox worker runtime and
+receives no widget access grants. ProtectedPackageSource.OpenRegistered continues
+to obtain authority from Windows registration and protected package-payload.json;
+if executing outside protected storage, it verifies/pins the entire actual Bridge
+directory against that inventory, rejecting substitution, omission and extra code.
+Source owns this code lease until Bridge shutdown; parent retains the full runtime
+lease. Early runtime stdout/stderr now survives in the frontend startup exception
+instead of reporting only a process exit code.
+
+Catalog39/39 and Session304/304 pass. New --installed-bridge-files native probe
+reads the actual installed0.1.0.1 inventory, copies its verified Bridge closure,
+and confirms the neutral cached Bridge reaches Program.Main (stops deliberately
+at missing argument validation; no providers/actions executed). This closes the
+observed DLL load failure without claiming full installed startup acceptance.
+Full0.1.0.2 update build completed with779 package checks; signed with existing
+certificate and verified747 unchanged archive entries. Delivered
+`C:/Users/dwive/Downloads/WidgetRail-MSIX-Test-20261001/WidgetRail-Test-x64-0.1.0.2.msix`,
+129,712,124 bytes, SHA256
+08FAE69A35CBAEBEB95264E44532B8C6E951707755414ADFDCC0BF2B4C94EBCC.
+User explicitly chose "Prepare it; I'll install"; no installation or trust change
+performed. Failed frontend27620 closed normally for the update. Installed package
+is still0.1.0.1 until user updates; full0.1.0.2 startup/physical acceptance remains
+pending. All command sessions are complete. Do not launch the old development
+candidate in place of the user's installed package test.
+
+### Installed MSIX sandbox startup correction — 2026-10-01, signed update ready
+
+User installed signed0.1.0.0 successfully. Settings starts, but every sandboxed
+built-in failed before WorkerStarted. Preserved installed logs under
+`artifacts/winui-shell/installed-worker-failure-20261001/`. A native worker probe
+run through Invoke-CommandInDesktopPackage with PreventBreakaway reproduced the
+exact failure: Windows adds the parent MSIX shared-data capability SID to nested
+AppContainers; the existing zero-capability token guard rejects them. The same
+probe without package identity passes. Do not relax that guard: the implicit SID
+has access to the package's shared data. Worker desktop policy alone and keeping
+the Bridge packaged did not solve it; those experimental changes are not retained.
+
+Implemented a neutral private-dotnet launcher for the existing protected Bridge
+DLL. Frontend obtains the current installed package authority, materializes and
+pins the verified runtime through Bridge shutdown, and launches its cached
+dotnet.exe using documented DESKTOP_APP_POLICY ENABLE_PROCESS_TREE. Bridge code
+and Settings stay under WindowsApps. Bridge receives a package-full-name lookup
+key and revalidates OS installation identity, non-development registration and
+its own executing assembly location through ProtectedPackageSource.OpenRegistered;
+no writable receipt or arbitrary root becomes authority. Existing broker, worker
+jobs, exact SID/Low-integrity/zero-capability checks and content ACLs remain intact.
+
+Neutral-launch native probe passes under the real installed identity, including
+two sandbox workers and cross-widget/read-only isolation checks. Session304/304
+and catalog39/39 pass; registered-package authority rejection cases included.
+Full production update completed:779 staging checks for744 source files, version
+0.1.0.1, signed with the existing certificate. Delivered
+`C:/Users/dwive/Downloads/WidgetRail-MSIX-Test-20261001/WidgetRail-Test-x64-0.1.0.1.msix`.
+Signature verified;747 archive entries match the validated unsigned package.
+SHA256 BEBEAD31A52F52D3B831B4204B4A840F1AA4A056D63609EFFFBAF2C455C7E156,
+129,709,610 bytes. Build/evidence under installed-worker-failure-20261001;
+all command sessions have completed. Installed frontend20452 closed normally with
+user approval; update installation and physical acceptance remain user-owned and
+pending. No installed package or certificate was changed automatically. Do not
+launch the old developer candidate over the installed app. Source changes are
+uncommitted migration work. Future package tests must use the mandatory identity
+probe (--packaged-runtime-policy), not merely the earlier unbound runtime probe.
+
+### Signed MSIX prepared for user installation — 2026-10-01
+
+User resumed installed-package testing and requested the MSIX plus certificate.
+Fresh full production build includes the worker-revision fix and branding;778
+staging checks passed for743 source files. Native boundaries and all managed
+payloads were built fresh through Build-WinUiFullRelease with analyzer/binlog
+coverage. The only frontend publication warning was missing mspdbcmf.exe for
+optional symbol-package generation; this does not affect the application package.
+
+Deliverables: `C:/Users/dwive/Downloads/WidgetRail-MSIX-Test-20261001/` contains
+WidgetRail-Test-x64.msix, WidgetRail-Test.cer and INSTALL.txt. Identity remains
+WidgetRail.WinUI.FullProductionProbe0.1.0.0; eight production widgets, separate
+package-local settings. Candidate community widgets are not part of its catalog.
+MSIX is129,627,168 bytes; SHA256
+F34C3B8EB0F2A85CE4EA79A9A9318B3ACDF1540DA8E061E08E1FE531A6A56CA6.
+Public certificate thumbprint9AAF2E82C20505A60B1302A525C79B4231796F55, expires
+2026-12-30. Signature verified cryptographically, signer matches public certificate,
+and746 archive entries are byte-identical to the validated unsigned package.
+Private test key and DPAPI-protected password stay in ignored artifacts under
+msix-testing-20261001/private-signing02, outside the delivered testing folder.
+
+Evidence: `artifacts/winui-shell/msix-testing-20261001/`. No certificate trust,
+package installation, or system-provider actions were performed. Required x64
+Windows App Runtime2.5.1 is already registered on this PC. Actual WindowsApps
+installation/launch remains user-owned and pending. Candidate26040 stays running
+until the user quits it for installation; no candidate update was needed here.
+
+### Application branding — 2026-10-01
+
+Task Manager branding still used the project template: package DisplayName and
+VisualElements named OverlayFrontend.WinUI, executable title/product were implicit,
+and package/ICO assets were template artwork. Set user-facing metadata to WidgetRail,
+link the canonical multi-resolution ICO into the frontend executable and window,
+and apply it through AppWindow.SetIcon. Extended the existing SVG asset generator
+to generate all package logos/splash assets from the same project-owned vector;
+removed the duplicate template ICO. Internal executable/assembly identity stays
+stable, preserving CLI, startup and packaging references.
+
+Analyzer-enabled Debug build passed with zero warnings/errors. Checked executable
+FileDescription/ProductName, extracted its icon and inspected the generated logo.
+Candidate deployment validation passes: all244 DLLs and the branded package assets
+match; registered package and executable display metadata both read WidgetRail.
+Final candidate PID26040 is running. Two initial no-build launches retained
+older native artifacts through the cached package recipe; the payload gate caught
+both DLL mismatches. Rebuilding the recipe with explicit qualified native paths
+resolved it. Future build and run commands must supply both native DLL paths from
+`artifacts/winui-shell/focused-input-20261001/installation`, avoiding older default
+artifact paths. Profile, installed catalog and fixed Bridge are preserved.
+Evidence: `artifacts/winui-shell/app-branding-20261001/`. The previous full
+MSIX archive is still unsigned and predates both this branding and the bridge
+revision fix; rebuild before preparing the requested installed-package test.
+
+### Worker restart update starvation — 2026-10-01
+
+User reproduced Playnite accepting local focus movement while actions/section
+changes appeared frozen until radial entry or reopening. The worker had restarted
+after idle unload (start ordinal2). Bridge forwarded raw worker invalidation
+revisions, which restart at1, while the presentation session retained the prior
+high-water mark. New updates were discarded until the counter caught up; lifecycle
+establishment fetched a checkpoint directly and temporarily refreshed the display.
+
+Bridge now stamps admitted outgoing invalidations with its own monotonic sequence,
+independent of worker lifetime. Registry current-run admission, notification
+coalescing, snapshot ordering, action authority and input-release guards are unchanged.
+The real-worker idle-resume regression now sends three actions before unload and
+requires the first post-restart action to publish without manual refresh or any
+further lifecycle transition. It timed out before the fix and passes afterward.
+
+Evidence: `artifacts/winui-shell/focused-input-20261001/`. Idle lifecycle tests2/2,
+registry tests18/18, wire invalidation1/1, presentation-session tests304/304.
+Release build/publish succeeded. Running candidate was closed normally with user
+approval. Staged a fresh installation copy with the corrected Bridge; the only
+changed executable/DLL is WidgetBridge.dll (additional dependency PDBs are symbols).
+Canonical physical options point to that installation; profile and installed
+widget catalog remain unchanged. Candidate relaunched through project-mode winapp
+as PID9560. User physical acceptance remains pending. Full-MSIX installed-package
+testing remains deferred; no system provider actions were performed.
+
+### Earlier installed-package deferral — superseded by test-package preparation above
+
+The user initially deferred installation into protected WindowsApps/disposable-
+machine testing. Do not request a VM, enable Windows Sandbox, change certificate
+trust or perform an installation for this gate until the user resumes it. Keep
+full-MSIX installation/update/uninstall and clean-machine prerequisite behavior
+unverified; passing archive checks and native cached-worker tests does not replace
+those checks. This deferral does not block independent migration implementation,
+distribution cleanup or documentation. Full MSIX remains the selected route;
+pre-migration installation removal may be manual. Candidate remains available.
+
+### Full MSIX runtime integration — 2026-10-01, checked and relaunched
+
+Cache foundation now compiles and passes all39 catalog checks after fixing two
+resume defects: fixture helpers were file-local, and cache ancestor handles used
+data-read sharing that blocked atomic directory publication. Ancestors now pin
+namespace identity with FILE_READ_ATTRIBUTES and permit child changes; verified
+payload files/directories retain strict byte/replacement protection.
+
+Program owns BridgePackagedWorkerEnvironment outside the Bridge server lifetime.
+Only sandboxed generic workers use the verified shared runtime cache. Bundled
+widget content is materialized separately and granted with the existing exact
+per-widget content transaction; installed external content retains its original
+admission. Runtime grants are additive per individual AppContainer, direct rather
+than inherited, serialized across processes, and checked against retained object
+identities. Worker DOTNET_ROOT explicitly names the cached runtime; Bridge/Settings
+remain in the installed package. No sandbox relaxation or package DACL mutation.
+
+Actual Clock and SDK Gallery workers now run concurrently from the cache in the
+native test. Their loaded coreclr paths match the cached private runtime. Using
+the actual worker token, own content/shared runtime reads succeed, while another
+widget's content, an unlisted late runtime file and content writes are denied.
+The normal launcher verifies exact AppContainer SID, Low integrity and zero
+capabilities before resuming the worker. Test profiles and files are reclaimed.
+Evidence: full-msix-20260930/resume01/packaged-runtime03.log and bridge04.binlog.
+This fixture uses a synthetic trusted source authority and real sandbox processes;
+it is not proof of an installed WindowsApps package.
+
+Real runtime files exposed MAX_PATH failures in direct Win32 opens after the
+cache's content-hash directory was published. Shared extended-path normalization
+now covers both byte pinning and handle-based DACL operations. The native test
+above passes with the previously failing long satellite-assembly paths.
+
+Full release01 built both complete packages, but inspection found the publisher
+reused a stale generated AppX development manifest without WidgetRail.Startup.
+Release02's new assertion correctly rejected that manifest. The SDK actually
+generates its current manifest outside the winapp-owned AppX directory. The
+publisher now builds an unsigned frontend package and extracts that invocation's
+manifest/assets, then checks the disabled startup task in the final full package.
+Release03 passes: Production8 widgets/743 inventoried files/129,579,435 bytes;
+Developer12/771 files/136,786,384 bytes. Both catalogs and all778/806 respective
+package checks pass. Evidence: full-msix-20260930/resume01/release03/0.1.0-preview.14/
+release.json with exact staging receipts. Earlier artifacts remain failure/history
+evidence. All build sessions are terminal; no operation is pending.
+
+Default settings now use the physical package LocalState path and embedded browser
+data uses LocalCache, avoiding ambiguous desktop file redirection across tokens.
+Explicit test/development profiles remain unchanged. Current Debug analyzer build
+passes with zero warnings/errors. Catalog39/39 and Runtime113/113 pass. The final
+native cached-worker check passes with production timeouts against the Developer
+payload (packaged-runtime04.log, bridge05.binlog). Embedded media main/pinned root
+transfers pass80 checks/3 observations with video pixels (media01/result.json).
+This also exercises WebView2 initialization using the new package cache location.
+
+Physical options were backed up in resume01/physical-options-before.json, then
+InstallationRoot was updated to release03's staged Production payload. Profile and
+installed catalog remain the previous physical ones. Candidate PID16256 launched
+through project-mode winapp; all244 DLLs match (candidate01.json), registered
+manifest includes the disabled startup task, catalogCount16 and switching=false
+were observed. Left running. The candidate is a development registration, not an
+installed Store/full-MSIX qualification. No real startup enablement or system
+provider changes, certificate trust, Store submission, commit, merge or push.
+
+Remaining package gate: installed protected WindowsApps execution, signed/Store
+installation/update/uninstall and GameInput/WebView2 prerequisite handling on a
+disposable machine. WindowsSandbox.exe is still absent and winapp reports no
+sandbox running. Do not confuse the synthetic-source native cache test with this
+unperformed gate. Historical Inno paths remain outside the full publisher; further
+retirement and user documentation should follow this current full-MSIX direction.
+
+### Restart checkpoint — 2026-09-30, user-requested pause
+
+All agents stopped at saved file boundaries. No build/test or installer operation
+is running. Candidate PID29432 is still the previously qualified Debug candidate;
+the full-MSIX source changes have NOT been staged into it. No signing, certificate
+trust, full-package installation, startup toggle or real system/provider change
+was performed. No commit, merge or push. Resume in this worktree on
+`codex/winui3-frontend`, not the primary checkout.
+
+Completed and checked in this batch:
+
+- Initial offline full package: full-msix-20260930/stage01, unsigned MSIX123,176,134
+  bytes, all744 source/staged/archive files match, MakeAppx semantic validation
+  and initial staging checks passed. This predates the new cache inventory and
+  publication refactor, so it does not validate those later edits.
+- Packaged startup: async IStartupRegistration and portable Windows-state policy,
+  native StartupTask provider injected by trusted Settings.Worker. Worker now
+  targets net8.0-windows10.0.19041.0. PlatformSettings28/28 and Settings77/77 pass;
+  worker compiles with zero warnings/errors. Evidence in migration-audit-20260930/
+  msix-startup-evidence01.json. No real StartupTask state was changed.
+- Root added disabled WidgetRail.Startup declaration to frontend manifest and
+  translates StartupTask activation to --hidden. Linked shell suite162/162 passes
+  (full-msix-20260930/shell01.log); actual frontend build remains pending.
+- CLI host discovery now reads AppxManifest.xml instead of installer identity.json;
+  validates expected frontend, registered location and bounded DTD-free XML.
+  Focused discovery, named-job ownership and foreign-ownership checks pass when
+  running the test apphost. Initial cli01 full run was incorrectly invoked with
+  `dotnet WrailCli.Tests.dll`; self-spawn fixtures then launched dotnet instead of
+  themselves. That run was explicitly stopped and retained, not claimed green.
+  Build cli01.binlog succeeded; source-owned harness PID57148 was stopped after
+  exact command-line verification. Use WrailCli.Tests.exe for subsequent runs.
+
+Saved, syntactically complete but NOT yet functionally validated:
+
+- scripts/WinUiPublication.psm1 shared publisher; Build-WinUiReleasePayload sparse
+  wrapper; Get-ReleaseRuntimes PrivateRuntimeOnly; ReleasePackaging shared edition
+  assembly; Build-WinUiFullRelease new entrypoint; full stager/verifier cache
+  inventory changes. All seven PowerShell files parse cleanly at pause. Review
+  separate Production/Developer package identities before adopting that choice.
+- WidgetCatalog cache foundation: ProtectedPackageSource, PackagedWorkerRuntimeCache,
+  VerifiedFileTreeLease, PinnedFileSystemObject, and extraction from
+  InstalledPackageLaunchLease. New PackagedRuntimeCacheTests and registrations are
+  saved but uncompiled/unrun. This is NOT wired to Bridge/WidgetRuntime yet.
+
+Resume order: review/build cache extraction and targeted tests; finish Bridge
+integration with a separate runtime lease, exact per-widget content authority and
+explicit cached DOTNET_ROOT (do not inherit Bridge's protected-package runtime);
+review/build the full publisher and startup manifest; rebuild complete coherent
+candidate/payload; run focused native startup/media/CLI checks; relaunch candidate.
+Actual protected WindowsApps execution is still unqualified. Windows Sandbox.exe
+is absent here; no feature was enabled. A loose development registration is not
+proof of protected-storage access. Old-install migration is explicitly optional:
+the user will uninstall the pre-migration version manually if needed.
+
+### Full MSIX direction authorized — 2026-09-30, implementation underway
+
+The user selected full MSIX as the long-term distribution route. Store signing
+replaces the planned Inno plus external-content identity distribution. Migration
+from the pre-WinUI installation is not required; the user may uninstall it manually.
+Preserve current widget behavior, data ownership and sandbox admission rather than
+carry forward Inno transactions solely for compatibility. Existing probes/artifacts
+remain evidence, not the new shipping format.
+
+First gate: construct and inspect a complete unsigned Store-shaped package from
+the corrected Release payload, then prove worker/media/startup behavior under full
+package identity. Protected package storage requires an explicit sandbox-runtime
+access solution; a loose development registration cannot prove WindowsApps access.
+Root owns lifecycle and integration. Distribution agent owns offline MSIX staging;
+runtime agent audits least-privilege worker access. No production signing, Store
+submission, local certificate trust, driver or system-setting changes are authorized
+merely by selecting this route. Test-only registration remains isolated.
+
+### Qualification boundary audit — 2026-09-30
+
+The same boundary remained through three consecutive goal turns after source and
+runtime qualification. Autonomous work is now blocked pending the requested
+signed identity/disposable Windows environment or the user's decision to defer
+that qualification. No further confirmed implementation fix is available from
+the completed scoped audits. Candidate PID29432 remains running. Resume from
+release02/editions02 and the pending qualification decision; do not repeat the
+already passing builds or restart the candidate without a new reason.
+
+Current plan, lineup, authoring/build audit, release scripts and actual result
+receipts were rechecked after the native deployment sequence. The preceding turn
+made concrete progress; this audit found no further confirmed implementation
+defect to fix within the available qualification scope. No new product change
+was made. Candidate PID29432 remains running; it was not restarted just for this audit.
+
+Full completion remains unproven. The next distribution evidence requires an
+approved signed identity and disposable Windows environment for actual installer
+execution, startup registration, runtime provisioning and installation recovery.
+The prepared release02 payload, native registration sequence and compiler checks
+do not establish those outcomes. An asynchronous question is pending for the
+identity/environment or an explicit decision to defer that qualification.
+Physical device/provider, mixed-DPI and assistive-technology checks remain
+user-owned. Scrolling/performance and memory investigations remain explicitly
+deferred; the bounded capture-close non-reproduction does not prove that the
+reported intermittent capture hang is fixed. Do not mark migration complete or
+resume those investigations merely to fill the qualification wait.
+
+### Native deployment sequence and final source audit — 2026-09-30
+
+Previous goal turn fixed and qualified the linker-corrupted Release cleanup. This
+continuation verifies actual Windows external-content registration using two
+versions of one isolated development identity and the corrected release02 payload.
+All 12 checks pass: initial registration, version/location update, exact loaded
+runtime after each activation, rejection of an obsolete removal identity and
+unintended downgrade, explicit rollback, repair after removal, and exact cleanup.
+Three runtime launches verified AppContainer/private-runtime ownership and normal
+shutdown. Evidence: migration-audit-20260930/deployment-sequence01/result.json and
+its operation/runtime receipts; deployment-probe01.binlog. No production identity,
+startup metadata, signing trust, controller/device settings or user profile changed.
+This proves unsigned registration mechanics on the current machine, not signed
+installer journaling, same-version rebinding, data-schema rollback or clean-machine
+runtime provisioning.
+
+Parallel read-only source audits found no additional confirmed broken CLI,
+authoring/template, renderer-retirement or deployment-preservation path. They did
+find that the uninstall dialog promised deletion of all sign-ins while cleanup
+only removes owned sandbox profiles and WidgetRail local/temp directories.
+The dialog and user guide now explicitly state that Windows Credential Manager
+credentials and add-on data stored elsewhere are retained. Deletion behavior is
+unchanged. Actual Pascal syntax compilation and installer contracts pass; the
+synthetic installer was never executed (installer-syntax04/result.json).
+
+Candidate PID20128 closed normally before the deployment sequence. It was relaunched
+as PID29432 using the preserved physical profile/catalog; all 244 deployed DLLs
+match the qualified Debug build (candidate-relaunch02.json). Left running.
+
+Signed/disposable-machine deployment qualification remains open and requires a
+deliberately approved identity/environment. User-owned physical workflows and
+explicitly deferred performance/memory investigations remain outside this batch.
+Migration is active, with no commit, merge, push or production installation.
+
+### Confirmed trimmed-release cleanup corruption — 2026-09-30, correction validated
+
+The previous offline qualification was progress but did not prove runtime startup.
+Executing the exact trimmed frontend with the current Production installation under
+an isolated development identity revealed a confirmed shipping blocker. Now Playing's
+worker initialized, but the UI stopped in switching and normal WM_CLOSE could not
+finish. Native/C# dumps show UI thread blocked in WidgetPresentationSession.GetState
+on _gate. The first lock owner had exited; a repeat owner had returned to an idle
+thread-pool stack while still owning the monitor. Source locks are balanced.
+
+Published IL proves the cause: RefreshInvalidationsAsync.MoveNext has two Monitor.Enter
+calls but only one Monitor.Exit after trimming (versus two/two and an additional
+endfinally before trimming). ILLink removes the nested lock's cleanup inside the async
+finally. This matches dotnet/runtime#131088; upstream fix is PR131236. Turning off
+ReadyToRun alone still fails; untrimmed Release starts, verifies private .NET8/AppContainer
+ownership, and closes/cleans normally. No synchronization-code rewrite is justified.
+
+The WinUI project now sets _TrimmerIPConstProp=false with the upstream reference.
+Trimming and ReadyToRun stay enabled. Corrected frontend-trimfix01 restores both
+Monitor.Exit calls. Its actual runtime passes startup, exact package/executable
+identity, sandboxed worker, loaded private .NET8 runtime, normal WM_CLOSE, child
+exit and removal of the isolated development registration (trimfix-runtime01).
+Application synchronization and input/lifecycle authority were not changed.
+
+ReleaseVerifier --frontend reads the actual emitted assembly without executing it.
+It rejects the known bad publication (Enter2/Exit1), accepts corrected and untrimmed
+publications (2/2), and fails when the expected method is absent. Both publication
+pipelines run this guard before success. This targets the confirmed linker defect;
+balanced call counts are not a general proof of control-flow or finally correctness.
+Evidence: cleanup-verifier-evidence01.json and cleanup-verifier01.binlog.
+
+Evidence: migration-audit-20260930/trimmed-runtime01, trimmed-runtime02,
+trimmed-no-r2r01, untrimmed-runtime01, linker-cleanup-comparison.json, native/C# dumps
+and decompiled IL. Diagnostics tools dotnet-dump and ILSpy were installed only into
+that artifact tree. CDB detached explicitly. All three hung isolated probe processes
+were reclaimed after saving evidence; only their exact development registrations
+were removed. The successful untrimmed probe cleaned itself. No production signing,
+certificate trust, installer or real provider control was used.
+
+Physical candidate74272 was closed normally before the experiment. The source
+correction changes publication only; the established Debug candidate is unchanged.
+Earlier release01/editions01 remain offline-valid but runtime-failing evidence and
+must not be treated as releasable.
+
+Fresh full release02 and editions02 pass after the correction: Production8 widgets/
+978 inventoried files; Developer12/1006. Both catalogs, sealed package/icon checks,
+inventories, exact native DLL hashes and async cleanup guards pass, with no retired
+renderer artifacts. Session ReadyToRun header remains196 bytes; private Core/Desktop
+runtimes are8.0.31. All18 external-content staging checks pass. Final assembled
+Production service/runtime content plus identical published frontend DLLs pass
+isolated startup and shutdown again (release02-runtime/result.json). Development
+identity embedding changes only the staged executable's identity resource.
+All probe processes/children exited and their registrations were removed.
+Evidence: release02-qualification.json, release02/payload.json, editions02-path.txt.
+No signing, production install or trust-store change occurred. Signed/disposable-
+machine installation qualification and user-owned physical workflows remain open.
+
+Regular candidate relaunched through project-mode winapp as PID20128 using the
+preserved physical-options.json/profile/catalog. All244 deployed DLLs match the
+qualified Debug build (candidate-relaunch01.json); Settings worker startup and
+visible lifecycle completed normally. Left running for physical testing. No
+commit, merge, push or production installation; migration remains active.
+
+### Broad migration qualification — 2026-09-30
+
+Previous goal turn added the process-level Playnite workflow and fixed activity
+identity filtering. All 59 default managed verification steps now have passing
+results across two bounded runner invocations. The first stopped at SDK Gallery's
+stale 0.1.24 assertion against the already shipped 0.1.25 manifest; the exact version
+expectation was corrected, then the remaining steps resumed. No widget implementation
+or production guard changed for that failure. Both initial failure and corrected
+11/11 Gallery result are preserved under migration-audit-20260930/managed and
+managed-remaining. All preceding passes remain applicable because that assertion
+was the sole source change between the two runs. The optional legacy YT Music
+companion suite stays explicitly excluded by the existing manifest.
+
+This covers installer/release contracts, SDK/public API/scenarios, worker/session/
+capability boundaries, author CLI (82), providers, first-party/sample widgets,
+catalog, docs and WinUI policy/motion/state. System-changing controls use fakes;
+read-only native catalog/media/activity smoke did not invoke those controls.
+Current lineup documentation now matches installed catalog versions (Playnite
+0.2.114, YT Music 0.3.34, SDK Gallery 0.1.25) and current migration ownership.
+
+Earlier unsigned complete payload and both editions passed offline from the retired-renderer
+source; the runtime failure and corrected replacement are recorded above.
+Evidence: migration-audit-20260930/release-qualification.json and
+managed-qualification.json. Production has 8 widgets/978 inventoried files;
+Developer has 12 widgets/1006 files. Catalog admission, sealed package/icon integrity,
+all release inventory hashes, exact current native platform/preview hashes, matching
+identity bytes, private .NET 8 Core/Desktop runtimes and self-contained .NET 10 are
+verified. No OverlayHost, ArtworkDecoderHost or Taffy artifact remains. All 18
+external-content staging checks pass. Build01 in this batch is release01; previous
+pre-retirement build05 remains historical evidence.
+
+Artifacts are validation-only, unsigned and built from the explicitly dirty migration
+worktree. Nothing was signed, registered, launched, installed or added to certificate
+trust by this release qualification. It does not substitute for signed installation
+or establish execution of this exact trimmed payload. Candidate PID74272 was
+running at that stage; the later runtime investigation and relaunch supersede it.
+The only source correction was the stale Gallery package-contract test expectation.
+
+Remaining proof boundaries: signed install/upgrade/repair/edition rollback/uninstall
+and clean-machine runtime provisioning need an approved signed identity and a
+disposable Windows environment. Native peer checks establish accessibility metadata,
+not Narrator/NVDA speech. The intermittent capture-close RPC hang has a completed
+bounded non-reproduction and diagnostics, not a confirmed fix. Physical workflows
+are user-owned; performance and memory work is explicitly deferred. These boundaries
+must not be conflated with incomplete widget implementation or silently declared
+passed. The migration goal remains active; no main merge or push.
+
+| Requirement area | Current proof | Boundary still open |
+| --- | --- | --- |
+| One WinUI frontend, retired renderer | Corrected trimmed/R2R startup and shutdown, binary inventory/native hashes, native platform policies | Signed deployment remains unqualified |
+| Widget lineup and workflows | Current 16-widget physical catalog; 59 managed gates; targeted native suites and prior user acceptance; Playnite cross-process fake-provider workflow | Real device/account/game workflows remain user-owned |
+| Authoring and themes | Public API/preflight/SDK/scenario tests, external author CLI 82, Gallery native grids, shared style checks | No new implementation gap confirmed |
+| Shell input/focus/media/pinning | Existing native focused gates and user acceptance; state/motion/session tests rerun | Broad assistive-technology speech and mixed-monitor/device acceptance remain physical |
+| Capture teardown | Bounded visible/hidden real-capture close passed; independent watchdog retained | Original intermittent RPC hang has no confirmed corrective fix |
+| CLI and distribution integration | Native dev lifecycle/inspector, all CLI tests, unsigned two-edition package/inventory proof, deployment fake service tests | Approved signed identity and disposable-machine install/update/rollback/uninstall/runtime provisioning |
+| Performance/resource budgets | Targeted virtualization/lifetime guards and user report of generally smooth UI | Playnite fast-scroll stutter and further memory/performance work explicitly deferred |
+
+
+### Cross-process Playnite workflow and activity identity — 2026-09-30
+
+Previous goal turn fixed the build guard and current-runtime conformance paths.
+This turn closes the detailed Playnite process-test gap with a separate, unshipped
+fixture executable. It uses the production widget, application service, state store
+and full-trust application bootstrap; only the provider is fake. No production test
+flags, endpoint redirection or dependency injection hooks were added. Two friend
+assembly declarations grant the fixture access to the existing composition seam.
+
+The fixture installs through ordinary catalog trust approval, starts the actual
+worker protocol, opens Library, searches, reads an indexed range, rejects a prior
+query's lease, opens real details, survives background/interactive return in the
+same process, and sends exactly the chosen game to a fake launch journal. It stops
+and uninstalls its temporary package. Evidence: renderer-retirement-20260930/
+playnite-process03.log and binlog. Initial fixture expectation used a null return
+for stale input; the existing guard correctly throws ArgumentException(request).
+The test now verifies that exact rejection, unchanged modal state and no provider
+launch. The shipped executable admission/startup/read-range test remains separate;
+this does not establish real external Playnite service or native focus behavior.
+
+Recent Activities still excluded OVERLAYHOST instead of OVERLAYFRONTEND.WINUI.
+It now excludes the actual frontend process, independent of version-resource display
+metadata. The old test's WidgetRail display name had masked that missing identity.
+The regression starts with the WinUI process as foreground and a neutral display
+name, proves the initial list stays empty, then checks ordinary app observation.
+All 8 provider checks pass (current-workflow-20260930/activity02). The native platform
+test README also now points to Build-OverlayPlatform -TestPolicy.
+
+Replacement shared qualification passes through the real verification runner:
+SDK 148, runtime 113, generic worker 10, styling 37, app-library provider 98.
+Evidence: current-workflow-20260930/shared-qualification/20261001T001308Z-002163c1.
+App-library native smoke is read-only; launch/provider writes use fakes. No real
+game, system-setting, driver or recovery actions were invoked.
+
+PID5328 closed normally. Fresh physical-runtime01 stages the updated Bridge and
+provider (source/staged provider hashes match), preserving profile/catalog and
+seven bundled widgets. Candidate relaunched as PID74272, all 244 frontend DLLs
+match (candidate02.json), and Settings/input-ready/catalog-complete were observed.
+No new production Playnite package was installed merely for friend metadata.
+Signed installer and disposable-machine qualification remain unproven; physical
+provider workflows are user-owned, performance/memory work remains deferred.
+Migration stays active. No merge, push or production installation.
+
+### Current-runtime workflow and clean-build qualification — 2026-09-30
+
+Previous goal turn completed renderer retirement and its replacement gates. This
+turn removes obsolete conformance adapters for the retired broker-backed Playnite
+application. Current Playnite is full-trust and owns its provider; tests no longer
+attempt to install it as a managed AppContainer widget or expect eager parent rows.
+Removed modes have no repository callers. Unknown/retired acceptance flags now
+fail explicitly with exit 2 instead of silently running the default suite. Network
+text-entry and package icon checks remain. Source-reference comments point to the
+current widget and application tests. Steam/GOG provider policy coverage remains
+in WindowsAppLibraryProvider.Tests; no provider production code was removed.
+
+The optional Settings exporter had also used the wrong runtime. It now copies the
+actual Settings.Worker dependency closure, seals its icon package, loads it through
+the trusted catalog, and supplies an isolated settings profile. The catalog already
+supplies its installed-widget root, so it is not passed twice. System-changing
+features are disabled and no Settings mutation or private diagnostics is invoked.
+The export records trusted runtime hashes separately from installed widget archives,
+keeps indexed ranges separate from parent snapshots, and returns nonzero when any
+evidence gap is recorded. Earlier setup failures (missing seal, duplicate catalog
+argument) remain evidence; production guards were not changed to accommodate them.
+
+Validation under `artifacts/winui-shell/current-workflow-20260930/`: default
+conformance 6/6; installed Network text-entry; retired-mode rejection; Settings/Games
+export with 6 authoritative snapshots, 2 traces and zero gaps (evidence03). Playnite
+widget tests 164/164 pass. Application tests 39/39 pass through the actual verification
+runner including its prerequisite package build. The first direct application run
+was 38/39 because its package-content prerequisite was absent; the proper runner
+resolved that without weakening the assertion. These are fake-provider tests, not
+physical game launches. Full-process Playnite startup/admission/read-range is covered;
+a full-process search/details/launch scenario against a fake service remains weaker
+than the detailed in-process indexed and application coverage.
+
+A confirmed developer build gap is fixed: the frontend silently omitted missing
+native DLLs, so a clean checkout could build an unusable application. The imported
+WinUiNativeInputs target now rejects missing platform/preview DLLs during real
+build and publish, including NoBuild publish. Explicit input overrides remain valid;
+restore and design-time evaluation do not require compiled native inputs. Seven
+executable MSBuild contract cases pass. Building documentation now prepares the
+actual default DLL paths and a fresh widget workspace; SDK and YT Music notes no
+longer prescribe Taffy or a deleted layout script. Release-readiness distinguishes
+historical failures from current qualification. Actual Debug frontend build passes
+with zero warnings/errors; all 244 running candidate DLLs still match that output
+(candidate01.json). Documentation checks pass across 197 Markdown files.
+
+Candidate PID5328 remains running with the previous qualified runtime; this turn
+changes verification/build/docs only. No installer, certificate trust, driver,
+controller-recovery or physical provider changes. Migration remains active; signed
+installer/clean-machine acceptance is unqualified, user workflows remain user-owned,
+and scrolling performance/memory investigations remain deferred.
+
+### Renderer retirement qualification — 2026-09-30
+
+Original renderer source and its Rust/Taffy build path are retired. Shared native
+controller, Guide, placement, process ownership and generated protocol code now
+live in OverlayPlatformInterop. All 30 exports are retained. The standalone
+controller-recovery entrypoint now runs through the WinUI startup path without
+creating XAML, a profile, input session or Bridge; only fake recovery was tested.
+Ignored historical outputs and evidence remain intact. No merge or push.
+
+Replacement CI builds the platform/preview boundaries and trimmed WinUI Release
+payload; it rejects retired renderer artifacts and verifies native binary hashes.
+Native policies pass 2,052 checks after final protocol-header synchronization; prior
+preview policy 15/diagnostic 2,021, platform foreground/process and trimmed publication
+checks pass. Native indexed surface qualification now passes 21 top-level checks,
+including the unchanged late-artwork identity/pixel assertion; no renderer change
+was needed for that previously failing fixture.
+
+Bridge aggregate is 178/178 against a fresh coherent managed installation
+(`renderer-retirement-20260930/bridge-verification04.log`). Earlier 177/178 used a
+Settings DLL staged before the latest rebuild; payload hashing correctly rejected
+it. The original 171/178 failures also included tests using stale lifecycle/scope
+authority, expecting eagerly embedded indexed rows, assuming action acknowledgement
+meant backend completion, and outdated semantic-role/protocol-version counts.
+Tests now demand real ranges and preserve replay/stale-input rejection. Production
+input guards were not loosened. First-party conformance 6/6 passes with real indexed
+lease/input APIs and a simulated backend; installed Games & Apps add/launch and
+fresh-worker saved-library persistence also pass (conformance-games-restart02.log).
+Fresh Debug analyzer build passes without warnings/errors.
+
+Games & Apps evidence export now preserves indexed ranges separately and passes
+its auto-curation/add/remove flow (5 authoritative snapshots and 1 trace in
+conformance-evidence02). It no longer expects rows embedded in the parent or the
+old tile style. The optional exporter still records a Settings worker preconnect
+exit as a gap; this is not declared passed. Normal Settings startup is verified in
+the physical candidate and Bridge gates. Older optional Playnite eager-row diagnostic
+modes remain to be retired or adopted; they are outside the default passing gate.
+
+Candidate relaunched through project-mode winapp as PID5328. All 244 deployed DLLs
+match the qualified Debug build (candidate-final01.json); Settings reached input-ready
+and startup completed. It uses fresh physical-runtime02 with the same physical
+profile, installed catalog and seven bundled widgets. First staging attempt collided
+with a concurrent test build on a SourceLink intermediate; it was retained as
+evidence and cleanly rerun after serializing builds. Broad physical provider
+workflows remain user-owned, performance/memory investigations remain deferred,
+and signed installer/clean-machine provisioning remain unqualified. Historical
+entries below record intermediate states; this summary is current.
+
+### Final checkpoint and relaunched candidate — 2026-09-30
+
+Release payload build05 now includes the final development ownership/close policy,
+native inspector and startup failure logging. Both editions05 catalogs/inventories
+verify (8 production /12 developer widgets), and all18 external-content checks pass.
+The payload remains explicitly unsigned/validation-only with dirty-source provenance.
+No installed identity, startup entry, runtime installation or trust store was changed.
+
+The final already-exited frontend path also checks for an empty job before any
+termination. Four ownership/cleanup regressions were rerun against freshly built
+runner06 and passed (lifecycle-final03); the broader11 passed before that narrow
+adjustment. Debug analyzer build05 and the full Release publication are clean.
+Native07 provides13 real workflow checks; inspector UIA12 and screenshot review pass.
+Abrupt process ownership is verified by unit/native child-job checks; native07 tests
+cooperative CLI cancellation/reload, not arbitrary OS termination of a packaged CLI.
+
+Physical candidate relaunched as PID74176 through project-mode winapp with the
+existing physical-options.json and Playnite0.2.114. All244 deployed DLLs match the
+qualified Debug output (`development-host-20260930/candidate-final.json`). Leave it
+running for user testing. No widget/system-setting actions were invoked.
+
+Next phase: original-renderer retirement using the dependency audit below, starting
+with shared native extraction and replacement CI gates. Do not remove recovery-only
+behavior, controller-policy tests or the native platform ABI along with the renderer.
+Signed installer execution/clean-machine provisioning remain explicitly unqualified;
+no production installation is authorized by the unsigned payload build. Work remains
+on codex/winui3-frontend; no commit, main merge or push was performed in this batch.
+
+
+### Native CLI ownership, inspector and reload qualification — 2026-09-30
+
+The real registered-host gate now passes13 workflow checks (native07) plus12
+inspector UIA checks, with screenshot review: hidden readiness, exact package and
+widget instance, Bridge/worker ownership, native inspector filtering/pause/refresh/
+F12 reopen, source reload, rejected broken worker retaining last-good, repair,
+controlled replacement-activation failure restoring last-good, cancellation and
+reclamation of every observed frontend/Bridge/worker process and temporary profile.
+
+Two confirmed startup/lifetime gaps were fixed. Windows did not propagate the
+frontend's CLI job to Bridge. The shared session launcher now optionally creates
+the Bridge suspended with JOB_LIST, limits inherited handles with HANDLE_LIST,
+verifies job membership and resumes only afterward. Normal production launch
+keeps Process.Start. Exact owner job comes only from development options. The
+private .NET child environment and bounded stdout/stderr logging are preserved.
+Eleven focused session/options/launcher tests pass, including abrupt last-owner
+closure. No job handle remains in the child to defeat CLI cleanup.
+
+Immediate/unconditional TerminateJobObject also disrupted Windows package-container
+teardown: replacements remained suspended before managed Main, with repeated
+AppModel container-destruction events. Source traces and non-invasive detached CDB
+observations are retained in native05; no debugger remains attached. CLI stop now
+requests normal close on its exact owned frontend, waits for all job processes to
+exit, and forces only a still-live job after the bounded grace period. Already-empty
+jobs are never terminated. Native07 passes reload/rollback with this policy; earlier
+native04–06 failures remain evidence, not green runs. The exact observed suspended
+test processes were reclaimed after recording their nonce/path. Temporary successful
+startup tracing was removed; actual process-startup failures retain durable logging.
+
+Final11 CLI lifecycle/identity/readiness/help checks pass (lifecycle-final02.log).
+Debug analyzer build05 is clean. Inspector manual retry resumes its timer after a
+capture error; hidden overlay capture retains its last frame with unavailable status.
+Release payload refresh is underway as build05; artifacts from build04 predate these
+changes. Candidate is still closed and must be relaunched with physical-options.json
+and Playnite0.2.114 after this batch. No production installer or real setting actions.
+Evidence: `artifacts/winui-shell/cli-winui-dev-20260930/` and
+`artifacts/winui-shell/development-host-20260930/`.
+
+
+### Isolated WinUI release payload construction — 2026-09-30
+
+`Build-WinUiReleasePayload.ps1` now builds the native platform and preview
+boundaries, trimmed/self-contained WinUI frontend, framework-dependent Bridge,
+generic worker, trusted Settings, sealed bundled widgets, developer samples,
+CLI and self-contained deployment helper without invoking OverlayHost's builder.
+Canonical frontend versioning and explicit native input paths prevent stale DLL
+staging. Final `Build-Release.ps1` still requires a clean committed checkout and
+an externally signed identity matching the generated manifest. No signing,
+registration, certificate trust, startup, driver or prerequisite installation
+was performed by this pass.
+
+Full `release-payload-20260930/build04/payload.json` succeeded with an explicit
+unsigned synthetic identity. `editions04/0.1.0-preview.14/` contains independently
+inventoried production (978 files, 8 widgets including Settings) and developer
+(1006 files, 12 widgets including Settings) folders. Both real catalog/seal/icon
+verifications pass; 18 external-content staging checks pass; both editions have
+byte-identical identity packages. Frontend includes .NET 10.0.10; private service
+runtimes report .NET/Core and Desktop 8.0.31. Signed Microsoft Windows App Runtime
+x64 Framework 2.5.1.0 is bound by identity receipt/hash; its embedded runtime
+packages/license XMLs are preserved. Eleven focused packaging self-tests pass.
+
+Builder corrections established by actual attempts: removed globally propagated
+trimming flags (frontend Release owns trimming), prevented duplicate Settings
+asset copies, and replaced strict XML member enumeration with explicit SDK
+PackageReference selection. Sample icon copying now follows manifest declarations
+instead of duplicating SDK Gallery's assembly-embedded artwork. The native
+platform build retains existing third-party ViGEm source-encoding warnings;
+managed publication logs contain no errors/warnings.
+
+These artifacts are explicitly `validationOnly=true`, `identitySigned=false`
+and retain dirty-source provenance. They are not signed-installer or clean-machine
+acceptance. The subsequent CLI named-job Bridge ownership correction was not yet
+included and requires frontend/session refresh before qualifying that workflow.
+Evidence: `artifacts/winui-shell/release-payload-20260930/qualification04.json`;
+build logs/binlogs and earlier failed attempts remain alongside it.
+
+### CLI and deployment integration resumed — 2026-09-30
+
+User accepted Playnite0.2.114 and requested continued migration. Candidate67936
+was closed normally; preserve the existing physical profile and relaunch after
+this batch. Step4 remains active; step5 retirement audit is read-only until the
+replacement launch/release path is qualified. No production installation,
+certificate trust changes, runtime provisioning or real system-setting actions.
+
+Native CLI smoke discovered a real containment gap (native03): exact registered
+frontend57880 joined its named CLI job, but direct child Bridge74668 and worker74256
+did not. Independent IsProcessInJob confirms both outside that job; this is not a
+PID-list/name assertion error. Pipe-disconnect cleanup reclaimed them in the test,
+but cannot certify abrupt outer-job ownership. Explicit owned child creation is
+being added to the shared session launcher for development mode only; normal
+production process policy remains unchanged. Keep the native assertion intact.
+Native01 separately corrected GetPackagePathByFullName2's DLL to KernelBase.
+Inspector UI qualification still awaits the ownership fix. Full release payload
+builder is running independently; refresh any payload built before this fix.
+
+CLI now activates registered AUMIDs through IApplicationActivationManager and
+verifies exact returned process identity plus membership in its named kill-on-close
+job. Hidden probe and interactive profiles remain separate, with last-good reload
+recovery. Eleven focused checks pass, including real job/descendant reclamation.
+Frontend readiness and native WinUI inspector source now compile with analyzers
+(build01, zero warnings/errors); three parser/readiness tests pass. Inspector
+uses native TreeView, realized-only layout map, current styles/focus/navigation,
+filter/pause/refresh and F12 reopen; readiness includes inspector initialization.
+Real registered-host probe/interactive/inspector/reload checks are next, not yet
+claimed passing. Evidence: `artifacts/winui-shell/development-host-20260930/`
+and `artifacts/winui-shell/cli-winui-dev-20260930/`.
+
+Deployment helper final47/47 checks pass (tests08), self-contained Release publish
+and installer contracts pass. Durable install/repair/rollback/recovery/uninstall,
+exact external binding, inventory authority, same-version edition compensation
+and AUMID shortcuts are implemented. Signed native installation/edition switching,
+Windows crash recovery and clean-machine provisioning remain unqualified.
+Release builder source and11 packaging scenarios pass; full isolated payload build
+awaits native development-mode checks. Earlier source-draft checkpoint below is
+historical and superseded by this entry.
+
+### Shared native extraction gate — 2026-09-30
+
+The 12 shared controller/placement/targeting/process/protocol files and
+NativeDependencies.csproj now live in `src/OverlayPlatformInterop`. Canonical
+platform build and runtime acquisition no longer consume original-renderer paths.
+The generated native protocol destination is
+`src/OverlayPlatformInterop/WidgetProtocolPresentationContract.generated.h`;
+the managed parity/CI lane owns its generator pointer. Existing ABI, process mutex
+names, controller policy, activation and recovery behavior are preserved.
+
+`Build-OverlayPlatform.ps1 -TestPolicy` now builds/runs 12 synthetic suites:
+input ownership, open shortcut, Guide compatibility, process ownership, DualSense
+reports, isolation core/reader/routing, injected ViGEm/HidHide adapters, local owner
+and imported production ABI. Pure Guide debounce replaces the platform test's
+dependency on OverlayState. Guide polling/edge checks are extracted from the mixed
+legacy renderer-guide fixture. Actual GameInput queries and full hardware ABI
+initialization remain explicit `-TestHardwareInput`, outside the synthetic gate.
+
+Isolated native Release build and all 2,052 checks pass. All 30 production exported
+symbol names match qualified release payload build05. Existing third-party ViGEm
+source-encoding warnings remain; no new renderer dependency is linked. Evidence:
+`artifacts/winui-shell/renderer-retirement-20260930/native-extraction01/result.json`,
+per-suite build/test logs and `native-extraction01-build.txt`. No controller hardware
+initialization, driver policy mutation, settings change or candidate restart was
+performed. Candidate lifecycle remains owned by the coordinating lane. Remaining
+renderer deletion and replacement CI integration belong to the coordinating lanes.
+
+Retirement audit: do not delete OverlayHost wholesale. The live platform build
+still uses12 shared controller/placement/targeting/process/protocol files there,
+plus NativeDependencies.csproj. Rehome these and controller policy/ABI tests;
+replace the CI Rust/old-host build gates with platform, preview, WinUI and managed
+contracts. Preserve native recovery export and add its renderer-independent
+consumer before removing legacy main.cpp's recovery-only entrypoint. Redirect
+catalog tests to eng/widget-catalog.json and Bridge integration to an explicit
+staged payload. Old renderer, Taffy, native artwork helper and renderer-only gates
+can then retire; preserve ViGEm, managed artwork/session authority, activation and
+public-suffix data. No retirement deletion has been performed at this checkpoint.
+
+
+### Playnite footer uses fixed left-aligned spacing — 2026-09-30
+
+User accepted the follow-up focus-border fix. The subsequent footer request
+supersedes the responsive equal-width hint grid: Home/Library hint regions now
+use UI.Row, content-sized hints, justify:start and24DIP gaps. Removing a hint no
+longer recalculates equal-width columns and redistributes all remaining hints.
+No host changes. Updated the two existing layout assertions that required Grid;
+all48 layout/theme cases pass. Playnite0.2.114 built, sealed and selected/enabled;
+inactive0.2.106 retained intact outside the catalog. Candidate relaunched as
+PID67936 with the existing profile and all244 DLLs verified against the build.
+Evidence: `artifacts/winui-shell/playnite-hint-spacing-20260930/`.
+
+### Playnite controller hints use available width — 2026-09-30
+
+The Library footer had five hints but capped its responsive grid at three columns,
+forcing a second row regardless of available width. Its maximum now follows the
+actual hint count while retaining the160DIP minimum and existing native reflow.
+All five fit one row from840DIP of usable width (including10DIP gaps); narrower
+layouts still wrap. Widget-only change, no host or controller routing changes.
+Existing48 Playnite layout/theme cases pass. Playnite0.2.113 built, sealed and
+selected/enabled in the candidate. Inactive0.2.105 retained intact outside the
+catalog's8-version cap. Candidate relaunched as PID50460; all244 DLLs match the
+qualified build. Evidence: `artifacts/winui-shell/playnite-hints-20260930/`.
+
+User reported the RT whole-container focus problem still occurred after the first
+fix. The release-cancellation race below was only one path; physical incident
+closure remains pending acceptance of this follow-up.
+
+Follow-up logs identify the INNER GridView (`...scroll.Items`) losing its item
+after a query reset, with no pending entry. New regression now reproduces failure
+when a two-item GridView query is republished with the same consumed default-entry
+request. The prior tests exercised exact indexed targets only. Native fixture setup
+was corrected to establish grid layout separately and verify action admission/status;
+red03 has the real query-republish failure, while red01/02 failed during setup.
+Fix now parks focus before any owned query/view replacement, recovers to a current
+row even without a new authored request, keeps logical collection wrappers out of
+Tab navigation, and suppresses the inner owner focus visual. Restoring a widget
+cannot reassert native focus on a bare collection owner. Explicit departures still
+cancel pending handoffs; stale exact requests from outside do not steal focus.
+Passed44 native entry checks (green02) plus18 indexed navigation/realization checks,
+including logical-entry22 and grouped-focus7 internal assertions. Added a bounded
+NavigationOnly option to the existing script so this focus qualification does not
+run the unrelated deferred artwork probe. The script closes its own fixture;
+outer cleanup raced that close, but both fixture processes exited and all18 results
+are preserved as passed. Debug analyzer and trimmed Release publish passed, as did
+the19 ordinary focus-policy checks. Candidate50460 closed normally; replacement
+PID42536 launched with the existing profile/Playnite0.2.113 and all244 deployed DLLs
+verified. Physical RT acceptance remains pending; do not claim that user incident
+closed merely from these fixtures.
+Evidence: `artifacts/winui-shell/indexed-trigger-focus-20260930/followup/`.
+
+### Indexed collection focus stranded after RT — 2026-09-30
+
+User saw a white outline around the full Playnite Library collection after RT
+changed categories. Confirmed shared-host race with a gated real-worker native
+fixture: query replacement parks focus on the collection owner while the authored
+row loads; RT Released ran CancelGroupEntry and aborted that entry. Red evidence
+fails exactly at the pending-entry assertion, after the existing24 replacement/
+refresh/deferred-activation checks pass. Logs had no focus-specific failure (only
+optional artwork request failures); the controlled reproduction establishes cause.
+
+Release/repeat no longer cancel group entry. The parking owner has no system focus
+visual and is not an actionable/navigation target while entry is pending; additional
+button presses cannot strand it or activate an unseen game. Explicit departures
+are observed on the collection owner as well as its row subtree, so pointer/native
+focus choices outside cancel the pending handoff. No widget-specific changes.
+Final fix passed41 native entry checks (green02), including real-worker delayed
+query replacement, release/repeat/fresh RT, A/directional input while parked and
+explicit departure before rows arrive. Existing focus-policy19 also passed;
+Debug analyzer build clean. Evidence:
+`artifacts/winui-shell/indexed-trigger-focus-20260930/`. Candidate31656 closed
+normally after preserving logs; updated candidate relaunched as PID38956 with
+the existing profile and Playnite0.2.112. All244 DLLs match the qualified build.
+
+### Playnite details: fixed header and separate sections — 2026-09-30
+
+User requested a stationary top area and Description/Links sections. Playnite now
+uses a native Auto/Star Grid, keeping poster/source/completion/actions above one
+bounded lower scroll area. Tabs and their content share that scroll owner so
+D-pad/left-stick fallback can read noninteractive descriptions. Description is
+initial, Overview becomes Information, followed by Achievements, Activity and
+Links. Notes accompany Description; metadata and browser links are split into
+their respective sections. LB/RB cycling derives its count from the actual tabs;
+only Achievements/Activity start optional provider loads. Opening/scroll identity,
+refresh, recovery and scoped actions remain intact.
+
+Cause of whole-modal scrolling: WidgetView.WithModal unconditionally wrapped the
+content. Added public WidgetModal.ScrollContent (default true); false preserves
+the authored bounded layout and normal modal scope/dismiss/focus behavior. No new
+protocol feature or WinUI host special case. Reviewed public API baseline updated.
+
+Passed164 Playnite tests, SDK modal contract1 and API baseline1, native production
+details13 (fixed header during actual directional scroll, five tabs, finite resize),
+and Debug analyzer build. Test helpers were updated from the removed automatic
+wrapper to the widget-owned lower scroll. Evidence:
+`artifacts/winui-shell/playnite-details-sections-20260930/`. Playnite0.2.112 built,
+sealed, installed, selected and re-enabled in the candidate catalog. Installer
+requires disabling an enabled widget before replacing its package; that sequence
+was completed while the overlay was closed. Inactive0.2.104 was moved intact to
+this evidence directory's retained-inactive-packages to respect the8-version cap.
+Candidate relaunched as PID31656 with its existing physical profile; all244 deployed
+DLLs match the qualified build. No real Playnite launch/uninstall/link actions ran.
+
+### Directional scrolling through noninteractive content — 2026-09-30
+
+User approved shared left-stick/D-pad fallback scrolling. Native focus candidates
+still win inside the nearest owner; with none remaining, a matching ScrollViewer
+reveals leading/trailing content before external links, outer candidates or the
+root/tray boundary. Fresh presses versus repeats reach both ordinary and pinned
+presenters and keyboard arrows. Held input stays at the edge until a fresh press.
+The gesture retains its native focus anchor separately from right-stick settling;
+reversing through text scrolls back toward that anchor. WinUI ChangeView handles
+animation (reduced motion uses immediate steps), layout and virtualization.
+Pending offsets accumulate without replaying old movement, and native ViewChanged
+completion returns ownership to the actual viewport position. Input withdrawal,
+scope/owner changes, unload/disposal and right-stick scrolling invalidate the
+gesture. No widget API or provider/system action changes.
+
+At a completed scroll boundary, outer navigation uses the viewport's bounds,
+not the offscreen retained control. A new regression caught how the old geometry
+could otherwise rank a fixed header as being below that control. Declined exits
+(e.g. pinned/modal boundaries) retain their edge guard until focus actually leaves.
+
+Validation passed:77 native directional checks (52 new scroll checks, including
+horizontal/vertical and normal/reduced motion),3 native keyboard checks,15 focused
+policy/right-stick/repeat unit tests,460 existing native styles and19 native focus
+policy checks. Analyzer Debug build and trimmed Release publish passed. Fixture
+setup now lets native focus bring-into-view complete before setting its deliberate
+test offsets; original failed runs are preserved. No real system-setting actions.
+Evidence: `artifacts/winui-shell/directional-scroll-20260930/` (navigation05,
+styles01,focus01,policy01,build06,release01). Physical controller feel remains for
+user acceptance. Candidate PID74360 was closed normally for validation. Updated
+candidate relaunched as PID68884 with the existing physical-options profile;
+all244 deployed DLLs match the qualified Debug build (candidate-payload.json).
+
+### Shared directional navigation restored — 2026-09-30
+
+User authorized fixing the audited navigation gaps. Shared presenter now resolves
+explicit edges first, then retains indexed logical realization, then searches the
+nearest responsive Grid/matching-axis Scroll before broader active-scope candidates.
+Geometry comes from existing native Bounds measurements; a small pure scorer retains
+the original vertical beam/distance/ordinal rules and strict horizontal overlap.
+External remembered groups are ranked as regions and enter their current valid child.
+Native Focus/StartBringIntoView reveals the selected control without maintaining
+another layout tree or animation queue. Disabled/collapsed/inactive scopes are excluded;
+busy actions remain focusable. Input withdrawal/unready geometry consumes movement
+instead of being misreported as a root exit. Indexed authored external edges read only
+the current row lease and cancel older pending navigation before leaving.
+
+Keyboard arrows tunnel through the same policy before native default handling, while
+editors/popups retain their own key handling and gamepad-key ownership is respected.
+Keyboard/controller root Down exits share one shell helper; pinned/fullscreen/modal
+boundaries remain separate. No Settings-specific link or alternate widget tree.
+
+Validation: pure scorer7/7; native navigation24 plus keyboard3 pass (offscreen Settings
+case, real boundary, nested orthogonal Scroll owners,1/2/3-column responsive grids,
+partial final rows, explicit links, disabled/busy controls and inactive scopes).
+Existing focus-policy19 and native styles460 pass. Debug analyzer and trimmed Release
+publish pass. Initial fixture compile mistakes (helper name collision, CreateFrame name,
+explicit array types for WinRT) were corrected before native execution.
+
+Real-worker indexed harness passed18 navigation/realization/refresh/grouped/scroll-settle
+checks, including logical entry22 and grouped-focus7 internal checks. Its subsequent
+artwork-retention probe failed `late same-page artwork replaced selected row`; remaining
+input-route/modal phases were not run. Preserve that failure as unresolved broader
+qualification, not a green full-suite result. Outer cleanup also raced the script's
+already-closing window; frontend/fixture processes subsequently exited. The artwork
+probe uses direct FocusItem/parent action calls; do not silently loosen its assertion
+or assume a new navigation regression without diagnosis. Evidence:
+`artifacts/winui-shell/navigation-parity-20260930/`.
+Candidate74360 relaunched with canonical profile/catalog;244 DLLs verified against
+the final Debug build. Physical Settings Up/reveal acceptance remains user-owned.
+
+### Navigation parity audit requested — 2026-09-30, investigation only
+
+User reports Up from Exclusive control skipping offscreen Controller shortcut and
+jumping to fixed Quit header. Source comparison confirms missing ordinary-scroll
+owner priority: original SurfaceInteractionTransactions.ResolveDirectionalFocus
+honors authored edges, then FindDirectionalFocusTargetInOwningSubtrees searches
+nearest responsive grid/matching-axis Scroll, including revealable offscreen nodes,
+before broad scope fallback and scroll-boundary admission. Original tests explicitly
+assert internal offscreen rows beat nearer outside geometry at multiple widths/scales.
+WinUI WidgetViewPresenter.MoveFocus handles transient/slider/indexed routes then
+calls FocusManager.TryMoveFocus against the entire active scope. Settings ComposeRoot
+puts fixed header and page Scroll in that scope, and links only the first available
+page control Up to the header. Exclusive control has no authored header Up link.
+This matches the reported host-policy regression; no live input reproduction was
+performed and no navigation production code changed during this review.
+
+Additional parity gaps to cover before old renderer retirement: owner-first nested
+scroll/responsive-grid navigation; revealable versus collapsed/disabled controls;
+strict horizontal overlap and deterministic beam/distance tie rules; explicit-edge
+precedence against indexed navigation; scope/lease revalidation during delayed reveal.
+Existing WinUI indexed path already handles logical indices, native columns,
+ScrollIntoView, pending target coalescing, loaded-boundary waiting and lease admission;
+ordinary overrides, group memory, analog focus settling and root rail/radial exits
+also exist. Presence is not exhaustive parity proof. Preserve accepted busy-control
+focus behavior instead of blindly copying the old busy-item skip rule.
+
+WinUI supports restoring these user-visible policies using native measured geometry,
+programmatic focus/bring-into-view and indexed logical targets. Its built-in XYFocus
+offers strategy selection/SearchRoot/HintRect/ExclusionRect, not a pluggable exact
+scorer or geometry for unrealized containers. Do not resurrect the old renderer's
+layout/pagination caches; migrate behavior and original regression scenarios.
+
+### Active CLI/deployment source checkpoint — 2026-09-30
+
+Candidate70292 was launched at the user's request after72148 exited;244 deployed
+DLLs verified. Do not confuse current source drafts with its already-qualified
+presentation/reconnect payload. User may be checking it; preserve the profile.
+
+Root added a strict DevelopmentLaunchOptions parser (canonical `--name=value`
+arguments), isolated profile/catalog/instance/nonce/job identity, atomic exact
+`wrail-dev-ready-v1` publication and inspector-ready guard. Three new managed tests
+pass. Program joins a named CLI job before profile election/XAML/owned services;
+malformed development startup exits rather than falling into normal recovery UI.
+The join closes its temporary handle immediately so the CLI remains the lasting
+job owner. A hidden DevelopmentProbePage draft admits the exact catalog instance
+and Visible WinUI snapshot without controller/F1 registration; cancellation owns
+Bridge teardown. Frontend drafts have NOT yet been compiled or exercised natively.
+Interactive development readiness, inspector and CLI activation are still missing.
+
+Root updated trusted Settings startup command to quoted
+`OverlayFrontend.WinUI.exe --hidden`; PlatformSettings27/27 passes against fake
+storage. No actual startup registry modification. Existing installer lifetime
+markers are ALREADY preserved through `OverlayProcessInterop.cpp` ProcessLease
+-> OverlayInstallationLifetime.Begin in `OverlayProcessOwner.cpp`; do not add a
+second managed mutex owner. This checks Setup and holds OverlayHost.Running.
+
+CLI audit recommendation: IApplicationActivationManager activates registered AUMID;
+CLI creates unique named kill-on-close job, frontend self-enrolls before services,
+CLI verifies returned process identity and job membership. Maintain hidden probe
+then last-good host handoff, separate probe profile and reusable interactive
+session profile. Preserve inspector semantic tree/focus/navigation/native geometry/
+computed styles and F12 reopening. Agent playnite_presentation_cleanup supplied
+this audit but has not implemented CLI changes yet.
+
+Installer agent migration_checkpoint_review owns new WidgetRail.Deployment helper,
+fake/staged transaction tests, Inno/Build-Installer changes. It is taking the build
+slot for helper/tests, no native installation. Source draft requires signed
+identity, verifies exact external binding, journals metadata transitions and rolls
+back failures. It currently rejects same-version external rebinding: edition
+switching needs qualification/design before completion. Signed removal cannot
+use PreserveApplicationData (development-only); keep external user data untouched.
+
+Release agent capture_teardown_audit completed read-only design and awaits source
+approval/identity contract. Proposed isolated Build-WinUiReleasePayload stages
+native interop/preview + trimmed frontend + Bridge/worker/Settings/sealed bundled
+widgets/CLI/private runtimes without calling old host build; Build-Release retains
+clean-checkout publication guard. Installer schema proposal: deployment/identity.msix
+and identity.json {schemaVersion:1,name,publisher,version,applicationId,packageSha256},
+self-contained helper under deployment/helper. Same identity across editions.
+Signing inputs/publisher/version decision and offline Framework provisioning still
+need coordination before release implementation. Keep production GameInput/WebView2
+provisioning; the user's prohibition is against executing system changes in tests,
+not a request to remove installer functionality. Do not silently replace runtime
+provisioning with missing-prerequisite errors as the final product design. Existing
+verified Stage-WinUiRuntimePrerequisites handles official signed Framework payloads;
+Main/Singleton remain owned by the SDK initializer. No cert trust/runtime installers
+or production installation should be executed on the user's machine for validation.
+
+Step4 incomplete, step5 not started. Source/managed test evidence so far under
+`artifacts/winui-shell/authoring-cleanup-20260930/` (development-config01 and
+startup-command01). No merge/push or new checkpoint commit.
+
+### Presentation cleanup completed; launch/distribution integration active — 2026-09-30
+
+Removed Playnite's unused eager/cursor UI path and dead HeroRail policy; retained
+provider data and production indexed authority. Updated all presenter fixtures to
+SDK-acquired rows. Removed unmapped flex declarations from shipped themes/widgets
+and migrated actual small wrapping groups to ResponsiveGrid. Added CLI preflight,
+shipping-style diagnostics and current indexed collection author documentation.
+
+Passed: Playnite164; first-party widget suites281; shared themes27; Gallery11,
+YT Music30, Spotify77, YouTube54; six targeted CLI checks. Analyzer Debug and
+trimmed/ReadyToRun Release pass. Native shared styles460, Playnite rows13, Home16,
+Browse13 and Details9 pass. Home's first new fixture incorrectly required the
+Browse width150 rather than authored bounded28vh; corrected the test's expected
+geometry, no production sizing workaround. Scripts parse and diff whitespace checks
+pass. This is scoped cleanup validation, not deferred scroll/performance acceptance.
+
+Candidate72148 relaunched;244 DLLs match. Playnite0.2.111, YT Music0.3.34 and
+Gallery0.1.25 installed/selected/enabled in the existing isolated catalog. Oldest
+inactive Playnite0.2.103/YTM0.3.26 packages preserved under the evidence directory
+to respect the eight-version bound. User profile, credentials, ordering and the
+exclusive-control Off preference remain. Remaining inert first-party/sample style
+source cleanup flows into the new distribution payload; it changes no WinUI paint.
+Evidence: `artifacts/winui-shell/authoring-cleanup-20260930/` and agent suite folders.
+
+Step4 now active: WinUI CLI development/inspector launch, per-user external-content
+identity installation, startup and transactional upgrade/rollback. Shared bundled
+catalog source moved from the original renderer to `eng/widget-catalog.json` as
+the first ownership cleanup. Old renderer retirement remains step5, after this
+integration. No production install, certificate trust, main merge or push.
+
+### Exclusive-control reconnect correction — 2026-09-30
+
+User reported a physical disconnect/reconnect leaving input unavailable in every
+application. Candidate64220 log showed Active at19:05:22Z, then the native
+"No eligible physical controller could be selected safely" failure at19:15:26Z,
+followed by RecoveryRequired and stopped WinUI navigation polling. This diagnostic
+maps to ambiguous/unknown discovery, not the unavailable-device branch. It did not
+distinguish which of those two statuses occurred. User selected Restore controller
+access and confirmed the controller works again; their resulting Off preference
+is retained.
+
+Confirmed code gap: unavailable discovery retried but incomplete/ambiguous hotplug
+identity latched Fault permanently. The shared native owner now waits/retries all
+non-ready discovery through its existing250ms cadence only after prior exact-owned
+policy restoration succeeds. No unidentified device is selected or hidden. True
+journal/restore failures still fault. Added transition-only discovery status logs.
+Native owner94, routing186 and DualSense decoding172 checks pass, including both
+transient identity statuses, unhidden waiting, neutral retained output, resumed
+overlay containment and existing cleanup-failure protection. Native DLL builds;
+existing third-party ViGEm header codepage warning remains.
+
+Candidate11700 relaunched with only this native fix staged, same profile/catalog
+and prior managed payload;244 DLLs verified. Physical reconnect acceptance remains
+for the user. Evidence: `artifacts/winui-shell/exclusive-reconnect-20260930/`.
+Parallel step-3 source cleanup is not yet staged; its combined native validation
+remains pending. Distribution and renderer retirement still follow step3.
+
+Continuation handoff: candidate11700 is live for the user's reconnect check.
+Playnite managed final164/164 passes; its agent finished source/export/runner work
+and has not run the native fixture. `Test-WinUiPlaynitePresentation.ps1` consumes
+the new indexed exports plus existing production Details geometry. The sample lane
+is running Gallery/YTM/Spotify/YouTube managed suites. First-party suites passed
+281 checks. Root repaired two verified stale theme expectations and expanded the
+shipping-style diagnostic gate to all copied package fixtures; PlatformSettings
+final27/27 passes (`authoring-cleanup-20260930/themes-final01.log`). The new
+collections reference now describes indexed/discovered WinUI authoring rather
+than presenting rejected cursor metadata as current usage. No further native
+testing or package staging has happened since the reconnect-only relaunch.
+
+### Active presentation and authoring cleanup — 2026-09-30
+
+The bounded capture pass is complete (results below); step 3 is active. Playnite
+is removing its unused eager/cursor presentation branches after moving fixtures
+to the production indexed declarations and explicit SDK row leases. Shared and
+first-party styles are dropping inert flex shrink/basis declarations while
+preserving native track weights and bounds. Sample wrapping groups are audited
+individually; layout changes require native geometry checks. Provider cursor/data
+logic, action authority and remembered focus remain in place.
+
+The CLI now surfaces the existing WinUI stylesheet guidance during `wrail validate`,
+including imported and state rules. `wrail render` applies the shared native
+presentation admission contract before writing output, so unsupported old
+collection declarations name their field and replacement instead of appearing
+valid until opened in the frontend. Two targeted tests and four existing CLI
+validation/render regressions pass. Initial new fixtures used an unsupported
+`:focus` spelling and incomplete cursor metadata; corrected to `:focused` and
+an actual SDK legacy declaration before claiming the passing results.
+
+Distribution integration and renderer retirement have not started yet. Real
+device/provider acceptance remains user-owned; scrolling and memory work remain
+deferred. Evidence: `artifacts/winui-shell/authoring-cleanup-20260930/`.
+
+### Focused Task Switcher capture-shutdown pass — 2026-09-30
+
+Completed the requested bounded follow-up without reproducing the original
+`GraphicsCaptureSession.Close` / capture-service RPC hang. Actual Task Switcher
+loaded live previews, including an independently owned fixture source, in both
+visible and hidden-overlay cases. Normal WM_CLOSE completed in 595 ms with five
+active captures in the visible case, and 200 ms after hiding a seven-capture case.
+Both frontend and owned Bridge exited normally. This is targeted evidence, not a
+claim that the intermittent Windows capture hang is fixed or cannot recur.
+
+Kept actionable bounded diagnostics: native close phase/source HWND/PID/slot/frame
+count/start time and HRESULT use an independent shared health reader. Its read
+never queues behind the capture worker, spins, or accesses a destroyed engine.
+A one-second managed watchdog reports a phase only after two seconds and then
+reports its eventual completion once. Capture ownership, shutdown waiting, and
+session/pool teardown order are unchanged; no timeout-abandonment workaround.
+
+Validation: native Release builds with 15 policy checks and 2021 diagnostic checks
+(including concurrent publication and reader lifetime across engine destruction);
+three managed watchdog/ABI tests pass; analyzer Debug builds with zero warnings
+or errors. Both native shutdown runs verified 244 deployed DLLs. First fixture
+attempt lacked isolated read/preview consent and never started capture; corrected
+the fixture profile to grant only those read/preview capabilities, then both
+cases passed. No switch/close widget action or system-setting mutation occurred.
+Evidence: `artifacts/winui-shell/capture-close-diagnostics-20260930/`:
+`native02-build.txt`, `managed01/`, `frontend03.binlog`, `shutdown02/results.json`.
+Native diagnostics and managed reader are now staged together. Canonical
+candidate 64220 relaunched with the existing physical profile/catalog; all 244
+deployed DLLs match the qualified Debug build (`candidate-payload.json`). Memory testing
+remains deferred. Continue the authorized legacy-cleanup/distribution/retirement
+sequence rather than expanding this capture investigation.
+
+### Next migration sequence authorized — 2026-09-30
+
+User requested one focused/time-bounded pass on capture shutdown with Task Switcher
+active, covering visible and hidden overlay states. Do not expand this into memory
+testing or broad activation work; if it does not reproduce, retain actionable
+diagnostics and continue rather than spending disproportionate time.
+Then execute in order: (3) remaining legacy presentation/authoring cleanup,
+(4) CLI/installer/runtime/startup/upgrade and rollback integration,
+(5) retirement of the old renderer and unused UI dependencies. Preserve useful
+native platform/provider/sandbox functionality. User owns real workflow physical
+qualification and explicitly says it is not an implementation blocker for these
+steps. It remains separate acceptance evidence, not an automatic success claim.
+Stay on the migration branch; no main merge or push was authorized.
 
 ### Migration checkpoint cleanup — 2026-09-30
 
@@ -4521,3 +6039,86 @@ controller acceptance remains for the relaunched candidate.
 Physical candidate relaunched through project-mode winapp as PID2392 with the existing physical profile and controller adapter; left running for user testing.
 
 Embedded completion physical candidate launched as PID60252 with the existing physical profile/controller adapter; left running. Embedded Media Sample enabled, YouTube Video disabled.
+
+### Renderer retirement: replacement CI/build entrypoints — 2026-09-30
+
+Build/CI lane added `Build-WinUiVerification.ps1`: explicit audited restore with
+NoRestore support; fresh platform and preview native builds; synthetic controller,
+foreground/process and preview policy gates; trimmed Release WinUI publication
+with explicit native inputs; native hash, PRI, self-contained .NET10 and retired
+artifact exclusion checks. No registration or launch. Actual wrapper pass is
+`artifacts/winui-shell/renderer-retirement-20260930/ci-verification01/verification.json`
+and sibling `ci-verification01.log`. Preview policy15/diagnostic2021 checks pass;
+platform suites plus foreground/process checks pass. Existing ViGEm encoding
+warnings remain; managed frontend publication reports no errors.
+
+CI no longer installs Rust or invokes the old host build. Manifest now represents
+WinUI shell/motion, platform client, shared state and deployment policies as well
+as existing managed widget/provider/session contracts. Native bridge verification
+creates a fresh managed installation with trusted Settings and sealed bundled
+packages through `Test-WidgetBridgeRuntime.ps1`; its execution remains pending.
+Protocol parity retains the actual extracted native generated header consumer.
+Runner selftest and NuGet build contract passed before the final parent-owned
+manifest cleanup; rerun runner selftest after that cleanup. Current building,
+architecture, dependency and contributor/reference pointers updated. Display
+restore guard now requires an explicit installation root; it was not executed.
+No commits, deployment, candidate actions or machine setting changes by this lane.
+
+CI/bridge follow-up: corrected Settings catalog serialization to always emit an
+array (single configured worker previously unwrapped by PowerShell), and corrected
+source-hash references for non-RID shared project outputs. The fresh installation
+now passes Settings icons, cold catalog, embedded playback loop and Spotify payload
+coherence. Bridge aggregate `bridge-verification02.log` is171/178: remaining failures
+are indexed authority, trusted artwork demand1/0, full-trust fixture worker exit,
+Playnite Home focus expectation, appearance12/16, hover action result/error and
+virtual window50/57. These are retained as non-green evidence, not waived or fixed
+by weakening production checks. No further bridge aggregate rerun by this lane.
+Affected managed verification runs through the actual manifest/runner under
+`renderer-retirement-20260930/managed-verification`.
+
+Final replacement-gate results: NuGet build contract and bounded runner selftest
+pass. Protocol parity regenerated the moved header through its existing generator:
+it was stillv62 while managed contract isv64; only CurrentVersion, discovered/grid
+feature versions and grid bounds changed. Parity now verifies147 constants,
+1 shortcut-repeat rule and4 availability rules. Audio48, Network31, docs197,
+PlatformClient67, Deployment47, WidgetUi.State28, Motion15 and Shell161 pass.
+Evidence: `managed-verification/20260930T233615Z-0f144798/verification-result.json`
+and earlier sibling runs. The native+trimmed gate ran before this additive generated
+header synchronization; consumed placement constants and ABI did not change.
+
+Docs gate repairs map all10 new public SDK files to existing indexed-collection,
+WinUI-grid, navigation and pinning topics, preserve current rail/radial screenshot
+coverage, and restore the community-services entry link. First-party conformance
+is5/6: exact manifest/catalog/package maximum tests pass; the workflow still expects
+Games & Apps item text in its parent snapshot rather than demanding the indexed
+collection. This is retained as a test-adoption gap pending investigation. Bridge
+aggregate remains171/178 as recorded above. Neither gate is declared green and no
+assertion was weakened. All build slots released; candidate lifecycle remains root-owned.
+
+### 2026-09-30 — Games & Apps conformance follows indexed presentation
+
+The Games & Apps workflow harness assumed Library tiles were serialized inside
+its parent snapshot. It now acquires bounded indexed leases, verifies the rendered
+row, and dispatches launch through indexed controller admission with the exact
+lease, item, input scope, and parent sequence. Catalog curation remains on its
+current bounded parent-tree path. Fresh-worker persistence checks require the
+saved indexed row to become interactive. Responsive navigation assertions target
+exactly one compact navigation destination instead of counting its expanded copy.
+No production authority guards changed; all broker effects use the simulated backend.
+
+Validation under `artifacts/winui-shell/renderer-retirement-20260930/`:
+
+- `conformance-indexed01.log`: full default conformance **6/6** passed.
+- `conformance-games-restart02.log`: installed add/launch/fresh-worker persistence passed.
+- `conformance-indexed03.binlog`: final source builds with zero warnings/errors.
+- `conformance-evidence02/`: Games & Apps exported five authoritative snapshots
+  and one add/remove workflow trace. Indexed ranges are retained separately from
+  parent snapshots; membership and unrelated-row preservation are asserted.
+
+The optional exporter still records a separate Settings gap:
+`WidgetProcessException: Widget worker exited with code 1 before connecting.`
+That mode is not claimed fully qualified; its exact gap is retained in
+`conformance-evidence02/evidence-index.json`. Optional legacy Playnite acceptance
+modes still contain eager-parent-row assumptions (including library/category,
+owned/offline and running-app paths); those modes were not run or migrated in this
+bounded batch. They do not invalidate the current default conformance result.

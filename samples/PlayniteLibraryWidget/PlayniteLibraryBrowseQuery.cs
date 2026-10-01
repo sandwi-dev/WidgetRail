@@ -41,8 +41,7 @@ internal sealed class PlayniteLibraryBrowseQuery
         {
             var game = source.Games[index];
             var title = titles.GetValueOrDefault(game.Id, game.Name);
-            // Same final predicates as LoadPageAsync/MatchesFixedQuery and
-            // HeroRailPolicy.ProjectBrowse, applied once to exact membership.
+            // Apply title, source, favorite and exclusion predicates once to exact membership.
             // Provider ordering is retained even when a displayed title changes.
             if (excluded.Contains(game.Id) || favoriteOnly && !favorites.Contains(game.Id) ||
                 source.Query.SearchText is { } search && !title.Contains(search, StringComparison.OrdinalIgnoreCase) ||

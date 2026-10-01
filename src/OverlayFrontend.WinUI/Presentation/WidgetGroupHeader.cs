@@ -5,7 +5,7 @@ using WidgetRail.WidgetBridge;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Native group label using the same resolved section-title style as SDK sections.</summary>
-public sealed class WidgetGroupHeader : ContentControl
+public sealed partial class WidgetGroupHeader : ContentControl
 {
     private readonly TextBlock label = new() { TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
     private NativeComputedStyleAdapter? style;

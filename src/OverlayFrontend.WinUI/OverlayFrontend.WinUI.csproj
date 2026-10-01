@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\eng\WinUiNativeInputs.targets" />
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
@@ -6,24 +7,44 @@
     <!-- C#/WinRT 2.3.1 projections for .NET 9/10, including trim-safe ABI support. -->
     <WindowsSdkPackageVersion>10.0.26100.87</WindowsSdkPackageVersion>
     <RootNamespace>WidgetRail.OverlayFrontend.WinUI</RootNamespace>
+    <AssemblyTitle>WidgetRail</AssemblyTitle>
+    <Product>WidgetRail</Product>
+    <Description>Controller-first Windows widgets</Description>
+    <Version>$(WidgetRailReleaseVersion)</Version>
+    <FileVersion>$(WidgetRailFileVersion)</FileVersion>
+    <AssemblyVersion>$(WidgetRailFileVersion)</AssemblyVersion>
+    <OverlayPlatformInteropPath Condition="'$(OverlayPlatformInteropPath)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\winui-platform\Release\OverlayPlatformInterop.dll</OverlayPlatformInteropPath>
+    <WindowPreviewNativePath Condition="'$(WindowPreviewNativePath)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\winui-preview\Release\WinUiWindowPreviewNative.dll</WindowPreviewNativePath>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon Condition="Exists('Assets\AppIcon.ico')">Assets\AppIcon.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\branding\widgetrail.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
     <PublishProfile Condition="Exists('Properties\PublishProfiles\win-$(Platform).pubxml')">win-$(Platform).pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <WinUISDKReferences>false</WinUISDKReferences>
+    <!-- Explicit unpackaged/Inno distribution: no app identity or app certificate. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <!-- SDK XAML/PRI compilation also uses this tooling for unpackaged WinExe. -->
     <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsAppSDKBootstrapInitialize>false</WindowsAppSDKBootstrapInitialize>
+    <WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Trimmed Release needs generated WinRT interfaces even without Native AOT. -->
+    <CsWinRTAotWarningLevel>1</CsWinRTAotWarningLevel>
     <EnableWidgetValidation Condition="'$(EnableWidgetValidation)' == '' and '$(Configuration)' == 'Debug'">true</EnableWidgetValidation>
     <EnableWidgetValidation Condition="'$(EnableWidgetValidation)' == ''">false</EnableWidgetValidation>
   </PropertyGroup>
   <ItemGroup Condition="'$(EnableWidgetValidation)' != 'true'">
     <Compile Remove="Validation\**\*.cs;MainPage.xaml.cs;Presentation\WidgetViewPresenter.FocusDiagnostics.cs" />
     <Page Remove="Validation\**\*.xaml;MainPage.xaml" />
+  </ItemGroup>
+  <!-- Small trim-safe native smoke test; excluded from shipping and ordinary fixtures. -->
+  <ItemGroup Condition="'$(EnableTrimmedControlValidation)' != 'true' Or '$(EnableWidgetValidation)' == 'true'">
+    <Compile Remove="TrimValidation\**\*.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
@@ -33,7 +54,7 @@
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\Square44x44Logo.targetsize-48_altform-lightunplated.png" />
     <Content Include="Assets\StoreLogo.png" />
-    <Content Include="Assets\AppIcon.ico" />
+    <Content Include="..\..\assets\branding\widgetrail.ico" Link="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
     <Content Include="..\..\assets\fonts\winui-controller\xbox.ttf" Link="Assets\Fonts\xbox.ttf" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\fonts\winui-controller\playstation.ttf" Link="Assets\Fonts\playstation.ttf" CopyToOutputDirectory="PreserveNewest" />
@@ -53,30 +74,15 @@
     <ProjectReference Include="..\PlatformSettings\PlatformSettings.csproj" />
     <ProjectReference Include="..\WindowsDisplayProvider\WindowsDisplayProvider.csproj" />
     <ProjectReference Include="..\WidgetPresentationSession\WidgetPresentationSession.csproj" />
-    <Content Include="..\..\artifacts\winui-platform\Release\OverlayPlatformInterop.dll"
-             Condition="Exists('..\..\artifacts\winui-platform\Release\OverlayPlatformInterop.dll')"
+    <Content Include="$(OverlayPlatformInteropPath)"
+             Condition="Exists('$(OverlayPlatformInteropPath)')"
              Link="OverlayPlatformInterop.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="..\..\artifacts\winui-preview\Release\WinUiWindowPreviewNative.dll"
-             Condition="Exists('..\..\artifacts\winui-preview\Release\WinUiWindowPreviewNative.dll')"
+    <Content Include="$(WindowPreviewNativePath)"
+             Condition="Exists('$(WindowPreviewNativePath)')"
              Link="WinUiWindowPreviewNative.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\WinUIEx\LICENSE" Link="licenses\WinUIEx.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
-  <!--
-    Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
-    Tools extension to be activated for this project even if the Windows App SDK Nuget
-    package has not yet been restored.
-  -->
-  <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <ProjectCapability Include="Msix" />
-  </ItemGroup>
-  <!--
-    Microsoft.Windows.SDK.BuildTools.WinApp adds first-class support for
-    `dotnet run` on packaged WinUI apps: it hooks the .NET CLI Run target to
-    register a debug identity via the winapp CLI and launch the app with
-    package identity (AUMID).
-    Set <EnableWinAppRunSupport>false</EnableWinAppRunSupport> in a
-    <PropertyGroup> above to opt out.
-  -->
+  <!-- WinApp project-mode run supports the explicit unpackaged configuration. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
@@ -84,16 +90,13 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.7.0" />
     <PackageReference Include="WinUIEx" Version="2.9.3" />
   </ItemGroup>
-  <!--
-    Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
-    Explorer "Package and Publish" context menu entry to be enabled for this project even if
-    the Windows App SDK Nuget package has not yet been restored.
-  -->
-  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
-  </PropertyGroup>
   <!-- Publish Properties -->
   <PropertyGroup>
+    <!-- ILLink 10.0.10 can remove Monitor.Exit in nested async finally blocks.
+         Keep trimming/R2R, but disable the affected optimization until the pinned
+         SDK includes https://github.com/dotnet/runtime/pull/131236.
+         Published cleanup is verified against the emitted assembly. -->
+    <_TrimmerIPConstProp>false</_TrimmerIPConstProp>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>

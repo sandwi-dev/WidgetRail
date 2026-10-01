@@ -38,7 +38,8 @@ providers must stop working after their window generation is destroyed, even
 if Windows later reuses the same handle.
 
 Contributors can start in
-[`AccessibilityProjection.h`](../../src/OverlayHost/AccessibilityProjection.h)
-and [`AccessibilityProvider.cpp`](../../src/OverlayHost/AccessibilityProvider.cpp).
+[`WidgetAccessibleState.cs`](../../src/OverlayFrontend.WinUI/Presentation/WidgetAccessibleState.cs)
+and [`WidgetAccessibilityPolicy.cs`](../../src/OverlayFrontend.WinUI/Presentation/WidgetAccessibilityPolicy.cs).
 Real-client UI Automation tests complement ordinary element tests; visual
 appearance alone does not prove accessibility behavior.
+

@@ -14,7 +14,7 @@ using PresentationSession = WidgetRail.WidgetPresentationSession.WidgetPresentat
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
-internal sealed class DiscoveredCollectionValidationPage(string pipe) : Page, IAsyncDisposable
+internal sealed partial class DiscoveredCollectionValidationPage(string pipe) : Page, IAsyncDisposable
 {
     private readonly WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new() { Text = "Connecting discovered collection", TextWrapping = TextWrapping.Wrap };

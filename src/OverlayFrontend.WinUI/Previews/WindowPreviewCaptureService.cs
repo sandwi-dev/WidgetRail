@@ -11,10 +11,44 @@ internal sealed class WindowPreviewCaptureService : IAsyncDisposable
 {
     private readonly object gate = new();
     private readonly NativePreviewEngine engine = new();
+    private readonly NativePreviewHealthReader health;
+    private readonly Timer healthTimer;
+    private readonly PreviewCloseWatchdog watchdog = new();
+    private int readingHealth, healthFailed;
     private readonly HashSet<WindowPreviewRenderer> renderers = [];
     private readonly HashSet<WindowPreviewSurface> callbackRoots = [];
     private Task? disposal;
     private bool retired;
+
+    internal WindowPreviewCaptureService()
+    {
+        try
+        {
+            health = new(engine);
+            healthTimer = new(_ => ObserveHealth(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+        catch { health?.Dispose(); engine.Dispose(); throw; }
+    }
+
+    private void ObserveHealth()
+    {
+        if (Interlocked.Exchange(ref readingHealth, 1) != 0) return;
+        try
+        {
+            var sample = NativePreviewHealth.Empty;
+            // E_PENDING means the owner changed phases during this bounded read.
+            // Retry next tick; never wait on the capture queue or spin here.
+            if (PreviewNative.ReadHealth(health, ref sample) != 0) return;
+            if (watchdog.Observe(sample, System.Diagnostics.Stopwatch.GetTimestamp()) is { } message)
+                Diagnostics.FrontendFailureLog.Current.Write("preview-close", null, message);
+        }
+        catch (Exception error)
+        {
+            if (Interlocked.Exchange(ref healthFailed, 1) == 0)
+                Diagnostics.FrontendFailureLog.Current.Write("preview-health", error);
+        }
+        finally { Volatile.Write(ref readingHealth, 0); }
+    }
 
     internal WindowPreviewRenderer CreateRenderer(PresentationSession session, ulong hostWindow)
     {
@@ -46,11 +80,20 @@ internal sealed class WindowPreviewCaptureService : IAsyncDisposable
         try { await Task.WhenAll(owned.Select(renderer => renderer.DisposeAsync().AsTask())); }
         finally
         {
-            await Task.Run(engine.Dispose);
-            lock (gate)
+            try
             {
-                foreach (var surface in callbackRoots) surface.ReleaseRootAfterOwnerStopped();
-                callbackRoots.Clear(); renderers.Clear();
+                await Task.Run(engine.Dispose);
+                lock (gate)
+                {
+                    foreach (var surface in callbackRoots) surface.ReleaseRootAfterOwnerStopped();
+                    callbackRoots.Clear(); renderers.Clear();
+                }
+            }
+            finally
+            {
+                await healthTimer.DisposeAsync();
+                ObserveHealth();
+                health.Dispose();
             }
         }
     }

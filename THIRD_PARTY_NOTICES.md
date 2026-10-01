@@ -12,29 +12,42 @@ The complete license is retained in `third_party/WinUIEx/LICENSE` and copied int
 the WinUI frontend output. The pinned NuGet library supplies transparent window
 backdrop integration; its source is not copied into WidgetRail.
 
+## Microsoft Windows App SDK 2.5.1
+
+Project: https://github.com/microsoft/WindowsAppSDK
+
+The WinUI frontend uses Microsoft's Windows App SDK and its signed Windows App
+Runtime Framework. The distribution retains the SDK license and notices under
+`licenses/Microsoft.WindowsAppSDK-license.txt` and
+`licenses/Microsoft.WindowsAppSDK-NOTICE.txt`, together with the runtime's embedded
+package licenses. These components retain their respective redistribution terms.
+
 ## Kenney Input Prompts 1.5A
 
 Created by Kenney, available at https://kenney.nl/assets/input-prompts
 
-License: Creative Commons Zero (CC0 1.0). The unmodified Xbox Series and
+License: Creative Commons Zero (CC0 1.0). The original Xbox Series and
 PlayStation Series fonts, character maps, license, and attribution are bundled
-in `assets/fonts/kenney`. WidgetRail loads these privately for controller hints;
+in `assets/fonts/kenney`. WinUI loads private subsets from `assets/fonts/winui-controller`;
 they are not installed as system fonts.
+Subset transformations and source hashes are documented in
+`assets/fonts/winui-controller/NOTICE.txt` and `inventory.json`.
 
 ## PromptFont
 
 PromptFont by Shinmera (Yukari Hafner), available at https://shinmera.com/promptfont
 
 License: SIL Open Font License 1.1. The unmodified font and its complete license
-are bundled in `assets/fonts/promptfont`. WidgetRail loads it privately for
+are retained in `assets/fonts/promptfont`. WinUI loads a privately renamed subset for
 the PS-logo button missing from the Kenney set; it is not installed as a system font.
 
-## Microsoft .NET 8 base and Windows Desktop runtimes
+## Microsoft .NET 10 frontend and .NET 8 service runtimes
 
 Projects: https://github.com/dotnet/runtime and https://github.com/dotnet/windowsdesktop
 
 Copyright (c) .NET Foundation and Contributors. License: MIT.
-The private runtime distribution retains Microsoft's `dotnet/LICENSE.txt` and
+The self-contained WinUI publication retains its .NET runtime notices. The private
+.NET 8 runtime distribution retains Microsoft's `dotnet/LICENSE.txt` and
 `dotnet/ThirdPartyNotices.txt`. Runtime versions and archive checksums are pinned
 in `eng/runtime-dependencies.json`.
 
@@ -86,68 +99,3 @@ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
 ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-## Taffy 0.12.2
-
-Project: https://github.com/DioxusLabs/taffy
-
-License: MIT. The copyright of contributions remains with the original authors.
-Taffy was forked from the `stretch` crate, copyright 2018 Visly Inc.
-
-## arrayvec 0.7.8
-
-Project: https://github.com/bluss/arrayvec
-
-Copyright (c) Ulrik Sverdrup "bluss" 2015-2023
-
-License: MIT.
-
-## grid 1.0.1
-
-Project: https://github.com/becheran/grid
-
-Copyright (c) 2020 Armin Becher
-
-License: MIT.
-
-## MIT license text
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-## slotmap 1.1.1
-
-Project: https://github.com/orlp/slotmap
-
-Copyright (c) 2021 Orson Peters <orsonpeters@gmail.com>
-
-This software is provided 'as-is', without any express or implied warranty. In
-no event will the authors be held liable for any damages arising from the use of
-this software.
-
-Permission is granted to anyone to use this software for any purpose, including
-commercial applications, and to alter it and redistribute it freely, subject to
-the following restrictions:
-
-1. The origin of this software must not be misrepresented; you must not claim
-   that you wrote the original software. If you use this software in a product,
-   an acknowledgment in the product documentation would be appreciated but is
-   not required.
-2. Altered source versions must be plainly marked as such, and must not be
-   misrepresented as being the original software.
-3. This notice may not be removed or altered from any source distribution.

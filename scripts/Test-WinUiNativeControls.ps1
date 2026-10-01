@@ -48,14 +48,21 @@ try {
             $mainWindow = @($windows | Where-Object title -Like 'WidgetRail*WinUI frontend')
             if ($mainWindow.Count -ne 1) { throw 'Could not identify the owned native fixture window.' }
             $mainHwnd = $mainWindow[0].hwnd
-            $resultPath = Join-Path $diagnostics $case.File
+            $resultPaths = @((Join-Path $diagnostics $case.File))
+            # Packaged development activation can virtualize LocalApplicationData.
+            # Accept only a fresh result from this launch's exact package family.
+            if ($launch.AUMID) {
+                $family = ($launch.AUMID -split '!')[0]
+                $resultPaths += Join-Path $env:LOCALAPPDATA "Packages/$family/LocalCache/Local/WidgetRail/WinUI/diagnostics/$($case.File)"
+            }
             $deadline = [DateTime]::UtcNow.AddSeconds($(if ($ProcessFailures) { 90 } else { 45 }))
             $result = $null
             $capturedPhases = [Collections.Generic.HashSet[string]]::new()
             do {
-                $file = Get-Item -LiteralPath $resultPath -ErrorAction SilentlyContinue
+                $file = $resultPaths | ForEach-Object { Get-Item -LiteralPath $_ -ErrorAction SilentlyContinue } |
+                    Where-Object LastWriteTimeUtc -GE $started | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
                 if ($file -and $file.LastWriteTimeUtc -ge $started) {
-                    try { $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json } catch { }
+                    try { $result = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json } catch { }
                     if ($case.Media -and $result.phase -in @('owner-popup','owner-fullscreen') -and $capturedPhases.Add($result.phase)) {
                         & (Join-Path $PSScriptRoot 'Capture-WinUiTestWindow.ps1') -AppPid $ownedPid -WindowHandle $mainHwnd `
                             -OutputPath (Join-Path $OutputDirectory "$($result.phase).png") -RequireMediaPixels | Out-Null

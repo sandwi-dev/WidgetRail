@@ -4,7 +4,6 @@ using System.Globalization;
 using System.Text.Json;
 using WidgetRail.FirstPartyWidgets.AudioMixer;
 using WidgetRail.FirstPartyWidgets.GamesApps;
-using WidgetRail.Samples.PlayniteLibrary;
 using WidgetRail.FirstPartyWidgets.MediaSessions;
 using WidgetRail.FirstPartyWidgets.NetworkControls;
 using WidgetRail.FirstPartyWidgets.Settings;
@@ -19,9 +18,30 @@ using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
-using WidgetRail.WindowsAppLibraryProvider;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
+
+// Playnite now owns a full-trust application: package admission is covered by
+// WidgetBridge.Tests/FullTrustCommunityScenarios; detailed indexed workflows by
+// PlayniteLibraryWidget.Tests and PlayniteLibraryCommunityApplication.Tests.
+// Retired or misspelled acceptance modes must not silently run the default suite.
+string[] supportedAcceptanceModes =
+[
+    "--ytmusic-community-acceptance", "--community-recovery-acceptance",
+    "--text-entry-acceptance", "--full-application-acceptance",
+    "--full-application-reference-acceptance", "--media-sessions-acceptance",
+    "--games-apps-installed-acceptance",
+];
+var unknownAcceptanceMode = args.FirstOrDefault(argument =>
+    argument.StartsWith("--", StringComparison.Ordinal) &&
+    argument.EndsWith("-acceptance", StringComparison.Ordinal) &&
+    !supportedAcceptanceModes.Contains(argument, StringComparer.Ordinal));
+if (unknownAcceptanceMode is not null)
+{
+    Console.Error.WriteLine($"Unsupported acceptance mode '{unknownAcceptanceMode}'. " +
+        "Use the current package runtime and provider test suites.");
+    return 2;
+}
 
 if (!OperatingSystem.IsWindows())
 {
@@ -35,8 +55,7 @@ if (evidenceOutputIndex >= 0)
     if (evidenceOutputIndex + 1 >= args.Length ||
         string.IsNullOrWhiteSpace(args[evidenceOutputIndex + 1]))
         throw new ArgumentException("--evidence-output requires a directory.");
-    await ExportEvidenceAsync(Path.GetFullPath(args[evidenceOutputIndex + 1]));
-    return 0;
+    return await ExportEvidenceAsync(Path.GetFullPath(args[evidenceOutputIndex + 1])) ? 0 : 1;
 }
 
 if (args.Contains("--ytmusic-community-acceptance", StringComparer.Ordinal))
@@ -65,139 +84,10 @@ if (args.Contains("--community-recovery-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
-if (args.Contains("--steam-artwork-acceptance", StringComparer.Ordinal))
-{
-    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
-    var installed = await BridgeCatalog.LoadWithInstalledAsync(
-        deployment.EmptyTrustedCatalogPath,
-        deployment.InstalledCatalogRoot,
-        deployment.WorkerHostPath);
-    await InstalledSteamArtworkRunsIsolated(installed.Catalog);
-    Console.WriteLine("PASS exact installed Steam artwork acceptance");
-    return 0;
-}
-
-if (args.Contains("--gog-installed-acceptance", StringComparer.Ordinal))
-{
-    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
-    var installed = await BridgeCatalog.LoadWithInstalledAsync(
-        deployment.EmptyTrustedCatalogPath,
-        deployment.InstalledCatalogRoot,
-        deployment.WorkerHostPath);
-    await InstalledGogRunsIsolated(installed.Catalog);
-    Console.WriteLine("PASS opt-in GOG installed-game generic-worker acceptance");
-    return 0;
-}
-
-if (args.Contains("--playnite-library-category-acceptance", StringComparer.Ordinal))
-{
-    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
-    var installed = await BridgeCatalog.LoadWithInstalledAsync(
-        deployment.EmptyTrustedCatalogPath,
-        deployment.InstalledCatalogRoot,
-        deployment.WorkerHostPath);
-    await InstalledPlayniteLibraryCategoryRunsIsolated(installed.Catalog);
-    Console.WriteLine("PASS installed Playnite Library category acceptance");
-    return 0;
-}
-
-if (args.Contains("--playnite-library-launch-acceptance", StringComparer.Ordinal))
-{
-    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
-    var installed = await BridgeCatalog.LoadWithInstalledAsync(
-        deployment.EmptyTrustedCatalogPath,
-        deployment.InstalledCatalogRoot,
-        deployment.WorkerHostPath);
-    var package = deployment.Packages.Single(candidate =>
-        candidate.Manifest.Id == "widgetrail.samples.playnite-library");
-    await RunCatalogAsync(
-        installed.Catalog,
-        [package],
-        candidate => candidate.Manifest.Id,
-        "installed-launch-revalidation");
-    Console.WriteLine("PASS exact installed Playnite Library launch acceptance");
-    return 0;
-}
-
-if (args.Contains("--playnite-library-community-acceptance", StringComparer.Ordinal))
-{
-    var packageIndex = Array.IndexOf(args, "--package");
-    var packagePath = packageIndex >= 0 && packageIndex + 1 < args.Length &&
-                      !string.IsNullOrWhiteSpace(args[packageIndex + 1])
-        ? Path.GetFullPath(args[packageIndex + 1])
-        : throw new ArgumentException("--package requires a path.");
-    using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
-    var packageCatalog = new WidgetCatalog(deployment.InstalledCatalogRoot);
-    var installedVersion = await packageCatalog.InstallAsync(packagePath);
-    Assert.Equal("widgetrail.samples.playnite-library", installedVersion.Id);
-    Assert.Equal("widgetrail.samples", installedVersion.Manifest.Publisher);
-    await packageCatalog.SetEnabledAsync(installedVersion.Id, true);
-    var installed = await BridgeCatalog.LoadWithInstalledAsync(
-        deployment.EmptyTrustedCatalogPath,
-        deployment.InstalledCatalogRoot,
-        deployment.WorkerHostPath);
-    Assert.True(installed.InstalledCatalogValid,
-        "The external Playnite Library Community package was rejected: " +
-        string.Join(" | ", installed.Warnings));
-    var package = new PackageFixture(
-        installedVersion.Id,
-        WidgetGlyph.Play,
-        "Conformance Game 00000",
-        installedVersion.Manifest,
-        installedVersion.InstallPath,
-        packagePath,
-        installedVersion.Manifest.Permissions
-            .Concat(installedVersion.Manifest.OptionalPermissions)
-            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
-    await RunCatalogAsync(
-        installed.Catalog,
-        [package],
-        candidate => candidate.Manifest.Id,
-        "external-community-playnite-library");
-    Console.WriteLine("PASS external Playnite Library Community generic-worker acceptance");
-    return 0;
-}
-
 if (args.Contains("--package-icon-contract", StringComparer.Ordinal))
 {
     await ShippedPackageIconContracts();
     Console.WriteLine("PASS shipped package icon contracts");
-    return 0;
-}
-
-if (args.Contains("--playnite-library-owned-acceptance", StringComparer.Ordinal))
-{
-    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
-    var installed = await BridgeCatalog.LoadWithInstalledAsync(
-        deployment.EmptyTrustedCatalogPath,
-        deployment.InstalledCatalogRoot,
-        deployment.WorkerHostPath);
-    await InstalledPlayniteLibraryOwnedRunsIsolated(installed.Catalog);
-    Console.WriteLine("PASS installed Playnite Library mixed installed/owned acceptance");
-    return 0;
-}
-
-if (args.Contains("--playnite-library-offline-acceptance", StringComparer.Ordinal))
-{
-    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
-    var installed = await BridgeCatalog.LoadWithInstalledAsync(
-        deployment.EmptyTrustedCatalogPath,
-        deployment.InstalledCatalogRoot,
-        deployment.WorkerHostPath);
-    await InstalledPlayniteLibraryOfflineRunsIsolated(installed.Catalog);
-    Console.WriteLine("PASS installed Playnite Library offline/recovery acceptance");
-    return 0;
-}
-
-if (args.Contains("--running-app-acceptance", StringComparer.Ordinal))
-{
-    using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
-    var installed = await BridgeCatalog.LoadWithInstalledAsync(
-        deployment.EmptyTrustedCatalogPath,
-        deployment.InstalledCatalogRoot,
-        deployment.WorkerHostPath);
-    await InstalledRunningAppRunsIsolated(installed.Catalog);
-    Console.WriteLine("PASS exact installed running-app acceptance");
     return 0;
 }
 
@@ -209,11 +99,9 @@ if (args.Contains("--text-entry-acceptance", StringComparer.Ordinal))
         deployment.InstalledCatalogRoot,
         deployment.WorkerHostPath);
     var packages = deployment.Packages
-        .Where(package => package.Manifest.Id is
-            "widgetrail.samples.playnite-library" or
-            "widgetrail.firstparty.network-controls")
+        .Where(package => package.Manifest.Id == "widgetrail.firstparty.network-controls")
         .ToArray();
-    Assert.Equal(2, packages.Length);
+    Assert.Equal(1, packages.Length);
     await RunCatalogAsync(
         installed.Catalog,
         packages,
@@ -639,1001 +527,6 @@ static async Task FullApplicationPackageRunsIsolated(
         helper.WaitForExitAsync()).WaitAsync(TimeSpan.FromSeconds(4));
     Assert.True(worker.HasExited && helper.HasExited,
         "Kill-on-close left a full-application process-tree member alive.");
-}
-
-static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
-{
-    using var steam = new InstalledSteamArtworkFixture();
-    await using var provider = new WindowsAppLibraryProvider(
-        [new SteamGameLibrarySource(
-            new WindowsSteamApplicationSource([steam.Root]),
-            new InstalledArtworkSteamLauncher())],
-        ShellStaExecutor.Shared);
-    var simulator = CreateBackend();
-    await using var backend = new CompositePlatformBrokerBackend(
-        simulator, simulator,
-        activity: simulator,
-        bluetooth: simulator,
-        media: simulator,
-        appLibrary: provider,
-        privateSecrets: simulator,
-        loopbackHttp: simulator,
-        privateState: simulator);
-    var configured = catalog.GetConfigured("widgetrail.samples.playnite-library");
-    Assert.True(configured.RequiresAppContainer,
-        "Installed Steam artwork did not use the generic AppContainer route.");
-    using var consentRoot = new TemporaryDirectory("wrail-installed-steam-artwork-consent");
-    var consent = new ConsentStore(consentRoot.Path);
-    var identity = new BrokerWidgetIdentity(
-        configured.PackageId, configured.PublisherId, configured.InstanceId);
-    foreach (var capability in configured.DeclaredCapabilities)
-        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
-    var artwork = new AppLibraryArtworkRegistry();
-    await using var client = new WidgetProcessClient(new WidgetProcessOptions
-    {
-        ExecutablePath = configured.WorkerExecutable,
-        Arguments = configured.WorkerArguments,
-        WidgetInstanceId = configured.InstanceId,
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-        RequestTimeout = TimeSpan.FromSeconds(4),
-        MaximumRestartAttempts = 0,
-        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
-        IsolationKey = configured.IsolationKey,
-        ReadOnlyPaths = configured.ReadOnlyPaths,
-        ContentLeaseFactory = configured.ContentLeaseFactory,
-        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
-            configured.PackageId,
-            configured.PublisherId,
-            configured.InstanceId,
-            configured.DeclaredCapabilities,
-            consent,
-            backend,
-            context,
-            artwork),
-    });
-
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-    var snapshot = await WaitForSnapshotAsync(client, "Installed Steam One");
-    var firstHandle = ArtworkHandle(snapshot, "Installed Steam One");
-    var neighborHandle = ArtworkHandle(snapshot, "Installed Steam Two");
-    Assert.True(artwork.IsCurrent(identity, firstHandle),
-        "Installed Steam first handle was not current in the host registry.");
-    Assert.True(artwork.IsCurrent(identity, neighborHandle),
-        "Installed Steam neighbor handle was not current in the host registry.");
-    var directPage = await provider.QueryAppLibraryAsync(
-        new AppLibraryBackendCursorRequest(
-            new AppLibraryBackendQuery(), null, null, 64),
-        CancellationToken.None);
-    var directFirst = directPage.Items.Single(item =>
-        item.DisplayName == "Installed Steam One");
-    Assert.True((await provider.GetAppLibraryIconAsync(
-        directFirst.ProviderAppId, CancellationToken.None)).PngBase64 is not null,
-        "Installed Steam provider lost first artwork before registry resolution.");
-    var firstPixels = await artwork.ResolveAsync(
-        identity, firstHandle, CancellationToken.None);
-    var neighborPixels = await artwork.ResolveAsync(
-        identity, neighborHandle, CancellationToken.None);
-    Assert.True(firstPixels is not null,
-        "Installed Steam first artwork did not resolve current bounded pixels.");
-    Assert.True(neighborPixels is not null,
-        "Installed Steam neighbor artwork did not resolve current bounded pixels.");
-
-    steam.ReplaceFirstArtwork();
-    Assert.Equal<string?>(null, await artwork.ResolveAsync(
-        identity, firstHandle, CancellationToken.None));
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.refresh", "playnite-library.refresh"));
-    snapshot = await WaitForArtworkRotation(
-        client, "Installed Steam One", firstHandle);
-    var rotatedHandle = ArtworkHandle(snapshot, "Installed Steam One");
-    Assert.True(rotatedHandle != firstHandle,
-        "Installed Steam artwork replacement reused the prior handle.");
-    Assert.Equal(neighborHandle, ArtworkHandle(snapshot, "Installed Steam Two"));
-    Assert.Equal<string?>(null, await artwork.ResolveAsync(
-        identity, firstHandle, CancellationToken.None));
-    var rotatedPixels = await artwork.ResolveAsync(
-        identity, rotatedHandle, CancellationToken.None);
-    Assert.True(rotatedPixels is not null && rotatedPixels != firstPixels,
-        "Installed Steam replacement reused stale decoded pixels.");
-
-    steam.RemoveFirstArtwork();
-    Assert.Equal<string?>(null, await artwork.ResolveAsync(
-        identity, rotatedHandle, CancellationToken.None));
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.refresh", "playnite-library.refresh"));
-    snapshot = await WaitForArtworkRotation(
-        client, "Installed Steam One", rotatedHandle);
-    var removedHandle = ArtworkHandle(snapshot, "Installed Steam One");
-    Assert.Equal<string?>(null, await artwork.ResolveAsync(
-        identity, removedHandle, CancellationToken.None));
-    Assert.Equal(neighborHandle, ArtworkHandle(snapshot, "Installed Steam Two"));
-
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-    await client.StopAsync();
-
-    static string ArtworkHandle(ViewSnapshot snapshot, string displayName)
-    {
-        var tile = Nodes(snapshot.Root).Single(node =>
-            node.ActionId == "playnite-library.launch" &&
-            Nodes(node).Any(descendant => string.Equals(
-                descendant.Text, displayName, StringComparison.Ordinal)));
-        return Nodes(tile).Single(node => node.ArtworkHandle is not null).ArtworkHandle!;
-    }
-
-    static async Task<ViewSnapshot> WaitForArtworkRotation(
-        WidgetProcessClient client,
-        string displayName,
-        string priorHandle)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (DateTime.UtcNow < deadline)
-        {
-            var current = await client.GetSnapshotAsync();
-            Assert.Equal(0, ViewSnapshotValidator.Validate(current).Count);
-            var tile = Nodes(current.Root).FirstOrDefault(node =>
-                node.ActionId == "playnite-library.launch" &&
-                Nodes(node).Any(descendant => string.Equals(
-                    descendant.Text, displayName, StringComparison.Ordinal)));
-            var handle = tile is null
-                ? null
-                : Nodes(tile).SingleOrDefault(node => node.ArtworkHandle is not null)
-                    ?.ArtworkHandle;
-            if (handle is not null && handle != priorHandle) return current;
-            await Task.Delay(40);
-        }
-        throw new TimeoutException(
-            $"Installed Steam artwork for {displayName} did not rotate.");
-    }
-}
-
-static async Task InstalledGogRunsIsolated(BridgeCatalog catalog)
-{
-    using var fixture = new InstalledGogFixture();
-    var enabled = false;
-    var registry = new InstalledGogRegistry(fixture.Records);
-    await using var provider = new WindowsAppLibraryProvider(
-        [new GogGameLibrarySource(
-            new GogInstalledGameApplicationSource(
-                registry, _ => enabled))],
-        ShellStaExecutor.Shared);
-    var appLibrary = new InstalledGogBoundaryBackend(provider);
-    var simulator = CreateBackend();
-    await using var backend = new CompositePlatformBrokerBackend(
-        simulator, simulator,
-        activity: simulator,
-        bluetooth: simulator,
-        media: simulator,
-        appLibrary: appLibrary,
-        privateSecrets: simulator,
-        loopbackHttp: simulator,
-        privateState: simulator);
-    var configured = catalog.GetConfigured("widgetrail.samples.playnite-library");
-    using var consentRoot = new TemporaryDirectory("wrail-installed-gog-consent");
-    var consent = new ConsentStore(consentRoot.Path);
-    var identity = new BrokerWidgetIdentity(
-        configured.PackageId, configured.PublisherId, configured.InstanceId);
-    foreach (var capability in configured.DeclaredCapabilities)
-        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
-    await using var client = new WidgetProcessClient(new WidgetProcessOptions
-    {
-        ExecutablePath = configured.WorkerExecutable,
-        Arguments = configured.WorkerArguments,
-        WidgetInstanceId = configured.InstanceId,
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-        RequestTimeout = TimeSpan.FromSeconds(4),
-        MaximumRestartAttempts = 0,
-        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
-        IsolationKey = configured.IsolationKey,
-        ReadOnlyPaths = configured.ReadOnlyPaths,
-        ContentLeaseFactory = configured.ContentLeaseFactory,
-        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
-            configured.PackageId,
-            configured.PublisherId,
-            configured.InstanceId,
-            configured.DeclaredCapabilities,
-            consent,
-            backend,
-            context),
-    });
-
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-    var disabled = await WaitForSnapshotAsync(client, "No installed games");
-    Assert.True(!Nodes(disabled.Root).Any(node =>
-        string.Equals(node.Text, fixture.DisplayName, StringComparison.Ordinal)),
-        "Disabled GOG source reached the installed worker.");
-    Assert.Equal(0, registry.ReadCount);
-
-    enabled = true;
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.refresh", "playnite-library.refresh"));
-    var enabledSnapshot = await WaitForSnapshotAsync(client, fixture.DisplayName);
-    Assert.True(Nodes(enabledSnapshot.Root).Any(node =>
-        string.Equals(node.Text, "GOG", StringComparison.Ordinal)),
-        "Enabled GOG source attribution did not reach the installed worker.");
-    Assert.True(registry.ReadCount > 0,
-        "Enabled GOG source did not read the fixed registration surface.");
-
-    var launch = Nodes(enabledSnapshot.Root).Single(node =>
-        node.ActionId == "playnite-library.launch" &&
-        Nodes(node).Any(descendant => string.Equals(
-            descendant.Text, fixture.DisplayName, StringComparison.Ordinal)));
-    Assert.True(launch.IsDisabled is true,
-        "Installed GOG evidence exposed an enabled Play action.");
-    Assert.True(launch.AccessibilityLabel?.Contains(
-        "Play unavailable", StringComparison.Ordinal) == true,
-        "Installed GOG evidence did not expose truthful unavailable action copy.");
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.launch", launch.Id));
-    Assert.Equal(0, appLibrary.LaunchCount);
-
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-    await client.StopAsync();
-}
-
-static async Task InstalledPlayniteLibraryCategoryRunsIsolated(BridgeCatalog catalog)
-{
-    var backend = CreateBackend(gameLibraryCount: 128);
-    AppLibraryBackendItemSummary[] SourceGames() => Enumerable.Range(0, 128)
-        .Select(index => new AppLibraryBackendItemSummary(
-            $"game-{index:D5}", $"stable-game-{index:D5}",
-            $"Conformance Game {index:D5}", AppLibraryKind.Game,
-            ArtworkRevision: $"art-{index:D5}",
-            SourceAttribution: index < 64 ? "Steam" : "Windows"))
-        .ToArray();
-    backend.SetAppLibraryBackend(SourceGames().Prepend(new AppLibraryBackendItemSummary(
-        "manual-app", "stable-manual-app", "A Conformance Manual App",
-        AppLibraryKind.Application, SourceAttribution: "Windows")));
-    backend.AppLibrarySources =
-    [
-        new AppLibrarySourceSummary(
-            "source-steam", "Steam", AppLibrarySourceHealth.Healthy,
-            1, "healthy"),
-        new AppLibrarySourceSummary(
-            "source-windows", "Windows", AppLibrarySourceHealth.Degraded,
-            1, "source_degraded"),
-        new AppLibrarySourceSummary(
-            "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
-            1, "healthy"),
-    ];
-    var configured = catalog.GetConfigured("widgetrail.samples.playnite-library");
-    using var consentRoot = new TemporaryDirectory("wrail-installed-category-consent");
-    var consent = new ConsentStore(consentRoot.Path);
-    var identity = new BrokerWidgetIdentity(
-        configured.PackageId, configured.PublisherId, configured.InstanceId);
-    foreach (var capability in configured.DeclaredCapabilities)
-        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
-
-    WidgetProcessClient CreateClient() => new(new WidgetProcessOptions
-    {
-        ExecutablePath = configured.WorkerExecutable,
-        Arguments = configured.WorkerArguments,
-        WidgetInstanceId = configured.InstanceId,
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-        RequestTimeout = TimeSpan.FromSeconds(4),
-        MaximumRestartAttempts = 0,
-        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
-        IsolationKey = configured.IsolationKey,
-        ReadOnlyPaths = configured.ReadOnlyPaths,
-        ContentLeaseFactory = configured.ContentLeaseFactory,
-        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
-            configured.PackageId,
-            configured.PublisherId,
-            configured.InstanceId,
-            configured.DeclaredCapabilities,
-            consent,
-            backend,
-            context),
-    });
-
-    await using (var client = CreateClient())
-    {
-        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-        var library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00001");
-        Assert.True(!Nodes(library.Root).Any(node =>
-                node.ActionId?.StartsWith(
-                    "playnite-library.collection.select.", StringComparison.Ordinal) == true &&
-                Nodes(node).Any(child =>
-                    (child.Text ?? string.Empty).StartsWith(
-                        "Empty Store:", StringComparison.Ordinal))),
-            "An observed source with no matching game was advertised as a collection.");
-        Assert.True(Nodes(library.Root).Any(node =>
-                node.Id == "playnite-library.source.source-windows" &&
-                (node.Text ?? string.Empty).Contains("Degraded", StringComparison.Ordinal)),
-            "Installed mixed-source degradation was not visible.");
-        var retainedFocus = library.InitialFocusId;
-        backend.AppLibrarySources =
-        [
-            new AppLibrarySourceSummary(
-                "source-steam", "Steam", AppLibrarySourceHealth.Healthy,
-                2, "healthy"),
-            new AppLibrarySourceSummary(
-                "source-windows", "Windows", AppLibrarySourceHealth.Unavailable,
-                2, "source_unavailable"),
-            new AppLibrarySourceSummary(
-                "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
-                2, "healthy"),
-        ];
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.refresh", "playnite-library.refresh"));
-        library = await WaitForSnapshotAsync(client, "Windows: Unavailable");
-        Assert.Equal(64, Nodes(library.Root).Count(node =>
-            node.ActionId == "playnite-library.launch"));
-        Assert.Equal(retainedFocus, library.InitialFocusId);
-        backend.AppLibrarySources =
-        [
-            new AppLibrarySourceSummary(
-                "source-steam", "Steam", AppLibrarySourceHealth.Healthy,
-                3, "healthy"),
-            new AppLibrarySourceSummary(
-                "source-windows", "Windows", AppLibrarySourceHealth.Healthy,
-                3, "healthy"),
-            new AppLibrarySourceSummary(
-                "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
-                3, "healthy"),
-        ];
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.refresh", "playnite-library.refresh"));
-        library = await WaitForSnapshotAsync(client, "Windows: Healthy");
-        Assert.Equal(retainedFocus, library.InitialFocusId);
-
-        var next = Nodes(library.Root).Single(node =>
-            node.ActionId == "playnite-library.next");
-        await client.SendActionAsync(new WidgetActionEvent(next.ActionId!, next.Id));
-        library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00064");
-        AssertCollectionOptions(library, "All installed", "Steam", "Windows");
-
-        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-        await client.StopAsync();
-    }
-
-    await using (var client = CreateClient())
-    {
-        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-        var library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00001");
-        AssertCollectionOptions(library, "All installed", "Steam", "Windows");
-        Assert.True(HasCollection(library, "Windows"),
-            "A later-page proven source was lost across worker restart.");
-
-        library = await SelectCollectionAsync(client, library, "Steam");
-        AssertCollectionSelected(library, "Steam");
-        library = await SelectCollectionAsync(client, library, "Windows");
-        AssertCollectionSelected(library, "Windows");
-
-        backend.SetAppLibraryBackend(SourceGames().Where(item =>
-            string.Equals(item.SourceAttribution, "Windows", StringComparison.Ordinal)));
-        backend.AppLibrarySources =
-        [
-            new AppLibrarySourceSummary(
-                "source-windows", "Windows", AppLibrarySourceHealth.Healthy,
-                2, "healthy"),
-            new AppLibrarySourceSummary(
-                "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
-                2, "healthy"),
-        ];
-        library = await SelectCollectionAsync(client, library, "All installed");
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.refresh", "playnite-library.refresh"));
-        var sourceRefreshDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (DateTime.UtcNow < sourceRefreshDeadline && HasCollection(library, "Steam"))
-        {
-            await Task.Delay(40);
-            library = await client.GetSnapshotAsync();
-        }
-        AssertCollectionOptions(library, "All installed", "Windows");
-        Assert.True(!HasCollection(library, "Steam"),
-            "An authoritative refresh retained a removed source collection.");
-        Assert.True(!HasCollection(library, "Empty Store"),
-            "An observation-only empty source became a collection after refresh.");
-
-        backend.SetAppLibraryBackend(SourceGames().Prepend(new AppLibraryBackendItemSummary(
-            "manual-app", "stable-manual-app", "A Conformance Manual App",
-            AppLibraryKind.Application, SourceAttribution: "Windows")));
-        backend.AppLibrarySources =
-        [
-            new AppLibrarySourceSummary(
-                "source-steam", "Steam", AppLibrarySourceHealth.Healthy,
-                3, "healthy"),
-            new AppLibrarySourceSummary(
-                "source-windows", "Windows", AppLibrarySourceHealth.Healthy,
-                3, "healthy"),
-            new AppLibrarySourceSummary(
-                "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
-                3, "healthy"),
-        ];
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.refresh", "playnite-library.refresh"));
-        library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00001");
-        var game = Nodes(library.Root).First(node =>
-            node.ActionId == "playnite-library.launch" &&
-            (node.AccessibilityLabel ?? string.Empty).Contains(
-                "Conformance Game 00001", StringComparison.Ordinal));
-
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.details.open", game.Id));
-        var details = await WaitForNodeTextSnapshotAsync(
-            client, "playnite-library.details.title", "Conformance Game 00001");
-        Assert.True(Nodes(details.Root).Any(node =>
-            node.Id == "playnite-library.details.source" &&
-            string.Equals(node.Text, "Source · Steam", StringComparison.Ordinal)),
-            "Installed details did not project the current normalized source.");
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.actions.open", "playnite-library.details.actions"));
-        var detailSheet = await WaitForNodeTextSnapshotAsync(
-            client, "playnite-library.actions.sheet.title",
-            "Actions for Conformance Game 00001");
-        var favorite = Nodes(detailSheet.Root).Single(node =>
-            node.ActionId == "playnite-library.favorite");
-        var favoriteWasSelected = string.Equals(
-            favorite.Text, "Remove favorite", StringComparison.Ordinal);
-        await client.SendActionAsync(new WidgetActionEvent(favorite.ActionId!, favorite.Id));
-        detailSheet = await WaitForNodeTextSnapshotAsync(
-            client, "playnite-library.actions.favorite",
-            favoriteWasSelected ? "Add favorite" : "Remove favorite");
-        if (favoriteWasSelected)
-        {
-            favorite = Nodes(detailSheet.Root).Single(node =>
-                node.ActionId == "playnite-library.favorite");
-            await client.SendActionAsync(new WidgetActionEvent(
-                favorite.ActionId!, favorite.Id));
-            detailSheet = await WaitForNodeTextSnapshotAsync(
-                client, "playnite-library.actions.favorite", "Remove favorite");
-        }
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.actions.close", "playnite-library.actions.favorite"));
-        details = await WaitForNodeTextSnapshotAsync(
-            client, "playnite-library.details.title", "Conformance Game 00001");
-        var handledBack = await client.SendControllerInputAsync(new ControllerInputEvent(
-            ControllerButton.B,
-            ControllerEventPhase.Pressed,
-            ControllerInputContext.OpenWidget,
-            FocusedElementId: "playnite-library.details.actions",
-            Sequence: 160,
-            ActiveInputScopeId: details.ActiveInputScopeId,
-            SnapshotSequence: details.Sequence));
-        Assert.True(handledBack, "Installed details did not consume Back.");
-        library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00001");
-        Assert.Equal(game.Id, library.InitialFocusId);
-        game = Nodes(library.Root).First(node => node.Id == game.Id);
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.actions.open", game.Id));
-        var hideSheet = await WaitForNodeTextSnapshotAsync(
-            client, "playnite-library.actions.sheet.title",
-            "Actions for Conformance Game 00001");
-        var hide = Nodes(hideSheet.Root).Single(node =>
-            node.ActionId == "playnite-library.hide");
-        await client.SendActionAsync(new WidgetActionEvent(hide.ActionId!, hide.Id));
-        library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.hidden.open", "Hidden (1)");
-        var hiddenOpen = Nodes(library.Root).Single(node =>
-            node.ActionId == "playnite-library.hidden.open");
-        await client.SendActionAsync(new WidgetActionEvent(hiddenOpen.ActionId!, hiddenOpen.Id));
-        var hidden = await WaitForActionSnapshotAsync(
-            client, "playnite-library.restore", "Conformance Game 00001");
-        var restore = Nodes(hidden.Root).Single(node =>
-            node.ActionId == "playnite-library.restore");
-        await client.SendActionAsync(new WidgetActionEvent(restore.ActionId!, restore.Id));
-        hidden = await WaitForActionSnapshotAsync(
-            client, "playnite-library.hidden.back", "Back");
-        var hiddenBack = Nodes(hidden.Root).Single(node =>
-            node.ActionId == "playnite-library.hidden.back");
-        await client.SendActionAsync(new WidgetActionEvent(hiddenBack.ActionId!, hiddenBack.Id));
-        library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00001");
-        game = Nodes(library.Root).First(node =>
-            node.ActionId == "playnite-library.launch" &&
-            (node.AccessibilityLabel ?? string.Empty).Contains(
-                "Conformance Game 00001", StringComparison.Ordinal));
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.actions.open", game.Id));
-        var sheet = await WaitForActionSnapshotAsync(
-            client, "playnite-library.actions.categories", "Manage categories");
-        var manage = Nodes(sheet.Root).Single(node =>
-            node.ActionId == "playnite-library.actions.categories");
-        await client.SendActionAsync(new WidgetActionEvent(manage.ActionId!, manage.Id));
-        var categories = await WaitForActionSnapshotAsync(
-            client, "playnite-library.category.create", "Create category");
-        var create = Nodes(categories.Root).Single(node =>
-            node.ActionId == "playnite-library.category.create");
-        await client.SendActionAsync(new WidgetActionEvent(create.ActionId!, create.Id)
-            { CommittedText = "Installed Favorites" });
-        categories = await WaitForSnapshotAsync(client, "Installed Favorites · 0 games");
-        var allGames = Nodes(categories.Root).Single(node =>
-            node.Id == "playnite-library.categories.all-games");
-        await client.SendActionAsync(new WidgetActionEvent(allGames.ActionId!, allGames.Id));
-        library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00001");
-        game = Nodes(library.Root).First(node =>
-            node.ActionId == "playnite-library.launch" &&
-            (node.AccessibilityLabel ?? string.Empty).Contains(
-                "Conformance Game 00001", StringComparison.Ordinal));
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.actions.open", game.Id));
-        sheet = await WaitForSnapshotAsync(client, "Add to Installed Favorites");
-        var assign = Nodes(sheet.Root).Single(node =>
-            string.Equals(node.Text, "Add to Installed Favorites", StringComparison.Ordinal));
-        await client.SendActionAsync(new WidgetActionEvent(assign.ActionId!, assign.Id));
-        await WaitForSnapshotAsync(client, "Remove from Installed Favorites");
-        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-        await client.StopAsync();
-    }
-
-    await using (var client = CreateClient())
-    {
-        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-        var library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.categories.open", "Categories (1)");
-        var libraryGame = Nodes(library.Root).First(node =>
-            node.ActionId == "playnite-library.launch" &&
-            (node.AccessibilityLabel ?? string.Empty).Contains(
-                "Conformance Game 00001", StringComparison.Ordinal));
-        var handled = await client.SendControllerInputAsync(new ControllerInputEvent(
-            ControllerButton.RightTrigger,
-            ControllerEventPhase.Pressed,
-            ControllerInputContext.OpenWidget,
-            FocusedElementId: libraryGame.Id,
-            Sequence: 170,
-            ActiveInputScopeId: library.ActiveInputScopeId,
-            SnapshotSequence: library.Sequence));
-        Assert.True(handled, "RT did not open the retained installed category.");
-        _ = await WaitForNodeTextSnapshotAsync(
-            client, "playnite-library.title", "Installed Favorites");
-        var category = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00001");
-        var categoryGame = Nodes(category.Root).Single(node =>
-            node.ActionId == "playnite-library.launch");
-        handled = await client.SendControllerInputAsync(new ControllerInputEvent(
-            ControllerButton.LeftTrigger,
-            ControllerEventPhase.Pressed,
-            ControllerInputContext.OpenWidget,
-            FocusedElementId: categoryGame.Id,
-            Sequence: 171,
-            ActiveInputScopeId: category.ActiveInputScopeId,
-            SnapshotSequence: category.Sequence));
-        Assert.True(handled, "LT did not return to All Games.");
-        _ = await WaitForNodeTextSnapshotAsync(
-            client, "playnite-library.title", "Playnite Library");
-        library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.categories.open", "Categories (1)");
-        libraryGame = Nodes(library.Root).First(node =>
-            node.ActionId == "playnite-library.launch" &&
-            (node.AccessibilityLabel ?? string.Empty).Contains(
-                "Conformance Game 00001", StringComparison.Ordinal));
-        handled = await client.SendControllerInputAsync(new ControllerInputEvent(
-            ControllerButton.RightTrigger,
-            ControllerEventPhase.Pressed,
-            ControllerInputContext.OpenWidget,
-            FocusedElementId: libraryGame.Id,
-            Sequence: 172,
-            ActiveInputScopeId: library.ActiveInputScopeId,
-            SnapshotSequence: library.Sequence));
-        Assert.True(handled, "RT did not wrap back to the retained category.");
-        _ = await WaitForNodeTextSnapshotAsync(
-            client, "playnite-library.title", "Installed Favorites");
-        category = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00001");
-        var exact = Nodes(category.Root).Single(node =>
-            node.ActionId == "playnite-library.launch");
-        var before = backend.AppLibraryLaunchCalls;
-        await client.SendActionAsync(new WidgetActionEvent(exact.ActionId!, exact.Id));
-        await WaitForSnapshotAsync(client, "Request accepted");
-        Assert.Equal(before + 1, backend.AppLibraryLaunchCalls);
-
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.actions.open", exact.Id));
-        var sheet = await WaitForActionSnapshotAsync(
-            client, "playnite-library.actions.edit-title", "Edit title");
-        var editTitle = Nodes(sheet.Root).Single(node =>
-            node.ActionId == "playnite-library.actions.edit-title");
-        await client.SendActionAsync(new WidgetActionEvent(
-            editTitle.ActionId!, editTitle.Id));
-        _ = await WaitForNodeTextSnapshotAsync(client,
-            "playnite-library.title.provider",
-            "Provider title · Conformance Game 00001");
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.title.commit", "playnite-library.title.entry")
-            { CommittedText = "Installed Champion" });
-        _ = await WaitForActionSnapshotAsync(
-            client, "playnite-library.title.reset", "Reset title", requireEnabled: true);
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.title.close", "playnite-library.title.entry"));
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.actions.close", "playnite-library.actions.favorite"));
-        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-        await client.StopAsync();
-    }
-
-    await using (var client = CreateClient())
-    {
-        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-        var library = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Installed Champion");
-        var exact = Nodes(library.Root).Single(node =>
-            node.ActionId == "playnite-library.launch" &&
-            (node.AccessibilityLabel ?? string.Empty).Contains(
-                "Installed Champion", StringComparison.Ordinal));
-        var before = backend.AppLibraryLaunchCalls;
-        await client.SendActionAsync(new WidgetActionEvent(exact.ActionId!, exact.Id));
-        await WaitForSnapshotAsync(client, "Request accepted");
-        Assert.Equal(before + 1, backend.AppLibraryLaunchCalls);
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.actions.open", exact.Id));
-        var sheet = await WaitForActionSnapshotAsync(
-            client, "playnite-library.actions.edit-title", "Edit title");
-        var editTitle = Nodes(sheet.Root).Single(node =>
-            node.ActionId == "playnite-library.actions.edit-title");
-        await client.SendActionAsync(new WidgetActionEvent(
-            editTitle.ActionId!, editTitle.Id));
-        _ = await WaitForActionSnapshotAsync(
-            client, "playnite-library.title.reset", "Reset title", requireEnabled: true);
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.title.reset", "playnite-library.title.reset"));
-        _ = await WaitForNodeTextSnapshotAsync(
-            client, "playnite-library.title.entry", "Conformance Game 00001");
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.title.close", "playnite-library.title.entry"));
-        await client.SendActionAsync(new WidgetActionEvent(
-            "playnite-library.actions.close", "playnite-library.actions.favorite"));
-        _ = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00001");
-        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-        await client.StopAsync();
-    }
-
-    var largeItems = Enumerable.Range(0, 257).Select(index => new
-    {
-        SavedId = $"saved-retained-{index:D3}",
-        DisplayName = $"Retained {index:D3}",
-        SourceAttribution = "Installed",
-    }).ToArray();
-    var largeState = JsonSerializer.SerializeToUtf8Bytes(new
-    {
-        Version = 5,
-        Items = largeItems,
-        FavoriteSavedIds = Array.Empty<string>(),
-        VariantGroups = Array.Empty<object>(),
-        RecentSavedIds = Array.Empty<string>(),
-        ManualSavedIds = Array.Empty<string>(),
-        ExcludedSavedIds = Array.Empty<string>(),
-        Categories = Array.Empty<object>(),
-        TitleOverrides = largeItems.Select((item, index) => new
-        {
-            item.SavedId,
-            Title = $"Custom {index:D3}",
-        }).ToArray(),
-        ExperienceId = "hero-rail",
-    });
-    Assert.True(largeState.Length <= CommunityPlatformLimits.MaximumPrivateStateUtf8Bytes,
-        "The 257-title installed fixture exceeded the shared private-state boundary.");
-    var currentState = await backend.ReadPrivateStateAsync(identity, CancellationToken.None);
-    _ = await backend.WritePrivateStateAsync(identity, new(
-        Convert.ToBase64String(largeState), currentState.Revision), CancellationToken.None);
-
-    await using (var client = CreateClient())
-    {
-        await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-        _ = await WaitForActionSnapshotAsync(
-            client, "playnite-library.launch", "Conformance Game 00001");
-        var retained = await backend.ReadPrivateStateAsync(identity, CancellationToken.None);
-        using var document = JsonDocument.Parse(Convert.FromBase64String(
-            retained.CanonicalJsonBase64 ?? throw new InvalidOperationException(
-                "The installed worker cleared the large retained title state.")));
-        Assert.Equal(257, document.RootElement.GetProperty("TitleOverrides")
-            .GetArrayLength());
-        Assert.True(Convert.FromBase64String(retained.CanonicalJsonBase64!).Length <=
-            CommunityPlatformLimits.MaximumPrivateStateUtf8Bytes,
-            "The installed worker persisted an oversized title state.");
-        await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-        await client.StopAsync();
-    }
-
-    static async Task<ViewSnapshot> SelectCollectionAsync(
-        WidgetProcessClient client,
-        ViewSnapshot snapshot,
-        string label)
-    {
-        var option = Nodes(snapshot.Root).Single(node =>
-            node.ActionId?.StartsWith(
-                "playnite-library.collection.select.", StringComparison.Ordinal) == true &&
-            Nodes(node).Any(child => CollectionLabel(child, label)));
-        await client.SendActionAsync(new WidgetActionEvent(option.ActionId!, option.Id));
-        return await WaitForSnapshotAsync(client, label + ": On");
-    }
-
-    static void AssertCollectionOptions(ViewSnapshot snapshot, params string[] labels)
-    {
-        foreach (var label in labels)
-            Assert.True(HasCollection(snapshot, label),
-                $"Installed collection option {label} was omitted.");
-    }
-
-    static void AssertCollectionSelected(ViewSnapshot snapshot, string label)
-    {
-        var selected = Nodes(snapshot.Root).Where(node =>
-            node.IsSelected == true && node.ActionId?.StartsWith(
-                "playnite-library.collection.select.", StringComparison.Ordinal) == true).ToArray();
-        Assert.Equal(1, selected.Length);
-        Assert.True(Nodes(selected[0]).Any(child => CollectionLabel(child, label)),
-            $"Selected collection did not match {label}.");
-    }
-
-    static bool HasCollection(ViewSnapshot snapshot, string label) =>
-        Nodes(snapshot.Root).Any(node =>
-            node.ActionId?.StartsWith(
-                "playnite-library.collection.select.", StringComparison.Ordinal) == true &&
-            Nodes(node).Any(child => CollectionLabel(child, label)));
-
-    static bool CollectionLabel(ViewNode node, string label) =>
-        string.Equals(node.Text, label + ": On", StringComparison.Ordinal) ||
-        string.Equals(node.Text, label + ": Off", StringComparison.Ordinal) ||
-        string.Equals(node.AccessibilityLabel, label + ", On", StringComparison.Ordinal) ||
-        string.Equals(node.AccessibilityLabel, label + ", Off", StringComparison.Ordinal);
-}
-
-static async Task InstalledPlayniteLibraryOwnedRunsIsolated(BridgeCatalog catalog)
-{
-    var backend = CreateBackend();
-    backend.SetAppLibrary(
-    [
-        new AppLibraryItemSummary(
-            "game-installed", "stable-installed",
-            AppLibraryPresentation(
-                "Installed Fixture Game", AppLibraryKind.Game, "Windows")),
-        new AppLibraryItemSummary(
-            "game-owned", "stable-owned",
-            new AppLibraryItemPresentation(
-                "Owned Fixture Game",
-                AppLibraryKind.Game,
-                new AppLibrarySourceReference("source-store", "Store"),
-                new AppLibraryAvailabilitySummary(
-                    AppLibraryAvailabilityState.Unavailable,
-                    false,
-                    "owned_not_installed"),
-                new AppLibraryArtworkSet([]),
-                Metadata: null,
-                new AppLibraryCapabilitySet([AppLibraryAction.Install]),
-                ActiveOperation: null)),
-    ]);
-    var configured = catalog.GetConfigured("widgetrail.samples.playnite-library");
-    using var consentRoot = new TemporaryDirectory("wrail-installed-owned-consent");
-    var consent = new ConsentStore(consentRoot.Path);
-    var identity = new BrokerWidgetIdentity(
-        configured.PackageId, configured.PublisherId, configured.InstanceId);
-    foreach (var capability in configured.DeclaredCapabilities)
-        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
-
-    await using var client = new WidgetProcessClient(new WidgetProcessOptions
-    {
-        ExecutablePath = configured.WorkerExecutable,
-        Arguments = configured.WorkerArguments,
-        WidgetInstanceId = configured.InstanceId,
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-        RequestTimeout = TimeSpan.FromSeconds(4),
-        MaximumRestartAttempts = 0,
-        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
-        IsolationKey = configured.IsolationKey,
-        ReadOnlyPaths = configured.ReadOnlyPaths,
-        ContentLeaseFactory = configured.ContentLeaseFactory,
-        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
-            configured.PackageId,
-            configured.PublisherId,
-            configured.InstanceId,
-            configured.DeclaredCapabilities,
-            consent,
-            backend,
-            context),
-    });
-
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-    var snapshot = await WaitForSnapshotAsync(client, "Owned Fixture Game");
-    var installed = Nodes(snapshot.Root).Single(node =>
-        node.ActionId == "playnite-library.launch" &&
-        (node.AccessibilityLabel ?? string.Empty).Contains(
-            "Installed Fixture Game", StringComparison.Ordinal));
-    var owned = Nodes(snapshot.Root).Single(node =>
-        node.ActionId == "playnite-library.launch" &&
-        (node.AccessibilityLabel ?? string.Empty).Contains(
-            "Owned Fixture Game", StringComparison.Ordinal));
-    Assert.True(installed.IsDisabled is not true,
-        "The installed row lost exact launch admission.");
-    Assert.True(owned.IsDisabled is true &&
-        owned.CollectionItemKey is not null,
-        "The owned row was not a navigable non-launching collection item.");
-    Assert.True(owned.AccessibilityLabel!.Contains(
-        "Owned · Not installed · Install available from source",
-        StringComparison.Ordinal),
-        "The installed worker omitted truthful typed Install availability.");
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.launch", owned.Id));
-    Assert.Equal(0, backend.AppLibraryLaunchCalls);
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.details.open", owned.Id));
-    snapshot = await WaitForSnapshotAsync(client, "Primary action · Install from source");
-    Assert.True(Nodes(snapshot.Root).Single(node =>
-        node.ActionId == "playnite-library.launch").IsDisabled is true,
-        "Owned details exposed Play admission.");
-    var handledBack = await client.SendControllerInputAsync(new ControllerInputEvent(
-        ControllerButton.B,
-        ControllerEventPhase.Pressed,
-        ControllerInputContext.OpenWidget,
-        FocusedElementId: "playnite-library.details.actions",
-        Sequence: 186,
-        ActiveInputScopeId: snapshot.ActiveInputScopeId,
-        SnapshotSequence: snapshot.Sequence));
-    Assert.True(handledBack, "Installed owned details did not consume Back.");
-    snapshot = await WaitForSnapshotAsync(client, "Installed Fixture Game");
-    installed = Nodes(snapshot.Root).Single(node =>
-        node.ActionId == "playnite-library.launch" &&
-        (node.AccessibilityLabel ?? string.Empty).Contains(
-            "Installed Fixture Game", StringComparison.Ordinal));
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.launch", installed.Id));
-    await WaitUntilAsync(() => backend.AppLibraryLaunchCalls == 1);
-    Assert.Equal(1, backend.AppLibraryLaunchCalls);
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-    await client.StopAsync();
-}
-
-static async Task InstalledPlayniteLibraryOfflineRunsIsolated(BridgeCatalog catalog)
-{
-    var simulated = CreateBackend();
-    simulated.SetAppLibrary(
-    [
-        new AppLibraryItemSummary(
-            "game-offline", "stable-offline",
-            AppLibraryPresentation(
-                "Installed Offline Fixture", AppLibraryKind.Game, "Windows")),
-    ]);
-    var backend = new InstalledOfflineAppLibraryBackend(simulated);
-    await using var brokerBackend = new CompositePlatformBrokerBackend(
-        simulated,
-        simulated,
-        activity: simulated,
-        bluetooth: simulated,
-        media: simulated,
-        appLibrary: backend,
-        privateSecrets: simulated,
-        loopbackHttp: simulated,
-        privateState: simulated);
-    var configured = catalog.GetConfigured("widgetrail.samples.playnite-library");
-    using var consentRoot = new TemporaryDirectory("wrail-installed-offline-consent");
-    var consent = new ConsentStore(consentRoot.Path);
-    var identity = new BrokerWidgetIdentity(
-        configured.PackageId, configured.PublisherId, configured.InstanceId);
-    foreach (var capability in configured.DeclaredCapabilities)
-        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
-
-    await using var client = new WidgetProcessClient(new WidgetProcessOptions
-    {
-        ExecutablePath = configured.WorkerExecutable,
-        Arguments = configured.WorkerArguments,
-        WidgetInstanceId = configured.InstanceId,
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-        RequestTimeout = TimeSpan.FromSeconds(4),
-        MaximumRestartAttempts = 0,
-        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
-        IsolationKey = configured.IsolationKey,
-        ReadOnlyPaths = configured.ReadOnlyPaths,
-        ContentLeaseFactory = configured.ContentLeaseFactory,
-        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
-            configured.PackageId,
-            configured.PublisherId,
-            configured.InstanceId,
-            configured.DeclaredCapabilities,
-            consent,
-            brokerBackend,
-            context),
-    });
-
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-    var snapshot = await WaitForSnapshotAsync(client, "Installed Offline Fixture");
-    var tile = Nodes(snapshot.Root).Single(node =>
-        node.ActionId == "playnite-library.launch" &&
-        (node.AccessibilityLabel ?? string.Empty).Contains(
-            "Installed Offline Fixture", StringComparison.Ordinal));
-    var exactFocus = tile.Id;
-
-    backend.FailCatalogRefresh = true;
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.refresh", "playnite-library.refresh"));
-    snapshot = await WaitForSnapshotAsync(client, "Game library offline");
-    Assert.Equal(exactFocus, snapshot.InitialFocusId);
-    tile = Nodes(snapshot.Root).Single(node => node.Id == exactFocus);
-    Assert.True(tile.IsDisabled is not true,
-        "The last-good installed row lost navigability before exact revalidation.");
-
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.launch", tile.Id));
-    await WaitUntilAsync(() => backend.LaunchCount == 1);
-    snapshot = await WaitForSnapshotAsync(client, "Continue (1)");
-    Assert.Equal(exactFocus, snapshot.InitialFocusId);
-
-    backend.DenyExactResolution = true;
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.launch", exactFocus));
-    snapshot = await WaitForSnapshotAsync(client, "Failed");
-    Assert.True(Nodes(snapshot.Root).Single(node => node.Id == exactFocus)
-        .AccessibilityLabel?.Contains("Failed", StringComparison.Ordinal) == true,
-        "Missing exact evidence did not produce a failed non-launching tile state.");
-    Assert.Equal(1, backend.LaunchCount);
-
-    backend.DenyExactResolution = false;
-    backend.FailCatalogRefresh = false;
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.retry", "playnite-library.retry"));
-    snapshot = await WaitForSnapshotAsync(client, "Installed Offline Fixture");
-    Assert.Equal(exactFocus, snapshot.InitialFocusId);
-    Assert.Equal(1, Nodes(snapshot.Root).Count(node =>
-        node.ActionId?.StartsWith(
-            "playnite-library.collection.select.",
-            StringComparison.Ordinal) == true &&
-        Nodes(node).Any(child =>
-            (child.Text ?? string.Empty).StartsWith(
-                "Continue (1):", StringComparison.Ordinal))));
-    Assert.True(!Nodes(snapshot.Root).Any(node =>
-        node.Id == "playnite-library.retained-error"),
-        "Recovered installed browsing retained the offline warning.");
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-    await client.StopAsync();
-}
-
-static async Task InstalledRunningAppRunsIsolated(BridgeCatalog catalog)
-{
-    var backend = CreateBackend(gameLibraryCount: 128);
-    backend.SetRunningAppBackend([
-        new("stable-manual-app", "fixture-instance", "A Conformance Manual App",
-            AppLibraryKind.Application, "Windows"),
-    ]);
-    var configured = catalog.GetConfigured("widgetrail.samples.playnite-library");
-    Assert.True(configured.RequiresAppContainer,
-        "Installed running-app route did not use the generic AppContainer worker.");
-    using var consentRoot = new TemporaryDirectory("wrail-installed-running-app-consent");
-    var consent = new ConsentStore(consentRoot.Path);
-    var identity = new BrokerWidgetIdentity(
-        configured.PackageId, configured.PublisherId, configured.InstanceId);
-    foreach (var capability in configured.DeclaredCapabilities)
-        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
-    await using var client = new WidgetProcessClient(new WidgetProcessOptions
-    {
-        ExecutablePath = configured.WorkerExecutable,
-        Arguments = configured.WorkerArguments,
-        WidgetInstanceId = configured.InstanceId,
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-        RequestTimeout = TimeSpan.FromSeconds(4),
-        MaximumRestartAttempts = 0,
-        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
-        IsolationKey = configured.IsolationKey,
-        ReadOnlyPaths = configured.ReadOnlyPaths,
-        ContentLeaseFactory = configured.ContentLeaseFactory,
-        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
-            configured.PackageId,
-            configured.PublisherId,
-            configured.InstanceId,
-            configured.DeclaredCapabilities,
-            consent,
-            backend,
-            context),
-    });
-
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
-    var library = await WaitForSnapshotAsync(client, "Conformance Game 00000");
-    var open = Nodes(library.Root).Single(node =>
-        node.ActionId == "playnite-library.running.open");
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.running.open", open.Id));
-    var running = await WaitForActionSnapshotAsync(
-        client, "playnite-library.manual.toggle", "A Conformance Manual App",
-        requireEnabled: true);
-    var add = Nodes(running.Root).Single(node =>
-        node.ActionId == "playnite-library.manual.toggle" &&
-        Nodes(node).Any(descendant => descendant.Text == "A Conformance Manual App"));
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.manual.toggle", add.Id));
-    _ = await WaitForSnapshotAsync(client, "Already included");
 }
 
 static async Task MaximumDirectoryPackageRunsIsolated()
@@ -2090,15 +983,15 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
 
     var repo = FindRepositoryRootForTest();
     using var productionCatalog = JsonDocument.Parse(File.ReadAllBytes(
-        Path.Combine(repo, "src", "OverlayHost", "widget-catalog.json")));
+        Path.Combine(repo, "eng", "widget-catalog.json")));
     Assert.True(!productionCatalog.RootElement.GetProperty("widgets")
             .EnumerateArray().Any(widget =>
                 widget.TryGetProperty("packageId", out var packageId) &&
                 packageId.GetString()?.Contains("ytmusic", StringComparison.OrdinalIgnoreCase) == true),
         "YT Music still has a trusted catalog fallback.");
-    var buildScript = File.ReadAllText(Path.Combine(repo, "src", "OverlayHost", "build.ps1"));
+    var buildScript = File.ReadAllText(Path.Combine(repo, "scripts", "Build-WinUiReleasePayload.ps1"));
     Assert.True(!buildScript.Contains("YtMusicWidget.Worker", StringComparison.Ordinal),
-        "OverlayHost still publishes the retired trusted YT Music worker.");
+        "WinUI payload still publishes the retired trusted YT Music worker.");
     phases.Add("no-trusted-fallback");
 
     if (acceptanceOutput is not null)
@@ -2127,7 +1020,7 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
             manualGaps = new[]
             {
                 "Real YTMDesktop2 pairing approval and API-version compatibility require the companion application.",
-                "Physical controller input, OverlayHost shell composition, and visible transition fidelity require a packaged manual playtest.",
+                "Physical controller input, WinUI shell composition, and visible transition fidelity require a packaged manual playtest.",
                 "Production Credential Manager secret enumeration/purge is not claimed by this auth-free workflow.",
             },
         }, CreateEvidenceJsonOptions()));
@@ -2306,14 +1199,14 @@ static string FindRepositoryRootForTest()
     var current = new DirectoryInfo(AppContext.BaseDirectory);
     while (current is not null)
     {
-        if (File.Exists(Path.Combine(current.FullName, "src", "OverlayHost", "widget-catalog.json")))
+        if (File.Exists(Path.Combine(current.FullName, "eng", "widget-catalog.json")))
             return current.FullName;
         current = current.Parent;
     }
     throw new DirectoryNotFoundException("Repository root was not found.");
 }
 
-static async Task ExportEvidenceAsync(string outputDirectory)
+static async Task<bool> ExportEvidenceAsync(string outputDirectory)
 {
     Directory.CreateDirectory(outputDirectory);
     var snapshotDirectory = Path.Combine(outputDirectory, "snapshots");
@@ -2327,7 +1220,7 @@ static async Task ExportEvidenceAsync(string outputDirectory)
         installAsCommunity: true,
         includeEvidencePackages: true);
     var installed = await BridgeCatalog.LoadWithInstalledAsync(
-        deployment.EmptyTrustedCatalogPath,
+        deployment.TrustedSettingsCatalogPath,
         deployment.InstalledCatalogRoot,
         deployment.WorkerHostPath);
     Assert.True(installed.InstalledCatalogValid,
@@ -2344,7 +1237,8 @@ static async Task ExportEvidenceAsync(string outputDirectory)
     {
         try
         {
-        var configured = installed.Catalog.GetConfigured(package.Manifest.Id);
+        var trustedSettings = package.Manifest.Id == "widgetrail.firstparty.settings";
+        var configured = installed.Catalog.GetConfigured(trustedSettings ? "settings" : package.Manifest.Id);
         var backend = CreateBackend();
         using var consentRoot = new TemporaryDirectory("wrail-evidence-consent");
         var consent = new ConsentStore(consentRoot.Path);
@@ -2358,16 +1252,25 @@ static async Task ExportEvidenceAsync(string outputDirectory)
         await using var client = new WidgetProcessClient(new WidgetProcessOptions
         {
             ExecutablePath = configured.WorkerExecutable,
-            Arguments = configured.WorkerArguments,
+            Arguments = trustedSettings
+                ? configured.WorkerArguments.Concat(new[]
+                {
+                    "--settings-root", Path.Combine(deployment.RootPath, "settings-profile"),
+                    "--host-exclusive-controller-control", "false",
+                    "--host-held-dpad-scroll", "false",
+                    "--host-startup-registration", "false",
+                }).ToArray()
+                : configured.WorkerArguments,
             WidgetInstanceId = configured.InstanceId,
             ConnectTimeout = TimeSpan.FromSeconds(10),
             RequestTimeout = TimeSpan.FromSeconds(8),
             MaximumRestartAttempts = 0,
-            IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
+            IsolationPolicy = trustedSettings ? WidgetWorkerIsolationPolicy.HostTrustedJobOnly
+                : WidgetWorkerIsolationPolicy.RequireAppContainer,
             IsolationKey = configured.IsolationKey,
             ReadOnlyPaths = configured.ReadOnlyPaths,
             ContentLeaseFactory = configured.ContentLeaseFactory,
-            CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
+            CompanionSessionFactory = trustedSettings ? null : context => new BrokerWidgetProcessCompanion(
                 configured.PackageId,
                 configured.PublisherId,
                 configured.InstanceId,
@@ -2381,34 +1284,43 @@ static async Task ExportEvidenceAsync(string outputDirectory)
         var expectedInitialText = package.Manifest.Id == "widgetrail.samples.spotify"
             ? "Client ID required"
             : package.ExpectedText;
-        var initial = await WaitForSnapshotAsync(client, expectedInitialText);
-        await ExportSnapshotAsync(package, configured, "initial", initial);
+        ViewSnapshot initial;
+        if (package.Manifest.Id == "widgetrail.firstparty.games-apps")
+        {
+            var rendered = await WaitForIndexedActionAsync(
+                client, "games.launch", expectedInitialText, requireEnabled: false);
+            await using var initialLease = rendered.Lease;
+            initial = rendered.Snapshot;
+            await ExportSnapshotAsync(package, configured, "initial", initial,
+                [initialLease.Lease.Range]);
+        }
+        else
+        {
+            initial = await WaitForSnapshotAsync(client, expectedInitialText);
+            await ExportSnapshotAsync(package, configured, "initial", initial);
+        }
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
 
         if (package.Manifest.Id == "widgetrail.firstparty.games-apps")
         {
-            Assert.True(Nodes(initial.Root).Any(node =>
-                string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
-                string.Equals(node.AccessibilityLabel,
-                    "Conformance Trusted Game, Game, Ready", StringComparison.Ordinal)),
-                "The trusted Game was not auto-curated in the real package path.");
-            Assert.True(Nodes(initial.Root).Any(node =>
-                string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
-                node.StyleClasses.Contains("wrail-tile", StringComparer.Ordinal)),
-                "Games & Apps did not retain the shared Tile geometry classes.");
-            Assert.True(!Nodes(initial.Root).Any(node =>
-                (node.Text ?? string.Empty).Contains(
-                    "Conformance Library App", StringComparison.Ordinal)),
-                "An Application was auto-curated even though it remains opt-in.");
-            var open = Nodes(initial.Root).Single(node =>
-                string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal));
+            var trusted = await WaitForIndexedActionAsync(client, "games.launch", "Conformance Trusted Game");
+            await using (var trustedLease = trusted.Lease)
+            {
+                initial = trusted.Snapshot;
+                Assert.True(trusted.Item.Root.Kind == ViewNodeKind.ActionSurface &&
+                    trusted.Item.Root.StyleClasses.Contains("games-app-tile", StringComparer.Ordinal),
+                    "Games & Apps did not expose its themed application ActionSurface.");
+                Assert.Equal(1, trustedLease.Lease.Range.Source.Count);
+                Assert.True(!trustedLease.Lease.Range.Items.Any(item => Nodes(item.Root).Any(node =>
+                    (node.Text ?? string.Empty).Contains("Conformance Library App", StringComparison.Ordinal))),
+                    "An Application was auto-curated even though it remains opt-in.");
+            }
+            var open = GamesCompactNavigationAction(initial, "games.open-catalog");
             await client.SendActionAsync(new WidgetActionEvent("games.open-catalog", open.Id));
             var catalog = await WaitForActionSnapshotAsync(
-                client, "games.toggle-curation", "Conformance Library App");
-            Assert.True(Nodes(catalog.Root).Any(node =>
-                string.Equals(node.Id, "games.section", StringComparison.Ordinal) &&
-                node.StyleClasses.Contains("wrail-section-header", StringComparer.Ordinal)),
-                "The Catalog did not retain the shared section hierarchy.");
+                client, "games.toggle-curation", "Conformance Library App", requireEnabled: true);
+            Assert.True(Nodes(catalog.Root).Any(node => node.Id == "games.catalog.grid"),
+                "The Catalog did not expose its bounded application grid.");
             Assert.True(Nodes(catalog.Root).Count() < ProtocolConstants.MaximumNodeCount,
                 "The bounded Catalog page exceeded the protocol node budget.");
             await ExportSnapshotAsync(package, configured, "catalog", catalog);
@@ -2418,35 +1330,41 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                     "Conformance Library App", StringComparison.Ordinal));
             await client.SendActionAsync(new WidgetActionEvent("games.toggle-curation", add.Id));
             var selected = await WaitForActionSnapshotAsync(
-                client, "games.toggle-curation", "Conformance Library App", selected: true);
-            await client.SendActionAsync(new WidgetActionEvent("back", selected.Root.Id));
-            var populated = await WaitForActionSnapshotAsync(
-                client, "games.launch", "Conformance Library App");
-            await ExportSnapshotAsync(package, configured, "populated", populated);
-            var reopen = Nodes(populated.Root).Single(node =>
-                string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal));
-            await client.SendActionAsync(new WidgetActionEvent("games.open-catalog", reopen.Id));
+                client, "games.toggle-curation", "Conformance Library App", selected: true, requireEnabled: true);
+            await client.SendActionAsync(new WidgetActionEvent("games.open-library",
+                GamesCompactNavigationAction(selected, "games.open-library").Id));
+            var populatedRow = await WaitForIndexedActionAsync(client, "games.launch", "Conformance Library App");
+            var populated = populatedRow.Snapshot;
+            await using (var populatedLease = populatedRow.Lease)
+            {
+                Assert.Equal(2, populatedLease.Lease.Range.Source.Count);
+                await ExportSnapshotAsync(package, configured, "populated", populated, [populatedLease.Lease.Range]);
+            }
+            await client.SendActionAsync(new WidgetActionEvent("games.open-catalog",
+                GamesCompactNavigationAction(populated, "games.open-catalog").Id));
             var removalCatalog = await WaitForActionSnapshotAsync(
-                client, "games.toggle-curation", "Conformance Library App", selected: true);
+                client, "games.toggle-curation", "Conformance Library App", selected: true, requireEnabled: true);
             var remove = Nodes(removalCatalog.Root).Single(node =>
                 string.Equals(node.ActionId, "games.toggle-curation", StringComparison.Ordinal) &&
                 (node.AccessibilityLabel ?? string.Empty).Contains(
                     "Conformance Library App", StringComparison.Ordinal));
             await client.SendActionAsync(new WidgetActionEvent("games.toggle-curation", remove.Id));
             var removing = await WaitForActionSnapshotAsync(
-                client, "games.toggle-curation", "Conformance Library App", selected: false);
+                client, "games.toggle-curation", "Conformance Library App", selected: false, requireEnabled: true);
             await ExportSnapshotAsync(package, configured, "removing", removing);
-            await client.SendActionAsync(new WidgetActionEvent("back", removing.Root.Id));
-            var removed = await WaitForActionSnapshotAsync(
-                client, "games.launch", "Conformance Trusted Game");
-            Assert.True(!Nodes(removed.Root).Any(node =>
-                string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
-                Nodes(node).Any(descendant => (descendant.Text ?? string.Empty).Contains(
-                    "Conformance Library App", StringComparison.Ordinal))),
-                "Removing one Catalog entry left the removed row in the Library.");
-            Assert.Equal(1, Nodes(removed.Root).Count(node =>
-                string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal)));
-            await ExportSnapshotAsync(package, configured, "removed", removed);
+            await client.SendActionAsync(new WidgetActionEvent("games.open-library",
+                GamesCompactNavigationAction(removing, "games.open-library").Id));
+            var removedRow = await WaitForIndexedActionAsync(client, "games.launch", "Conformance Trusted Game");
+            var removed = removedRow.Snapshot;
+            await using (var removedLease = removedRow.Lease)
+            {
+                Assert.Equal(1, removedLease.Lease.Range.Source.Count);
+                Assert.True(!removedLease.Lease.Range.Items.Any(item => Nodes(item.Root).Any(node =>
+                    (node.Text ?? string.Empty).Contains("Conformance Library App", StringComparison.Ordinal))),
+                    "Removing one Catalog entry left the removed row in the Library.");
+                _ = GamesCompactNavigationAction(removed, "games.open-catalog");
+                await ExportSnapshotAsync(package, configured, "removed", removed, [removedLease.Lease.Range]);
+            }
             traces.Add(await WriteTraceAsync("GBA-038-games-apps", new
             {
                 issue = "GBA-038",
@@ -2456,9 +1374,9 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                     new { action = "visible", invariant = "trusted Game is automatically curated while Application remains absent" },
                     new { action = "games.open-catalog", invariant = "catalog exposes Conformance Library App" },
                     new { action = "games.toggle-curation", invariant = "selected state becomes true" },
-                    new { action = "back", invariant = "curated root exposes games.launch" },
+                    new { action = "games.open-library", invariant = "leased Library row exposes games.launch" },
                     new { action = "games.toggle-curation", invariant = "removing one saved Application preserves the unrelated trusted Game" },
-                    new { action = "back", invariant = "Library retains exactly one Add applications action" },
+                    new { action = "games.open-library", invariant = "compact navigation retains exactly one Add applications action" },
                 },
                 observed = new
                 {
@@ -2471,18 +1389,18 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                 },
             }));
         }
-        else
+        else if (trustedSettings)
         {
             traces.Add(await WriteTraceAsync("GBA-039-settings-root", new
             {
                 issue = "GBA-039",
-                authority = "real installed package in AppContainer",
+                authority = "production trusted Settings worker with isolated profile and installed catalog",
                 steps = new[]
                 {
-                    new { action = "visible", invariant = "settings root renders through the generic worker" },
+                    new { action = "visible", invariant = "settings root renders through its dedicated trusted worker" },
                 },
                 observed = new { nodeCount = Nodes(initial.Root).Count() },
-                limitation = "Installed-widget permission detail requires host-owned settings/catalog path injection and is not claimed by this slice.",
+                limitation = "Settings mutations and private diagnostics are not invoked by this slice.",
             }));
         }
 
@@ -2504,7 +1422,6 @@ static async Task ExportEvidenceAsync(string outputDirectory)
     var packageEvidence = deployment.Packages
         .Where(package => package.Manifest.Id is
             "widgetrail.firstparty.games-apps" or
-            "widgetrail.firstparty.settings" or
             "widgetrail.samples.spotify")
         .Select(package => PreservePackageArchive(package, packageDirectory))
         .OrderBy(package => package.Id, StringComparer.Ordinal)
@@ -2513,16 +1430,22 @@ static async Task ExportEvidenceAsync(string outputDirectory)
     {
         schemaVersion = 1,
         generatedUtc = DateTimeOffset.UtcNow,
-        evidenceAuthority = "standalone widget-body harness: retained installed .wrwidget archive -> generic AppContainer worker -> simulated broker companion -> production bridge style resolver",
+        evidenceAuthority = "standalone widget-body harness: installed AppContainer packages with simulated broker, plus production trusted Settings worker with isolated profile; production bridge style resolver",
         packages = packageEvidence,
+        trustedSettingsRuntime = Directory.EnumerateFiles(Path.Combine(deployment.RootPath, "runtime", "Settings"), "*", SearchOption.AllDirectories)
+            .Order(StringComparer.Ordinal).Select(path => new
+            {
+                path = Path.GetRelativePath(deployment.RootPath, path),
+                sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant(),
+            }).ToArray(),
         snapshots = exported,
         traces,
         gaps,
         limitations = new[]
         {
             "The backend is deterministic and simulated; no external accounts, radio hardware, or process launch is used.",
-            "PNG rendering is a separate standalone widget-body stage built from production renderer sources; this index contains authoritative semantic snapshots and computed WRSS styles.",
-            "This harness does not exercise the OverlayHost window, shell/tray/footer composition, z-order, focus ownership, input routing, or shell/widget transition fidelity.",
+            "This index contains authoritative parent snapshots, separately retained indexed ranges, and parent WRSS styles; it is not native pixel evidence.",
+            "This harness does not exercise the WinUI window, shell/tray/footer composition, z-order, focus ownership, input routing, or shell/widget transition fidelity.",
             "Settings permission-detail and Spotify OAuth completion are not claimed by this first slice.",
         },
     };
@@ -2530,12 +1453,14 @@ static async Task ExportEvidenceAsync(string outputDirectory)
         Path.Combine(outputDirectory, "evidence-index.json"),
         JsonSerializer.Serialize(index, CreateEvidenceJsonOptions()));
     Console.WriteLine($"Exported {exported.Count} authoritative snapshots and {traces.Count} traces to {outputDirectory}.");
+    return gaps.Count == 0;
 
     async Task ExportSnapshotAsync(
         PackageFixture package,
         ConfiguredWidget configured,
         string state,
-        ViewSnapshot snapshot)
+        ViewSnapshot snapshot,
+        IReadOnlyList<IndexedCollectionRange>? indexedRanges = null)
     {
         var validation = ViewSnapshotValidator.Validate(snapshot);
         Assert.Equal(0, validation.Count);
@@ -2547,6 +1472,7 @@ static async Task ExportEvidenceAsync(string outputDirectory)
         {
             snapshot = snapshotDocument.RootElement.Clone(),
             renderStyles,
+            indexedRanges,
         };
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(payload, CreateEvidenceJsonOptions()));
         var allNodes = Nodes(snapshot.Root).ToArray();
@@ -2637,10 +1563,7 @@ static async Task RunCatalogAsync(
         try
         {
             var configured = catalog.GetConfigured(widgetId(package));
-            backend = sharedBackend ?? CreateBackend(
-                gameLibraryCount: package.Manifest.Id is
-                    "widgetrail.samples.playnite-library"
-                    ? 10_000 : 2);
+            backend = sharedBackend ?? CreateBackend();
             using var consentRoot = new TemporaryDirectory("wrail-firstparty-consent");
             var consent = new ConsentStore(consentRoot.Path);
             var identity = new BrokerWidgetIdentity(
@@ -2674,13 +1597,20 @@ static async Task RunCatalogAsync(
 
             var activationStopwatch = Stopwatch.StartNew();
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
-            var snapshot = await WaitForSnapshotAsync(
-                client,
-                verifyGamesAppsRestart ? "Conformance Library App" : package.ExpectedText);
+            var expectedText = verifyGamesAppsRestart
+                ? "Conformance Library App" : package.ExpectedText;
+            ViewSnapshot snapshot;
+            if (package.Manifest.Id == "widgetrail.firstparty.games-apps")
+            {
+                var rendered = await WaitForIndexedActionAsync(
+                    client, "games.launch", expectedText, requireEnabled: false);
+                await using var renderedLease = rendered.Lease;
+                snapshot = rendered.Snapshot;
+            }
+            else
+                snapshot = await WaitForSnapshotAsync(client, expectedText);
             Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
-            if (package.Manifest.Id is
-                "widgetrail.samples.playnite-library" or
-                "widgetrail.firstparty.network-controls")
+            if (package.Manifest.Id == "widgetrail.firstparty.network-controls")
             {
                 var entry = Nodes(snapshot.Root).Single(node =>
                     node.Kind == ViewNodeKind.TextEntry);
@@ -2708,16 +1638,19 @@ static async Task RunCatalogAsync(
             if (verifyGamesAppsRestart)
             {
                 Assert.Equal("widgetrail.firstparty.games-apps", package.Manifest.Id);
-                Assert.True(Nodes(snapshot.Root).Any(node =>
-                        string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
-                        (node.AccessibilityLabel ?? string.Empty).Contains(
-                            "Conformance Library App", StringComparison.Ordinal)),
-                    "The saved application did not survive a fresh installed worker.");
-                Assert.Equal(1, Nodes(snapshot.Root).Count(node =>
+                var restored = await WaitForIndexedActionAsync(
+                    client, "games.launch", "Conformance Library App");
+                await using var restoredLease = restored.Lease;
+                snapshot = restored.Snapshot;
+                Assert.True(restored.Item.Root.IsDisabled is not true,
+                    "The saved application did not become interactive in a fresh installed worker.");
+                var compactNavigation = Nodes(snapshot.Root).Single(node => node.Id == "games.sections.compact");
+                Assert.Equal(1, Nodes(compactNavigation).Count(node =>
+                    node.Kind == ViewNodeKind.Button &&
                     string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal)));
             }
             else if (textEntryOnly)
-                await ExerciseTextEntryAsync(package, client, snapshot);
+                AssertNetworkTextEntry(package, snapshot);
             else
                 await ExerciseControlAsync(package, client, snapshot, backend, route);
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
@@ -2870,98 +1803,13 @@ static async Task MediaSessionsPackageRunsIsolated(
     Assert.True(!client.IsRunning, "The installed Media Sessions worker did not stop cleanly.");
 }
 
-static async Task ExerciseTextEntryAsync(
-    PackageFixture package,
-    WidgetProcessClient client,
-    ViewSnapshot snapshot)
+static void AssertNetworkTextEntry(PackageFixture package, ViewSnapshot snapshot)
 {
-    if (package.Manifest.Id == "widgetrail.firstparty.network-controls")
-    {
-        Assert.True(Nodes(snapshot.Root).Any(node =>
-                node.Kind == ViewNodeKind.TextEntry &&
-                node.ActionId == "wifi.connect.protected"),
-            "Protected Network Controls TextEntry was not admitted.");
-        return;
-    }
-
-    Assert.Equal("widgetrail.samples.playnite-library", package.Manifest.Id);
-    var search = Nodes(snapshot.Root).Single(node =>
-        node.Kind == ViewNodeKind.TextEntry &&
-        node.ActionId == "playnite-library.search.commit");
-    const string query = "Conformance Game 09999";
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.search.commit", search.Id)
-        { CommittedText = query });
-    var filtered = await WaitForActionSnapshotAsync(
-        client, "playnite-library.search.commit", query);
-    Assert.Equal(query, Nodes(filtered.Root).Single(node =>
-        node.Kind == ViewNodeKind.TextEntry &&
-        node.ActionId == "playnite-library.search.commit").TextEntryValue);
-
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.search.commit", search.Id));
-    var canceled = await client.GetSnapshotAsync();
-    Assert.Equal(query, Nodes(canceled.Root).Single(node =>
-        node.Kind == ViewNodeKind.TextEntry &&
-        node.ActionId == "playnite-library.search.commit").TextEntryValue);
-    var result = Nodes(canceled.Root).Single(node =>
-        node.ActionId == "playnite-library.launch");
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.details.open", result.Id));
-    var details = await WaitForNodeTextSnapshotAsync(
-        client, "playnite-library.details.title", query);
-    Assert.True(!Nodes(details.Root).Any(node => node.Shortcuts.Any(shortcut =>
-            shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)),
-        "Search details leaked collection shortcuts.");
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.actions.open", "playnite-library.details.actions"));
-    var sheet = await WaitForNodeTextSnapshotAsync(
-        client, "playnite-library.actions.sheet.title", $"Actions for {query}");
-    Assert.True(!Nodes(sheet.Root).Any(node => node.Shortcuts.Any(shortcut =>
-            shortcut.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper)),
-        "Search action sheet leaked collection shortcuts.");
-    await client.SendActionAsync(new WidgetActionEvent(
-        "playnite-library.actions.close", "playnite-library.actions.favorite"));
-    details = await WaitForNodeTextSnapshotAsync(
-        client, "playnite-library.details.title", query);
-    var handled = await client.SendControllerInputAsync(new ControllerInputEvent(
-        ControllerButton.B,
-        ControllerEventPhase.Pressed,
-        ControllerInputContext.OpenWidget,
-        FocusedElementId: "playnite-library.details.actions",
-        Sequence: 181,
-        ActiveInputScopeId: details.ActiveInputScopeId,
-        SnapshotSequence: details.Sequence));
-    Assert.True(handled, "Installed searched details did not consume Back.");
-    var returned = await WaitForActionSnapshotAsync(
-        client, "playnite-library.launch", query);
-    Assert.Equal(result.Id, returned.InitialFocusId);
-    Assert.Equal(query, Nodes(returned.Root).Single(node =>
-        node.Kind == ViewNodeKind.TextEntry &&
-        node.ActionId == "playnite-library.search.commit").TextEntryValue);
-
-    var clear = Nodes(returned.Root).Single(node =>
-        node.ActionId == "playnite-library.query.clear");
-    await client.SendActionAsync(new WidgetActionEvent(clear.ActionId!, clear.Id));
-    var clearDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-    var clearObserved = false;
-    while (DateTime.UtcNow < clearDeadline)
-    {
-        var current = await client.GetSnapshotAsync();
-        var entry = Nodes(current.Root).Single(node =>
+    Assert.Equal("widgetrail.firstparty.network-controls", package.Manifest.Id);
+    Assert.True(Nodes(snapshot.Root).Any(node =>
             node.Kind == ViewNodeKind.TextEntry &&
-            node.ActionId == "playnite-library.search.commit");
-        clearObserved = entry.TextEntryValue == string.Empty && Nodes(current.Root).Any(node =>
-            node.ActionId?.StartsWith(
-                "playnite-library.collection.select.", StringComparison.Ordinal) == true &&
-            node.IsSelected == true && Nodes(node).Any(child =>
-                (child.Text ?? string.Empty).StartsWith(
-                    "All installed:", StringComparison.Ordinal)));
-        if (clearObserved) break;
-        await Task.Delay(40);
-    }
-    Assert.True(clearObserved,
-        "Clearing installed search did not restore the selected collection.");
+            node.ActionId == "wifi.connect.protected"),
+        "Protected Network Controls TextEntry was not admitted.");
 }
 
 static async Task ExerciseControlAsync(
@@ -3002,7 +1850,6 @@ static async Task ExerciseControlAsync(
     }
 
     string actionId;
-    ViewNode? explicitSource = null;
     Func<int> calls;
     switch (package.Manifest.Id)
     {
@@ -3020,126 +1867,28 @@ static async Task ExerciseControlAsync(
                     "Conformance Library App", StringComparison.Ordinal));
             await client.SendActionAsync(new WidgetActionEvent(
                 "games.toggle-curation", add.Id));
-            await WaitForActionSnapshotAsync(
-                client, "games.toggle-curation", "Conformance Library App", selected: true);
+            snapshot = await WaitForActionSnapshotAsync(
+                client, "games.toggle-curation", "Conformance Library App", selected: true,
+                requireEnabled: true);
             var libraryDestination = Nodes(Nodes(snapshot.Root).Single(node =>
                     node.Id == "games.sections.compact")).Single(node =>
                 node.Kind == ViewNodeKind.Button && node.ActionId == "games.open-library");
             await client.SendActionAsync(new WidgetActionEvent("games.open-library", libraryDestination.Id));
-            snapshot = await WaitForActionSnapshotAsync(
+            var launch = await WaitForIndexedActionAsync(
                 client, "games.launch", "Conformance Library App");
-            actionId = "games.launch";
-            calls = () => backend.AppLibraryLaunchCalls;
-            break;
-        case "widgetrail.samples.playnite-library":
-            Assert.Equal(64, Nodes(snapshot.Root).Count(node =>
-                node.ActionId == "playnite-library.launch"));
-            Assert.True(Nodes(snapshot.Root).Count() < 1_024,
-                "Playnite Library serialized an unbounded semantic tree.");
-            Assert.True(Nodes(snapshot.Root).Any(node => node.ArtworkHandle is not null),
-                "Playnite Library did not project lazy opaque artwork handles.");
-            var nextPage = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.next");
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.next", nextPage.Id));
-            snapshot = await WaitForSnapshotAsync(client, "Conformance Game 00064");
-            explicitSource = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.launch" &&
-                (node.AccessibilityLabel ?? string.Empty).Contains(
-                    "Conformance Game 00064", StringComparison.Ordinal));
-            Assert.Equal(explicitSource.Id, snapshot.InitialFocusId);
-            var search = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.search.commit");
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.search.commit", search.Id)
-                { CommittedText = "Conformance Game 09999" });
-            snapshot = await WaitForActionSnapshotAsync(
-                client, "playnite-library.launch", "Conformance Game 09999");
-            Assert.Equal(1, Nodes(snapshot.Root).Count(node =>
-                node.ActionId == "playnite-library.launch"));
-            Assert.Equal("Conformance Game 09999", Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.search.commit").TextEntryValue);
-            explicitSource = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.launch");
-            var openAdd = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.add.open");
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.add.open", openAdd.Id));
-            snapshot = await WaitForActionSnapshotAsync(
-                client, "playnite-library.manual.included", "Conformance Game 00000");
-            var addSearch = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.search.commit");
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.search.commit", addSearch.Id)
-                { CommittedText = "A Conformance Manual App" });
-            snapshot = await WaitForActionSnapshotAsync(
-                client, "playnite-library.manual.toggle", "A Conformance Manual App");
-            var manual = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.manual.toggle");
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.manual.toggle", manual.Id));
-            snapshot = await WaitForActionSnapshotAsync(
-                client, "playnite-library.manual.toggle", "Added");
-            var back = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.add.back");
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.add.back", back.Id));
-            snapshot = await WaitForActionSnapshotAsync(
-                client, "playnite-library.launch", "A Conformance Manual App",
-                requireEnabled: true);
-            if (!Nodes(snapshot.Root).Any(node =>
-                    node.ActionId == "playnite-library.launch" &&
-                    (node.AccessibilityLabel ?? string.Empty).Contains(
-                        "Conformance Game 00000", StringComparison.Ordinal)))
-                snapshot = await WaitForSnapshotAsync(client, "Conformance Game 00000");
-            Assert.Equal(65, Nodes(snapshot.Root).Count(node =>
-                node.ActionId == "playnite-library.launch"));
-            Assert.Equal(64, Nodes(snapshot.Root).Count(node =>
-                node.ActionId == "playnite-library.launch" &&
-                node.CollectionItemKey is not null));
-            var hide = Nodes(snapshot.Root).First(node =>
-                node.ActionId == "playnite-library.launch" &&
-                (node.AccessibilityLabel ?? string.Empty).Contains(
-                    "Conformance Game 00000", StringComparison.Ordinal));
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.hide", hide.Id));
-            snapshot = await WaitForActionSnapshotAsync(
-                client, "playnite-library.hidden.open", "Hidden (1)");
-            var openHidden = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.hidden.open");
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.hidden.open", openHidden.Id));
-            snapshot = await WaitForActionSnapshotAsync(
-                client, "playnite-library.restore", "Conformance Game 00000");
-            var restore = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.restore");
-            Assert.True(restore.IsDisabled is not true,
-                "The current installed hidden row did not expose Restore.");
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.restore", restore.Id));
-            snapshot = await WaitForNodeTextSnapshotAsync(
-                client, "playnite-library.status", "No hidden games");
-            var hiddenBack = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.hidden.back" &&
-                node.Id == "playnite-library.hidden.empty.action");
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.hidden.back", hiddenBack.Id));
-            snapshot = await WaitForActionSnapshotAsync(
-                client, "playnite-library.launch", "Conformance Game 00000",
-                requireEnabled: true);
-            var librarySearch = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.search.commit");
-            await client.SendActionAsync(new WidgetActionEvent(
-                "playnite-library.search.commit", librarySearch.Id)
-                { CommittedText = "A Conformance Manual App" });
-            snapshot = await WaitForActionSnapshotAsync(
-                client, "playnite-library.launch", "A Conformance Manual App",
-                requireEnabled: true);
-            explicitSource = Nodes(snapshot.Root).Single(node =>
-                node.ActionId == "playnite-library.launch");
-            actionId = "playnite-library.launch";
-            calls = () => backend.AppLibraryLaunchCalls;
-            break;
+            await using (var launchLease = launch.Lease)
+            {
+                var launchesBefore = backend.AppLibraryLaunchCalls;
+                var admission = await launchLease.AdmitInputAsync(
+                    new IndexedCollectionInputRequest(
+                        new IndexedCollectionItemReference(launchLease.Lease.LeaseId, launch.Item.Key),
+                        ControllerButton.A),
+                    new IndexedCollectionInputContext(launchLease.Lease.Range.ScopeId, launch.Snapshot.Sequence));
+                Assert.Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, admission);
+                await WaitUntilAsync(() => backend.AppLibraryLaunchCalls > launchesBefore);
+                Assert.Equal(launchesBefore + 1, backend.AppLibraryLaunchCalls);
+            }
+            return;
         case "widgetrail.firstparty.media-sessions":
             actionId = "media.toggle";
             calls = () => backend.MediaControlCalls;
@@ -3149,7 +1898,7 @@ static async Task ExerciseControlAsync(
                 $"No conformance control is defined for {package.Manifest.Id}.");
     }
 
-    var source = explicitSource ?? Nodes(snapshot.Root).FirstOrDefault(node =>
+    var source = Nodes(snapshot.Root).FirstOrDefault(node =>
         string.Equals(node.ActionId, actionId, StringComparison.Ordinal));
     Assert.True(source is not null,
         $"{package.Manifest.Name} {route} snapshot omitted action '{actionId}'.");
@@ -3388,7 +2137,7 @@ static async Task ExerciseAudioDashboardControlsAsync(
     }
 }
 
-static SimulatedPlatformBrokerBackend CreateBackend(int gameLibraryCount = 2)
+static SimulatedPlatformBrokerBackend CreateBackend()
 {
     var backend = new SimulatedPlatformBrokerBackend
     {
@@ -3419,29 +2168,15 @@ static SimulatedPlatformBrokerBackend CreateBackend(int gameLibraryCount = 2)
         new AudioDeviceSummary("output-one", "Conformance Speakers", AudioDeviceDirection.Output, true),
         new AudioDeviceSummary("input-one", "Conformance Microphone", AudioDeviceDirection.Input, true),
     ]);
-    if (gameLibraryCount > 2)
-    {
-        backend.SetAppLibraryBackend(Enumerable.Range(0, gameLibraryCount).Select(index =>
-                new AppLibraryBackendItemSummary(
-                    $"game-{index:D5}", $"stable-game-{index:D5}",
-                    $"Conformance Game {index:D5}", AppLibraryKind.Game,
-                    ArtworkRevision: $"art-{index:D5}", SourceAttribution: "Steam"))
-            .Prepend(new AppLibraryBackendItemSummary(
-                "manual-app", "stable-manual-app", "A Conformance Manual App",
-                AppLibraryKind.Application, SourceAttribution: "Windows")));
-    }
-    else
-    {
-        backend.SetAppLibrary(
-        [
-            new AppLibraryItemSummary(
-                "game-conformance", "saved-game-conformance",
-                AppLibraryPresentation("Conformance Trusted Game", AppLibraryKind.Game, "Steam")),
-            new AppLibraryItemSummary(
-                "app-conformance", "saved-app-conformance",
-                AppLibraryPresentation("Conformance Library App", AppLibraryKind.Application, "Windows")),
-        ]);
-    }
+    backend.SetAppLibrary(
+    [
+        new AppLibraryItemSummary(
+            "game-conformance", "saved-game-conformance",
+            AppLibraryPresentation("Conformance Trusted Game", AppLibraryKind.Game, "Steam")),
+        new AppLibraryItemSummary(
+            "app-conformance", "saved-app-conformance",
+            AppLibraryPresentation("Conformance Library App", AppLibraryKind.Application, "Windows")),
+    ]);
     backend.SetAvailableWifiNetworks(
     [
         new AvailableWifiNetworkSummary(
@@ -3503,6 +2238,50 @@ static async Task<ViewSnapshot> WaitForSnapshotAsync(
     throw new InvalidOperationException(
         $"Expected rendered broker data '{expectedText}', latest root was " +
         $"'{latest?.Root.Id ?? "none"}' with text: {renderedText}");
+}
+
+static ViewNode GamesCompactNavigationAction(ViewSnapshot snapshot, string actionId) =>
+    Nodes(Nodes(snapshot.Root).Single(node => node.Id == "games.sections.compact"))
+        .Single(node => node.Kind == ViewNodeKind.Button && node.ActionId == actionId);
+
+// Indexed rows are intentionally absent from the parent snapshot. Verify the same
+// leased semantic item and input admission path used by the WinUI collection host.
+static async Task<(ViewSnapshot Snapshot, WidgetProcessIndexedLease Lease, IndexedCollectionItem Item)>
+    WaitForIndexedActionAsync(
+        WidgetProcessClient client,
+        string actionId,
+        string expectedText,
+        bool requireEnabled = true)
+{
+    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+    ViewSnapshot? latest = null;
+    while (DateTime.UtcNow < deadline)
+    {
+        latest = await client.GetSnapshotAsync();
+        Assert.Equal(0, ViewSnapshotValidator.Validate(latest).Count);
+        foreach (var collection in Nodes(latest.Root).Where(node => node.IndexedCollection is { Count: > 0 }))
+        {
+            var source = collection.IndexedCollection!;
+            for (var start = 0; start < source.Count; start += IndexedCollectionLimits.MaximumRangeItems)
+            {
+                var lease = await client.AcquireIndexedRangeAsync(
+                    new IndexedCollectionRangeRequest(collection.Id, source, start,
+                        Math.Min(IndexedCollectionLimits.MaximumRangeItems, source.Count - start),
+                        Guid.NewGuid().ToString("N")), client.Starts);
+                var item = lease.Lease.Range.Items.FirstOrDefault(candidate =>
+                    string.Equals(candidate.Root.ActionId, actionId, StringComparison.Ordinal) &&
+                    Nodes(candidate.Root).Any(node =>
+                        (node.Text ?? string.Empty).Contains(expectedText, StringComparison.Ordinal)) &&
+                    (!requireEnabled || candidate.Root.IsDisabled is not true));
+                if (item is not null)
+                    return (latest, lease, item);
+                await lease.DisposeAsync();
+            }
+        }
+        await Task.Delay(40);
+    }
+    throw new InvalidOperationException(
+        $"Indexed snapshot omitted action '{actionId}' for '{expectedText}'; latest root '{latest?.Root.Id}'.");
 }
 
 static async Task<ViewSnapshot> WaitForActionSnapshotAsync(
@@ -3624,6 +2403,7 @@ file sealed class Deployment : IDisposable
     public required string BundledWorkerHostPath { get; init; }
     public required string EmptyTrustedCatalogPath { get; init; }
     public required string BundledCatalogPath { get; init; }
+    public required string TrustedSettingsCatalogPath { get; init; }
     public required string InstalledCatalogRoot { get; init; }
     public required IReadOnlyList<PackageFixture> Packages { get; init; }
     public PackageFixture? SpotifyCommunityPackage { get; init; }
@@ -3653,7 +2433,7 @@ file sealed class Deployment : IDisposable
             var runtime = Path.Combine(temporary.Path, "runtime");
             var workerDirectory = Path.Combine(runtime, "WidgetWorkerHost");
             Directory.CreateDirectory(workerDirectory);
-            CopyWorkerHostDeployment(AppContext.BaseDirectory, workerDirectory);
+            CopyWorkerDeployment(AppContext.BaseDirectory, workerDirectory, "WidgetWorkerHost");
             var workerHost = Path.Combine(workerDirectory, "WidgetWorkerHost.exe");
 
             var packageSpecs = ytMusicOnly
@@ -3765,6 +2545,29 @@ file sealed class Deployment : IDisposable
             var emptyCatalog = Path.Combine(temporary.Path, "empty-catalog.json");
             await File.WriteAllTextAsync(emptyCatalog,
                 "{\"catalogVersion\":1,\"widgets\":[],\"bundledWidgets\":[]}");
+            var trustedSettingsCatalog = Path.Combine(temporary.Path, "trusted-settings-catalog.json");
+            var settingsRoot = Path.Combine(runtime, "Settings");
+            if (includeEvidencePackages)
+            {
+                CopyWorkerDeployment(AppContext.BaseDirectory, settingsRoot, "SettingsWidget.Worker");
+                InstalledPackageIntegrity.Seal(temporary.Path, settingsRoot, new WidgetCatalogOptions());
+            }
+            await File.WriteAllTextAsync(trustedSettingsCatalog, JsonSerializer.Serialize(new
+            {
+                catalogVersion = 1,
+                widgets = includeEvidencePackages ? new[]
+                {
+                    new
+                    {
+                        id = "settings", packageId = "widgetrail.firstparty.settings",
+                        publisherId = "widgetrail.firstparty", name = "Settings", instanceId = "settings.default",
+                        workerExecutable = "runtime/Settings/SettingsWidget.Worker.exe",
+                        styleFile = "runtime/Settings/styles/default.wrss", iconPackageRoot = "runtime/Settings",
+                        declaredCapabilities = Array.Empty<string>(),
+                    },
+                } : [],
+                bundledWidgets = Array.Empty<object>(),
+            }));
             var bundledCatalog = Path.Combine(temporary.Path, "bundled-catalog.json");
             await File.WriteAllTextAsync(bundledCatalog, JsonSerializer.Serialize(new
             {
@@ -3790,10 +2593,11 @@ file sealed class Deployment : IDisposable
                 var catalog = new WidgetCatalog(installedRoot);
                 if (!ytMusicOnly && !communityRecoveryOnly)
                 {
-                    foreach (var fixture in fixtures)
+                    foreach (var fixture in fixtures.Where(fixture => fixture.Manifest.Id != "widgetrail.firstparty.settings"))
+                    {
                         await catalog.InstallAsync(fixture.PackagePath);
-                    foreach (var fixture in fixtures)
                         await catalog.SetEnabledAsync(fixture.Manifest.Id, true);
+                    }
                 }
 
                 if (communityRecoveryOnly)
@@ -3884,6 +2688,7 @@ file sealed class Deployment : IDisposable
                 BundledWorkerHostPath = workerHost,
                 EmptyTrustedCatalogPath = emptyCatalog,
                 BundledCatalogPath = bundledCatalog,
+                TrustedSettingsCatalogPath = trustedSettingsCatalog,
                 InstalledCatalogRoot = installedRoot,
                 Packages = fixtures,
                 SpotifyCommunityPackage = spotifyCommunityPackage,
@@ -3916,18 +2721,19 @@ file sealed class Deployment : IDisposable
         return Path.Combine(output, $"{manifest.Id}-{manifest.Version}.wrwidget");
     }
 
-    private static void CopyWorkerHostDeployment(
+    private static void CopyWorkerDeployment(
         string sourceDirectory,
-        string destinationDirectory)
+        string destinationDirectory,
+        string workerName)
     {
         const int maximumAssets = 128;
         var assets = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "WidgetWorkerHost.exe",
-            "WidgetWorkerHost.deps.json",
-            "WidgetWorkerHost.runtimeconfig.json",
+            workerName + ".exe",
+            workerName + ".deps.json",
+            workerName + ".runtimeconfig.json",
         };
-        var dependencies = Path.Combine(sourceDirectory, "WidgetWorkerHost.deps.json");
+        var dependencies = Path.Combine(sourceDirectory, workerName + ".deps.json");
         using var document = JsonDocument.Parse(File.ReadAllBytes(dependencies));
         var root = document.RootElement;
         if (!root.TryGetProperty("runtimeTarget", out var runtimeTarget) ||
@@ -3936,7 +2742,7 @@ file sealed class Deployment : IDisposable
             !root.TryGetProperty("targets", out var targets) ||
             !targets.TryGetProperty(runtimeName, out var target))
             throw new InvalidOperationException(
-                "WidgetWorkerHost.deps.json did not expose its selected runtime target.");
+                $"{workerName}.deps.json did not expose its selected runtime target.");
 
         foreach (var library in target.EnumerateObject())
         {
@@ -3946,7 +2752,7 @@ file sealed class Deployment : IDisposable
             AddAssetGroup(library.Value, "runtimeTargets", assets);
             if (assets.Count > maximumAssets)
                 throw new InvalidOperationException(
-                    "WidgetWorkerHost dependency closure exceeded its conformance bound.");
+                    $"{workerName} dependency closure exceeded its conformance bound.");
         }
 
         var sourceRoot = Path.GetFullPath(sourceDirectory)
@@ -3958,16 +2764,16 @@ file sealed class Deployment : IDisposable
             var relative = asset.Replace('/', Path.DirectorySeparatorChar);
             if (Path.IsPathFullyQualified(relative))
                 throw new InvalidOperationException(
-                    "WidgetWorkerHost dependency closure contained an absolute path.");
+                    $"{workerName} dependency closure contained an absolute path.");
             var source = Path.GetFullPath(relative, sourceRoot);
             var destination = Path.GetFullPath(relative, destinationRoot);
             if (!source.StartsWith(sourceRoot, StringComparison.OrdinalIgnoreCase) ||
                 !destination.StartsWith(destinationRoot, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException(
-                    "WidgetWorkerHost dependency closure escaped its deployment root.");
+                    $"{workerName} dependency closure escaped its deployment root.");
             if (!File.Exists(source))
                 throw new FileNotFoundException(
-                    $"WidgetWorkerHost dependency '{asset}' was absent from the build output.",
+                    $"{workerName} dependency '{asset}' was absent from the build output.",
                     source);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(source, destination, overwrite: true);
@@ -4052,7 +2858,7 @@ file sealed class Deployment : IDisposable
         var current = new DirectoryInfo(AppContext.BaseDirectory);
         while (current is not null)
         {
-            if (File.Exists(Path.Combine(current.FullName, "src", "OverlayHost", "widget-catalog.json")))
+            if (File.Exists(Path.Combine(current.FullName, "eng", "widget-catalog.json")))
                 return current.FullName;
             current = current.Parent;
         }
@@ -4108,205 +2914,6 @@ file sealed record EvidenceGapDescriptor(
     string PackageId,
     string ErrorType,
     string Message);
-
-file sealed class InstalledSteamArtworkFixture : IDisposable
-{
-    private readonly TemporaryDirectory _directory =
-        new("wrail-installed-steam-artwork");
-
-    internal InstalledSteamArtworkFixture()
-    {
-        Directory.CreateDirectory(Path.Combine(Root, "steamapps"));
-        Directory.CreateDirectory(Path.Combine(Root, "appcache", "librarycache"));
-        WriteManifest("111", "Installed Steam One");
-        WriteManifest("222", "Installed Steam Two");
-        FirstArtworkPath = WriteArtwork("111", CreatePng(12, 18, 11));
-        _ = WriteArtwork("222", CreatePng(15, 10, 23));
-    }
-
-    internal string Root => _directory.Path;
-    internal string FirstArtworkPath { get; }
-
-    internal void ReplaceFirstArtwork()
-    {
-        File.WriteAllBytes(FirstArtworkPath, CreatePng(19, 17, 47));
-        File.SetLastWriteTimeUtc(FirstArtworkPath, DateTime.UtcNow.AddSeconds(5));
-    }
-
-    internal void RemoveFirstArtwork() => File.Delete(FirstArtworkPath);
-
-    public void Dispose() => _directory.Dispose();
-
-    private void WriteManifest(string appId, string displayName) =>
-        File.WriteAllText(
-            Path.Combine(Root, "steamapps", $"appmanifest_{appId}.acf"),
-            $"\"AppState\" {{ \"appid\" \"{appId}\" \"name\" \"{displayName}\" }}");
-
-    private string WriteArtwork(string appId, byte[] bytes)
-    {
-        var path = Path.Combine(
-            Root, "appcache", "librarycache", $"{appId}_icon.png");
-        File.WriteAllBytes(path, bytes);
-        return path;
-    }
-
-    private static byte[] CreatePng(int width, int height, byte seed)
-    {
-        var bgra = new byte[checked(width * height * 4)];
-        for (var index = 0; index < bgra.Length; index += 4)
-        {
-            bgra[index] = (byte)(seed + index);
-            bgra[index + 1] = (byte)(seed * 3 + index);
-            bgra[index + 2] = (byte)(seed * 7 + index);
-            bgra[index + 3] = 255;
-        }
-        return WindowsAppIconSource.EncodePng(bgra, width, height);
-    }
-}
-
-file sealed class InstalledArtworkSteamLauncher : IWindowsSteamLauncher
-{
-    public void Launch(string exactSteamAppId, CancellationToken cancellationToken) =>
-        cancellationToken.ThrowIfCancellationRequested();
-}
-
-file sealed class InstalledGogFixture : IDisposable
-{
-    private readonly TemporaryDirectory _directory = new("wrail-installed-gog");
-
-    internal InstalledGogFixture()
-    {
-        var install = Path.Combine(_directory.Path, "Installed GOG Game");
-        Directory.CreateDirectory(install);
-        File.WriteAllText(Path.Combine(install, "goggame-100.info"),
-            JsonSerializer.Serialize(new
-            {
-                gameId = "100",
-                rootGameId = "100",
-                name = DisplayName,
-                playTasks = Array.Empty<object>(),
-            }));
-        Records.Add(new(
-            WindowsGogRegistryReader.Registry32,
-            "100", "100", DisplayName, install));
-    }
-
-    internal string DisplayName => "Installed GOG Game";
-    internal List<GogRegistryRecord> Records { get; } = [];
-
-    public void Dispose() => _directory.Dispose();
-}
-
-file sealed class InstalledGogRegistry(
-    List<GogRegistryRecord> records) : IGogRegistryReader
-{
-    internal List<GogRegistryRecord> Records => records;
-    internal int ReadCount { get; private set; }
-
-    public GogRegistrySnapshot Enumerate(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        ReadCount++;
-        return new(true, records.ToArray());
-    }
-
-    public GogRegistryRecord? ReadExact(
-        string registryView,
-        string keyName,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        ReadCount++;
-        return records.SingleOrDefault(record =>
-            string.Equals(record.RegistryView, registryView, StringComparison.Ordinal) &&
-            string.Equals(record.KeyName, keyName, StringComparison.Ordinal));
-    }
-}
-
-file sealed class InstalledGogBoundaryBackend(
-    IAppLibraryPlatformBrokerBackend inner) : IAppLibraryPlatformBrokerBackend
-{
-    internal int LaunchCount { get; private set; }
-
-    public Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
-        AppLibraryBackendCursorRequest request,
-        CancellationToken cancellationToken) =>
-        inner.QueryAppLibraryAsync(request, cancellationToken);
-
-    public Task LaunchAppLibraryItemAsync(
-        BrokerWidgetIdentity identity,
-        string appId,
-        CancellationToken cancellationToken)
-    {
-        LaunchCount++;
-        return inner.LaunchAppLibraryItemAsync(identity, appId, cancellationToken);
-    }
-
-    public Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
-        BrokerWidgetIdentity identity,
-        string appId,
-        CancellationToken cancellationToken)
-    {
-        LaunchCount++;
-        return inner.LaunchAppLibraryItemObservedAsync(
-            identity, appId, cancellationToken);
-    }
-
-    public Task<AppLibraryIconSummary> GetAppLibraryIconAsync(
-        string appId,
-        CancellationToken cancellationToken) =>
-        inner.GetAppLibraryIconAsync(appId, cancellationToken);
-}
-
-file sealed class InstalledOfflineAppLibraryBackend(
-    IAppLibraryPlatformBrokerBackend inner) : IAppLibraryPlatformBrokerBackend
-{
-    internal bool FailCatalogRefresh { get; set; }
-    internal bool DenyExactResolution { get; set; }
-    internal int LaunchCount { get; private set; }
-
-    public Task<AppLibraryBackendCursorPage> QueryAppLibraryAsync(
-        AppLibraryBackendCursorRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (FailCatalogRefresh && request.Refresh &&
-            request.Query.Kind == AppLibraryKind.Game)
-            return Task.FromException<AppLibraryBackendCursorPage>(
-                new BrokerException(
-                    "platform_unavailable", "The catalog source is offline."));
-        if (DenyExactResolution && request.Refresh && request.Query.Kind is null)
-            return Task.FromResult(new AppLibraryBackendCursorPage(
-                [], null, null, "offline-exact-empty"));
-        return inner.QueryAppLibraryAsync(request, cancellationToken);
-    }
-
-    public Task LaunchAppLibraryItemAsync(
-        BrokerWidgetIdentity identity,
-        string appId,
-        CancellationToken cancellationToken)
-    {
-        LaunchCount++;
-        return inner.LaunchAppLibraryItemAsync(identity, appId, cancellationToken);
-    }
-
-    public async Task<AppLibraryLaunchObservationSummary> LaunchAppLibraryItemObservedAsync(
-        BrokerWidgetIdentity identity,
-        string appId,
-        CancellationToken cancellationToken)
-    {
-        LaunchCount++;
-        await inner.LaunchAppLibraryItemAsync(identity, appId, cancellationToken)
-            .ConfigureAwait(false);
-        return new(AppLibraryLaunchObservationState.LauncherStarted,
-            SupportsRunning: false,
-            SupportsEnded: false);
-    }
-
-    public Task<AppLibraryIconSummary> GetAppLibraryIconAsync(
-        string appId,
-        CancellationToken cancellationToken) =>
-        inner.GetAppLibraryIconAsync(appId, cancellationToken);
-}
 
 file sealed class TemporaryDirectory : IDisposable
 {

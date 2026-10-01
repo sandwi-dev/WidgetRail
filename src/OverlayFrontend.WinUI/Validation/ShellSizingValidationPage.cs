@@ -6,7 +6,7 @@ using Windows.Foundation;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
-internal sealed class ShellSizingValidationPage : Page
+internal sealed partial class ShellSizingValidationPage : Page
 {
     private readonly TextBlock status = new() { Text = "running" };
     internal ShellSizingValidationPage()

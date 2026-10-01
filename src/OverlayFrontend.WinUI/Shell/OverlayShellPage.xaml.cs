@@ -142,6 +142,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 WindowPreviews = previewCaptures is not null,
                 ExclusiveControllerControl = ControllerControlStatusRequested is not null,
                 ForegroundDelegationDiagnostic = message => WindowActivationDiagnostic?.Invoke(message),
+                ProcessOwnerJobName = options.Development?.JobName,
             }, lifetime.Token);
             Phase("bridge-connected");
             InitializeMediaOwner();
@@ -174,6 +175,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             Phase(catalog.IsComplete ? "initial-catalog-complete" : "initial-widget-admitted");
             SetCatalog(catalog);
             var explicitInitial = catalog.Widgets.FirstOrDefault(widget => widget.Id == options.InitialWidgetId);
+            if (options.Development is { } development && (explicitInitial is null || explicitInitial.InstanceId != development.InstanceId))
+                throw new InvalidDataException("The development catalog does not contain the requested widget instance.");
             // A fresh host launch mirrors native OpenWidgetWithTrayFocus(settings).
             // Session hide/reopen is handled separately and retains its current widget.
             var startupSettings = catalogItems.FirstOrDefault(widget => widget.Id == "settings");
@@ -184,6 +187,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 enterWidget: explicitInitial is not null || startupSettings is null && preferences.ReopenWidget);
             else ShowRecovery("No installed widgets are available.", false);
             Phase("initial-widget-ready");
+            await PublishDevelopmentReadyAsync();
             // Settings is already in the trusted catalog. Keep its first view
             // independent of installed-package validation, but restore saved pins
             // only after the complete admitted catalog is available.

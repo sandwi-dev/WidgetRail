@@ -35,6 +35,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
     private bool retired;
     private bool started;
     private bool documentNavigated;
+    private bool reportedResourceDenial;
     private bool visible;
     private bool inputEnabled;
     private int pendingSubmissions;
@@ -71,10 +72,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
         this.session = session;
         this.document = document;
         var state = session.GetEmbeddedMediaState(document) ?? throw new InvalidOperationException("Retired media document.");
-        string? applicationIdentity;
-        try { applicationIdentity = Windows.ApplicationModel.Package.Current.Id.Name; }
-        catch (InvalidOperationException) { applicationIdentity = null; }
-        policy = new(document, state.Declaration, applicationIdentity);
+        policy = new(document, state.Declaration);
         transport = new(document.SessionId);
         AutomationProperties.SetName(browser, state.Declaration.AccessibleName);
         AutomationProperties.SetAutomationId(browser, "EmbeddedMedia." + document.SessionId);
@@ -337,7 +335,16 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
                 Diagnostic?.Invoke("media-resource-" + response.Status);
             }
             else if (policy.AllowsRemoteResource(request.Uri)) request.Headers.SetHeader("Referer", policy.ApplicationReferer!);
-            else Deny(sender, args);
+            else
+            {
+                Deny(sender, args);
+                if (!reportedResourceDenial)
+                {
+                    reportedResourceDenial = true;
+                    Diagnostic?.Invoke(policy.ApplicationReferer is null
+                        ? "media-resource-host-identity-missing" : "media-resource-origin-denied");
+                }
+            }
         }
         catch (Exception error) when (!IsFatal(error)) { Deny(sender, args); Fault("media-resource-failed"); }
     }

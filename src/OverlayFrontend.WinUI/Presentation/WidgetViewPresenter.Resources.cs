@@ -205,6 +205,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (disposed) return;
         disposed = true;
+        directionalScroll = null;
         ResetSliderValues();
         DisposeSurfaceClip();
         surfaceResize?.Dispose(); surfaceResize = null;

@@ -3,7 +3,7 @@
 Run the deterministic native boundary suite with:
 
 ```powershell
-src\OverlayHost\build.ps1 -Configuration Release -PlatformInteropTestsOnly
+scripts\Build-OverlayPlatform.ps1 -Configuration Release -TestPolicy
 ```
 
 The suite covers ABI/version rejection, Guide show/hide debounce, controller

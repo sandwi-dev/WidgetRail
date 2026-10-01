@@ -99,13 +99,13 @@ public static class CliApplication
         wrail - controller widget development tools
 
         Usage:
-          wrail doctor [project-directory|widget.csproj] [--host <OverlayHost.exe>] [--json]
+          wrail doctor [project-directory|widget.csproj] [--host <OverlayFrontend.WinUI.exe>] [--installation-root <directory>] [--json]
           wrail inspect <file.wrwidget> [--json]
           wrail releases <owner/repository> [--tag <tag>] [--page <1-100>] [--include-prerelease] [--json]
           wrail update <widget-id> [--repo <owner/repository>] [--tag <tag>] [--asset <filename>] [--sha256 <64-hex>] [--apply] [--accept-full-trust] [--catalog <root>]
           wrail new widget <Name> [--output <directory>] [--id <reverse.dns.id>] [--publisher <reverse.dns.id>] [--template <basic|data|media|embedded-media|multipage>]
           wrail validate <widget-directory|manifest.json|style.wrss>
-          wrail dev <widget-directory|widget.csproj|file.wrwidget> [--host <OverlayHost.exe>] [--configuration <name>] [--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>] [--log <new-file>] [--inspect]
+          wrail dev <widget-directory|widget.csproj|file.wrwidget> [--host <OverlayFrontend.WinUI.exe>] [--installation-root <directory>] [--configuration <name>] [--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>] [--log <new-file>] [--inspect]
           wrail preview <widget-directory|widgetrail.scenarios.json> [--scenario <name>] [--pinned-layout <id|@all>] [--output <snapshot.json>] [--instance <id>]
           wrail render <snapshot.json> [--output <canonical-snapshot.json>]
           wrail replay <snapshot.json> <input-replay.json>

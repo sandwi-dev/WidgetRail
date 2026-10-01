@@ -118,7 +118,7 @@ shutdown. Those terminal boundaries start fresh and do not restore playback.
 
 Protocol v23 adds `UI.MediaViewport(session, id)`, a provider-neutral native
 layout leaf that binds the one current `WidgetView.EmbeddedMediaSession` declaration
-into the ordinary declarative tree. Taffy layout, WRSS/GBSS styling, clipping,
+into the ordinary declarative tree. WinUI layout, theme projection, clipping,
 accessibility, and responsive geometry remain host-owned; the embedded browser
 supplies only the pixels inside the committed viewport. Exactly one viewport
 must reference the current session identity. Missing, duplicate, or mismatched

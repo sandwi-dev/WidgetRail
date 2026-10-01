@@ -27,14 +27,12 @@ public sealed partial class PlayniteLibraryLayoutTests
         var source = BrowseCapture(games, new(true), game => projected.Add(game.Id), PlayniteLibraryQueryScope.Home);
         var query = new PlayniteLibraryHomeQuery(source, organization, fixedRows, false);
         Assert.AreEqual(0, projected.Count);
-        var expectedState = State(Snapshot(WidgetPagedResourceStatus.Ready, games.Select(BrowseItem).Select(item =>
-                item.WithProjectedValue(PlayniteLibraryTitlePolicy.Project(organization, item.Value))).ToArray()),
-            PlayniteLibraryTitlePolicy.Project(organization), PlayniteLibraryRoute.Library, []) with { FixedRows = fixedRows };
-        var expected = PlayniteLibraryHeroRailPolicy.Project(expectedState, null, 0).Items;
         var actual = query.ReadRange(0, query.Count);
-        CollectionAssert.AreEqual(expected.Select(row => row.Display).ToArray(), actual.Select(item => item.Row.Display).ToArray());
-        CollectionAssert.AreEqual(expected.Select(row => (row.Favorite, row.Preferred, row.GroupSize)).ToArray(),
-            actual.Select(item => (item.Row.Favorite, item.Row.Preferred, item.Row.GroupSize)).ToArray());
+        CollectionAssert.AreEqual(new[] { "Utility", "Game 4", "ZZZ override", "Game 2", "Game 3", "Game 5", "Missing alias" },
+            actual.Select(item => item.Row.Display.DisplayName).ToArray());
+        CollectionAssert.AreEqual(new[] { false, false, false, true, false, false, true }, actual.Select(item => item.Row.Favorite).ToArray());
+        CollectionAssert.AreEqual(new[] { false, false, false, true, false, false, false }, actual.Select(item => item.Row.Preferred).ToArray());
+        CollectionAssert.AreEqual(new[] { 0, 0, 2, 2, 0, 0, 0 }, actual.Select(item => item.Row.GroupSize).ToArray());
         CollectionAssert.AreEqual(new[] { "manual-app", games[4].Id, games[0].Id, games[2].Id, games[3].Id, games[5].Id, "missing" },
             actual.Select(item => item.Row.Display.SavedId).ToArray());
         Assert.IsNull(actual[^1].Row.Current, "Unavailable display entries never gain provider authority.");

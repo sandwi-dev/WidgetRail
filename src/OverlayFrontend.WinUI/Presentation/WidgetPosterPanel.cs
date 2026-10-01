@@ -9,7 +9,7 @@ using Windows.Foundation;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>A single native Grid cell: full-bleed artwork beneath bottom-aligned copy.</summary>
-internal sealed class WidgetPosterPanel : Grid
+internal sealed partial class WidgetPosterPanel : Grid
 {
     private CompositionRoundedRectangleGeometry? geometry;
     private CompositionGeometricClip? artworkClip;

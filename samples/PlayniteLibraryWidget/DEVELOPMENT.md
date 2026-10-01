@@ -237,3 +237,35 @@ key; details use the host's ordinary modal entrance/exit motion.
 Overview, Achievements, and Activity also share a transition group inside the
 details dialog. Only their lower content moves; the poster and action controls
 remain stationary. Data refreshes preserve the selected tab's transition key.
+
+
+## Native presentation contract
+
+Home and Library require their indexed collection source even when empty or
+loading. The page publishes the total count, navigation and background owner;
+SDK-acquired ranges publish exact game posters, focus summaries and artwork.
+There is no eager cursor-window renderer or separate warm-saved-game renderer.
+Warm Home uses the same indexed query with noninteractive saved-only rows.
+Provider cursor resources and captured action authority remain independent.
+
+Use explicit responsive grids for bounded wrapping groups (badges,
+connection actions and details source/completion). Native track sizing replaces
+ignored flex-basis, flex-shrink and flex-wrap style declarations.
+Controller footer hints instead use left-aligned content-sized rows with24DIP
+gaps, so their positions are not redistributed into equal-width columns.
+
+The Playnite test suite can export synthetic layout evidence when
+`WRAIL_PLAYNITE_LAYOUT_OUTPUT` is set. Indexed pages emit `.indexed.json` files with
+separate parent snapshots, bounded acquired ranges and their resolved styles.
+`Test-WinUiPlaynitePresentation.ps1 -FixturePath <path> -OutputDirectory <fresh>`
+checks native row and focused-summary geometry. The existing standalone Details
+geometry fixture remains `.renderer.json`. These fixtures do not use Playnite,
+credentials, launch actions or system settings, and are not performance benchmarks.
+
+Game details use a bounded Auto/Star Grid: artwork and controls remain fixed above
+the lower section scroll. The tabs are Description (initial), Information,
+Achievements, Activity and Links. Description also contains saved notes. The
+section tabs share the scroll owner with their content so directional fallback
+can read sections with no action controls. The SDK modal's default whole-content
+scroll is disabled explicitly. Opening identities and scroll IDs still survive
+background/resume and refresh, and optional providers remain on-demand.

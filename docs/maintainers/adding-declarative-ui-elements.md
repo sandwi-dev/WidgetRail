@@ -65,10 +65,11 @@ reference entry. Update the public API baseline only for an intentional API chan
 
 Source starting points:
 [`UI.cs`](../../src/WidgetSdk/UI.cs), [`WidgetProtocol`](../../src/WidgetProtocol/),
-[`DeclarativeLayout.cpp`](../../src/OverlayHost/DeclarativeLayout.cpp),
-[`DeclarativeRenderer.cpp`](../../src/OverlayHost/DeclarativeRenderer.cpp), and
-[`AccessibilityProjection.h`](../../src/OverlayHost/AccessibilityProjection.h).
+[`WidgetViewPresenter.Layout.cs`](../../src/OverlayFrontend.WinUI/Presentation/WidgetViewPresenter.Layout.cs),
+[`WidgetViewPresenter.cs`](../../src/OverlayFrontend.WinUI/Presentation/WidgetViewPresenter.cs), and
+[`WidgetAccessibleState.cs`](../../src/OverlayFrontend.WinUI/Presentation/WidgetAccessibleState.cs).
 
 Use [Build execution](build-execution.md) and [Contributing](../../CONTRIBUTING.md)
 for the verification commands. Hardware acceptance remains separate from a
 passing serializer or layout test.
+

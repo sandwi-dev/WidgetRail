@@ -11,7 +11,7 @@ using Windows.System;
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 /// <summary>Native focus-policy integration through the shared presenter, without hardware.</summary>
-internal sealed class FocusPolicyValidationPage : Page
+internal sealed partial class FocusPolicyValidationPage : Page
 {
     private readonly WidgetViewPresenter presenter = new();
     private readonly TextBlock status = new();

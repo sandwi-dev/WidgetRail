@@ -8,7 +8,7 @@ using WidgetRail.PlatformSettings;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Native layout for a noninteractive presentation consumer.</summary>
-internal sealed class WidgetPresentationSurface : ContentControl, IAsyncDisposable
+internal sealed partial class WidgetPresentationSurface : ContentControl, IAsyncDisposable
 {
     internal Grid ContentPanel { get; } = new();
     // Box styles paint behind decoded artwork; demand remains with the presenter.

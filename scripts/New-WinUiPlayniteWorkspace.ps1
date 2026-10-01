@@ -34,7 +34,7 @@ if ($LASTEXITCODE -ne 0) { throw "Settings integrity sealing failed. See $logs/s
 
 # Preserve the production Settings descriptor; other bundled packages are added
 # when their corresponding workers are staged, never as missing catalog entries.
-$productCatalog = Get-Content -LiteralPath (Join-Path $repository 'src/OverlayHost/widget-catalog.json') -Raw | ConvertFrom-Json
+$productCatalog = Get-Content -LiteralPath (Join-Path $repository 'eng/widget-catalog.json') -Raw | ConvertFrom-Json
 @{
     catalogVersion = $productCatalog.catalogVersion
     genericWorkerExecutable = $productCatalog.genericWorkerExecutable

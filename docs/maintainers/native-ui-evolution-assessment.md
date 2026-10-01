@@ -1,5 +1,11 @@
 # Native UI evolution, animation and graphics assessment
 
+Historical renderer source references in this assessment are retained in the local
+migration checkpoint `7309b17467e8d56f1b40531664908980c056717d`. The renderer
+has since been retired; inspect a referenced file with `git show <revision>:<path>`.
+Use the assessment baseline below when comparing its original findings.
+That checkpoint has not been published, so these references are not public web links.
+
 2026-09-26; production baseline `092ee64d`. Companion to the
 [end-to-end architecture assessment](ui-architecture-assessment.md).
 The original design/effort assessment uses source inspection and saved trace
@@ -120,16 +126,16 @@ work, but does not establish that Direct2D itself is slow or that Skia would win
 
 ### Existing source anchors
 
-- [Renderer](../../src/OverlayHost/DeclarativeRenderer.cpp): `BuildLayout`,
+- Renderer (`src/OverlayHost/DeclarativeRenderer.cpp`): `BuildLayout`,
   `PlanPresentationUpdate`, `ReconcileCollectionAnchors`, `ProjectScrollOffsets`,
   brush/geometry creation and current phase timings.
 - [Atomic updates](../../src/WidgetProtocol/PresentationUpdates.cs): structural
   insert/remove/move operations already exist; replacing JSON alone is not a fix.
-- [Composition painting](../../src/OverlayHost/WidgetCompositionPaint.inl):
+- Composition painting (`src/OverlayHost/WidgetCompositionPaint.inl`):
   `CompositorControlsEnabled`, `UsesCompositorControlScale`, `DrawWidgetComposition`.
-- [Native text](../../src/OverlayHost/NativeTextLayout.h): one immutable DirectWrite
+- Native text (`src/OverlayHost/NativeTextLayout.h`): one immutable DirectWrite
   plan is shared by measurement and paint.
-- [Surface depth](../../src/OverlayHost/SurfaceDepth.h): bounded reusable shadow
+- Surface depth (`src/OverlayHost/SurfaceDepth.h`): bounded reusable shadow
   patches; CPU mask/blur construction happens on cache misses, not every frame.
 
 ## Concrete native architecture
@@ -274,19 +280,19 @@ composition/layout work. This distinction must remain explicit in either framewo
 
 WidgetRail already has a worthwhile native backend:
 
-- [WidgetAnimationPolicy](../../src/OverlayHost/WidgetAnimationPolicy.h) defines
+- WidgetAnimationPolicy (`src/OverlayHost/WidgetAnimationPolicy.h`) defines
   shared recipes, poses, curves, presets and global speed policy.
-- [WidgetCompositionPresenter](../../src/OverlayHost/WidgetCompositionPresenter.cpp)
+- WidgetCompositionPresenter (`src/OverlayHost/WidgetCompositionPresenter.cpp`)
   compiles supported transforms/opacity/clips to DirectComposition animations.
   Its `Advance` retires finished visuals without requesting a raster frame.
 - Immutable raster leases and retained surfaces let supported motion run without
   repeatedly painting pixels. CPU sampling of common curves supports matching
   presentation/input calculations.
-- [DeclarativeMotion](../../src/OverlayHost/DeclarativeMotion.cpp) is a separate
+- DeclarativeMotion (`src/OverlayHost/DeclarativeMotion.cpp`) is a separate
   host-sampled bounded style timeline. Its spring is a fixed-duration normalized
   response, not a velocity-preserving physical spring. Retargeting stores the
   current value but has no general velocity state.
-- [Composition painting](../../src/OverlayHost/WidgetCompositionPaint.inl) explicitly
+- Composition painting (`src/OverlayHost/WidgetCompositionPaint.inl`) explicitly
   excludes spring-eased control scaling from compositor promotion. Live
   `MediaViewport`/`WindowPreview` nodes send the widget down a stationary/direct
   composition path because external surfaces do not yet share the scene placement.
@@ -467,10 +473,10 @@ authorization in this report. Existing physical samples remain small and workloa
 
 - [Widget transition SDK](../../src/WidgetSdk/WidgetTransitions.cs) and
   [wire declaration](../../src/WidgetProtocol/WidgetTransition.cs).
-- [Native style timeline](../../src/OverlayHost/DeclarativeMotion.cpp),
-  [interaction policies](../../src/OverlayHost/WidgetInteractionMotion.h),
-  [composition scene/resource representation](../../src/OverlayHost/WidgetCompositionScene.h),
-  [D3D11 composition owner](../../src/OverlayHost/OverlayCompositionSurface.cpp).
+- Native style timeline (`src/OverlayHost/DeclarativeMotion.cpp`),
+  interaction policies (`src/OverlayHost/WidgetInteractionMotion.h`),
+  composition scene/resource representation (`src/OverlayHost/WidgetCompositionScene.h`),
+  D3D11 composition owner (`src/OverlayHost/OverlayCompositionSurface.cpp`).
 - Compose core release `a1a7f3533363aa93849541cf451af2363fc2070a`:
   [Animatable continuity and cancellation](https://github.com/JetBrains/compose-multiplatform-core/blob/a1a7f3533363aa93849541cf451af2363fc2070a/compose/animation/animation-core/src/commonMain/kotlin/androidx/compose/animation/core/Animatable.kt),
   [typed animation specifications](https://github.com/JetBrains/compose-multiplatform-core/blob/a1a7f3533363aa93849541cf451af2363fc2070a/compose/animation/animation-core/src/commonMain/kotlin/androidx/compose/animation/core/AnimationSpec.kt),

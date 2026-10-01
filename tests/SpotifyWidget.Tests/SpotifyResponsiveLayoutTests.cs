@@ -49,12 +49,13 @@ internal static class SpotifyResponsiveLayoutTests
             "spotify-player-card", "spotify-player-card-wide", "spotify-player-pane");
         Equal("320px", paneStyle.Get("width")?.Text);
         Equal("0", paneStyle.Get("flex-grow")?.Text);
-        Equal("1", paneStyle.Get("flex-shrink")?.Text);
+        Equal("260px", paneStyle.Get("min-width")?.Text);
+        Equal("340px", paneStyle.Get("max-width")?.Text);
         var bodyStyle = Resolve(theme, "row", "spotify.connected.panes",
             "spotify-connected-panes");
-        Equal("0px", bodyStyle.Get("flex-basis")?.Text);
+        Equal("0px", bodyStyle.Get("min-width")?.Text);
         Equal("1", bodyStyle.Get("flex-grow")?.Text);
-        Equal("1", bodyStyle.Get("flex-shrink")?.Text);
+        Equal("12px", bodyStyle.Get("gap")?.Text);
         var compactPin = snapshot.PinnedLayouts.Single(layout => layout.Id == SpotifyPresentation.CompactPinnedLayoutId);
         Equal(360d, compactPin.Surface.PreferredWidth);
         Equal(360d, compactPin.Surface.PreferredHeight);

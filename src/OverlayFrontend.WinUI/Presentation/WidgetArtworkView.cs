@@ -11,7 +11,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 /// centered brush, ImageBrush exposes the authored crop/letterbox alignment.
 /// The measurement Image stays off-tree: one decoded source, one painted layer.
 /// </summary>
-internal sealed class WidgetArtworkView : Grid
+internal sealed partial class WidgetArtworkView : Grid
 {
     private readonly Image measurement = new() { Stretch = Stretch.Fill };
     private readonly ImageBrush brush = new();
@@ -59,7 +59,7 @@ internal sealed class WidgetArtworkView : Grid
     }
 
     protected override AutomationPeer OnCreateAutomationPeer() => new ImagePeer(this);
-    private sealed class ImagePeer(WidgetArtworkView owner) : FrameworkElementAutomationPeer(owner)
+    private sealed partial class ImagePeer(WidgetArtworkView owner) : FrameworkElementAutomationPeer(owner)
     {
         protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Image;
         protected override string GetClassNameCore() => nameof(WidgetArtworkView);

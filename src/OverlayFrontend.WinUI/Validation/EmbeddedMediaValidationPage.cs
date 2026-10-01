@@ -85,6 +85,12 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
             surface.UpdatePresentation(true, true);
             await Until(() => surface.IsReady);
             Check(surface.IsReady && surface.FailureCode is null, "sealed HTML and SDK runtime initialize in native WebView2");
+            if (Environment.GetCommandLineArgs().Contains("--validate-youtube-api"))
+            {
+                await CheckYouTubeApiAsync();
+                Write(new { passed = true, phase = "complete", checks, diagnostics, events });
+                return;
+            }
             await CheckFrameLifetimeAsync();
             await Command(EmbeddedMediaPlaybackCommandKind.Load, 1);
             Check(events.Last().State == EmbeddedMediaPlaybackState.Ready, "typed Load round-trips through strict adapter transport and session admission");
@@ -150,7 +156,10 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
         Check(policy.AllowsFrame("https://www.youtube.com/embed/test") && !policy.AllowsFrame("https://r1.googlevideo.com/video"), "frame navigation uses exact allowed origins, never domain families");
         Check(policy.AllowsRemoteResource("https://r1.googlevideo.com/video") && !policy.AllowsRemoteResource("https://googlevideo.com.evil.test/video") &&
             !policy.AllowsRemoteResource("https://www.youtube.com@evil.test/") && !policy.AllowsRemoteResource("http://www.youtube.com/video"), "remote resource hosts enforce HTTPS, origin and suffix boundaries");
-        Check(policy.ApplicationReferer == "https://widgetrail.validation/" && EmbeddedMediaRequestPolicy.CreateApplicationReferer("bad/identity") is null, "remote referer comes only from canonical installed application identity");
+        Check(policy.ApplicationReferer == "https://widgetrail.validation/" && EmbeddedMediaRequestPolicy.CreateApplicationReferer("bad/identity") is null, "remote referer comes only from canonical host identity");
+        var hostPolicy = new EmbeddedMediaRequestPolicy(document, declaration!);
+        Check(hostPolicy.ApplicationReferer == "https://overlayfrontend.winui/" &&
+            hostPolicy.AllowsRemoteResource("https://www.youtube.com/iframe_api"), "unpackaged host metadata permits the declared player API without package identity");
         Check(new EmbeddedMediaRequestPolicy(document, declaration!, null).AllowsRemoteResource("https://www.youtube.com/embed/test") == false, "missing application identity fails closed for remote resources");
         using var reply = policy.Resolve(policy.Origin + "/adapter/tone.wav", "GET", "bytes=2-5")!.Content;
         Check(reply?.Length == 4 && reply.ReadByte() == assets["adapter/tone.wav"].Bytes[2], "media byte range returns the exact requested bytes");
@@ -353,6 +362,12 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
                 toggle:()=>{audio.pause();state='paused'},back:()=>({type:'back'})}});
             </script>
             """));
+        if (Environment.GetCommandLineArgs().Contains("--validate-youtube-api"))
+        {
+            var html = Encoding.UTF8.GetString(assets["adapter/index.html"].Bytes)
+                .Replace("script-src 'self' 'unsafe-inline'", "script-src 'self' 'unsafe-inline' https://www.youtube.com", StringComparison.Ordinal);
+            assets["adapter/index.html"] = ("text/html", Encoding.UTF8.GetBytes(html));
+        }
     }
     private static byte[] Wav()
     {

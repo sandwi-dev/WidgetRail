@@ -95,7 +95,7 @@ internal sealed record BridgePresentationRequest(
     WidgetRail.WidgetSdk.WidgetPresentationTransactionKind TransactionKind =
         WidgetRail.WidgetSdk.WidgetPresentationTransactionKind.OrdinaryCheckpoint,
     long RecoveryOriginSequence = 0);
-// Current OverlayHost always supplies the paired generation authority. The
+// The WinUI frontend always supplies the paired generation authority. The
 // nullable pair preserves the private synchronous pre-WIDGE-192 caller shape.
 internal sealed record BridgeArtworkRequest(
     string WidgetId,

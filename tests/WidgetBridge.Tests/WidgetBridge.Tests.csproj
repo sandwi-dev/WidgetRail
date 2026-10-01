@@ -8,6 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\PlayniteLibraryApplicationFixture\PlayniteLibraryApplicationFixture.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
     <ProjectReference Include="..\..\src\WidgetPresentationSession\WidgetPresentationSession.csproj" />
     <ProjectReference Include="..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
@@ -20,8 +21,7 @@
     <ProjectReference Include="..\..\samples\SpotifyWidget\PlaybackHost\SpotifyPlaybackHost.csproj"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\samples\PlayniteLibraryWidget\Application\PlayniteLibraryApplication.csproj"
-                      ReferenceOutputAssembly="false"
-                      Condition="'$(SkipPlayniteLibraryFixture)' != 'true'" />
+                      ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\samples\SdkGalleryWidget\SdkGalleryWidget.csproj" />
   </ItemGroup>
 </Project>

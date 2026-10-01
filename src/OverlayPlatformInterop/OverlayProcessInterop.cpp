@@ -1,5 +1,5 @@
 #include "OverlayProcessInterop.h"
-#include "../OverlayHost/OverlayProcessOwner.h"
+#include "OverlayProcessOwner.h"
 #include <algorithm>
 #include <memory>
 

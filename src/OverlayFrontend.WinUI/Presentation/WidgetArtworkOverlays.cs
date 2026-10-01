@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Media;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Theme paint above artwork, below foreground content; never an input target.</summary>
-internal sealed class WidgetArtworkOverlays : Grid
+internal sealed partial class WidgetArtworkOverlays : Grid
 {
     private readonly Border tint = new();
     private readonly Border scrim = new();

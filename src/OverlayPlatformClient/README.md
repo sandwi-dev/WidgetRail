@@ -39,6 +39,15 @@ reverse-callback execution. The callback context deliberately retains consumer
 delegates until shutdown; do not rely on garbage collection to close the app's
 native owner, particularly when those delegates refer to the application.
 
+`ControllerIsolationRecovery.Recover()` is a separate, explicitly requested
+maintenance operation. It validates the native ABI, calls only
+`WidgetRailOverlayPlatformRecoverControllerIsolation`, and returns the bounded
+native status/diagnostic. It never creates or initializes an input session.
+The native local-owner lease and journal conflict checks remain authoritative;
+managed code does not bypass a busy owner or alter recovery policy. This operation
+can change owned HidHide policy, so automated managed tests use the injected
+`IControllerIsolationRecoveryNative` boundary rather than invoking the real export.
+
 The public ABI structs have native layout and integer booleans intentionally.
 Create input defaults with `PlacementInput.Create()`. The returned controller
 frame's `Connected`, `ForegroundExclusive`, navigation phases and RemainingFrames

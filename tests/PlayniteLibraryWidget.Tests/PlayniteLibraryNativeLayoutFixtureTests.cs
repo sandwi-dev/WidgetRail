@@ -24,7 +24,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         { Developers = ["Test developer"], Publishers = ["Test publisher"], Features = ["Controller support"] };
         var parent = new WidgetView(UI.Stack("native.parent", UI.Button("Game", "open", "game")));
         var modal = PlayniteLibraryDetailsPresentation.Create(game, true, null, "Ready", null,
-            extras: new() { Full = new(game.Value, metadata), Tab = PlayniteDetailsTab.Overview });
+            extras: new() { Full = new(game.Value, metadata), Tab = PlayniteDetailsTab.Description });
         var snapshot = new PresentationWidget(parent.WithModal(modal)).RenderSnapshot("native.details.geometry", 1);
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
         ExportFixture("Native-Details-Geometry", snapshot);

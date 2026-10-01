@@ -98,8 +98,13 @@ internal static class RenderCommand
         {
             if (!payload.TryGetBuffer(out var segment))
                 throw new InvalidOperationException("Snapshot buffer was unavailable.");
-            return SnapshotJson.Deserialize(
+            var snapshot = SnapshotJson.Deserialize(
                 segment.AsSpan(0, checked((int)payload.Length)));
+            var errors = WinUiPresentationContract.Validate(snapshot);
+            if (errors.Count != 0)
+                throw new CliOperationException("Snapshot cannot be displayed by WinUI: " +
+                    string.Join("; ", errors.Take(8).Select(error => $"{error.Path}: {error.Code}: {error.Message}")));
+            return snapshot;
         }
         catch (Exception exception) when (exception is JsonException or ProtocolValidationException)
         {

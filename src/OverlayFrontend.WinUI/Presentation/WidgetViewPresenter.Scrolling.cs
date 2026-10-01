@@ -21,6 +21,7 @@ internal sealed partial class WidgetViewPresenter
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Scroll on the widget dispatcher.");
         if (!presentationActive || disposed || applying || !IsLoaded || frame is null || !double.IsFinite(horizontalDelta) || !double.IsFinite(verticalDelta)) return false;
         if (HasTransientControl) return true;
+        directionalScroll = null;
         CancelGroupEntry();
         ScrollViewer? target = null;
         for (var current = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject; current is not null && !ReferenceEquals(current, this);

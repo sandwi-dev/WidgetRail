@@ -8,7 +8,7 @@ using WidgetRail.WidgetRuntime;
 using WidgetRail.WidgetSdk;
 using CatalogService = WidgetRail.WidgetCatalog.WidgetCatalog;
 
-internal static class FullTrustCommunityScenarios
+internal static partial class FullTrustCommunityScenarios
 {
     private const string SpotifyConfigurationRootEnvironmentVariable =
         "WRAIL_SPOTIFY_CONFIGURATION_ROOT";
@@ -140,12 +140,12 @@ internal static class FullTrustCommunityScenarios
     {
         var root = RepositoryRoot();
         var applicationOutput = Path.Combine(
-            root, "samples", "SpotifyWidget", "Application", "bin", "Release",
+            root, "samples", "SpotifyWidget", "Application", "bin", VerificationInstallation.Configuration,
             "net8.0", "win-x64");
         var playbackHostOutput = Path.Combine(
-            root, "samples", "SpotifyWidget", "PlaybackHost", "bin", "Release",
+            root, "samples", "SpotifyWidget", "PlaybackHost", "bin", VerificationInstallation.Configuration,
             "net8.0-windows10.0.19041.0", "win-x64");
-        var hostOutput = Path.Combine(root, "src", "OverlayHost", "out", "Release");
+        var hostOutput = VerificationInstallation.Root;
         AssertHostRuntimeArtifacts(root, hostOutput);
         Check(File.Exists(Path.Combine(applicationOutput, "SpotifyApplication.exe")),
             "The package-owned Spotify application was not built.");
@@ -264,7 +264,7 @@ internal static class FullTrustCommunityScenarios
         var root = RepositoryRoot();
         var applicationOutput = Path.Combine(
             root, "samples", "PlayniteLibraryWidget", "Application",
-            "bin", "Release", "net8.0-windows10.0.19041.0", "win-x64");
+            "bin", VerificationInstallation.Configuration, "net8.0-windows10.0.19041.0", "win-x64");
         Check(File.Exists(Path.Combine(applicationOutput, "PlayniteLibraryApplication.exe")),
             "The package-owned Playnite Library application was not built.");
         Check(File.Exists(Path.Combine(applicationOutput, "Microsoft.Windows.SDK.NET.dll")) &&
@@ -311,6 +311,13 @@ internal static class FullTrustCommunityScenarios
                 $"The ordinary full-trust route did not reach a settled, navigable Home " +
                 $"snapshot. Root '{snapshot.Root.Id}', focus " +
                 $"'{snapshot.InitialFocusId ?? "<null>"}'.");
+            if (TryFind(snapshot.Root, snapshot.InitialFocusId!) is { IndexedCollection: { Count: > 0 } source } collection)
+            {
+                var range = await client.ReadIndexedRangeAsync(new(collection.Id, source, 0, 1, Guid.NewGuid().ToString("N")));
+                Check(range.Items.Count == 1 && Descendants(range.Items[0].Root).Any(node =>
+                    node.Kind == ViewNodeKind.ActionSurface && node.ActionId == "playnite-library.details.open"),
+                    "The native Home collection did not provide its first semantic game row.");
+            }
             await client.StopAsync();
         }
         finally
@@ -326,14 +333,15 @@ internal static class FullTrustCommunityScenarios
 
     private static bool UsablePlayniteHome(ViewSnapshot snapshot)
     {
-        if (snapshot.Root.Id != "playnite-library.root" || snapshot.InitialFocusId is null ||
+        if (snapshot.InitialFocusId is null ||
             ViewSnapshotValidator.Validate(snapshot).Count != 0)
             return false;
         var focused = TryFind(snapshot.Root, snapshot.InitialFocusId);
         // The ordinary application must be usable on a fresh CI account without
         // Playnite credentials or installed games. Do not require a live library
         // (or obsolete Browse tile IDs) to prove generic worker startup.
-        return focused is { Kind: ViewNodeKind.ActionSurface, ActionId: "playnite-library.launch" } ||
+        return focused is { IndexedCollection: { Count: > 0 } } ||
+            focused is { Kind: ViewNodeKind.ActionSurface, ActionId: "playnite-library.launch" } ||
             focused is { Kind: ViewNodeKind.Button, Id: "playnite-library.empty.action",
                 ActionId: "playnite-library.refresh" } ||
             focused is { Kind: ViewNodeKind.Button, Id: "playnite-library.error.action",
@@ -398,7 +406,7 @@ internal static class FullTrustCommunityScenarios
         {
             var source = Path.Combine(
                 repositoryRoot, "src", Path.GetFileNameWithoutExtension(assembly),
-                "bin", "Release", "net8.0", assembly);
+                "bin", VerificationInstallation.Configuration, "net8.0", assembly);
             foreach (var runtime in new[] { "Bridge", "WidgetWorkerHost", "Settings" })
                 CheckFilesEqual(source, Path.Combine(runtimeRoot, runtime, assembly));
         }
@@ -415,7 +423,7 @@ internal static class FullTrustCommunityScenarios
             var payload = Path.Combine(runtimeRoot, runtime, "payload");
             CheckFilesEqual(
                 Path.Combine(repositoryRoot, "src", "FirstPartyWidgets", project,
-                    "bin", "Release", "net8.0", assembly),
+                    "bin", VerificationInstallation.Configuration, "net8.0", "win-x64", assembly),
                 Path.Combine(payload, assembly));
             Check(!File.Exists(Path.Combine(payload, "WidgetProtocol.dll")) &&
                   !File.Exists(Path.Combine(payload, "WidgetSdk.dll")),
@@ -424,11 +432,11 @@ internal static class FullTrustCommunityScenarios
 
         CheckFilesEqual(
             Path.Combine(repositoryRoot, "src", "FirstPartyWidgets", "SettingsWidget.Worker",
-                "bin", "Release", "net8.0", "SettingsWidget.Worker.dll"),
+                "bin", VerificationInstallation.Configuration, "net8.0-windows10.0.19041.0", "win-x64", "SettingsWidget.Worker.dll"),
             Path.Combine(runtimeRoot, "Settings", "SettingsWidget.Worker.dll"));
         CheckFilesEqual(
             Path.Combine(repositoryRoot, "src", "FirstPartyWidgets", "SettingsWidget",
-                "bin", "Release", "net8.0", "SettingsWidget.dll"),
+                "bin", VerificationInstallation.Configuration, "net8.0", "SettingsWidget.dll"),
             Path.Combine(runtimeRoot, "Settings", "payload", "SettingsWidget.dll"));
     }
 
@@ -593,7 +601,7 @@ internal static class FullTrustCommunityScenarios
     }
 
     private static string FixtureOutput(string root, string name) => Path.Combine(
-        root, "tests", name, "bin", "Release",
+        root, "tests", name, "bin", VerificationInstallation.Configuration,
         "net8.0", "win-x64");
 
     private static string RepositoryRoot()

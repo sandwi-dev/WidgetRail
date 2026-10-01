@@ -8,10 +8,10 @@ pass `NuGetAudit=false`, downgrade or suppress `NU1900`, remove an audit/package
 source, or change user or machine NuGet configuration. There is no silent retry
 with a weaker execution policy.
 
-The canonical coherent native host build is restore-bearing:
+The canonical WinUI verification build is restore-bearing:
 
 ```powershell
-pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -SkipTests
+pwsh -NoProfile -File scripts\Build-WinUiVerification.ps1 -Configuration Release
 ```
 
 Run it in a network-capable execution environment from the outset. The script
@@ -19,23 +19,21 @@ owns each distinct `dotnet restore`, leaves NuGet auditing at its SDK defaults,
 and then publishes with `--no-restore`; it never performs a hidden restricted
 restore followed by a network retry.
 
-The supported focused entry point selects the existing native targets by their
-allowlisted manifest IDs. Focused native entries are non-default and therefore
-do not change the complete aggregate:
+The focused entry point selects current verification steps by their allowlisted manifest IDs:
 
 ```powershell
 .\scripts\Verify.ps1 -Configuration Release `
-    -StepId overlay-widget-surface-tests
+    -StepId winui-native-verification
 ```
 
 After the exact project graph and native package assets have already been
-restored successfully, the lower-level native selector may remain in restricted
+restored successfully, the WinUI wrapper may remain in restricted
 execution by adding `-NoRestore`. That switch forbids implicit managed restore;
-missing assets or project restore state fail the selector instead of falling
+missing assets or project restore state fail the wrapper instead of falling
 back:
 
 ```powershell
-pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release -NoRestore -WidgetSurfaceTestsOnly
+pwsh -NoProfile -File scripts\Build-WinUiVerification.ps1 -Configuration Release -NoRestore
 ```
 
 The same rule applies to managed and package commands. `dotnet build`, `run`,
@@ -53,3 +51,5 @@ step.
 Credentials belong in supported external credential providers. Never put them
 in repository files, command examples, NuGet sources, or user/machine
 configuration as a workaround for a build.
+
+

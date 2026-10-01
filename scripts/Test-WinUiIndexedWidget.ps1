@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param([Parameter(Mandatory)][int]$AppPid,
-      [string]$OutputDirectory=(Join-Path $PSScriptRoot '../artifacts/winui-indexed/widget-ui'))
+      [string]$OutputDirectory=(Join-Path $PSScriptRoot '../artifacts/winui-indexed/widget-ui'),
+      [switch]$NavigationOnly)
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 $results=[Collections.Generic.List[object]]::new()
@@ -84,6 +85,7 @@ try {
     Key F10
     $groupedListMoves=Until '13-grouped-list-navigation' {param($v) $v.navigation -ne 'pending'} 12
     Check 'grouped list traverses section headers without lost controller steps' ($groupedListMoves.navigation -eq 'last:60;stalled:0')
+    if ($NavigationOnly) { "Indexed navigation checks passed: $($results.Count)."; return }
     Ui @('invoke','Widget.surfaces') | Out-Null
     Until '14-surfaces-ready' {param($v) $v.status -eq 'surfaces' -and $v.count -eq 100} | Out-Null
     Key F14

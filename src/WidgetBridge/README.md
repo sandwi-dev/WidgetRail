@@ -31,7 +31,7 @@ members are rejected.
 
 Native requests use nonzero monotonically increasing `requestId` values.
 Responses repeat that value. Events have `requestId: 0`. The first request must
-be `hello` with `{ "clientName": "OverlayHost" }`; the bridge responds with
+be `hello` with `{ "clientName": "WinUI" }`; the bridge responds with
 `hello-accepted`.
 
 ## Requests
