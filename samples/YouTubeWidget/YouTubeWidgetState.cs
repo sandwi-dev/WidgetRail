@@ -41,6 +41,7 @@ internal enum YouTubeSetupOperation { Configure, Delete }
 internal enum YouTubePlaybackIntent
 {
     CommitLink,
+    OpenVideoIntent,
     SelectResult,
     TogglePlayback,
     SeekBackward,
@@ -61,7 +62,8 @@ internal sealed record YouTubePlaybackRequest(
     string? ReturnFocusId = null,
     string? VideoId = null,
     long? SearchRevision = null,
-    IndexedCollectionFocusTarget? ReturnCollectionItem = null);
+    IndexedCollectionFocusTarget? ReturnCollectionItem = null,
+    double? StartTimeSeconds = null);
 
 /// <summary>
 /// One admitted setup mutation. The secret travels with the request and its
@@ -220,7 +222,7 @@ internal sealed record YouTubePlaybackState
     }
 
     /// <summary>Loads a chosen search result without going through the link entry.</summary>
-    public YouTubePlaybackState WithSelectedVideo(string videoId, long sequence) =>
+    public YouTubePlaybackState WithSelectedVideo(string videoId, long sequence, double? startTimeSeconds = null) =>
         (this with
         {
             Link = "https://www.youtube.com/watch?v=" + videoId,
@@ -230,7 +232,7 @@ internal sealed record YouTubePlaybackState
             SeekBufferingSemantic = null,
             Position = 0,
             Duration = 0,
-        }).WithQueuedCommand(sequence, EmbeddedMediaPlaybackCommandKind.Load, videoId, volume: PreferredVolume);
+        }).WithQueuedCommand(sequence, EmbeddedMediaPlaybackCommandKind.Load, videoId, position: startTimeSeconds, volume: PreferredVolume);
 
     /// <summary>
     /// Applies one adapter report already admitted by WidgetOutOfBandCommand.
@@ -487,13 +489,13 @@ internal sealed record YouTubeWidgetState
             Configured = configured,
             Error = null,
         },
-        Route = configured ? YouTubeRoute.Search : YouTubeRoute.Setup,
+        Route = Playback.VideoId is not null ? Route : configured ? YouTubeRoute.Search : YouTubeRoute.Setup,
     };
 
     public YouTubeWidgetState WithConfigurationFailure(string message) => this with
     {
         Setup = Setup with { ConfigurationKnown = true, Configured = false, Error = message },
-        Route = YouTubeRoute.Setup,
+        Route = Playback.VideoId is not null ? Route : YouTubeRoute.Setup,
     };
 
     /// <summary>The optimistic projection both setup mutations share.</summary>

@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.playnite-library",
   "publisher": "widgetrail.samples",
   "name": "Playnite Library",
-  "version": "0.2.114",
+  "version": "0.2.115",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": {
     "runtime": "full-trust-application-v1",
@@ -18,6 +18,18 @@
   },
   "permissions": [],
   "optionalPermissions": [],
+  "intents": {
+    "requests": [{
+      "id": "widgetrail.web.open",
+      "version": 1,
+      "payloadSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": { "url": { "type": "string", "minLength": 1, "maxLength": 2048 } },
+        "required": ["url"]
+      }
+    }]
+  },
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "unload-after-idle",

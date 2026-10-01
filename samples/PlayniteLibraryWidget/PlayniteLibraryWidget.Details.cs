@@ -199,11 +199,7 @@ public sealed partial class PlayniteLibraryWidget
             });
             return true;
         }
-        var linkIndex = -1;
-        var link = name.StartsWith("link.", StringComparison.Ordinal) && int.TryParse(name[5..], out linkIndex) &&
-            state.DetailsExtras.Full?.Game is { } full && linkIndex >= 0 && linkIndex < full.Links.Count
-            ? full.Links[linkIndex] : null;
-        if (name is not ("install" or "uninstall.confirm") && link is null) return true;
+        if (name is not ("install" or "uninstall.confirm")) return true;
         if (state.DetailsExtras.OperationBusy || name == "uninstall.confirm" && !state.DetailsExtras.ConfirmUninstall) return true;
         if (name == "install" && !PlayniteLibraryAvailabilityPresentation.IsUninstalled(item)) return true;
         var generation = state.DetailsGeneration;
@@ -214,15 +210,12 @@ public sealed partial class PlayniteLibraryWidget
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, routeLifetime);
             try
             {
-                var okay = link is null
-                    ? await _application.ChangeInstallationAsync(item.Value.SavedId, name == "install", lifetime.Token).ConfigureAwait(false)
-                    : await _application.OpenGameLinkAsync(item.Value.SavedId, link.Url, lifetime.Token).ConfigureAwait(false);
+                var okay = await _application.ChangeInstallationAsync(item.Value.SavedId, name == "install", lifetime.Token).ConfigureAwait(false);
                 lifetime.Token.ThrowIfCancellationRequested();
                 UpdateDetails(generation, value => value with
                 {
                     OperationBusy = false,
                     OperationMessage = !okay ? "Playnite could not accept this request."
-                        : link is not null ? "Opened in your browser."
                         : name == "install" ? "Installation requested. Follow Playnite or the launcher, then Refresh."
                         : "Uninstallation requested. Follow Playnite or the launcher, then Refresh.",
                 });

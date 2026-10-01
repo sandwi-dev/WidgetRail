@@ -187,7 +187,7 @@ public sealed partial class YouTubeVideoWidget
     // their own scopes rather than mirroring route state in WidgetNavigator.
     private WidgetView RenderApplication(YouTubeWidgetState state)
     {
-        if (!state.Setup.ConfigurationKnown)
+        if (!state.Setup.ConfigurationKnown && state.Playback.VideoId is null)
             return ApplicationView(
                 state,
                 UI.Stack("youtube.configuration.loading",

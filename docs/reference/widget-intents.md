@@ -165,6 +165,20 @@ an uncooperative receiver is terminated after the bounded drain deadline. A
 cancelled acknowledgement cannot roll back effects already performed by author
 code, so handlers should promptly accept navigation data and honor cancellation.
 
+## Initial consumers
+
+Playnite Library's game-details links declare `widgetrail.web.open`. The host
+opens an eligible browser widget or uses the default-browser fallback; the widget
+no longer launches a browser from its companion process. Link identity and URL
+are validated against the displayed/current control.
+
+YouTube Video handles `widgetrail.video.open` with provider `youtube`, an exact
+11-character YouTube video ID, and an optional timestamp. The embedded player
+currently supports timestamps from 0 through 86,400 seconds; larger standard-
+contract values are rejected without replacing existing playback. Loading keeps
+the established cue behavior and saved volume. It does not require a search API
+key. Package staging and physical playback verification remain pending.
+
 ## Focused checks
 
 This repository uses executable test harnesses for this area:

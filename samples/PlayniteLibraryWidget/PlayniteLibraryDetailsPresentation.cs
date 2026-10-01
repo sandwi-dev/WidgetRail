@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -204,7 +205,14 @@ internal static class PlayniteLibraryDetailsPresentation
         {
             content.Add(UI.Text("Links", Prefix + "links.title").Classes("playnite-library-details-section-title"));
             for (var index = 0; index < game.Links.Count; index++)
-                content.Add(UI.Button(game.Links[index].Name + " (browser)", Prefix + "link." + index, Prefix + "link." + index).Disabled(busy));
+            {
+                var link = game.Links[index];
+                if (link.Url.Length > 2048 || link.Url != link.Url.Trim() || link.Url.Any(char.IsControl) ||
+                    !Uri.TryCreate(link.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http") ||
+                    !string.IsNullOrEmpty(uri.UserInfo) || string.IsNullOrEmpty(uri.Host)) continue;
+                content.Add(UI.Button(link.Name, Prefix + "link." + index, Prefix + "link." + index)
+                    .OpenIntent(WidgetIntentContracts.Web, JsonSerializer.SerializeToElement(new { url = link.Url })).Disabled(busy));
+            }
         }
         else content.Add(Copy("No links are available for this game.", "links.empty"));
     }

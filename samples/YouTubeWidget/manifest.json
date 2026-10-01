@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.youtube-video",
   "publisher": "widgetrail.samples",
   "name": "YouTube Video",
-  "version": "0.3.37",
+  "version": "0.3.38",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -22,6 +22,23 @@
   },
   "permissions": [],
   "optionalPermissions": [],
+  "intents": {
+    "handles": [{
+      "id": "widgetrail.video.open",
+      "version": 1,
+      "supportsPassiveDelivery": true,
+      "payloadSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "videoId": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "startTimeSeconds": { "type": "number", "minimum": 0, "maximum": 604800 }
+        },
+        "required": ["provider", "videoId"]
+      }
+    }]
+  },
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "keep-alive"

@@ -12,6 +12,7 @@
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\samples\PlayniteLibraryWidget\manifest.json" Link="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\PlayniteLibraryWidget\styles\default.wrss"
           Link="styles\default.wrss"
           CopyToOutputDirectory="PreserveNewest" />

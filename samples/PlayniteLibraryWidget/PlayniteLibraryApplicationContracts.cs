@@ -48,7 +48,6 @@ internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
     ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteAchievements.Unavailable);
     ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteActivity.Unavailable);
     ValueTask<bool> ChangeInstallationAsync(string gameId, bool install, CancellationToken token) => ValueTask.FromResult(false);
-    ValueTask<bool> OpenGameLinkAsync(string gameId, string url, CancellationToken token) => ValueTask.FromResult(false);
 
     ValueTask<WidgetAppLibraryPage> QueryAsync(
         WidgetAppLibraryQuery query,

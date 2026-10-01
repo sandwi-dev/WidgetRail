@@ -122,9 +122,11 @@ const player = {
   muted: false,
   loop: false,
   videoId: '',
+  lastCueStartSeconds: null,
   availablePlaybackRates: [.5, .75, 1, 1.25, 1.5, 2],
   cueVideoById(options) {
     this.videoId = options.videoId;
+    this.lastCueStartSeconds = options.startSeconds;
     this.state = 5;
     stateCallback?.({data:5});
   },
@@ -246,6 +248,13 @@ if (profile === 'state-callback' && readyPlaybackKeys.length !== 0)
     'state-callback initial ready must omit playback fields before media is loaded');
 
 await exercise({source:'bootstrap:load', command:'load'});
+if (profile === 'state-callback') {
+  for (const positionSeconds of [0, 42.5, 86400]) {
+    await exercise({source:'intent:load-at-timestamp', command:'load'}, {positionSeconds});
+    if (player.lastCueStartSeconds !== positionSeconds)
+      fail('intent-start-time', 'load did not pass the exact requested timestamp to the provider');
+  }
+}
 for (const requirement of requirements) await exercise(requirement);
 if (profile === 'state-callback' && request.playbackCommands.includes('SetPlaybackRate'))
   await exercisePlaybackRateContract();
@@ -287,7 +296,7 @@ async function exercise(requirement, options = {}) {
     commandId:id,
     commandSequence:sequence,
     mediaKey:options.mediaKey ?? currentMediaKey,
-    positionSeconds:12,
+    positionSeconds:options.positionSeconds ?? 12,
     volume:options.volume ?? .65,
     playbackRate:options.playbackRate ?? 1.25,
     muted:options.muted ?? true,

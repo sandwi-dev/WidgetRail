@@ -10,6 +10,17 @@ public sealed partial class PlayniteLibraryTests
     private const string DetailAction = "playnite-library.details.";
 
     [TestMethod]
+    public void DetailsLinkManifestDeclaresStandardWebIntent()
+    {
+        var manifest = ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
+        var contract = manifest.Intents!.Requests.Single();
+        Assert.AreEqual(WidgetIntentContracts.OpenWebPage, contract.Id);
+        Assert.AreEqual(CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web).SchemaDigest,
+            CompiledWidgetIntentContract.Create(contract).SchemaDigest);
+        Assert.AreEqual(0, WidgetManifestValidator.Validate(manifest).Count);
+    }
+
+    [TestMethod]
     public void HtmlStructurePreservesParagraphsListsInlineWordsAndEntities()
     {
         var html = "<p>A free up<b>grade</b> &amp; more.</p><p>Another paragraph.<br>A line break.</p>"
@@ -503,7 +514,8 @@ public sealed partial class PlayniteLibraryLayoutTests
             Developers = ["Developer"], Publishers = ["Publisher"], ReleaseDate = "2026-01-01",
             Features = ["Controller"], Series = ["Series"], AgeRatings = ["Teen"], Tags = ["Story"],
             PlayCount = 3, InstallSize = 1024, CriticScore = 80, CommunityScore = 85, UserScore = 90,
-            Notes = "Saved game notes", Links = [new("Website", "https://example.com/game")],
+            Notes = "Saved game notes", Links = [new("Website", "https://example.com/game"),
+                new("Unsafe scheme", "file:///C:/example"), new("Credentials", "https://user:password@example.com")],
         };
         var organization = PlayniteLibraryPrivateState.Empty with
         {
@@ -526,6 +538,14 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.AreEqual(tab == PlayniteDetailsTab.Description, nodes.Any(node => node.Id == "playnite-library.details." + "description"));
             Assert.AreEqual(tab == PlayniteDetailsTab.Information, nodes.Any(node => node.Id == "playnite-library.details." + "developers"));
             Assert.AreEqual(tab == PlayniteDetailsTab.Links, nodes.Any(node => node.Id == "playnite-library.details." + "link.0"));
+            if (tab == PlayniteDetailsTab.Links)
+            {
+                var intent = nodes.Single(node => node.Id == "playnite-library.details.link.0").Intent;
+                Assert.IsNotNull(intent);
+                Assert.AreEqual(WidgetIntentContracts.OpenWebPage, intent.ContractId);
+                Assert.AreEqual("https://example.com/game", intent.Payload.GetProperty("url").GetString());
+                Assert.IsFalse(nodes.Any(node => node.Id is "playnite-library.details.link.1" or "playnite-library.details.link.2"));
+            }
             if (tab == PlayniteDetailsTab.Information && completion is not null)
             {
                 Assert.IsTrue(nodes.Any(node => node.Text == completion));

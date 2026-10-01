@@ -106,9 +106,10 @@ ordinary dispatch path.
   another app; offer explicit fallback. Cancellation/withdrawal invalidates work.
 - Intent manifests are declarations, not permission grants. Delivery must be bound
   to authenticated caller, current user action, handler generation and lifetime.
-- Playnite currently uses its full-trust companion's `Process.Start` for verified
-  game links. Migrate that consumer to the shared web intent; preserve its link
-  validation. YouTube consumes the standard video contract including timestamps.
+- Playnite game links use the shared web intent with bounded HTTP(S) validation
+  and exact displayed-action authority. The former companion `Process.Start`
+  route is removed. YouTube consumes the standard video contract including
+  timestamps up to the embedded player's 86,400-second limit.
 
 ### Normal navigation and B (revised user decision)
 
@@ -199,7 +200,7 @@ following sources. No game-memory access or autonomous game input.
 - [ ] Lazy host-owned web surface with controller cursor/scroll and toolbar.
 - [ ] Pinnable browser widget; normal/pinned focus qualification.
 - [x] Default-browser fallback through the standard intent (synthetic launcher qualified; physical candidate pending).
-- [ ] Playnite link migration; YouTube handler with optional start time.
+- [x] Playnite link migration; YouTube handler with optional start time (synthetic checks; package staging pending).
 
 ### 3. Application context and capture
 - [ ] Reuse ordered Task Switcher windows and add correction dropdown.
@@ -354,6 +355,30 @@ following sources. No game-memory access or autonomous game input.
   PID26836 closed normally. No website, real playback or system setting changed.
 - Next: host web surface and Browser widget, then Playnite/YouTube consumers and
   compact embedded-media destination integration.
+- 2026-10-01: Connected the first real consumers before the new Browser widget,
+  using the already implemented default-browser fallback when no handler exists.
+  Playnite Library 0.2.115 declares `widgetrail.web.open` for its details links;
+  only bounded HTTP(S) URLs without credentials or control characters are emitted.
+  The selected link payload is part of snapshot authority, replacing the old
+  companion requery-and-shell-launch path. Removed that unused companion API and
+  its widget operation/busy state. Provider parsing remains bounded and validated.
+  YouTube Video 0.3.38 handles `widgetrail.video.open`, checks provider/video ID/
+  schema/position, and reuses its latest-wins load command. The per-mapping passive
+  opt-in is declared; compact pin reuse still needs its host authority integration.
+  Start time reaches the provider's cue call, while visible position remains zero
+  until a real observation supplies duration/position. A late search-key probe
+  no longer replaces an intent-opened player or blocks its initial rendering.
+  YouTube: 59/59 (`youtube-intent-tests06.log`); updated fake-player adapter check:
+  1/1 (`youtube-intent-adapter-tests07.log`, tests 0/42.5/86400-second cue arguments).
+  Playnite details/installation/selection regressions: 26/26
+  (`playnite-intent-tests04.log`). Both full-trust applications build cleanly.
+  The native MTP `dotnet test` driver reported zero tests even without a filter;
+  used the built MSTest executables, verified discovery and successful nonzero
+  results instead. Focused executable filtering uses `Name~...` here.
+  No installed packages updated, browser opened, or real playback started.
+- Browser implementation remains next. Inspected WinUI Gallery WebView2 and the
+  existing media owner: arbitrary web navigation must be a separate host-owned
+  surface, preserving the media adapter's sealed-document/origin restrictions.
 - 2026-10-01: Carried preview.23 Settings/Spotify source fixes and release baseline
   into this branch with merge `81f292a1`; no merge conflicts. Existing worktrees
   retained. Isolated native fixtures were closed through normal owned WM_CLOSE;

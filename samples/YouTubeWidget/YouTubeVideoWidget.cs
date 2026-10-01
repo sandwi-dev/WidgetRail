@@ -38,6 +38,21 @@ public sealed partial class YouTubeVideoWidget : Widget
     // one frame across the header, the transport, and the media session.
     public override WidgetView Render() => RenderApplication(_model.Value);
 
+    public override ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var contract = CompiledWidgetIntentContract.Create(WidgetIntentContracts.Video);
+        if (!IsActive || !request.IsWellFormed() || request.ContractId != contract.Id || request.Version != contract.Version ||
+            request.SchemaDigest != contract.SchemaDigest || !contract.Accepts(request.Payload) ||
+            request.Payload.GetProperty("provider").GetString() != "youtube" ||
+            request.Payload.GetProperty("videoId").GetString() is not { } videoId || !YouTubeLinkParser.IsVideoId(videoId))
+            return ValueTask.FromResult(WidgetIntentResult.Rejected);
+        var start = request.Payload.TryGetProperty("startTimeSeconds", out var value) ? value.GetDouble() : (double?)null;
+        if (start > 86_400) return ValueTask.FromResult(WidgetIntentResult.Rejected);
+        RunPlaybackLatest(new(YouTubePlaybackIntent.OpenVideoIntent, VideoId: videoId, StartTimeSeconds: start));
+        return ValueTask.FromResult(WidgetIntentResult.Accepted);
+    }
+
     private WidgetView RenderPlayer(YouTubeWidgetState state)
     {
         var playback = state.Playback;
@@ -364,6 +379,10 @@ public sealed partial class YouTubeVideoWidget : Widget
         {
             case YouTubePlaybackIntent.CommitLink:
                 next = state.WithCommittedLink(request.Text ?? string.Empty, sequence);
+                break;
+            case YouTubePlaybackIntent.OpenVideoIntent when request.VideoId is { } intentVideo:
+                next = state.WithPlayback(playback => playback.WithSelectedVideo(intentVideo, sequence, request.StartTimeSeconds))
+                    .WithRootSection(YouTubeRootSection.Player, PlayerFocusGroupId) with { Route = YouTubeRoute.Player };
                 break;
             case YouTubePlaybackIntent.SelectResult when
                 request.ReturnFocusId is { } returnFocusId &&

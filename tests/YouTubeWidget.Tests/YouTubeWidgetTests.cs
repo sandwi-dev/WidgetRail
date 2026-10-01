@@ -1492,12 +1492,14 @@ public sealed partial class YouTubeWidgetTests
         private readonly bool _configured;
 
         internal FakeApplicationService(bool configured = true) => _configured = configured;
+        internal Task<YouTubeConfigurationSummary>? Configuration { get; init; }
 
         public ValueTask<YouTubeConfigurationSummary> GetConfigurationAsync(
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new YouTubeConfigurationSummary(_configured));
+            return Configuration is { } pending ? new(pending.WaitAsync(cancellationToken))
+                : ValueTask.FromResult(new YouTubeConfigurationSummary(_configured));
         }
 
         public ValueTask ConfigureApiKeyAsync(

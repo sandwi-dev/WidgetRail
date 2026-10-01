@@ -374,7 +374,7 @@ async function cueWithVolume(command) {
   playbackState = "loading";
   const result = await waitForState([5], () => player.cueVideoById({
     videoId: mediaKey,
-    startSeconds: 0,
+    startSeconds: Math.max(0, command.positionSeconds),
   }), false, command.signal);
   // Some providers ignore volume until playback begins. Loading must remain
   // available in that case; retry once on the first Playing notification.
