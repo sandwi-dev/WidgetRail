@@ -7,7 +7,7 @@ package may be required. Earlier MSIX entries below are historical evidence only
 
 ## Current summary
 
-### Settings organization and consistent rows — 2026-10-01, validation complete; packaging pending
+### Settings organization and consistent rows — 2026-10-01, first-pass installer delivered
 
 User accepted preview.16; main fast-forwarded to bf15d9d0. Unrelated instruction
 edits preserved. Prior evidence copied to
@@ -56,7 +56,25 @@ state/action guards passed. Evidence: artifacts/settings-usability/.
 Code review checked stable identities, correct Back hierarchy, theme tokens,
 accessible select values, recovery action availability on both controller pages,
 exact preference setters and preserved permission/confirmation gates. Prepared
-normal preview.17 / FileVersion0.1.0.16, Settings widget0.1.5. Packaging pending.
+normal preview.17 / FileVersion0.1.0.16, Settings widget0.1.5.
+
+Delivery complete: source599b162d built cleanly through the normal release and Inno
+pipelines. Both 8/12-widget catalogs and release inventories passed. Production
+107,295,411 bytes; Developer115,214,238 bytes. Installers, SHA256SUMS.txt and build
+metadata copied and hash-verified in
+C:/Users/dwive/Downloads/WidgetRail-Inno-0.1.0-preview.17/.
+Published Settings retains the About version metadata after trimming. No installer
+was executed; installed preview.16 remains running. Final regenerated layouts pass
+213 native checks and their Appearance screenshot was inspected. Settings80,
+SDK148, compatibility14 and PlatformSettings27 are green; the separate documentation
+baseline assertion remains recorded above. New work stays on codex/settings-usability;
+no push or integration of this unaccepted UI iteration.
+
+Remaining design polish from the review: converting the existing SDK switch-button
+contract to a native toggle renderer, and giving the installed-widget list separate
+name/version/status fields. This first pass preserves those interaction contracts;
+its delivered changes address category ownership, reading alignment, explicit choices,
+page navigation and secondary detail hierarchy.
 
 
 ### Post-migration usability batch — 2026-10-01, installer delivered
